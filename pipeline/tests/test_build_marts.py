@@ -1755,12 +1755,12 @@ def _one_source_setup(tmp_path: Path, monkeypatch) -> tuple[dict, Path]:
     for club, table in (("a", "raw_a__club_x"), ("a", "raw_a__club_y"), ("nynjtc", "raw_nynjtc__nynjtc_trail_alerts")):
         manifest["sources"][f"source.ourhike.{club}.{table}"] = {"name": table, "identifier": table, "source_name": club}
     manifest["parent_map"] = {
-        "model.ourhike.base_a__club_x": ["source.ourhike.a.raw_a__club_x", "seed.ourhike.notice_status_values"],
+        "model.ourhike.base_a__club_x": ["source.ourhike.a.raw_a__club_x", "seed.ourhike.notice_words"],
         "model.ourhike.stg_a__club_x": ["model.ourhike.base_a__club_x"],
         "model.ourhike.stg_a__club_y": ["source.ourhike.a.raw_a__club_y"],
         "model.ourhike.base_nynjtc__nynjtc_trail_alerts": ["source.ourhike.nynjtc.raw_nynjtc__nynjtc_trail_alerts"],
         "model.ourhike.int_closures__club_notices_part_1_unioned": ["model.ourhike.stg_a__club_x", "model.ourhike.stg_a__club_y"],
-        "seed.ourhike.notice_status_values": [],
+        "seed.ourhike.notice_words": [],
     }
     return manifest, warehouse
 

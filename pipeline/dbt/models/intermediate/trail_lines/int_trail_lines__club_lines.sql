@@ -35,9 +35,9 @@
 --   `closed_by_its_layer`: int_trail_lines__club_published ships it closed,
 --   as a steward's closure on a network line ships. NGPC's sections close on
 --   Road_Status 'Closed' or Condition 'Impassable' or 'Not Passable',
---   whatever the other reads, the values seeds/notice_status_values.csv and
---   seeds/notice_category_values.csv read as closing the trail for its
---   notices (tests/test_ngpc_cowboy_trail.py holds the two alike): 3 of its
+--   whatever the other reads, the values the shared vocabulary
+--   (seeds/notice_words.csv, decision 190) reads as closing the trail for
+--   its notices (tests/test_ngpc_cowboy_trail.py holds the two alike): 3 of its
 --   29 sections on the live read of 2026-10-11, the Niobrara bridge's,
 --   'Open' beside 'Not Passable', among them.
 -- - TWO DIMENSIONS. geom_wkt is ST_Force2D of the line, so a Z-enabled

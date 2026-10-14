@@ -198,30 +198,36 @@ def test_cpw_conflict_areas_are_titled_in_decision_95s_words_and_never_by_their_
         assert "notice_field('activityco')" not in model, stem
 
 
-def test_every_status_value_belongs_to_a_source_whose_seed_row_names_a_status_field():
-    """And an empty value only to a source whose status is staged from no field at all: it reads every row of a layer
-    that is its own status (NETT's damaged bridges, the maintainer's answer to page 02's P11, poll of 2026-10-11). On a
-    layer with a status field it would read a row the source left blank as closed, a claim the source never made."""
+def test_a_narrative_is_staged_to_be_read_and_never_counted_as_a_fact(files):
+    """Decision 190 reads IDPR's orders by their own words, and 4 of its 5 motorized-only route orders say so only in
+    their Narrative (read live 2026-10-14), so the seed names that field and the generator stages it (PROSE_ROLES).
+    It stays wording: _fact_columns() leaves it out, so int_warnings__notice_wording_unioned still collects it and
+    int_warnings__wording_leaks still holds a source whose mart rows carry it. A source that names none stages a
+    null narrative."""
+    assert generator.PROSE_ROLES <= set(generator.ROLES)
     fields = {row["source_key"]: row for row in _seed("notice_source_fields")}
-    readers = {source.key: source.reader for source in generator.notice_sources() if not source.hand_staged}
-    for row in _seed("notice_status_values"):
-        key = row["source_key"]
-        has_status = bool(fields.get(key, {}).get("status")) or "status" in readers[key].roles
-        if row["status_value"].strip():
-            assert has_status, f"{key}: a status value for a source whose status field is not staged"
-        else:
-            assert not has_status, f"{key}: an empty status value for a source whose status field is staged"
+    named = {key for key, row in fields.items() if row["narrative"]}
+    assert named == {"idpr_emergency_route_closures", "idpr_area_restrictions"}
+    sources = {source.key: source for source in generator.notice_sources()}
+    for key in named:
+        source = sources[key]
+        assert "narrative" not in generator._fact_columns(source, fields), key
+        model = files[DBT / "models" / "staging" / source.club / "notices" / f"{source.stg_model}.sql"]
+        assert "    {{ notice_field('narrative') }} as narrative,\n" in model, key
+    vtrans = sources["vtrans_rail_trail_closures"]
+    model = files[DBT / "models" / "staging" / vtrans.club / "notices" / f"{vtrans.stg_model}.sql"]
+    assert "    cast(null as varchar) as narrative,\n" in model
 
 
-def test_every_category_value_belongs_to_a_source_whose_category_is_staged_from_its_own_field():
+def test_every_override_belongs_to_a_source_that_stages_the_field_it_names():
+    """seeds/notice_word_overrides.csv reads a value in one field of one source; a field the source does not stage
+    would read nothing, and the row would only look like a reading."""
     fields = {row["source_key"]: row for row in _seed("notice_source_fields")}
     readers = {source.key: source.reader for source in generator.notice_sources() if not source.hand_staged}
-    for row in _seed("notice_category_values"):
+    for row in _seed("notice_word_overrides"):
         key = row["source_key"]
-        spec = fields.get(key, {}).get("category") or readers[key].roles.get("category")
-        assert spec and generator._literal(spec) is None, (
-            f"{key}: a category value for a source whose category is no field of its own"
-        )
+        spec = fields.get(key, {}).get(row["read_in"]) or readers[key].roles.get(row["read_in"])
+        assert spec and generator._literal(spec) is None, f"{key}: an override for a field the source does not stage"
 
 
 def test_the_recreation_site_layer_stages_its_own_status_as_its_category(files):

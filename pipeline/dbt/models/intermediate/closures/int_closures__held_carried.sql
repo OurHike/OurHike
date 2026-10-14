@@ -32,7 +32,7 @@
 -- ITS OWN END DATE PASSING ENDS NOTHING, as for a row read this build (the
 -- maintainer's frame A, 2026-10-10; int_closures__club_notices' rule 1). A
 -- carried notice whose own end day is more than a day behind the build's UTC
--- date stays carried, and rule 2 reads it again: it no longer closes the
+-- date stays carried, and rule 3 reads it again: it no longer closes the
 -- trail, so it lands in warnings as not reviewed, as a fresh read of it
 -- would. conditions/notices.json's `current_until` is its end date, and the
 -- phone greys it. NOR DOES ITS OWN START: a carried notice whose start is
@@ -161,10 +161,11 @@ read_back as (
     from carried
 ),
 
--- Rule 2 on a carried row: a closure whose own end has passed since it was
--- read no longer closes the trail, so it moves to the warnings mart with
--- `obstructs_trail` null and `not_reviewed`, as int_closures__club_notices
--- would judge it now. Every other carried row keeps its mart and its claim.
+-- int_closures__club_notices' rule 3 on a carried row: a closure whose own
+-- end has passed since it was read no longer closes the trail, so it moves
+-- to the warnings mart with `obstructs_trail` null and `not_reviewed`, as
+-- int_closures__club_notices would judge it now. Every other carried row
+-- keeps its mart and its claim.
 judged as (
     select
         *,

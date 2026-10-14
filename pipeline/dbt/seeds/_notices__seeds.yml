@@ -1,8 +1,8 @@
 version: 2
 
-# Decision 53's phase C: the club notice sources' seeds. Six are reviewed by
-# hand row by row (notice_source_fields, notice_status_values,
-# notice_category_values, decision 67's notice_hazard_areas, decision 76's
+# Decision 53's phase C: the club notice sources' seeds. Seven are reviewed
+# by hand row by row (notice_source_fields, decision 190's notice_words and
+# notice_word_overrides, decision 67's notice_hazard_areas, decision 76's
 # notice_states and Q3's notice_steward_areas), one is a
 # person's mark on a notice (notice_marks), and one is written by
 # pipeline/generate_notice_models.py from the extract's own declarations
@@ -13,7 +13,10 @@ seeds:
     description: >
       Which of an ArcGIS notice layer's own fields fills each role of the
       shared club-notice shape: title, category, status, start, end,
-      rescinded, edited, link and a place name. One row per layer, each field
+      rescinded, edited, link, a place name and, where a reading needs it, the
+      layer's own wording of what a notice bars (narrative, decision 190).
+      It is each source's schema, never a meaning: what a value means is
+      notice_words', the same for every source. One row per layer, each field
       named as the layer publishes it (dlt lowercases it), from the field
       list decision 53's inventory read on 2026-10-03, which
       make_dbt_fixtures.py's NOTICE_LAYERS records. An empty field means the
@@ -41,6 +44,7 @@ seeds:
         edited: varchar
         link: varchar
         locality: varchar
+        narrative: varchar
         why: varchar
     columns:
       - name: source_key
@@ -57,7 +61,7 @@ seeds:
           The source's own category or type field, as text, or words in
           single quotes as for `title`.
       - name: status
-        description: The source's own status field, which notice_status_values reads.
+        description: The source's own status field, which notice_words reads.
       - name: starts
         description: When the notice starts, as the source states it.
       - name: ends
@@ -70,107 +74,189 @@ seeds:
         description: The field holding a page a hiker can read, never a REST endpoint.
       - name: locality
         description: The source's own words for where (a forest, a park, a county).
+      - name: narrative
+        description: >
+          The field holding the source's own wording of what a notice bars,
+          staged only to be read (pipeline/generate_notice_models.py's
+          PROSE_ROLES): int_closures__club_notices reads it for notice_words'
+          motorized and every-use words and outputs none of it, and the
+          wording union still counts it as wording, so the leak test still
+          holds a source whose mart rows carry it (decision 55). Named for
+          IDPR's two layers alone, where 4 of the 5 orders that bar motorized
+          use alone say so nowhere else (read live 2026-10-14).
       - name: why
         description: The evidence for the row, quoted from its sources.json notes where they hold it.
-  - name: notice_status_values
+  - name: notice_words
     description: >
-      What a value of a source's own status field means, where the source's
-      own words or the inventory's counts say: `closes_trail` (the row says
-      the trail or area it draws is closed, read only before its own end date
-      passes) or `not_current` (an inactive, unposted or open row, held back
-      as no notice). A value not listed reads as neither, and its notice
-      lands in warnings as not reviewed (decision 7): miss rather than cry
-      wolf. AN EMPTY VALUE is the rows whose own status is empty, and is
-      listed only for a layer with no status field at all, so it is every
-      row of a layer that is its own status (NETT's damaged bridges, the
-      maintainer's answer to wave 6's page 02, P11, poll of 2026-10-11);
-      tests/test_generated_notice_models.py refuses one for a source whose
-      status is staged. A closed site, trailhead or access point is not
-      listed as `closes_trail`, because none of them says the trail is
-      closed. A park closed whole is: California's Full Closure (decision
-      53's phase C) and Florida's day-use Closed values (the maintainer's
-      answer to page 01's P5 of the same poll, frame A: its trails close
-      with it).
-      @unvalidated per row except where `why` quotes a measured count; what
-      settles each is the source's own documentation of its values.
+      Decision 190's one vocabulary for every notice source (the maintainer,
+      poll of 2026-10-14: "Do by their own words. But make this logic that
+      applies everywhere. we need to stop doing org by org customization."):
+      each word a row's own status, category, title or narrative can hold,
+      the fields it is read in, how it matches and what it reads as.
+      int_closures__club_notices' rule 2 reads every club notice against it,
+      in the order its header gives: `not_current` (held: an archived,
+      cleared, hidden or open row, a flag's no), `not_a_hikers_use` (held as
+      nothing for a hiker: motorized, OHV, snowmobile, decision 165 made
+      general) unless a `bars_every_use` word (any use, public entry) or an
+      `a_hikers_use` word (foot, stock) stands beside it, `closes_trail`
+      (closed, closure, impassable) unless a `partly` (partial, detour) or
+      `not_a_closure` (alert, notice, restriction, only, beginning) word in
+      the same field qualifies it, a `category_needs_title` word ('closure',
+      a kind of notice in a category) finds no closing word in the title,
+      or an `a_site_not_the_trail` word
+      (campground, trailhead) says what closed is a facility. `stands` is an
+      on/off flag's yes and `unspecified` a coded unknown (-1): neither says
+      anything of the trail, so a closures layer's own name speaks for such a
+      row. It replaced the two per-source seeds, notice_status_values (70
+      rows) and notice_category_values (5), every row of which a word here
+      reads the same but ctsst_public_hazards_closures' one-letter 'C'
+      (notice_word_overrides). What each word does on the live read of
+      2026-10-14, 21:42 to 22:00 UTC, is in its `why`; the readings are
+      Reasoned from the words' plain meaning, @unvalidated as a reading of
+      every row a word may meet, which no reviewer read row by row.
+    data_tests:
+      # One reading per word: a word that read two ways would be decided by
+      # the order the seed loads.
+      - dbt_utils.unique_combination_of_columns:
+          arguments:
+            combination_of_columns: [word]
+      # The fields rule 2 reads, separated by one space.
+      - dbt_utils.expression_is_true:
+          arguments:
+            expression: "regexp_full_match(read_in, '(status|category|title|narrative)( (status|category|title|narrative))*')"
+      # A `words` row is written as rule 2 compares: lowercase letters and
+      # digits, one space between words.
+      - dbt_utils.expression_is_true:
+          arguments:
+            expression: "matches != 'words' or regexp_full_match(word, '[a-z0-9]+( [a-z0-9]+)*')"
+      # Only a closing word can outrank a status.
+      - dbt_utils.expression_is_true:
+          arguments:
+            expression: "not outranks_status or reads_as = 'closes_trail'"
+      # Only a closing word read in a category can need the title, and a
+      # word that needs the title to close outranks nothing.
+      - dbt_utils.expression_is_true:
+          arguments:
+            expression: "not category_needs_title or (reads_as = 'closes_trail' and not outranks_status and contains(' ' || read_in || ' ', ' category '))"
+      # A code is read only in a status (a coded flag).
+      - dbt_utils.expression_is_true:
+          arguments:
+            expression: "matches != 'code' or read_in = 'status'"
     config:
       column_types:
-        source_key: varchar
-        status_value: varchar
+        word: varchar
+        read_in: varchar
+        matches: varchar
         reads_as: varchar
+        outranks_status: boolean
+        category_needs_title: boolean
         why: varchar
     columns:
-      - name: source_key
-        description: The source's sources.json key.
-        data_tests: [not_null]
-      - name: status_value
+      - name: word
         description: >
-          The value as the source writes it, compared without case or
-          surrounding space; empty (null once loaded) for every row of a layer
-          with no status field.
-      - name: reads_as
-        description: closes_trail or not_current.
+          The word or value, lowercase, as rule 2 compares it: a whole value
+          for `exact` and `code`, whole words for `words`.
+        data_tests: [not_null]
+      - name: read_in
+        description: >
+          The row's own fields it is read in, separated by a space: status,
+          category, title, narrative (the roles notice_source_fields maps).
+        data_tests: [not_null]
+      - name: matches
+        description: >
+          exact (the field's whole value, case and surrounding space aside),
+          words (whole words within the field, 'non' joined to the word after
+          it), or code (exact, on a source whose every stated status is a
+          code word: a coded yes/no flag).
         data_tests:
           - not_null
           - accepted_values:
               arguments:
-                values: [closes_trail, not_current]
+                values: [exact, words, code]
+      - name: reads_as
+        description: >
+          not_current, stands, unspecified, not_a_hikers_use, bars_every_use,
+          a_hikers_use, closes_trail, partly, not_a_closure or
+          a_site_not_the_trail; int_closures__club_notices' header says what
+          each does.
+        data_tests:
+          - not_null
+          - accepted_values:
+              arguments:
+                values:
+                  - not_current
+                  - stands
+                  - unspecified
+                  - not_a_hikers_use
+                  - bars_every_use
+                  - a_hikers_use
+                  - closes_trail
+                  - partly
+                  - not_a_closure
+                  - a_site_not_the_trail
+      - name: outranks_status
+        description: >
+          True on a closing word whose reading holds however the row's own
+          status or category reads as not current: a section a source calls
+          impassable beside a status that says open, where reading it closed
+          is the side a hiker is safer on (NGPC's Niobrara Bridge section,
+          'Open' beside 'Not Passable', which its sources.json row says must
+          never show as open). False on 'fully obstructed', so the Great
+          Allegheny Passage's Hidden still holds its alert (decision 166).
+        data_tests: [not_null]
+      - name: category_needs_title
+        description: >
+          True on a closing word that, read in a category, names the kind
+          of notice the source files the row as rather than a state, so it
+          closes the trail only where the row's title holds a closing word
+          too: 'closure', which USFS's forest orders carry as their type
+          ('Safety Closure') whatever they bar, 'Forest Wide - Alcohol'
+          among them (read live 2026-10-14). In a status the same word is
+          the row's state ('Full Closure') and closes by itself.
+        data_tests: [not_null]
       - name: why
-        description: The evidence, quoted from the source's sources.json notes where they hold it.
-  - name: notice_category_values
+        description: >
+          What the word means, which per-source seed row it replaced, and
+          what it read on the live read of 2026-10-14.
+        data_tests: [not_null]
+  - name: notice_word_overrides
     description: >
-      What a value of a source's own category field means, for a source whose
-      category says what the notice says of the trail beside a status that
-      says something else: the Great Allegheny Passage's alerts, whose status
-      is the conservancy's `visibility` and whose category its own `status`,
-      and NGPC's Cowboy Trail sections, whose status is Road_Status and whose
-      category is Condition (seeds/notice_source_fields.csv). `closes_trail`
-      and `not_current` read as they do in notice_status_values, and
-      int_closures__club_notices holds a notice either seed reads as
-      `not_current`, whatever the other says, except where this seed's row
-      `outranks_status`. A value not listed reads as neither. @unvalidated per
-      row except where `why` quotes a measured count; what settles each is the
-      source's own documentation of its values.
+      A value no shared word can read, kept for its own source alone, each
+      row saying why no general rule reads it (decision 190: "aim for none").
+      Rule 2 reads a row here as a word of notice_words that only its own
+      source holds, matched exactly. One row: CTSST's H_C 'C', a one-letter
+      code for a closure.
     config:
       column_types:
         source_key: varchar
-        category_value: varchar
+        read_in: varchar
+        value: varchar
         reads_as: varchar
-        outranks_status: boolean
         why: varchar
     columns:
       - name: source_key
         description: The source's sources.json key.
         data_tests: [not_null]
-      - name: category_value
+      - name: read_in
+        description: The one field the value is read in.
+        data_tests:
+          - not_null
+          - accepted_values:
+              arguments:
+                values: [status, category, title, narrative]
+      - name: value
         description: The value as the source writes it, compared without case or surrounding space.
         data_tests: [not_null]
       - name: reads_as
-        description: closes_trail or not_current.
+        description: What it reads as, one of notice_words' readings.
         data_tests:
           - not_null
           - accepted_values:
               arguments:
-                values: [closes_trail, not_current]
-      - name: outranks_status
-        description: >
-          True where this value's reading holds however the source's own
-          status reads, a status notice_status_values reads as `not_current`
-          included. For a category that says the trail cannot be passed beside
-          a status that says it is open: the source contradicting itself,
-          where reading it closed is the side a hiker is safer on, since it
-          never shows as open a section the source also calls impassable
-          (NGPC's Niobrara Bridge section, Road_Status 'Open' with Condition
-          'Not Passable', which its sources.json row says must never show as
-          open). False where the
-          status's `not_current` holds the notice whatever its category says:
-          the Great Allegheny Passage's Hidden, which the maintainer's answer
-          to wave 6's page 01, P6 (poll of 2026-10-11), reads as not current.
-          A rule for every source that lists one, never for one source
-          (decision 141).
-        data_tests: [not_null]
+                values: [not_current, closes_trail]
       - name: why
-        description: The evidence, quoted from the source's sources.json notes where they hold it.
+        description: Why no word of notice_words can read it, and the evidence for what it means.
+        data_tests: [not_null]
   - name: notice_hazard_areas
     description: >
       The notice sources that are an area a hiker walks into rather than a

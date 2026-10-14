@@ -26,6 +26,7 @@ import generate_notice_models
 import make_dbt_staging
 from extract._contract import all_resources, discover, discover_shared
 from extract._run import ALSO_READS, lane_resources
+from tests.notice_words import reads_as
 
 PIPELINE = Path(__file__).resolve().parent.parent
 SEEDS = PIPELINE / "dbt" / "seeds"
@@ -64,28 +65,49 @@ def test_the_cowboy_trail_draws_only_its_open_and_closed_sections():
     assert kept == {("road_status", "Open"), ("road_status", "Closed")}
 
 
+#: Every value of the two fields the layer's notices read, as the live read of 2026-10-14 held them (the notices
+#: leg's extract, 21:42 to 22:00 UTC): Road_Status, staged as the status, and Condition, as the category.
+LIVE_VALUES = {
+    "road_status": ("Open", "Closed", "Alt Route"),
+    "condition": (
+        "Rough Surfaces Exist",
+        "Good",
+        "Passable",
+        "Good_Condition",
+        "Impassable",
+        "Not Passable",
+        "Loose Surfaces Exist",
+        "Hazards & Rough Trail Conditions may exist",
+        "Rough Surface May Exist",
+        "Good. Rough Surfaces may exist.",
+        "Rough surface may exist",
+        "Rough Trail Conditions may exist",
+        "Rough Surfaces Present",
+        "Hazards & Rought Trail Conditions may exist",
+    ),
+}
+
+
 def test_a_line_closes_on_exactly_the_values_its_closures_read_as_closing_the_trail():
-    """For each layer the layer_rules seed closes lines on, and whose notices the two value seeds read: the
-    closed_where values are the values those seeds read as closes_trail, field by field (dlt's names), so the line
-    and the closures list close the same sections. NGPC's is the one today."""
+    """For each layer the layer_rules seed closes lines on: of the layer's live values, the ones the shared vocabulary
+    (seeds/notice_words.csv, decision 190) reads as closing the trail in the role that field fills for its notices are
+    exactly the closed_where values, field by field (dlt's names), so the line and the closures list close the same
+    sections. NGPC's is the one today."""
     fields = {row["source_key"]: row for row in _seed("notice_source_fields")}
-    closing: dict[str, set[tuple[str, str]]] = {}
-    for seed, role in (("notice_status_values", "status"), ("notice_category_values", "category")):
-        value_column = f"{role}_value"
-        for row in _seed(seed):
-            if row["reads_as"] != "closes_trail" or not fields.get(row["source_key"], {}).get(role):
-                continue
-            field = generate_notice_models._normalize(fields[row["source_key"]][role])
-            closing.setdefault(row["source_key"], set()).add((field, row[value_column].strip().lower()))
+    roles = {generate_notice_models._normalize(fields[KEY][role]): role for role in ("status", "category") if fields[KEY][role]}
+    assert set(roles) == set(LIVE_VALUES)
+    closing = {
+        (field, value.strip().lower())
+        for field, values in LIVE_VALUES.items()
+        for value in values
+        if "closes_trail" in reads_as(roles[field], value)
+    }
     closed_where: dict[str, set[tuple[str, str]]] = {}
     for row in _seed("layer_rules"):
         if row["rule"] == "closed_where":
             closed_where.setdefault(row["source_key"], set()).add((row["field"], row["matches"].strip().lower()))
-    assert KEY in closed_where and KEY in closing
-    for source_key, values in closed_where.items():
-        if source_key in closing:
-            assert values == closing[source_key], source_key
-    assert closed_where[KEY] == {("road_status", "closed"), ("condition", "impassable"), ("condition", "not passable")}
+    assert set(closed_where) == {KEY}
+    assert closed_where[KEY] == closing == {("road_status", "closed"), ("condition", "impassable"), ("condition", "not passable")}
 
 
 def test_the_sections_are_one_extraction_on_the_hourly_lane_and_the_monthly_lane_lands_its_own_copy():

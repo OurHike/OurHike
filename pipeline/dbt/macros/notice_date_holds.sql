@@ -11,8 +11,8 @@
       conditions/notices.json, whose `current_until`
       (macros/notice_current_until.sql) is that end date, so the phone greys
       it after that day. notice_has_ended() below is what still reads the
-      end date, for rule 2: a status alone is never read as closing the
-      trail once its own end has passed;
+      end date, for rule 3: a notice is never read as closing the trail
+      once its own end has passed;
     - its own start still ahead (the maintainer's frame B for wave 6's page
       01, P3, poll of 2026-10-11, "show it now, as upcoming"): the notice
       publishes now with its `starts_on`, and the phone's half of the same
@@ -32,7 +32,7 @@
     Example:
 
         case
-            when status_reads = 'not_current' then 'its own status ...'
+            when reads_as = 'not_current' then 'its own status ...'
             {{ notice_date_holds(notice_build_date(), 'rescinded_on') }}
         end as held_because
 -#}

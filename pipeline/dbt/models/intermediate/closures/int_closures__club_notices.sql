@@ -21,7 +21,7 @@
 --    way. conditions/notices.json's `current_until` is that end day
 --    (macros/notice_current_until.sql), and the phone greys the notice after
 --    it on its own clock, so a phone offline for days greys it on the day,
---    which a build-time hold could not. Rule 2 below still reads it. Its end
+--    which a build-time hold could not. Rule 3 below still reads it. Its end
 --    is the day of `ends_at` in UTC.
 --    ONE WHOSE OWN START IS STILL AHEAD PUBLISHES NOW, AS UPCOMING: the
 --    maintainer's frame B for wave 6's page 01, P3 (poll of 2026-10-11, "show
@@ -30,7 +30,7 @@
 --    New Jersey's WMA restrictions, King County's alerts and IDPR's emergency
 --    closures state one), so a phone that last connected before that day
 --    never showed it. It now carries its own `starts_on`, and
---    `obstructs_trail` is rule 2's, read without regard to the start: a
+--    `obstructs_trail` is rule 3's, read without regard to the start: a
 --    closure that starts next month publishes `obstructs_trail` true today.
 --    THE PHONE DECIDES THE DAY IT CLOSES, the other half of the same answer:
 --    it draws the trail closed only from the day before `starts_on` on its
@@ -57,45 +57,109 @@
 --    one still in force (Reasoned, not measured on any source; with no
 --    margin, before 2026-10-05, a Denver order rescinded at local midnight
 --    was held from 18:00 local the evening before).
--- 2. A STATUS ALONE IS NEVER READ AS CLOSED NOW WHEN ITS OWN END HAS PASSED.
---    `obstructs_trail` is true only where the source's own status field
---    holds a value seeds/notice_status_values.csv reads as `closes_trail`,
---    or its own category field one seeds/notice_category_values.csv does
---    (the Great Allegheny Passage's 'Fully Obstructed'), the source files the
---    notice under closures (its club's closures.py), rule 1 does not hold
---    it, and its own end day is not more than one day behind the build's UTC
---    date (macros/notice_date_holds.sql's notice_has_ended(): a day stated in
---    a club's own zone has ended everywhere in the United States, UTC-4 to
---    UTC-10, by 10:00 UTC the day after, so the margin reads a closure as
---    closing a day too long, never a day too short; Reasoned, not measured on
---    any source). The USFS R06 fire closures carried 'Active' beside an end
---    date already past on 112 of 938 lines, and CDPR 'Full Closure' beside a
---    passed StatusReopenDate is the same shape (pipeline/ELT.md, "Status,
---    water and expiry rules", rule 1). A LAYER THAT IS ITS OWN STATUS has no
---    status field, and notice_status_values reads every one of its rows
---    through an empty value: NETT's damaged bridges, each a bridge the
---    coalition marks collapsed or burned (the maintainer's answer to page
---    02's P11, poll of 2026-10-11, frame A: drawn closed with its date, the
---    layer's EditDate as `updated_at`). Everything else is null, which
---    decision 7 lands in warnings as not reviewed: miss rather than cry wolf.
---    So a notice past its end lands in warnings, kept and not current, never
---    in closures.
--- 3. A STATUS OR A CATEGORY THE SOURCE USES FOR "NOT CURRENT" HOLDS THE ROW,
---    whatever the other says: an inactive flag (CDTC's Active No, Wisconsin
---    DNR's Active_Flag No, VTrans's isActive 0), an unposted or hidden one
---    (IATA's posted no, the Great Allegheny Passage's visibility Hidden), an
---    archived one (Missouri's Archived), a cleared one (the Great Allegheny
---    Passage's Cleared, its category), a use a hiker is not (Michigan's '-1',
---    a closure for ORV or snowmobile use, the maintainer's P4), or an open
---    one, which tells a hiker nothing.
---    EXCEPT A CATEGORY VALUE THAT OUTRANKS THE STATUS
---    (seeds/notice_category_values.csv's `outranks_status`): its reading
---    holds however the status reads, so a section NGPC's Condition calls
---    'Not Passable' or 'Impassable' closes the trail beside a Road_Status of
---    'Open' (the Niobrara Bridge section, read live 2026-10-11), which its
---    sources.json row says must never show as open. A row of the seed says
---    which way each value goes, so the Great Allegheny Passage's Hidden
---    still holds its 'Fully Obstructed' alert (the maintainer's P6).
+-- 2. A NOTICE IS READ BY ITS OWN WORDS, AGAINST ONE VOCABULARY FOR EVERY
+--    SOURCE (decision 190; the maintainer, poll of 2026-10-14: "Do by their
+--    own words. But make this logic that applies everywhere. we need to stop
+--    doing org by org customization."). seeds/notice_words.csv holds each
+--    word, the row's own fields it is read in (status, category, title,
+--    narrative: the columns seeds/notice_source_fields.csv maps per source,
+--    which is a source's schema, never a meaning), how it matches and what
+--    it reads as. No rule here names a source. The one value no shared word
+--    can read, a one-letter code, is a row of
+--    seeds/notice_word_overrides.csv, which says why; it reads as a word of
+--    the vocabulary would, for its own source alone.
+--    HOW A WORD MATCHES. `exact`: the field's whole value, case and
+--    surrounding space aside. `words`: whole words within the field, every
+--    run of characters that are not letters or digits read as one space,
+--    and 'non' joined to the word after it, so 'Non-Motorized' and
+--    'Nonmotorized' never read as 'motorized'. `code`: exact, on a source
+--    whose every stated status is a `code` word, a coded yes/no flag
+--    (VTrans's isActive 0 and 1), so a scale that uses 0 (Michigan's burn
+--    permits, 0 to 3 with no legend) is never read as a flag.
+--    THE READINGS, the first that holds (`reads_as`, with the field and the
+--    word that decided it in `read_from`):
+--    a. NOT CURRENT: its own status or category is a `not_current` word (an
+--       archived, cleared, hidden or open row, a flag's no), whatever the
+--       rest says, unless a closing word that `outranks_status` stands
+--       unqualified in its status or category: NGPC's Condition 'Not
+--       Passable' beside a Road_Status of 'Open' (the Niobrara Bridge
+--       section, which its sources.json row says must never show as open)
+--       closes, and the Great Allegheny Passage's Hidden still holds its
+--       'Fully Obstructed' alert (decision 166). Held, the word in the
+--       reason.
+--    b. NOTHING FOR A HIKER: a `not_a_hikers_use` word (motorized, OHV,
+--       snowmobile) in any of its fields, and no `bars_every_use` word (any
+--       use, public entry), no `a_hikers_use` word (foot, stock) and no
+--       status that says something else. Decision 165's reading of
+--       Michigan's motorized closures, made general: IDPR's five orders that
+--       bar motorized use alone leave the phone, its Evans Landing order
+--       ("prohibits any use of the trail") does not, and Michigan's 16
+--       closures whose own foot-travel status says Temporarily Closed close
+--       beside a category of 'Motorized' or 'Multi Use Motorized
+--       Nonmotorized' (read live 2026-10-14). Held, the word in the reason.
+--    c. CLOSES THE TRAIL, from the first of these that speaks:
+--       c1. its status or category holds a `closes_trail` word that no
+--           `partly` (Partial, Detour) or `not_a_closure` (Alert, Only)
+--           word in the same field qualifies. A word the seed marks
+--           `category_needs_title`, 'closure', names in a category the
+--           kind of notice the source files the row as, not a state, so
+--           there it speaks only where the title holds such a closing
+--           word too: USFS's forest orders are typed 'Safety Closure' or
+--           'Closure for Resource Protection' whatever they bar ('Forest
+--           Wide - Alcohol', 'Reckless Driving'; read live 2026-10-14), so
+--           only an order's title says whether it closes an area or a trail.
+--           It speaks unless an `a_site_not_the_trail` word in its title or
+--           category says what closed is a facility (a campground, a
+--           trailhead): that reads as a notice about the site, the principle
+--           the per-source seeds kept by leaving Florida's campground and
+--           Missouri's trailhead statuses unread. Only a site its own words
+--           name is caught: Florida's campground status points are titled by
+--           park, so 13 of them close (the live read, @unvalidated as a
+--           reading of a campground layer; what would settle it is the
+--           maintainer's call on whether a site layer's closure is ever the
+--           trail's). A `bars_every_use` word lifts it, the site's closure
+--           then barring entry outright (IDPR's Selway Falls Campground
+--           orders);
+--       c2. where its status says nothing and its category holds no word of
+--           the vocabulary, a placed row's title holds such an unqualified
+--           closing word, and no site word;
+--       c3. where its status says nothing and its category holds no word,
+--           the source files the placed row under closures (its club's
+--           closures.py) and its title holds no `not_a_closure` and no site
+--           word: the layer's own name is its words (IDPR's Emergency Route
+--           Closures, VTrans's closure view, NETT's damaged bridges, the
+--           maintainer's P11). A `partly` word in a title says which part a
+--           line draws (IDPR's Porters Trail Partial Closure) and does not
+--           stop it. A page, a feed item or a post is never placed: its
+--           title is a headline ('Closures & Notices', 'Now Open: … Bridge
+--           Closure', both in the live read), read for no closure.
+--       A STATUS SAYS NOTHING where it is empty or `unspecified` (-1) on a
+--       source that states no status on any row, or is a `stands` word, an
+--       on/off flag's yes (Active, Yes, 1). A blank status on a source that
+--       states one on other rows says nothing either way, so its row stays
+--       a notice: Missouri's blank STATUS, which the maintainer's P1 answer
+--       shows as current (decision 164), and 5 of Yellowstone's bear
+--       management areas.
+--    d. A NOTICE nobody reviewed, otherwise (decision 7: miss rather than
+--       cry wolf).
+--    A HAZARD AREA (rule 6) is read by its hazard category alone, never by
+--    the vocabulary: 'Open' on a shooting range is the hazard, not its
+--    absence.
+-- 3. A NOTICE CLOSES THE TRAIL ONLY IN A CLOSURES FILE, AND NEVER ONCE ITS
+--    OWN END HAS PASSED. `obstructs_trail` is true only where rule 2 reads
+--    `closes_trail`, the source files the notice under closures (its club's
+--    closures.py), nothing holds it, and its own end day is not more than
+--    one day behind the build's UTC date (macros/notice_date_holds.sql's
+--    notice_has_ended(): a day stated in a club's own zone has ended
+--    everywhere in the United States, UTC-4 to UTC-10, by 10:00 UTC the day
+--    after, so the margin reads a closure as closing a day too long, never a
+--    day too short; Reasoned, not measured on any source). The USFS R06 fire
+--    closures carried 'Active' beside an end date already past on 112 of 938
+--    lines, and CDPR 'Full Closure' beside a passed StatusReopenDate is the
+--    same shape (pipeline/ELT.md, "Status, water and expiry rules", rule 1):
+--    a notice past its end lands in warnings, kept and not current, never in
+--    closures. Everything else is null, which decision 7 lands in warnings
+--    as not reviewed.
 -- 4. PLACE ONLY FROM THE SOURCE'S OWN GEOMETRY, OR ITS STEWARD'S OWN AREA.
 --    `geom_geojson` is the staging model's own geometry, never a match of
 --    `locality` or a title against a place table: a notice with none is
@@ -132,8 +196,11 @@
 --    (measured 2026-10-11). pub_conditions_notices makes a published shape
 --    valid itself.
 -- 5. FACTS AND A LINK (decision 55). The columns are the notice's title,
---    category, dates, place and link; no prose column exists to carry, and
---    int_warnings__wording_leaks fails the build if one reaches a mart.
+--    category, dates, place and link, and no prose column is carried: the
+--    one prose field a source stages, its `narrative`
+--    (generate_notice_models.py's PROSE_ROLES), is read by rule 2's words
+--    and never selected, and int_warnings__wording_leaks fails the build
+--    if one reaches a mart.
 -- 6. A HAZARD AREA IS ONLY THE HAZARD ITS OWN CATEGORY SAYS (decision 67).
 --    A source seeds/notice_hazard_areas.csv lists with category values
 --    publishes only the rows whose own category is one of them: IATA's
@@ -206,12 +273,212 @@ notices as (
         on unioned.notice_key = points_in_areas.notice_key
 ),
 
-status_values as (
-    select * from {{ ref('notice_status_values') }}
+-- Rule 2's vocabulary, one row per word and field it is read in, and each
+-- override as a word of its own source alone.
+words as (
+    select
+        lower(trim(word)) as word,
+        unnest(string_split(lower(trim(read_in)), ' ')) as field,
+        lower(trim(matches)) as matches,
+        lower(trim(reads_as)) as reads_as,
+        coalesce(outranks_status, false) as outranks_status,
+        coalesce(category_needs_title, false) as category_needs_title,
+        cast(null as varchar) as only_source
+    from {{ ref('notice_words') }}
+    union all by name
+    select
+        lower(trim(value)) as word,
+        lower(trim(read_in)) as field,
+        'exact' as matches,
+        lower(trim(reads_as)) as reads_as,
+        false as outranks_status,
+        false as category_needs_title,
+        source_key as only_source
+    from {{ ref('notice_word_overrides') }}
 ),
 
-category_values as (
-    select * from {{ ref('notice_category_values') }}
+-- Each notice's own fields, as rule 2 compares them: the whole value, case
+-- and surrounding space aside, and its words padded with a space each side,
+-- every run of characters that are not letters or digits one space, 'non'
+-- joined to the word after it.
+field_values as (
+    select
+        notice_key,
+        source_key,
+        'status' as field,
+        status as field_value
+    from notices
+    union all
+    select
+        notice_key,
+        source_key,
+        'category' as field,
+        category as field_value
+    from notices
+    union all
+    select
+        notice_key,
+        source_key,
+        'title' as field,
+        title as field_value
+    from notices
+    union all
+    select
+        notice_key,
+        source_key,
+        'narrative' as field,
+        narrative as field_value
+    from notices
+),
+
+field_text as (
+    select
+        notice_key,
+        source_key,
+        field,
+        lower(trim(field_value)) as whole_value,
+        ' ' || trim(
+            regexp_replace(
+                regexp_replace(
+                    lower(field_value), '\bnon[^a-z0-9]+', 'non', 'g'
+                ),
+                '[^a-z0-9]+',
+                ' ',
+                'g'
+            )
+        ) || ' ' as padded_value
+    from field_values
+    where trim(coalesce(field_value, '')) != ''
+),
+
+-- Two facts about each source's own statuses: whether it states one on any
+-- row, and whether every one it states is a `code` word (a coded flag).
+source_statuses as (
+    select
+        notices.source_key,
+        bool_or(trim(coalesce(notices.status, '')) != '') as states_a_status,
+        bool_and(
+            trim(coalesce(notices.status, '')) = ''
+            or lower(trim(notices.status)) in (
+                select codes.word from words as codes
+                where codes.matches = 'code'
+            )
+        ) as states_only_codes
+    from notices
+    group by notices.source_key
+),
+
+-- Every word of the vocabulary each notice's fields hold.
+hits as (
+    select
+        field_text.notice_key,
+        field_text.field,
+        words.word,
+        words.reads_as,
+        words.outranks_status,
+        words.category_needs_title
+    from field_text
+    inner join words on field_text.field = words.field
+    inner join source_statuses
+        on field_text.source_key = source_statuses.source_key
+    where
+        (
+            words.only_source is null
+            or words.only_source = field_text.source_key
+        )
+        and (
+            (words.matches = 'exact' and field_text.whole_value = words.word)
+            or (
+                words.matches = 'code'
+                and field_text.whole_value = words.word
+                and source_statuses.states_only_codes
+            )
+            or (
+                words.matches = 'words'
+                and contains(field_text.padded_value, ' ' || words.word || ' ')
+            )
+        )
+),
+
+-- What each field says, once per notice and field. A `partly` or
+-- `not_a_closure` word qualifies a closing word in the same field.
+field_readings as (
+    select
+        notice_key,
+        field,
+        bool_or(reads_as in ('partly', 'not_a_closure')) as is_qualified,
+        bool_or(reads_as = 'not_a_closure') as says_not_a_closure,
+        min(word) filter (where reads_as = 'closes_trail') as closing_word,
+        min(word) filter (
+            where reads_as = 'closes_trail' and not category_needs_title
+        ) as closing_state_word,
+        coalesce(
+            bool_or(outranks_status) filter (where reads_as = 'closes_trail'),
+            false
+        ) as closing_outranks,
+        min(word) filter (where reads_as = 'not_current') as not_current_word,
+        min(word) filter (
+            where reads_as = 'not_a_hikers_use'
+        ) as not_a_hikers_use_word,
+        bool_or(reads_as = 'bars_every_use') as bars_every_use,
+        bool_or(reads_as = 'a_hikers_use') as names_a_hikers_use,
+        min(word) filter (where reads_as = 'a_site_not_the_trail') as site_word,
+        bool_or(reads_as = 'stands') as stands,
+        bool_or(reads_as = 'unspecified') as unspecified
+    from hits
+    group by notice_key, field
+),
+
+-- What each notice's words say, its fields side by side; each `..._from`
+-- is the field and the word, as `read_from` prints them.
+said as (
+    select
+        notice_key,
+        coalesce(
+            min('status ''' || not_current_word || '''')
+            filter (where field = 'status'),
+            min('category ''' || not_current_word || '''')
+            filter (where field = 'category')
+        ) as not_current_from,
+        min(field || ' ''' || not_a_hikers_use_word || '''')
+            as not_a_hikers_use_from,
+        bool_or(bars_every_use) as bars_every_use,
+        bool_or(names_a_hikers_use) as names_a_hikers_use,
+        min(field || ' ''' || site_word || '''')
+        filter (where field in ('title', 'category')) as site_from,
+        coalesce(
+            min('status ''' || closing_word || '''')
+            filter (where field = 'status' and not is_qualified),
+            min('category ''' || closing_state_word || '''')
+            filter (where field = 'category' and not is_qualified)
+        ) as closes_from,
+        min('category ''' || closing_word || '''')
+        filter (where field = 'category' and not is_qualified)
+            as category_kind_from,
+        coalesce(
+            bool_or(closing_outranks) filter (
+                where field in ('status', 'category') and not is_qualified
+            ),
+            false
+        ) as closing_outranks,
+        min('title ''' || closing_word || '''')
+        filter (where field = 'title' and not is_qualified)
+            as title_closes_from,
+        coalesce(
+            bool_or(says_not_a_closure) filter (where field = 'title'), false
+        ) as title_says_not_a_closure,
+        coalesce(bool_or(stands) filter (where field = 'status'), false)
+            as status_stands,
+        coalesce(bool_or(unspecified) filter (where field = 'status'), false)
+            as status_unspecified,
+        coalesce(
+            bool_or(not_a_hikers_use_word is not null)
+            filter (where field = 'status'),
+            false
+        ) as status_names_a_use_hikers_are_not,
+        coalesce(bool_or(field = 'category'), false) as category_holds_a_word
+    from field_readings
+    group by notice_key
 ),
 
 -- Rule 6's seed: each hazard source once, with whether every row is the
@@ -233,17 +500,41 @@ hazard_values as (
     where coalesce(trim(category_value), '') != ''
 ),
 
--- A status value is compared without case or surrounding space, and an
--- empty one (null once the seed loads, '' in a unit test's rows) is the rows
--- whose own status is empty: every row of a layer with no status field
--- (rule 2's layer that is its own status).
-read_status as (
+-- Each notice with what its words say (rule 2), its hazard (rule 6) and its
+-- dates (rule 1).
+read_words as (
     select
         notices.*,
-        status_values.reads_as as status_reads,
-        category_values.reads_as as category_reads,
-        coalesce(category_values.outranks_status, false)
-            as category_outranks_status,
+        said.not_current_from,
+        said.not_a_hikers_use_from,
+        coalesce(
+            said.closes_from,
+            case
+                when said.title_closes_from is not null
+                    then
+                        said.category_kind_from || ' with its '
+                        || said.title_closes_from
+            end
+        ) as closes_from,
+        said.title_closes_from,
+        coalesce(said.bars_every_use, false) as bars_every_use,
+        coalesce(said.names_a_hikers_use, false) as names_a_hikers_use,
+        case
+            when not coalesce(said.bars_every_use, false) then said.site_from
+        end as site_from,
+        coalesce(said.closing_outranks, false) as closing_outranks,
+        coalesce(said.title_says_not_a_closure, false)
+            as title_says_not_a_closure,
+        coalesce(said.status_stands, false) as status_stands,
+        coalesce(said.status_names_a_use_hikers_are_not, false)
+            as status_names_a_use_hikers_are_not,
+        coalesce(said.category_holds_a_word, false) as category_holds_a_word,
+        (
+            trim(coalesce(notices.status, '')) = ''
+            or coalesce(said.status_unspecified, false)
+        ) as status_is_blank,
+        source_statuses.states_a_status,
+        notices.geom_geojson is not null as is_placed,
         hazard_sources.hazard,
         coalesce(hazard_sources.every_row, false) as hazard_every_row,
         hazard_values.category_value is not null as hazard_category_listed,
@@ -252,16 +543,9 @@ read_status as (
         cast(timezone('UTC', notices.rescinded_at) as date) as rescinded_on,
         {{ notice_build_date() }} as build_date
     from notices
-    left join status_values
-        on
-            notices.source_key = status_values.source_key
-            and lower(coalesce(trim(notices.status), ''))
-            = lower(coalesce(trim(status_values.status_value), ''))
-    left join category_values
-        on
-            notices.source_key = category_values.source_key
-            and lower(trim(notices.category))
-            = lower(trim(category_values.category_value))
+    left join said on notices.notice_key = said.notice_key
+    inner join source_statuses
+        on notices.source_key = source_statuses.source_key
     left join hazard_sources
         on notices.source_key = hazard_sources.source_key
     left join hazard_values
@@ -270,23 +554,89 @@ read_status as (
             and lower(trim(notices.category)) = hazard_values.category_value
 ),
 
+-- Rule 2's readings, the first that holds: which one, as a short name.
+-- A status says nothing where it is blank on a source that states none, or
+-- an on/off flag's yes; it says something else where it is neither blank,
+-- a flag's yes, nor itself a use a hiker is not.
+ruled as (
+    select
+        *,
+        case
+            when hazard is not null then 'hazard'
+            when not_current_from is not null and not closing_outranks
+                then 'a'
+            when
+                not_a_hikers_use_from is not null
+                and not bars_every_use
+                and not names_a_hikers_use
+                and (
+                    status_is_blank
+                    or status_stands
+                    or status_names_a_use_hikers_are_not
+                )
+                then 'b'
+            when
+                closes_from is not null
+                and site_from is not null
+                and not closing_outranks
+                then 'site'
+            when closes_from is not null then 'c1'
+            when
+                ((status_is_blank and not states_a_status) or status_stands)
+                and not category_holds_a_word
+                and is_placed
+                and site_from is not null
+                then 'site'
+            when
+                ((status_is_blank and not states_a_status) or status_stands)
+                and not category_holds_a_word
+                and is_placed
+                and title_closes_from is not null
+                then 'c2'
+            when
+                ((status_is_blank and not states_a_status) or status_stands)
+                and not category_holds_a_word
+                and is_placed
+                and notice_type = 'closures'
+                and not title_says_not_a_closure
+                then 'c3'
+            else 'd'
+        end as reading_rule
+    from read_words
+),
+
 -- Rule 1's one date hold comes last, from macros/notice_date_holds.sql;
--- rule 2's end date is `has_ended`, which holds nothing back. Rule 3's
--- status hold yields to a category value that outranks the status.
+-- rule 3's end date is `has_ended`, which holds nothing back.
 judged as (
     select
         *,
         case
-            when status_reads = 'not_current' and not category_outranks_status
+            when reading_rule = 'a' then 'not_current'
+            when reading_rule = 'b' then 'nothing_for_a_hiker'
+            when reading_rule in ('c1', 'c2', 'c3') then 'closes_trail'
+            else 'notice'
+        end as reads_as,
+        case
+            when reading_rule = 'a' then not_current_from
+            when reading_rule = 'b' then not_a_hikers_use_from
+            when reading_rule = 'c1' then closes_from
+            when reading_rule = 'c2' then title_closes_from
+            when reading_rule = 'c3' then 'its own layer, filed under closures'
+            when reading_rule = 'site'
+                then site_from || ', a site and not the trail'
+        end as read_from,
+        case
+            when reading_rule = 'a'
                 then
-                    'its own status reads ' || coalesce(status, 'nothing')
-                    || ', which the source uses for a notice that is not '
-                    || 'current'
-            when category_reads = 'not_current'
+                    'its own ' || not_current_from
+                    || ' says the notice is not current '
+                    || '(seeds/notice_words.csv)'
+            when reading_rule = 'b'
                 then
-                    'its own category reads ' || category
-                    || ', which the source uses for a notice that is not '
-                    || 'current'
+                    'its own ' || not_a_hikers_use_from
+                    || ' limits it to a use a hiker is not, and none of its '
+                    || 'words bars every use: nothing for a hiker '
+                    || '(seeds/notice_words.csv)'
             when
                 hazard is not null
                 and not hazard_every_row
@@ -297,12 +647,8 @@ judged as (
                     || hazard
             {{ notice_date_holds('build_date', 'rescinded_on') }}
         end as held_because,
-        {{ notice_has_ended('ends_on', 'build_date') }} as has_ended,
-        coalesce(
-            status_reads = 'closes_trail' or category_reads = 'closes_trail',
-            false
-        ) as reads_closed
-    from read_status
+        {{ notice_has_ended('ends_on', 'build_date') }} as has_ended
+    from ruled
 )
 
 select
@@ -316,7 +662,7 @@ select
     case
         when
             notice_type = 'closures'
-            and reads_closed
+            and reads_as = 'closes_trail'
             and held_because is null
             and not has_ended
             then true
@@ -324,7 +670,7 @@ select
     case
         when
             notice_type = 'closures'
-            and reads_closed
+            and reads_as = 'closes_trail'
             and held_because is null
             and not has_ended
             then 'org_published'
@@ -333,8 +679,8 @@ select
     {{ python_html_unescape('title') }} as title,
     category,
     status,
-    status_reads,
-    category_reads,
+    reads_as,
+    read_from,
     locality,
     starts_at,
     starts_on,

@@ -20,9 +20,9 @@ for the line under a source table and a base model of its own (its docstring, "A
 The line's rules are rows of dbt/seeds/layer_rules.csv, which int_trail_lines__club_lines reads: only a section
 whose Road_Status is 'Open' or 'Closed' draws (the two 'Alt Route' sections are the HWY 275 detour beside the closed
 Elkhorn bridges, never trail), and a section whose Road_Status is 'Closed' or whose Condition is 'Impassable' or
-'Not Passable' draws closed, the same values the closures read as closing the trail
-(seeds/notice_status_values.csv and seeds/notice_category_values.csv, which tests/test_ngpc_cowboy_trail.py holds
-them to).
+'Not Passable' draws closed, the same values the closures read as closing the trail (the shared vocabulary,
+seeds/notice_words.csv, decision 190, which tests/test_ngpc_cowboy_trail.py holds them to over the layer's live
+values).
 """
 
 from extract._kinds import arcgis_layer

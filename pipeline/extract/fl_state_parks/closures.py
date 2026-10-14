@@ -14,7 +14,9 @@ state park).
 
 A CLOSED PARK CLOSES ITS TRAILS, AND ITS PLACE IS ITS OWN BOUNDARY. The maintainer chose what a park closed for a storm
 does (the poll of 2026-10-11, review page 01, P5, frame A, decision 168): it closes the trails inside it until the park's
-own status reopens it, so seeds/notice_status_values.csv reads every Closed-<reason> status as closing the trail. The
+own status reopens it, so every Closed-<reason> status reads as closing the trail, by the shared word 'closed'
+(seeds/notice_words.csv, decision 190; the campground layer's Closed values read the same way since, its rows naming
+the park and no campground). The
 status layer is points with no park id, so a closed park sat at its point, and a planned hike's list showed it only to
 a route passing within client/src/lib/plannedNotices.ts's NOTICE_REACH_FEET (300) of that point. The same poll's Q3
 ("Its own boundary", decision 185) places it by FDEP's own park boundaries instead, as a general rule and not one for

@@ -37,9 +37,10 @@
 // AND EVERY CLUB CLOSURE AT LAUNCH, FOR THE MAP (the maintainer's polls of
 // 2026-10-11: Q2 "Build the map file now", and standard S6 as drawn):
 // conditions/trail_closures.json, the rows of notices.json that close a
-// trail, each with the shape the map crosses it out as. Read like the hazard
-// areas, whatever is planned, by `fetchPublishedTrailClosures`; ATC's rows
-// are not in it, because ATC's own band already draws them.
+// trail, each with the shape the map crosses it out as, or, for an area no
+// mapped trail runs inside, shades it as (decision 191). Read like the
+// hazard areas, whatever is planned, by `fetchPublishedTrailClosures`; ATC's
+// rows are not in it, because ATC's own band already draws them.
 
 import {
   fetchPublished,
@@ -409,27 +410,42 @@ function isLine(value: unknown): boolean {
   return Array.isArray(value) && value.length >= 2 && value.every(isLonLat)
 }
 
+/** A polygon's rings: an outline and its holes, each a closed ring of four
+ *  or more drawable positions (RFC 7946 §3.1.6). */
+function isPolygon(value: unknown): boolean {
+  return (
+    Array.isArray(value) &&
+    value.length > 0 &&
+    value.every((ring) => Array.isArray(ring) && ring.length >= 4 && ring.every(isLonLat))
+  )
+}
+
+/** Every member of a Multi* geometry's coordinates passes `part`. */
+function everyPart(coordinates: unknown, part: (value: unknown) => boolean): boolean {
+  return Array.isArray(coordinates) && coordinates.length > 0 && coordinates.every(part)
+}
+
 /**
  * Whether a closure's geometry is the one its shape is drawn from, with every
  * coordinate drawable: a LineString or MultiLineString for a `line` (the
  * notice's own line) and an `area` (the trail stretches the pipeline cut
- * inside it), a Point for a `point`. Checked whole here because every closure
- * shares one GeoJSON source on the map (map/clubClosureLayers.ts), and one
- * row's unreadable coordinates must not cost the others their marks.
+ * inside it), a Point for a `point`, and a Polygon or MultiPolygon for a
+ * `shade` (the area itself, decision 191). Checked whole here because every
+ * closure shares one GeoJSON source on the map (map/clubClosureLayers.ts),
+ * and one row's unreadable coordinates must not cost the others their marks.
  */
 function drawable(shape: ClosureShape, geometry: NoticeGeometryValue): boolean {
   const { type, coordinates } = geometry
   if (shape === 'point') return type === 'Point' && isLonLat(coordinates)
+  if (shape === 'shade') {
+    if (type === 'Polygon') return isPolygon(coordinates)
+    return type === 'MultiPolygon' && everyPart(coordinates, isPolygon)
+  }
   if (type === 'LineString') return isLine(coordinates)
-  return (
-    type === 'MultiLineString' &&
-    Array.isArray(coordinates) &&
-    coordinates.length > 0 &&
-    coordinates.every(isLine)
-  )
+  return type === 'MultiLineString' && everyPart(coordinates, isLine)
 }
 
-const CLOSURE_SHAPES: ReadonlySet<string> = new Set(['line', 'area', 'point'])
+const CLOSURE_SHAPES: ReadonlySet<string> = new Set(['line', 'area', 'point', 'shade'])
 
 /**
  * One conditions/trail_closures.json row, or null for one the map cannot
@@ -437,10 +453,11 @@ const CLOSURE_SHAPES: ReadonlySet<string> = new Set(['line', 'area', 'point'])
  * `validNotice`, so a field it repairs there is repaired the same way here;
  * then the map's own refusals, each a row the file's contract does not allow:
  *
- *  - no `shape`, or one that is not line, area or point;
+ *  - no `shape`, or one that is not line, area, point or shade;
  *  - a place that is not a geometry, or not the one its shape is drawn from
  *    (`drawable`): an area row's polygon is refused, never crossed out along
- *    its edge, because its trails are what close;
+ *    its edge, because its trails are what close, and a shade's line is
+ *    refused, because a shade is the area itself;
  *  - `obstructs_trail` not true: a row that does not close the trail is no
  *    closure to draw, and a crossed-out trail that is open is the false
  *    alarm CLAUDE.md's "miss rather than cry wolf" rules out;
@@ -477,14 +494,15 @@ export function validTrailClosure(value: unknown): TrailClosure | null {
  * copy this phone kept (#447) if it kept one, as every file here: the caller
  * reads null as "no answer", never as "no closure".
  *
- * Within MANIFEST_READ_TIMEOUT_MS, as the hazard areas are. @unvalidated: no
- * trail_closures.json has been published yet. Its writer's own estimate, on
- * UA's notices.json of 2026-10-11 16:23 UTC, is 3,123,994 bytes, 630,688
- * gzipped (an upper bound: its areas were cut against their 100 m grown
- * outlines), which 20 s lets through above about 252 kbps; the S6 page had
- * guessed 354 KB. Slower than that, a phone shows the copy it kept. What
- * would settle it: the published file's own size, and timings of this read
- * at trailheads, which nothing records.
+ * Within MANIFEST_READ_TIMEOUT_MS, as the hazard areas are. UA's first
+ * published file, of 2026-10-14 18:15 UTC, is 3,165,161 bytes and 633,700 on
+ * the wire (its latest.json); the 156 areas decision 191 shades add 32,244
+ * gzipped at level 6 (Measured that evening on the areas' own outlines,
+ * pipeline/dbt's pub_conditions_trail_closures says how), about 665,900 in
+ * all, which 20 s lets through above about 266 kbps. Slower than that, a
+ * phone shows the copy it kept. @unvalidated: whether 20 s is right for this
+ * file, for MANIFEST_READ_TIMEOUT_MS's reason; what would settle it is
+ * timings of this read at trailheads, which nothing records.
  */
 export async function fetchPublishedTrailClosures(
   options?: PublishedReadOptions,

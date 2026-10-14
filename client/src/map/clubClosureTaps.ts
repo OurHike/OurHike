@@ -6,9 +6,13 @@
 
 import type { GeoJSONSource, Map as MapLibreMap, MapMouseEvent } from 'maplibre-gl'
 import type { TrailClosure } from '../lib/publishedConditions'
-import { CLUB_CLOSURE_SOURCE_ID } from './clubClosureLayers'
+import { atcBandIdAt } from './atcUpdateLayers'
+import { addClosureShadeImages } from './closureShade'
+import { CLUB_CLOSURE_SOURCE_ID, clubClosureShadeIdAt } from './clubClosureLayers'
 import { closureIdAt, clubClosureIdAt, CLUB_CLOSURE_ID_PROPERTY } from './closureLayers'
+import { tappedLineAt } from './lineTaps'
 import { poiPinAt } from './poiPinProbe'
+import { poiIdAt } from './poiTaps'
 import { whenStyleReady } from './styleReady'
 import { warningIdAt } from './warningLayers'
 
@@ -27,7 +31,7 @@ export interface ClubClosureFeatureCollection {
  * map/closureLayers.ts's CLOSURE_ID_PROPERTY reason: MapLibre runs a string
  * feature id through `parseInt`. Which layer draws a feature is its geometry's
  * (map/clubClosureLayers.ts): a line or an area's cut stretches along the
- * crossed-out mark, a point as one cross.
+ * crossed-out mark, a point as one cross, a shade's polygon as the hatch.
  */
 export function clubClosureFeatureCollection(
   closures: readonly TrailClosure[],
@@ -42,7 +46,9 @@ export function clubClosureFeatureCollection(
   }
 }
 
-/** Pushes the closures onto the live map's source, and returns a detach. */
+/** Pushes the closures onto the live map's source, and returns a detach.
+ *  The shade's hatch images go first (map/closureShade.ts), so no shaded
+ *  area reaches the source before its pattern does. */
 export function attachClubClosureData(
   map: MapLibreMap,
   closures: readonly TrailClosure[],
@@ -53,6 +59,7 @@ export function attachClubClosureData(
     () => {
       const source = map.getSource<GeoJSONSource>(CLUB_CLOSURE_SOURCE_ID)
       if (source === undefined || typeof source.setData !== 'function') return
+      addClosureShadeImages(map)
       source.setData(clubClosureFeatureCollection(closures) as never)
     },
     'club closures',
@@ -69,6 +76,15 @@ export function attachClubClosureData(
  * band, a waypoint dot, a trail line, a hazard area - asks `clubClosureIdAt`
  * and yields, so a touch on a crossed-out stretch opens the closure's sheet
  * and not the trail's.
+ *
+ * A SHADED AREA IS LAST IN LINE (decision 191), as a hazard area is
+ * (map/hazardAreaTaps.ts) and for its reason: an area is the largest thing
+ * on the map and the least specific, so every mark drawn on it wins first,
+ * the ATC band, a waypoint dot and a trail line included. Only a touch on
+ * the hatch and nothing else opens the closure's sheet, the same sheet its
+ * list row opens. Between the two areas the shade wins, and the hazard
+ * area's handler yields to it: a closure outranks an advisory on the same
+ * ground.
  */
 export function attachClubClosureTaps(
   map: MapLibreMap,
@@ -79,7 +95,15 @@ export function attachClubClosureTaps(
     if (poiPinAt(map, event.point) !== undefined) return
     if (closureIdAt(map, event.point) !== null) return
     const id = clubClosureIdAt(map, event.point)
-    if (id !== null) onSelect(id)
+    if (id !== null) {
+      onSelect(id)
+      return
+    }
+    if (atcBandIdAt(map, event.point) !== null) return
+    if (poiIdAt(map, event.point) !== null) return
+    if (tappedLineAt(map, event.point) !== null) return
+    const shaded = clubClosureShadeIdAt(map, event.point)
+    if (shaded !== null) onSelect(shaded)
   }
   map.on('click', onClick)
   return () => {

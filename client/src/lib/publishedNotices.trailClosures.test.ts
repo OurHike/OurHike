@@ -46,6 +46,7 @@ describe('a conditions/trail_closures.json row (validTrailClosure)', () => {
       'area',
       'point',
       'line',
+      'shade',
     ])
     expect(read.map((closure) => closure?.notice_id)).toEqual(
       Object.values(rows).map((row) => row.notice_id),
@@ -65,6 +66,79 @@ describe('a conditions/trail_closures.json row (validTrailClosure)', () => {
     expect(read[2]?.place.geometry.type).toBe('Point')
     // The greyed row's missing dates stay missing: no date, never a default.
     expect(read[3]).toMatchObject({ current_until: null, updated_at: null })
+    // The shade is the area itself (decision 191), kept as it came.
+    expect(read[4]?.place.geometry).toEqual(rows.shade.place.geometry)
+  })
+
+  it('reads a shade as the area it hatches: a Polygon, holes and all, or a MultiPolygon (decision 191)', () => {
+    const outline = [
+      [-100.2, 38.75],
+      [-100.19, 38.75],
+      [-100.19, 38.76],
+      [-100.2, 38.75],
+    ]
+    const hole = [
+      [-100.195, 38.752],
+      [-100.193, 38.752],
+      [-100.193, 38.754],
+      [-100.195, 38.752],
+    ]
+    const shade = (geometry: unknown) =>
+      validTrailClosure({
+        ...trailClosureRows().shade,
+        place: { kind: 'geometry', geometry },
+      })
+
+    expect(shade({ type: 'Polygon', coordinates: [outline, hole] })?.shape).toBe('shade')
+    expect(
+      shade({ type: 'MultiPolygon', coordinates: [[outline], [hole]] })?.place.geometry
+        .type,
+    ).toBe('MultiPolygon')
+  })
+
+  it('refuses a shade placed by a line, or by rings the map cannot fill', () => {
+    // A shade is the area itself; a line in its place would hatch nothing,
+    // and a ring of three positions, an empty polygon, a ring with a
+    // position off the globe or a MultiPolygon with one empty member could
+    // cost the source every other closure's mark.
+    const { shade, line } = trailClosureRows()
+    const placed = (geometry: unknown) =>
+      validTrailClosure({ ...shade, place: { kind: 'geometry', geometry } })
+    expect(validTrailClosure({ ...shade, place: line.place })).toBeNull()
+    expect(
+      placed({
+        type: 'Polygon',
+        coordinates: [
+          [
+            [-100.2, 38.75],
+            [-100.19, 38.75],
+            [-100.2, 38.75],
+          ],
+        ],
+      }),
+    ).toBeNull()
+    expect(placed({ type: 'Polygon', coordinates: [] })).toBeNull()
+    expect(
+      placed({
+        type: 'Polygon',
+        coordinates: [
+          [
+            [-100.2, 38.75],
+            [-100.19, 98.75],
+            [-100.19, 38.76],
+            [-100.2, 38.75],
+          ],
+        ],
+      }),
+    ).toBeNull()
+    expect(
+      placed({
+        type: 'MultiPolygon',
+        coordinates: [shade.place.geometry.coordinates, []],
+      }),
+    ).toBeNull()
+    // And a line row placed by the shade's polygon is still refused.
+    expect(validTrailClosure({ ...line, place: shade.place })).toBeNull()
   })
 
   it('refuses a row with no shape, or a shape the map does not draw', () => {
@@ -203,6 +277,7 @@ describe('reading conditions/trail_closures.json (fetchPublishedTrailClosures)',
       'area',
       'point',
       'line',
+      'shade',
     ])
     // Dated by the file's own generated_at, which the sheet prints.
     expect(published?.generatedAt.toISOString()).toBe(

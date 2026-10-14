@@ -380,6 +380,47 @@ def test_a_partial_build_is_read_from_the_environment_publish_conditions_sets(mo
         project.collect()
 
 
+#: The A.T. profile's two writers, under the keys their exposures name (_publish__elevation.yml). Neither is
+#: keep_last_file: each selects one row whatever the mart holds.
+PROFILE_WRITERS = {
+    "model.ourhike.pub_elevation_profile": {
+        "location": "elevation_profile.json",
+        "when_empty": "fail",
+        "keys": ["elevation_profile.json"],
+    },
+    "model.ourhike.pub_elevation_profile_v2": {
+        "location": "elevation_profile_v2.json",
+        "when_empty": "fail",
+        "keys": ["v2/elevation_profile.json"],
+    },
+}
+
+
+def test_a_profile_whose_null_share_test_failed_keeps_the_buckets_last_copy_only_after_a_partial_build(project):
+    """Decision 194: each writer wrote a mostly null profile and its own null-share test refused it. After
+    build_marts.py's PARTIAL_EXIT both keys keep the bucket's last copy, whatever is on disk under their names; without
+    it the publish refuses. build-reference.yml's monthly publish never sees that refusal: its build job fails on the
+    exit, and `publish` needs the build job, so the whole last good release stays."""
+    for spec in PROFILE_WRITERS.values():
+        project.write(spec["location"], "[]")
+    project.build(writers=PROFILE_WRITERS)
+    manifest = json.loads((project.target / "manifest.json").read_text())
+    run_results = json.loads((project.target / "run_results.json").read_text())
+    for writer in PROFILE_WRITERS:
+        test_id = f"test.ourhike.{writer.rsplit('.', 1)[-1]}_leaves_no_more_than_its_share_of_heights_null.1"
+        manifest["nodes"][test_id] = {"attached_node": writer, "depends_on": {"nodes": [writer]}}
+        run_results["results"].append({"unique_id": test_id, "status": "fail", "failures": 1})
+    (project.target / "manifest.json").write_text(json.dumps(manifest))
+    (project.target / "run_results.json").write_text(json.dumps(run_results))
+
+    with pytest.raises(RuntimeError, match="pub_elevation_profile_leaves_no_more_than_its_share_of_heights_null.1 finished"):
+        project.collect()
+    found = project.collect_partial()
+    assert found.artifacts == {}
+    assert set(found.failed) == set(found.kept) == {"elevation_profile.json", "v2/elevation_profile.json"}
+    assert "the bucket's last copy stands" in found.kept["elevation_profile.json"]
+
+
 def test_run_results_that_name_no_writer_refuse(project):
     """The last dbt invocation was not the writers' (an evaluator or docs run
     after them), so every dbt key would read as kept and nothing new would

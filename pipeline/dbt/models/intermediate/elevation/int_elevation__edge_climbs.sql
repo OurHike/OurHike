@@ -23,13 +23,28 @@
 -- coverage. @unvalidated whether the 124 NPS edges are the territories and
 -- Alaska, where the 1/3 arc-second product has no tile; a per-edge lookup
 -- against the tile index would settle it. Loss is the same dead
--- band on the ground turned over, as a positive number. Both are rounded to
--- the nearest whole foot as Python's round() rounds them (printf('%.0f')),
--- so an edge's climb can read up to half a foot under or over its unrounded
--- figure. That is today's rounding, kept for parity, and it is not toward
--- caution: half a foot an edge, either way, on a route the phone sums edge
--- by edge. Rounding gain up would be the cautious direction for a hiker's
--- time estimate; nobody has decided to change it.
+-- band on the ground turned over, as a positive number.
+--
+-- BOTH ROUND UP TO THE WHOLE FOOT, toward caution (decision 194, the
+-- maintainer's poll of 2026-10-14; CLAUDE.md: "Round toward caution, and say
+-- which way you rounded"). ceil(), so an edge's climb reads under one foot
+-- over its unrounded figure and never under it. The phone sums a route edge
+-- by edge, and more gain or more loss only ever adds time to its estimate
+-- (client/src/lib/pace.ts: 600 m of ascent an hour, and a descent penalty of
+-- 0 to 60 minutes per 1,000 m that only adds), so a route is never priced
+-- short by the rounding. Nearest-foot rounding could put it half a foot an
+-- edge under. A zero stays zero: the dead band banks no climb under 3 m, so
+-- an unrounded figure is exactly 0 or at least 9.84 ft (the smallest non-zero
+-- gain and loss in UA's trail_graph_elevation.json of release 2026-10-10-2
+-- are both 10 ft, Measured 2026-10-14). A figure the double puts a hair over
+-- a whole foot rounds up a whole foot, which errs the cautious way.
+-- export_network_elevation.edge_climb, today's exporter until the cutover,
+-- rounds to the nearest foot (Python's round()), so the two files differ by
+-- one foot wherever that rounding went down, and by nothing else: parity.py's
+-- trail_graph_elevation family explains that difference
+-- (CLIMB_ROUNDED_UP_REASON) and no other. On UA's 685,963 climbing edges it
+-- is about +0.5 ft each, 0.63% of all gain (Reasoned: uniform fractional
+-- parts, since the unrounded figures are not published).
 --
 -- WITHIN AN EDGE, NEVER ACROSS A NODE JOIN. Each edge is measured from its
 -- own samples only; the phone sums edges. There is no concatenated profile
@@ -95,11 +110,11 @@ select
     coalesce(climbed.measured_sample_count, 0) as measured_sample_count,
     case
         when climbed.measured_sample_count > 0
-            then cast(printf('%.0f', climbed.gain) as integer)
+            then cast(ceil(climbed.gain) as integer)
     end as gain_ft,
     case
         when climbed.measured_sample_count > 0
-            then cast(printf('%.0f', climbed.loss) as integer)
+            then cast(ceil(climbed.loss) as integer)
     end as loss_ft,
     coalesce(climbed.measured_sample_count > 0, false) as measured,
     coalesce(

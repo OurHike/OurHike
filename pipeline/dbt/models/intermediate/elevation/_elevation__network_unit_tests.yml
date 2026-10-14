@@ -232,8 +232,9 @@ unit_tests:
   - name: int_elevation__edge_climbs_gain_and_loss_are_both_positive_numbers
     description: >
       Ports TestEdgeClimb.test_gain_and_loss_are_both_positive_numbers: a
-      hill 100 m up and back down is 328 ft of gain and 328 ft of loss, each
-      a magnitude, since the phone prints its own signs.
+      hill 100 m up and back down is 328.08 ft of gain and of loss, each a
+      magnitude, since the phone prints its own signs, and each rounded up to
+      329 (decision 194), where edge_climb's nearest foot is 328.
     model: int_elevation__edge_climbs
     given:
       - input: ref('int_trail_network__edges')
@@ -250,7 +251,7 @@ unit_tests:
           - {edge_id: 'trail:a#1.1', sample_index: 2, elevation_m: 100.0}
     expect:
       rows:
-        - {edge_id: 'trail:a#1.1', gain_ft: 328, loss_ft: 328}
+        - {edge_id: 'trail:a#1.1', gain_ft: 329, loss_ft: 329}
 
   - name: int_elevation__edge_climbs_noise_below_the_dead_band_is_not_climbing
     description: >
@@ -306,8 +307,8 @@ unit_tests:
   - name: int_elevation__edge_climbs_the_same_edge_reversed_is_all_loss_and_no_gain
     description: >
       Ports TestBuild.test_the_same_edge_reversed_is_all_loss_and_no_gain:
-      a 40 m ramp is 131 ft of gain walked up it and 131 ft of loss walked
-      down it.
+      a 40 m ramp is 131.23 ft of gain walked up it and of loss walked down
+      it, each rounded up to 132 (decision 194).
     model: int_elevation__edge_climbs
     given:
       - input: ref('int_trail_network__edges')
@@ -332,8 +333,41 @@ unit_tests:
           - {edge_id: 'trail:down#1.1', sample_index: 4, elevation_m: 100.0}
     expect:
       rows:
-        - {edge_id: 'trail:up#1.1', gain_ft: 131, loss_ft: 0}
-        - {edge_id: 'trail:down#1.1', gain_ft: 0, loss_ft: 131}
+        - {edge_id: 'trail:up#1.1', gain_ft: 132, loss_ft: 0}
+        - {edge_id: 'trail:down#1.1', gain_ft: 0, loss_ft: 132}
+
+  - name: int_elevation__edge_climbs_rounds_each_figure_up_to_the_whole_foot
+    description: >
+      Decision 194, toward caution: gain and loss round UP to the whole foot,
+      so a route the phone sums edge by edge is never priced short by the
+      rounding. 100 m is 328.08 ft and reads 329, where
+      export_network_elevation.edge_climb's nearest foot reads 328
+      (parity.CLIMB_ROUNDED_UP_REASON); 60 m is 196.85 ft and reads 197,
+      which the nearest foot reads too; a flat edge is 0 and stays 0, since
+      the dead band banks no climb under 3 m.
+    model: int_elevation__edge_climbs
+    given:
+      - input: ref('int_trail_network__edges')
+        rows:
+          - {edge_id: 'trail:short#1.1', edge_index: 0, source_key: 'oprhp_trails'}
+          - {edge_id: 'trail:long#1.1', edge_index: 1, source_key: 'oprhp_trails'}
+          - {edge_id: 'trail:flat#1.1', edge_index: 2, source_key: 'oprhp_trails'}
+      - input: ref('int_sources__publication')
+        rows:
+          - {source_key: 'oprhp_trails', may_publish: true}
+      - input: ref('int_elevation__edge_samples')
+        rows:
+          - {edge_id: 'trail:short#1.1', sample_index: 0, elevation_m: 100.0}
+          - {edge_id: 'trail:short#1.1', sample_index: 1, elevation_m: 200.0}
+          - {edge_id: 'trail:long#1.1', sample_index: 0, elevation_m: 260.0}
+          - {edge_id: 'trail:long#1.1', sample_index: 1, elevation_m: 200.0}
+          - {edge_id: 'trail:flat#1.1', sample_index: 0, elevation_m: 100.0}
+          - {edge_id: 'trail:flat#1.1', sample_index: 1, elevation_m: 100.0}
+    expect:
+      rows:
+        - {edge_id: 'trail:short#1.1', gain_ft: 329, loss_ft: 0}
+        - {edge_id: 'trail:long#1.1', gain_ft: 0, loss_ft: 197}
+        - {edge_id: 'trail:flat#1.1', gain_ft: 0, loss_ft: 0}
 
   - name: int_elevation__edge_climbs_climb_is_never_summed_across_a_node_join
     description: >

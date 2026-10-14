@@ -18,6 +18,36 @@ models:
       - dbt_utils.expression_is_true:
           arguments:
             expression: "json_valid(profile_json) and json_type(cast(profile_json as json)) = 'ARRAY'"
+      # A MOSTLY UNMEASURED PROFILE NEVER REPLACES A GOOD ONE (decision 194,
+      # the maintainer's poll of 2026-10-14, "Toward caution"): more than
+      # var elevation_profile_max_null_share of the samples with no height (a
+      # record whose elevation_ft is null or missing) fails this writer, at
+      # ERROR. dbt tests a model after building it, so the file is written by
+      # then: build_marts.py's failed_writers() counts this test as the
+      # writer's own, removes the file and exits PARTIAL_EXIT, and
+      # publish.py's collect_dbt_phone_files() never reads it, keeping the
+      # bucket's last copy of elevation_profile.json under
+      # OURHIKE_BUILD_PARTIAL and refusing to publish without it. In
+      # build-reference.yml the build job fails on that exit and `publish`
+      # needs it, so the monthly lane's whole release waits and the last
+      # good one stays. Not keep_last_file: this writer always selects one
+      # row, `[]` when the mart has no A.T. row (int_elevation__final's
+      # both-sources rule, an honest "no profile" the phone reads as one),
+      # and an empty profile has no null share to fail. The mart's
+      # Elementary null_percent check on elevation_ft is warn-level and
+      # needs a history of builds to score against, so it never held a file.
+      - dbt_utils.expression_is_true:
+          name: pub_elevation_profile_leaves_no_more_than_its_share_of_heights_null
+          arguments:
+            expression: >-
+              json_array_length(cast(profile_json as json))
+              - len(list_filter(
+                cast(json_extract(cast(profile_json as json), '$[*].elevation_ft') as double[]),
+                lambda height: height is not null
+              ))
+              <= {{ var('elevation_profile_max_null_share') }} * json_array_length(cast(profile_json as json))
+          config:
+            severity: error
     columns:
       - name: profile_json
         description: >
@@ -49,6 +79,18 @@ models:
       - dbt_utils.expression_is_true:
           arguments:
             expression: "len(list_filter(d_milli_mi[2:], lambda step: step <= 0)) = 0"
+      # v1's null-share test on the same samples (decision 194; its comment
+      # says how a failure keeps the last good file): e_deci_ft is null
+      # exactly where a sample has no height, so a v2 phone never gets the
+      # mostly unmeasured profile v1's writer refused.
+      - dbt_utils.expression_is_true:
+          name: pub_elevation_profile_v2_leaves_no_more_than_its_share_of_heights_null
+          arguments:
+            expression: >-
+              len(e_deci_ft) - len(list_filter(e_deci_ft, lambda step: step is not null))
+              <= {{ var('elevation_profile_max_null_share') }} * len(e_deci_ft)
+          config:
+            severity: error
     columns:
       - name: format
         description: >

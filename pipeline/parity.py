@@ -244,6 +244,38 @@ def _by_edge(entries: list) -> dict:
     return {"edges": [{"edge_index": index, "entry": entry} for index, entry in enumerate(entries)]}
 
 
+#: Why an edge's climb in the dbt writer's trail_graph_elevation.json can be a foot more than in today's: decision 194
+#: (the maintainer's poll of 2026-10-14, "Toward caution") rounds gain and loss UP to the whole foot in
+#: int_elevation__edge_climbs, where export_network_elevation.edge_climb rounds to the nearest. tests/
+#: test_dbt_elevation_network_parity.py holds the reason to the unit test where the two writers answer that way. Kept
+#: short: a monthly run lists it once per edge that rounds differently, about 590,000 of UA's 3,552,477 (Reasoned from
+#: the 1,104,236 edges with a non-zero figure, each figure's fraction taken as uniform).
+CLIMB_ROUNDED_UP_REASON = (
+    "expected by decision 194 ('Toward caution', the maintainer's poll of 2026-10-14): the dbt writer rounds an edge's "
+    "gain and loss up to the whole foot, export_network_elevation.py to the nearest; each figure the same or one more"
+)
+
+
+def _climb_rounding_reasons(old: dict, new: dict) -> dict[str, str]:
+    """CLIMB_ROUNDED_UP_REASON for each edge whose two entries are both a measured [gain, loss] in whole feet and whose
+    dbt figures are each the same as today's or exactly one more, with at least one more: the whole of what rounding
+    up rather than to the nearest can change. A null on either side, a figure lower, or one two feet higher is still a
+    difference."""
+    today = {str(record["edge_index"]): record["entry"] for record in old.get("edges") or []}
+    reasons: dict[str, str] = {}
+    for record in new.get("edges") or []:
+        key = str(record["edge_index"])
+        before, after = today.get(key), record["entry"]
+        if not (isinstance(before, list) and isinstance(after, list) and len(before) == len(after) == 2):
+            continue
+        if not all(isinstance(value, int) and not isinstance(value, bool) for value in (*before, *after)):
+            continue
+        steps = [up - was for was, up in zip(before, after, strict=True)]
+        if all(step in (0, 1) for step in steps) and any(steps):
+            reasons[f"edge_index {key}"] = CLIMB_ROUNDED_UP_REASON
+    return reasons
+
+
 # The hourly conditions files. Their inputs, other than reference/atc_updates.json,
 # are not in git: fixture mode builds the warehouse from make_dbt_fixtures.py's
 # answers under data/raw/conditions/, so the old side reads those same answers
@@ -1377,7 +1409,8 @@ FAMILIES: dict[str, Family] = {
     ),
     # The junction graph's two elevation companions: index-aligned arrays
     # whose entries carry no id, so each is keyed by its place, which is the
-    # edge it describes.
+    # edge it describes. The climbs round up since decision 194, and today's
+    # exporter to the nearest foot (CLIMB_ROUNDED_UP_REASON).
     "trail_graph_elevation": Family(
         old=lambda raw_dir, warehouse: _by_edge(_graph_companions_old(raw_dir, warehouse)[0]),
         records="edges",
@@ -1385,6 +1418,7 @@ FAMILIES: dict[str, Family] = {
         ordered=True,
         reads_warehouse=True,
         new_shape=lambda new, _path: _by_edge(new),
+        explained=_climb_rounding_reasons,
     ),
     "trail_graph_profile": Family(
         old=lambda raw_dir, warehouse: _by_edge(_graph_companions_old(raw_dir, warehouse)[1]),

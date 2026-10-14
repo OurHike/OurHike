@@ -18,7 +18,9 @@ together here:
   reads a captured column from the wrong row; the macro's header has the
   measurement);
 - today's own functions, run over each unit test's given rows, give every
-  expected row: edge_sample_points, edge_climb, edge_profile's rounding,
+  expected row: edge_sample_points, edge_climb (each figure rounded up
+  rather than to the nearest foot since decision 194, the one difference,
+  which parity.CLIMB_ROUNDED_UP_REASON explains), edge_profile's rounding,
   measure_seams and its _percentile, and write_artifact's json.dumps;
 - SQL_ONLY names the unit test the Python has no counterpart for, and holds
   that a reader trusting the DEM rows would answer it differently;
@@ -30,6 +32,7 @@ whole files in CI's dbt job, on the build's own edges.
 
 import itertools
 import json
+import math
 import random
 import re
 from pathlib import Path
@@ -312,19 +315,44 @@ def test_each_sql_only_unit_test_is_one_a_trusting_reader_would_answer_different
 # --- int_elevation__edge_climbs ----------------------------------------------------
 
 
-@pytest.mark.parametrize("test", _on("int_elevation__edge_climbs"), ids=lambda test: test["name"])
-def test_each_edge_climbs_unit_test_is_edge_climb(test):
-    """export_network_elevation.edge_climb over each edge's samples in order, and build()'s measured and partial."""
+def cautious_climb(elevations_m: list[float | None]) -> list[int] | None:
+    """export_network_elevation.edge_climb with decision 194's rounding: each figure rounded UP to the whole foot, where
+    edge_climb rounds to the nearest (int_elevation__edge_climbs' header). The rest is edge_climb's own: the metres
+    turned to feet once, before the dead band, and None for an edge nobody measured."""
+    if network_elevation.edge_climb(elevations_m) is None:
+        return None
+    feet = [None if value is None else value / elevation_gain.METERS_PER_FOOT for value in elevations_m]
+    threshold = elevation_gain.DEFAULT_THRESHOLD_FT
+    return [
+        math.ceil(elevation_gain.cumulative_gain_over_gaps(feet, threshold)),
+        math.ceil(elevation_gain.loss_over_gaps(feet, threshold)),
+    ]
+
+
+def _climb_windows(test: dict) -> dict[str, list]:
+    """Each given edge's samples' metres, in sample order."""
     samples = _given(test, "int_elevation__edge_samples")
+    return {
+        edge["edge_id"]: [
+            s["elevation_m"]
+            for s in sorted((s for s in samples if s["edge_id"] == edge["edge_id"]), key=lambda s: s["sample_index"])
+        ]
+        for edge in _given(test, "int_trail_network__edges")
+    }
+
+
+@pytest.mark.parametrize("test", _on("int_elevation__edge_climbs"), ids=lambda test: test["name"])
+def test_each_edge_climbs_unit_test_is_edge_climb_rounded_up(test):
+    """export_network_elevation.edge_climb over each edge's samples in order, each figure rounded up rather than to the
+    nearest foot (decision 194, cautious_climb()), and build()'s measured and partial."""
     may = {row["source_key"]: row["may_publish"] for row in _given(test, "int_sources__publication")}
     sources = {edge["edge_id"]: edge["source_key"] for edge in _given(test, "int_trail_network__edges")}
+    windows = _climb_windows(test)
     expected = {row["edge_id"]: row for row in test["expect"]["rows"]}
     assert set(expected) == set(sources)
     for edge_id, row in expected.items():
-        window = [
-            s["elevation_m"] for s in sorted((s for s in samples if s["edge_id"] == edge_id), key=lambda s: s["sample_index"])
-        ]
-        climb = network_elevation.edge_climb(window)
+        window = windows[edge_id]
+        climb = cautious_climb(window)
         python = {
             "sample_count": len(window),
             "measured_sample_count": sum(value is not None for value in window),
@@ -337,6 +365,51 @@ def test_each_edge_climbs_unit_test_is_edge_climb(test):
         assert {name: row[name] for name in row if name in python} == {name: python[name] for name in row if name in python}, (
             edge_id
         )
+
+
+def test_rounding_up_is_the_only_way_an_edge_climbs_unit_test_leaves_edge_climb():
+    """Every expected climb is today's nearest-foot edge_climb or one foot more, figure by figure, null where it is
+    null; and at least one unit test is a case where the two writers answer differently, so
+    parity.CLIMB_ROUNDED_UP_REASON is held to one and cannot outlive its reason."""
+    differ = []
+    for test in _on("int_elevation__edge_climbs"):
+        windows = _climb_windows(test)
+        for row in test["expect"]["rows"]:
+            if "gain_ft" not in row:
+                continue
+            nearest = network_elevation.edge_climb(windows[row["edge_id"]])
+            dbt = None if row["gain_ft"] is None else [row["gain_ft"], row["loss_ft"]]
+            assert (nearest is None) == (dbt is None), (test["name"], row["edge_id"])
+            if nearest is not None:
+                assert all(up - was in (0, 1) for was, up in zip(nearest, dbt, strict=True)), (test["name"], row["edge_id"])
+                differ += [(test["name"], row["edge_id"])] if nearest != dbt else []
+    assert ("int_elevation__edge_climbs_rounds_each_figure_up_to_the_whole_foot", "trail:short#1.1") in differ
+
+
+def test_cautious_climb_rounds_up_where_edge_climb_rounds_to_the_nearest_foot():
+    """100 m is 328.08 ft: the nearest foot is 328, up is 329. 60 m is 196.85 ft: both read 197. Nobody measured: None
+    from both, never [0, 0]."""
+    assert network_elevation.edge_climb([100.0, 200.0]) == [328, 0]
+    assert cautious_climb([100.0, 200.0]) == [329, 0]
+    assert network_elevation.edge_climb([260.0, 200.0]) == cautious_climb([260.0, 200.0]) == [0, 197]
+    assert network_elevation.edge_climb([None, None]) is cautious_climb([None, None]) is None
+
+
+def _climb_document(*entries) -> dict:
+    return parity._by_edge(list(entries))
+
+
+def test_parity_explains_a_climb_one_foot_up_and_nothing_else():
+    """trail_graph_elevation's `explained`: a figure the same or exactly one foot more, on an edge both sides measured,
+    is decision 194's rounding; a foot less, two feet more, a null on either side, or a float is still a difference."""
+    family = parity.FAMILIES["trail_graph_elevation"]
+    assert family.explained is parity._climb_rounding_reasons
+    today = _climb_document([328, 0], [196, 12], [10, 10], [0, 0], None, [5, 5], [7, 7], [9, 9], [3, 3])
+    dbt = _climb_document([329, 0], [197, 13], [10, 11], [0, 0], [0, 0], None, [6, 7], [11, 9], [3.0, 4])
+    found = parity.differences(today, dbt, family)
+    reasons = family.explained(today, dbt)
+    assert reasons == {f"edge_index {index}": parity.CLIMB_ROUNDED_UP_REASON for index in (0, 1, 2)}
+    assert [what for what, _, _ in found if what not in reasons] == [f"edge_index {index}" for index in (4, 5, 6, 7, 8)]
 
 
 # --- the seam ----------------------------------------------------------------------

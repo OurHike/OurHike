@@ -752,6 +752,16 @@ PUBLISHABLE_EXITS = (DEGRADED_EXIT, PARTIAL_EXIT, DEGRADED_PARTIAL_EXIT)
 #: How much older than the writers' run a file may look and still count as written by it: publish.py's
 #: WRITER_CLOCK_SLACK_S, for the same filesystems, @unvalidated there.
 WRITER_CLOCK_SLACK_S = 2.0
+#: THE A.T. PROFILE'S NULL SHARE IN FIXTURE MODE. dbt_project.yml's var elevation_profile_max_null_share (decision
+#: 194: above it, pub_elevation_profile's and pub_elevation_profile_v2's error-level test fails each writer, so the
+#: bucket's last good copy stays) reads this variable, 0.01 when it is unset. make_dbt_fixtures.py's DEM leaves 8 of
+#: the fixture profile's 45 samples null on purpose, two in the tile's nodata rows and six past its edge
+#: (tests/test_dbt_elevation_parity.py, test_the_fixture_dem_gives_the_fixture_profile_both_kinds_of_gap), which 1%
+#: would refuse, failing every fixture build. So --fixtures sets it to 0.2, which still refuses a fixture profile that
+#: has lost most of its heights, and every other build clears whatever value it inherits, so no lane's build can
+#: loosen the check. tests/test_dbt_elevation_profile_null_share.py holds the 1% side.
+PROFILE_NULL_SHARE_VARIABLE = "OURHIKE_ELEVATION_PROFILE_MAX_NULL_SHARE"
+FIXTURE_PROFILE_MAX_NULL_SHARE = "0.2"
 #: The `meta` key of a test whose warning means int_closures__gate held a source for the rows it returns.
 HOLDS_A_SOURCE = "holds_a_source"
 #: The readers seed: which raw tables are each club notice source's, and which of them are generated.
@@ -2113,6 +2123,11 @@ def main(argv: list[str] | None = None) -> int:
     }
     for name, _ in CHECKS_SWITCH:
         env.pop(name, None)  # the checks' switch is each Run's own to give (Run.env), never inherited by every command
+    # Fixture mode's own A.T. profile null share, and no other build's (FIXTURE_PROFILE_MAX_NULL_SHARE says why).
+    env.pop(PROFILE_NULL_SHARE_VARIABLE, None)
+    if args.fixtures:
+        env[PROFILE_NULL_SHARE_VARIABLE] = FIXTURE_PROFILE_MAX_NULL_SHARE
+        print(f"-- build_marts: {PROFILE_NULL_SHARE_VARIABLE}={FIXTURE_PROFILE_MAX_NULL_SHARE} (the fixture profile's gaps)")
     if record.get("row_history") == "off":
         env["OURHIKE_ROW_HISTORY"] = "off"  # as the build's dbt commands ran, so the project renders as it did there
     print("-- build_marts: " + " ".join(f"{name}={value}" for name, value in files.items()), flush=True)

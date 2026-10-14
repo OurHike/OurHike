@@ -1688,6 +1688,97 @@ def test_a_writer_that_fails_while_the_others_write_leaves_no_file_and_the_build
     assert recorder.calls[-1][0][:3] == (*RESTORE, "save"), "the marts passed, so the row history is saved"
 
 
+#: The A.T. profile's two writers beside the climbs writer, and decision 194's null-share tests as dbt ids a named
+#: generic test (tests/test_dbt_elevation_profile_null_share.py holds the names to _publish__elevation.yml).
+PROFILE_WRITERS = {
+    "model.ourhike.pub_elevation_profile": "elevation_profile.json",
+    "model.ourhike.pub_elevation_profile_v2": "elevation_profile_v2.json",
+    "model.ourhike.pub_trail_graph_elevation": "trail_graph_elevation.json",
+}
+PROFILE_CHECKS = {
+    "test.ourhike.pub_elevation_profile_leaves_no_more_than_its_share_of_heights_null.1": "model.ourhike.pub_elevation_profile",
+    "test.ourhike.pub_elevation_profile_v2_leaves_no_more_than_its_share_of_heights_null.1": (
+        "model.ourhike.pub_elevation_profile_v2"
+    ),
+}
+
+
+def test_a_mostly_null_at_profile_fails_both_its_writers_so_their_files_go_and_the_build_exits_partial(
+    monkeypatch, tmp_path, capsys
+):
+    """Decision 194: dbt has written both profile files by the time their null-share tests fail, as they would on a
+    DEM that stopped answering. Each test is its writer's own, so both files are removed and can never publish, the
+    climbs file that passed stays, the row history is still saved, and the build answers PARTIAL_EXIT; publish.py then
+    keeps the bucket's last copies (tests/test_publish_dbt.py). Neither writer is keep_last_file, so this is the only
+    way either keeps one."""
+    duckdb.connect(str(tmp_path / "warehouse.duckdb")).close()
+    manifest = _manifest(*STEP_TABLES)
+    manifest["nodes"] = {writer: {"config": {"location": location}} for writer, location in PROFILE_WRITERS.items()}
+    for test, writer in PROFILE_CHECKS.items():
+        manifest["nodes"][test] = {"depends_on": {"nodes": [writer]}, "attached_node": writer}
+    processed = tmp_path / "processed"
+    files = {processed / location: "[]" for location in PROFILE_WRITERS.values()}
+    results = [{"unique_id": writer, "status": "success"} for writer in PROFILE_WRITERS]
+    results += [{"unique_id": test, "status": "fail", "failures": 1} for test in PROFILE_CHECKS]
+    recorder = _DbtRuns(tmp_path / "run_results.json", [(_is_writers_run, 1, results, files)])
+
+    code, _ = _main(monkeypatch, tmp_path, manifest, recorder=recorder)
+
+    out = capsys.readouterr().out
+    assert code == build_marts.PARTIAL_EXIT
+    assert sorted(path.name for path in processed.iterdir()) == ["trail_graph_elevation.json"]
+    for test, writer in PROFILE_CHECKS.items():
+        assert f"::error title={writer.rsplit('.', 1)[-1]} failed::{test} finished fail" in out
+    assert recorder.calls[-1][0][:3] == (*RESTORE, "save")
+
+
+def test_a_fixture_build_hands_dbt_the_fixture_profiles_null_share_over_any_it_inherits(monkeypatch, tmp_path):
+    """make_dbt_fixtures.py's A.T. profile is 8 of 45 samples null on purpose, which the real 1% would refuse
+    (build_marts.FIXTURE_PROFILE_MAX_NULL_SHARE)."""
+    monkeypatch.setenv(build_marts.PROFILE_NULL_SHARE_VARIABLE, "0.9")
+
+    code, recorder = _main(monkeypatch, tmp_path, _manifest(*STEP_TABLES))
+
+    dbt_envs = [env for argv, _, env in recorder.calls if argv[0] == "dbt"]
+    assert code == 0 and dbt_envs
+    assert {env.get(build_marts.PROFILE_NULL_SHARE_VARIABLE) for env in dbt_envs} == {build_marts.FIXTURE_PROFILE_MAX_NULL_SHARE}
+
+
+def test_a_lane_build_never_hands_dbt_a_loosened_profile_null_share(monkeypatch, tmp_path):
+    """Outside fixture mode an inherited value is cleared, so dbt_project.yml's 1% holds whatever a workflow sets."""
+    monkeypatch.setenv(build_marts.PROFILE_NULL_SHARE_VARIABLE, "0.9")
+    recorder = _Recorder()
+    (tmp_path / "manifest.json").write_text(json.dumps(_manifest(*STEP_TABLES)))
+    monkeypatch.setattr(build_marts, "MANIFEST_PATH", tmp_path / "manifest.json")
+    monkeypatch.setattr(build_marts, "RUN_RESULTS_PATH", tmp_path / "run_results.json")
+    monkeypatch.setattr(build_marts.subprocess, "run", _answer_retries(recorder))
+    monkeypatch.setenv("OURHIKE_BUILT_BY", "abc123 run 7.1")
+
+    build_marts.main(
+        [
+            "--lane",
+            "monthly",
+            "--dbt",
+            "dbt",
+            "--python",
+            "python",
+            "--warehouse",
+            str(tmp_path / "warehouse.duckdb"),
+            "--processed-dir",
+            str(tmp_path / "processed"),
+            "--raw-dir",
+            str(tmp_path / "raw"),
+            "--history-url",
+            str(tmp_path / "history"),
+            "--history-python",
+            "python",
+        ]
+    )
+
+    dbt_envs = [env for argv, _, env in recorder.calls if argv[0] == "dbt"]
+    assert dbt_envs and all(build_marts.PROFILE_NULL_SHARE_VARIABLE not in env for env in dbt_envs)
+
+
 def test_a_failure_in_the_writers_run_that_is_no_writers_own_still_stops_the_build(monkeypatch, tmp_path):
     results = [
         {"unique_id": "model.ourhike.pub_conditions_closures", "status": "error"},

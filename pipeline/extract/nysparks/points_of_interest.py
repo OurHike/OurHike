@@ -2,9 +2,11 @@
 
 - `oprhp_facilities`: OPRHP's park facilities, `NY_State_Park_Facilities/FeatureServer/0`. 8,823
   points, last edited 2026-08-12 (coverage audit 2026-10-01, batch b4_oprhp_mohonk_gatc). The 136
-  Water Spigot and 15 Drinking Fountain rows land with the rest: sources.json's
-  `oprhp_water_holdback` keeps them off a phone, and it is applied downstream of this extract,
-  which never filters on it.
+  Water Spigot and 15 Drinking Fountain rows land with the rest, and what reaches a phone is
+  decided downstream of this extract, which never filters: today's exporter holds both back
+  (sources.json's `oprhp_water_holdback`); the dbt path ships the 15 fountains as decision 65's
+  unconfirmed water and holds the 136 spigots, which OPRHP's own app does not show (decision 195,
+  `int_points_of_interest__publishable`).
 - `oprhp_est_trail_features`: the Empire State Trail's parking areas, campgrounds, restrooms and
   train stations, `EST_Public/FeatureServer/1` (TrailFeature), 381 points, read live 2026-10-08
   for decision 54's wave 6. The Empire State Trail was a candidate steward of its own in the

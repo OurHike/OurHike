@@ -351,6 +351,12 @@ vars:
   # export_nearby_poi.py's NETWORK_RING_EXEMPT_TYPES: the types the ring
   # never drops, because a hiker drives to them.
   poi_network_ring_exempt_types: ['parking', 'trailhead']
+  # Decision 195, "A pin claims no more than its steward" (the maintainer's
+  # poll of 2026-10-14): a point of these types that its steward's own public
+  # flag does not show is held (int_points_of_interest__publishable), where a
+  # layer whose flag sets confidence keeps its other types at low. No Python
+  # constant: export_nearby_poi.py, today's exporter, keeps them low.
+  poi_types_held_when_steward_hides: ['water', 'shelter']
   poi_trailhead_trail_radius_m: 100        # export_nearby_poi.py TRAILHEAD_TRAIL_RADIUS_M
   poi_description_earliest_year: 1800      # lib/poi_description.py EARLIEST_PLAUSIBLE_YEAR
   poi_description_latest_year: 2100        # lib/poi_description.py LATEST_PLAUSIBLE_YEAR
@@ -482,6 +488,20 @@ vars:
   elevation_sample_interval_m: 25.0
   # METERS_PER_FOOT, the international foot: a DEM metre over this is a foot.
   elevation_metres_per_foot: 0.3048
+  # The largest share of the A.T. profile's samples that may have no height
+  # (decision 194, the maintainer's poll of 2026-10-14, "Toward caution"):
+  # above it, the error-level test on pub_elevation_profile and on
+  # pub_elevation_profile_v2 fails each writer, so the bucket's last good
+  # copy stays (_publish__elevation.yml says how). 0.01 is 1%. @unvalidated:
+  # a guess against a baseline of 0 null heights of 138,697 samples (UA's
+  # elevation_profile.json of release 2026-10-10-2, Measured 2026-10-14). The
+  # monthly runs' null counts would settle it, by showing how many nulls a
+  # healthy DEM answer leaves on the A.T. Only build_marts.py --fixtures sets
+  # the variable, to its FIXTURE_PROFILE_MAX_NULL_SHARE, and it clears any
+  # value a lane's build inherits: make_dbt_fixtures.py's DEM leaves 8 of the
+  # fixture profile's 45 samples null on purpose, both kinds of gap, which 1%
+  # would refuse.
+  elevation_profile_max_null_share: "{{ env_var('OURHIKE_ELEVATION_PROFILE_MAX_NULL_SHARE', '0.01') }}"
   # The places family (pl), read by int_places__resolved and the pub_places
   # writer, and held to export_places.py's PLACE_TRAIL_RADIUS_MILES by
   # tests/test_dbt_places_parity.py until stage 5 of #1793 deletes the

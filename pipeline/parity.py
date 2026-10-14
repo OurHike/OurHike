@@ -244,6 +244,38 @@ def _by_edge(entries: list) -> dict:
     return {"edges": [{"edge_index": index, "entry": entry} for index, entry in enumerate(entries)]}
 
 
+#: Why an edge's climb in the dbt writer's trail_graph_elevation.json can be a foot more than in today's: decision 194
+#: (the maintainer's poll of 2026-10-14, "Toward caution") rounds gain and loss UP to the whole foot in
+#: int_elevation__edge_climbs, where export_network_elevation.edge_climb rounds to the nearest. tests/
+#: test_dbt_elevation_network_parity.py holds the reason to the unit test where the two writers answer that way. Kept
+#: short: a monthly run lists it once per edge that rounds differently, about 590,000 of UA's 3,552,477 (Reasoned from
+#: the 1,104,236 edges with a non-zero figure, each figure's fraction taken as uniform).
+CLIMB_ROUNDED_UP_REASON = (
+    "expected by decision 194 ('Toward caution', the maintainer's poll of 2026-10-14): the dbt writer rounds an edge's "
+    "gain and loss up to the whole foot, export_network_elevation.py to the nearest; each figure the same or one more"
+)
+
+
+def _climb_rounding_reasons(old: dict, new: dict) -> dict[str, str]:
+    """CLIMB_ROUNDED_UP_REASON for each edge whose two entries are both a measured [gain, loss] in whole feet and whose
+    dbt figures are each the same as today's or exactly one more, with at least one more: the whole of what rounding
+    up rather than to the nearest can change. A null on either side, a figure lower, or one two feet higher is still a
+    difference."""
+    today = {str(record["edge_index"]): record["entry"] for record in old.get("edges") or []}
+    reasons: dict[str, str] = {}
+    for record in new.get("edges") or []:
+        key = str(record["edge_index"])
+        before, after = today.get(key), record["entry"]
+        if not (isinstance(before, list) and isinstance(after, list) and len(before) == len(after) == 2):
+            continue
+        if not all(isinstance(value, int) and not isinstance(value, bool) for value in (*before, *after)):
+            continue
+        steps = [up - was for was, up in zip(before, after, strict=True)]
+        if all(step in (0, 1) for step in steps) and any(steps):
+            reasons[f"edge_index {key}"] = CLIMB_ROUNDED_UP_REASON
+    return reasons
+
+
 # The hourly conditions files. Their inputs, other than reference/atc_updates.json,
 # are not in git: fixture mode builds the warehouse from make_dbt_fixtures.py's
 # answers under data/raw/conditions/, so the old side reads those same answers
@@ -1377,7 +1409,8 @@ FAMILIES: dict[str, Family] = {
     ),
     # The junction graph's two elevation companions: index-aligned arrays
     # whose entries carry no id, so each is keyed by its place, which is the
-    # edge it describes.
+    # edge it describes. The climbs round up since decision 194, and today's
+    # exporter to the nearest foot (CLIMB_ROUNDED_UP_REASON).
     "trail_graph_elevation": Family(
         old=lambda raw_dir, warehouse: _by_edge(_graph_companions_old(raw_dir, warehouse)[0]),
         records="edges",
@@ -1385,6 +1418,7 @@ FAMILIES: dict[str, Family] = {
         ordered=True,
         reads_warehouse=True,
         new_shape=lambda new, _path: _by_edge(new),
+        explained=_climb_rounding_reasons,
     ),
     "trail_graph_profile": Family(
         old=lambda raw_dir, warehouse: _by_edge(_graph_companions_old(raw_dir, warehouse)[1]),
@@ -1527,8 +1561,17 @@ POI_REASONS = {
         "expected by decision 65 (the maintainer's poll of 2026-10-04): a plumbed tap or fountain whose layer records "
         "no shutoff season, which export_nearby_poi.py holds back as a water holdback (sources.json's "
         "oprhp_water_holdback), ships as unconfirmed water carrying water_caution 'no_shutoff_season' "
-        "(int_points_of_interest__cautioned); only a record today's file lacks, of a layer whose taps "
-        "layer_rules names plumbed_water, at low confidence with that caution"
+        "(int_points_of_interest__cautioned), where its steward's own public flag shows it (decision 195); only a "
+        "record today's file lacks, of a layer whose taps layer_rules names plumbed_water, at low confidence with "
+        "that caution"
+    ),
+    "steward_hides": (
+        "expected by decision 195 (the maintainer's poll of 2026-10-14, 'A pin claims no more than its steward'): a "
+        "water or shelter point whose steward's own public flag does not show it is held "
+        "(int_points_of_interest__publishable, var poi_types_held_when_steward_hides), where export_nearby_poi.py "
+        "ships it at low confidence because that layer's flag sets confidence rather than filtering (sources.json's "
+        "public_flag_sets_confidence: NY Parks' ParksApp, 'N' on every one of its lean-tos); only a record today's "
+        "file holds and the dbt writer's lacks, of such a layer with no confidence floor, of a held type, rated low"
     ),
     "exact_copy_site": (
         "expected by decision 40, as an exact copy staging removes is: the POI is in both files and only its site "
@@ -1715,15 +1758,54 @@ def _seasonal_tap_reasons(old: dict, new: dict) -> dict[str, str]:
     }
 
 
+@functools.cache
+def _held_when_steward_hides() -> tuple[frozenset[str], frozenset[str]]:
+    """(the POI types decision 195 holds, the layers whose public flag sets confidence and that record no confidence
+    floor): dbt_project.yml's var poi_types_held_when_steward_hides, the rule's one home, and the sources.json entries
+    on which export_nearby_poi.public_verdict() rates low exactly the rows the flag does not show."""
+    import yaml
+
+    import export_nearby_poi
+
+    pipeline = Path(__file__).resolve().parent
+    variables = yaml.safe_load((pipeline / "dbt" / "dbt_project.yml").read_text(encoding="utf-8"))["vars"]
+    registry = export_nearby_poi.load_registry(pipeline / "sources.json")
+    layers = {
+        source["key"]
+        for source in export_nearby_poi.poi_sources(registry)
+        if source.get("public_field") and source.get("public_flag_sets_confidence") and not source.get("confidence_floor")
+    }
+    return frozenset(variables["poi_types_held_when_steward_hides"]), frozenset(layers)
+
+
+def _steward_hides_reasons(old: dict, new: dict) -> dict[str, str]:
+    """The water and shelter points decision 195 holds that today's exporter ships at low confidence.
+
+    Only a record today's file holds and the new one lacks, of a layer whose public flag sets confidence and that
+    records no confidence floor, of a type the rule holds, rated low: the mark public_verdict() leaves on a row the
+    flag does not show. Anything else the new file lacks is still a difference."""
+    types, layers = _held_when_steward_hides()
+    new_ids = {_poi_id(feature) for feature in new.get("features") or []}
+    return {
+        f"properties.id {_poi_id(feature)}": POI_REASONS["steward_hides"]
+        for feature in old.get("features") or []
+        if _poi_id(feature) not in new_ids
+        and feature["properties"].get("source") in layers
+        and feature["properties"].get("poi_type") in types
+        and feature["properties"].get("confidence") == "low"
+    }
+
+
 def _nearby_poi_reasons(old: dict, new: dict) -> dict[str, str]:
-    """nearby_poi's five explained kinds: an exact copy staging removed, the site its removal dissolves, a whole
-    number written two ways, decision 31's new data, and decision 65's seasonal taps from a layer today's exporter
-    reads."""
+    """nearby_poi's six explained kinds: an exact copy staging removed, the site its removal dissolves, a whole
+    number written two ways, decision 31's new data, decision 65's seasonal taps from a layer today's exporter reads,
+    and decision 195's water and shelter points their steward does not show."""
     return {
         **_exact_copy_reasons(old, new),
         **_copy_site_reasons(old, new),
         **_whole_number_reasons(old, new),
         **_seasonal_tap_reasons(old, new),
+        **_steward_hides_reasons(old, new),
         **_new_source_reasons(old, new),
     }
 

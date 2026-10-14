@@ -96,7 +96,13 @@
     nett_trail_pois lat 30.27 to 34.06, lon -117.20 to -94.42, whose 8
     points outside north-east Texas are the far west of that. The
     inventory, idot_bike_inventory, is lat 37.12 to 42.51, lon -91.45 to
-    -87.52. The Montour Trail's, the D&L Corridor's and the NYS Canal
+    -87.52. NGPC's Cowboy Trail sections, ngpc_cowboy_trail_improvements,
+    a trail-line row since the line was drawn from them (the maintainer's
+    P8, 2026-10-11), are lat 42.00 to 42.87, lon -102.46 to -97.43, every
+    one of their 2,293 vertices read live that day, inside `national`;
+    their notices took macros/generated_notice_regions.sql's
+    us_and_territories, which this narrows for both. The Montour Trail's,
+    the D&L Corridor's and the NYS Canal
     Corporation's points sit inside the eastern box by their layers'
     returnExtentOnly (2026-10-09, on each sources.json row), and the Baker
     Trail's in western Pennsylvania (Reasoned: its file's points were not
@@ -318,6 +324,7 @@ where
     'oprd_rec_facilities': 'national',
     'nett_trail_pois': 'national',
     'idot_bike_inventory': 'national',
+    'ngpc_cowboy_trail_improvements': 'national',
 } -%}
 
 case

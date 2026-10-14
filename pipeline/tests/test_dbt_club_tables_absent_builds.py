@@ -63,13 +63,17 @@ READERS = (
 
 
 def _generated_tables() -> dict[str, str]:
-    """{raw table: its base model}, from every source file make_dbt_staging.py writes."""
+    """{raw table: its base model}, from every source file make_dbt_staging.py writes. A lane copy's source table
+    names its raw table in `identifier` (make_dbt_staging.py's docstring, "A LANE COPY"), so that is the table dropped,
+    and its base model is named for the source table."""
     found = {}
     for path in (DBT_DIR / "models" / "staging").glob("*/_*__generated__sources.yml"):
         for source in yaml.safe_load(path.read_text())["sources"]:
             folder = source["name"]
             for table in source["tables"]:
-                found[table["name"]] = f"base_{folder}__{table['name'].removeprefix(f'raw_{folder}__')}"
+                found[table.get("identifier") or table["name"]] = (
+                    f"base_{folder}__{table['name'].removeprefix(f'raw_{folder}__')}"
+                )
     return found
 
 

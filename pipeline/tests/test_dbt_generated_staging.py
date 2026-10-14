@@ -504,3 +504,65 @@ def test_a_pages_points_feed_only_the_content_types_their_row_names_fields_for()
     assert shared and all(table.type in table.entry["shared_page_rows"] for table in shared)
     with pytest.raises(ValueError, match="names no fields"):
         make_dbt_staging.page_rows_fields(_shared("challenges", {"key": "passages"}))
+
+
+# --- lane copies (make_dbt_staging.py's docstring, "A LANE COPY") ---------------------------------------------------
+
+
+def _lane_copies() -> list[Table]:
+    return [table for table in make_dbt_staging.tables() if table.lane_copy]
+
+
+def test_a_line_sharing_a_closures_resource_is_staged_from_the_monthly_lanes_own_copy_of_the_table():
+    """NGPC's Cowboy Trail sections are its closures and its line (the maintainer's P8, 2026-10-11). A trail-line model
+    reading the notices' hourly source would put every trail-line node on the hourly lane, so the line reads a source
+    table and a base model of its own, at the monthly cadence, naming the same raw table."""
+    (copy,) = [table for table in _lane_copies() if table.folder == "ngpc"]
+
+    assert (copy.type, copy.key, copy.cadence, copy.shared_from) == (
+        "trail_lines",
+        "ngpc_cowboy_trail_improvements",
+        "monthly",
+        None,
+    )
+    assert copy.table == "raw_ngpc__ngpc_cowboy_trail_improvements"
+    assert copy.source_table == "raw_ngpc__ngpc_cowboy_trail_improvements_monthly"
+    assert copy.base == "base_ngpc__ngpc_cowboy_trail_improvements_monthly"
+    sources = make_dbt_staging.sources_yaml("ngpc", [copy])
+    assert "      - name: raw_ngpc__ngpc_cowboy_trail_improvements_monthly\n" in sources
+    assert "        identifier: raw_ngpc__ngpc_cowboy_trail_improvements\n" in sources
+    assert "        cadence: monthly\n" in sources
+    base = make_dbt_staging.base_sql(copy).replace("',\n            '", "', '")
+    assert "source('ngpc', 'raw_ngpc__ngpc_cowboy_trail_improvements_monthly')" in base
+    staging = make_dbt_staging.stg_sql("ngpc", "trail_lines", [copy])
+    assert "from {{ ref('base_ngpc__ngpc_cowboy_trail_improvements_monthly') }}" in staging
+    notices = {source.table: source for source in generate_notice_models.notice_sources()}
+    assert notices[copy.table].cadence == "hourly", "the closures keep reading the hourly copy"
+
+
+def test_every_lane_copy_is_landed_by_its_lane_and_excepted_from_the_evaluators_duplicate_sources_rule():
+    """A lane copy reads the copy its lane lands (extract/_run.py's ALSO_READS); without that row the monthly warehouse
+    would not hold the table, and its base model would read it as no rows (raw_or_empty), so the line would vanish
+    from the month's build on a green run. Its two source tables name one relation, which fct_duplicate_sources
+    refuses unless a row of seeds/dbt_project_evaluator_exceptions.csv excepts it."""
+    import csv
+
+    from extract._run import ALSO_READS
+
+    copies = _lane_copies()
+    assert copies, "NGPC's Cowboy Trail line is one"
+    with (MODELS.parent / "seeds" / "dbt_project_evaluator_exceptions.csv").open(newline="") as handle:
+        patterns = [row["id_to_exclude"] for row in csv.DictReader(handle) if row["fct_name"] == "fct_duplicate_sources"]
+
+    def like(pattern: str) -> re.Pattern:
+        """A SQL LIKE pattern with no ESCAPE clause, as the evaluator's filter_exceptions() writes it."""
+        return re.compile("".join(".*" if c == "%" else "." if c == "_" else re.escape(c) for c in pattern), re.DOTALL)
+
+    for copy in copies:
+        assert copy.table in ALSO_READS.get(copy.cadence, {}), f"{copy.table}: no ALSO_READS row lands it {copy.cadence}"
+        both = f"{copy.folder}.{copy.table}, {copy.folder}.{copy.source_table}"
+        assert any(like(pattern).fullmatch(both) for pattern in patterns), f"{copy.table}: no fct_duplicate_sources row"
+
+
+def test_the_types_a_lane_copy_shares_are_the_notice_generators():
+    assert make_dbt_staging.NOTICE_TYPES == frozenset(generate_notice_models.NOTICE_TYPES)

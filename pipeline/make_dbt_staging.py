@@ -19,6 +19,21 @@ staged before decision 54). So a layer registered later is staged by running thi
 A file that SHARES a sibling's resource (one upstream feeding two types, such as a My Map of trail lines and
 trailheads) gets a staging model of its own over the sibling's base model, and no second base or source: one
 raw table, staged once (decision 34). An elevation file shares only a row that names its `elevation_source`.
+
+A LANE COPY is the one exception, for a geometric type that SHARES a closures or warnings resource (NOTICE_TYPES):
+NGPC's Cowboy Trail, whose 29-section status layer is both its closures and its line (the maintainer's P8, wave 6's
+page 01, 2026-10-11). The resource is still one extraction, on the hourly lane its type puts it on, and
+generate_notice_models.py stages that hourly copy. But a dbt node's lane is the fastest cadence among the sources
+it reads (build_marts.py's docstring, "A LANE BUILDS ONLY ITS OWN NODES"), so a trail-line model reading the
+notices' hourly source would take every trail-line node it feeds off the monthly lane, and the monthly warehouse
+holds no hourly table. So the monthly lane lands its own copy of the table (extract/_run.py's ALSO_READS, which
+tests/test_dbt_generated_staging.py holds every lane copy to), and this writes that copy a source table and a
+base model of their own, at the sharing type's cadence: the source table named `<raw table>_<cadence>`, with
+the raw table as its `identifier`, and its base model `base_<f>__<key>_<cadence>` (Table.lane_copy). Each lane's
+nodes then read the copy that lane landed, and the notices' hourly path is untouched. The two source tables name
+one relation, which dbt_project_evaluator's fct_duplicate_sources refuses unless
+seeds/dbt_project_evaluator_exceptions.csv excepts it; its row says why.
+
 Every base model reads its raw table through raw_or_empty() (dbt/macros/raw_or_empty.sql), so a layer that has
 never landed (one the monthly extract refused on its first run, or a keyed API, `api_key_env`, whose key the job
 lacks) reads as no rows with the columns its models name, and stops nothing else (Table.raw_columns()).
@@ -158,6 +173,11 @@ DEFAULT_REGION = "us_and_territories"
 #: points reach outside the eastern box, each boxed by every point of the layer read with outSR 4326, and its
 #: header says a point row it leaves out has all its points inside the eastern box.
 REGIONS_DECIDED_BY_HAND = frozenset({"trail_lines", "points_of_interest"})
+
+#: The types whose resources generate_notice_models.py stages (its NOTICE_TYPES, which
+#: tests/test_dbt_generated_staging.py holds this to: that module imports this one, so this one cannot import it). A
+#: geometric type sharing one of their resources is a lane copy (the module docstring, "A LANE COPY").
+NOTICE_TYPES = frozenset({"closures", "warnings"})
 
 LINE = 76  # SQL comment width: SQLFluff's LT05 holds every line to 80
 
@@ -515,10 +535,20 @@ class Table:
     reader: str = "ArcgisLayer"
     # The sibling type whose base model this staging reads, for a file that SHARES that sibling's resource.
     shared_from: str | None = None
+    # True for the monthly lane's own copy of a closures or warnings table this geometric type SHARES (the module
+    # docstring, "A LANE COPY"): a source table and a base model of its own, at this type's cadence.
+    lane_copy: bool = False
 
     @property
     def shape(self) -> Shape:
         return SHAPES[self.type]
+
+    @property
+    def source_table(self) -> str:
+        """The table's name in its dbt source block: the raw table's own, or for a lane copy the raw table's with its
+        cadence after it, since generate_notice_models.py's notices block already declares the raw table's own name.
+        A lane copy's source table carries the raw table as its `identifier`, so both read one relation."""
+        return f"{self.table}_{self.cadence}" if self.lane_copy else self.table
 
     @property
     def lookup(self) -> bool:
@@ -541,7 +571,7 @@ class Table:
 
     @property
     def base(self) -> str:
-        return f"base_{self.folder}__{self.table.removeprefix(f'raw_{self.folder}__')}"
+        return f"base_{self.folder}__{self.source_table.removeprefix(f'raw_{self.folder}__')}"
 
     @property
     def title(self) -> str:
@@ -659,7 +689,7 @@ def _hand_written_raw_tables() -> set[str]:
 def tables() -> list[Table]:
     """Every layer this stages, sorted by folder and key; stops on the first row with no usable key."""
     sys.path.insert(0, str(PIPELINE))
-    from extract._contract import discover
+    from extract._contract import CADENCE_BY_TYPE, DEFAULT_CADENCE, discover
     from extract._gis_files import GisFile
     from extract._kinds import ArcgisLayer, registry_entry
     from extract._ogc import JsonFeatures, OgcFeatures
@@ -676,10 +706,16 @@ def tables() -> list[Table]:
         if club_file.type not in SHAPES:
             continue
         owner = by_place.get((club_file.club, club_file.shares)) if club_file.shares else club_file
-        if owner is None or owner.type not in SHAPES:
+        if owner is None:
+            continue
+        # The module docstring, "A LANE COPY": a geometric type sharing a notice type's resource.
+        lane_copy = owner.type in NOTICE_TYPES and SHAPES[club_file.type].geometry
+        if owner.type not in SHAPES and not lane_copy:
             continue
         for resource in owner.resources:
-            if resource.table in hand_written:
+            # A lane copy's raw table is always read by the notices' own base model, which generate_notice_models.py
+            # writes and this does not; its copy is declared under its own name, so that model is not in its way.
+            if resource.table in hand_written and not lane_copy:
                 continue
             reader = type(resource).__name__
             if SHAPES[club_file.type].geometry:
@@ -700,6 +736,13 @@ def tables() -> list[Table]:
             entry = registry_entry(resource.key)
             if club_file.shares and club_file.type == "elevation" and not entry.get("elevation_source"):
                 continue  # a line layer an elevation file shares carries its heights only where its row says so
+            if lane_copy:
+                # At the sharing type's own cadence, the lane its nodes are built in, never the resource's hourly one.
+                cadence = CADENCE_BY_TYPE.get(club_file.type, DEFAULT_CADENCE)
+                found.append(
+                    Table(club_file.club, club_file.type, resource.key, resource.table, cadence, entry, reader, lane_copy=True)
+                )
+                continue
             shared_from = owner.type if club_file.shares else None
             found.append(
                 Table(club_file.club, club_file.type, resource.key, resource.table, resource.cadence, entry, reader, shared_from)
@@ -746,6 +789,18 @@ def _key_item(item: str) -> str:
     return repr(item)
 
 
+def _lane_copy_note(table: Table) -> str:
+    """What a lane copy's base model and source table say they are (the module docstring, "A LANE COPY")."""
+    stem = table.table.removeprefix(f"raw_{table.folder}__")
+    return (
+        f"The {table.cadence} lane's own copy of {table.table}, a table the hourly lane lands for this folder's "
+        f"closures or warnings, which extract/not_available.toml's [{table.folder}.{table.type}] row SHARES: "
+        f"extract/_run.py's ALSO_READS lands it in the {table.cadence} lane's store too, still one extraction "
+        f"(decision 34). generate_notice_models.py stages the hourly copy as base_{table.folder}__{stem}; this one "
+        f"is read only by stg_{table.folder}__{table.type}, so each lane's nodes read the copy that lane landed."
+    )
+
+
 def base_sql(table: Table) -> str:
     inputs = table.key_inputs()
     dates = table.date_columns()
@@ -754,6 +809,9 @@ def base_sql(table: Table) -> str:
             f"{table.title} ({table.entry.get('provider') or table.folder}, sources.json `{table.key}`): every row, "
             "keyed and deduped (decision 40), with nothing filtered and nothing joined. A base model, the one place "
             "this dataset is staged (decision 34)."
+            if not table.lane_copy
+            else f"{table.title} ({table.entry.get('provider') or table.folder}, sources.json `{table.key}`): every "
+            "row, keyed and deduped (decision 40), with nothing filtered and nothing joined. " + _lane_copy_note(table)
         ),
         "--",
         _comment(f"Key: {table.key_comment()}"),
@@ -768,11 +826,11 @@ def base_sql(table: Table) -> str:
         exclude = "* exclude (\n" + ",\n".join(f"            {name}" for name in excluded) + "\n        ),"
     # Read through raw_or_empty() (macros/raw_or_empty.sql): a table that has never landed reads as no rows with the
     # columns these models name, rather than stopping every other club's layers.
-    relation = f"source('{table.folder}', '{table.table}')"
+    relation = f"source('{table.folder}', '{table.source_table}')"
     # 8 for the indent and 1 for the comma after it: raw_montour_trail__montour_trail_access_areas, the first relation
     # exactly 72 long (2026-10-11), came to 81 under a check that counted the indent alone.
     if len(relation) + 9 > 80:
-        relation = f"source('{table.folder}',\n            '{table.table}')"
+        relation = f"source('{table.folder}',\n            '{table.source_table}')"
     names = ", ".join(f"'{name}'" for name in table.raw_columns())
     listed = (
         f"[{names}]"
@@ -850,7 +908,16 @@ def sources_yaml(folder: str, folder_tables: list[Table]) -> str:
     ]
     for table in folder_tables:
         lines += [
-            f"      - name: {table.table}",
+            f"      - name: {table.source_table}",
+            *(
+                [
+                    "        # make_dbt_staging.py's docstring, \"A LANE COPY\": the raw table the notices' own source table",
+                    "        # names, which dbt_project_evaluator_exceptions.csv's fct_duplicate_sources row lets two name.",
+                    f"        identifier: {table.table}",
+                ]
+                if table.lane_copy
+                else []
+            ),
             *(
                 [
                     "        config:",
@@ -870,7 +937,12 @@ def sources_yaml(folder: str, folder_tables: list[Table]) -> str:
             "          # Elementary's checks (raw_table_checks()), each at warn and run after the writers.",
             *raw_table_checks_yaml(cadence, 10),
             "        description: >",
-            _folded(f"{table.title} (sources.json `{table.key}`). Key: {table.key_comment()}", 10),
+            _folded(
+                f"{table.title} (sources.json `{table.key}`). "
+                + (_lane_copy_note(table) + " " if table.lane_copy else "")
+                + f"Key: {table.key_comment()}",
+                10,
+            ),
         ]
     return "\n".join(lines) + "\n"
 
@@ -894,7 +966,7 @@ def base_yaml(folder: str, folder_tables: list[Table]) -> str:
             "      # A raw table that never landed passes (tests/generic/).",
             "      - equal_rowcount_to_raw:",
             "          arguments:",
-            f"            compare_model: source('{folder}', '{table.table}')",
+            f"            compare_model: source('{folder}', '{table.source_table}')",
             "          config:",
             "            severity: warn",
             "    description: >",
@@ -905,7 +977,8 @@ def base_yaml(folder: str, folder_tables: list[Table]) -> str:
                     f"A lookup beside stg_{folder}__{table.type}'s rows, which carry its ids; no union reads it."
                     if table.lookup
                     else f"{table.shape.union} reads it through stg_{folder}__{table.type}."
-                ),
+                )
+                + (" " + _lane_copy_note(table) if table.lane_copy else ""),
                 6,
             ),
             "    columns:",

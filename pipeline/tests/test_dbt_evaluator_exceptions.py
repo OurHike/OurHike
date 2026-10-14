@@ -120,11 +120,16 @@ def _resource_names(manifest: dict) -> dict[str, set[str]]:
     return {"nodes": nodes, "sources": sources, "exposures": exposures}
 
 
+#: The findings whose rows name sources: fct_duplicate_sources' `source_names` lists every source naming one relation
+#: (make_dbt_staging.py's lane copies), so its pattern is held to the source names it must cover.
+SOURCE_FINDINGS = ("fct_sources_without_freshness", "fct_duplicate_sources")
+
+
 def _kind(row: dict) -> str:
     """Which names a row's column holds: an exposure's, a source's, or a model's (a seed's or snapshot's for a parent)."""
     if row["column_name"] == "exposure_name":
         return "exposures"
-    return "sources" if row["fct_name"] == "fct_sources_without_freshness" else "nodes"
+    return "sources" if row["fct_name"] in SOURCE_FINDINGS else "nodes"
 
 
 def _rows_matching_nothing(rows: list[dict], manifest: dict) -> list[str]:

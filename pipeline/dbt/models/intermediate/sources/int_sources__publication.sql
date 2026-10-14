@@ -52,25 +52,36 @@
 --                                  purpose_limited, condition, conduct
 --                                  (a site's bar on disruptive or
 --                                  malicious use, decision 75),
---                                  cannot_be_met, or not_a_restriction (a
---                                  warranty, liability, accuracy or credit
---                                  line, cut out first so its words never
---                                  count: decision 71 reads a hold-harmless
---                                  or indemnity clause as one, decision 72
+--                                  cannot_be_met, ownership (an ownership
+--                                  or copyright line: "property of",
+--                                  "copyright", "all rights reserved"),
+--                                  or not_a_restriction (a warranty,
+--                                  liability, accuracy, reliance or credit
+--                                  line, a grant, a link, or a scope note,
+--                                  cut out first so its words never count:
+--                                  decision 71 reads a hold-harmless or
+--                                  indemnity clause as one, decision 72
 --                                  "at your own risk" and "may be out of
---                                  date", and decisions 80 and 106 one
---                                  publisher's "purposes only" sentence
---                                  each, TIGER/Line's and Explore PA
---                                  Trails', as a scope note, each phrase
---                                  scoped to that publisher's own words);
+--                                  date", decision 188 "should not be
+--                                  considered authoritative", and decision
+--                                  193 "illustrative, informational or
+--                                  planning purposes" with the purposes
+--                                  decisions 80 and 106 read);
 --                                  and `unclassified`, the backstop
 --     licence_restriction_answers  which decision answers a restriction on
 --                                  which basis, and the words a row's
 --                                  `licence` names it by
 --   A restriction is answered when an answers row has its restriction and
 --   the row's basis (or `any`), and the row's own `licence` names that
---   decision. `cannot_be_met` has no answers row on purpose: decision 38
---   holds a layer whose condition a hiker's planning tool cannot meet.
+--   decision. DECISION 193 (the maintainer's poll, 2026-10-14) reads a
+--   layer's own words by class, never row by row: each phrase reads a class
+--   of wording, not one publisher's sentence, and its class answer, an
+--   ownership or copyright line on a public GIS item (`public_gis`,
+--   `stated_by_org`, `maintainer_clearinghouse`), names `.*`, which every
+--   row's licence matches. `cannot_be_met` has no answers row on purpose:
+--   decision 38 holds a layer whose condition a hiker's planning tool cannot
+--   meet, and decision 193 keeps words forbidding a use the app makes
+--   ("not intended for navigation", however worded) as that hold.
 --   THE BACKSTOP. Once every phrase is cut out of the words, any
 --   restriction-shaped word left (may not, prohibited, only, distribute,
 --   licence and the rest of the `unclassified` row's list) is
@@ -109,6 +120,17 @@
 --   PA DCNR's Explore PA Trails terms, which carry no restriction once
 --   decision 71's and decision 106's phrases are cut out; without decision
 --   106's phrase the same words read purpose_limited, unanswered.
+--   Re-measured 2026-10-14 the same way, on the registry after decision 193
+--   (W11's build, from dd5f57f7), 782 rows: 384 publish and 398 are held by
+--   their own `reaches_hikers`; 75 carry an unanswered restriction (90
+--   before), and no shipping row does. Under the classes seven rows flipped
+--   to publishing, each with its own rules in and tested: CPW's
+--   trailheads, facilities and managed properties ("a product and property
+--   of"), Blue Hills' parking and intersections, OTA's map and OHTA's track.
+--   They also corrected two stated reasons (CFPA's two layers read
+--   cannot_be_met, the class their typo "to be use" hid), and held one row a
+--   live read found: in_dnr_open_trails' own description says "NOT INTENDED
+--   TO BE USED FOR ON-THE-GROUND NAVIGATION".
 --
 -- ONE ROW IS NOT IN THE REGISTRY. The unregistered_publishing_sources seed
 -- lists the sources an exporter publishes today with no sources.json row,

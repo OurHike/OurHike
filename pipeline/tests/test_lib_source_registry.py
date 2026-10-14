@@ -23,6 +23,7 @@ from lib.source_registry import (
     OGC_FEATURES,
     PAGE_POINTS,
     PDF_POINTS,
+    PODCAST_FEED,
     POI_SOURCE_KEYS,
     PUBLISHED_HIKES,
     PUBLISHED_NOTICES,
@@ -39,6 +40,7 @@ from lib.source_registry import (
     load_registry,
     poi_source_entry,
     poi_source_steward,
+    read_by_an_exporter,
     socrata_sources,
     source_kind,
 )
@@ -539,3 +541,40 @@ def test_no_legacy_reader_selects_a_club_arcgis_layer_row(tmp_path, monkeypatch)
         "legacy readers select extract-only rows (club_arcgis_layer, gis_file, ogc_features, json_features, page_points, "
         f"pdf_points), which only pipeline/extract/ may read: {leaked}"
     )
+
+
+def test_the_exporters_path_counts_every_row_a_legacy_reader_selects_and_no_extract_only_row():
+    """Decision 196 (the maintainer's poll, 2026-10-14): on the exporters' path, export_sources.py names a steward
+    only for rows today's exporters read, so production's sources screen names only stewards whose data production's
+    files carry until the cutover. read_by_an_exporter() is that rule, and the readers above are what it describes:
+    every row one of them selects, and each page-read exporter's own SOURCE_KEY, must count, or a steward whose data
+    production ships drops off its screen; and no row of a kind only pipeline/extract/ reads may count, or the screen
+    names a steward before its data ships."""
+    import export_nearby_poi
+    import export_nearby_trails
+    import export_sources
+    import export_trails
+    import fetch_all
+    import fetch_external_layers
+
+    registry = load_registry(REAL_REGISTRY)
+    selected = (
+        {e["key"] for e in fetch_all.arcgis_sources(registry)}
+        | {e["key"] for e in fetch_external_layers.external_sources(registry)}
+        | {e["key"] for e in export_nearby_poi.poi_sources(registry)}
+        | {e["key"] for e in export_trails.load_line_sources(REAL_REGISTRY)}
+        | {e["key"] for e in export_nearby_trails.network_line_sources(registry)}
+        | {e["key"] for e in export_nearby_trails.closure_area_sources(registry)}
+        | set(export_sources.EXPORTER_SOURCE_KEYS)
+    )
+    counted = {e["key"] for e in registry["sources"] if read_by_an_exporter(e, export_sources.EXPORTER_SOURCE_KEYS)}
+    extract_only = {CLUB_ARCGIS_LAYER, GIS_FILE, OGC_FEATURES, JSON_FEATURES, PAGE_POINTS, PDF_POINTS, PODCAST_FEED}
+
+    assert not selected - counted, (
+        f"rows a legacy reader selects that the exporters' path leaves out: {sorted(selected - counted)}"
+    )
+    assert all(find_source(registry, key) for key in export_sources.EXPORTER_SOURCE_KEYS), "an exporter's key is unregistered"
+    leaked = sorted(e["key"] for e in registry["sources"] if e["key"] in counted and source_kind(e) in extract_only)
+    assert not leaked, f"extract-only rows counted on the exporters' path: {leaked}"
+    notices = [e for e in registry["sources"] if source_kind(e) in {PUBLISHED_NOTICES, PUBLISHED_HIKES} and e["key"] in counted]
+    assert {e["key"] for e in notices} <= set(export_sources.EXPORTER_SOURCE_KEYS), "a club's notice or hike list counted"

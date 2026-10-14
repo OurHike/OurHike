@@ -231,6 +231,44 @@ KNOWN_KINDS = frozenset(
     }
 )
 
+# WHAT TODAY'S EXPORTERS READ, until the cutover (decision 196 in
+# pipeline/ELT.md, the maintainer's poll of 2026-10-14). Production's phone
+# files come from the Python exporters until the cutover
+# (publish-vector-data.yml; dbt's monthly lane publishes to UA only, and
+# publish-conditions.yml's PRODUCTION_PHONE_FILES keeps production's hourly
+# leg on the exporters, decision 92), and none of them reads
+# CLUB_ARCGIS_LAYER or the five kinds registered after it for
+# pipeline/extract/ alone, nor a podcast feed or a club PDF: those reach a
+# phone only through dbt. So export_sources.py, on the exporters' path, names
+# a steward only for the rows one of them reads. Counting every shipping row
+# instead named 111 stewards against the 28 whose data production's files
+# carry (export_sources.build_output() in memory on 2026-10-14, over this
+# branch's registry at dd5f57f7 and main's at e61373be).
+#
+# EXPORTER_KINDS: every row of the kind is read by a legacy fetcher and an
+# exporter after it (fetch_all.py's ArcGIS layers, fetch_external_layers.py's
+# ArcGIS and Socrata layers, the OSM extracts, the drought polygons).
+EXPORTER_KINDS = frozenset(
+    {ARCGIS_FEATURE_LAYER, EXTERNAL_ARCGIS_LAYER, SOCRATA_GEOJSON_LAYER, GEOFABRIK_EXTRACT, WEEKLY_POLYGONS}
+)
+
+# EXPORTER_ONE_ROW_KINDS: an exporter reads ONE row of each, the key its own
+# module declares as SOURCE_KEY (lib/atc_updates.py, lib/nynjtc_alerts.py,
+# lib/hikefinder.py, lib/nynjtc_long_path_guide.py), while decision 53's club
+# notices and decision 54's hike lists, registered under the same kinds, are
+# read by pipeline/extract/ alone. The caller passes those keys, so this
+# module imports no parser.
+EXPORTER_ONE_ROW_KINDS = frozenset({PUBLISHED_NOTICES, PUBLISHED_HIKES, GUIDE_PAGES})
+
+
+def read_by_an_exporter(entry: dict, exporter_keys: frozenset[str]) -> bool:
+    """Whether today's Python exporters read this row: its kind is one they read
+    every row of, or one they read a single declared key of and this is that key."""
+    kind = source_kind(entry)
+    if kind in EXPORTER_KINDS:
+        return True
+    return kind in EXPORTER_ONE_ROW_KINDS and entry.get("key") in exporter_keys
+
 
 def load_registry(path: Path) -> dict:
     """sources.json, whole - the `photo_licence` block included.

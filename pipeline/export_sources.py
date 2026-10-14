@@ -33,6 +33,27 @@ Both are real stewards with real data in `data/raw/`. Neither belongs on a
 hiker's screen until its licence answer lands, and the flag is what keeps that
 true without anybody re-reading a paragraph.
 
+ON THE EXPORTERS' PATH, ONLY WHAT THE EXPORTERS READ (decision 196 in
+pipeline/ELT.md, the maintainer's poll of 2026-10-14)
+
+The same rule, one step further. `reaches_hikers` says a row ships, not which
+pipeline ships it. Decision 54's club layers, files, pages and PDFs, decision
+53's club notices and the podcast feeds reach a phone only through dbt, and
+production's phone files come from this pipeline's Python exporters until the
+cutover: publish-vector-data.yml runs them, dbt's monthly lane
+(build-reference.yml) publishes to UA only, and publish-conditions.yml's
+PRODUCTION_PHONE_FILES keeps production's hourly leg on them (decision 92). Counted
+over every shipping row, production's sources screen would have named 111
+stewards while its files carry 28 stewards' data (build_output() in memory on
+2026-10-14, over this branch's registry at dd5f57f7 and main's at e61373be).
+So main(), which the exporters' path runs, counts only the rows an exporter
+reads (lib/source_registry.py's read_by_an_exporter, with the keys the
+exporters' own modules declare). build_output() keeps counting every shipping
+row by default, which is what dbt's stewards writer (int_sources__stewards)
+counts on its own path and what parity.py compares it with: each path names
+the stewards its own files carry, and the cutover retires this file with its
+filter.
+
 WHY THE PER-SOURCE `licence` FIELD IS NOT PUBLISHED, THOUGH IT SOUNDS LIKE THE
 ONE TO PUBLISH
 
@@ -155,9 +176,19 @@ import json
 import re
 from pathlib import Path
 
+from lib.atc_updates import SOURCE_KEY as ATC_UPDATES_KEY
+from lib.hikefinder import SOURCE_KEY as HIKE_FINDER_KEY
 from lib.manifest_paths import to_manifest_path
+from lib.nynjtc_alerts import SOURCE_KEY as NYNJTC_ALERTS_KEY
+from lib.nynjtc_long_path_guide import SOURCE_KEY as LONG_PATH_GUIDE_KEY
+from lib.source_registry import read_by_an_exporter
 
 ROOT = Path(__file__).parent
+
+# The one row each page-read exporter reads of a kind it shares with rows only
+# pipeline/extract/ reads (lib/source_registry.py's EXPORTER_ONE_ROW_KINDS),
+# taken from each exporter's own module rather than spelled here.
+EXPORTER_SOURCE_KEYS = frozenset({ATC_UPDATES_KEY, NYNJTC_ALERTS_KEY, HIKE_FINDER_KEY, LONG_PATH_GUIDE_KEY})
 SOURCES_PATH = ROOT / "sources.json"
 # `stewards.json`, NOT `sources.json`, and the difference is worth the extra
 # word: `pipeline/sources.json` is the REGISTRY this reads, and a published
@@ -557,9 +588,12 @@ def build_registry(registry: dict | None = None) -> dict:
     }
 
 
-def build_output(registry: dict | None = None, *, reference_dir: Path = ROOT) -> dict:
+def build_output(registry: dict | None = None, *, reference_dir: Path = ROOT, exporters_only: bool = False) -> dict:
     """The stewards artifact. `reference_dir` is where a store block's
-    `paper_maps` path resolves - the pipeline directory, or a test's."""
+    `paper_maps` path resolves - the pipeline directory, or a test's.
+    `exporters_only` counts only the shipping rows today's exporters read, as
+    main() does on the exporters' path (this module's docstring, "ON THE
+    EXPORTERS' PATH")."""
     registry = registry if registry is not None else json.loads(SOURCES_PATH.read_text())
     sources = registry.get("sources", [])
 
@@ -581,6 +615,8 @@ def build_output(registry: dict | None = None, *, reference_dir: Path = ROOT) ->
     shipping: dict[str, list[dict]] = {}
     for source in sources:
         if not source["reaches_hikers"]:
+            continue
+        if exporters_only and not read_by_an_exporter(source, EXPORTER_SOURCE_KEYS):
             continue
         shipping.setdefault(source.get(PROVIDER_FIELD, ""), []).append(source)
 
@@ -661,7 +697,8 @@ def _write(path: Path, manifest_path: Path, payload: dict) -> dict:
 
 
 def main() -> dict:
-    output = build_output()
+    # The exporters' path: only stewards whose data these exporters' files carry.
+    output = build_output(exporters_only=True)
     OUT_PATH.parent.mkdir(parents=True, exist_ok=True)
     OUT_PATH.write_text(json.dumps(output, indent=2, sort_keys=True) + "\n")
 

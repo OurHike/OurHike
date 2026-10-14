@@ -757,6 +757,64 @@ class TestAgainstTheRealRegistry:
         assert atc["trust"] is None
 
 
+class TestTheExportersPathNamesOnlyWhatItsFilesCarry:
+    """Decision 196 (the maintainer's poll, 2026-10-14). Production's phone files
+    come from today's exporters until the cutover, and they read no club layer,
+    file, page, PDF, podcast feed or club notice of decision 53's and 54's. On
+    the registry of 2026-10-14 the every-row count named 111 stewards against
+    the 28 whose data production's files carry (build_output() in memory), so
+    main() counts only the rows an exporter reads."""
+
+    @staticmethod
+    def mixed() -> dict:
+        return registry(
+            source("agency_trails", "Agency", True, kind="external_arcgis_layer", steward="Agency"),
+            source("club_layer", "Club", True, kind="club_arcgis_layer", steward="Club"),
+            source("club_file", "Club", True, kind="gis_file", steward="Club"),
+            source("club_notices", "Notices Club", True, kind="published_notices", steward="Notices Club"),
+            source("feed", "Podcaster", True, kind="podcast_feed", steward="Podcaster"),
+            # No kind: an ArcGIS feature layer, which fetch_all.py reads.
+            source("centerline", "ATC", True, steward="Appalachian Trail Conservancy"),
+            # The one notices row an exporter reads, by its own module's SOURCE_KEY.
+            source("atc_trail_updates", "ATC", True, kind="published_notices", steward="Appalachian Trail Conservancy"),
+        )
+
+    def test_counts_every_shipping_row_by_default(self):
+        named = {s["provider"] for s in export_sources.build_output(self.mixed())["stewards"]}
+
+        assert named == {"Agency", "Club", "Notices Club", "Podcaster", "ATC"}
+
+    def test_the_exporters_path_names_only_stewards_an_exporter_reads(self):
+        stewards = {s["provider"]: s for s in export_sources.build_output(self.mixed(), exporters_only=True)["stewards"]}
+
+        assert set(stewards) == {"Agency", "ATC"}
+        assert stewards["ATC"]["keys"] == ["atc_trail_updates", "centerline"]
+
+    def test_main_writes_the_exporters_path(self, tmp_path, monkeypatch):
+        path = tmp_path / "sources.json"
+        path.write_text(json.dumps(self.mixed()))
+        monkeypatch.setattr(export_sources, "SOURCES_PATH", path)
+        for name in ("OUT_PATH", "MANIFEST_PATH", "REGISTRY_OUT_PATH", "REGISTRY_MANIFEST_PATH"):
+            monkeypatch.setattr(export_sources, name, tmp_path / f"{name.lower()}.json")
+
+        export_sources.main()
+
+        written = json.loads((tmp_path / "out_path.json").read_text())
+        assert {s["provider"] for s in written["stewards"]} == {"Agency", "ATC"}
+
+    def test_on_the_real_registry_every_steward_named_has_a_row_an_exporter_reads(self):
+        real = json.loads((ROOT / "sources.json").read_text())
+        rows = {s["key"]: s for s in real["sources"]}
+        exporters = export_sources.build_output(real, exporters_only=True)["stewards"]
+        every = export_sources.build_output(real)["stewards"]
+
+        assert len(exporters) < len(every), "the exporters' path names every steward, so this proves nothing"
+        for steward in exporters:
+            assert any(
+                export_sources.read_by_an_exporter(rows[key], export_sources.EXPORTER_SOURCE_KEYS) for key in steward["keys"]
+            ), steward["provider"]
+
+
 def test_each_steward_lists_the_registry_keys_behind_its_layers():
     """The join a graph edge's `source` resolves through (#978): the phone has
     to turn `oprhp_trails` into an organization's name, and the KEY only

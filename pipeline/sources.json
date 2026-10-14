@@ -5439,6 +5439,7 @@
       "provider": "BLM",
       "kind": "club_arcgis_layer",
       "url": "https://services1.arcgis.com/KbxwQRRfWyEYLgp4/arcgis/rest/services/OSNHT_MM_Framework/FeatureServer/8",
+      "trust": "authoritative",
       "steward": "Bureau of Land Management",
       "licence": "PUBLIC DOMAIN, on 17 U.S.C. 105 and the maintainer's adoption of it for usfs_trails (2026-09-02), the reading nps_trails ships on: a work of the U.S. Government has no domestic copyright to grant or withhold. The item's licenseInfo is BLM's 'as is' disclaimer and two asks that travel with the data: 'The BLM should be cited as the data source in any products derived from these data', and users 'should describe the types of modifications they have performed' and not 'imply that changes made were approved or endorsed by BLM'; all of it is in terms_verbatim.",
       "licence_basis": "stated_by_org",
@@ -5562,11 +5563,11 @@
       "kind": "external_arcgis_layer",
       "url": "https://services3.arcgis.com/0jWpHMuhmHsukKE3/arcgis/rest/services/CPW_Trails_08222024/FeatureServer/2",
       "trust": "authoritative",
-      "steward": "Colorado Parks & Wildlife",
+      "steward": "Colorado Parks and Wildlife",
       "steward_contact": "https://cpw.state.co.us/aboutus/Pages/ContactUs.aspx",
       "licence": "PUBLIC DOMAIN as a state or municipal publication, on the maintainer's assume-open decision of 2026-09-17 recorded in features/ORG_BULK_LOAD.md. The publisher states no terms that reach this use, and 17 U.S.C. 105 does not itself cover a state - so this is the weaker claim of the two and the row says so: nothing restricting use was FOUND, which is not the same as a grant. @unvalidated - what would settle it is the publisher answering the nominate form.",
       "licence_basis": "stated_by_org",
-      "attribution": "Colorado Parks & Wildlife (COTREX)",
+      "attribution": "Colorado Parks and Wildlife (COTREX)",
       "name_field": "name",
       "discovered_via": "Catalogued by the #1543 research pass into reference/trail_orgs.json, then PROBED for #1778 on 2026-09-30 - the catalogue never opened these URLs, so every figure in `notes` is this probe's and not its. Registered by hand: discover_sources.py walks ATC's Experience Builder app and none of these sit behind it.",
       "discovered_date": "2026-09-30",
@@ -5584,11 +5585,11 @@
       "kind": "club_arcgis_layer",
       "url": "https://services5.arcgis.com/ttNGmDvKQA7oeDQ3/arcgis/rest/services/SCs_All_COTREX_Sept2025_Final/FeatureServer/0",
       "trust": "authoritative",
-      "steward": "Colorado Parks & Wildlife",
+      "steward": "Colorado Parks and Wildlife",
       "steward_contact": "https://cpw.state.co.us/aboutus/Pages/ContactUs.aspx",
       "licence": "PUBLIC GIS (decision 21a, 2026-10-01): a layer the organization publishes itself, anonymously, on a public ArcGIS endpoint, presumed reusable for rendering into OurHike's maps with attribution. Item 90e775993c464740b4845866d0408802's licenseInfo and accessInformation are empty (none_stated); the COTREX app's terms govern the app, not this REST layer. This is the maintainer's presumption, NOT A LICENCE FROM THEM, and must never be rendered as one; dbt's int_sources__publication decides publication.",
       "licence_basis": "public_gis",
-      "attribution": "Colorado Parks & Wildlife (COTREX)",
+      "attribution": "Colorado Parks and Wildlife (COTREX)",
       "id_field": "OBJECTID_1",
       "discovered_via": "pipeline/ELT.md decision 53 phase A inventory, batch 5, measured 2026-10-03; registered in phase B (ArcGIS).",
       "discovered_date": "2026-10-03",
@@ -5603,11 +5604,11 @@
       "kind": "club_arcgis_layer",
       "url": "https://services5.arcgis.com/ttNGmDvKQA7oeDQ3/arcgis/rest/services/CPWSpeciesData/FeatureServer/20",
       "trust": "authoritative",
-      "steward": "Colorado Parks & Wildlife",
+      "steward": "Colorado Parks and Wildlife",
       "steward_contact": "https://cpw.state.co.us/aboutus/Pages/ContactUs.aspx",
       "licence": "PUBLIC GIS (decision 21a, 2026-10-01): a layer the organization publishes itself, anonymously, on a public ArcGIS endpoint, presumed reusable for rendering into OurHike's maps with attribution. Decision 37 extends the presumption over the item's property statement, quoted in `terms`. This is the maintainer's presumption, NOT A LICENCE FROM THEM, and must never be rendered as one; dbt's int_sources__publication decides publication.",
       "licence_basis": "public_gis",
-      "attribution": "Colorado Parks & Wildlife (COTREX)",
+      "attribution": "Colorado Parks and Wildlife (COTREX)",
       "terms": "This wildlife distribution map is a product and property of Colorado Parks and Wildlife, a division of the Colorado Department of Natural Resources. Care should be taken in interpreting these data.",
       "terms_source": "ArcGIS item 50322b83e815436aadf588757822e72f licenseInfo, phase A inventory batch 1, 2026-10-03",
       "id_field": "GlobalID",
@@ -5624,11 +5625,11 @@
       "kind": "club_arcgis_layer",
       "url": "https://services5.arcgis.com/ttNGmDvKQA7oeDQ3/arcgis/rest/services/CPWSpeciesData/FeatureServer/93",
       "trust": "authoritative",
-      "steward": "Colorado Parks & Wildlife",
+      "steward": "Colorado Parks and Wildlife",
       "steward_contact": "https://cpw.state.co.us/aboutus/Pages/ContactUs.aspx",
       "licence": "PUBLIC GIS (decision 21a, 2026-10-01): a layer the organization publishes itself, anonymously, on a public ArcGIS endpoint, presumed reusable for rendering into OurHike's maps with attribution. Decision 37 extends the presumption over the item's property statement, quoted in `terms`. This is the maintainer's presumption, NOT A LICENCE FROM THEM, and must never be rendered as one; dbt's int_sources__publication decides publication.",
       "licence_basis": "public_gis",
-      "attribution": "Colorado Parks & Wildlife (COTREX)",
+      "attribution": "Colorado Parks and Wildlife (COTREX)",
       "terms": "This wildlife distribution map is a product and property of Colorado Parks and Wildlife, a division of the Colorado Department of Natural Resources. Care should be taken in interpreting these data.",
       "terms_source": "ArcGIS item 50322b83e815436aadf588757822e72f licenseInfo, phase A inventory batch 1, 2026-10-03",
       "id_field": "GlobalID",
@@ -5645,11 +5646,11 @@
       "kind": "club_arcgis_layer",
       "url": "https://services5.arcgis.com/ttNGmDvKQA7oeDQ3/arcgis/rest/services/CPWAdminData/FeatureServer/5",
       "trust": "authoritative",
-      "steward": "Colorado Parks & Wildlife",
+      "steward": "Colorado Parks and Wildlife",
       "licence": "NOTHING STATED THAT GRANTS OR REFUSES REUSE - the layer's own words are a disclaimer and a credit. Colorado Parks & Wildlife publishes this layer itself, anonymously, on a public ArcGIS endpoint, so it is presumed reusable for OurHike's maps with attribution under decision 21(a) (`public_gis`, pipeline/ELT.md 'Who may publish', rule 3). NOT A LICENCE FROM COLORADO PARKS & WILDLIFE, and never to be rendered as one; its words are quoted verbatim in `terms`.",
       "licence_basis": "public_gis",
       "terms": "Verbatim from the ArcGIS Online item and its service, read 2026-10-03. licenseInfo: This map is a product and property of the Colorado Parks and Wildlife, a division of the Colorado Department of Natural Resources. Care should be taken in interpreting these data. Written documents may accompany this map and should be referenced. The Colorado Department of Natural Resources is not responsible and shall not be liable to the user for damages of any kind arising out of the use of data or information provided by the Department, including the installation of the data or information, its use, or the results obtained from its use. ANY DATA OR INFORMATION PROVIDED BY THE DEPARTMENT OF NATURAL RESOURCES IS PROVIDED \"AS IS\" WITHOUT WARRANTY OF ANY KIND, EITHER EXPRESS OR IMPLIED, INCLUDING, BUT NOT LIMITED TO, THE IMPLIED WARRANTIES OF MECHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE. Data or information provided by the Department of Natural Resources shall be used and relied upon only at the user's sole risk, and the user agrees to indemnify and hold harmless the Department of Natural Resources, its officials, officers and employees from any liability arising out of the use of the data or information provided. | accessInformation: Colorado Parks and Wildlife | copyrightText: Colorado Parks and Wildlife",
-      "attribution": "Colorado Parks & Wildlife",
+      "attribution": "Colorado Parks and Wildlife (COTREX)",
       "geometry_kind": "polygon",
       "name_field": "PropName",
       "id_field": "GlobalID_2",
@@ -5659,8 +5660,8 @@
       "discovered_via": "bcc70dd0:pipeline/reference/org_coverage.json's AVAILABLE_NOT_LOADED places row for this club (coverage audit 2026-10-01, batch b7_long_trails_states), then re-read live on 2026-10-03 for decision 54's wave 1 under lib/user_agent.py's USER_AGENT, robots.txt first (the host answers /robots.txt with 403 'Invalid URL', the ArcGIS Online answer for a path it does not serve, so no rule applies): the layer's metadata, returnCountOnly, the item's licenseInfo and accessInformation, and an attribute-only read of every row for the key.",
       "discovered_date": "2026-10-03",
       "notes": "920 polygon features (returnCountOnly), 10 fields, maxRecordCount 2,000, served in EPSG:102100, layer lastEditDate 2026-08-27, all read 2026-10-03. KEY: `GlobalID_2` is unique and non-null on all 920 rows read 2026-10-03. MART: kind `park`: state parks, state trust lands and wildlife areas with public access, `PropType` the category. Two GlobalID columns: GlobalID_2 is the layer's own and GlobalID a string carried over; both are unique on all 920. CHANGE CHECK: ArcGIS Online, so the layer document's ETag and Last-Modified ('Thu, 27 Aug 2026 14:25:24 GMT' on 2026-10-03) answer a conditional GET; a 304 is FRESH (extract/_kinds.py ArcgisLayer._agol_check).",
-      "reaches_hikers": false,
-      "reaches_hikers_comment": "Left false 2026-10-04 under decision 63, with int_places__club_units reading the table: rule 5 would hold it (no_reuse: 'This map is a product and property of the Colorado Parks and Wildlife', which no decision answers)."
+      "reaches_hikers": true,
+      "reaches_hikers_comment": "True on 2026-10-14 by decisions 63 and 193: decision 193 (the maintainer's poll, 2026-10-14) reads an ownership line on a public GIS item by class, so 'This map is a product and property of the Colorado Parks and Wildlife', the words that held it, publishes, as decision 37 had published the same words on cpw_bear_conflict_areas, whose licence named it. Its place rule is in and tested: `place_kind` 'park', which int_places__club_units lists only for a layer that may publish (its unit test places_club_units_list_a_publishable_layers_parks_and_towns_only), and the layer is CPW's public-access properties only, by its own title. Read live 2026-10-14 under lib/user_agent.py's USER_AGENT: 920 polygons, all 920 named, so up to 920 parks reach places.json, each measured as int_places__resolved measures NY Parks' parks (Measured live; the published count is not)."
     },
     {
       "key": "cpw_property_centroids",
@@ -5669,11 +5670,11 @@
       "kind": "club_arcgis_layer",
       "url": "https://services5.arcgis.com/ttNGmDvKQA7oeDQ3/arcgis/rest/services/CPWAdminData/FeatureServer/13",
       "trust": "authoritative",
-      "steward": "Colorado Parks & Wildlife",
+      "steward": "Colorado Parks and Wildlife",
       "licence": "NOTHING STATED THAT GRANTS OR REFUSES REUSE - the layer's own words are a disclaimer and a credit. Colorado Parks & Wildlife publishes this layer itself, anonymously, on a public ArcGIS endpoint, so it is presumed reusable for OurHike's maps with attribution under decision 21(a) (`public_gis`, pipeline/ELT.md 'Who may publish', rule 3). NOT A LICENCE FROM COLORADO PARKS & WILDLIFE, and never to be rendered as one; its words are quoted verbatim in `terms`.",
       "licence_basis": "public_gis",
       "terms": "Verbatim from the ArcGIS Online item and its service, read 2026-10-03. licenseInfo: This map is a product and property of the Colorado Parks and Wildlife, a division of the Colorado Department of Natural Resources. Care should be taken in interpreting these data. Written documents may accompany this map and should be referenced. The Colorado Department of Natural Resources is not responsible and shall not be liable to the user for damages of any kind arising out of the use of data or information provided by the Department, including the installation of the data or information, its use, or the results obtained from its use. ANY DATA OR INFORMATION PROVIDED BY THE DEPARTMENT OF NATURAL RESOURCES IS PROVIDED \"AS IS\" WITHOUT WARRANTY OF ANY KIND, EITHER EXPRESS OR IMPLIED, INCLUDING, BUT NOT LIMITED TO, THE IMPLIED WARRANTIES OF MECHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE. Data or information provided by the Department of Natural Resources shall be used and relied upon only at the user's sole risk, and the user agrees to indemnify and hold harmless the Department of Natural Resources, its officials, officers and employees from any liability arising out of the use of the data or information provided. | accessInformation: Colorado Parks and Wildlife | copyrightText: Colorado Parks and Wildlife",
-      "attribution": "Colorado Parks & Wildlife",
+      "attribution": "Colorado Parks and Wildlife (COTREX)",
       "geometry_kind": "point",
       "name_field": "PropName",
       "id_field": "GlobalID",
@@ -5683,7 +5684,7 @@
       "discovered_date": "2026-10-03",
       "notes": "1,056 point features (returnCountOnly), 6 fields, maxRecordCount 2,000, served in EPSG:102100, layer lastEditDate 2026-08-27, all read 2026-10-03. KEY: `GlobalID` is unique and non-null on all 1,056 rows read 2026-10-03. MART: NO MART KIND AS IT STANDS: a point per CPW property, public or not (`ManagedPub` says which), 1,056 to the polygon layer's 920. A park as a point; it joins to cpw_managed_properties rather than becoming a place. CHANGE CHECK: ArcGIS Online, so the layer document's ETag and Last-Modified ('Thu, 27 Aug 2026 14:25:24 GMT' on 2026-10-03) answer a conditional GET; a 304 is FRESH (extract/_kinds.py ArcgisLayer._agol_check).",
       "reaches_hikers": false,
-      "reaches_hikers_comment": "Left false 2026-10-04 under decision 63: its row gives no place_kind (the notes' MART line says why it is not a place a hiker names), so int_places__club_units never lists it and nothing of it would reach a phone."
+      "reaches_hikers_comment": "Left false 2026-10-04 under decision 63: its row gives no place_kind (the notes' MART line says why it is not a place a hiker names), so int_places__club_units never lists it and nothing of it would reach a phone. Rule 5 passes it since 2026-10-14 (decision 193 (the maintainer's poll, 2026-10-14) reads an ownership line on a public GIS item by class, so 'This map is a product and property of the Colorado Parks and Wildlife', the words that held it, publishes, as decision 37 had published the same words on cpw_bear_conflict_areas, whose licence named it), and it stays false for the reason above."
     },
     {
       "key": "cotrex_trailheads",
@@ -5694,11 +5695,11 @@
       "not_person_fields": ["manager"],
       "not_person_fields_comment": "extract/_kinds.py's person-shaped backstop reads `manager` as a person's field (PR #1805's review, finding EXD-3). Here it names 223 agencies and ranger districts, by this row's notes (read 2026-10-03).",
       "trust": "authoritative",
-      "steward": "Colorado Parks & Wildlife",
+      "steward": "Colorado Parks and Wildlife",
       "steward_contact": "https://cpw.state.co.us/aboutus/Pages/ContactUs.aspx",
       "licence": "NOTHING THAT REFUSES REUSE. The item's licenseInfo reads, verbatim (HTML tags stripped, read 2026-10-03): 'This map is a product and property of the Colorado Parks and Wildlife, a division of the Colorado Department of Natural Resources. Care should be taken in interpreting these data. Written documents may accompany this map and should be referenced. The Colorado Department of Natural Resources is not responsible and shall not be liable to the user for damages of any kind arising out of the use of data or information provided by the Department, including the installation of the data or information, its use, or the results obtained from its use. ANY DATA OR INFORMATION PROVIDED BY THE DEPARTMENT OF NATURAL RESOURCES IS PROVIDED \"AS IS\" WITHOUT WARRANTY OF ANY KIND, EITHER EXPRESS OR IMPLIED, INCLUDING, BUT NOT LIMITED TO, THE IMPLIED WARRANTIES OF MECHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE. Data or information provided by the Department of Natural Resources shall be used and relied upon only at the user's sole risk, and the user agrees to indemnify and hold harmless the Department of Natural Resources, its officials, officers and employees from any liability arising out of the use of the data or information provided.' accessInformation and copyrightText read 'Colorado Parks and Wildlife'. That is a disclaimer, not a grant and not a refusal, so the layer rests on decision 21a's presumption for a GIS layer an organization publishes itself, anonymously, on a public endpoint (`public_gis`; pipeline/ELT.md, 'Who may publish', rule 3). IT IS NOT A LICENCE FROM CPW and must never be rendered as one. Its clause that the user agrees to 'indemnify and hold harmless the Department of Natural Resources' is a liability line, not a limit on use: decision 71 (the maintainer's poll, 2026-10-04, card Q7).",
       "licence_basis": "public_gis",
-      "attribution": "Colorado Parks & Wildlife (COTREX)",
+      "attribution": "Colorado Parks and Wildlife (COTREX)",
       "terms_verbatim": "This map is a product and property of the Colorado Parks and Wildlife, a division of the Colorado Department of Natural Resources. Care should be taken in interpreting these data. Written documents may accompany this map and should be referenced. The Colorado Department of Natural Resources is not responsible and shall not be liable to the user for damages of any kind arising out of the use of data or information provided by the Department, including the installation of the data or information, its use, or the results obtained from its use. ANY DATA OR INFORMATION PROVIDED BY THE DEPARTMENT OF NATURAL RESOURCES IS PROVIDED \"AS IS\" WITHOUT WARRANTY OF ANY KIND, EITHER EXPRESS OR IMPLIED, INCLUDING, BUT NOT LIMITED TO, THE IMPLIED WARRANTIES OF MECHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE. Data or information provided by the Department of Natural Resources shall be used and relied upon only at the user's sole risk, and the user agrees to indemnify and hold harmless the Department of Natural Resources, its officials, officers and employees from any liability arising out of the use of the data or information provided.",
       "discovered_via": "bcc70dd0:pipeline/reference/org_coverage.json's cotrex points_of_interest row (AVAILABLE_NOT_LOADED in the coverage audit, 2026-10-01), read again live for decision 54's wave 1 on 2026-10-03: robots.txt first, lib/user_agent.py's agent, two seconds or more between requests to one host, and the layer's metadata, returnCountOnly count, item and per-value counts read. Registered by hand.",
       "discovered_date": "2026-10-03",
@@ -5706,8 +5707,8 @@
       "name_field": "name",
       "type_field": "type",
       "notes": "2,585 points, 14 fields, last edited 2026-08-27 (editingInfo, read 2026-10-03), layer 14 of CPWAdminData; the service's other layers were not read. type: Trailhead 2,481, Interpretive Trailhead 104. water: no 2,050, yes 200, seasonally 38, conditional 2, blank 295. manager names 223 agencies and ranger districts. KEY: feature_id, 2,585 distinct of 2,585; GlobalID is unique too. not_available.toml [rmfi.points_of_interest] draws from here.",
-      "reaches_hikers": false,
-      "reaches_hikers_comment": "Left false 2026-10-04 under decision 63, which flips a layer once its rules are in dbt and tested: int_sources__publication's rule 5 would hold it: its unanswered_restrictions read 'no_reuse' on the fixture warehouse (2026-10-04), from 'This map is a product and property of the Colorado Parks and Wildlife', a restriction no decision answers, so flipped it would read publication_rule restrictive_terms_no_decision_answers and stop the build. That goes to the maintainer; its own POI rules are in and tested, so it flips when that is answered. False also keeps export_sources.py from listing the steward as shipping.",
+      "reaches_hikers": true,
+      "reaches_hikers_comment": "True on 2026-10-14 by decisions 63 and 193: decision 193 (the maintainer's poll, 2026-10-14) reads an ownership line on a public GIS item by class, so 'This map is a product and property of the Colorado Parks and Wildlife', the words that held it, publishes, as decision 37 had published the same words on cpw_bear_conflict_areas, whose licence named it. Its own POI rules are in and tested: club_poi_types types 'Trailhead' and 'Interpretive Trailhead' (int_points_of_interest__club_points' unit test club_points_type_by_an_allowlist_and_drop_two_types_that_disagree), and assert_club_poi_rules_read_columns_their_layers_land holds that the layer lands `type`. Read live 2026-10-14 under lib/user_agent.py's USER_AGENT: 2,585 points, Trailhead 2,481 and Interpretive Trailhead 104, every one typed, so up to 2,585 trailheads, before the POI reach gate and dedupe, which nobody has run over them (Measured live; the published count is not).",
       "meta": {
         "cadence": "monthly"
       }
@@ -5719,11 +5720,11 @@
       "kind": "club_arcgis_layer",
       "url": "https://services5.arcgis.com/ttNGmDvKQA7oeDQ3/ArcGIS/rest/services/CPWAdminData/FeatureServer/0",
       "trust": "authoritative",
-      "steward": "Colorado Parks & Wildlife",
+      "steward": "Colorado Parks and Wildlife",
       "steward_contact": "https://cpw.state.co.us/aboutus/Pages/ContactUs.aspx",
       "licence": "NOTHING THAT REFUSES REUSE. The item's licenseInfo reads, verbatim (HTML tags stripped, read 2026-10-03): 'This map is a product and property of the Colorado Parks and Wildlife, a division of the Colorado Department of Natural Resources. Care should be taken in interpreting these data. Written documents may accompany this map and should be referenced. The Colorado Department of Natural Resources is not responsible and shall not be liable to the user for damages of any kind arising out of the use of data or information provided by the Department, including the installation of the data or information, its use, or the results obtained from its use. ANY DATA OR INFORMATION PROVIDED BY THE DEPARTMENT OF NATURAL RESOURCES IS PROVIDED \"AS IS\" WITHOUT WARRANTY OF ANY KIND, EITHER EXPRESS OR IMPLIED, INCLUDING, BUT NOT LIMITED TO, THE IMPLIED WARRANTIES OF MECHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE. Data or information provided by the Department of Natural Resources shall be used and relied upon only at the user's sole risk, and the user agrees to indemnify and hold harmless the Department of Natural Resources, its officials, officers and employees from any liability arising out of the use of the data or information provided.' accessInformation reads 'Colorado Parks and Wildlife'; the layer's copyrightText credits named CPW technicians and GIS staff, whose names are not copied here. That is a disclaimer, not a grant and not a refusal, so the layer rests on decision 21a's presumption for a GIS layer an organization publishes itself, anonymously, on a public endpoint (`public_gis`; pipeline/ELT.md, 'Who may publish', rule 3). IT IS NOT A LICENCE FROM CPW and must never be rendered as one. Its clause that the user agrees to 'indemnify and hold harmless the Department of Natural Resources' is a liability line, not a limit on use: decision 71 (the maintainer's poll, 2026-10-04, card Q7).",
       "licence_basis": "public_gis",
-      "attribution": "Colorado Parks & Wildlife (COTREX)",
+      "attribution": "Colorado Parks and Wildlife (COTREX)",
       "terms_verbatim": "This map is a product and property of the Colorado Parks and Wildlife, a division of the Colorado Department of Natural Resources. Care should be taken in interpreting these data. Written documents may accompany this map and should be referenced. The Colorado Department of Natural Resources is not responsible and shall not be liable to the user for damages of any kind arising out of the use of data or information provided by the Department, including the installation of the data or information, its use, or the results obtained from its use. ANY DATA OR INFORMATION PROVIDED BY THE DEPARTMENT OF NATURAL RESOURCES IS PROVIDED \"AS IS\" WITHOUT WARRANTY OF ANY KIND, EITHER EXPRESS OR IMPLIED, INCLUDING, BUT NOT LIMITED TO, THE IMPLIED WARRANTIES OF MECHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE. Data or information provided by the Department of Natural Resources shall be used and relied upon only at the user's sole risk, and the user agrees to indemnify and hold harmless the Department of Natural Resources, its officials, officers and employees from any liability arising out of the use of the data or information provided.",
       "discovered_via": "bcc70dd0:pipeline/reference/org_coverage.json's cotrex points_of_interest row (AVAILABLE_NOT_LOADED in the coverage audit, 2026-10-01), read again live for decision 54's wave 1 on 2026-10-03: robots.txt first, lib/user_agent.py's agent, two seconds or more between requests to one host, and the layer's metadata, returnCountOnly count, item and per-value counts read. Registered by hand.",
       "discovered_date": "2026-10-03",
@@ -5735,8 +5736,8 @@
       ],
       "person_fields_comment": "COMMENTS, 722 distinct values, names the CPW staff behind points ('per …', 'via … kmz', 'Imported from … from …'; grouped 2026-10-03), so it is never asked for.",
       "notes": "5,520 points, 39 fields, last edited 2026-08-27 (editingInfo, read 2026-10-03), layer 0 of CPWAdminData. d_FAC_TYPE, the decoded type: Parking 1,831, Info Source 739, Restroom 643, Picnic Area 283, Campground 262, Gate 191, Boat Ramp 171, Campsite 146, Other 114, Fishing 93, RV Campground 77, Wildlife Watching Area 72, Hunting Blind 70, Scenic Overlook 51, Drinking Water 45, Cabin 35, Yurt 21, Group Campground 15 and 39 more. Each coded column has a decoded d_ twin. KEY: GlobalID_2, 5,520 distinct of 5,520; FAC_ID is not (1,449).",
-      "reaches_hikers": false,
-      "reaches_hikers_comment": "Left false 2026-10-04 under decision 63, which flips a layer once its rules are in dbt and tested: int_sources__publication's rule 5 would hold it: its unanswered_restrictions read 'no_reuse' on the fixture warehouse (2026-10-04), from 'This map is a product and property of the Colorado Parks and Wildlife', a restriction no decision answers, so flipped it would read publication_rule restrictive_terms_no_decision_answers and stop the build. That goes to the maintainer; its own POI rules are in and tested, so it flips when that is answered. False also keeps export_sources.py from listing the steward as shipping.",
+      "reaches_hikers": true,
+      "reaches_hikers_comment": "True on 2026-10-14 by decisions 63 and 193: decision 193 (the maintainer's poll, 2026-10-14) reads an ownership line on a public GIS item by class, so 'This map is a product and property of the Colorado Parks and Wildlife', the words that held it, publishes, as decision 37 had published the same words on cpw_bear_conflict_areas, whose licence named it. Its own POI rules are in and tested: club_poi_types types seven d_FAC_TYPE values (club_points_type_by_an_allowlist_and_drop_two_types_that_disagree), and layer_rules gives 'Drinking Water' decision 65's season caution, clears it where d_WINTER_S reads 'Open' and leaves off a tap it marks 'Closed' (season_cautions_mark_a_plumbed_tap_unconfirmed_with_a_season_caution; assert_club_poi_rules_read_columns_their_layers_land). Read live 2026-10-14 under lib/user_agent.py's USER_AGENT: 5,520 points, 2,993 of them typed (Parking 1,831, Restroom 643, Campground 262, Campsite 146, Group Campground 15, Scenic Overlook 51, Drinking Water 45), so up to 2,993 points before the POI reach gate and dedupe (Measured live; the published count is not). The 45 taps read d_WINTER_S 'Unknown' 33, blank 11 and 'Open' 1, none 'Closed', so 44 carry the season caution, all 45 at low confidence. The typed rows' d_CONDITIO reads blank 2,404, 'Unknown' 336, 'Good' 190, 'Excellent' 35, 'Fair' 15 and 'Poor' 13: no closed or planned value for a status rule to read. COMMENTS stays out (person_fields).",
       "meta": {
         "cadence": "monthly"
       }
@@ -9372,7 +9373,7 @@
       "discovered_date": "2026-10-03",
       "notes": "1,630 polylines (returnCountOnly), 50 fields, served in EPSG:26986, maxRecordCount 2,000, hasZ false, dataLastEditDate 2024-10-07, all read 2026-10-03. Extent in EPSG:4326 (returnExtentOnly): lat 42.19 to 42.25, lon -71.14 to -71.03, inside the eastern box. Statistics fingerprint, one query: count(FID) 1,630, max(FID) 1,630, sum(Shape_Leng) 193,248.7525 in the layer's own units. ILLEGAL marks unofficial paths and needs filtering before anything draws; STATUS, CONDITION and TRAIL_MARK grade each line. The layer serves the Blue Hills' permitted archery hunt (the item's description: Monday to Thursday, 2 to 25 November), which is a closure-shaped fact this layer does not itself carry.",
       "reaches_hikers": false,
-      "reaches_hikers_comment": "Left false 2026-10-04 under decisions 63 and 64, with int_trail_lines__club_published reading the table: rule 5 would hold it (no_reuse and an unclassified restriction in its terms), and ILLEGAL, STATUS and PLANNING's values were never read."
+      "reaches_hikers_comment": "Left false 2026-10-04 under decisions 63 and 64, with int_trail_lines__club_published reading the table, and still false on 2026-10-14. Rule 5 passes it since 2026-10-14: decision 193 (the maintainer's poll, 2026-10-14) reads EEA's and DCR's words by class: 'These data were created for planning purposes' is a scope note, 'represent only the approximate relative location' an accuracy line, and 'protected by copyright. Permission is granted to copy and use the materials herein' an ownership line beside its grant, so nothing in them holds a layer. But ILLEGAL, STATUS and PLANNING's values were never read, and ILLEGAL marks unofficial paths, which no rule leaves out yet."
     },
     {
       "key": "dcr_roads_and_trails",
@@ -9380,6 +9381,7 @@
       "provider": "MA DCR",
       "kind": "club_arcgis_layer",
       "url": "https://services1.arcgis.com/7iJyYTjCtKsZS1LR/arcgis/rest/services/DCR_Roads_and_Trails/FeatureServer/0",
+      "trust": "authoritative",
       "steward": "Massachusetts Department of Conservation and Recreation",
       "licence": "NOTHING STATED: the item's licenseInfo reads, whole, 'None.' (read 2026-10-03); its accessInformation names the Massachusetts Department of Conservation and Recreation.",
       "licence_basis": "public_gis",
@@ -9415,8 +9417,8 @@
       "name_field": "NAME",
       "type_field": "TYPE",
       "notes": "33 points, 37 fields, last edited 2026-08-14 (editingInfo, read 2026-10-03), with capacity, surface and condition per lot (PRKNGCAPAC, PRKNGSURF, PRKNGCOND). TYPE: Parking Area 21, Road Turn Out 3, blank 9. KEY: GlobalID, 33 distinct of 33. DCR's own org, not MassGIS's server: blue_hills/ draws from here, and massgis/ is the folder Massachusetts' state layers sit in.",
-      "reaches_hikers": false,
-      "reaches_hikers_comment": "Left false 2026-10-04 under decision 63, which flips a layer once its rules are in dbt and tested: int_sources__publication's rule 5 would hold it: its unanswered_restrictions read 'unclassified' on the fixture warehouse (2026-10-04), from EEA's and DCR's terms ('These data were created for planning purposes'), which no phrase explains, a restriction no decision answers, so flipped it would read publication_rule restrictive_terms_no_decision_answers and stop the build. That goes to the maintainer; its own POI rules are in and tested, so it flips when that is answered. False also keeps export_sources.py from listing the steward as shipping.",
+      "reaches_hikers": true,
+      "reaches_hikers_comment": "True on 2026-10-14 by decisions 63 and 193: decision 193 (the maintainer's poll, 2026-10-14) reads EEA's and DCR's words by class: 'These data were created for planning purposes' is a scope note, 'represent only the approximate relative location' an accuracy line, and 'protected by copyright. Permission is granted to copy and use the materials herein' an ownership line beside its grant, so nothing in them holds a layer. Its own POI rule is in and tested: a layer-wide club_poi_types row types every point parking (club_points_type_by_an_allowlist_and_drop_two_types_that_disagree). Read live 2026-10-14 under lib/user_agent.py's USER_AGENT: 33 points (TYPE 'Parking Area' 21, 'Road Turn Out' 3, blank 9), so up to 33 parking points before the POI reach gate and dedupe (Measured live; the published count is not).",
       "meta": {
         "cadence": "monthly"
       }
@@ -9440,8 +9442,8 @@
       "name_field": "INT_NUMBER",
       "type_field": "TYPE",
       "notes": "262 points, 36 fields, last edited 2024-09-27 (editingInfo, read 2026-10-03): the numbered markers hikers navigate the Blue Hills by (the coverage audit found Friends of the Blue Hills' hikes citing 'marker 4234'), with each number on the 1984, 2016, 2018, 2019 and 2020 maps. TYPE: Intersection 248, Trailhead 4, blank 10. KEY: GlobalID, 262 distinct of 262.",
-      "reaches_hikers": false,
-      "reaches_hikers_comment": "Left false 2026-10-04 under decision 63, which flips a layer once its rules are in dbt and tested: int_sources__publication's rule 5 would hold it: its unanswered_restrictions read 'unclassified' on the fixture warehouse (2026-10-04), from EEA's and DCR's terms ('These data were created for planning purposes'), which no phrase explains, a restriction no decision answers, so flipped it would read publication_rule restrictive_terms_no_decision_answers and stop the build. That goes to the maintainer; its own POI rules are in and tested, so it flips when that is answered. False also keeps export_sources.py from listing the steward as shipping.",
+      "reaches_hikers": true,
+      "reaches_hikers_comment": "True on 2026-10-14 by decisions 63 and 193: decision 193 (the maintainer's poll, 2026-10-14) reads EEA's and DCR's words by class: 'These data were created for planning purposes' is a scope note, 'represent only the approximate relative location' an accuracy line, and 'protected by copyright. Permission is granted to copy and use the materials herein' an ownership line beside its grant, so nothing in them holds a layer. Its own POI rule is in and tested: club_poi_types types TYPE 'Trailhead' only, and a numbered intersection is no POI type (club_points_type_by_an_allowlist_and_drop_two_types_that_disagree; assert_club_poi_rules_read_columns_their_layers_land). Read live 2026-10-14 under lib/user_agent.py's USER_AGENT: 262 points, 'Intersection' 248, blank 10 and 'Trailhead' 4, so it adds up to 4 trailheads; the 248 numbered markers wait for a POI type (Measured live).",
       "meta": {
         "cadence": "monthly"
       }
@@ -9795,7 +9797,7 @@
       "discovered_date": "2026-10-03",
       "notes": "2,558 polylines (returnCountOnly), 25 fields, served in EPSG:3857, maxRecordCount 200, hasZ false, no editingInfo, all read 2026-10-03. Extent in EPSG:4326 (returnExtentOnly): lat 45.40 to 45.65, lon -122.88 to -122.38, outside the eastern box of dbt/macros/lands_outside_its_region.sql, inside its `national` box. Statistics fingerprint, one query: count(OBJECTID) 2,558, max(OBJECTID) 2,558, sum(Shape_Length) 899,120.3827 in the layer's own units. On-prem by host with no maintained date column, so the change check answers UNKNOWN and the layer is read whole each month. maxRecordCount 200, so a read takes 13 pages. Forest Park is PROPERTYID 127 (253 segments per the coverage audit). TYPE separates Trail/Path from fire lanes and retired roads; one row has no geometry.",
       "reaches_hikers": false,
-      "reaches_hikers_comment": "Left false 2026-10-04 under decisions 63 and 64, with int_trail_lines__club_published reading the table: TYPE separates trails from fire lanes and retired roads, and its STATUS values were never read."
+      "reaches_hikers_comment": "Left false 2026-10-04 under decisions 63 and 64, with int_trail_lines__club_published reading the table: TYPE separates trails from fire lanes and retired roads, and its STATUS values were never read. On 2026-10-14 one web search for the City of Portland Data Distribution Policy's text (decision 193) found only city layers' metadata citing it (portlandmaps.com MapServer metadata pages), not the policy, so the row also waits for that text, which decision 38 would read."
     },
     {
       "key": "ppr_trails",
@@ -9845,6 +9847,7 @@
       "provider": "CTC",
       "kind": "club_arcgis_layer",
       "url": "https://services3.arcgis.com/GOLEtC5IsWKPPb0t/arcgis/rest/services/PUBLIC_CTSST_2020_gdb/FeatureServer/10",
+      "trust": "authoritative",
       "steward": "Cumberland Trail Conference",
       "licence": "NOTHING STATED: the service's items carry an empty licenseInfo, accessInformation and copyrightText (read 2026-10-03). Public and anonymous on the CTSST ArcGIS Online organization, so decision 21a's presumption is the basis.",
       "licence_basis": "public_gis",
@@ -9940,6 +9943,7 @@
       "provider": "CTC",
       "kind": "club_arcgis_layer",
       "url": "https://services3.arcgis.com/GOLEtC5IsWKPPb0t/arcgis/rest/services/PUBLIC_CTSST_2020_gdb/FeatureServer/18",
+      "trust": "authoritative",
       "steward": "Cumberland Trail Conference",
       "licence": "NOTHING STATED: the service's items carry an empty licenseInfo, accessInformation and copyrightText (read 2026-10-03). Public and anonymous on the CTSST ArcGIS Online organization, so decision 21a's presumption is the basis.",
       "licence_basis": "public_gis",
@@ -9959,6 +9963,7 @@
       "provider": "CTC",
       "kind": "club_arcgis_layer",
       "url": "https://services3.arcgis.com/GOLEtC5IsWKPPb0t/arcgis/rest/services/PUBLIC_CTSST_2020_gdb/FeatureServer/19",
+      "trust": "authoritative",
       "steward": "Cumberland Trail Conference",
       "licence": "NOTHING STATED: the service's items carry an empty licenseInfo, accessInformation and copyrightText (read 2026-10-03). Public and anonymous on the CTSST ArcGIS Online organization, so decision 21a's presumption is the basis.",
       "licence_basis": "public_gis",
@@ -10205,7 +10210,7 @@
       "type_field": "Feature_Type",
       "notes": "423 points, 6 fields, last edited 2026-03-31 (editingInfo, read 2026-10-03). Three coded fields, each with its domain's labels: Feature_Type river/stream 207, drinking fountain 103, water pump 97, lake 7, spring 3, artesian well 3, other 3; Potability Treatment required 217, Potable 198, No water 7, Unknown 1; Reliability unknown 274, intermittent/seasonal 86, permanent 62, and one row coded 0, which the domain does not define. KEY: no GlobalID; OBJECTID is unique by construction and nothing else is (Description 253 distinct with 119 null). The layer says itself that it 'is not comprehensive', which a card has to carry. THE VIEW CALLED 'Potable Water' IS NOT POTABLE WATER: IAT_Potable_Water/FeatureServer/0 answered all 423 rows, Treatment required ones included (returnCountOnly, 2026-10-03), so nothing may read potability from which service a point came through; Potability is the only answer.",
       "reaches_hikers": false,
-      "reaches_hikers_comment": "Left false 2026-10-04 under decision 63, which flips a layer once its rules are in dbt and tested: the layer's own description says 'some points should not be shared publicly (see attribute field definitions)', and no field this pipeline loads says which, so no rule can keep those points off a phone. False also keeps export_sources.py from listing the steward as shipping.",
+      "reaches_hikers_comment": "Left false 2026-10-04 under decision 63, which flips a layer once its rules are in dbt and tested: the layer's own description says 'some points should not be shared publicly (see attribute field definitions)', and no field this pipeline loads says which, so no rule can keep those points off a phone. False also keeps export_sources.py from listing the steward as shipping. Still false on 2026-10-14 under decision 193 (the maintainer's poll, 2026-10-14): withholding features nobody can pick out holds a layer, and no field says which points 'should not be shared publicly'. A letter the maintainer sends asks IATA which.",
       "meta": {
         "cadence": "monthly"
       }
@@ -10365,6 +10370,7 @@
       "provider": "FLTC",
       "kind": "club_arcgis_layer",
       "url": "https://services7.arcgis.com/GwV4OWqOyYWWUpBK/arcgis/rest/services/FLTmain/FeatureServer/1",
+      "trust": "authoritative",
       "steward": "Finger Lakes Trail Conference",
       "licence": "NOTHING STATED: the item's licenseInfo, accessInformation and copyrightText are empty (read 2026-10-03). On FLTC's own ArcGIS Online organization, in the public web map 'FLT System Master' that its website's map embeds, so decision 21a's presumption is the basis. The website itself was not fetched: its robots.txt disallows /FLTC/, and nothing here needed it.",
       "licence_basis": "public_gis",
@@ -10386,6 +10392,7 @@
       "provider": "FLTC",
       "kind": "club_arcgis_layer",
       "url": "https://services7.arcgis.com/GwV4OWqOyYWWUpBK/arcgis/rest/services/NonFLTTrails_/FeatureServer/4",
+      "trust": "authoritative",
       "steward": "Finger Lakes Trail Conference",
       "licence": "NOTHING STATED: the item's licenseInfo, accessInformation and copyrightText are empty (read 2026-10-03). On FLTC's own ArcGIS Online organization, in the public web map 'FLT System Master' that its website's map embeds, so decision 21a's presumption is the basis. The website itself was not fetched: its robots.txt disallows /FLTC/, and nothing here needed it.",
       "licence_basis": "public_gis",
@@ -12420,10 +12427,10 @@
       "kind": "club_arcgis_layer",
       "url": "https://services2.arcgis.com/McQ0OlIABe29rJJy/arcgis/rest/services/Trails/FeatureServer/0",
       "steward": "Oregon Metro (RLIS)",
-      "licence": "AN OPEN-DATA LICENCE NOT READ IN FULL: the item's licenseInfo reads 'This database and GIS data are made available under the RLIS Open Database End User License Agreement. See https://rlisdiscovery.oregonmetro.gov/pages/open-database-license.' (terms_verbatim). That page is drawn by script and its text did not come back to a plain read (one request, its robots.txt's Crawl-delay of 60 s honoured, 2026-10-03), so the agreement's conditions are unread; it goes to the maintainer (rule 5's last case). The name suggests an ODbL-style share-alike, @unvalidated.",
-      "licence_basis": "public_gis",
+      "licence": "STATED, AND A GRANT ON CONDITIONS: the item's licenseInfo (terms_verbatim) names the RLIS Open Database End User License Agreement, read in full on 2026-10-14 through its Hub page item 43a73dbe46e644a9a8204afc4cbeb525 ('Revised February 2023'). Metro grants 'a limited, worldwide, royalty-free, non-exclusive, revocable license to: Copy, publish, distribute, and share the Data; Extract, modify, and adapt the Data; and Combine it with other data, or include it in your own product or application'. Its conditions, which decision 38 publishes honouring: Metro's attribution statement with a hyperlink to the agreement (this row's `attribution`, verbatim); no use 'that suggests any official status or that Metro endorses you or your use of the Data'; no further restrictions on the rights it grants; no sublicensing ('Each time you communicate the Data, in whole or in part, Metro offers the recipient a license to the Data on the same terms and conditions as this License'). It excludes personal data, which never loads (rule 8). Its warranty disclaimer and hold-harmless clause are a warranty line and a liability line (decision 71), and it calls itself compatible with CC BY 4.0 and the Open Data Commons Attribution License. So `stated_by_org`: the organization's own licence permits this use, which decision 193 (the maintainer's poll, 2026-10-14) reads by class: a licence granting reuse on conditions publishes, honouring them.",
+      "licence_basis": "stated_by_org",
       "terms_verbatim": "This database and GIS data are made available under the RLIS Open Database End User License Agreement. See https://rlisdiscovery.oregonmetro.gov/pages/open-database-license.",
-      "attribution": "Oregon Metro (RLIS)",
+      "attribution": "Regional Land Information System data are a product of Metro and made publicly available according to the license agreement found in https://rlisdiscovery.oregonmetro.gov/pages/open-database-license",
       "name_field": "TRAILNAME",
       "key_fields": ["geometry", "LENGTH"],
       "key_comment": "geometry with LENGTH: 28,834 of 28,834 (measured 2026-10-03 over every row and vertex). Geometry alone is 28,831: three shapes carry two rows each that differ only in LENGTH, which is null on 268 rows. TRAILID is unique on 28,831. The weakest key in this wave after Baywide's, and the place a re-measure should start.",
@@ -12435,7 +12442,7 @@
       "discovered_date": "2026-10-03",
       "notes": "28,834 polylines (returnCountOnly), 25 fields, served in EPSG:2913, maxRecordCount 2,000, hasZ false, dataLastEditDate 2026-08-07, all read 2026-10-03. Extent in EPSG:4326 (returnExtentOnly): lat 44.67 to 46.08, lon -123.97 to -121.39, outside the eastern box of dbt/macros/lands_outside_its_region.sql, inside its `national` box. Statistics fingerprint, one query: count(FID) 28,834, max(FID) 30,494, sum(Shape__Length) 19,914,981.9123 in the layer's own units. Every agency's trails across the Portland region (extent lat 44.67 to 46.08): AGENCYNAME (Portland Parks and Recreation 5,355; Unknown 5,124; Home Owner Association 2,605), STATUS, HIKE, and SHAREDNAME (Forest Park Trail 408). LAST_EDIT is a date and loads.",
       "reaches_hikers": false,
-      "reaches_hikers_comment": "Left false 2026-10-04 under decisions 63 and 64, with int_trail_lines__club_published reading the table: rule 5 would hold it (an unclassified restriction in its terms), and its STATUS values were never read (RLIS's trails layer carries planned trails beside built ones)."
+      "reaches_hikers_comment": "Left false 2026-10-04 under decisions 63 and 64, and still false on 2026-10-14, now for a use rule alone. Rule 5 passes it: decision 193 reads its licenseInfo's RLIS licence as a licence granting reuse on conditions, which decision 38 answers with the conditions recorded in `licence`. Its STATUS, read live 2026-10-14 under lib/user_agent.py's USER_AGENT: 'Open' 21,896, 'Restricted_Private' 3,896, 'Planned' 1,100, 'Conceptual' 986, 'Open_Fee' 464, 'On-Street' 437, 'Decommissioned' 30, 'Under construction' 23 and 'Unknown' 2 of 28,834. layer_rules keeps 'Open' and 'Open_Fee' alone (22,360 lines), but that status rule cannot keep walkable trail alone: 359 of those lines are paddling routes (TRLSURFACE 'Water', HIKE 'N/A', WCRAFT_NON 'Yes') and 56 say HIKE 'No'. A use rule keeping HIKE 'Yes' would leave 21,851 open lines (Measured on the same read), and nobody has reviewed one yet."
     },
     {
       "key": "gmc_trail_master",
@@ -12443,6 +12450,7 @@
       "provider": "GMC",
       "kind": "club_arcgis_layer",
       "url": "https://services8.arcgis.com/kClE0vHJkIEmhQ53/arcgis/rest/services/TRAIL_MASTER/FeatureServer/0",
+      "trust": "authoritative",
       "steward": "Green Mountain Club",
       "licence": "NOTHING STATED: the item's licenseInfo is empty (read 2026-10-03, as the coverage audit read it). On GMC's own ArcGIS Online organization, so decision 21a's presumption is the basis.",
       "licence_basis": "public_gis",
@@ -12612,6 +12620,7 @@
       "steward": "Indiana Department of Natural Resources",
       "licence": "A DISCLAIMER WITH A CREDIT: the portal item's licenseInfo is an 'AS-IS' disclaimer ending 'Credit should be given to the Indiana Department of Natural Resources.' (terms_verbatim, read 2026-10-03 from gisdata.in.gov's portal item 1a512661391144fe851e35db64227c94). The credit is a condition (decision 38) and the attribution carries it.",
       "licence_basis": "public_gis",
+      "terms": "The layer's own description, its service metadata read live 2026-10-14 under lib/user_agent.py's USER_AGENT (HTML tags stripped), verbatim: 'Read-only view of DNR Trails. This dataset contains polylines and attributes of public, off-road recreation and transportation trails in Indiana. It includes trails managed by federal, state, and local governments, as well as non-government organizations. The dataset was developed for the purpose of aiding outdoor recreation planners and providers and transportation planners, and to disseminate trails information to the public. IT IS NOT INTENDED TO BE USED FOR ON-THE-GROUND NAVIGATION. It includes trails that are open, under development, planned, and potential; please check the STATUS field.'",
       "terms_verbatim": "This service, including its underlying data, is distributed “AS-IS” without warranties of any kind, either expressed or implied, including but not limited to warranties of suitability of a particular purpose or use. The data are graphical representations and are for reference purposes only. They are not to be construed as a legal document or survey instrument. The Indiana Department of Natural Resources assumes no liability. A detailed on-the-ground survey and historical analysis of individual features may differ from these data. Credit should be given to the Indiana Department of Natural Resources.",
       "attribution": "Indiana Department of Natural Resources",
       "name_field": "trailname",
@@ -12630,7 +12639,7 @@
       "discovered_date": "2026-10-03",
       "notes": "5,496 polylines (returnCountOnly), 44 fields, served in EPSG:26916, maxRecordCount 1,000, hasZ false, no editingInfo, all read 2026-10-03. Extent in EPSG:4326 (returnExtentOnly): lat 37.81 to 41.80, lon -88.05 to -84.72, inside the eastern box. Statistics fingerprint, one query: count(objectid) 5,496, max(objectid) 6,363, sum(SHAPE__Length) 13,957,347.0956 in the layer's own units. On-prem by host, so the change check is the statistics fingerprint with max(editdate) (freshness.field). Statewide: segname LIKE '%KNOBSTONE%' returns 4 rows and '%TECUMSEH%' 6 (coverage audit). A view on Indiana's own ArcGIS Enterprise, slow to answer: one attribute page timed out at 90 s on 2026-10-03 and answered on a retry.",
       "reaches_hikers": false,
-      "reaches_hikers_comment": "Left false 2026-10-04 under decisions 63 and 64, with int_trail_lines__club_published reading the table: rule 5 would hold it (an unclassified restriction in its terms)."
+      "reaches_hikers_comment": "Left false 2026-10-04 under decisions 63 and 64, and still false on 2026-10-14, for two reasons. Decision 193 (the maintainer's poll, 2026-10-14) reads its licenseInfo's 'distributed “AS-IS”' as the warranty line it is, but the layer's own description, quoted in `terms` and read live that day, says 'IT IS NOT INTENDED TO BE USED FOR ON-THE-GROUND NAVIGATION': words forbidding a use the app makes, which decision 193 keeps as a hold (decision 38's cannot_be_met class, as BMECC's and CFPA's words are). No earlier read had seen them, the research of 2026-10-14 included. And its STATUS is not open throughout, whatever the layer's name says: 'Open' 4,147, 'Planned' 750, 'Potential' 524, 'Under Development' 73 and 'Under Construction' 2 of 5,496 (read live 2026-10-14 under lib/user_agent.py's USER_AGENT), so it also waits for a status rule that keeps the open lines alone."
     },
     {
       "key": "octa_hastings_cutoff_route",
@@ -13438,6 +13447,7 @@
       "provider": "TPWD",
       "kind": "club_arcgis_layer",
       "url": "https://tpwd.texas.gov/arcgis/rest/services/Parks/TexasStateParksTrails/MapServer/0",
+      "trust": "authoritative",
       "steward": "Texas Parks and Wildlife Department",
       "licence": "PROFIT BARRED, PUBLISHED UNDER DECISION 36: the coverage audit read item 876c319bff684aa4ac92e9e3e7fc3b8c's licenseInfo on 2026-10-01 as ending 'This data is not intended to be used for profit.', and decision 36 publishes TPWD's layers as non-commercial use. The map service itself states nothing on its layer (read 2026-10-03). Its description warns 'Any trails may be closed or re-routed without warning.'",
       "licence_basis": "public_gis",
@@ -13471,7 +13481,7 @@
       "type_field": "TYPE",
       "notes": "32 points, 14 fields, last edited 2026-09-11 (editingInfo, read 2026-10-03). TYPE: campsite 16, shelter 16. STATUS open 31, null 1; SHOW_PUBLIC yes on all 32; AT and NET flag the sites on the A.T. and the New England Trail; MAINT_ORG names bodies (AMC 17, CT DEEP 11 under three spellings, CFPA 2 and two others), not people. KEY: GlobalID, 32 distinct of 32. The A.T. sites are also in ATC's shelters and campsites: independent datasets of the same ground, deduplicated in dbt. The licence text says 'not intended to be use for navigation', which a disclaimer of fitness rather than a refusal.",
       "reaches_hikers": false,
-      "reaches_hikers_comment": "Left false 2026-10-04 under decision 63, which flips a layer once its rules are in dbt and tested: int_sources__publication's rule 5 would hold it: its unanswered_restrictions read 'purpose_limited, unclassified' on the fixture warehouse (2026-10-04), from 'for informational and planning purposes only. This map is not intended to be use for navigation', a restriction no decision answers, so flipped it would read publication_rule restrictive_terms_no_decision_answers and stop the build. That goes to the maintainer; its own POI rules are in and tested, so it flips when that is answered. False also keeps export_sources.py from listing the steward as shipping.",
+      "reaches_hikers_comment": "Left false 2026-10-04 under decision 63, which flips a layer once its rules are in dbt and tested, and still false on 2026-10-14. int_sources__publication's rule 5 holds it on 'This map is not intended to be use for navigation': words forbidding a use the app makes, which decision 38 holds and decision 193 (the maintainer's poll, 2026-10-14) keeps as a hold, read as `cannot_be_met`. Until that day the phrase missed the typo 'to be use', so rule 5 named the wrong classes ('purpose_limited, unclassified'); its 'for informational and planning purposes only' is a scope note under decision 193. Its own POI rules are in and tested, so it flips if CFPA's answer to a letter the maintainer sends lifts the navigation line. False also keeps export_sources.py from listing the steward as shipping.",
       "meta": {
         "cadence": "monthly"
       }
@@ -13496,7 +13506,7 @@
       "type_field": "TYPE",
       "notes": "365 points, 11 fields, last edited 2026-09-25 (editingInfo, read 2026-10-03). TYPE: shoulder 199, lot 166; STATUS open and SHOW_PUBLIC yes on all 365; SPACES per point. KEY: GlobalID, 365 distinct of 365.",
       "reaches_hikers": false,
-      "reaches_hikers_comment": "Left false 2026-10-04 under decision 63, which flips a layer once its rules are in dbt and tested: int_sources__publication's rule 5 would hold it: its unanswered_restrictions read 'purpose_limited, unclassified' on the fixture warehouse (2026-10-04), from 'for informational and planning purposes only. This map is not intended to be use for navigation', a restriction no decision answers, so flipped it would read publication_rule restrictive_terms_no_decision_answers and stop the build. That goes to the maintainer; its own POI rules are in and tested, so it flips when that is answered. False also keeps export_sources.py from listing the steward as shipping.",
+      "reaches_hikers_comment": "Left false 2026-10-04 under decision 63, which flips a layer once its rules are in dbt and tested, and still false on 2026-10-14. int_sources__publication's rule 5 holds it on 'This map is not intended to be use for navigation': words forbidding a use the app makes, which decision 38 holds and decision 193 (the maintainer's poll, 2026-10-14) keeps as a hold, read as `cannot_be_met`. Until that day the phrase missed the typo 'to be use', so rule 5 named the wrong classes ('purpose_limited, unclassified'); its 'for informational and planning purposes only' is a scope note under decision 193. Its own POI rules are in and tested, so it flips if CFPA's answer to a letter the maintainer sends lifts the navigation line. False also keeps export_sources.py from listing the steward as shipping.",
       "meta": {
         "cadence": "monthly"
       }
@@ -13668,10 +13678,10 @@
       "trust": "authoritative",
       "steward": "Ozark Highlands Trail Association",
       "steward_contact": "https://www.ozarkhighlandstrail.com/",
-      "licence": "PUBLIC GIS PRESUMPTION (decision 21a): the club's own GIS file, served anonymously on a public URL its website links, which states no licence of its own. It is the maintainer's reading, NOT A GRANT FROM THE ORGANIZATION; publication is decided in int_sources__publication. The coverage audit read the map captioned \"For illustrative purposes only\" (2026-10-01), so it never outranks USFS's line. www.google.com's robots.txt, read 2026-10-04T07:29:20Z under lib/user_agent.py's USER_AGENT: `User-agent: *` has `Disallow: /maps/` and the longer `Allow: /maps/d/`, which wins for /maps/d/kml (RFC 9309's longest match). Google's terms, as decision 53's inventory quoted them from https://policies.google.com/terms (fmst_helene_status' row): forbids \"using automated means to access content from any of our services in violation of the machine-readable instructions on our web pages (for example, robots.txt files that disallow crawling, training, or other activities)\", which that robots.txt does not do for this path.",
+      "licence": "PUBLIC GIS PRESUMPTION (decision 21a): the club's own GIS file, served anonymously on a public URL its website links, which states no licence of its own. It is the maintainer's reading, NOT A GRANT FROM THE ORGANIZATION; publication is decided in int_sources__publication. The coverage audit read the map captioned \"For illustrative purposes only\" (2026-10-01), so it never outranks USFS's line. The website's footer, ozarkhighlandstrail.com read 2026-10-04, is \"© Copyright 2026 OHTA\", with no terms page linked (decision 53's inventory, batch 2, ohta_trail_alerts' row). Decision 193 (the maintainer's poll, 2026-10-14) keeps a website's terms the website's (decision 172), so the footer is quoted here rather than in `terms`, and reads the caption as a scope note. www.google.com's robots.txt, read 2026-10-04T07:29:20Z under lib/user_agent.py's USER_AGENT: `User-agent: *` has `Disallow: /maps/` and the longer `Allow: /maps/d/`, which wins for /maps/d/kml (RFC 9309's longest match). Google's terms, as decision 53's inventory quoted them from https://policies.google.com/terms (fmst_helene_status' row): forbids \"using automated means to access content from any of our services in violation of the machine-readable instructions on our web pages (for example, robots.txt files that disallow crawling, training, or other activities)\", which that robots.txt does not do for this path.",
       "licence_basis": "public_gis",
       "attribution": "Ozark Highlands Trail Association",
-      "terms": "ozarkhighlandstrail.com footer, read 2026-10-04: \"© Copyright 2026 OHTA\"; no terms page is linked (decision 53's inventory, batch 2, ohta_trail_alerts' row). The map's caption, as the coverage audit read it: \"For illustrative purposes only\".",
+      "terms": "The map's caption, as the coverage audit read it (2026-10-01): \"For illustrative purposes only\". Its KML export, read live 2026-10-14 under lib/user_agent.py's USER_AGENT, carries no description. The website's footer is the website's own (decision 172) and is not quoted here.",
       "freshness": {
         "kind": "per_file_validator",
         "url": "https://www.google.com/maps/d/kml?mid=1T9D3RqcVbXKh8XFmVGrJFF7C6c7wH00&forcekml=1",
@@ -13685,8 +13695,8 @@
       "discovered_via": "bcc70dd0:pipeline/reference/org_coverage.json's AVAILABLE_NOT_LOADED row for this club (coverage audit 2026-10-01), the starting list for decision 54's waves 2 and 3, then read live on 2026-10-04 under lib/user_agent.py's USER_AGENT, robots.txt first, two seconds or more between requests to one host: every file whole, its validators by HEAD, and every feature parsed with extract/_gis_files.py for the count, the columns and the key.",
       "discovered_date": "2026-10-04",
       "notes": "5 lines in one folder, 'OHT Website Track', read 2026-10-04: Boston Mountains, OHT/BRT, Lower Buffalo Bushwhack, Sylamore, Lake Norfork, each description its own name. The Lower Buffalo Bushwhack is not in USFS's data (the coverage audit); a bushwhack is a route across country, not tread.",
-      "reaches_hikers": false,
-      "reaches_hikers_comment": "False on 2026-10-04: staged by pipeline/make_dbt_staging.py, and held, because no mart reads the clubs' trail lines yet (int_trail_lines__club_lines' header), the map is captioned 'For illustrative purposes only', which no decision names, and its bushwhack is dropped (layer_rules). Decision 63 turns it true once that is no longer so."
+      "reaches_hikers": true,
+      "reaches_hikers_comment": "True on 2026-10-14 by decisions 63, 64 and 193: decision 193 reads the map's caption 'For illustrative purposes only' as a scope note and the website's footer as the website's own (decision 172), the two things that held it. Its own rule is in and tested: layer_rules drops the Lower Buffalo Bushwhack, a route with no tread (trail_lines_club_lines_leave_out_the_roads_a_trail_layer_carries, the drop_where rule it uses), and its lines draw as club lines, never routed (decision 64; trail_lines_club_published_draws_a_club_line_and_never_an_alignment_or_a_winter_trail). Read live 2026-10-14 under lib/user_agent.py's USER_AGENT: 5 lines (Boston Mountains, OHT/BRT, Lower Buffalo Bushwhack, Sylamore, Lake Norfork), so 4 draw (Measured live)."
     },
     {
       "key": "ohta_major_trailheads",
@@ -13698,7 +13708,7 @@
       "trust": "authoritative",
       "steward": "Ozark Highlands Trail Association",
       "steward_contact": "https://ozarkhighlandstrail.com/",
-      "licence": "PUBLIC GIS PRESUMPTION (decision 21a), read as mtsg_map_locations' row reads it: the club's own list of its trail's major trailheads, segment by segment, each with a fix, on a public page its website serves anonymously, which states no licence of its own. It is the maintainer's reading, NOT A GRANT FROM THE ORGANIZATION. Decision 69 (the maintainer's poll, 2026-10-04, card Q1) extends decision 21a to the points a club prints on its own public page or PDF, and int_sources__publication's rule 6 admits `page_points` under `public_gis` since: they publish as facts only (name, kind, the fix as the page states it, mile), credited and linked, and none of the page's prose. Its footer's 'Copyright', which rule 5 reads as `no_reuse`, is answered by decision 69 too: the maintainer chose it over holding the five pages with a copyright footer. ozarkhighlandstrail.com's robots.txt, read 2026-10-04T16:47:37Z under lib/user_agent.py's USER_AGENT: WooCommerce's paths and /wp-admin/ are disallowed, then Yoast's empty `Disallow:`; no Crawl-delay. The page is read through WordPress page 15's REST route.",
+      "licence": "PUBLIC GIS PRESUMPTION (decision 21a), read as mtsg_map_locations' row reads it: the club's own list of its trail's major trailheads, segment by segment, each with a fix, on a public page its website serves anonymously, which states no licence of its own. It is the maintainer's reading, NOT A GRANT FROM THE ORGANIZATION. Decision 69 (the maintainer's poll, 2026-10-04, card Q1) extends decision 21a to the points a club prints on its own public page or PDF, and int_sources__publication's rule 6 admits `page_points` under `public_gis` since: they publish as facts only (name, kind, the fix as the page states it, mile), credited and linked, and none of the page's prose. Its footer's 'Copyright', which rule 5 reads as `ownership`, is answered by decision 69 too, and by decision 193's class on any public GIS item since 2026-10-14: the maintainer chose it over holding the five pages with a copyright footer. ozarkhighlandstrail.com's robots.txt, read 2026-10-04T16:47:37Z under lib/user_agent.py's USER_AGENT: WooCommerce's paths and /wp-admin/ are disallowed, then Yoast's empty `Disallow:`; no Crawl-delay. The page is read through WordPress page 15's REST route.",
       "licence_basis": "public_gis",
       "attribution": "Ozark Highlands Trail Association",
       "terms": "ozarkhighlandstrail.com footer, read 2026-10-04: \"© Copyright 2026 OHTA\"; no terms page is linked (ohta_website_track's reading).",
@@ -13717,7 +13727,7 @@
       "discovered_date": "2026-10-04",
       "notes": "41 trailheads in four segments, read 2026-10-04 (page modified 2026-09-10): Boston Mountains 10, Buffalo River 12, Sylamore 5 and Norfork Lake 14, the coverage audit's 'about 38 distinct points', each landing its `segment`, `name`, `mile` (25 of 41; Norfork Lake's and the two Lower Buffalo Wilderness accesses state none) and its fix (bbox lon -94.118 to -92.241, lat 35.673 to 36.485). `fix_note` is 'parking' where the page writes 'Parking at', 'Parking area at' or 'Park at' before the fix (4) and 'approximate' where it writes 'approximately' (Jackson Ridge and Log Wagon Gap, the wilderness accesses). A HIKER'S SAFETY, in the page's prose, which lands nowhere: Woolum ford's 'The river level here can be too high to cross after big rains', and the FAQ's water: 'In the drier months (July – September) the water can be hard to find' (the coverage audit).",
       "reaches_hikers": true,
-      "reaches_hikers_comment": "True from 2026-10-04 (decision 63): decision 69 (the maintainer's poll, card Q1) answered what held it, whether a club's page of points publishes under decision 21a, and int_sources__publication's rule 6 admits `page_points` under `public_gis` since. Extracted by extract/_pages_points.py and staged by pipeline/make_dbt_staging.py; a club_poi_types row types every row trailhead. Rule 5 reads its footer's 'Copyright' as `no_reuse`, which the licence_restriction_answers seed's decision 69 row answers, because this row's licence names decision 69."
+      "reaches_hikers_comment": "True from 2026-10-04 (decision 63): decision 69 (the maintainer's poll, card Q1) answered what held it, whether a club's page of points publishes under decision 21a, and int_sources__publication's rule 6 admits `page_points` under `public_gis` since. Extracted by extract/_pages_points.py and staged by pipeline/make_dbt_staging.py; a club_poi_types row types every row trailhead. Rule 5 reads its footer's 'Copyright' as `ownership`, which the licence_restriction_answers seed answers on any public GIS item by class since 2026-10-14 (decision 193), as decision 69 answered it before."
     },
     {
       "key": "palmetto_trail_closures",
@@ -14865,10 +14875,10 @@
       "trust": "authoritative",
       "steward": "Ozark Trail Association",
       "steward_contact": "https://ozarktrail.com/",
-      "licence": "PUBLIC GIS PRESUMPTION (decision 21a): the club's own GIS file, served anonymously on a public URL its website links, which states no licence of its own. It is the maintainer's reading, NOT A GRANT FROM THE ORGANIZATION; publication is decided in int_sources__publication. The website's terms restrict reproduction (`terms`); that is the site's text, not the map's, and no decision names it, so publication goes to the maintainer. www.google.com's robots.txt, read 2026-10-04T07:29:20Z under lib/user_agent.py's USER_AGENT: `User-agent: *` has `Disallow: /maps/` and the longer `Allow: /maps/d/`, which wins for /maps/d/kml (RFC 9309's longest match). Google's terms, as decision 53's inventory quoted them from https://policies.google.com/terms (fmst_helene_status' row): forbids \"using automated means to access content from any of our services in violation of the machine-readable instructions on our web pages (for example, robots.txt files that disallow crawling, training, or other activities)\", which that robots.txt does not do for this path.",
+      "licence": "PUBLIC GIS PRESUMPTION (decision 21a): the club's own GIS file, served anonymously on a public URL its website links, which states no licence of its own. It is the maintainer's reading, NOT A GRANT FROM THE ORGANIZATION; publication is decided in int_sources__publication. The website's terms, https://ozarktrail.com/terms-of-use/ (modified 2018-04-27), as decision 53's inventory quoted them (batch 5, 2026-10-03) on ota_current_river_conditions' row, read: \"Reproduction is prohibited other than in accordance with the copyright notice, which forms part of these terms and conditions.\" Decision 193 (the maintainer's poll, 2026-10-14) keeps a website's terms the website's (decision 172), so that sentence is quoted here rather than in `terms`, which holds the map's own words. www.google.com's robots.txt, read 2026-10-04T07:29:20Z under lib/user_agent.py's USER_AGENT: `User-agent: *` has `Disallow: /maps/` and the longer `Allow: /maps/d/`, which wins for /maps/d/kml (RFC 9309's longest match). Google's terms, as decision 53's inventory quoted them from https://policies.google.com/terms (fmst_helene_status' row): forbids \"using automated means to access content from any of our services in violation of the machine-readable instructions on our web pages (for example, robots.txt files that disallow crawling, training, or other activities)\", which that robots.txt does not do for this path.",
       "licence_basis": "public_gis",
       "attribution": "Ozark Trail Association",
-      "terms": "https://ozarktrail.com/terms-of-use/ (modified 2018-04-27), as decision 53's inventory quoted it (batch 5, 2026-10-03) on ota_current_river_conditions' row: \"Reproduction is prohibited other than in accordance with the copyright notice, which forms part of these terms and conditions.\"",
+      "terms": "None found on the map itself: its KML export, read live 2026-10-14 under lib/user_agent.py's USER_AGENT, carries no description at the document or folder level. The website's terms are the website's own (decision 172) and are not quoted here.",
       "freshness": {
         "kind": "per_file_validator",
         "url": "https://www.google.com/maps/d/kml?mid=1k4nsYuKHFtLk05shVlUX-L9tb-clI7iX&forcekml=1",
@@ -14883,8 +14893,8 @@
       "discovered_via": "bcc70dd0:pipeline/reference/org_coverage.json's AVAILABLE_NOT_LOADED row for this club (coverage audit 2026-10-01), the starting list for decision 54's waves 2 and 3, then read live on 2026-10-04 under lib/user_agent.py's USER_AGENT, robots.txt first, two seconds or more between requests to one host: every file whole, its validators by HEAD, and every feature parsed with extract/_gis_files.py for the count, the columns and the key.",
       "discovered_date": "2026-10-04",
       "notes": "161 placemarks in 8 folders, read 2026-10-04 (the map embedded on ozarktrail.com/maps/): Trailhead 72 points, each description 'Elevation = … ft <br>Coordinates = … <br>Type = Trailhead'; Main Trail 18 lines, Connecting Trail 38 (2 of them MultiGeometry), Trailhead Spur 24, OT Spur Trail 4, Alternate Trail 2, 'Road - White' 2 and Nearby trail 1. The two 'Road - White' lines are roads, which int_trail_lines__club_lines drops by a layer_rules row before this table may draw. The coverage audit's 14 per-section 'GPS Download' zips are not registered: nobody compared them with this map. not_available.toml [ota.points_of_interest] SHARES this resource for the 72 trailheads.",
-      "reaches_hikers": false,
-      "reaches_hikers_comment": "False on 2026-10-04: staged by pipeline/make_dbt_staging.py, and held, because the site's terms restrict reproduction ('Reproduction is prohibited other than in accordance with the copyright notice'), which no decision names, so it goes to the maintainer; its 72 trailheads are typed (club_poi_types) and its 2 road lines dropped (layer_rules), and no mart reads the clubs' trail lines yet (int_trail_lines__club_lines' header). Decision 63 turns it true once that is no longer so."
+      "reaches_hikers": true,
+      "reaches_hikers_comment": "True on 2026-10-14 by decisions 63, 64 and 193: decision 193 reads the website's 'Reproduction is prohibited…', which held it, as the website's own (decision 172), and the map itself states nothing. Its own rules are in and tested: club_poi_types types the 'Trailhead' folder's points (club_points_type_by_an_allowlist_and_drop_two_types_that_disagree), layer_rules drops the 2 'Road - White' lines (trail_lines_club_lines_leave_out_the_roads_a_trail_layer_carries), a point never draws as a line (trail_lines_club_lines_keep_only_the_lines_a_mixed_gis_file_carries), and its lines draw as club lines, never routed (decision 64; trail_lines_club_published_draws_a_club_line_and_never_an_alignment_or_a_winter_trail). Read live 2026-10-14 under lib/user_agent.py's USER_AGENT: 161 placemarks, 72 trailhead points and 89 lines, so 87 lines draw (Main Trail 18, Connecting Trail 38, Trailhead Spur 24, OT Spur Trail 4, Alternate Trail 2, Nearby trail 1) and up to 72 trailheads publish before the POI reach gate and dedupe (Measured live; the published POI count is not)."
     },
     {
       "key": "ota_sections",
@@ -18230,7 +18240,7 @@
       "file_format": "shapefile_zip",
       "trust": "authoritative",
       "steward": "U.S. Census Bureau",
-      "licence": "PUBLIC DOMAIN, on 17 U.S.C. 105 and the maintainer's adoption of it for usfs_trails (2026-09-02), the reading blm_trails ships on: a work of the U.S. Government, and the file's own metadata says so (`terms`): the products \"are not copyrighted\" and \"are free to use in a product or publication\", with acknowledgement to the U.S. Census Bureau \"as the source\", which `attribution` carries. Its sentence that the boundaries \"are for statistical data collection and tabulation purposes only\" goes on to say that their depiction \"does not constitute a determination of jurisdictional authority or rights of ownership or entitlement\": it disclaims what a line means, and is read as a disclaimer, not a limit on use (the lead's reading for decision 76, 2026-10-04, which #1805 lists for the maintainer to overrule; dbt/seeds/licence_restriction_phrases.csv's census_tiger_states row). WHAT PUBLISHES: only the states dbt/seeds/notice_states.csv names, simplified (int_closures__notice_state_shapes), in conditions/notice_states.json. The phone reads a shape only to decide whether a planned route is in that state, for a state-wide agency notice (client/src/lib/plannedNotices.ts). The shapes are never drawn: no map layer reads them.",
+      "licence": "PUBLIC DOMAIN, on 17 U.S.C. 105 and the maintainer's adoption of it for usfs_trails (2026-09-02), the reading blm_trails ships on: a work of the U.S. Government, and the file's own metadata says so (`terms`): the products \"are not copyrighted\" and \"are free to use in a product or publication\", with acknowledgement to the U.S. Census Bureau \"as the source\", which `attribution` carries. Its sentence that the boundaries \"are for statistical data collection and tabulation purposes only\" goes on to say that their depiction \"does not constitute a determination of jurisdictional authority or rights of ownership or entitlement\": it disclaims what a line means, and is read as a disclaimer, not a limit on use (the lead's reading for decision 76, 2026-10-04, which #1805 lists for the maintainer to overrule; dbt/seeds/licence_restriction_phrases.csv's scope-note and credit classes, which decision 193 reads by class). WHAT PUBLISHES: only the states dbt/seeds/notice_states.csv names, simplified (int_closures__notice_state_shapes), in conditions/notice_states.json. The phone reads a shape only to decide whether a planned route is in that state, for a state-wide agency notice (client/src/lib/plannedNotices.ts). The shapes are never drawn: no map layer reads them.",
       "licence_basis": "stated_by_org",
       "attribution": "U.S. Census Bureau",
       "terms": "The file's own ISO metadata (tl_2025_us_state.shp.iso.xml inside the zip, read 2026-10-04): \"Access constraints: None\" and \"Use Constraints: The TIGER/Line Shapefile products are not copyrighted however TIGER/Line and Census TIGER are registered trademarks of the U.S. Census Bureau. These products are free to use in a product or publication, however acknowledgement must be given to the U.S. Census Bureau as the source. The boundary information in the TIGER/Line Shapefiles are for statistical data collection and tabulation purposes only; their depiction and designation for statistical purposes does not constitute a determination of jurisdictional authority or rights of ownership or entitlement and they are not legal land descriptions. Coordinates in the TIGER/Line shapefiles have six implied decimal places, but the positional accuracy of these coordinates is not as great as the six decimal places suggest.\"",
@@ -18893,7 +18903,7 @@
       "discovered_date": "2026-10-09",
       "notes": "18 polygons (returnCountOnly), the state's deer management units by UnitName (Blue Northwest, Buffalo, Calamus East, and more); UnitType, SQMiles, DateCreate and the older GlobalID and GlobalID_2 text fields are null on all 18; Hunting_Li is 'https://outdoornebraska.gov/guides/' on all 18. The service is named for 2022 and its data was last edited 2026-07-21 (editingInfo). Extent in EPSG:4326: lat 40.00 to 43.00, lon -104.05 to -95.31, the whole state. Statistics fingerprint: count(FID) 18, max(FID) 54. NO SEASON DATES: a unit says where a hunt is allowed, never when, and the units cover the state, so every trail in them would read as a warning all year. KEY: GlobalID_3 is distinct on 18 of 18 (read 2026-10-09).",
       "reaches_hikers": false,
-      "reaches_hikers_comment": "Held, though its steward's trail_orgs.json row (`ngpc`, `load: ship`, review page 01) was approved and written on 2026-10-11, which settled decisions 121 and 122's hold: settled by the seasons each unit is hunted in, without which a unit is a warning all year (decision 63's hold on MA DCR's hunt areas). Rule 5 reads the items' 'There are no restrictions on the use and distribution of data provided in this map or service' as the grant the maintainer read it as (P7, seeds/licence_restriction_phrases.csv); its backstop still reads 'intended to be used for reference only', which no phrase reads yet."
+      "reaches_hikers_comment": "Held, though its steward's trail_orgs.json row (`ngpc`, `load: ship`, review page 01) was approved and written on 2026-10-11, which settled decisions 121 and 122's hold: settled by the seasons each unit is hunted in, without which a unit is a warning all year (decision 63's hold on MA DCR's hunt areas). Rule 5 reads the items' 'There are no restrictions on the use and distribution of data provided in this map or service' as the grant the maintainer read it as (P7, seeds/licence_restriction_phrases.csv); and since 2026-10-14 its 'intended to be used for reference only' as a reliance line (decision 193's class), so rule 5 passes it."
     },
     {
       "key": "ngpc_elk_hunting_units",
@@ -18915,7 +18925,7 @@
       "discovered_date": "2026-10-09",
       "notes": "16 polygons (returnCountOnly) by UnitName ('Unit 1' to 'Unit 132'); Hunting_Li the commission's guides page. Data last edited 2026-07-21 (editingInfo). Extent in EPSG:4326: lat 40.00 to 43.00, lon -104.05 to -95.31. Statistics fingerprint: count(FID) 16, max(FID) 54. NO SEASON DATES: a unit says where a hunt is allowed, never when, and the units cover the state, so every trail in them would read as a warning all year. KEY: GlobalID_3 is distinct on 16 of 16 (read 2026-10-09).",
       "reaches_hikers": false,
-      "reaches_hikers_comment": "Held, though its steward's trail_orgs.json row (`ngpc`, `load: ship`, review page 01) was approved and written on 2026-10-11, which settled decisions 121 and 122's hold: settled by the seasons each unit is hunted in, without which a unit is a warning all year (decision 63's hold on MA DCR's hunt areas). Rule 5 reads the items' 'There are no restrictions on the use and distribution of data provided in this map or service' as the grant the maintainer read it as (P7, seeds/licence_restriction_phrases.csv); its backstop still reads 'intended to be used for reference only', which no phrase reads yet."
+      "reaches_hikers_comment": "Held, though its steward's trail_orgs.json row (`ngpc`, `load: ship`, review page 01) was approved and written on 2026-10-11, which settled decisions 121 and 122's hold: settled by the seasons each unit is hunted in, without which a unit is a warning all year (decision 63's hold on MA DCR's hunt areas). Rule 5 reads the items' 'There are no restrictions on the use and distribution of data provided in this map or service' as the grant the maintainer read it as (P7, seeds/licence_restriction_phrases.csv); and since 2026-10-14 its 'intended to be used for reference only' as a reliance line (decision 193's class), so rule 5 passes it."
     },
     {
       "key": "ngpc_antelope_hunting_units",
@@ -18937,7 +18947,7 @@
       "discovered_date": "2026-10-09",
       "notes": "21 polygons (returnCountOnly) by UnitName (Dismal Late, North Sioux Muzzleloader, and more): UnitType 'Antelope Firearm' 10, 'Antelope Late Firearm' 9, 'Antelope Muzzleloader' 2; Limit None 10, 'Doe/Fawn' 7, 'Either Sex' 4; Rules (prose); Hunting_Li the guides page. Data last edited 2025-05-19 (editingInfo). Extent in EPSG:4326: lat 40.00 to 43.00, lon -104.05 to -95.31. Statistics fingerprint: count(FID) 21, max(FID) 32. NO SEASON DATES: a unit says where a hunt is allowed, never when, and the units cover the state, so every trail in them would read as a warning all year. KEY: GlobalID_3 is distinct on 21 of 21 (read 2026-10-09).",
       "reaches_hikers": false,
-      "reaches_hikers_comment": "Held, though its steward's trail_orgs.json row (`ngpc`, `load: ship`, review page 01) was approved and written on 2026-10-11, which settled decisions 121 and 122's hold: settled by the seasons each unit is hunted in, without which a unit is a warning all year (decision 63's hold on MA DCR's hunt areas). Rule 5 reads the items' 'There are no restrictions on the use and distribution of data provided in this map or service' as the grant the maintainer read it as (P7, seeds/licence_restriction_phrases.csv); its backstop still reads 'intended to be used for reference only', which no phrase reads yet.",
+      "reaches_hikers_comment": "Held, though its steward's trail_orgs.json row (`ngpc`, `load: ship`, review page 01) was approved and written on 2026-10-11, which settled decisions 121 and 122's hold: settled by the seasons each unit is hunted in, without which a unit is a warning all year (decision 63's hold on MA DCR's hunt areas). Rule 5 reads the items' 'There are no restrictions on the use and distribution of data provided in this map or service' as the grant the maintainer read it as (P7, seeds/licence_restriction_phrases.csv); and since 2026-10-14 its 'intended to be used for reference only' as a reliance line (decision 193's class), so rule 5 passes it.",
       "person_fields": [
         "Editor"
       ],
@@ -18963,7 +18973,7 @@
       "discovered_date": "2026-10-09",
       "notes": "3 polygons (returnCountOnly): Pine Ridge Unit, Niobrara River Unit, Wildcat Hills Unit; Hunting (blank or 'None'); Hunting_Li the guides page on 2. Data last edited 2025-02-24 (editingInfo). Extent in EPSG:4326: lat 41.24 to 43.00, lon -104.05 to -98.65. Statistics fingerprint: count(FID) 3, max(FID) 3. NO SEASON DATES: a unit says where a hunt is allowed, never when, and the units cover the state, so every trail in them would read as a warning all year. KEY: GlobalID_3 is distinct on 3 of 3 (read 2026-10-09).",
       "reaches_hikers": false,
-      "reaches_hikers_comment": "Held, though its steward's trail_orgs.json row (`ngpc`, `load: ship`, review page 01) was approved and written on 2026-10-11, which settled decisions 121 and 122's hold: settled by the seasons each unit is hunted in, without which a unit is a warning all year (decision 63's hold on MA DCR's hunt areas). Rule 5 reads the items' 'There are no restrictions on the use and distribution of data provided in this map or service' as the grant the maintainer read it as (P7, seeds/licence_restriction_phrases.csv); its backstop still reads 'intended to be used for reference only', which no phrase reads yet."
+      "reaches_hikers_comment": "Held, though its steward's trail_orgs.json row (`ngpc`, `load: ship`, review page 01) was approved and written on 2026-10-11, which settled decisions 121 and 122's hold: settled by the seasons each unit is hunted in, without which a unit is a warning all year (decision 63's hold on MA DCR's hunt areas). Rule 5 reads the items' 'There are no restrictions on the use and distribution of data provided in this map or service' as the grant the maintainer read it as (P7, seeds/licence_restriction_phrases.csv); and since 2026-10-14 its 'intended to be used for reference only' as a reliance line (decision 193's class), so rule 5 passes it."
     },
     {
       "key": "ngpc_bighorn_sheep_hunting_units",
@@ -18985,7 +18995,7 @@
       "discovered_date": "2026-10-09",
       "notes": "1 polygon (returnCountOnly), PINE RIDGE; Links 'http://outdoornebraska.gov/guides/'. Data last edited 2022-09-16 (editingInfo). Extent in EPSG:4326: lat 41.39 to 43.00, lon -104.05 to -102.01. Statistics fingerprint: count(FID) 1, max(FID) 1. NO SEASON DATES: a unit says where a hunt is allowed, never when, and the units cover the state, so every trail in them would read as a warning all year. KEY: GlobalID_3 is distinct on 1 of 1 (read 2026-10-09).",
       "reaches_hikers": false,
-      "reaches_hikers_comment": "Held, though its steward's trail_orgs.json row (`ngpc`, `load: ship`, review page 01) was approved and written on 2026-10-11, which settled decisions 121 and 122's hold: settled by the seasons each unit is hunted in, without which a unit is a warning all year (decision 63's hold on MA DCR's hunt areas). Rule 5 reads the items' 'There are no restrictions on the use and distribution of data provided in this map or service' as the grant the maintainer read it as (P7, seeds/licence_restriction_phrases.csv); its backstop still reads 'intended to be used for reference only', which no phrase reads yet."
+      "reaches_hikers_comment": "Held, though its steward's trail_orgs.json row (`ngpc`, `load: ship`, review page 01) was approved and written on 2026-10-11, which settled decisions 121 and 122's hold: settled by the seasons each unit is hunted in, without which a unit is a warning all year (decision 63's hold on MA DCR's hunt areas). Rule 5 reads the items' 'There are no restrictions on the use and distribution of data provided in this map or service' as the grant the maintainer read it as (P7, seeds/licence_restriction_phrases.csv); and since 2026-10-14 its 'intended to be used for reference only' as a reliance line (decision 193's class), so rule 5 passes it."
     },
     {
       "key": "montour_trail_alerts_page",
@@ -21178,7 +21188,7 @@
       },
       "org:cpw": {
         "provider": "Colorado Parks & Wildlife",
-        "name": "Colorado Parks & Wildlife",
+        "name": "Colorado Parks and Wildlife",
         "note": "Publishes COTREX, which aggregates 236 Colorado land managers into one statewide layer. At 96,897 features it is the largest single source in the registry after USFS. Also registered for its points of interest under decision 54 (2026-10-03), at reaches_hikers: false."
       },
       "org:cfi": {

@@ -31,6 +31,13 @@
 // bucket the exporters still publish - everything above is exactly as it
 // was. The map's A.T. bands and dots come from ATC's own file either way.
 //
+// EVERY CLUB CLOSURE ON THE MAP, WHATEVER IS PLANNED (the maintainer's S6,
+// poll of 2026-10-11): conditions/trail_closures.json, read at launch, drawn
+// crossed out from the day before each closure's own start
+// (lib/noticeCurrency.ts's `obstructsOn`), greyed in the list or not - the
+// maintainer chose "B: same mark" - and a tap opens the closure's row in a
+// sheet (chrome/ClubClosureSheet.tsx).
+//
 // A PLANNED HIKE WHOSE FILE IS NOT ON THE PHONE SAYS SO (option A of the
 // maintainer's poll of 2026-10-09). A hike is planned, and lib/useConditions.ts
 // has settled that this phone holds no copy of notices.json for a reason a
@@ -90,8 +97,10 @@ import type { Trip } from '../lib/trips'
 import { routeLines, type TrailGraphIndex } from '../lib/trailGraph'
 import { resolveDayHike } from '../lib/dayHikeCard'
 import { localDay } from '../lib/passedToday'
+import { obstructsOn } from '../lib/noticeCurrency'
 import type { HazardArea, StretchAdvisory } from '../lib/hazardAreas'
 import type { Position } from '../lib/noticeGeometry'
+import type { PublishedConditions, TrailClosure } from '../lib/publishedConditions'
 
 /** lib/noticeSelection.ts, once loaded: kept at module scope so a remount
  *  after the first load has it on its first render. */
@@ -107,6 +116,7 @@ function noAdvisories(): StretchAdvisory[] {
 }
 import type { MapScreenProps } from './MapScreen'
 import {
+  ClubClosureSheet,
   HazardAreaSheet,
   NoticeList,
   OrgNoticeSheet,
@@ -136,12 +146,17 @@ export type NoticesMapProps = Pick<
   | 'hazardAreas'
   | 'onSelectHazardArea'
   | 'hazardAreaSheet'
+  | 'clubClosures'
+  | 'onSelectClubClosure'
+  | 'clubClosureSheet'
 >
 
 /** No hazard area, as one shared reference for a phone with neither
  *  conditions/notices.json nor hazard_areas.json - a fresh array per render would re-push the
  *  map's source on every one. */
 const NO_HAZARD_AREAS: readonly HazardArea[] = []
+/** No club closure, as one shared reference, for NO_HAZARD_AREAS's reason. */
+const NO_CLUB_CLOSURES: readonly TrailClosure[] = []
 
 export interface NoticesPanel {
   /** Spread into `<MapScreen>`. */
@@ -243,6 +258,12 @@ export interface NoticesInput {
    * phone with no hike planned still draws them and none draws twice.
    */
   hazardFile?: { items: readonly TrailNotice[]; generatedAt: Date } | null
+  /**
+   * conditions/trail_closures.json (the maintainer's S6, 2026-10-11), read
+   * whatever is planned, or null when it has not reached this phone - which
+   * draws no club closure, as before the file.
+   */
+  closureFile?: PublishedConditions<TrailClosure> | null
   /** The hiker's long-hike plans (lib/trips.ts). */
   trips?: readonly Trip[]
   /** The hiker's day hikes (lib/dayHikes.ts). */
@@ -271,6 +292,7 @@ export function useNoticesPanel({
   clubNoticesListed = false,
   clubNoticesMissing = false,
   hazardFile = null,
+  closureFile = null,
   trips = NO_TRIPS,
   dayHikes = NO_DAY_HIKES,
   graph = null,
@@ -279,6 +301,8 @@ export function useNoticesPanel({
   const [selectedBandId, setSelectedBandId] = useState<string | null>(null)
   /** The tapped hazard area, by notice id (#1805). */
   const [selectedHazardId, setSelectedHazardId] = useState<string | null>(null)
+  /** The tapped club closure, by notice id (the maintainer's S6). */
+  const [selectedClubClosureId, setSelectedClubClosureId] = useState<string | null>(null)
   /**
    * Whether the full list of notices is open.
    *
@@ -501,6 +525,26 @@ export function useNoticesPanel({
   )
 
   /**
+   * The club closures the map crosses out today (the maintainer's S6): each
+   * that closes the trail on the phone's own day, from the day before its
+   * own start (`obstructsOn`). Whether it reads as current does not enter
+   * into it - a closure the list greys draws with the same full mark, the
+   * maintainer's "B: same mark".
+   */
+  const clubClosures = useMemo(
+    () =>
+      closureFile?.items.filter((closure) => obstructsOn(closure, today)) ??
+      NO_CLUB_CLOSURES,
+    [closureFile, today],
+  )
+  const selectedClubClosure = useMemo(
+    () =>
+      closureFile?.items.find((closure) => closure.notice_id === selectedClubClosureId) ??
+      null,
+    [closureFile, selectedClubClosureId],
+  )
+
+  /**
    * What the "new notices" dot counts and opening the list silences. With
    * the planned-hike panel that is exactly what the panel shows, which is
    * what #1155 — Opening the notices list silences notices it did not show
@@ -669,6 +713,18 @@ export function useNoticesPanel({
             onClose={() => setSelectedHazardId(null)}
           />
         ),
+      clubClosures,
+      onSelectClubClosure: setSelectedClubClosureId,
+      clubClosureSheet:
+        selectedClubClosure === null ? null : (
+          <ClubClosureSheet
+            notice={selectedClubClosure}
+            stewards={stewards}
+            today={today}
+            generatedAt={closureFile?.generatedAt ?? null}
+            onClose={() => setSelectedClubClosureId(null)}
+          />
+        ),
       noticeList: !noticesOpen ? null : clubMode ? (
         planned === null ? null : (
           <PlannedNoticeList
@@ -711,6 +767,9 @@ export function useNoticesPanel({
       plannedMissing,
       hazardAreas,
       selectedHazard,
+      clubClosures,
+      selectedClubClosure,
+      closureFile,
       clubNoticesGeneratedAt,
       clubNotices,
       selection,
@@ -720,7 +779,8 @@ export function useNoticesPanel({
 
   return {
     mapScreen,
-    sheetOpen: selectedBandId !== null || selectedHazard !== null,
+    sheetOpen:
+      selectedBandId !== null || selectedHazard !== null || selectedClubClosure !== null,
     hazardAreas,
     hazardAdvisoriesAt,
   }

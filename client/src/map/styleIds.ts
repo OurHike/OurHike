@@ -87,12 +87,16 @@ export const NEARBY_BLAZE_LAYER_ID = 'nearby-trail-blaze'
 export const NEARBY_LONG_TERM_CLOSURE_LAYER_ID = 'nearby-long-term-closure-band'
 export const NETWORK_OVERVIEW_LAYER_ID = 'network-overview-line'
 export const NETWORK_OVERVIEW_CLOSURE_LAYER_ID = 'network-overview-closure-band'
+/** Every club's closures, from conditions/trail_closures.json (the
+ *  maintainer's S6, 2026-10-11; map/clubClosureLayers.ts). Its feed alone
+ *  also carries points, drawn on lib/closureStyle.ts's `closurePointId`. */
+export const CLUB_CLOSURE_LAYER_ID = 'club-closure-band'
 
 /**
  * The paper layer of every closure feed: the closures feed's, the A.T.'s
- * long-term-closed lines, the nearby network's and the corridor-view
- * sketch's. Each is the id lib/closureStyle.ts derives the feed's other three
- * layers from, so a sheet change repaints all four of each -
+ * long-term-closed lines, the nearby network's, the corridor-view sketch's
+ * and the clubs'. Each is the id lib/closureStyle.ts derives the feed's other
+ * three layers from, so a sheet change repaints all four of each -
  * attachMapAppearance walks this list and the ATC band's id beside it.
  */
 export const CLOSURE_BAND_IDS: readonly string[] = [
@@ -100,6 +104,7 @@ export const CLOSURE_BAND_IDS: readonly string[] = [
   LONG_TERM_CLOSURE_LAYER_ID,
   NEARBY_LONG_TERM_CLOSURE_LAYER_ID,
   NETWORK_OVERVIEW_CLOSURE_LAYER_ID,
+  CLUB_CLOSURE_LAYER_ID,
 ]
 
 /**

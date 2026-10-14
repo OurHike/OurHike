@@ -59,6 +59,7 @@ import {
 } from './corridorLayers'
 import { attachDroughtData, setDroughtVisible, type DroughtBand } from './droughtLayers'
 import type { HazardArea } from '../lib/hazardAreas'
+import type { TrailClosure } from '../lib/publishedConditions'
 import { attachCoverageSeams } from './coverageLayers'
 import type { SeamEdge } from '../lib/coverageCells'
 import {
@@ -271,6 +272,16 @@ export interface MapViewProps {
   /** A tap landed on a hazard area and on nothing drawn over it, by notice
    *  id. Hits only, like the ATC band's. */
   onSelectHazardArea?: (noticeId: string) => void
+  /**
+   * Every club closure that closes the trail on the phone's own day, from
+   * conditions/trail_closures.json (the maintainer's S6, 2026-10-11),
+   * crossed out as map/clubClosureLayers.ts says. The shell decides which
+   * draw (chrome/noticesPanel.tsx); this component draws what it is given.
+   */
+  clubClosures?: readonly TrailClosure[]
+  /** A tap landed on a club closure, by notice id. Hits only, like the
+   *  tape's. */
+  onSelectClubClosure?: (noticeId: string) => void
   /** A tap landed on the closure tape, by closure id (#1373, F12) - the tap
    *  #245 left waiting. Hits only, like the ATC band's. */
   onSelectClosure?: (closureId: string) => void
@@ -583,36 +594,49 @@ const NO_SEAMS: readonly SeamEdge[] = []
 const NO_ATC_UPDATES: readonly ClosureBand[] = []
 const NO_ATC_POINTS: readonly AtcUpdatePoint[] = []
 const NO_HAZARD_AREAS: readonly HazardArea[] = []
+const NO_CLUB_CLOSURES: readonly TrailClosure[] = []
 
-/** map/hazardAreaTaps.ts, imported the first time an area is drawn or a tap
- *  on one is wired, and kept: most phones never cross one, so it stays out of
- *  the launch bytes (features/LAUNCH_BUDGET.md §3). A failed import is not
- *  kept - a precache a service-worker update left stale fails it with no
- *  signal - so the next area to draw asks again, as lib/deferredScreen.tsx's
- *  screens do. */
-type HazardAreaTaps = typeof import('./hazardAreaTaps')
-let hazardAreaTaps: Promise<HazardAreaTaps> | null = null
-
-/** Runs `attach` once map/hazardAreaTaps.ts has loaded, and returns a detach
- *  that holds whether the import has settled yet or not. */
-function attachHazardLazily(attach: (taps: HazardAreaTaps) => () => void): () => void {
-  let detach: (() => void) | null = null
-  let detached = false
-  hazardAreaTaps ??= import('./hazardAreaTaps').catch((error: unknown) => {
-    hazardAreaTaps = null
-    throw error
-  })
-  void hazardAreaTaps.then(
-    (taps) => {
-      if (!detached) detach = attach(taps)
-    },
-    () => undefined,
-  )
-  return () => {
-    detached = true
-    detach?.()
+/**
+ * A module behind `import()`, imported the first time something asks and
+ * kept, as a function that runs `attach` once it has loaded and returns a
+ * detach that holds whether the import has settled yet or not.
+ *
+ * A failed import is not kept - a precache a service-worker update left
+ * stale fails it with no signal - so the next ask imports again, as
+ * lib/deferredScreen.tsx's screens do.
+ */
+function lazily<Module>(
+  load: () => Promise<Module>,
+): (attach: (module: Module) => () => void) => () => void {
+  let loading: Promise<Module> | null = null
+  return (attach) => {
+    let detach: (() => void) | null = null
+    let detached = false
+    loading ??= load().catch((error: unknown) => {
+      loading = null
+      throw error
+    })
+    void loading.then(
+      (module) => {
+        if (!detached) detach = attach(module)
+      },
+      () => undefined,
+    )
+    return () => {
+      detached = true
+      detach?.()
+    }
   }
 }
+
+/** map/hazardAreaTaps.ts, imported the first time an area is drawn or a tap
+ *  on one is wired: most phones never cross one, so it stays out of the
+ *  launch bytes (features/LAUNCH_BUDGET.md §3). */
+const attachHazardLazily = lazily(() => import('./hazardAreaTaps'))
+
+/** map/clubClosureTaps.ts, the same way, the first time a club closure is
+ *  drawn or a tap on one is wired (the maintainer's S6, 2026-10-11). */
+const attachClubClosuresLazily = lazily(() => import('./clubClosureTaps'))
 const NO_WARNINGS: readonly WarningPoint[] = []
 const NO_WORKDAYS: readonly WorkdayPoint[] = []
 const NO_DISPUTES: readonly DisputePoint[] = []
@@ -646,6 +670,8 @@ export function MapView({
   onSelectAtcUpdate,
   hazardAreas = NO_HAZARD_AREAS,
   onSelectHazardArea,
+  clubClosures = NO_CLUB_CLOSURES,
+  onSelectClubClosure,
   onSelectClosure,
   onSelectWarning,
   warnings = NO_WARNINGS,
@@ -1232,6 +1258,19 @@ export function MapView({
     return attachHazardLazily((taps) => taps.attachHazardData(map, hazardAreas))
   }, [map, hazardAreas])
 
+  // The club closures, the same way: nothing to draw and nothing drawn yet
+  // loads nothing, and once a closure has been drawn an empty list still
+  // goes through, to clear it.
+  const clubClosuresDrawn = useRef(false)
+  useEffect(() => {
+    if (map === null) return
+    if (clubClosures.length === 0 && !clubClosuresDrawn.current) return
+    clubClosuresDrawn.current = true
+    return attachClubClosuresLazily((taps) =>
+      taps.attachClubClosureData(map, clubClosures),
+    )
+  }, [map, clubClosures])
+
   useEffect(() => {
     if (map === null) return
     return attachWarningData(map, warnings)
@@ -1460,6 +1499,24 @@ export function MapView({
     if (pressPlateOpen || !anyHazardArea) return
     return attachHazardLazily((taps) => taps.attachHazardTaps(map, onSelectHazardArea))
   }, [map, onSelectHazardArea, onRouteTap, pressPlateOpen, anyHazardArea])
+
+  // A club closure's tap (the maintainer's S6), under the same suppressions,
+  // at the tape's rank (map/clubClosureTaps.ts). No closure, no tap to wire.
+  //
+  // KEYED ON THE LIST, NOT ON WHETHER THERE IS ONE, so the tap is wired
+  // again with each list the conditions read hands over, as the data is:
+  // after a chunk that failed to load, "there are closures" stays true and
+  // would never ask for the module again, leaving the marks drawn and deaf
+  // (MapView.clubClosureChunk.test.tsx). Re-binding one click handler on an
+  // hourly read costs nothing a hiker can see.
+  useEffect(() => {
+    if (map === null || onSelectClubClosure === undefined || onRouteTap !== undefined)
+      return
+    if (pressPlateOpen || clubClosures.length === 0) return
+    return attachClubClosuresLazily((taps) =>
+      taps.attachClubClosureTaps(map, onSelectClubClosure),
+    )
+  }, [map, onSelectClubClosure, onRouteTap, pressPlateOpen, clubClosures])
 
   // The two safety marks (#1373, F12), under the same suppressions: a point
   // dropped on barrier tape must not also open its sheet over the builder.

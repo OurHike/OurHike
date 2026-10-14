@@ -493,6 +493,16 @@ export const FLOW_COVERAGE: Readonly<Record<string, FlowSurface>> = {
     step: 'F12 the map',
     flow: { status: 'planned' },
   },
+  // A club closure's sheet (the maintainer's S6, 2026-10-11). PLANNED, for
+  // the two above's reason: it opens only from a mark drawn out of
+  // conditions/trail_closures.json, which only the dbt path publishes.
+  // preview-shots/club-closures-on-the-map.mjs routes the file in for the
+  // camera; noticesPanel.clubClosures.test.tsx and ClubClosureSheet.test.tsx
+  // hold the rule and the sheet in the meantime.
+  'chrome/ClubClosureSheet.tsx': {
+    step: 'F12 the map',
+    flow: { status: 'planned' },
+  },
   // A CLUB LINE'S SHEET (decision 64, 2026-10-04) is a state of this module
   // the flow suite does not reach yet: the data suite reads the release
   // lib/dataRelease.ts pins, and no pinned release carries a `line_kind`

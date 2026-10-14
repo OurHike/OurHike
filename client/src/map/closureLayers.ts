@@ -21,12 +21,13 @@ import type {
   PointLike,
 } from 'maplibre-gl'
 import type { Closure } from '../lib/closureBanner'
-import { CLOSURE_LAYER_ID } from '../lib/closureStyle'
+import { CLOSURE_LAYER_ID, closurePointId } from '../lib/closureStyle'
 import { warningIdAt } from './warningLayers'
 import { poiPinAt } from './poiPinProbe'
 import { isBroadAdvisory } from '../lib/closureSpan'
 import { trailSlice, type TrailIndex } from '../lib/trailPosition'
 import { whenStyleReady } from './styleReady'
+import { CLUB_CLOSURE_LAYER_ID } from './styleIds'
 
 export const CLOSURE_SOURCE_ID = 'closures'
 
@@ -154,6 +155,36 @@ export function closureIdAt(
   return typeof id === 'string' && id !== '' ? id : null
 }
 
+/** Where a club closure's feature carries the notice it draws
+ *  (map/clubClosureTaps.ts): its `notice_id`, as a hazard area's does. */
+export const CLUB_CLOSURE_ID_PROPERTY = 'notice_id'
+
+/**
+ * Which club closure a touch landed on, by notice id, or null (the
+ * maintainer's S6, 2026-10-11): the paper along a closed line, or the cross
+ * at a closed point, in the same box as `closureIdAt`'s tape.
+ *
+ * HERE, BESIDE THE TAPE'S PROBE, because every handler that yields to the
+ * tape yields to this too, in closureLayers.ts's order - the warning pin, a
+ * waypoint pin, the tape, a club closure, then an ATC band, a waypoint dot,
+ * a line, a hazard area - and two of those handlers are in the launch bundle
+ * (map/poiTaps.ts, map/atcUpdateLayers.ts), where map/clubClosureTaps.ts is
+ * not. Silent before the style holds either layer, for `closureIdAt`'s
+ * reason.
+ */
+export function clubClosureIdAt(
+  map: MapLibreMap,
+  point: { x: number; y: number },
+): string | null {
+  const layers = [CLUB_CLOSURE_LAYER_ID, closurePointId(CLUB_CLOSURE_LAYER_ID)].filter(
+    (layer) => map.getLayer(layer) !== undefined,
+  )
+  if (layers.length === 0) return null
+  const [feature] = map.queryRenderedFeatures(closureTapBox(point), { layers })
+  const id = feature?.properties?.[CLUB_CLOSURE_ID_PROPERTY]
+  return typeof id === 'string' && id !== '' ? id : null
+}
+
 /**
  * Wires taps on the closure tape to `onSelect`, and returns a detach.
  *
@@ -162,7 +193,8 @@ export function closureIdAt(
  * left to the handlers that own bare map.
  *
  * ONE TOUCH, ONE INTERPRETER, in one order: the warning pin, then a
- * waypoint PIN, then this tape, then an ATC band, then a line. Each handler
+ * waypoint PIN, then this tape, then a club's closure (`clubClosureIdAt`),
+ * then an ATC band, then a line. Each handler
  * asks the layers above it and reports nothing where they win - this one
  * yields to the warning pin and the waypoint pin, poiTaps.ts yields to the
  * warning pin (and, for its DOT rank only, to this tape), lineTaps.ts to

@@ -314,6 +314,12 @@ export const WorkdaySheet = screen(
   () => import('../chrome/WorkdaySheet').then((m) => m.WorkdaySheet),
   'WorkdaySheet',
 )
+// A club closure's sheet (the maintainer's S6, 2026-10-11), opened only by a
+// tap on its mark, for the reason the two above are deferred.
+export const ClubClosureSheet = screen(
+  () => import('../chrome/ClubClosureSheet').then((m) => m.ClubClosureSheet),
+  'ClubClosureSheet',
+)
 
 /**
  * Every deferred screen's module, ahead of any tap.

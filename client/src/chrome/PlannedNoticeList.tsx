@@ -156,7 +156,15 @@ function allOf(notice: TrailNotice): string {
   return `All of ${names.length === 1 ? last : `${names.slice(0, -1).join(', ')} and ${last}`}`
 }
 
-function Row({
+/**
+ * One notice's row: its tag, title, category, where and when, the
+ * organization and its date, the greyed line where it may no longer apply,
+ * and its page. Exported because a club closure tapped on the map opens this
+ * same row in a sheet (chrome/ClubClosureSheet.tsx, the maintainer's S6:
+ * "same sheet as its list row"), so the two can never say different things
+ * about one notice.
+ */
+export function NoticeRow({
   notice,
   org,
   today,
@@ -273,7 +281,7 @@ function Hike({
           {onRoute.length > 0 && (
             <ul className="atc-notices__list" aria-label="On your route">
               {onRoute.map((notice) => (
-                <Row
+                <NoticeRow
                   key={notice.notice_id}
                   notice={notice}
                   org={orgOf(notice)}
@@ -285,7 +293,7 @@ function Hike({
           {stateWide.length > 0 && (
             <ul className="atc-notices__list" aria-label="For the whole state">
               {stateWide.map((notice) => (
-                <Row
+                <NoticeRow
                   key={notice.notice_id}
                   notice={notice}
                   org={orgOf(notice)}
@@ -302,7 +310,7 @@ function Hike({
               </p>
               <ul className="atc-notices__list" aria-label="From the clubs on your route">
                 {fromClubs.map((notice) => (
-                  <Row
+                  <NoticeRow
                     key={notice.notice_id}
                     notice={notice}
                     org={orgOf(notice)}

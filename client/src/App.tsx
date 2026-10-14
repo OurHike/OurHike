@@ -1542,6 +1542,7 @@ function App() {
     clubNoticesListed,
     clubNoticesMissing,
     hazardFile,
+    closureFile,
     drought,
     droughtWeek,
     workProjects,
@@ -3504,6 +3505,9 @@ function App() {
     // Decision 84: the hazard areas from their own file, read whatever is
     // planned, so a phone with no hike planned still draws them.
     hazardFile,
+    // The maintainer's S6 (2026-10-11): every club closure, crossed out on
+    // the map from its own file, whatever is planned.
+    closureFile,
     trips: tripStore.trips,
     dayHikes: dayHikeStore.hikes,
     graph: dayHikeIndex ?? graphIndex,
@@ -6608,6 +6612,7 @@ function App() {
     selectedPoiId !== null ||
     line.mapScreen.lineSheet != null ||
     atc.mapScreen.atcUpdateSheet != null ||
+    atc.mapScreen.clubClosureSheet != null ||
     atc.mapScreen.noticeList != null ||
     workday.mapScreen.workdaySheet != null ||
     alertSheets.sheetOpen

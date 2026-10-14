@@ -45,7 +45,7 @@ import { atcBandId, type AtcUpdate } from '../lib/atcUpdates'
 import { trailPointAtMile, type TrailIndex } from '../lib/trailPosition'
 import { closureFeatureCollection, type ClosureBand } from './closureLayers'
 import { whenStyleReady } from './styleReady'
-import { closureIdAt } from './closureLayers'
+import { closureIdAt, clubClosureIdAt } from './closureLayers'
 import { poiPinAt } from './poiPinProbe'
 import { warningIdAt } from './warningLayers'
 
@@ -232,6 +232,9 @@ export function attachAtcUpdateTaps(
     if (warningIdAt(map, event.point) !== null) return
     if (poiPinAt(map, event.point) !== undefined) return
     if (closureIdAt(map, event.point) !== null) return
+    // A club's closure is the same tape (the maintainer's S6, 2026-10-11),
+    // at the same rank.
+    if (clubClosureIdAt(map, event.point) !== null) return
     const id = atcBandIdAt(map, event.point)
     if (id !== null) onSelect(id)
   }

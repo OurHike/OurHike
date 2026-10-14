@@ -17,6 +17,7 @@ import {
 } from '../lib/hazardAreas'
 import { atcBandIdAt } from './atcUpdateLayers'
 import { closureIdAt, clubClosureIdAt } from './closureLayers'
+import { clubClosureShadeIdAt } from './clubClosureLayers'
 import {
   HAZARD_FILL_LAYER_ID,
   HAZARD_POINT_LAYER_ID,
@@ -80,7 +81,10 @@ export function hazardIdAt(
  * all the trail line
  * itself, whose card carries this area's advisory for the stretch inside it
  * (chrome/tappedLinePanel.tsx). Only a touch on the area and nothing else
- * opens the area's own card.
+ * opens the area's own card - nothing else but a club's shaded closure
+ * (decision 191), the other area last in line, which wins where the two
+ * overlap: a closure outranks an advisory on the same ground
+ * (map/clubClosureTaps.ts).
  */
 export function attachHazardTaps(
   map: MapLibreMap,
@@ -93,6 +97,7 @@ export function attachHazardTaps(
     if (clubClosureIdAt(map, event.point) !== null) return
     if (atcBandIdAt(map, event.point) !== null) return
     if (tappedLineAt(map, event.point) !== null) return
+    if (clubClosureShadeIdAt(map, event.point) !== null) return
     const id = hazardIdAt(map, event.point)
     if (id !== null) onSelect(id)
   }

@@ -1317,28 +1317,31 @@ jobs:
           echo "read=$served" >> "$GITHUB_OUTPUT"
 
       # 2c. THE TRAIL LINES AN AREA CLOSURE IS CUT AGAINST (pipeline/ELT.md's
-      # decision 187, S6, for conditions/trail_closures.json):
-      # the leg's current release's nearby trail lines, which
-      # publish-weather.yml prepares once per release
+      # decisions 187, 191 and 192, for conditions/trail_closures.json):
+      # the leg's current release's nearby trail lines and the A.T.'s own,
+      # which publish-weather.yml prepares once per release
       # (prepare_closure_trail_lines.py) and caches under the release's id,
       # as it does the weather squares. Restore only, and the newest entry of
-      # this leg's environment. The build's step_closure_trail_lines lands the
-      # ones near an area closure, and with no entry (the first hours after
-      # this lands, or production, whose latest.json named no release on
-      # 2026-10-11, and which publish-weather.yml does not prepare) it lands
-      # none and warns: every line and point closure still publishes, and
-      # only the area closures miss the hour. Release 2026-10-10-2's entry is
-      # 85,588,154 bytes (Measured 2026-10-11); what restoring it adds to this
-      # job is @unvalidated until this step's log line gives it.
-      - name: Restore the release's nearby trail lines for the area closures' cut (dbt path)
+      # this leg's environment whose key names the script's schema (`-v2-`),
+      # so an entry prepared before the A.T.'s lines were added is never
+      # restored. The build's step_closure_trail_lines lands the ones near an
+      # area closure, and with no entry (the first hours after this lands, or
+      # production, whose latest.json named no release on 2026-10-11, and
+      # which publish-weather.yml does not prepare) it lands none and warns:
+      # every line and point closure still publishes, and every area closure,
+      # crossed out or shaded, misses the hour. Release 2026-10-10-2's entry
+      # was 85,588,154 bytes before the A.T.'s lines (Measured 2026-10-11);
+      # what restoring it adds to this job is @unvalidated until this step's
+      # log line gives it.
+      - name: Restore the release's trail lines for the area closures' cut (dbt path)
         if: env.PHONE_FILES == 'dbt'
         uses: actions/cache/restore@v6
         with:
           path: |
             pipeline/data/raw/closure_trail_lines/lines.parquet
             pipeline/data/raw/closure_trail_lines/release.json
-          key: closure-trail-lines-${{ matrix.data_environment }}-${{ github.run_id }}
-          restore-keys: closure-trail-lines-${{ matrix.data_environment }}-
+          key: closure-trail-lines-v2-${{ matrix.data_environment }}-${{ github.run_id }}
+          restore-keys: closure-trail-lines-v2-${{ matrix.data_environment }}-
 
       # 3. THE BUILD, in build_marts.py's order: the closures and warnings
       # marts with their tests, then their pub_ writers last, into

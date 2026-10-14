@@ -1,12 +1,14 @@
-"""step_closure_trail_lines: the nearby trail lines that may run inside an area closure, into derived.closure_trail_lines.
+"""step_closure_trail_lines: the trail lines that may run inside an area closure, into derived.closure_trail_lines.
 
     python step_closure_trail_lines.py [--warehouse data/warehouse.duckdb] [--lines data/raw/closure_trail_lines/lines.parquet]
-    python step_closure_trail_lines.py --warehouse W --geojson <nearby_trails.geojson> --release fixture   # fixtures
+    python step_closure_trail_lines.py --warehouse W --geojson <nearby_trails.geojson> \\
+        [--at-geojson <trails.geojson>] --release fixture   # fixtures
 
 Decision 187 (S6, the maintainer's poll of 2026-10-11) crosses out an area
 closure's trails where they run inside it, and int_closures__area_trail_cuts
-cuts them, in SQL. This hands that model its lines: the release's nearby
-trail lines, which prepare_closure_trail_lines.py read once per release and
+cuts them, in SQL. This hands that model its lines: the release's trail
+lines, its nearby trail lines and, since decision 192, the A.T.'s own, which
+prepare_closure_trail_lines.py read once per release and
 publish-conditions.yml restores from the cache before the hourly build.
 
 WHY A STEP AND NOT A SOURCE OF THE EXTRACT: the lines are this project's own
@@ -30,12 +32,24 @@ areas this lands lines for, land() kept 1,332 of the release's 364,167 lines
 in 3.67 s and grew the warehouse by 20,185,088 bytes (Measured the same day in
 a 4-core sandbox other builds shared, at a load average of 25 to 41).
 
+THE TABLE IS EMPTY EXACTLY WHEN NO LINES WERE READ. Decision 191 (the
+maintainer's poll of 2026-10-14, "Shade them, no edge") shades an area no
+mapped trail runs inside, so the cut has to tell "no line runs inside this
+area" from "this hour had no lines to look with", and this table is all it
+sees. So when a lines file is read and no line's box meets an area's, the
+step lands the file's first line by id anyway, one line no area needs, and
+the table holds a row whenever lines were read. Without it, a release whose
+lines came near no area at all would read as an hour with no lines, and
+every area would be left out rather than shaded. On UA that has not
+happened: 1,332 lines landed for 193 areas (Measured 2026-10-11, above).
+
 NO LINES IS AN ANSWER, NEVER A FAILURE. Before the weather job has prepared
 any release's lines (a first run, or an environment with no release, as
 production had on 2026-10-11), this lands an empty table, so no area row
-reaches conditions/trail_closures.json that run, and says so in a warning on
-the run's summary; line and point closures, which need no lines, still
-publish. It never stops the build for it.
+reaches conditions/trail_closures.json that run, neither crossed out nor
+shaded, since nothing then says which areas have a trail inside; it says so
+in a warning on the run's summary. Line and point closures, which need no
+lines, still publish. It never stops the build for it.
 """
 
 from __future__ import annotations
@@ -74,7 +88,10 @@ def create_empty(con: duckdb.DuckDBPyConnection) -> None:
 
 def land(con: duckdb.DuckDBPyConnection, lines: Path | None, loaded_at: datetime) -> dict:
     """Replace derived.closure_trail_lines with the lines of `lines` whose bounding box meets an area's, or with no row
-    when `lines` is None. Returns the counts: `landed`, `held` (the file's), `areas`, and the file's `release`."""
+    when `lines` is None. When the file holds a line and none meets an area, its first line by `line_id` lands alone,
+    so the table is empty exactly when no line was read (the docstring's "THE TABLE IS EMPTY EXACTLY WHEN NO LINES
+    WERE READ"). Returns the counts: `landed` (the lines near an area), `held` (the file's), `areas`, and the file's
+    `release`."""
     con.execute(f"create schema if not exists {SCHEMA}")
     (areas,) = con.execute(f"select count(*) from {AREAS}").fetchone()
     if lines is None:
@@ -104,6 +121,17 @@ def land(con: duckdb.DuckDBPyConnection, lines: Path | None, loaded_at: datetime
     )
     (landed,) = con.execute(f"select count(*) from {SCHEMA}.{TABLE}").fetchone()
     held, release = con.execute("select count(*), any_value(release) from read_parquet(?)", [str(lines)]).fetchone()
+    if landed == 0 and held > 0:
+        con.execute(
+            f"""
+            insert into {SCHEMA}.{TABLE}
+            select release, line_id, geometry, cast(? as timestamptz)
+            from read_parquet(?)
+            order by line_id
+            limit 1
+            """,
+            [loaded_at.isoformat(), str(lines)],
+        )
     return {"landed": landed, "held": held, "areas": areas, "release": release}
 
 
@@ -120,14 +148,20 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--warehouse", type=Path, default=WAREHOUSE_PATH)
     parser.add_argument("--lines", type=Path, default=LINES_PATH, help="prepare_closure_trail_lines.py's lines file")
     parser.add_argument("--geojson", type=Path, help="prepare this nearby_trails.geojson first, in place of --lines")
-    parser.add_argument("--release", default="local", help="with --geojson: the release the file stands for")
+    parser.add_argument("--at-geojson", type=Path, help="with --geojson: the A.T.'s trails.geojson to prepare beside it")
+    parser.add_argument("--release", default="local", help="with --geojson: the release the files stand for")
     args = parser.parse_args(argv)
+    if args.at_geojson is not None and args.geojson is None:
+        parser.error("--at-geojson needs --geojson")
 
     with tempfile.TemporaryDirectory(prefix="closure-trail-lines-") as scratch:
         lines: Path | None = args.lines
         if args.geojson is not None:
             out_dir = Path(scratch)
-            prepare_closure_trail_lines.prepare(args.geojson, out_dir, release=args.release, environment=None, source_sha256=None)
+            sources = {prepare_closure_trail_lines.NEARBY_KEY: args.geojson}
+            if args.at_geojson is not None:
+                sources[prepare_closure_trail_lines.AT_KEY] = args.at_geojson
+            prepare_closure_trail_lines.prepare(sources, out_dir, release=args.release, environment=None, source_sha256s=None)
             lines = out_dir / prepare_closure_trail_lines.LINES_FILE
         why = f"{args.lines} is not there"
         if lines is not None and not lines.exists():
@@ -146,17 +180,19 @@ def main(argv: list[str] | None = None) -> int:
 
     if counts["release"] is None:
         message = (
-            f"{why}, so no area closure was cut this run: none of the {counts['areas']} reaches "
+            f"{why}, so no area closure was cut or shaded this run: none of the {counts['areas']} reaches "
             "conditions/trail_closures.json, and every line and point closure still does. publish-weather.yml "
-            "prepares a release's nearby trail lines and publish-conditions.yml restores them before the build."
+            "prepares a release's trail lines and publish-conditions.yml restores them before the build."
         )
         print(f"::warning title={NO_LINES_TITLE}::{message}")
         _summary(f"**{NO_LINES_TITLE}.** {message}")
         return 0
     line = (
-        f"{SCHEMA}.{TABLE}: {counts['landed']:,} of release {counts['release']}'s {counts['held']:,} nearby trail lines, "
+        f"{SCHEMA}.{TABLE}: {counts['landed']:,} of release {counts['release']}'s {counts['held']:,} trail lines, "
         f"those whose box meets one of {counts['areas']:,} area closures"
     )
+    if counts["landed"] == 0:
+        line += ", and its first line besides, to say the lines were read"
     print(line)
     _summary(f"area closures cut against {line.split(': ', 1)[1]}")
     return 0

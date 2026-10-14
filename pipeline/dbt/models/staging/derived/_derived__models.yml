@@ -50,11 +50,12 @@ models:
           config:
             severity: warn
     description: >
-      The release's nearby trail lines that may run inside an area closure,
-      from step_closure_trail_lines's derived.closure_trail_lines: the
-      release, the line's id and the line itself. Read by
-      int_closures__area_trail_cuts, which cuts them against each area
-      (decision 187).
+      The release's trail lines that may run inside an area closure, the
+      A.T.'s own among them (decision 192), from step_closure_trail_lines's
+      derived.closure_trail_lines: the release, the line's id and the line
+      itself. Read by int_closures__area_trail_cuts, which cuts them against
+      each area (decision 187), and shades an area none runs inside
+      (decision 191).
     columns:
       - name: closure_trail_line_key
         description: >
@@ -65,7 +66,7 @@ models:
         description: The data release the line was published in.
         data_tests: [not_null]
       - name: line_id
-        description: The line's id in that release's nearby_trails.geojson.
+        description: The line's id in that release's nearby_trails.geojson or trails.geojson.
         data_tests: [not_null]
       - name: geom
         description: The line, a LineString or a MultiLineString in lon/lat (EPSG:4326), at 5 decimal places.

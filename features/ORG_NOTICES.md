@@ -115,12 +115,17 @@ park statuses, placed by FDEP's park boundaries, are the one source it names.
 trail, but ATC's, whose band already draws them, is copied into this file unchanged with
 one key added, `shape`: `line` and `point` keep the `geometry` arm as it is, and an
 `area`'s geometry becomes the MultiLineString of the mapped trail stretches inside the
-area as its source drew it, cut every hour against the release's nearby trail lines
+area as its source drew it, cut every hour against the release's trail lines, its nearby
+trail lines and the A.T.'s own
 (`pipeline/dbt/models/intermediate/closures/int_closures__area_trail_cuts.sql`). An area no
-mapped trail runs inside, and a row with no geometry to cross out, stay in `notices.json`'s
-list and are not drawn: the map draws a closure only where its source placed one. The phone
-reads the file at launch, as it reads `hazard_areas.json`, and draws each with the
-crossed-out mark from the day before its `starts_on`; a route still goes through it.
+mapped trail runs inside is a `shade` (decision 191, the maintainer's poll of 2026-10-14,
+"Shade them, no edge"): its geometry is the area as its source drew it, and the map fills
+it with a light hatch and draws nothing on its edge, so an open trail along the edge never
+reads as closed. A row with no geometry to draw stays in `notices.json`'s list and is not
+drawn, and in an hour with no trail lines to cut against no area is drawn either way. The
+phone reads the file at launch, as it reads `hazard_areas.json`, and draws each with the
+crossed-out mark, or the hatch, from the day before its `starts_on`; a route still goes
+through it.
 
 **ATC's rows become `at_miles` and nothing about their behaviour changes.** That arm is
 the existing mechanism, named. The migration is mechanical and the client's mile
@@ -304,7 +309,11 @@ header line. A second org could reach a hiker through those alone, in the honest
   Harriman detour `trail:appalachian-trail`, and the A.T. *does* have a mile axis, so it
   could in principle be placed as `at_miles` — by a person, since NYNJTC publishes no
   mile. Attractive and not obviously right: it would put a second org's word on ATC's
-  surface.
+  surface. **Answered for a club's area closure by decision 192** (the maintainer, by
+  poll, 2026-10-14: *"Yes, like any trail"*): where the A.T. runs inside a club's closed
+  area it is crossed out like any trail, and the sheet names the closing organization
+  (`pipeline/prepare_closure_trail_lines.py` adds the release's `trails.geojson` to the
+  lines the hourly cut reads). A notice placed on the A.T. by miles is still open.
 - **How many notice sources the banner can carry** before it stops being a warning and
   becomes a feed. Two lanes is today's design; the survey found four orgs that publish.
 - **Whether `unplaced` notices need a locality filter** so a hiker in Georgia is not shown

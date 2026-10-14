@@ -10,7 +10,8 @@
 -- stretches, for every club closure in PR #1805, and decision 187 (S6) says
 -- how each is drawn with the crossed-out mark (client/src/lib/closureStyle.ts):
 -- a line closure along its own line, an area closure's trails where they run
--- inside it, a point closure as one cross. The phone reads this file at
+-- inside it, a point closure as one cross; decision 191 (2026-10-14) shades
+-- an area closure no mapped trail runs inside. The phone reads this file at
 -- launch, as it reads conditions/hazard_areas.json (decision 84), because
 -- decision 77 downloads notices.json only once a hike is planned. Routes
 -- still go through a closure: this file changes what is drawn, not where a
@@ -35,29 +36,40 @@
 --
 -- EACH ROW GAINS ONE KEY, `shape`, from the kind of the notice's own
 -- geometry in that file: "line" for a LineString or MultiLineString, "point"
--- for a Point or MultiPoint, "area" for a Polygon or MultiPolygon. A line's
--- or a point's `place` is unchanged. An area's `place` becomes
--- {"kind": "geometry", "geometry": <MultiLineString>}, the mapped trail
--- stretches inside it (int_closures__area_trail_cuts, cut against the area
--- as the source drew it, not the 100 m grown outline notices.json carries
--- for a planned route), and comes after the row's other keys, just before
--- `shape` (closure_rows says why); an area no mapped trail runs inside is
--- left out of this file, and stays in notices.json's list. A row with no
--- geometry of those kinds (`unplaced`, `org_terms`, a GeometryCollection) is
--- left out too: there is nothing to cross out, and a guess would draw a
--- closure where its source drew none.
+-- for a Point or MultiPoint, and for a Polygon or MultiPolygon "area" or
+-- "shade". A line's or a point's `place` is unchanged. An area's `place`
+-- becomes {"kind": "geometry", "geometry": ...}, cut against the area as the
+-- source drew it, not the 100 m grown outline notices.json carries for a
+-- planned route (int_closures__area_trail_cuts), and comes after the row's
+-- other keys, just before `shape` (closure_rows says why):
+-- - "area", where a mapped trail runs inside: the MultiLineString of the
+--   trail stretches inside it, crossed out (decision 187);
+-- - "shade", where none does: the area itself, a Polygon or MultiPolygon,
+--   which the phone draws as a light hatch with no mark on its edge
+--   (decision 191, the maintainer's poll of 2026-10-14, "Shade them, no
+--   edge"). Until that decision such an area was left out of this file and
+--   reached a hiker only through notices.json's list.
+-- In an hour with no trail lines to cut against the cut has no row, and every
+-- area closure is left out, neither crossed out nor shaded (the cut's header
+-- says why). A row with no geometry of those kinds (`unplaced`, `org_terms`,
+-- a GeometryCollection) is left out too: there is nothing to draw, and a
+-- guess would draw a closure where its source drew none.
 --
 -- ORDER: by source_key, then notice_id, that writer's order.
 --
--- SIZE, Measured 2026-10-14 with this SQL and int_closures__area_trail_cuts'
--- as dbt compiles them, run on DuckDB 1.5.5, over UA's conditions/notices.json
--- of 2026-10-11 16:23 UTC and release 2026-10-10-2's nearby trail lines (both
--- read 2026-10-11): 1,108 closures (888 lines, 47 areas, 173 points),
--- 3,123,994 bytes and 630,688 gzipped at level 6 (publish.py's), 1,246,300 of
--- the bytes the 47 areas' stretches. Those areas were the file's own 100 m
--- grown outlines, larger than the source areas this build cuts against, so
--- the area half is an upper bound; the 146 areas no mapped trail ran inside
--- were left out. The fixture build's file: 18 closures, 12,367 bytes.
+-- SIZE. UA's first published file, of 2026-10-14 18:15 UTC, built before
+-- decisions 191 and 192: 1,198 closures (975 lines, 46 areas, 177 points),
+-- 3,165,161 bytes, 633,700 on the wire as its latest.json lists it. The 156
+-- areas no mapped trail ran inside were left out of it. As shades they add
+-- 197,598 bytes and 32,244 gzipped at level 6 (publish.py's), 5.1%: Measured
+-- 2026-10-14 by adding them to that file with this build's shade, the
+-- macro's `grown=false` expression, over their own outlines read live that
+-- evening from the six layers (19,167 vertices, 4,486 after the 10 m step).
+-- The decision was shown +134,995 bytes and +16,651 gzipped, reasoned from
+-- notices.json's outlines, which are grown 100 m and simplified at 100 m.
+-- Decision 192's A.T. stretches at Bear Mountain add about 600 bytes
+-- (prepare_closure_trail_lines.py has them). The fixture build's file of the
+-- same day: 25 closures (9 lines, 7 areas, 6 shades, 3 points), 17,499 bytes.
 --
 -- THE SAME WITHHOLDING. While pub_conditions_notices selects no row (a build
 -- without the row history while a notice source is held), this selects none,
@@ -101,8 +113,32 @@ closing as (
 cuts as (
     select
         notice_id,
-        stretches_geojson
+        stretches,
+        stretches_geojson,
+        shade_geojson
     from {{ ref('int_closures__area_trail_cuts') }}
+),
+
+-- What each kept row is drawn as, and an area's new geometry.
+placed as (
+    select
+        closing.source_key,
+        closing.notice_id,
+        closing.notice,
+        case
+            when closing.shape != 'area' then closing.shape
+            when cuts.stretches > 0 then 'area'
+            else 'shade'
+        end as shape,
+        case
+            when cuts.stretches > 0 then cuts.stretches_geojson
+            else cuts.shade_geojson
+        end as area_geojson
+    from closing
+    left join cuts on closing.notice_id = cuts.notice_id
+    where
+        closing.shape in ('line', 'point')
+        or (closing.shape = 'area' and cuts.notice_id is not null)
 ),
 
 -- json_merge_patch is RFC 7386's merge patch, and a null in the patch removes
@@ -114,33 +150,27 @@ cuts as (
 -- object's keys carry no order (RFC 8259), so a reader sees the same row.
 closure_rows as (
     select
-        closing.source_key,
-        closing.notice_id,
+        source_key,
+        notice_id,
         case
-            when closing.shape = 'area'
+            when shape in ('area', 'shade')
                 then json_merge_patch(
-                    json_merge_patch(closing.notice, '{"place": null}'),
+                    json_merge_patch(notice, '{"place": null}'),
                     json_object(
                         'place',
                         json_object(
                             'kind',
                             'geometry',
                             'geometry',
-                            cast(cuts.stretches_geojson as json)
+                            cast(area_geojson as json)
                         ),
                         'shape',
-                        closing.shape
+                        shape
                     )
                 )
-            else json_merge_patch(
-                closing.notice, json_object('shape', closing.shape)
-            )
+            else json_merge_patch(notice, json_object('shape', shape))
         end as closure
-    from closing
-    left join cuts on closing.notice_id = cuts.notice_id
-    where
-        closing.shape in ('line', 'point')
-        or (closing.shape = 'area' and cuts.notice_id is not null)
+    from placed
 ),
 
 closures as (

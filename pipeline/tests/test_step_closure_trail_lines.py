@@ -1,15 +1,17 @@
-"""step_closure_trail_lines.py lands the release's nearby trail lines that may run inside an area closure, and never
-stops the hourly build for want of them.
+"""step_closure_trail_lines.py lands the release's trail lines that may run inside an area closure, and never stops the
+hourly build for want of them.
 
 Decision 187 (S6, the maintainer's poll of 2026-10-11): int_closures__area_trail_cuts crosses out an area closure's trails
-where they run inside it, from derived.closure_trail_lines. A failed step stops build_marts.py's whole hourly build, every
-conditions file with it (its docstring, "ONE SOURCE OR ONE WRITER NEVER STOPS THE REST"), so an hour with no lines, or
-lines that will not read, lands an empty table and says so instead.
+where they run inside it, from derived.closure_trail_lines, the A.T.'s own among them since decision 192. A failed step
+stops build_marts.py's whole hourly build, every conditions file with it (its docstring, "ONE SOURCE OR ONE WRITER NEVER
+STOPS THE REST"), so an hour with no lines, or lines that will not read, lands an empty table and says so instead; and
+since decision 191 shades an area no trail runs inside, an hour that did read lines never lands an empty one.
 """
 
 import json
 
 import duckdb
+import pytest
 
 import prepare_closure_trail_lines as prepare
 import step_closure_trail_lines as step
@@ -30,9 +32,8 @@ def _warehouse(tmp_path, areas=(AREA,)):
     return path
 
 
-def _lines(tmp_path, *lines):
-    source = tmp_path / "nearby_trails.geojson"
-    source.write_text(
+def _geojson(path, *lines):
+    path.write_text(
         json.dumps(
             {
                 "type": "FeatureCollection",
@@ -47,7 +48,14 @@ def _lines(tmp_path, *lines):
             }
         )
     )
-    prepare.prepare(source, tmp_path / "prepared", release="2026-10-10-2", environment="ua", source_sha256=None)
+    return path
+
+
+def _lines(tmp_path, *lines):
+    source = _geojson(tmp_path / "nearby_trails.geojson", *lines)
+    prepare.prepare(
+        {prepare.NEARBY_KEY: source}, tmp_path / "prepared", release="2026-10-10-2", environment="ua", source_sha256s=None
+    )
     return tmp_path / "prepared" / prepare.LINES_FILE
 
 
@@ -77,6 +85,28 @@ def test_only_the_lines_whose_box_meets_an_areas_box_are_landed(tmp_path, monkey
     assert json.loads(landed[0][2]) == {"type": "LineString", "coordinates": [[-73.97, 41.03], [-73.97, 41.035]]}
 
 
+def test_lines_read_with_none_near_an_area_land_the_files_first_line_so_the_table_says_they_were_read(
+    tmp_path, monkeypatch, capsys
+):
+    """Decision 191 shades an area no trail runs inside, and an empty table is how the cut knows an hour had no lines
+    to look with; so lines that were read never leave it empty, and every area is shaded rather than left out."""
+    monkeypatch.delenv("GITHUB_STEP_SUMMARY", raising=False)
+    warehouse = _warehouse(tmp_path)
+    lines = _lines(
+        tmp_path,
+        ("far_west", [[-120.0, 45.0], [-120.0, 45.01]]),
+        ("far_east", [[-70.0, 44.0], [-70.0, 44.01]]),
+    )
+
+    assert step.main(["--warehouse", str(warehouse), "--lines", str(lines)]) == 0
+
+    assert [line_id for _, line_id, _ in _landed(warehouse)] == ["far_east"], "the first by line id, and no other"
+    out = capsys.readouterr().out
+    assert "0 of release 2026-10-10-2's 2 trail lines" in out
+    assert "to say the lines were read" in out
+    assert "::warning" not in out
+
+
 def test_no_lines_file_lands_an_empty_table_and_warns_on_the_runs_summary(tmp_path, monkeypatch, capsys):
     summary = tmp_path / "summary.md"
     monkeypatch.setenv("GITHUB_STEP_SUMMARY", str(summary))
@@ -87,6 +117,7 @@ def test_no_lines_file_lands_an_empty_table_and_warns_on_the_runs_summary(tmp_pa
     assert _landed(warehouse) == []
     out = capsys.readouterr().out
     assert f"::warning title={step.NO_LINES_TITLE}::" in out
+    assert "no area closure was cut or shaded this run" in out
     assert "none of the 1 reaches conditions/trail_closures.json, and every line and point closure still does" in out
     assert step.NO_LINES_TITLE in summary.read_text()
 
@@ -154,3 +185,26 @@ def test_the_fixture_build_prepares_a_geojson_first(tmp_path, monkeypatch):
     assert step.main(["--warehouse", str(warehouse), "--geojson", str(source), "--release", "fixture"]) == 0
 
     assert [(release, line_id) for release, line_id, _ in _landed(warehouse)] == [("fixture", "across")]
+
+
+def test_the_fixture_build_prepares_the_ats_own_lines_beside_the_nearby_ones(tmp_path, monkeypatch):
+    """Decision 192: the fixture's trails.geojson goes through the same preparation, so an A.T. line inside an area
+    lands like any trail, and one far from every area does not."""
+    monkeypatch.delenv("GITHUB_STEP_SUMMARY", raising=False)
+    warehouse = _warehouse(tmp_path)
+    nearby = _geojson(tmp_path / "nearby.geojson", ("across", [[-73.97, 41.03], [-73.97, 41.035]]))
+    at = _geojson(
+        tmp_path / "at.geojson",
+        ("centerline:chain:0", [[-73.967, 41.028], [-73.967, 41.045]]),
+        ("side_trails:far", [[-121.0, 46.0], [-121.0, 46.01]]),
+    )
+
+    argv = ["--warehouse", str(warehouse), "--geojson", str(nearby), "--at-geojson", str(at), "--release", "fixture"]
+    assert step.main(argv) == 0
+
+    assert [line_id for _, line_id, _ in _landed(warehouse)] == ["across", "centerline:chain:0"]
+
+
+def test_the_ats_file_is_refused_without_the_nearby_one(tmp_path):
+    with pytest.raises(SystemExit):
+        step.main(["--warehouse", str(_warehouse(tmp_path)), "--at-geojson", str(tmp_path / "at.geojson")])

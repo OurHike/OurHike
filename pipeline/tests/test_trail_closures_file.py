@@ -62,6 +62,30 @@ def test_every_geos_operation_on_the_hourly_path_before_the_writers_is_tried_rat
     assert "try(st_collectionextract(geom, 3))" in areas
     assert "try(st_intersection(lines.geom, areas.geom))" in cut
     assert "try({{ notice_phone_geometry('geom') }})" in cut
+    assert "try({{ notice_phone_geometry('areas.geom', grown=false) }})" in cut, "decision 191's shade"
+
+
+def test_a_shade_is_the_area_as_its_source_drew_it_never_grown():
+    """Decision 191: the hatch must not reach past the closure's edge onto an open trail, which the 100 m growth
+    conditions/notices.json gives an area for a planned route would. The shade comes from the cut, which reads the
+    source's own area (int_closures__trail_closure_areas), and the macro's ungrown branch grows nothing."""
+    cut = CUT.read_text(encoding="utf-8")
+    macro = (DBT / "macros" / "notice_phone_geometry.sql").read_text(encoding="utf-8")
+    ungrown = macro.split("{%- else %}", 1)[1].split("{%- endif %}", 1)[0]
+
+    assert "ref('int_closures__trail_closure_areas')" in cut
+    assert "st_buffer" not in ungrown and "notice_area_m" not in ungrown
+    assert "st_simplifypreservetopology({{ framed }}, 10)" in ungrown
+
+
+def test_an_hour_with_no_lines_shades_no_area():
+    """With no lines nothing says which areas have a trail inside, so the cut answers no row at all (its header), and
+    the writer, which keeps an area only with a row of the cut, leaves every area out that hour."""
+    cut = CUT.read_text(encoding="utf-8")
+    writer = WRITER.read_text(encoding="utf-8")
+
+    assert "having count(*) > 0" in cut and "cross join read_lines" in cut
+    assert "or (closing.shape = 'area' and cuts.notice_id is not null)" in writer
 
 
 def test_the_step_reads_the_restored_lines_in_the_hourly_lane_and_the_fixtures_geojson_in_a_fixture_build():
@@ -80,6 +104,8 @@ def test_the_step_reads_the_restored_lines_in_the_hourly_lane_and_the_fixtures_g
         "/w/warehouse.duckdb",
         "--geojson",
         "/w/raw/closure_trail_lines/nearby_trails.geojson",
+        "--at-geojson",
+        "/w/raw/closure_trail_lines/trails.geojson",
         "--release",
         "fixture",
     )

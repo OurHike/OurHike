@@ -179,7 +179,10 @@ describe('the day hikes here door and the sheets a tap on the map opens', () => 
 
       // And a touch on a club closure's crossed-out line takes it away again.
       await waitFor(
-        () => expect(featuresIn(map, CLUB_CLOSURE_SOURCE_ID)).toHaveLength(4),
+        () =>
+          expect(featuresIn(map, CLUB_CLOSURE_SOURCE_ID)).toHaveLength(
+            Object.keys(trailClosureRows()).length,
+          ),
         {
           timeout: 10_000,
         },

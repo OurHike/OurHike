@@ -96,6 +96,7 @@ import {
   HAZARD_FILL_LAYER_ID,
   HAZARD_POINT_LAYER_ID,
 } from './hazardAreaLayers'
+import { CLUB_CLOSURE_SHADE_LAYER_ID } from './clubClosureLayers'
 
 // The live background exists because a raster mosaic of pre-rendered US Topo
 // quads cannot be restyled, cannot be read at a zoom it was not drawn for, and
@@ -748,6 +749,11 @@ describe('the offline-only background', () => {
       HAZARD_FILL_LAYER_ID,
       HAZARD_EDGE_LAYER_ID,
       HAZARD_POINT_LAYER_ID,
+      // A club's area closure with no mapped trail inside, hatched (decision
+      // 191), in the hazard areas' place and over them, for the closures'
+      // reason: conditions/trail_closures.json is the copy the phone kept,
+      // and a hiker with no signal is still walking into closed ground.
+      CLUB_CLOSURE_SHADE_LAYER_ID,
       // The edge of the download (#557): over the ground it is an edge of,
       // under every trail line, closure and pin - a seam takes away the
       // sheet, never the hazard (features/OFFLINE_COVERAGE.md §8). Empty

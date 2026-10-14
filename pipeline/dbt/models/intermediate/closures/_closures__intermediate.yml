@@ -611,16 +611,29 @@ models:
           grown outline conditions/notices.json carries.
   - name: int_closures__area_trail_cuts
     description: >
-      The trail stretches inside each area closure (decision 187): the
-      release's nearby trail lines (stg_derived__closure_trail_lines) cut
-      against each area of int_closures__trail_closure_areas by
-      int_trail_lines__network_area_closures' rule, shaped for a phone at
+      What the map draws for each area closure (decisions 187 and 191): in an
+      hour with trail lines to cut against, one row per area of
+      int_closures__trail_closure_areas, holding either the stretches of the
+      mapped trails inside it, or, where none runs inside, the area itself,
+      which the phone shades. The lines are the release's
+      (stg_derived__closure_trail_lines: its nearby trail lines and, since
+      decision 192, the A.T.'s own), cut by
+      int_trail_lines__network_area_closures' rule and shaped for a phone at
       10 m and 5 decimal places by macros/notice_phone_geometry.sql, one
-      MultiLineString per area. An area no mapped trail runs inside has no
-      row, and pub_conditions_trail_closures leaves it out. Builds in what
-      step_closure_trail_lines' table unblocks, so every GEOS operation is in
-      TRY() and its tests warn: a failure here would stop every conditions
-      file of the hour, where an area it cannot cut is only left out.
+      MultiLineString per area; the area by the same macro ungrown. No row at
+      all in an hour with no lines, when nothing says which areas have a
+      trail inside, and none for an area whose cut or shape raised or whose
+      shape comes out empty: pub_conditions_trail_closures leaves those out.
+      Builds in what step_closure_trail_lines' table unblocks, so every GEOS
+      operation is in TRY() and its tests warn: a failure here would stop
+      every conditions file of the hour, where an area it cannot cut is only
+      left out.
+    data_tests:
+      - dbt_utils.expression_is_true:
+          arguments:
+            expression: "(stretches > 0) = (stretches_geojson is not null) and (stretches > 0) = (shade_geojson is null)"
+          config:
+            severity: warn
     columns:
       - name: notice_id
         description: The area closure's notice_id.
@@ -632,12 +645,21 @@ models:
               config:
                 severity: warn
       - name: stretches
-        description: How many stretches the MultiLineString holds, one at least.
+        description: >
+          How many stretches the MultiLineString holds; 0 for an area no
+          mapped trail runs inside, which is shaded.
       - name: stretches_geojson
         description: >
           The stretches as one GeoJSON MultiLineString in lon/lat at 5 decimal
           places, each of two or more distinct vertices, by line id and then
-          its place along the line.
+          its place along the line; null where `stretches` is 0.
+      - name: shade_geojson
+        description: >
+          Where `stretches` is 0, the area as its source drew it (never the
+          100 m grown outline conditions/notices.json carries), simplified at
+          10 m and cut to 5 decimal places, a GeoJSON Polygon or MultiPolygon
+          in lon/lat with its holes: what the phone hatches, with no mark on
+          its edge (decision 191). Null where a trail runs inside.
 
 unit_tests:
   - name: int_closures__notice_state_shapes_simplifies_only_the_states_the_seed_names
@@ -3077,10 +3099,11 @@ unit_tests:
       Decision 187's cut, int_trail_lines__network_area_closures' rule: a line
       half inside an area keeps only its inside half; a line wholly inside is
       kept whole, after it in line id order; a line outside adds nothing, and
-      one that only touches a corner is no walkable section. An area no line
-      runs inside has no row, and neither has one whose only stretch, under
-      a metre long, does not outlast the phone's 5 decimal places. Each kept
-      area is one MultiLineString, a single stretch included.
+      one that only touches a corner is no walkable section. Each area with a
+      stretch is one MultiLineString, a single stretch included. Decision
+      191: an area no line runs inside is shaded, its own outline its
+      `shade_geojson`, and so is one whose only stretch, under a metre long,
+      does not outlast the phone's 5 decimal places.
     given:
       - input: ref('int_closures__trail_closure_areas')
         rows:
@@ -3103,7 +3126,9 @@ unit_tests:
           ) as lines (line_id, wkt)
     expect:
       rows:
-        - {notice_id: 'club_area:1', stretches: 2, stretches_geojson: '{"type":"MultiLineString","coordinates":[[[-73.97,41.032],[-73.97,41.035]],[[-73.968,41.033],[-73.968,41.038]]]}'}
+        - {notice_id: 'club_area:1', stretches: 2, stretches_geojson: '{"type":"MultiLineString","coordinates":[[[-73.97,41.032],[-73.97,41.035]],[[-73.968,41.033],[-73.968,41.038]]]}', shade_geojson: null}
+        - {notice_id: 'club_area:2', stretches: 0, stretches_geojson: null, shade_geojson: '{"type":"Polygon","coordinates":[[[-71.3,44.206],[-71.296,44.206],[-71.296,44.199],[-71.3,44.199],[-71.3,44.206]]]}'}
+        - {notice_id: 'club_area:3', stretches: 0, stretches_geojson: null, shade_geojson: '{"type":"Polygon","coordinates":[[[-74.258,41.215],[-74.242,41.215],[-74.242,41.195],[-74.258,41.195],[-74.258,41.215]]]}'}
 
   - name: int_closures__area_trail_cuts_keeps_a_lone_stretch_as_a_multilinestring_of_one
     model: int_closures__area_trail_cuts
@@ -3121,7 +3146,81 @@ unit_tests:
           select 'across' as line_id, st_geomfromtext('LINESTRING (-74.21 41.207, -74.19 41.207)') as geom
     expect:
       rows:
-        - {notice_id: 'club_area:1', stretches: 1, stretches_geojson: '{"type":"MultiLineString","coordinates":[[[-74.205,41.207],[-74.195,41.207]]]}'}
+        - {notice_id: 'club_area:1', stretches: 1, stretches_geojson: '{"type":"MultiLineString","coordinates":[[[-74.205,41.207],[-74.195,41.207]]]}', shade_geojson: null}
+
+  - name: int_closures__area_trail_cuts_crosses_out_the_at_like_any_trail
+    model: int_closures__area_trail_cuts
+    description: >
+      Decision 192 ("Yes, like any trail"): the A.T.'s own line, from the
+      release's trails.geojson, is cut inside a club's area as the nearby
+      line beside it is, each its own stretch in line id order, so the
+      phone crosses out the A.T. where it runs inside the area.
+    given:
+      - input: ref('int_closures__trail_closure_areas')
+        rows:
+          - {notice_id: 'club_area:1', area_geojson: '{"type":"Polygon","coordinates":[[[-73.975,41.032],[-73.965,41.032],[-73.965,41.04],[-73.975,41.04],[-73.975,41.032]]]}'}
+      - input: ref('stg_derived__closure_trail_lines')
+        format: sql
+        rows: |
+          select
+              line_id,
+              st_geomfromtext(wkt) as geom
+          from (values
+              ('fixture-nearby:across', 'LINESTRING (-73.97 41.03, -73.97 41.035)'),
+              ('centerline:chain:0', 'LINESTRING (-73.967 41.028, -73.967 41.045)')
+          ) as lines (line_id, wkt)
+    expect:
+      rows:
+        - {notice_id: 'club_area:1', stretches: 2, stretches_geojson: '{"type":"MultiLineString","coordinates":[[[-73.967,41.032],[-73.967,41.04]],[[-73.97,41.032],[-73.97,41.035]]]}', shade_geojson: null}
+
+  - name: int_closures__area_trail_cuts_has_no_row_in_an_hour_with_no_lines
+    model: int_closures__area_trail_cuts
+    description: >
+      An hour whose step read no lines (step_closure_trail_lines' empty
+      table): nothing says which areas have a trail inside, so no area is
+      cut and none is shaded, and pub_conditions_trail_closures leaves every
+      area closure out that hour rather than shade one whose trails would
+      have been crossed out.
+    given:
+      - input: ref('int_closures__trail_closure_areas')
+        rows:
+          - {notice_id: 'club_area:1', area_geojson: '{"type":"Polygon","coordinates":[[[-73.975,41.032],[-73.965,41.032],[-73.965,41.04],[-73.975,41.04],[-73.975,41.032]]]}'}
+          - {notice_id: 'club_area:2', area_geojson: '{"type":"Polygon","coordinates":[[[-71.3,44.199],[-71.296,44.199],[-71.296,44.206],[-71.3,44.206],[-71.3,44.199]]]}'}
+      - input: ref('stg_derived__closure_trail_lines')
+        format: sql
+        rows: |
+          select
+              cast(null as varchar) as line_id,
+              st_geomfromtext('LINESTRING (0 0, 1 1)') as geom
+          where false
+    expect:
+      rows: []
+
+  - name: int_closures__area_trail_cuts_shades_an_area_as_its_source_drew_it
+    model: int_closures__area_trail_cuts
+    description: >
+      Decision 191's shade, in an hour that read lines (one far away): an
+      area with a hole keeps the hole, so the hatch never covers the open
+      ground inside it; a vertex under 10 m off a straight edge is
+      simplified away, and the rest stay where the source put them, at 5
+      decimal places, never grown; an area under a metre across comes out
+      empty and has no row. The rings come back in GEOS's own order, the
+      outline clockwise from its north-west corner and each hole the other
+      way, as every area of conditions/notices.json does; MapLibre's tiler
+      rewinds every ring it draws (geojson-vt's rewind()), so the phone
+      shades either.
+    given:
+      - input: ref('int_closures__trail_closure_areas')
+        rows:
+          - {notice_id: 'club_area:holed', area_geojson: '{"type":"Polygon","coordinates":[[[-112.1,40.5],[-112.05,40.50001],[-112.0,40.5],[-112.0,40.6],[-112.1,40.6],[-112.1,40.5]],[[-112.06,40.54],[-112.04,40.54],[-112.04,40.56],[-112.06,40.56],[-112.06,40.54]]]}'}
+          - {notice_id: 'club_area:speck', area_geojson: '{"type":"Polygon","coordinates":[[[-112.5,40.5],[-112.499999,40.5],[-112.499999,40.500001],[-112.5,40.500001],[-112.5,40.5]]]}'}
+      - input: ref('stg_derived__closure_trail_lines')
+        format: sql
+        rows: |
+          select 'far_away' as line_id, st_geomfromtext('LINESTRING (-120 45, -120 45.01)') as geom
+    expect:
+      rows:
+        - {notice_id: 'club_area:holed', stretches: 0, stretches_geojson: null, shade_geojson: '{"type":"Polygon","coordinates":[[[-112.1,40.6],[-112.0,40.6],[-112.0,40.5],[-112.1,40.5],[-112.1,40.6]],[[-112.04,40.54],[-112.04,40.56],[-112.06,40.56],[-112.06,40.54],[-112.04,40.54]]]}'}
 
 exposures:
   - name: step_closure_trail_lines
@@ -3131,9 +3230,10 @@ exposures:
     owner:
       name: OurHike
     description: >
-      The Python step that lands, of the release's nearby trail lines
-      prepare_closure_trail_lines.py read once per release, those whose
-      bounding box meets an area closure's (pipeline/step_closure_trail_lines.py),
+      The Python step that lands, of the release's trail lines (its nearby
+      trail lines and the A.T.'s own) prepare_closure_trail_lines.py read
+      once per release, those whose bounding box meets an area closure's,
+      or the first alone when none does (pipeline/step_closure_trail_lines.py),
       between the dbt invocation that builds int_closures__trail_closure_areas
       and the one that reads its answer back as
       source('derived', 'closure_trail_lines'). A step rather than a source

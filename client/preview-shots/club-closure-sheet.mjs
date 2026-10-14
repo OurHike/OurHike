@@ -18,8 +18,8 @@
 //     signage on the ground."
 //  4. "Gathered by OurHike on" and the file's date.
 //
-// The line it closes is under the sheet on a phone, where the other three
-// closures stay crossed out above it; club-closures-on-the-map.mjs shows that
+// The line it closes is under the sheet on a phone, where the other
+// closures stay drawn above it; club-closures-on-the-map.mjs shows that
 // line at the same full strength as the rest (the maintainer's "B: same
 // mark"), so only the sheet says it may no longer apply.
 //

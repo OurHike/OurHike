@@ -57,7 +57,7 @@ function read(row: unknown): TrailClosure {
   return closure
 }
 
-/** The hand-made file's four closures, and any more a test adds. */
+/** The hand-made file's five closures, and any more a test adds. */
 function closureFile(...more: TrailClosure[]): PublishedConditions<TrailClosure> {
   return {
     generatedAt: new Date('2026-10-11T09:00:00Z'),

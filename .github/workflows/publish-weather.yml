@@ -145,17 +145,24 @@ jobs:
           path: pipeline/data/processed/
           retention-days: 1
 
-      # THE RELEASE'S NEARBY TRAIL LINES, FOR publish-conditions.yml'S CUT OF
-      # AREA CLOSURES (pipeline/ELT.md's decision 187, S6, for
+      # THE RELEASE'S TRAIL LINES, FOR publish-conditions.yml'S CUT OF AREA
+      # CLOSURES (pipeline/ELT.md's decisions 187 and 192, for
       # conditions/trail_closures.json; pipeline/prepare_closure_trail_lines.py
-      # has the measurements). Like the squares above, the lines change with a
-      # data release and not with the hour, and this job already downloads the
-      # release's nearby_trails.geojson when the release moves, so it prepares
-      # them once per release and caches them under the release's id; the
-      # conditions job restores the newest entry and never saves one, as it
+      # has the measurements): its nearby trail lines and the A.T.'s own. Like
+      # the squares above, the lines change with a data release and not with
+      # the hour, and this job already downloads the release's
+      # nearby_trails.geojson and trails.geojson when the release moves, so it
+      # prepares them once per release and caches them under the release's id;
+      # the conditions job restores the newest entry and never saves one, as it
       # does the squares. The three path lists here and that job's restore
       # have to stay the same, or it stops finding the entry
       # (.github/tests/test_closure_trail_lines_cache.py holds them equal).
+      #
+      # THE KEY NAMES THE SCRIPT'S SCHEMA (`-v2-`), and so does that job's
+      # restore-keys prefix, which matches the newest entry by prefix: an
+      # entry written under an older schema (v1's held no A.T. line) can never
+      # be restored for the cut. Bump both with SCHEMA, which the same test
+      # holds them to.
       #
       # AFTER THE UPLOAD, so a slow or failed preparation never delays or
       # stops a forecast, and `continue-on-error` on the steps that can fail:
@@ -163,8 +170,9 @@ jobs:
       # standing, which the conditions job goes on cutting against.
       # Most hours this is one latest.json request and one cache lookup that
       # downloads nothing (`lookup-only`), because the key names the release.
-      # The hour the release moves it reads 141 MB of nearby trail lines,
-      # reusing the squares step's copy when that step just downloaded it, and
+      # The hour the release moves it reads 141 MB of nearby trail lines and
+      # 1.6 MB of the A.T.'s, reusing the squares step's copies when that step
+      # just downloaded them, and
       # took 101.4 to 130.6 s in a shared 4-core sandbox (Measured
       # 2026-10-11), against the 46-52 s the squares step takes then; the
       # five-minute cap only bounds a hang. The key also hashes the script,
@@ -187,10 +195,10 @@ jobs:
           path: |
             pipeline/data/raw/closure_trail_lines/lines.parquet
             pipeline/data/raw/closure_trail_lines/release.json
-          key: closure-trail-lines-ua-${{ steps.lines-release.outputs.release }}-${{ hashFiles('pipeline/prepare_closure_trail_lines.py') }}
+          key: closure-trail-lines-v2-ua-${{ steps.lines-release.outputs.release }}-${{ hashFiles('pipeline/prepare_closure_trail_lines.py') }}
           lookup-only: true
 
-      - name: Prepare the release's nearby trail lines for the closures' cut
+      - name: Prepare the release's trail lines for the closures' cut
         id: lines
         if: ${{ !cancelled() && steps.lines-release.outputs.release != '' && steps.lines-cache.outputs.cache-hit != 'true' }}
         continue-on-error: true
@@ -207,7 +215,7 @@ jobs:
           path: |
             pipeline/data/raw/closure_trail_lines/lines.parquet
             pipeline/data/raw/closure_trail_lines/release.json
-          key: closure-trail-lines-ua-${{ steps.lines-release.outputs.release }}-${{ hashFiles('pipeline/prepare_closure_trail_lines.py') }}
+          key: closure-trail-lines-v2-ua-${{ steps.lines-release.outputs.release }}-${{ hashFiles('pipeline/prepare_closure_trail_lines.py') }}
 
   publish:
     name: Publish (ua)

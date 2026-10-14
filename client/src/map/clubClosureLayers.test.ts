@@ -29,10 +29,16 @@ import { validTrailClosure } from '../lib/publishedNotices'
 import { trailClosureRows } from '../../preview-shots/fixtures/clubClosures.mjs'
 import {
   buildClubClosureLayers,
+  buildClubClosureShadeLayer,
   buildClubClosureSource,
   CLUB_CLOSURE_LINE_FILTER,
   CLUB_CLOSURE_POINT_FILTER,
+  CLUB_CLOSURE_SHADE_FILTER,
+  CLUB_CLOSURE_SHADE_LAYER_ID,
   CLUB_CLOSURE_SOURCE_ID,
+  clubClosureShadeIdAt,
+  clubClosureShadeImageId,
+  SHADE_INKS,
 } from './clubClosureLayers'
 import {
   attachClubClosureData,
@@ -60,8 +66,11 @@ const GROUND = '#ffffff'
 const INK = '#14130f'
 const POINT_LAYER_ID = closurePointId(CLUB_CLOSURE_LAYER_ID)
 
-/** The hand-made file's four closures, read by the app's own reader. */
-function closures(): Record<'line' | 'area' | 'point' | 'greyed', TrailClosure> {
+/** The hand-made file's five closures, read by the app's own reader. */
+function closures(): Record<
+  'line' | 'area' | 'point' | 'greyed' | 'shade',
+  TrailClosure
+> {
   const rows = trailClosureRows()
   const read = (row: unknown) => {
     const closure = validTrailClosure(row)
@@ -73,7 +82,22 @@ function closures(): Record<'line' | 'area' | 'point' | 'greyed', TrailClosure> 
     area: read(rows.area),
     point: read(rows.point),
     greyed: read(rows.greyed),
+    shade: read(rows.shade),
   }
+}
+
+/** The z10 tile holding `[lon, lat]`, as MapLibre's GeoJSON source tiles
+ *  `closures` (@maplibre/geojson-vt): at z0 the tiler drops a line shorter
+ *  than its tolerance, about 29 km there, and every closure here is
+ *  shorter. */
+function tileAt([lon, lat]: [number, number], closures: readonly TrailClosure[]) {
+  const z = 10
+  const x = Math.floor(((lon + 180) / 360) * 2 ** z)
+  const rad = (lat * Math.PI) / 180
+  const y = Math.floor(
+    ((1 - Math.log(Math.tan(rad) + 1 / Math.cos(rad)) / Math.PI) / 2) * 2 ** z,
+  )
+  return new GeoJSONVT(clubClosureFeatureCollection(closures) as never).getTile(z, x, y)
 }
 
 function layer(id: string): LayerSpecification {
@@ -120,19 +144,11 @@ describe('how a club closure is drawn', () => {
     // MapLibre's GeoJSON source uses (@maplibre/geojson-vt), not a guess at
     // what it emits.
     const { line, area, point } = closures()
-    // The z10 tile holding the fixture: at z0 the tiler drops a line shorter
-    // than its tolerance, about 29 km there, and every closure here is
-    // shorter.
-    const [lon, lat] = point.place.geometry.coordinates as [number, number]
-    const z = 10
-    const x = Math.floor(((lon + 180) / 360) * 2 ** z)
-    const rad = (lat * Math.PI) / 180
-    const y = Math.floor(
-      ((1 - Math.log(Math.tan(rad) + 1 / Math.cos(rad)) / Math.PI) / 2) * 2 ** z,
-    )
-    const tile = new GeoJSONVT(
-      clubClosureFeatureCollection([line, area, point]) as never,
-    ).getTile(z, x, y)
+    const tile = tileAt(point.place.geometry.coordinates as [number, number], [
+      line,
+      area,
+      point,
+    ])
     expect(tile?.features).toHaveLength(3)
     const drawnBy = (filter: unknown) =>
       (tile?.features ?? [])
@@ -145,6 +161,65 @@ describe('how a club closure is drawn', () => {
       type: 'geojson',
       data: { type: 'FeatureCollection', features: [] },
     })
+  })
+
+  it('shades an area no trail runs inside on the hatch layer alone, never along the crossed-out mark (decision 191)', () => {
+    // "Shade them, no edge": the polygon must reach the fill and nothing
+    // that draws a line, or its edge would read as a closed trail.
+    const { line, shade } = closures()
+    const [outline] = shade.place.geometry.coordinates as Array<Array<[number, number]>>
+    const tile = tileAt(outline[0], [line, shade])
+    const drawnBy = (filter: unknown) =>
+      (tile?.features ?? [])
+        .filter((feature) => passes(filter, feature.type as 1 | 2 | 3))
+        .map((feature) => feature.tags?.[CLUB_CLOSURE_ID_PROPERTY])
+    expect(drawnBy(CLUB_CLOSURE_SHADE_FILTER)).toEqual([shade.notice_id])
+    expect(drawnBy(CLUB_CLOSURE_LINE_FILTER)).toEqual([line.notice_id])
+    expect(drawnBy(CLUB_CLOSURE_POINT_FILTER)).toEqual([])
+    // And no crossed-out layer takes a polygon at all.
+    for (const built of buildClubClosureLayers(GROUND, INK)) {
+      expect(passes((built as { filter?: unknown }).filter, 3), built.id).toBe(false)
+    }
+  })
+
+  it('draws the shade as frame A drew it: the sheet’s hatch, filled, with no outline and no antialiasing pass along the edge', () => {
+    const day = buildClubClosureShadeLayer({ theme: 'light' })
+    expect(day).toEqual({
+      id: CLUB_CLOSURE_SHADE_LAYER_ID,
+      type: 'fill',
+      source: CLUB_CLOSURE_SOURCE_ID,
+      filter: CLUB_CLOSURE_SHADE_FILTER,
+      paint: {
+        'fill-pattern': clubClosureShadeImageId('day'),
+        'fill-antialias': false,
+      },
+    })
+    expect(JSON.stringify(day)).not.toContain('outline')
+    expect(
+      (buildClubClosureShadeLayer({ theme: 'dark' }).paint as Record<string, unknown>)[
+        'fill-pattern'
+      ],
+    ).toBe(clubClosureShadeImageId('night'))
+    expect(
+      (
+        buildClubClosureShadeLayer({ mapStyle: 'night_hike', redLight: true })
+          .paint as Record<string, unknown>
+      )['fill-pattern'],
+    ).toBe(clubClosureShadeImageId('red'))
+  })
+
+  it('names the sheet’s hatch again on a sheet change', () => {
+    const map = new MockMap({})
+    map.layerIds = [BACKDROP_LAYER_ID, CLUB_CLOSURE_SHADE_LAYER_ID]
+
+    attachMapAppearance(map as never, { mapStyle: 'night_hike', redLight: true })
+    expect(map.paintProperties.get(`${CLUB_CLOSURE_SHADE_LAYER_ID}/fill-pattern`)).toBe(
+      clubClosureShadeImageId('red'),
+    )
+    attachMapAppearance(map as never, { theme: 'light' })
+    expect(map.paintProperties.get(`${CLUB_CLOSURE_SHADE_LAYER_ID}/fill-pattern`)).toBe(
+      clubClosureShadeImageId('day'),
+    )
   })
 
   it('draws a point closure as one cross: the far mark, at the point, from the pin seam in and at every zoom after', () => {
@@ -232,6 +307,44 @@ describe('putting the closures on a live map', () => {
       })),
     })
   })
+
+  it('registers every sheet’s hatch before a shaded area reaches the source, and never twice', () => {
+    const { shade } = closures()
+    const map = new MockMap({})
+    map.sourceIds = [CLUB_CLOSURE_SOURCE_ID]
+    map.styleLoaded = true
+    const order: string[] = []
+    const addImage = map.addImage.bind(map)
+    vi.spyOn(map, 'addImage').mockImplementation((id, image, options) => {
+      order.push(`image ${id}`)
+      return addImage(id, image, options)
+    })
+    const getSource = map.getSource.bind(map)
+    vi.spyOn(map, 'getSource').mockImplementation((id: string) => {
+      const source = getSource(id) as { setData: (data: unknown) => void } | undefined
+      return source === undefined
+        ? undefined
+        : {
+            setData: (data: unknown) => {
+              order.push('data')
+              source.setData(data)
+            },
+          }
+    })
+
+    attachClubClosureData(map as never, [shade])
+    attachClubClosureData(map as never, [shade])
+
+    expect(order).toEqual([
+      ...SHADE_INKS.map((ink) => `image ${clubClosureShadeImageId(ink)}`),
+      'data',
+      'data',
+    ])
+    const data = map.sourceData.get(CLUB_CLOSURE_SOURCE_ID) as {
+      features: Array<{ geometry: unknown }>
+    }
+    expect(data.features[0].geometry).toEqual(shade.place.geometry)
+  })
 })
 
 describe('touching a club closure', () => {
@@ -243,6 +356,7 @@ describe('touching a club closure', () => {
     const map = new MockMap({})
     map.layerIds = [
       HAZARD_FILL_LAYER_ID,
+      CLUB_CLOSURE_SHADE_LAYER_ID,
       BLAZE_LAYER_ID,
       POI_LAYER_ID,
       POI_DOT_LAYER_ID,
@@ -346,6 +460,112 @@ describe('touching a club closure', () => {
       expect(answers(underneath, true)).toBeNull()
     },
   )
+
+  const shaded = (id: string) => [{ properties: { [CLUB_CLOSURE_ID_PROPERTY]: id } }]
+
+  it('opens a shaded area’s sheet from a touch inside it, the same sheet its list row opens (decision 191)', () => {
+    const map = tappableMap()
+    const onSelect = vi.fn()
+    attachClubClosureTaps(map as unknown as MapLibreMap, onSelect)
+
+    map.renderedFeatures.set(CLUB_CLOSURE_SHADE_LAYER_ID, shaded('example:closed-lands'))
+    map.emit('click', touch)
+    expect(clubClosureShadeIdAt(map as unknown as MapLibreMap, touch.point)).toBe(
+      'example:closed-lands',
+    )
+
+    expect(onSelect.mock.calls).toEqual([['example:closed-lands']])
+  })
+
+  it.each([
+    [
+      'a warning pin',
+      WARNING_LAYER_ID,
+      [{ properties: { [WARNING_ID_PROPERTY]: 'r1' } }],
+    ],
+    [
+      'a waypoint pin',
+      POI_LAYER_ID,
+      [{ properties: { [POI_ID_PROPERTY]: 'atc_shelters:1' } }],
+    ],
+    [
+      'a waypoint dot',
+      POI_DOT_LAYER_ID,
+      [
+        {
+          properties: { [POI_ID_PROPERTY]: 'atc_springs:1' },
+          geometry: { type: 'Point', coordinates: [0, 0] },
+        },
+      ],
+    ],
+    [
+      'a hiker-reported closure’s tape',
+      CLOSURE_LAYER_ID,
+      [{ properties: { [CLOSURE_ID_PROPERTY]: 'c1' } }],
+    ],
+    [
+      'an ATC band',
+      ATC_UPDATE_LAYER_ID,
+      [{ properties: { [ATC_UPDATE_ID_PROPERTY]: 'atc:1' } }],
+    ],
+    [
+      'a trail line',
+      BLAZE_LAYER_ID,
+      [
+        {
+          properties: { id: 'centerline:1', source: 'centerline', blaze_color: 'White' },
+          geometry: { type: 'LineString', coordinates: [] },
+        },
+      ],
+    ],
+  ] as const)(
+    'leaves a touch inside a shaded area to %s drawn on it: the area is last in line',
+    (_, layerId, features) => {
+      const map = tappableMap()
+      map.renderedFeatures.set(
+        CLUB_CLOSURE_SHADE_LAYER_ID,
+        shaded('example:closed-lands'),
+      )
+      map.renderedFeatures.set(layerId, [...features])
+      const onSelect = vi.fn()
+
+      attachClubClosureTaps(map as unknown as MapLibreMap, onSelect)
+      map.emit('click', touch)
+
+      expect(onSelect).not.toHaveBeenCalled()
+    },
+  )
+
+  it('answers a crossed-out stretch inside a shaded area with the stretch’s closure, never both', () => {
+    const map = tappableMap()
+    map.renderedFeatures.set(CLUB_CLOSURE_SHADE_LAYER_ID, shaded('example:closed-lands'))
+    map.renderedFeatures.set(CLUB_CLOSURE_LAYER_ID, club('example:line'))
+    const onSelect = vi.fn()
+
+    attachClubClosureTaps(map as unknown as MapLibreMap, onSelect)
+    map.emit('click', touch)
+
+    expect(onSelect.mock.calls).toEqual([['example:line']])
+  })
+
+  it('takes a touch inside both a shaded area and a hazard area from the hazard area: a closure outranks an advisory', () => {
+    const map = tappableMap()
+    map.renderedFeatures.set(HAZARD_FILL_LAYER_ID, [{ properties: { notice_id: 'h1' } }])
+    map.renderedFeatures.set(CLUB_CLOSURE_SHADE_LAYER_ID, shaded('example:closed-lands'))
+    const onHazard = vi.fn()
+    const onClub = vi.fn()
+
+    attachHazardTaps(map as unknown as MapLibreMap, onHazard)
+    attachClubClosureTaps(map as unknown as MapLibreMap, onClub)
+    map.emit('click', touch)
+
+    expect(onHazard).not.toHaveBeenCalled()
+    expect(onClub.mock.calls).toEqual([['example:closed-lands']])
+    // Alone, the hazard area still answers.
+    map.renderedFeatures.delete(CLUB_CLOSURE_SHADE_LAYER_ID)
+    map.emit('click', touch)
+    expect(onHazard.mock.calls).toEqual([['h1']])
+  })
 })
 
 describe('routing, which this change leaves alone', () => {

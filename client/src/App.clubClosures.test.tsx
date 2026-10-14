@@ -77,8 +77,7 @@ async function renderApp(): Promise<MockMap> {
 
 function drawnIds(map: MockMap): string[] {
   const data = map.sourceData.get(CLUB_CLOSURE_SOURCE_ID) as
-    | { features: Array<{ properties: Record<string, string> }> }
-    | undefined
+    { features: Array<{ properties: Record<string, string> }> } | undefined
   return (data?.features ?? []).map(
     (feature) => feature.properties[CLUB_CLOSURE_ID_PROPERTY],
   )

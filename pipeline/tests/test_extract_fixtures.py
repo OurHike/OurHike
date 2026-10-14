@@ -71,7 +71,7 @@ def test_every_fixture_file_with_a_resource_lands_whole(fixtures):
         | PagePoints
     )
     fetched = [r for r in resources if not isinstance(r, answered) and not isinstance(r, JSON_API_KINDS)]
-    assert len(fetched) == 429, (
+    assert len(fetched) == 430, (
         "61 monthly layers and OPRHP's temporary closures on the hourly lane, and decision 53's 76 ArcGIS "
         "closure and warning layers: 70 hourly, 3 daily, 3 monthly, and decision 54's 83 places layers, all "
         "monthly, its 100 trail-line layers, all monthly (wave 6 added the Empire State Trail's two, "
@@ -84,7 +84,9 @@ def test_every_fixture_file_with_a_resource_lands_whole(fixtures):
         "fountains (monthly), and review page 02's NorthEast Texas Trail Coalition layers: its damaged "
         "bridges (hourly) and trail points (monthly), and decision 126's ParkServe parks (monthly), and section K's "
         "7 photo layers (monthly): ATA's six and RCO's camping photos, and IDOT's bicycle inventory "
-        "(idot_bike_inventory, monthly), registered with IDOT's own trail_orgs.json row on 2026-10-11"
+        "(idot_bike_inventory, monthly), registered with IDOT's own trail_orgs.json row on 2026-10-11, and "
+        "FDEP's park boundaries (fl_state_parks_park_boundaries, daily), which place Florida's closed parks "
+        "(decision 185, 2026-10-11)"
     )
     for resource in fetched:
         expected = len(json.loads(fixture_file(root / "raw", resource.key).read_text())["features"])

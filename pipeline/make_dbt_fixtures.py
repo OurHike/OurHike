@@ -5011,9 +5011,39 @@ NOTICE_LAYERS = {
 }
 
 
+#: A steward's own areas layer (seeds/notice_steward_areas.csv), which places a notice source's points rather than
+#: being one: registry key -> (geometry builder, the one row's properties), as NOTICE_LAYERS. THE NAMES ARE MEASURED:
+#: every property is one the live layer's f=geojson answer carried, read 2026-10-11 (fl_state_parks_park_boundaries'
+#: sources.json notes). THE VALUES ARE INVENTED. The one box holds the day-use status fixture's point, `_point(0)`, so
+#: the fixture build places it (int_closures__club_notices' rule 4).
+STEWARD_AREA_LAYERS = {
+    "fl_state_parks_park_boundaries": (
+        lambda i: {"type": "Polygon", "coordinates": [_box(-74.005, 40.995, -73.995, 41.005)]},
+        {
+            "OBJECTID": 1,
+            "UNIT_ID": "S00000",
+            "SITE_NAME": "Fixture State Park",
+            "DISTRICT": 2,
+            "UPLAND": 10.5,
+            "SUBMERGED": 0.0,
+            "PUBLIC_ACC": "Open-Fee Required",
+            "ACREAGE": 10.5,
+            "COUNTY": "Fixture",
+            "URL": "https://www.floridastateparks.org/fixture",
+            "ADDRESS": "Fixture Park Road",
+            "WEB_ALIAS": "Fixture State Park",
+            "ABBREVIATION": "FSP",
+            "SHAPE.AREA": 1000000.0,
+            "SHAPE.LEN": 4000.0,
+        },
+    ),
+}
+
+
 def notice_layers_fixtures() -> dict[str, dict]:
-    """One external/<key>.geojson per NOTICE_LAYERS entry, each holding its one row."""
-    return {f"external/{key}.geojson": _features([row], geometry) for key, (geometry, row) in NOTICE_LAYERS.items()}
+    """One external/<key>.geojson per NOTICE_LAYERS and STEWARD_AREA_LAYERS entry, each holding its one row."""
+    layers = {**NOTICE_LAYERS, **STEWARD_AREA_LAYERS}
+    return {f"external/{key}.geojson": _features([row], geometry) for key, (geometry, row) in layers.items()}
 
 
 # --- trail_lines, the network half (#1793, stage 3) --------------------------

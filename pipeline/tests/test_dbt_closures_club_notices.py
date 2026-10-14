@@ -9,8 +9,8 @@ phone greys it from conditions/notices.json's `current_until`.
 
 And it holds the maintainer's answers of 2026-10-11 on how wave 6's statuses read (pages 01 and 02 of that review)
 to the seeds, where a later edit would otherwise move one without a word: Missouri's Archived alone is not current
-(P1), Michigan's '-1' is nothing for a hiker on both its layers (P4), a closed Florida park closes its trails (P5),
-the Great Allegheny Passage's Hidden and Cleared are both not current (P6), and NETT's damaged bridges close the
+(P1), Michigan's '-1' is nothing for a hiker on both its layers (P4), a closed Florida park closes its trails (P5)
+and is placed by its own boundary (Q3, seeds/notice_steward_areas.csv), the Great Allegheny Passage's Hidden and Cleared are both not current (P6), and NETT's damaged bridges close the
 trail with no status field to read (P11). NGPC's Cowboy Trail sections, which P7+P8 ship, read as their sources.json
 row settles: a Condition of 'Impassable' or 'Not Passable' closes the trail however Road_Status reads, so the Niobrara
 Bridge section, 'Open' beside 'Not Passable', is never shown open.
@@ -121,6 +121,16 @@ def test_every_closed_value_of_a_florida_parks_day_use_status_closes_and_no_camp
     assert not [
         value for (key, value), reads in readings.items() if key == "fl_state_parks_campground_status" and reads == "closes_trail"
     ]
+
+
+def test_a_florida_parks_day_use_point_is_placed_by_its_own_boundary_and_a_campground_by_none():
+    """Q3 (poll of 2026-10-11, "Its own boundary"): a park's day-use status point inside exactly one of FDEP's own park
+    boundaries takes that boundary as its place (int_closures__club_notices' rule 4), so the trails a closed park
+    closes are the ones inside it. A campground's status is about the campground, not the park around it, so the
+    campground layer keeps its own points."""
+    links = {row["source_key"]: row["areas_source_key"] for row in _seed("notice_steward_areas")}
+    assert links.get("fl_state_parks_day_use_status") == "fl_state_parks_park_boundaries"
+    assert "fl_state_parks_campground_status" not in links
 
 
 def test_the_gap_alerts_hidden_and_cleared_are_both_not_current():

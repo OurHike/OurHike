@@ -75,6 +75,20 @@ int_warnings__notice_wording_unioned.
 WHAT IT SKIPS: a raw table a hand-written sources block already declares
 (ATC's, NYNJTC's, NYS Parks' closures, OurHike's own, NWS's): those have
 their own models, which the closures family reads branch by branch.
+
+A STEWARD'S OWN AREAS ARE NOT NOTICES. dbt/seeds/notice_steward_areas.csv
+names, for a notice source whose points sit inside its steward's own areas,
+the layer of those areas: int_closures__club_notices' rule 4 places such a
+point by the one area it lies inside (the maintainer's answer to Q3, poll of
+2026-10-11: "a status point inside exactly one of its steward's own areas
+takes that area"). Each such layer is a closures or warnings resource of the
+steward's own folder, so that a notices leg reads it and the hourly build
+that places the points holds it (area_sources() says why), but it is no
+notice: it joins neither union nor the readers seed. It gets a base model
+keyed `area_key`, always a table, and a staging model in the areas shape
+(render_area_stg(): the key, the layer's own id and its own outline), in its
+club's notices/ folder beside the notices, and one more union,
+int_closures__steward_areas_unioned, which int_closures__steward_areas reads.
 """
 
 from __future__ import annotations
@@ -120,6 +134,11 @@ TRAIL_ORGS = PIPELINE_DIR / "reference" / "trail_orgs.json"
 CLUB_TYPES = frozenset({"at_club", "land_trust", "nht_org", "nst_org", "regional_nonprofit"})
 UNION_MODEL = CLOSURES_DIR / "int_closures__club_notices_unioned.sql"
 UNION_YML = CLOSURES_DIR / "_closures__club_notices_unioned.yml"
+#: The reviewed link from a notice source to its steward's own areas layer (the module docstring, A STEWARD'S OWN
+#: AREAS ARE NOT NOTICES), and the union of every such layer's staged areas.
+AREAS_SEED = SEEDS_DIR / "notice_steward_areas.csv"
+AREAS_UNION_MODEL = CLOSURES_DIR / "int_closures__steward_areas_unioned.sql"
+AREAS_UNION_YML = CLOSURES_DIR / "_closures__steward_areas_unioned.yml"
 WORDING_MODEL = WARNINGS_DIR / "int_warnings__notice_wording_unioned.sql"
 WORDING_YML = WARNINGS_DIR / "_warnings__notice_wording_unioned.yml"
 #: The region box each generated notice source's closed and alert areas are held to (render_regions()).
@@ -411,7 +430,52 @@ class NoticeSource:
         return STAGING_DIR / self.club / "notices"
 
 
+def area_layer_keys() -> set[str]:
+    """Every layer seeds/notice_steward_areas.csv names as a steward's own areas: its `areas_source_key` column."""
+    with AREAS_SEED.open(newline="") as handle:
+        return {row["areas_source_key"] for row in csv.DictReader(handle)}
+
+
 def notice_sources() -> list[NoticeSource]:
+    """Every closures and warnings resource the extract declares, in discover()'s order, each table once, but a layer
+    seeds/notice_steward_areas.csv names as a steward's own areas, which is no notice (area_sources())."""
+    areas = area_layer_keys()
+    return [source for source in _declared_sources() if source.key not in areas]
+
+
+def area_sources() -> list[NoticeSource]:
+    """Every layer seeds/notice_steward_areas.csv names as a steward's own areas, in discover()'s order.
+
+    EACH RIDES A NOTICES LEG, because the build that places the notices is the
+    hourly one, and its warehouse holds a conditions leg's tables and a
+    notices leg's served copy, never the monthly store
+    (publish-conditions.yml; review finding ARC-1 of PR #1805 — dlt → dbt
+    re-platform as one go/no-go change, which the last test of
+    tests/test_generated_notice_models.py holds for the notices). So the
+    layer must be a resource of a closures.py or warnings.py, whose type
+    puts it on the hourly lane, and its file may slow it to daily
+    (extract/_run.py's DUE_AFTER), which still rides that lane. A seed row
+    naming anything else stops this run, as does a layer that is not an
+    ArcGIS layer (an area is a polygon with an id of its own) or one a hand
+    written sources block stages.
+    """
+    keys = area_layer_keys()
+    found = [source for source in _declared_sources() if source.key in keys]
+    if missing := sorted(keys - {source.key for source in found}):
+        raise SystemExit(
+            f"{AREAS_SEED.relative_to(PIPELINE_DIR)} names {missing} as a steward's areas, which no closures.py or "
+            "warnings.py declares: declare the layer in its steward's folder, so a notices leg reads it"
+        )
+    for source in found:
+        if source.reader_class != "ArcgisLayer" or source.hand_staged:
+            raise SystemExit(
+                f"{source.key}: a steward's areas layer is a generated ArcGIS layer, and this is "
+                f"{'hand-staged' if source.hand_staged else 'a ' + source.reader_class}"
+            )
+    return found
+
+
+def _declared_sources() -> list[NoticeSource]:
     """Every closures and warnings resource the extract declares, in discover()'s order, each table once."""
     from extract._contract import all_resources, discover, discover_shared
 
@@ -544,21 +608,34 @@ def _title(source: NoticeSource) -> str:
     return (source.entry or {}).get("title") or source.key
 
 
-def render_base(source: NoticeSource) -> str:
+def render_base(source: NoticeSource, area: bool = False) -> str:
+    """A notice source's base model, or with `area` a steward's areas layer's: keyed `area_key`, and always a table,
+    because its outlines are what every read of it parses (the module docstring, A STEWARD'S OWN AREAS ARE NOT
+    NOTICES)."""
     keys = _key_columns(source)
+    key_name = "area_key" if area else "notice_key"
     key_items = [f'"{_sql_string(source.key)}"'] + [f"'{column}'" for column in keys]
     if _uses_geometry_in_key(source):
         key_items.append("geometry_key('geom')")
     empty_columns = (["geometry"] if source.reader.spatial else []) + keys
     lines = [f"-- {MARKER}; do not edit by hand."]
-    if source.key in TABLE_BASES:
+    if source.key in TABLE_BASES or area:
         lines += ["{{ config(materialized='table') }}"]
     lines += ["--"]
-    lines += _wrap(
-        f"{_title(source)} (sources.json `{source.key}`, landed by extract/{source.club}/{source.type}.py's "
-        f"{source.reader_class}): every row, keyed and deduped (decision 40), with nothing filtered and nothing "
-        "joined. Its words, prose included, stay here: the staging model beside it carries only facts (decision 55)."
-    )
+    if area:
+        lines += _wrap(
+            f"{_title(source)} (sources.json `{source.key}`, landed by extract/{source.club}/{source.type}.py's "
+            f"{source.reader_class}): a steward's own areas, which seeds/notice_steward_areas.csv names as the place of "
+            "its notices' points (int_closures__club_notices' rule 4), not notices. Every row, keyed and deduped "
+            "(decision 40), with nothing filtered and nothing joined; the staging model beside it carries only the "
+            "key, the layer's own id and its outline."
+        )
+    else:
+        lines += _wrap(
+            f"{_title(source)} (sources.json `{source.key}`, landed by extract/{source.club}/{source.type}.py's "
+            f"{source.reader_class}): every row, keyed and deduped (decision 40), with nothing filtered and nothing "
+            "joined. Its words, prose included, stay here: the staging model beside it carries only facts (decision 55)."
+        )
     lines.append("--")
     key_text = f"Key: {', '.join(keys)}"
     if _uses_geometry_in_key(source):
@@ -570,10 +647,22 @@ def render_base(source: NoticeSource) -> str:
         )
     lines += _wrap(f"{key_text}. Measured: {_measured(source)}")
     lines.append("--")
-    lines += _wrap(
-        "Read through notice_raw_table(): a table a conditions leg has not loaded, or has withdrawn as unreadable, "
-        "reads as no rows here rather than stopping every other club's closures."
-    )
+    if area:
+        lines += _wrap(
+            "Read through notice_raw_table(): a table the notices leg has not loaded, or has withdrawn as unreadable, "
+            "reads as no rows here, so every notice it would place keeps its own point rather than stopping every "
+            "club's closures."
+        )
+        lines.append("--")
+        lines += _wrap(
+            "A table, not a view: every test and model that reads it would parse its outlines again, and a steward's "
+            "areas are large polygons (FDEP's 179 park boundaries are 47,598,120 bytes of GeoJSON, read 2026-10-11)."
+        )
+    else:
+        lines += _wrap(
+            "Read through notice_raw_table(): a table a conditions leg has not loaded, or has withdrawn as unreadable, "
+            "reads as no rows here rather than stopping every other club's closures."
+        )
     if source.key in TABLE_BASES:
         lines.append("--")
         lines += _wrap(
@@ -604,23 +693,33 @@ def render_base(source: NoticeSource) -> str:
     lines += ["    from {{ notice_raw_table(", f"        {source_call},", f"        [{empty}]", "    ) }}", "),", ""]
     lines += ["keyed as (", "    select", "        {{ dbt_utils.generate_surrogate_key(["]
     lines += [f"            {item}," for item in key_items]
-    lines += ["        ]) }} as notice_key,", "        source.*", "    from source", "),", ""]
+    lines += [f"        ]) }}}} as {key_name},", "        source.*", "    from source", "),", ""]
+    if area:
+        lines += [
+            "-- How many different rows share each key. More than one is what",
+            "-- duplicates_are_exact fails on, which only warns here:",
+            "-- int_closures__steward_areas places nothing by such a key, so a point",
+            "-- inside either outline keeps its own place.",
+        ]
+    else:
+        lines += [
+            "-- How many different rows share each key. More than one is what",
+            "-- duplicates_are_exact fails on, which only warns for a club notice",
+            "-- source: int_closures__gate holds the source instead, so one club's",
+            "-- conflicting rows hold that club's notices and nothing else.",
+        ]
     lines += [
-        "-- How many different rows share each key. More than one is what",
-        "-- duplicates_are_exact fails on, which only warns for a club notice",
-        "-- source: int_closures__gate holds the source instead, so one club's",
-        "-- conflicting rows hold that club's notices and nothing else.",
         "renamed as (",
         "    select",
         "        keyed.*,",
         "        count(distinct keyed.row_version)",
-        "            over (partition by keyed.notice_key)",
+        f"            over (partition by keyed.{key_name})",
         "            as key_versions",
         "    from keyed",
         ")",
         "",
     ]
-    lines += ["{{ dbt_utils.deduplicate(", "    relation='renamed', partition_by='notice_key', order_by='_dlt_id'", ") }}"]
+    lines += ["{{ dbt_utils.deduplicate(", f"    relation='renamed', partition_by='{key_name}', order_by='_dlt_id'", ") }}"]
     return "\n".join(lines) + "\n"
 
 
@@ -762,6 +861,69 @@ def render_stg(source: NoticeSource, fields: dict[str, dict]) -> str:
     return "\n".join(lines) + "\n"
 
 
+def _steward_area_links() -> list[dict]:
+    with AREAS_SEED.open(newline="") as handle:
+        return list(csv.DictReader(handle))
+
+
+def render_area_stg(source: NoticeSource) -> str:
+    """A steward's areas layer in the shape int_closures__steward_areas_unioned shares: its key, the layer's own id
+    (its key columns, as a notice's `source_id` is) and its own outline, as GeoJSON text so a unit test can hold it."""
+    keys = _key_columns(source)
+    notices = sorted(row["source_key"] for row in _steward_area_links() if row["areas_source_key"] == source.key)
+    lines = [f"-- {MARKER}; do not edit by hand.", "--"]
+    lines += _wrap(
+        f"{_title(source)} (sources.json `{source.key}`) in the shape every steward's areas layer shares "
+        "(int_closures__steward_areas_unioned): renames and casts only. seeds/notice_steward_areas.csv names it as "
+        f"the areas of {', '.join(notices)}, whose points int_closures__club_notices places by the one area each lies "
+        "inside (its rule 4)."
+    )
+    lines.append("--")
+    lines += _wrap(
+        "Only the key, the layer's own id and its own outline cross from base_: the id is read by its own name out "
+        "of the row as JSON, as a notice's fields are, so a field the layer renames reads as null rather than failing "
+        "every club's build."
+    )
+    lines += ["with base as (", "    select *", f"    from {{{{ ref({_sql_string(source.base_model)}) }}}}", "),", ""]
+    lines += ["attributes as (", "    select * exclude (geom)", "    from base", "),", ""]
+    lines += [
+        "fields as (",
+        "    select",
+        "        area_key,",
+        "        key_versions,",
+        "        _loaded_at,",
+        "        to_json(attributes) as row_json",
+        "    from attributes",
+        ")",
+        "",
+        "select",
+        "    fields.area_key,",
+        f"    {_sql_string(source.key)} as source_key,",
+        f"    {_sql_string(source.club)} as club,",
+    ]
+    id_parts = [_text_expression(column, frozenset()) for column in keys]
+    if len(id_parts) == 1:
+        lines.append(f"    {id_parts[0]} as area_id,")
+    else:
+        lines.append("    concat_ws(")
+        lines.append("        '|',")
+        lines += [f"        {part}{',' if i < len(id_parts) - 1 else ''}" for i, part in enumerate(id_parts)]
+        lines.append("    ) as area_id,")
+    lines += [
+        "    case",
+        "        when base.geom is not null and not st_isempty(base.geom)",
+        "            then cast(",
+        "                st_asgeojson(st_setcrs(base.geom, 'OGC:CRS84')) as varchar",
+        "            )",
+        "    end as geom_geojson,",
+        "    fields.key_versions,",
+        "    fields._loaded_at",
+        "from fields",
+        "inner join base on fields.area_key = base.area_key",
+    ]
+    return "\n".join(lines) + "\n"
+
+
 def _duplicates_key(source: NoticeSource) -> list[str]:
     items = [_sql_string(source.key)] + _key_columns(source)
     if _uses_geometry_in_key(source):
@@ -826,14 +988,21 @@ def _source_tags(source: NoticeSource) -> list[str]:
     return tags + ([PDF_NOTICE_TAG] if is_pdf_notice(source) else [])
 
 
-def render_sources_yml(club: str, sources: list[NoticeSource]) -> str:
+def render_sources_yml(club: str, sources: list[NoticeSource], areas: frozenset[str] = frozenset()) -> str:
+    """The club's sources block: its notice sources and, beside them, any steward's areas layer (`areas`, by key),
+    whose freshness reads the run log by its own cadence as a notice's does."""
     tables = []
     for source in sources:
+        what = (
+            " A steward's own areas, which place its notices' points (seeds/notice_steward_areas.csv), not notices."
+            if source.key in areas
+            else ""
+        )
         table = {
             "name": source.table,
             "description": (
                 f"{_title(source)} (sources.json `{source.key}`), landed by extract/{source.club}/{source.type}.py's "
-                f"{source.reader_class}. Key: {', '.join(_key_columns(source))}. {_measured(source)}"
+                f"{source.reader_class}.{what} Key: {', '.join(_key_columns(source))}. {_measured(source)}"
             ),
             "config": {
                 "meta": {"cadence": source.cadence},
@@ -874,17 +1043,22 @@ def render_sources_yml(club: str, sources: list[NoticeSource]) -> str:
     return f"# {MARKER}; do not edit by hand.\n" + _dump(document)
 
 
-def render_base_yml(club: str, sources: list[NoticeSource]) -> str:
+def render_base_yml(club: str, sources: list[NoticeSource], areas: frozenset[str] = frozenset()) -> str:
     models = [
         {
             "name": source.base_model,
             "description": (
                 f"{_title(source)} (sources.json `{source.key}`), every row of {source.table}, keyed and deduped "
-                "(decision 40). The source's own words stay here and go no further."
+                "(decision 40). "
+                + (
+                    "A steward's own areas, not notices: only the key, the id and the outline go further."
+                    if source.key in areas
+                    else "The source's own words stay here and go no further."
+                )
             ),
             "columns": [
                 {
-                    "name": "notice_key",
+                    "name": "area_key" if source.key in areas else "notice_key",
                     "description": f"The key: the registry key, then {', '.join(_key_columns(source))}"
                     + (" and the geometry." if _uses_geometry_in_key(source) else "."),
                     "data_tests": ["unique", "not_null"],
@@ -894,6 +1068,23 @@ def render_base_yml(club: str, sources: list[NoticeSource]) -> str:
         for source in sources
     ]
     return f"# {MARKER}; do not edit by hand.\n" + _dump({"version": 2, "models": models})
+
+
+def render_area_models_yml(areas: list[NoticeSource]) -> list[dict]:
+    """The models YAML entries of a club's steward's areas staging models, which render_models_yml() appends."""
+    return [
+        {
+            "name": source.stg_model,
+            "description": (
+                f"{_title(source)} (sources.json `{source.key}`) in the shape every steward's areas layer shares: "
+                "the key, the layer's own id and its own outline (int_closures__steward_areas_unioned)."
+            ),
+            "columns": [
+                {"name": "area_key", "description": "The base model's key.", "data_tests": ["unique", "not_null"]},
+            ],
+        }
+        for source in areas
+    ]
 
 
 def dates_its_notices(source: NoticeSource, fields: dict[str, dict]) -> bool:
@@ -917,7 +1108,7 @@ def event_freshness_check() -> dict:
     }
 
 
-def render_models_yml(club: str, sources: list[NoticeSource], fields: dict[str, dict]) -> str:
+def render_models_yml(club: str, sources: list[NoticeSource], fields: dict[str, dict], areas: list[NoticeSource] = ()) -> str:
     models = [
         {
             "name": source.stg_model,
@@ -931,7 +1122,7 @@ def render_models_yml(club: str, sources: list[NoticeSource], fields: dict[str, 
             ],
         }
         for source in sources
-    ]
+    ] + render_area_models_yml(list(areas))
     return f"# {MARKER}; do not edit by hand.\n" + _dump({"version": 2, "models": models})
 
 
@@ -1007,6 +1198,63 @@ UNION_WHAT = (
 
 def render_union(sources: list[NoticeSource]) -> str:
     return _union_of_parts(UNION_MODEL, sources, UNION_WHAT)
+
+
+#: The areas shape's columns, as an empty union types them when the seed names no layer.
+AREA_COLUMNS = (
+    ("area_key", "varchar"),
+    ("source_key", "varchar"),
+    ("club", "varchar"),
+    ("area_id", "varchar"),
+    ("geom_geojson", "varchar"),
+    ("key_versions", "bigint"),
+    ("_loaded_at", "timestamptz"),
+)
+
+
+def render_areas_union(areas: list[NoticeSource]) -> str:
+    """int_closures__steward_areas_unioned: every steward's areas layer's staged rows, by name, in raw table order.
+
+    One part, unlike the notice unions: a steward's areas layer is one per notice source at most, so its branches are
+    a handful, nowhere near UNION_PART_SIZE. With no layer named it is an empty relation of the same columns, so
+    int_closures__steward_areas always has one to read.
+    """
+    lines = [f"-- {MARKER}; do not edit by hand.", "{{ config(materialized='table') }}"]
+    lines += _wrap(
+        "Every steward's areas layer seeds/notice_steward_areas.csv names, staged in the areas shape (the key, the "
+        "layer's own id and its own outline), one row each, by name, nothing filtered: the union "
+        "int_closures__steward_areas reads. One branch per stg_ model this generator writes for such a layer, in raw "
+        "table order."
+    )
+    staged = sorted(areas, key=lambda s: s.table)
+    if not staged:
+        lines.append("select")
+        lines += [
+            f"    cast(null as {kind}) as {name}{',' if i < len(AREA_COLUMNS) - 1 else ''}"
+            for i, (name, kind) in enumerate(AREA_COLUMNS)
+        ]
+        lines.append("where false")
+    for index, source in enumerate(staged):
+        if index:
+            lines += ["", "union all by name", ""]
+        lines += ["select *", f"from {{{{ ref({_sql_string(source.stg_model)}) }}}}"]
+    return "\n".join(lines) + "\n"
+
+
+def render_areas_union_yml() -> str:
+    model = {
+        "name": AREAS_UNION_MODEL.stem,
+        "description": (
+            "Every steward's areas layer seeds/notice_steward_areas.csv names, staged in the areas shape, by name, "
+            "nothing filtered: one branch per stg_ model pipeline/generate_notice_models.py writes for such a layer. "
+            "int_closures__steward_areas reads it."
+        ),
+        "columns": [
+            {"name": "area_key", "description": "The staging model's key.", "data_tests": ["unique", "not_null"]},
+            {"name": "source_key", "description": "The areas layer's sources.json key.", "data_tests": ["not_null"]},
+        ],
+    }
+    return f"# {MARKER}; do not edit by hand.\n" + _dump({"version": 2, "models": [model]})
 
 
 def render_union_part(part: list[NoticeSource], number: int, count: int) -> str:
@@ -1312,23 +1560,33 @@ def render_regions(sources: list[NoticeSource]) -> str:
 def render_all() -> dict[Path, str]:
     """{path: text} for every file this generator owns."""
     sources = notice_sources()
+    areas = area_sources()
+    area_keys = frozenset(source.key for source in areas)
     fields = _fields_seed()
     files: dict[Path, str] = {}
     by_club: dict[str, list[NoticeSource]] = {}
+    areas_by_club: dict[str, list[NoticeSource]] = {}
     for source in sources:
         if source.hand_staged:
             continue
         by_club.setdefault(source.club, []).append(source)
         files[source.folder / "base" / f"{source.base_model}.sql"] = render_base(source)
         files[source.folder / f"{source.stg_model}.sql"] = render_stg(source, fields)
-    for club, club_sources in by_club.items():
+    for source in areas:
+        areas_by_club.setdefault(source.club, []).append(source)
+        files[source.folder / "base" / f"{source.base_model}.sql"] = render_base(source, area=True)
+        files[source.folder / f"{source.stg_model}.sql"] = render_area_stg(source)
+    for club in dict.fromkeys([*by_club, *areas_by_club]):
+        club_sources, club_areas = by_club.get(club, []), areas_by_club.get(club, [])
         folder = STAGING_DIR / club / "notices"
-        files[folder / f"_{club}_notices__sources.yml"] = render_sources_yml(club, club_sources)
-        files[folder / "base" / f"_{club}_notices__base.yml"] = render_base_yml(club, club_sources)
-        files[folder / f"_{club}_notices__models.yml"] = render_models_yml(club, club_sources, fields)
+        files[folder / f"_{club}_notices__sources.yml"] = render_sources_yml(club, club_sources + club_areas, area_keys)
+        files[folder / "base" / f"_{club}_notices__base.yml"] = render_base_yml(club, club_sources + club_areas, area_keys)
+        files[folder / f"_{club}_notices__models.yml"] = render_models_yml(club, club_sources, fields, club_areas)
     files[READERS_SEED] = render_readers_seed(sources)
     files[UNION_MODEL] = render_union(sources)
     files[UNION_YML] = render_union_yml(sources)
+    files[AREAS_UNION_MODEL] = render_areas_union(areas)
+    files[AREAS_UNION_YML] = render_areas_union_yml()
     files[WORDING_MODEL] = render_wording(sources)
     files[WORDING_YML] = render_wording_yml(sources, fields)
     files[REGIONS_MACRO] = render_regions(sources)
@@ -1340,11 +1598,21 @@ def render_all() -> dict[Path, str]:
 
 
 def owned_on_disk() -> set[Path]:
-    """Every file on disk this generator wrote: under a staging folder's notices/, and its two models and seed."""
+    """Every file on disk this generator wrote: under a staging folder's notices/, its unions and their parts, the
+    readers seed and the regions macro."""
     found = {path for path in STAGING_DIR.glob("*/notices/**/*") if path.is_file()}
     found |= set(CLOSURES_DIR.glob(f"{UNION_MODEL.stem.removesuffix('_unioned')}_part_*_unioned.sql"))
     found |= set(WARNINGS_DIR.glob(f"{WORDING_MODEL.stem.removesuffix('_unioned')}_part_*_unioned.sql"))
-    owned = (READERS_SEED, UNION_MODEL, UNION_YML, WORDING_MODEL, WORDING_YML, REGIONS_MACRO)
+    owned = (
+        READERS_SEED,
+        UNION_MODEL,
+        UNION_YML,
+        WORDING_MODEL,
+        WORDING_YML,
+        REGIONS_MACRO,
+        AREAS_UNION_MODEL,
+        AREAS_UNION_YML,
+    )
     return found | {path for path in owned if path.exists()}
 
 

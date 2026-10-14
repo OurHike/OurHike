@@ -105,10 +105,13 @@ def test_every_generated_notice_source_measures_from_the_run_log_by_its_cadence(
 
 def test_only_the_notices_jobs_tables_are_tagged_for_its_run_log(tables, resources):
     """publish-conditions.yml selects `tag:notices_job` only when it read a notices copy, whose run log is the one
-    these are measured from; a table the notices legs do not read would be measured from no row at all."""
+    these are measured from; a table the notices legs do not read would be measured from no row at all. A steward's
+    areas layer (generate_notice_models.py's area_sources(), FDEP's park boundaries) is one the notices legs read
+    too, so it is tagged as a notice source is."""
     notices = set().union(*(leg_tables(name, resources) for name, leg in LEGS.items() if leg.job == NOTICES_JOB))
     tagged = {table for table, config in tables.items() if "notices_job" in (config.get("tags") or [])}
-    generated = {source.table for source in generator.notice_sources() if not source.hand_staged}
+    staged = [*generator.notice_sources(), *generator.area_sources()]
+    generated = {source.table for source in staged if not source.hand_staged}
     assert tagged <= generated, sorted(tagged - generated)
     assert tagged == generated & notices, sorted(tagged ^ (generated & notices))
 

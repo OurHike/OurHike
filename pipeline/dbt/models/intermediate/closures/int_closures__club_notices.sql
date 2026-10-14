@@ -96,15 +96,41 @@
 --    sources.json row says must never show as open. A row of the seed says
 --    which way each value goes, so the Great Allegheny Passage's Hidden
 --    still holds its 'Fully Obstructed' alert (the maintainer's P6).
--- 4. PLACE ONLY FROM THE SOURCE'S OWN GEOMETRY. `geom_geojson` is the
---    staging model's own geometry, never a match of `locality` or a title
---    against a place table: a notice with none is unplaced, and its
---    locality is the source's own words for where (ORG_NOTICES.md section
---    3). A reviewed term table, the other way phase C allows, does not
---    exist for any of these sources yet. So Florida's closed parks (page
---    01's P5, frame A: a closed park's trails close with it) are placed at
---    the status layer's own points: it has no polygons and no park id (both
---    read live 2026-10-11), and closes no trail line here.
+-- 4. PLACE ONLY FROM THE SOURCE'S OWN GEOMETRY, OR ITS STEWARD'S OWN AREA.
+--    `geom_geojson` is the staging model's own geometry, never a match of
+--    `locality` or a title against a place table: a notice with none is
+--    unplaced, and its locality is the source's own words for where
+--    (ORG_NOTICES.md section 3). A reviewed term table, the other way phase
+--    C allows, does not exist for any of these sources yet.
+--    A POINT INSIDE EXACTLY ONE OF ITS STEWARD'S OWN AREAS TAKES THAT AREA,
+--    the maintainer's answer to Q3 (poll of 2026-10-11, "Its own boundary",
+--    decision 185), chosen as a rule for every steward rather than one for
+--    Florida: a notice whose own geometry is a point, of a source
+--    seeds/notice_steward_areas.csv links to a layer of its own steward's
+--    areas, and inside exactly one area int_closures__steward_areas lets
+--    place it (its layer may publish, its key is one raw row's, it is a
+--    polygon), has that area's own outline as its place, and `placed_by`
+--    names the area. Inside none, or inside two or more, it keeps its point;
+--    so does a line, an area, and a point of a source no seed row names.
+--    The one source named is Florida's day-use status layer, whose points
+--    carry no park id (read live 2026-10-11), placed by FDEP's park
+--    boundaries, so a closed park closes the trails inside its boundary
+--    (page 01's P5, frame A, decision 168). Measured twice on 2026-10-11, on
+--    the live layers' 176 status points and 179 boundaries: for the poll's
+--    picture, 169 of the 176 inside exactly one, 33 of the 35 parks closed
+--    then; read again at 18:52 UTC for this rule, 173 inside exactly one
+--    (each the boundary of the point's own SITE_NAME), none inside two and 3
+--    inside none, 11 of the 12 parks closed then. Which way it errs,
+--    Reasoned: a closed park placed by its boundary reaches every route
+--    through it, and one left at its point reaches only a route within
+--    client/src/lib/plannedNotices.ts's NOTICE_REACH_FEET (300) of that
+--    point, a miss rather than a wrong place.
+--    "Inside" is ST_Within against the outline as drawn: 9 of the 179 are
+--    invalid as drawn, ST_Within, ST_Intersects and ST_Covers answered the
+--    same 173 with them as drawn and made valid, and making all 179 valid
+--    took about 5 s in a loaded sandbox against 0.6 s to parse them
+--    (measured 2026-10-11). pub_conditions_notices makes a published shape
+--    valid itself.
 -- 5. FACTS AND A LINK (decision 55). The columns are the notice's title,
 --    category, dates, place and link; no prose column exists to carry, and
 --    int_warnings__wording_leaks fails the build if one reaches a mart.
@@ -127,8 +153,57 @@
 -- `updated_at` is the source's own edit stamp, in ISO 8601 UTC, and null
 -- where it gives none: never the load time. `notice_id` is
 -- `<source key>:<the source's own id>` (features/ORG_NOTICES.md section 2).
-with notices as (
+with unioned as (
     select * from {{ ref('int_closures__club_notices_unioned') }}
+),
+
+-- Rule 4's areas, each parsed once, its outline as drawn.
+steward_areas as (
+    select
+        source_key,
+        areas_source_key || ':' || area_id as area_place,
+        geom_geojson,
+        st_geomfromgeojson(geom_geojson) as area
+    from {{ ref('int_closures__steward_areas') }}
+),
+
+-- Each point of a linked source, and how many of its source's areas it lies
+-- inside. The type is read from the GeoJSON text, so no other source's
+-- geometry is parsed here.
+points_in_areas as (
+    select
+        unioned.notice_key,
+        count(steward_areas.area_place) as areas_around,
+        any_value(steward_areas.area_place) as area_place,
+        any_value(steward_areas.geom_geojson) as area_geojson
+    from unioned
+    inner join steward_areas
+        on
+            unioned.source_key = steward_areas.source_key
+            and json_extract_string(unioned.geom_geojson, '$.type') = 'Point'
+            and st_within(
+                st_geomfromgeojson(unioned.geom_geojson), steward_areas.area
+            )
+    group by unioned.notice_key
+),
+
+-- Rule 4: a point inside exactly one of its steward's own areas has that
+-- area's outline as its place; every other notice keeps its own geometry.
+notices as (
+    select
+        unioned.* exclude (geom_geojson),
+        case
+            when points_in_areas.areas_around = 1
+                then points_in_areas.area_geojson
+            else unioned.geom_geojson
+        end as geom_geojson,
+        case
+            when points_in_areas.areas_around = 1
+                then points_in_areas.area_place
+        end as placed_by
+    from unioned
+    left join points_in_areas
+        on unioned.notice_key = points_in_areas.notice_key
 ),
 
 status_values as (
@@ -270,6 +345,7 @@ select
         as updated_at,
     source_url,
     geom_geojson,
+    placed_by,
     held_because,
     key_versions,
     _loaded_at

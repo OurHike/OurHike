@@ -23,9 +23,11 @@ models:
       # models union several base models and every other one reads a single
       # relation. Decision 40 moved stg_opentrail__waypoints's seed
       # lookup, once the sanctioned exception, to
-      # int_points_of_interest__classified. Six base models are tables by
+      # int_points_of_interest__classified. Seven base models are tables by
       # their own config: generate_notice_models.py's TABLE_BASES,
-      # base_ourhike__disputes and base_ourhike__notes.
+      # base_ourhike__disputes, base_ourhike__notes, and since 2026-10-11 the
+      # one steward's areas layer the same generator stages
+      # (base_fl_state_parks__fl_state_parks_park_boundaries).
       +materialized: view
       +schema: staging
     intermediate:
@@ -34,9 +36,11 @@ models:
     marts:
       # Final, tested, documented and contracted, as tables. Not the only
       # tables: 108 intermediates and the six base models above set
-      # materialized='table' in their own config (counted 2026-10-09), the
-      # unions and heavy intermediates the dbt skill's "Materializations"
-      # names among them.
+      # materialized='table' in their own config (counted 2026-10-09; the
+      # steward's areas base model above and its union,
+      # int_closures__steward_areas_unioned, added one of each on
+      # 2026-10-11), the unions and heavy intermediates the dbt skill's
+      # "Materializations" names among them.
       +materialized: table
       +schema: marts
     publish:

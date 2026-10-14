@@ -14,7 +14,10 @@ check by itself: every field the ArcGIS seed names is a field the layer's
 measured field list holds; every hand-staged notice table is one the closures
 family reads; no pub_ writer reads a club notice model except through the
 marts; and a key two different raw rows share holds that source in the gate
-rather than stopping every club's build.
+rather than stopping every club's build. And for a steward's own areas
+(seeds/notice_steward_areas.csv, the maintainer's answer to Q3 of the poll of
+2026-10-11): each link joins a notice source to its own steward's layer, the
+layer rides a notices leg, and it is staged as areas, never as notices.
 """
 
 import csv
@@ -357,9 +360,12 @@ def test_every_notice_raw_table_carries_elementarys_checks_and_each_dated_source
     staging model whose source states when it edited a notice carries event_freshness_check() on that date, the gap
     from the newest notice's own date to the build. A source with no such field gets none: its metric would be the
     same empty answer at every build."""
-    sources = {s.table: s for s in generator.notice_sources() if not s.hand_staged}
+    notices = {s.table: s for s in generator.notice_sources() if not s.hand_staged}
+    # A steward's areas layer sits in its club's notice files too (generate_notice_models.py's render_all()), with the
+    # same raw-table checks, and dates no notice.
+    sources = {**notices, **{s.table: s for s in generator.area_sources()}}
     fields = generator._fields_seed()
-    dated = {s.stg_model for s in sources.values() if generator.dates_its_notices(s, fields)}
+    dated = {s.stg_model for s in notices.values() if generator.dates_its_notices(s, fields)}
     tables = models = 0
     for path, text in files.items():
         if path.name.endswith("_notices__sources.yml"):
@@ -420,6 +426,8 @@ def test_only_the_named_polygon_sources_base_models_are_tables(files):
     """generate_notice_models.py's TABLE_BASES: each is a generated, spatial notice source, and only its base model is a table.
 
     A key renamed in sources.json would otherwise leave its polygons hashed again by every test and union, silently.
+    Every steward's areas layer's base model is a table as well, because its outlines are what each read parses
+    (render_base()'s `area`).
     """
     sources = {source.key: source for source in generator.notice_sources() if not source.hand_staged}
     assert generator.TABLE_BASES <= set(sources), sorted(generator.TABLE_BASES - set(sources))
@@ -429,7 +437,8 @@ def test_only_the_named_polygon_sources_base_models_are_tables(files):
         for path, text in files.items()
         if path.name.startswith("base_") and path.suffix == ".sql" and "{{ config(materialized='table') }}" in text
     }
-    assert tables == {sources[key].base_model for key in generator.TABLE_BASES}
+    areas = {source.base_model for source in generator.area_sources()}
+    assert tables == {sources[key].base_model for key in generator.TABLE_BASES} | areas
 
 
 def test_every_notice_source_that_reaches_hikers_lands_in_the_warehouse_of_the_lane_that_builds_its_readers():
@@ -457,3 +466,73 @@ def test_every_notice_source_that_reaches_hikers_lands_in_the_warehouse_of_the_l
     assert unread == {}, f"reach hikers and land where no build that reads them looks: {unread}"
     held = sorted(source.key for source in generator.notice_sources() if source.table not in hourly)
     assert held == ["fws_hunt_units"], "each one let through is held by its reaches_hikers false, and named here"
+
+
+def test_every_stewards_areas_layer_lands_in_the_warehouse_of_the_hourly_build_that_places_with_it():
+    """The test above, for the layers seeds/notice_steward_areas.csv names: int_closures__club_notices places a point by
+    its steward's own area in the hourly build, whose warehouse holds a conditions leg's tables and a notices leg's
+    served copy, never the monthly store. An areas layer on the monthly lane would never be there, and every point it
+    was named to place would keep its own, every hour, with every run green."""
+    from extract._contract import all_resources, discover, discover_shared
+    from extract._run import LEGS, leg_tables
+
+    resources = all_resources(discover() + discover_shared())
+    hourly = set().union(*(leg_tables(leg, resources) for leg in LEGS))
+    areas = generator.area_sources()
+    assert areas, "no steward's areas layer to check: FDEP's park boundaries were named on 2026-10-11"
+    assert {source.table for source in areas} <= hourly, sorted({source.table for source in areas} - hourly)
+
+
+def test_each_link_joins_a_notice_source_to_a_layer_of_its_own_stewards_areas():
+    """The maintainer's answer to Q3 (poll of 2026-10-11): "a status point inside exactly one of its steward's own areas
+    takes that area". So a row of seeds/notice_steward_areas.csv links a generated notice source with a geometry to a
+    layer the same steward publishes (sources.json's `steward`, extracted by the same folder), never another
+    organization's areas, and links a notice source to one layer only."""
+    registry = generator._registry()
+    notices = {source.key: source for source in generator.notice_sources() if not source.hand_staged}
+    areas = {source.key: source for source in generator.area_sources()}
+    rows = _seed("notice_steward_areas")
+    assert rows, "the seed is empty: a rule with no row places nothing"
+    assert len({row["source_key"] for row in rows}) == len(rows), "a notice source is linked to one areas layer"
+    for row in rows:
+        notice, area = notices.get(row["source_key"]), areas.get(row["areas_source_key"])
+        assert notice is not None and notice.reader.spatial, f"{row['source_key']}: no generated notice source with a geometry"
+        assert area is not None, f"{row['areas_source_key']}: not staged as a steward's areas layer"
+        assert notice.club == area.club, f"{row['source_key']} and its areas are extracted by different folders"
+        assert registry[row["source_key"]]["steward"] == registry[row["areas_source_key"]]["steward"], row
+        assert row["why"].strip(), row
+
+
+def test_a_stewards_areas_layer_is_staged_as_areas_and_never_as_notices(files):
+    """It joins no notice union, part or readers seed, so the gate never reads a park boundary as a notice, and the
+    areas union reads exactly the areas layers, each staged with its key, its own id and its outline and no fact a
+    notice carries."""
+    areas = generator.area_sources()
+    staged = {source.stg_model for source in areas}
+    assert not {row["source_key"] for row in _seed("notice_readers")} & {source.key for source in areas}
+    assert set(re.findall(r"ref\('([a-z0-9_]+)'\)", files[generator.AREAS_UNION_MODEL])) == staged
+    part = generator.UNION_MODEL.stem.removesuffix("_unioned") + "_part_"
+    for path, text in files.items():
+        if path.name.startswith(part):
+            assert not set(re.findall(r"ref\('([a-z0-9_]+)'\)", text)) & staged, path.name
+    for source in areas:
+        stg = files[source.folder / f"{source.stg_model}.sql"]
+        assert " as area_id," in stg and " as geom_geojson," in stg, source.stg_model
+        assert " as title," not in stg and " as status," not in stg, source.stg_model
+
+
+def test_a_link_to_a_layer_no_closures_or_warnings_file_declares_stops_the_generator(monkeypatch):
+    """A layer a leg never reads could place nothing in the hourly build (the lane test above), so naming one stops
+    the run rather than staging a source no build holds."""
+    monkeypatch.setattr(generator, "area_layer_keys", lambda: {"no_such_layer"})
+    with pytest.raises(SystemExit, match="no_such_layer"):
+        generator.area_sources()
+
+
+def test_with_no_link_the_areas_union_is_an_empty_relation_of_the_areas_columns():
+    """int_closures__steward_areas always has a union to read, so removing the last seed row places nothing and fails
+    nothing."""
+    text = generator.render_areas_union([])
+    assert text.rstrip().endswith("where false")
+    for name, kind in generator.AREA_COLUMNS:
+        assert f"cast(null as {kind}) as {name}" in text

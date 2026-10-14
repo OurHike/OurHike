@@ -467,7 +467,10 @@ def test_most_of_this_registry_ships_on_the_maintainers_own_word():
     # under IDOT's own trail_orgs.json row (review page 02, P10), whose item states a disclaimer and no terms of use.
     # P12's page reader (2026-10-11) adds 1 `public_gis`: Maine Huts & Trails' 4 hut pages (maine_huts_huts), the
     # points a club prints on its own pages, which decision 69 reads as decision 21a's presumption; held with its row.
-    assert counts == {"maintainer_authorisation": 260, "public_gis": 281, "stated_by_org": 208, "unresolved": 32}
+    # Q3's answer (decision 185, 2026-10-11) adds 1 `public_gis`: FDEP's park boundaries
+    # (fl_state_parks_park_boundaries), which place Florida's closed parks; its item's reliance disclaimer is a scope
+    # note under S7 (decision 188).
+    assert counts == {"maintainer_authorisation": 260, "public_gis": 282, "stated_by_org": 208, "unresolved": 32}
 
 
 #: Decision 69's kinds: a club's own page, PDF or map route of points, which int_sources__publication's rule 6

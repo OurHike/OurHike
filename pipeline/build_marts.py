@@ -669,6 +669,28 @@ STEPS: list[Step] = [
         lane=HOURLY,
         reads_no_model=True,
     ),
+    # Decision 187 (S6, the maintainer's poll of 2026-10-11): the release's nearby
+    # trail lines whose box meets an area closure's, for
+    # int_closures__area_trail_cuts to cut. The hourly lane reads the lines
+    # prepare_closure_trail_lines.py prepared once per release, which
+    # publish-conditions.yml restores from the cache; with none it lands no
+    # row and warns, and only the area closures miss that hour. Under
+    # --fixtures it prepares make_dbt_fixtures.py's nearby_trails.geojson
+    # first. Never left out with --without-step: the line and point closures
+    # its writer also carries need no lines.
+    Step(
+        name="step_closure_trail_lines",
+        table="closure_trail_lines",
+        command=("step_closure_trail_lines.py", "--warehouse", "{warehouse}"),
+        fixture_args=(
+            "--geojson",
+            "{raw_dir}/closure_trail_lines/nearby_trails.geojson",
+            "--release",
+            "fixture",
+        ),
+        lane_args=((HOURLY, ("--lines", "{raw_dir}/closure_trail_lines/lines.parquet")),),
+        lane=HOURLY,
+    ),
     # SH03, SH06: each Hike Finder hike's route formed from its description,
     # or its published track re-walked, over the junction graph. Last of the
     # steps, because it reads the graph's edges and their climb, which the

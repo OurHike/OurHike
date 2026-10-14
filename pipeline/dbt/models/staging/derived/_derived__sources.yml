@@ -89,6 +89,43 @@ sources:
           - name: _loaded_at
             description: When the step wrote the table, UTC.
             data_tests: [not_null]
+      - name: closure_trail_lines
+        data_tests:
+          # Rows sharing stg_derived__closure_trail_lines's key must be exact copies (decision 40).
+          # prepare_closure_trail_lines.py writes one row per line id, so none share one.
+          - duplicates_are_exact:
+              arguments:
+                key_columns: ["'closure_trail_lines'", "release", "line_id"]
+        description: >
+          The release's nearby trail lines that may run inside an area
+          closure, written by step_closure_trail_lines
+          (pipeline/step_closure_trail_lines.py) in the hourly lane: of the
+          lines prepare_closure_trail_lines.py read from the environment's
+          current release's nearby_trails.geojson, once per release, those
+          whose bounding box meets the box of a row of
+          int_closures__trail_closure_areas. No row when no release's lines
+          were there to read, which leaves every area closure out of
+          conditions/trail_closures.json that run. Read by
+          int_closures__area_trail_cuts (decision 187).
+        columns:
+          - name: release
+            description: The data release the lines were published in, as its latest.json named it.
+            data_tests: [not_null]
+          - name: line_id
+            description: >
+              The line's `id` in nearby_trails.geojson, unique on every line of
+              UA's release 2026-10-10-2 (Measured 2026-10-11);
+              prepare_closure_trail_lines.py names a line by its geometry's
+              hash where it has no `id`, and keeps one row per id.
+            data_tests: [not_null]
+          - name: geometry
+            description: >
+              The line, a LineString or a MultiLineString, as GeoJSON text in
+              lon/lat (EPSG:4326) at 5 decimal places, the phone file's grid.
+            data_tests: [not_null]
+          - name: _loaded_at
+            description: When the step wrote the table, UTC.
+            data_tests: [not_null]
       - name: graph_pieces
         data_tests:
           # Rows sharing stg_derived__graph_pieces's key must be exact copies (decision 40).

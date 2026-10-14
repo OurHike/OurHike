@@ -5074,6 +5074,41 @@ def _north(lon: float, lat: float, degrees: float) -> dict:
     return {"type": "LineString", "coordinates": [[lon, lat], [lon, round(lat + degrees, 6)]]}
 
 
+#: The release's nearby trail lines as step_closure_trail_lines reads them under --fixtures
+#: (closure_trail_lines/nearby_trails.geojson, in nearby_trails.geojson's own shape), for the hourly cut of
+#: area closures (decision 187, S6). The network lines NETWORK_CLOSED_AREAS
+#: describes, on the same ground, as (id, name, geometry), so every branch of the cut has a fixture:
+#: - the lon -73.97 line, half inside the first area, so only its north half is crossed out;
+#: - a lon -73.98 line, wholly inside the second;
+#: - the long-term closed ridge line, through both the third and the fourth, one stretch in each;
+#: - the 1777 East Trail line, inside both nested areas, a whole stretch in each;
+#: - the lon -71.3 USFS line on the last area's west edge, which the GEOS intersection keeps;
+#: - a line nowhere near any area, which the step's box filter never lands.
+#: The other fixture club areas (King County's, Midpen's, the Grand Canyon's, Region 6's fire areas) hold
+#: none of these, so each stays out of conditions/trail_closures.json.
+CLOSURE_TRAIL_LINES = [
+    ("fixture-nearby:across", "Fixture Across Trail", _north(-73.97, 41.03, 0.005)),
+    ("fixture-nearby:rockfall", "Fixture Rockfall Trail", _north(-73.98, 41.02, 0.005)),
+    ("fixture-nearby:ridge", "Fixture Closed Ridge Trail", _north(-74.2, 41.2, 0.05)),
+    ("fixture-nearby:east", "Fixture 1777 East Trail", _north(-74.25, 41.2, 0.01)),
+    ("fixture-nearby:edge", "Fixture Edge Path", _north(-71.3, 44.2, 0.005)),
+    ("fixture-nearby:far", "Fixture Far Trail", _north(-120.0, 45.0, 0.01)),
+]
+
+
+def closure_trail_lines_fixtures() -> dict[str, dict]:
+    """closure_trail_lines/nearby_trails.geojson: CLOSURE_TRAIL_LINES as nearby_trails.geojson carries a line."""
+    features = [
+        {
+            "type": "Feature",
+            "properties": {"id": line_id, "source": "oprhp_trails", "name": name, "blaze_color": None, "trail_status": "open"},
+            "geometry": geometry,
+        }
+        for line_id, name, geometry in CLOSURE_TRAIL_LINES
+    ]
+    return {"closure_trail_lines/nearby_trails.geojson": _feature_collection(features)}
+
+
 #: Five metres and ten metres of latitude, near enough at 41.6 degrees north
 #: (111,320 m a degree); every graph assertion measures the built graph
 #: rather than trusting these.
@@ -10976,6 +11011,7 @@ def write_fixtures(raw_dir: Path) -> list[str]:
         **gis_file_and_geo_api_fixtures(),
         **page_points_fixtures(),
         **section_k_fixtures(),
+        **closure_trail_lines_fixtures(),
     }
     files = _trail_lines_network_fixtures(files)
     files = _trail_lines_at_fixtures(files)

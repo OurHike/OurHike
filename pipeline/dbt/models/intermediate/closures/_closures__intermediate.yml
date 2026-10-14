@@ -535,6 +535,73 @@ models:
       - name: edge_margin_m
         description: How far inside the shape a route vertex must be before the phone counts it as in the state.
         data_tests: [not_null]
+  - name: int_closures__trail_closure_areas
+    description: >
+      Every club notice that closes an area, as its source drew it
+      (decision 187, S6): the closures mart's rows
+      and the warnings mart's club notices of a notice source whose own
+      `obstructs_trail` is true, ATC's excepted, whose geometry made valid
+      has dimension 2, kept as its polygons alone, with its bounding box.
+      step_closure_trail_lines lands the nearby trail lines whose box meets
+      one, and int_closures__area_trail_cuts cuts them against it. Every
+      area conditions/notices.json marks obstructing is a row here (the
+      model's header says why). Its tests warn rather than fail: this builds
+      in stage A, where a failure would stop every conditions file of the
+      hour, and the marts' own keys already hold each id to one row.
+    columns:
+      - name: notice_id
+        description: The notice's id, its mart row's closure_id or warning_id, as conditions/notices.json carries it.
+        data_tests:
+          - not_null:
+              config:
+                severity: warn
+          - unique:
+              config:
+                severity: warn
+      - name: source_key
+        description: The notice's source, a row of seeds/notice_readers.csv.
+      - name: xmin
+        description: The area's least longitude, EPSG:4326.
+      - name: ymin
+        description: The area's least latitude.
+      - name: xmax
+        description: The area's greatest longitude.
+      - name: ymax
+        description: The area's greatest latitude.
+      - name: area_geojson
+        description: >
+          The area as GeoJSON text in lon/lat, a Polygon or MultiPolygon: the
+          mart's own geometry made valid, its polygons alone, never the 100 m
+          grown outline conditions/notices.json carries.
+  - name: int_closures__area_trail_cuts
+    description: >
+      The trail stretches inside each area closure (decision 187): the
+      release's nearby trail lines (stg_derived__closure_trail_lines) cut
+      against each area of int_closures__trail_closure_areas by
+      int_trail_lines__network_area_closures' rule, shaped for a phone at
+      10 m and 5 decimal places by macros/notice_phone_geometry.sql, one
+      MultiLineString per area. An area no mapped trail runs inside has no
+      row, and pub_conditions_trail_closures leaves it out. Builds in what
+      step_closure_trail_lines' table unblocks, so every GEOS operation is in
+      TRY() and its tests warn: a failure here would stop every conditions
+      file of the hour, where an area it cannot cut is only left out.
+    columns:
+      - name: notice_id
+        description: The area closure's notice_id.
+        data_tests:
+          - not_null:
+              config:
+                severity: warn
+          - unique:
+              config:
+                severity: warn
+      - name: stretches
+        description: How many stretches the MultiLineString holds, one at least.
+      - name: stretches_geojson
+        description: >
+          The stretches as one GeoJSON MultiLineString in lon/lat at 5 decimal
+          places, each of two or more distinct vertices, by line id and then
+          its place along the line.
 
 unit_tests:
   - name: int_closures__notice_state_shapes_simplifies_only_the_states_the_seed_names
@@ -2818,3 +2885,133 @@ unit_tests:
         - {source_key: club_clean, rows_total: 1, passed: true, held_because: null}
         - {source_key: club_leaking, rows_total: 3, passed: false, held_because: '2 club_leaking row(s) hold the source''s own wording in a published column (decision 55), the first club_leaking:2, so none of its rows is published (int_warnings__wording_leaks names each)'}
         - {source_key: club_outside, rows_total: 2, passed: false, held_because: '1 club_outside row(s) reach outside the eastern box its source publishes in, the first club_outside:1: a lon/lat swap, or a source registered without its region (macros/lands_outside_its_region.sql), so none of its rows is published'}
+
+  - name: int_closures__trail_closure_areas_keeps_each_obstructing_club_area_as_its_source_drew_it
+    model: int_closures__trail_closure_areas
+    description: >
+      Decision 187's areas: a club's obstructing polygon is kept as drawn, and
+      so is an obstructing club notice of the warnings mart; a polygon that
+      does not obstruct, ATC's own (its band draws it), a line closure,
+      OurHike's own closure (no notice source) and an NWS alert are not
+      areas to cut. A geometry that is a polygon and a line keeps its polygon
+      alone, as a MultiPolygon, and one whose GeoJSON will not read is left
+      out rather than stopping the build.
+    given:
+      - input: ref('closures', v=1)
+        format: sql
+        rows: |
+          select
+              closure_id,
+              source_key,
+              cast(obstructs_trail as boolean) as obstructs_trail,
+              cast(geom_geojson as varchar) as geom_geojson
+          from (values
+              ('club_area:1', 'club_area', true, '{"type":"Polygon","coordinates":[[[-73.975,41.032],[-73.965,41.032],[-73.965,41.04],[-73.975,41.04],[-73.975,41.032]]]}'),
+              ('club_area:2', 'club_area', false, '{"type":"Polygon","coordinates":[[[-73.975,41.032],[-73.965,41.032],[-73.965,41.04],[-73.975,41.04],[-73.975,41.032]]]}'),
+              ('club_area:3', 'club_area', true, '{"type":"LineString","coordinates":[[-73.97,41.03],[-73.97,41.035]]}'),
+              ('club_area:4', 'club_area', true, '{"type":"GeometryCollection","geometries":[{"type":"Polygon","coordinates":[[[-74.205,41.205],[-74.195,41.205],[-74.195,41.21],[-74.205,41.21],[-74.205,41.205]]]},{"type":"LineString","coordinates":[[-74.3,41.3],[-74.31,41.31]]}]}'),
+              ('club_area:5', 'club_area', true, '{"type":"Polygon","coordinates":[[[-74.0,41.0],[1]]]}'),
+              ('atc_trail_updates:bridge', 'atc_trail_updates', true, '{"type":"Polygon","coordinates":[[[-73.975,41.032],[-73.965,41.032],[-73.965,41.04],[-73.975,41.04],[-73.975,41.032]]]}'),
+              ('ourhike_closures:c1', 'ourhike_closures', true, '{"type":"Polygon","coordinates":[[[-73.975,41.032],[-73.965,41.032],[-73.965,41.04],[-73.975,41.04],[-73.975,41.032]]]}')
+          ) as closures (closure_id, source_key, obstructs_trail, geom_geojson)
+      - input: ref('warnings', v=1)
+        format: sql
+        rows: |
+          select
+              warning_id,
+              warning_kind,
+              source_key,
+              cast(obstructs_trail as boolean) as obstructs_trail,
+              cast(geom_geojson as varchar) as geom_geojson
+          from (values
+              ('club_warning:7', 'org_notice', 'club_warning', true, '{"type":"Polygon","coordinates":[[[-112.1,40.5],[-112.0,40.5],[-112.0,40.6],[-112.1,40.5]]]}'),
+              ('nws_alerts:x', 'nws_alert', 'nws_alerts', true, '{"type":"Polygon","coordinates":[[[-112.1,40.5],[-112.0,40.5],[-112.0,40.6],[-112.1,40.5]]]}')
+          ) as warnings (warning_id, warning_kind, source_key, obstructs_trail, geom_geojson)
+      - input: ref('notice_readers')
+        rows:
+          - {source_key: club_area, club: a, notice_type: closures, reader: arcgis_layer, listing: full, raw_table: raw_a__club_area, staged_by: stg_a__club_area, steward_kind: club}
+          - {source_key: club_warning, club: b, notice_type: warnings, reader: arcgis_layer, listing: full, raw_table: raw_b__club_warning, staged_by: stg_b__club_warning, steward_kind: agency}
+          - {source_key: atc_trail_updates, club: atc, notice_type: closures, reader: reviewed_file, listing: full, raw_table: raw_atc__atc_trail_updates, staged_by: hand, steward_kind: club}
+    expect:
+      rows:
+        - {notice_id: 'club_area:1', source_key: club_area, area_geojson: '{"type":"Polygon","coordinates":[[[-73.975,41.032],[-73.965,41.032],[-73.965,41.04],[-73.975,41.04],[-73.975,41.032]]]}'}
+        - {notice_id: 'club_area:4', source_key: club_area, area_geojson: '{"type":"MultiPolygon","coordinates":[[[[-74.205,41.205],[-74.195,41.205],[-74.195,41.21],[-74.205,41.21],[-74.205,41.205]]]]}'}
+        - {notice_id: 'club_warning:7', source_key: club_warning, area_geojson: '{"type":"Polygon","coordinates":[[[-112.1,40.5],[-112.0,40.5],[-112.0,40.6],[-112.1,40.5]]]}'}
+
+  - name: int_closures__area_trail_cuts_keeps_only_the_stretches_inside_each_area
+    model: int_closures__area_trail_cuts
+    description: >
+      Decision 187's cut, int_trail_lines__network_area_closures' rule: a line
+      half inside an area keeps only its inside half; a line wholly inside is
+      kept whole, after it in line id order; a line outside adds nothing, and
+      one that only touches a corner is no walkable section. An area no line
+      runs inside has no row, and neither has one whose only stretch, under
+      a metre long, does not outlast the phone's 5 decimal places. Each kept
+      area is one MultiLineString, a single stretch included.
+    given:
+      - input: ref('int_closures__trail_closure_areas')
+        rows:
+          - {notice_id: 'club_area:1', area_geojson: '{"type":"Polygon","coordinates":[[[-73.975,41.032],[-73.965,41.032],[-73.965,41.04],[-73.975,41.04],[-73.975,41.032]]]}'}
+          - {notice_id: 'club_area:2', area_geojson: '{"type":"Polygon","coordinates":[[[-71.3,44.199],[-71.296,44.199],[-71.296,44.206],[-71.3,44.206],[-71.3,44.199]]]}'}
+          - {notice_id: 'club_area:3', area_geojson: '{"type":"Polygon","coordinates":[[[-74.258,41.195],[-74.242,41.195],[-74.242,41.215],[-74.258,41.215],[-74.258,41.195]]]}'}
+      - input: ref('stg_derived__closure_trail_lines')
+        format: sql
+        rows: |
+          select
+              line_id,
+              st_geomfromtext(wkt) as geom
+          from (values
+              ('b_wholly_inside', 'LINESTRING (-73.968 41.033, -73.968 41.038)'),
+              ('a_half_inside', 'LINESTRING (-73.97 41.03, -73.97 41.035)'),
+              ('outside', 'LINESTRING (-73.98 41.03, -73.98 41.035)'),
+              ('corner_only', 'LINESTRING (-73.98 41.035, -73.975 41.04)'),
+              ('far_away', 'LINESTRING (-74.0 41.0, -74.0 41.005)'),
+              ('too_short', 'LINESTRING (-74.25 41.205, -74.250001 41.205)')
+          ) as lines (line_id, wkt)
+    expect:
+      rows:
+        - {notice_id: 'club_area:1', stretches: 2, stretches_geojson: '{"type":"MultiLineString","coordinates":[[[-73.97,41.032],[-73.97,41.035]],[[-73.968,41.033],[-73.968,41.038]]]}'}
+
+  - name: int_closures__area_trail_cuts_keeps_a_lone_stretch_as_a_multilinestring_of_one
+    model: int_closures__area_trail_cuts
+    description: >
+      One line crossing an area keeps its inside part, and the area's row is
+      a MultiLineString holding that one stretch, so the phone reads one type
+      for every area.
+    given:
+      - input: ref('int_closures__trail_closure_areas')
+        rows:
+          - {notice_id: 'club_area:1', area_geojson: '{"type":"Polygon","coordinates":[[[-74.205,41.205],[-74.195,41.205],[-74.195,41.21],[-74.205,41.21],[-74.205,41.205]]]}'}
+      - input: ref('stg_derived__closure_trail_lines')
+        format: sql
+        rows: |
+          select 'across' as line_id, st_geomfromtext('LINESTRING (-74.21 41.207, -74.19 41.207)') as geom
+    expect:
+      rows:
+        - {notice_id: 'club_area:1', stretches: 1, stretches_geojson: '{"type":"MultiLineString","coordinates":[[[-74.205,41.207],[-74.195,41.207]]]}'}
+
+exposures:
+  - name: step_closure_trail_lines
+    label: step_closure_trail_lines.py
+    type: application
+    maturity: medium
+    owner:
+      name: OurHike
+    description: >
+      The Python step that lands, of the release's nearby trail lines
+      prepare_closure_trail_lines.py read once per release, those whose
+      bounding box meets an area closure's (pipeline/step_closure_trail_lines.py),
+      between the dbt invocation that builds int_closures__trail_closure_areas
+      and the one that reads its answer back as
+      source('derived', 'closure_trail_lines'). A step rather than a source
+      because the lines are this project's own release, read from a file the
+      hourly job restores, and filtered by the areas so the hourly warehouse
+      holds only the lines it may cut (the step's docstring has the
+      measurement). The cut itself is SQL, int_closures__area_trail_cuts.
+      Shown here so the docs draw both halves of the step.
+    depends_on:
+      - ref('int_closures__trail_closure_areas')
+    config:
+      meta:
+        writes: derived.closure_trail_lines
+        cadence: hourly

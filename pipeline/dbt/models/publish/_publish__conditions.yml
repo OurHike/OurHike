@@ -1,15 +1,16 @@
 version: 2
 
 # The closures and warnings family's phone files (pipeline/ELT.md, "Publish
-# (reverse ETL)"): nine writers, and an exposure for each of the eleven
+# (reverse ETL)"): ten writers, and an exposure for each of the twelve
 # files they and export_conditions.py's notes and disputes write. Each writer
 # but pub_conditions_notices names its int_closures__gate row in `meta.gate`
 # and selects no row while that source is held, so its last copy stays on the
 # phone while the others are written, and publish.py fails the run
 # afterwards. pub_conditions_notices spans every club, so a held club keeps
 # its last good rows inside the file instead (decision 53, phase D), and it
-# names no gate row; nor does pub_conditions_hazard_areas (decision 84),
-# which keeps that writer's hazard rows as it wrote them. Only those two and
+# names no gate row; nor do pub_conditions_hazard_areas (decision 84) and
+# pub_conditions_trail_closures (decisions 184 and 187),
+# which keep that writer's rows as it wrote them. Only those three and
 # pub_conditions_notice_states (decision 76's state shapes, a monthly node
 # that reads no notice source, so no gate row) are new data with no
 # exporter. None of them uploads
@@ -165,6 +166,40 @@ models:
           Every notice of conditions/notices.json whose `hazard` is not null,
           by source_key and then notice_id, each the same object of the same
           keys that file carries.
+        data_type: json
+
+  - name: pub_conditions_trail_closures
+    description: >
+      Writes conditions/trail_closures.json, every club closure for the map
+      (decision 184: #1152's shape C for every club closure, drawn by
+      decision 187 with the crossed-out mark): the notices
+      of pub_conditions_notices whose `obstructs_trail` is true, ATC's
+      excepted, each exactly as that writer wrote it, in its order, under its
+      `generated_at`, with one key added, `shape` ("line", "area" or "point"),
+      from the kind of the notice's own geometry. An area's `place.geometry`
+      is the MultiLineString of the mapped trail stretches inside it
+      (int_closures__area_trail_cuts); an area no mapped trail runs inside,
+      and a row with no geometry to cross out, are left out and stay in
+      notices.json's list. The phone reads it at launch, whatever is planned.
+      Writes nothing while that writer writes nothing, so the phone keeps its
+      last copy; an empty list when no club closes a trail. No parity line:
+      no exporter writes this file.
+    config:
+      access: public
+      contract:
+        enforced: true
+    columns:
+      - name: generated_at
+        description: pub_conditions_notices' own `generated_at`, so the files of one build carry one stamp.
+        data_type: varchar
+        data_tests: [not_null, unique]
+      - name: closures
+        description: >
+          Every closure, by source_key and then notice_id, each the object of
+          the same keys conditions/notices.json carries for it, then `shape`.
+          A "line" or "point" row's `place` is that file's; an "area" row's is
+          `{"kind": "geometry", "geometry": <MultiLineString>}`, the trail
+          stretches inside the area at 5 decimal places.
         data_type: json
 
   - name: pub_conditions_notice_states
@@ -496,6 +531,74 @@ unit_tests:
               cast(null as varchar) as generated_at,
               cast(null as json) as notices
           where false
+    expect:
+      rows: []
+
+  - name: pub_conditions_trail_closures_keeps_every_club_closure_shaped_for_the_map
+    model: pub_conditions_trail_closures
+    description: >
+      Decision 187's file, from a notices file holding one of each case, out
+      of order: a line closure, a point closure and an area closure are kept,
+      each exactly as notices.json carries it with `shape` added last, the
+      area's `place` its trail stretches, written again after the row's
+      other keys, `states` among them. A closure whose start is still ahead
+      (decision 167) and one the list greys are kept at full strength: no
+      date decides a row here. ATC's own closure, a hazard area, a notice
+      that does not obstruct, an area no trail runs inside and an unplaced
+      closure are left out, and a cut for no closure of the file adds
+      nothing. By source_key, then notice_id, under the notices file's own
+      `generated_at`.
+    given:
+      - input: ref('pub_conditions_notices')
+        format: sql
+        rows: |
+          select
+              '2026-10-11T16:23:24Z' as generated_at,
+              cast('[{"notice_id":"club_line:9","source_key":"club_line","place":{"kind":"geometry","geometry":{"type":"LineString","coordinates":[[-73.97,41.03],[-73.97,41.035]]}},"hazard":null,"obstructs_trail":true,"starts_on":null,"current_until":"2026-12-01"},{"notice_id":"atc_trail_updates:bridge","source_key":"atc_trail_updates","place":{"kind":"geometry","geometry":{"type":"LineString","coordinates":[[-74.0,41.0],[-74.0,41.01]]}},"hazard":null,"obstructs_trail":true},{"notice_id":"blm_shooting_points:1","source_key":"blm_shooting_points","place":{"kind":"geometry","geometry":{"type":"Point","coordinates":[-112.0,40.5]}},"hazard":"shooting","obstructs_trail":false},{"notice_id":"club_line:1","source_key":"club_line","place":{"kind":"geometry","geometry":{"type":"LineString","coordinates":[[-73.9,41.0],[-73.9,41.01]]}},"hazard":null,"obstructs_trail":false},{"notice_id":"club_point:2","source_key":"club_point","place":{"kind":"geometry","geometry":{"type":"Point","coordinates":[-74.1,41.2]}},"hazard":null,"obstructs_trail":true,"starts_on":null,"current_until":null},{"notice_id":"club_area:1","source_key":"club_area","place":{"kind":"geometry","geometry":{"type":"Polygon","coordinates":[[[-73.976,41.031],[-73.964,41.031],[-73.964,41.041],[-73.976,41.041],[-73.976,41.031]]]}},"hazard":null,"obstructs_trail":true,"starts_on":null,"current_until":null,"states":["NY"]},{"notice_id":"club_area:2","source_key":"club_area","place":{"kind":"geometry","geometry":{"type":"MultiPolygon","coordinates":[[[[-71.3,44.199],[-71.296,44.199],[-71.296,44.206],[-71.3,44.199]]]]}},"hazard":null,"obstructs_trail":true},{"notice_id":"club_line:3","source_key":"club_line","place":{"kind":"geometry","geometry":{"type":"MultiLineString","coordinates":[[[-74.2,41.2],[-74.2,41.25]]]}},"hazard":null,"obstructs_trail":true,"starts_on":"2027-01-15","current_until":null},{"notice_id":"club_point:1","source_key":"club_point","place":{"kind":"geometry","geometry":{"type":"MultiPoint","coordinates":[[-74.3,41.3]]}},"hazard":null,"obstructs_trail":true,"starts_on":"2025-05-01","current_until":"2026-01-01"},{"notice_id":"club_page:1","source_key":"club_page","place":{"kind":"unplaced"},"hazard":null,"obstructs_trail":true}]' as json) as notices
+      - input: ref('int_closures__area_trail_cuts')
+        rows:
+          - {notice_id: 'club_area:1', stretches: 1, stretches_geojson: '{"type":"MultiLineString","coordinates":[[[-73.97,41.032],[-73.97,41.035]]]}'}
+          - {notice_id: 'club_area:9', stretches: 1, stretches_geojson: '{"type":"MultiLineString","coordinates":[[[-74.0,41.0],[-74.0,41.01]]]}'}
+    expect:
+      rows:
+        - {generated_at: '2026-10-11T16:23:24Z', closures: '[{"notice_id":"club_area:1","source_key":"club_area","hazard":null,"obstructs_trail":true,"starts_on":null,"current_until":null,"states":["NY"],"place":{"kind":"geometry","geometry":{"type":"MultiLineString","coordinates":[[[-73.97,41.032],[-73.97,41.035]]]}},"shape":"area"},{"notice_id":"club_line:3","source_key":"club_line","place":{"kind":"geometry","geometry":{"type":"MultiLineString","coordinates":[[[-74.2,41.2],[-74.2,41.25]]]}},"hazard":null,"obstructs_trail":true,"starts_on":"2027-01-15","current_until":null,"shape":"line"},{"notice_id":"club_line:9","source_key":"club_line","place":{"kind":"geometry","geometry":{"type":"LineString","coordinates":[[-73.97,41.03],[-73.97,41.035]]}},"hazard":null,"obstructs_trail":true,"starts_on":null,"current_until":"2026-12-01","shape":"line"},{"notice_id":"club_point:1","source_key":"club_point","place":{"kind":"geometry","geometry":{"type":"MultiPoint","coordinates":[[-74.3,41.3]]}},"hazard":null,"obstructs_trail":true,"starts_on":"2025-05-01","current_until":"2026-01-01","shape":"point"},{"notice_id":"club_point:2","source_key":"club_point","place":{"kind":"geometry","geometry":{"type":"Point","coordinates":[-74.1,41.2]}},"hazard":null,"obstructs_trail":true,"starts_on":null,"current_until":null,"shape":"point"}]'}
+
+  - name: pub_conditions_trail_closures_writes_an_empty_list_when_no_club_closes_a_trail
+    model: pub_conditions_trail_closures
+    description: >
+      A notices file with no closure gives a file with an empty list: the
+      file arrived and no club closes a trail, which the phone may draw as
+      none.
+    given:
+      - input: ref('pub_conditions_notices')
+        format: sql
+        rows: |
+          select
+              '2026-10-11T16:23:24Z' as generated_at,
+              cast('[{"notice_id":"club_page:1","source_key":"club_page","place":{"kind":"unplaced"},"hazard":null,"obstructs_trail":false}]' as json) as notices
+      - input: ref('int_closures__area_trail_cuts')
+        rows: []
+    expect:
+      rows:
+        - {generated_at: '2026-10-11T16:23:24Z', closures: '[]'}
+
+  - name: pub_conditions_trail_closures_writes_nothing_while_the_notices_writer_writes_nothing
+    model: pub_conditions_trail_closures
+    description: >
+      A build without the row history while a notice source is held, where
+      pub_conditions_notices selects no row: this selects none either, so
+      the phone keeps its last copy rather than reading an empty list as no
+      closure anywhere.
+    given:
+      - input: ref('pub_conditions_notices')
+        format: sql
+        rows: |
+          select
+              cast(null as varchar) as generated_at,
+              cast(null as json) as notices
+          where false
+      - input: ref('int_closures__area_trail_cuts')
+        rows: []
     expect:
       rows: []
 
@@ -1126,6 +1229,36 @@ exposures:
     config:
       meta:
         r2_keys: [conditions/hazard_areas.json]
+        format: json
+        cadence: hourly
+
+  - name: conditions_trail_closures_json
+    label: conditions/trail_closures.json
+    type: application
+    maturity: medium
+    owner:
+      name: OurHike
+    description: >
+      Every club closure for the map (decision 184:
+      #1152 — Move OPRHP's temporary closures onto the conditions clock,
+      where a safety layer belongs — in its shape C, for every club closure,
+      drawn by decision 187): the obstructing rows of conditions/notices.json but
+      ATC's, each with its `shape`, an area's place the trail stretches
+      inside it. Read at launch, whatever the hiker has planned, and drawn
+      with the crossed-out mark (client/src/lib/closureStyle.ts): a line
+      along its own line, an area's trails where they run inside it, a point
+      as one cross, each from the day before its start; routes still go
+      through them. Rewritten in place under conditions/, outside every
+      release folder. Published by the dbt path of publish-conditions.yml
+      (publish.py with OURHIKE_PHONE_FILES=dbt); the exporters' path has no
+      writer for it, so a bucket the exporters publish answers 404.
+    depends_on:
+      - ref('closures', v=1)
+      - ref('warnings', v=1)
+      - ref('pub_conditions_trail_closures')
+    config:
+      meta:
+        r2_keys: [conditions/trail_closures.json]
         format: json
         cadence: hourly
 

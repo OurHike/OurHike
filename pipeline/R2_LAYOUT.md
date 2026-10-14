@@ -178,6 +178,20 @@ this one at launch. Like `notices.json` it is written only on the dbt path, so a
 exporters still publish answers 404 for it, and the client reads that as no answer rather
 than as no hazard area (`client/src/lib/publishedNotices.ts`).
 
+**`conditions/trail_closures.json` joined the prefix with decisions 184 and 187 of
+[ELT.md](ELT.md)** (polls of 2026-10-11, building **#1152 — Move OPRHP's temporary
+closures onto the conditions clock, where a safety layer belongs** in its shape C, for
+every club closure, and S6 for how each is drawn). It holds the rows of
+`conditions/notices.json` that obstruct a trail, but ATC's, each with a `shape` of
+`line`, `area` or `point`; an area's `place` is the trail stretches inside it, cut every
+hour against the release's own nearby trail lines. The dbt writer
+`pub_conditions_trail_closures` writes it, the phone reads it at launch and draws each
+closure with the crossed-out mark, and like `hazard_areas.json` it is written only on the
+dbt path, so a bucket the exporters still publish answers 404 for it. Nothing new is
+stored anywhere for it in this bucket: the release's lines reach the hourly build through
+the Actions cache (`publish-weather.yml` prepares them once per release), not through a
+key here.
+
 `originals/` is a preservation copy and never a download. `photos/` holds the 640px
 rendering a card actually shows; this holds the full-resolution file it was reduced from,
 so that losing an upstream does not also lose the photograph. The prompt was ATC's

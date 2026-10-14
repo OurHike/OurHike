@@ -131,6 +131,8 @@ def test_every_key_a_dbt_writers_exposure_names_is_a_legal_key():
         "conditions/reports.json",
         # Decision 84's hazard areas, beside conditions/notices.json.
         "conditions/hazard_areas.json",
+        # Every club closure for the map, decision 187 of pipeline/ELT.md.
+        "conditions/trail_closures.json",
     ],
 )
 def test_accepts_the_layout_as_documented(key):

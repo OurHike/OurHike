@@ -478,11 +478,13 @@ export function validTrailClosure(value: unknown): TrailClosure | null {
  * reads null as "no answer", never as "no closure".
  *
  * Within MANIFEST_READ_TIMEOUT_MS, as the hazard areas are. @unvalidated: no
- * trail_closures.json has been published yet. The maintainer's S6 page
- * estimated it from UA's notices.json of 2026-10-11 at about 2.0 MB, 354 KB
- * gzipped, which 20 s lets through above about 142 kbps; slower than that, a
- * phone shows the copy it kept. What would settle it: the published file's
- * own size, and timings of this read at trailheads, which nothing records.
+ * trail_closures.json has been published yet. Its writer's own estimate, on
+ * UA's notices.json of 2026-10-11 16:23 UTC, is 3,123,994 bytes, 630,688
+ * gzipped (an upper bound: its areas were cut against their 100 m grown
+ * outlines), which 20 s lets through above about 252 kbps; the S6 page had
+ * guessed 354 KB. Slower than that, a phone shows the copy it kept. What
+ * would settle it: the published file's own size, and timings of this read
+ * at trailheads, which nothing records.
  */
 export async function fetchPublishedTrailClosures(
   options?: PublishedReadOptions,

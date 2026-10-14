@@ -527,7 +527,14 @@ def dbt_exposure_keys() -> set[str]:
 #: the planned-hike panel then shows no state-wide notice, as decision 68 left them.
 #: conditions/hazard_areas.json (decision 84) is too: lib/publishedNotices.ts reads a 404 as no answer, and
 #: chrome/noticesPanel.tsx then draws the hazard areas from notices.json where that file has reached the phone.
-DBT_ONLY_CLIENT_KEYS = {"conditions/notices.json", "conditions/notice_states.json", "conditions/hazard_areas.json"}
+#: conditions/trail_closures.json (decisions 184 and 187) is too: lib/publishedNotices.ts reads a 404 as no answer,
+#: keeping the copy the phone already holds, and the map draws no club closure it does not hold.
+DBT_ONLY_CLIENT_KEYS = {
+    "conditions/notices.json",
+    "conditions/notice_states.json",
+    "conditions/hazard_areas.json",
+    "conditions/trail_closures.json",
+}
 
 
 def test_every_key_the_app_fetches_is_a_key_the_pipeline_publishes(published):

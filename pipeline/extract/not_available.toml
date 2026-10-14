@@ -5527,7 +5527,11 @@ fl-state-parks, batch c19_cand_southeast_1: published, and not landed. The Trail
 clearest `places` find in the batch: an official, small, named list of trail towns with the trails each
 serves.
 
-fl-state-parks-fkoht (folded into this folder), batch c19_cand_southeast_1: published, and not landed."""
+fl-state-parks-fkoht (folded into this folder), batch c19_cand_southeast_1: published, and not landed.
+
+Since 2026-10-11 the park boundaries (`…/PARKS_BOUNDARIES/MapServer/0`) are landed by
+`fl_state_parks/closures.py`, as the place of a closed park's notice (decision 185), not as
+places: no `places` resource reads them, or the Trail Towns layer, yet."""
 checked = [
     "fl-state-parks: `…/PARKS_BOUNDARIES/MapServer/0` \"Florida State Park Boundaries\": 179 polygons. `…/OGT/MapServer/5` \"Florida Trail Towns\": 23 points (`NAME`, `TRAILS`, `URL`), including Inverness (on the Withlacoochee State Trail), Dunedin, Clermont, Palatka, Titusville, White Springs. `…/PARKS_FORI/MapServer/0` \"Florida's Outdoor Recreation Inventory\": 12,148 sites, all managers.",
     "fl-state-parks-fkoht: The 9 state-park boundaries the web map lists (`PARKS_BOUNDARIES/MapServer/0`); the Connecting Keys' Communities StoryMap (`fee2411ba1cc4573b1067ab28ea2d433`, 2026-05-26). Also the OGT Trail Towns list has Marco Island and Everglades City but no Keys town.",

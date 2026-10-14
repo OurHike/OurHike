@@ -132,7 +132,7 @@ Present, among others: `ST_LineLocatePoint`, `ST_LineInterpolatePoints`,
 
 | Layer | Name | Folder | Reads | Does |
 |---|---|---|---|---|
-| base | `base_<steward>__<layer>` | `staging/<steward>/base/` | one `source()` | once per upstream dataset, in the folder that extracts it (decision 34): `base_usfs__trails`, never one per club. Rename, cast, `st_setcrs(st_geomfromgeojson(geometry), 'OGC:CRS84')`, lowercase aliases, the key and the dedupe ([below](#one-key-per-table)). No filter, no join |
+| base | `base_<steward>__<layer>` | `staging/<steward>/base/` | one `source()` | once per upstream dataset, in the folder that extracts it (decision 34): `base_usfs__trails`, never one per club. One exception, per lane: a line type that SHARES an hourly closures or warnings resource gets a second base model at its own cadence, a lane copy, so `base_ngpc__ngpc_cowboy_trail_improvements_monthly` feeds the monthly trail lines while the hourly notices read the first (`make_dbt_staging.py`, "A LANE COPY") Rename, cast, `st_setcrs(st_geomfromgeojson(geometry), 'OGC:CRS84')`, lowercase aliases, the key and the dedupe ([below](#one-key-per-table)). No filter, no join |
 | staging | `stg_<club>__<mart>` | `staging/<club>/` | that club's base models | conform to the mart's shape: rename to its columns, carry the key. No filter: the club's review gate goes in its intermediate (decision 40) |
 | union | `int_<mart>__unioned` | `intermediate/<mart>/` | every `stg_<club>__<mart>` | `union all by name`, no filter |
 | heavy | `int_<mart>__<verb>` | `intermediate/<mart>/` | unions, intermediates, `stg_derived__*` | dedup, corridor, water distance, mile axis, graph |

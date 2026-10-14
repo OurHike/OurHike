@@ -322,6 +322,13 @@ ALSO_READS: dict[str, dict[str, str]] = {
             "as publish-vector-data.yml's build reads them today; found 2026-10-02 as the one hourly-lane "
             "table a monthly-lane dbt source reads, in this branch's manifest"
         ),
+        "raw_ngpc__ngpc_cowboy_trail_improvements": (
+            "NGPC's 29 Cowboy Trail sections land on the hourly lane as closures (ngpc/closures.py), and are the "
+            "Cowboy Trail's line too: not_available.toml's [ngpc.trail_lines] SHARES them, the maintainer's P8 on "
+            "wave 6's review page 01 (2026-10-11). make_dbt_staging.py stages this copy for the monthly trail_lines "
+            "nodes under a source table and base model of its own (its docstring, 'A LANE COPY'), so the notices' "
+            "hourly nodes keep reading the hourly copy"
+        ),
     },
 }
 

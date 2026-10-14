@@ -12,8 +12,9 @@ models:
     description: >
       Every line of the clubs' registered trail-line layers, two-dimensional, with the
       layer_rules seed applied: a historic alignment may not route and does not draw as a trail, a
-      winter trail carries its season, and a layer's roads are left out where the seed names the
-      field that says which.
+      winter trail carries its season, a layer's roads are left out where the seed names the
+      field that says which, a status layer keeps only the lines its keep_only_where values call
+      trail, and a line its own layer closes (closed_where) is marked so.
     data_tests:
       # The historic-alignment rule: neither half of it without the other.
       - dbt_utils.expression_is_true:
@@ -50,6 +51,13 @@ models:
           - accepted_values:
               arguments:
                 values: ['winter']
+      - name: closed_by_its_layer
+        description: >
+          True where the line's own field equals a value one of the layer_rules seed's
+          closed_where rows names for its layer (case and surrounding space aside): NGPC's Cowboy
+          Trail sections whose Road_Status is 'Closed' or whose Condition is 'Impassable' or 'Not
+          Passable'. False on every other line, which says nothing about whether it is open.
+        data_tests: [not_null]
       - name: _loaded_at
         description: When the extract landed the line.
   - name: int_trail_lines__club_published
@@ -58,12 +66,22 @@ models:
       'club', simplified at 1 m and cut to six decimals as the network's lines are. A historic
       alignment and a seasonal line never draw. Drawn and never routed: no junction graph, route
       distance or trail mile reads a club row, and the phone reads the mark to say so. Its status is
-      null (unknown), its blaze 'Unknown', and it follows the network's lines in feature order.
+      'closed' (stated, long_term) where its own layer closes it (club_lines' closed_by_its_layer),
+      and null (unknown, never open) otherwise; its blaze is 'Unknown', and it follows the network's
+      lines in feature order.
     data_tests:
-      # The rules club_lines sets hold here too: nothing that may not draw is drawn.
+      # A club line is never open: closed by its own layer, as a steward's closure on a network
+      # line ships, or unknown.
       - dbt_utils.expression_is_true:
           arguments:
-            expression: "line_kind = 'club' and trail_status is null and closure_kind is null"
+            expression: >-
+              line_kind = 'club'
+              and (
+                  (trail_status is null and trail_status_basis is null and closure_kind is null)
+                  or (trail_status = 'closed' and trail_status_basis = 'stated' and closure_kind = 'long_term')
+              )
+              and closure_reason is null
+              and closure_source is null
     columns:
       - name: trail_line_id
         description: "`<source key>:<the line's key>`, the id nearby_trails.geojson publishes."
@@ -98,7 +116,9 @@ models:
       - name: blaze_color
         description: "'Unknown', as the mart's club rows carry it."
       - name: trail_status
-        description: Null, as the mart's club rows carry it.
+        description: >
+          The club line's own: 'closed' where its layer closes it, else null, as the mart's club
+          rows carry it.
       - name: through_route
         description: Null on every row.
       - name: seam_wkt
@@ -227,6 +247,56 @@ unit_tests:
         - {"trail_segment_key": "dcr-1"}
         - {"trail_segment_key": "dcr-3"}
         - {"trail_segment_key": "other-1"}
+  - name: trail_lines_club_lines_draw_only_the_cowboy_trails_developed_sections_and_mark_the_ones_ngpc_closes
+    model: int_trail_lines__club_lines
+    description: >
+      NGPC's 29-section status layer is the Cowboy Trail's line (the maintainer's P8, wave 6's
+      review page 01, 2026-10-11), and these are its section kinds, from the live read of
+      2026-10-11. A Closed section beside Impassable draws, closed. The Niobrara bridge's section,
+      Road_Status 'Open' beside Condition 'Not Passable', draws closed: the Condition closes it
+      whatever the status reads. An Open section of any other condition, or none, draws and is not
+      closed, whatever case or space NGPC writes it in. An 'Alt Route' section, the HWY 275 detour,
+      never draws, nor does a section whose Road_Status is empty. Another layer's line whose own
+      fields read the same is untouched: the rules are NGPC's layer's.
+    given:
+      - input: ref('int_trail_lines__unioned')
+        format: sql
+        rows: |
+          select
+              source_key,
+              club,
+              trail_segment_key,
+              'Cowboy Recreation and Nature Trail' as name,
+              st_geomfromtext(geom_wkt) as geom,
+              cast(properties_text as json) as properties,
+              cast('2026-10-11 00:00:00+00' as timestamptz) as _loaded_at
+          from (values
+              ('ngpc_cowboy_trail_improvements', 'ngpc', 'elkhorn-bridge', 'LINESTRING (-98.0 42.1, -97.9 42.1)', '{"road_status": "Closed", "condition": "Impassable"}'),
+              ('ngpc_cowboy_trail_improvements', 'ngpc', 'niobrara-bridge', 'LINESTRING (-98.1 42.7, -98.0 42.7)', '{"road_status": "Open", "condition": "Not Passable"}'),
+              ('ngpc_cowboy_trail_improvements', 'ngpc', 'rough', 'LINESTRING (-99.0 42.5, -98.9 42.5)', '{"road_status": "Open", "condition": "Rough Surfaces Exist"}'),
+              ('ngpc_cowboy_trail_improvements', 'ngpc', 'good', 'LINESTRING (-99.1 42.5, -99.0 42.5)', '{"road_status": " open ", "condition": "Good"}'),
+              ('ngpc_cowboy_trail_improvements', 'ngpc', 'no-condition', 'LINESTRING (-99.2 42.5, -99.1 42.5)', '{"road_status": "Open", "condition": null}'),
+              ('ngpc_cowboy_trail_improvements', 'ngpc', 'closed-good', 'LINESTRING (-99.3 42.5, -99.2 42.5)', '{"road_status": "CLOSED", "condition": "Good"}'),
+              ('ngpc_cowboy_trail_improvements', 'ngpc', 'hwy-275-detour', 'LINESTRING (-98.0 42.15, -97.9 42.15)', '{"road_status": "Alt Route", "condition": "Good_Condition"}'),
+              ('ngpc_cowboy_trail_improvements', 'ngpc', 'no-status', 'LINESTRING (-99.4 42.5, -99.3 42.5)', '{"road_status": null, "condition": "Good"}'),
+              ('other_status_layer', 'other', 'other-detour', 'LINESTRING (-100.0 42.5, -99.9 42.5)', '{"road_status": "Alt Route", "condition": "Impassable"}')
+          ) as unioned (source_key, club, trail_segment_key, geom_wkt, properties_text)
+      - input: ref('layer_rules')
+        rows:
+          - {"source_key": "ngpc_cowboy_trail_improvements", "rule": "keep_only_where", "field": "road_status", "matches": "Open", "evidence": "developed trail"}
+          - {"source_key": "ngpc_cowboy_trail_improvements", "rule": "keep_only_where", "field": "road_status", "matches": "Closed", "evidence": "developed trail"}
+          - {"source_key": "ngpc_cowboy_trail_improvements", "rule": "closed_where", "field": "road_status", "matches": "Closed", "evidence": "closes the trail"}
+          - {"source_key": "ngpc_cowboy_trail_improvements", "rule": "closed_where", "field": "condition", "matches": "Impassable", "evidence": "closes the trail"}
+          - {"source_key": "ngpc_cowboy_trail_improvements", "rule": "closed_where", "field": "condition", "matches": "Not Passable", "evidence": "closes the trail"}
+    expect:
+      rows:
+        - {"trail_segment_key": "elkhorn-bridge", "closed_by_its_layer": true, "draws_as_trail": true}
+        - {"trail_segment_key": "niobrara-bridge", "closed_by_its_layer": true, "draws_as_trail": true}
+        - {"trail_segment_key": "rough", "closed_by_its_layer": false, "draws_as_trail": true}
+        - {"trail_segment_key": "good", "closed_by_its_layer": false, "draws_as_trail": true}
+        - {"trail_segment_key": "no-condition", "closed_by_its_layer": false, "draws_as_trail": true}
+        - {"trail_segment_key": "closed-good", "closed_by_its_layer": true, "draws_as_trail": true}
+        - {"trail_segment_key": "other-detour", "closed_by_its_layer": false, "draws_as_trail": true}
   - name: trail_lines_club_lines_keep_only_the_lines_a_mixed_gis_file_carries
     model: int_trail_lines__club_lines
     description: >
@@ -342,6 +412,25 @@ unit_tests:
       rows:
         - {trail_line_id: 'gmc_trail_master:k-a', line_kind: 'club', feature_order: 3, name: null, blaze_color: 'Unknown', trail_status: null, trail_status_basis: null, closure_kind: null, geom_geojson: '{"type":"MultiLineString","coordinates":[[[-72.9,44.5],[-72.9,44.6]],[[-72.8,44.6],[-72.8,44.7]]]}'}
         - {trail_line_id: 'shta_line_2025:k-b', line_kind: 'club', feature_order: 4, name: 'Superior Hiking Trail', blaze_color: 'Unknown', trail_status: null, trail_status_basis: null, closure_kind: null, geom_geojson: '{"type":"LineString","coordinates":[[-91.5,47.3],[-91.4,47.4]]}'}
+  - name: trail_lines_club_published_ships_a_section_its_own_layer_closes_closed_and_never_one_open
+    model: int_trail_lines__club_published
+    description: >
+      A club line its own layer closes ships closed, as a steward's closure on a network line ships:
+      trail_status 'closed', resting on the layer's own words ('stated'), closure_kind 'long_term',
+      no area's reason or source; so the phone draws its barred band and refuses it as an edge
+      should club lines ever route. NGPC's other Cowboy Trail sections ship with no status, which
+      is unknown and never 'open', though NGPC's own Road_Status reads Open.
+    given:
+      - input: ref('int_trail_lines__club_lines')
+        rows:
+          - {trail_segment_key: 'niobrara-bridge', source_key: 'ngpc_cowboy_trail_improvements', club: 'ngpc', name: 'Cowboy Recreation and Nature Trail', geom_wkt: 'LINESTRING (-98.1 42.7, -98.0 42.7)', had_z: false, historic_alignment: false, may_route: true, draws_as_trail: true, season: null, closed_by_its_layer: true}
+          - {trail_segment_key: 'rough', source_key: 'ngpc_cowboy_trail_improvements', club: 'ngpc', name: 'Cowboy Recreation and Nature Trail', geom_wkt: 'LINESTRING (-99.0 42.5, -98.9 42.5)', had_z: false, historic_alignment: false, may_route: true, draws_as_trail: true, season: null, closed_by_its_layer: false}
+      - input: ref('int_trail_lines__network_published')
+        rows: []
+    expect:
+      rows:
+        - {trail_line_id: 'ngpc_cowboy_trail_improvements:niobrara-bridge', line_kind: 'club', trail_status: 'closed', trail_status_basis: 'stated', closure_kind: 'long_term', closure_reason: null, closure_source: null}
+        - {trail_line_id: 'ngpc_cowboy_trail_improvements:rough', line_kind: 'club', trail_status: null, trail_status_basis: null, closure_kind: null, closure_reason: null, closure_source: null}
   - name: trail_lines_club_published_measures_both_lengths_on_the_wgs84_ellipsoid
     model: int_trail_lines__club_published
     description: >

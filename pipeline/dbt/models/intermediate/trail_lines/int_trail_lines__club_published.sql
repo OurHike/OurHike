@@ -35,13 +35,22 @@
 -- rather than sharing it, so the network's parity-held models stay as they
 -- are.
 --
--- WHAT A CLUB LINE DOES NOT CARRY: a status (null, which is unknown, never
--- open: no club layer's status field is read here, and a layer with one is
--- held by its sources.json row until it is), a closure, a decoded blaze
--- ('Unknown', which the map draws in its neutral colour when blaze colours
--- are on), and every A.T. column. `feature_order` follows the network's
--- lines, so nearby_trails.geojson writes the network first, in its own
--- order, then the club lines by source and id.
+-- A STATUS ONLY WHERE ITS OWN LAYER CLOSES IT: a line int_trail_lines__
+-- club_lines marks `closed_by_its_layer` (the layer_rules seed's
+-- closed_where rows: NGPC's Cowboy Trail sections, Road_Status 'Closed' or
+-- Condition 'Impassable' or 'Not Passable') ships trail_status 'closed',
+-- trail_status_basis 'stated' and closure_kind 'long_term', as a network
+-- line its steward closed does: the phone draws its barred band and its
+-- sheet says "Closed by" the layer's own credit. It stays drawn, and no
+-- club line routes either way (build_trail_graph.py's CLUB_LINE_KIND).
+-- Every other club line's status is null, which is unknown, never open: no
+-- club line ships 'open', whatever its layer's own status says.
+--
+-- WHAT A CLUB LINE DOES NOT CARRY: an area closure's reason or source, a
+-- decoded blaze ('Unknown', which the map draws in its neutral colour when
+-- blaze colours are on), and every A.T. column. `feature_order` follows the
+-- network's lines, so nearby_trails.geojson writes the network first, in
+-- its own order, then the club lines by source and id.
 --
 -- BOTH LENGTHS ARE ON THE WGS84 ELLIPSOID, as the network's are
 -- (int_trail_lines__network_published's header; decision 97, the
@@ -189,9 +198,11 @@ select
         as feature_order,
     nullif(trim(chosen.name), '') as name,
     'Unknown' as blaze_color,
-    cast(null as varchar) as trail_status,
-    cast(null as varchar) as trail_status_basis,
-    cast(null as varchar) as closure_kind,
+    case when chosen.closed_by_its_layer then 'closed' end as trail_status,
+    case
+        when chosen.closed_by_its_layer then 'stated'
+    end as trail_status_basis,
+    case when chosen.closed_by_its_layer then 'long_term' end as closure_kind,
     cast(null as varchar) as closure_reason,
     cast(null as varchar) as closure_source,
     cast(null as varchar) as duplicate_of,

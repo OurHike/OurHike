@@ -11221,10 +11221,12 @@ which closures.py extracts: the maintainer chose it (2026-10-11, review page 01,
 only the developed trail. The one-feature corridor line, Cowboy_Trail_Complete/FeatureServer/0 (321.33
 mi, 'GIS Value', edited 2016-10-05), must never draw as trail, and no file extracts it.
 
-make_dbt_staging.py stages a share only from a geometric type's resource, so no trail_lines model reads
-this one yet: drawing it waits on one. The coverage audit's row (2026-10-01, batch
-c14_cand_midwest_rockies_2) also names Park_Trails/FeatureServer/0 (932 segments) and
-TrailsNewmap/FeatureServer/8 (394), published and not landed."""
+The monthly lane lands its own copy of that hourly table (extract/_run.py's ALSO_READS), and
+make_dbt_staging.py stages the copy for this type as a lane copy (its docstring), so the line draws as a
+club line in the trail_lines mart: its two 'Alt Route' sections, the HWY 275 detour, left out, and its
+Closed, Impassable and Not Passable sections drawn closed (dbt/seeds/layer_rules.csv). The coverage
+audit's row (2026-10-01, batch c14_cand_midwest_rockies_2) also names Park_Trails/FeatureServer/0 (932
+segments) and TrailsNewmap/FeatureServer/8 (394), published and not landed."""
 
 [nh_granit.challenges]
 confirmed = 2026-10-01

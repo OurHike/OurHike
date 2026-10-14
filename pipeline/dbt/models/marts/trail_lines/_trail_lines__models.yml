@@ -189,13 +189,22 @@ models:
             expression: "trail_status is null"
           config:
             where: "line_kind not in ('network', 'club')"
-      # A club line's status is unknown, never open (decision 64): no club
-      # layer's own status field is read yet, and a layer that has one is held
-      # by its sources.json row until it is.
+      # A club line is never open (decision 64): its status is unknown, or
+      # closed by its own layer as the layer_rules seed's closed_where rows
+      # read it (int_trail_lines__club_lines; NGPC's Cowboy Trail sections,
+      # the maintainer's P8 of 2026-10-11), which ships as a steward's own
+      # long-term closure. A club layer whose status field no rule reads is
+      # held by its sources.json row until one does.
       - dbt_utils.expression_is_true:
-          name: trail_lines_club_lines_carry_no_status
+          name: trail_lines_club_lines_are_never_open_and_closed_only_by_their_own_layer
           arguments:
-            expression: "trail_status is null and closure_kind is null"
+            expression: >
+              (trail_status is null and closure_kind is null)
+              or (
+                trail_status = 'closed'
+                and trail_status_basis = 'stated'
+                and closure_kind = 'long_term'
+              )
           config:
             where: "line_kind = 'club'"
       # Miles come with their count of backward steps, and only on the
@@ -331,7 +340,10 @@ models:
           column gives it or, for a layer with no such column, as the default
           trail_status_basis names. Null on every A.T. line: trails.geojson
           publishes no status, and absent means unknown, never open. Null on
-          every club line too, for the same reason.
+          every club line too, for the same reason, but 'closed' on one its
+          own layer closes, as the layer_rules seed's closed_where rows read
+          it (NGPC's Cowboy Trail sections whose Road_Status is 'Closed' or
+          whose Condition is 'Impassable' or 'Not Passable'): never 'open'.
         data_type: varchar
         data_tests:
           - accepted_values:
@@ -349,7 +361,9 @@ models:
                 enabled: "{{ env_var('OURHIKE_ELEMENTARY_CHECKS', 'false') == 'true' }}"
       - name: trail_status_basis
         description: >
-          What trail_status rests on: 'stated', the layer's own status column,
+          What trail_status rests on: 'stated', the layer's own status column
+          (on a club line, its own status or condition column, as the
+          layer_rules seed's closed_where rows name it),
           or 'default_without_status_column', a layer that has none and ships
           open because nothing says otherwise (export_nearby_trails.py's
           DEFAULT_STATUS), which is a default and not a finding; or
@@ -363,7 +377,7 @@ models:
                 values: [stated, default_without_status_column, closed_area]
       - name: closure_kind
         description: >
-          'long_term' on a line its steward marks closed; 'area' on a network
+          'long_term' on a network or club line its steward marks closed; 'area' on a network
           section inside one of NYS Parks' temporary closed areas, which
           nearby_trails.geojson's v1 still splits (decision 44) while #1152 —
           Move OPRHP's temporary closures onto the conditions clock, where a

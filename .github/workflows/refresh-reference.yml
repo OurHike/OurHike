@@ -187,9 +187,10 @@ jobs:
       # into `partial` so the build reads what did load and the last job
       # still goes red. The step summary names each layer and why. --as-landed writes each ArcGIS, Socrata and opentrail layer
       # back out as today's fetcher's file, under as_landed/<load_id>/, for
-      # the parity job. --cross-lane-inputs also reads the one hourly-lane
-      # table a monthly node needs (_run.py's ALSO_READS). The run's id is
-      # the raw_run every later job names.
+      # the parity job. --cross-lane-inputs also reads the hourly-lane tables
+      # a monthly node needs (_run.py's ALSO_READS: OPRHP's closed areas and
+      # NGPC's Cowboy Trail sections). The run's id is the raw_run every later
+      # job names.
       - name: Extract every monthly resource
         id: extract
         env:

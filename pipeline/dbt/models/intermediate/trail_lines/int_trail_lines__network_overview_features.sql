@@ -23,8 +23,13 @@
 -- THE CLUBS' LINES COME LAST (decision 64): int_trail_lines__club_overview's
 -- rows, grouped the same way, after every network group, so the network's
 -- features keep their order. A club group carries `line_kind` 'club', the
--- mark nearby_trails.geojson's club lines carry, and no `trail_status`
--- member: a club line's status is unknown, never open.
+-- mark nearby_trails.geojson's club lines carry, and a `trail_status`
+-- member only where its lines' own layer closed them ('closed', NGPC's
+-- Cowboy Trail sections, int_trail_lines__club_published), so the sketch
+-- draws their barred band as the map's own lines do (lib/closureStyle.ts's
+-- LONG_TERM_CLOSED_FILTER, which client/src/map/style.ts lays over this
+-- file): every other club line's status is unknown, never open, and
+-- carries no member.
 with seam as (
     select
         *,
@@ -166,10 +171,15 @@ select
     cast(
         case
             when is_club
-                then json_object(
-                    'source', source_key,
-                    'blaze_color', blaze_color,
-                    'line_kind', 'club'
+                then json_merge_patch(
+                    json_object(
+                        'source', source_key,
+                        'blaze_color', blaze_color,
+                        'line_kind', 'club'
+                    ),
+                    -- A null member is dropped, so a group with no status
+                    -- carries none.
+                    json_object('trail_status', trail_status)
                 )
             else json_merge_patch(
                 json_object(

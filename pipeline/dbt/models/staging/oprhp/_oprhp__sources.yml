@@ -133,8 +133,8 @@ sources:
               visitor app SHOWS, not what exists on the ground - which is
               why export_nearby_poi.py reads the N side as low confidence
               rather than dropping it. The dbt path does the same for every
-              type but water and shelter, which decision 195 holds where it
-              reads N (int_points_of_interest__publishable).
+              type but water, which decision 195 holds where it reads N
+              (int_points_of_interest__publishable).
       - name: raw_nysparks__oprhp_park_polygons
         data_tests:
           # Rows sharing base_oprhp__park_polygons's key must be exact copies (decision 40).

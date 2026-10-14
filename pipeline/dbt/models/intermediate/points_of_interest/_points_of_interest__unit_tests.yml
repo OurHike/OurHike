@@ -998,8 +998,8 @@ unit_tests:
     description: >
       PO27, PO28 and PO29: DEC's PUBLICUSE keeps a row only where it reads Y
       once stripped and upper-cased, OPRHP's ParksApp keeps every campsite and
-      lowers the unflagged ones (a water or shelter point it does not show is
-      held, decision 195's test below), NYC's fountains ship low by their layer's
+      lowers the unflagged ones (a water point it does not show is held,
+      decision 195's test below), NYC's fountains ship low by their layer's
       confidence_floor, a layer with no public field ships high, and an
       A.T.-family row ships at the confidence classification gave it. Then
       may_publish: a source int_sources__publication holds back, or has no
@@ -1046,15 +1046,16 @@ unit_tests:
         - {poi_key: 'p-11', confidence: 'high'}
         - {poi_key: 'p-12', confidence: 'high'}
 
-  - name: int_points_of_interest__publishable_holds_a_water_or_shelter_point_its_steward_does_not_show
+  - name: int_points_of_interest__publishable_holds_a_water_point_its_steward_does_not_show
     description: >
-      Decision 195, a pin claims no more than its steward: a water or shelter
-      point whose steward's own public flag does not show it is held, where
-      the layer's flag otherwise only lowers a row (OPRHP's ParksApp 'N' on a
-      spigot or a lean-to, or no ParksApp at all); the same flag still keeps a
-      campsite at low, a shown tap ships, DEC's shown lean-to ships, and a
-      layer with no public flag has nothing for the rule to read.
-      tests/test_dbt_points_of_interest_parity.py names the three rows
+      Decision 195, a pin claims no more than its steward, for water alone by
+      its follow-up poll ("Taps only"): a water point whose steward's own
+      public flag does not show it is held, where the layer's flag otherwise
+      only lowers a row (OPRHP's ParksApp 'N' on a spigot, or no ParksApp at
+      all); the same flag keeps a lean-to and a campsite at low whether it
+      reads 'N' or nothing, a shown tap ships, DEC's shown lean-to ships, and
+      a layer with no public flag has nothing for the rule to read.
+      tests/test_dbt_points_of_interest_parity.py names the two taps
       public_verdict() keeps at low and the SQL holds.
     model: int_points_of_interest__publishable
     given:
@@ -1067,6 +1068,7 @@ unit_tests:
           - {poi_key: 's-05', source_key: 'oprhp_facilities', phone_files: 'nearby_poi', poi_type: 'shelter', family_confidence: null, properties: '{"objectid": 5}', registry_entry: '{"key": "oprhp_facilities", "provider": "NYS OPRHP", "id_field": "OBJECTID", "name_field": "Name", "asset_field": "Sub_Asset", "facility_field": "Facility", "public_field": "ParksApp", "public_value": "Y", "public_flag_sets_confidence": true}', drop_reason: null}
           - {poi_key: 's-06', source_key: 'dec_lean_tos', phone_files: 'nearby_poi', poi_type: 'shelter', family_confidence: null, properties: '{"objectid": 6, "publicuse": "Y"}', registry_entry: '{"key": "dec_lean_tos", "provider": "NYS DEC", "poi_type": "shelter", "id_field": "OBJECTID", "name_field": "NAME", "asset_field": "ASSET", "facility_field": "FACILITY", "public_field": "PUBLICUSE", "public_value": "Y"}', drop_reason: null}
           - {poi_key: 's-07', source_key: 'usfs_rec_sites', phone_files: 'nearby_poi', poi_type: 'water', family_confidence: null, properties: '{"objectid": 7}', registry_entry: '{"key": "usfs_rec_sites", "provider": "USFS", "id_field": "objectid", "name_field": "site_name", "asset_field": "site_type", "facility_field": "recarea_name"}', drop_reason: null}
+          - {poi_key: 's-08', source_key: 'oprhp_facilities', phone_files: 'nearby_poi', poi_type: 'water', family_confidence: null, properties: '{"objectid": 8}', registry_entry: '{"key": "oprhp_facilities", "provider": "NYS OPRHP", "id_field": "OBJECTID", "name_field": "Name", "asset_field": "Sub_Asset", "facility_field": "Facility", "public_field": "ParksApp", "public_value": "Y", "public_flag_sets_confidence": true}', drop_reason: null}
       - input: ref('int_sources__publication')
         rows:
           - {source_key: 'oprhp_facilities', may_publish: true, publication_rule: 'unit test: may publish'}
@@ -1074,17 +1076,19 @@ unit_tests:
           - {source_key: 'usfs_rec_sites', may_publish: true, publication_rule: 'unit test: may publish'}
     expect:
       rows:
+        - {poi_key: 's-02', confidence: 'low'}
         - {poi_key: 's-03', confidence: 'high'}
         - {poi_key: 's-04', confidence: 'low'}
+        - {poi_key: 's-05', confidence: 'low'}
         - {poi_key: 's-06', confidence: 'high'}
         - {poi_key: 's-07', confidence: 'high'}
 
   - name: int_points_of_interest__dropped_says_why_a_point_its_steward_does_not_show_is_held
     description: >
-      Decision 195's held rows name the flag and the decision, beside the two
-      reasons int_points_of_interest__publishable gave before it: DEC's flag
-      says internal, and the source may not publish. The campsite the same
-      flag only lowers ships, so it is not here.
+      Decision 195's held water row names the flag and the decision, beside
+      the two reasons int_points_of_interest__publishable gave before it:
+      DEC's flag says internal, and the source may not publish. The lean-to
+      and the campsite the same flag only lowers ship, so neither is here.
     model: int_points_of_interest__dropped
     given:
       - input: ref('int_points_of_interest__classified')
@@ -1096,14 +1100,17 @@ unit_tests:
           - {poi_key: 'd-05', source_key: 'nyc_public_restrooms', phone_files: 'nearby_poi', poi_type: 'privy', registry_entry: '{"key": "nyc_public_restrooms"}', drop_reason: null}
       - input: ref('int_points_of_interest__publishable')
         rows:
+          - {poi_key: 'd-02', phone_files: 'nearby_poi'}
           - {poi_key: 'd-03', phone_files: 'nearby_poi'}
       - input: ref('int_points_of_interest__in_corridor')
         rows:
+          - {poi_key: 'd-02'}
           - {poi_key: 'd-03'}
       - input: ref('int_points_of_interest__osm_water_verdicts')
         rows: []
       - input: ref('int_points_of_interest__deduplicated')
         rows:
+          - {poi_key: 'd-02'}
           - {poi_key: 'd-03'}
       - input: ref('int_sources__publication')
         rows:
@@ -1113,7 +1120,6 @@ unit_tests:
     expect:
       rows:
         - {poi_key: 'd-01', drop_reason: 'held: ParksApp is not Y, so its steward does not show this water point, and a pin claims no more than its steward (decision 195)'}
-        - {poi_key: 'd-02', drop_reason: 'held: ParksApp is not Y, so its steward does not show this shelter point, and a pin claims no more than its steward (decision 195)'}
         - {poi_key: 'd-04', drop_reason: 'not public: PUBLICUSE is not Y'}
         - {poi_key: 'd-05', drop_reason: 'the source may not publish (unit test: held back)'}
 

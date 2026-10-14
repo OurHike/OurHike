@@ -10,8 +10,8 @@
 --    or value that is not a published type, a named exclusion (its
 --    `drop_reason`);
 -- 2. int_points_of_interest__publishable: the organization's own public flag
---    says internal (DEC's PUBLICUSE), or does not show a water or shelter
---    point (decision 195: NY Parks' ParksApp), or the source may not publish
+--    says internal (DEC's PUBLICUSE), or does not show a water point
+--    (decision 195: NY Parks' ParksApp), or the source may not publish
 --    (int_sources__publication);
 -- 3. int_points_of_interest__in_corridor: an A.T.-family row outside the
 --    corridor and its network ring, or another organization's amenity
@@ -66,7 +66,7 @@ refused_publication as (
                     )
                     || ')'
             -- A layer whose flag sets confidence keeps every row but a water
-            -- or shelter point the flag does not show (decision 195).
+            -- point the flag does not show (decision 195).
             when {{ python_truthy(
                 "json_extract(classified.registry_entry, "
                 ~ "'$.public_flag_sets_confidence')"

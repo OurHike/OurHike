@@ -58,7 +58,7 @@ STREAMS = "int_points_of_interest__described_says_what_describe_stream_point_say
 SITES = "int_points_of_interest__sites_groups_like_lib_poi_sites"
 CLASSIFIED = "int_points_of_interest__classified_types_and_refuses_like_the_exporters"
 PUBLISHABLE = "int_points_of_interest__publishable_keeps_and_rates_like_public_verdict"
-STEWARD_HIDES = "int_points_of_interest__publishable_holds_a_water_or_shelter_point_its_steward_does_not_show"
+STEWARD_HIDES = "int_points_of_interest__publishable_holds_a_water_point_its_steward_does_not_show"
 IN_CORRIDOR = "int_points_of_interest__in_corridor_keeps_what_the_corridor_and_the_ring_keep"
 NO_NETWORK = "int_points_of_interest__in_corridor_applies_no_ring_without_a_network"
 LONG_LINES = "int_points_of_interest__in_corridor_asks_a_long_line_segment_by_segment"
@@ -89,10 +89,10 @@ DELIBERATE = {
     # The miles unit test's point on a junction, where two pieces tie at
     # distance 0.
     "miles": {"atc_shelters:m-04-on-the-junction": "junction_tie"},
-    # Decision 195's unit test: the water and shelter points OPRHP's ParksApp
-    # does not show, which public_verdict() keeps at low confidence and the
-    # SQL holds.
-    "publishable": {"s-01": "steward_hides", "s-02": "steward_hides", "s-05": "steward_hides"},
+    # Decision 195's unit test: the taps OPRHP's ParksApp does not show (one
+    # 'N', one with no ParksApp), which public_verdict() keeps at low
+    # confidence and the SQL holds. Its lean-tos ship low in both.
+    "publishable": {"s-01": "steward_hides", "s-08": "steward_hides"},
 }
 
 
@@ -1073,9 +1073,9 @@ def test_public_flags_keep_and_rate_as_public_verdict_does():
     _held(_expected(test, "poi_key"), publishable_answers(test))
 
 
-def test_a_water_or_shelter_point_its_steward_does_not_show_is_held_where_public_verdict_keeps_it_low():
-    """Decision 195: the SQL holds exactly the rows DELIBERATE names, each one public_verdict() ships at low
-    confidence, and keeps and rates every other row as public_verdict() does."""
+def test_a_water_point_its_steward_does_not_show_is_held_where_public_verdict_keeps_it_low():
+    """Decision 195, water alone: the SQL holds exactly the taps DELIBERATE names, each one public_verdict() ships at
+    low confidence, and keeps and rates every other row as public_verdict() does, the unflagged lean-tos at low."""
     test = _unit_test(STEWARD_HIDES)
     answers, expected = publishable_answers(test), _expected(test, "poi_key")
     _held(expected, answers, DELIBERATE["publishable"])
@@ -1356,10 +1356,11 @@ def test_a_seasonal_tap_of_a_layer_todays_exporter_reads_is_explained_by_decisio
     assert "oprhp_facilities" in parity._plumbed_water_sources()
 
 
-def test_a_shelter_its_steward_does_not_show_is_explained_by_decision_195():
-    """nearby_poi's parity explains a lean-to today's exporter ships at low confidence from a layer whose public flag
-    sets confidence, which the dbt writer holds. The same lean-to rated high, a campsite the flag only lowers, and a
-    lean-to of a layer whose flag filters are still differences."""
+def test_a_tap_its_steward_does_not_show_is_explained_by_decision_195_and_a_lean_to_is_not():
+    """nearby_poi's parity explains a water point today's exporter ships at low confidence from a layer whose public
+    flag sets confidence, which the dbt writer holds. The same tap rated high, a lean-to the flag only lowers (decision
+    195 holds water alone), and a tap of a layer whose flag filters are still differences, as the dbt writer ships the
+    lean-tos too. On today's registry no record matches: today's exporter holds NY Parks' taps by its water holdback."""
     shared = _poi_feature("dec_lean_tos:1", "dec_lean_tos")
 
     def point(poi_id: str, source: str, **properties) -> dict:
@@ -1370,15 +1371,17 @@ def test_a_shelter_its_steward_does_not_show_is_explained_by_decision_195():
     old = {
         "features": [
             shared,
-            point("oprhp_facilities:21", "oprhp_facilities", poi_type="shelter", confidence="low"),
-            point("oprhp_facilities:22", "oprhp_facilities", poi_type="shelter", confidence="high"),
-            point("oprhp_facilities:23", "oprhp_facilities", poi_type="campsite", confidence="low"),
-            point("dec_lean_tos:24", "dec_lean_tos", poi_type="shelter", confidence="low"),
+            point("oprhp_facilities:21", "oprhp_facilities", poi_type="water", confidence="low"),
+            point("oprhp_facilities:22", "oprhp_facilities", poi_type="water", confidence="high"),
+            point("oprhp_facilities:23", "oprhp_facilities", poi_type="shelter", confidence="low"),
+            point("dec_lean_tos:24", "dec_lean_tos", poi_type="water", confidence="low"),
         ]
     }
     reasons = parity._nearby_poi_reasons(old, {"features": [shared]})
     assert reasons == {"properties.id oprhp_facilities:21": parity.POI_REASONS["steward_hides"]}
-    assert parity._held_when_steward_hides() == (frozenset({"water", "shelter"}), frozenset({"oprhp_facilities"}))
+    # Water alone (dbt_project.yml's var), on the one layer whose flag sets confidence today: a new such layer is a new
+    # place decision 195 holds taps, which this line makes somebody look at.
+    assert parity._held_when_steward_hides() == (frozenset({"water"}), frozenset({"oprhp_facilities"}))
 
 
 def _restroom(row_id: str, name: str, lon, lat: float) -> dict:

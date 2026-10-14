@@ -470,7 +470,10 @@ def test_most_of_this_registry_ships_on_the_maintainers_own_word():
     # Q3's answer (decision 185, 2026-10-11) adds 1 `public_gis`: FDEP's park boundaries
     # (fl_state_parks_park_boundaries), which place Florida's closed parks; its item's reliance disclaimer is a scope
     # note under S7 (decision 188).
-    assert counts == {"maintainer_authorisation": 260, "public_gis": 282, "stated_by_org": 208, "unresolved": 32}
+    # Decision 193 (the maintainer's poll, 2026-10-14) moves 1 row from `public_gis` to `stated_by_org`: Oregon
+    # Metro's RLIS trails (oregon_metro_trails), whose item names the RLIS Open Database End User License Agreement,
+    # read in full that day: Metro's own licence, granting reuse on conditions, so 282 -> 281 and 208 -> 209.
+    assert counts == {"maintainer_authorisation": 260, "public_gis": 281, "stated_by_org": 209, "unresolved": 32}
 
 
 #: Decision 69's kinds: a club's own page, PDF or map route of points, which int_sources__publication's rule 6

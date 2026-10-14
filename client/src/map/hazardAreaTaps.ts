@@ -16,7 +16,7 @@ import {
   type HazardArea,
 } from '../lib/hazardAreas'
 import { atcBandIdAt } from './atcUpdateLayers'
-import { closureIdAt } from './closureLayers'
+import { closureIdAt, clubClosureIdAt } from './closureLayers'
 import {
   HAZARD_FILL_LAYER_ID,
   HAZARD_POINT_LAYER_ID,
@@ -76,7 +76,8 @@ export function hazardIdAt(
  *
  * LAST IN LINE. An area is the largest thing on the map and the least
  * specific, so every mark drawn on it wins the touch first: a warning pin, a
- * waypoint pin, the closure tape, an ATC band, and above all the trail line
+ * waypoint pin, the closure tape, a club's closure, an ATC band, and above
+ * all the trail line
  * itself, whose card carries this area's advisory for the stretch inside it
  * (chrome/tappedLinePanel.tsx). Only a touch on the area and nothing else
  * opens the area's own card.
@@ -89,6 +90,7 @@ export function attachHazardTaps(
     if (warningIdAt(map, event.point) !== null) return
     if (poiPinAt(map, event.point) !== undefined) return
     if (closureIdAt(map, event.point) !== null) return
+    if (clubClosureIdAt(map, event.point) !== null) return
     if (atcBandIdAt(map, event.point) !== null) return
     if (tappedLineAt(map, event.point) !== null) return
     const id = hazardIdAt(map, event.point)

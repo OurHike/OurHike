@@ -9,6 +9,7 @@ import {
   buildMapStyle,
   TOPO_LAYER_ID,
   BACKDROP_LAYER_ID,
+  CLUB_CLOSURE_LAYER_ID,
   SIDE_TRAIL_WIDTH,
 } from './style'
 import { OSM_CREDIT } from './credits'
@@ -73,6 +74,7 @@ import {
   closureCrossesId,
   closureLayerIds,
   closureMarkId,
+  closurePointId,
   CLOSURE_LAYER_ID,
   LONG_TERM_CLOSURE_LAYER_ID,
 } from '../lib/closureStyle'
@@ -346,6 +348,12 @@ describe('the live topographic background', () => {
       closureMarkId('nearby-long-term-closure-band'),
       closureMarkId(CLOSURE_LAYER_ID),
       closureMarkId(LONG_TERM_CLOSURE_LAYER_ID),
+      // Every club's closures (the maintainer's S6, 2026-10-11): the far mark
+      // like the four above, and the one cross at a point closure, which
+      // always draws and holds its place (map/clubClosureLayers.ts), so a pin
+      // under a closed bridge's cross falls back to its dot.
+      closureMarkId(CLUB_CLOSURE_LAYER_ID),
+      closurePointId(CLUB_CLOSURE_LAYER_ID),
       WARNING_LAYER_ID,
       closureMarkId(ATC_UPDATE_LAYER_ID),
       ATC_UPDATE_POINT_LAYER_ID,
@@ -924,6 +932,11 @@ describe('the offline-only background', () => {
       ...bandLayers('nearby-long-term-closure-band'),
       ...bandLayers(CLOSURE_LAYER_ID),
       ...bandLayers(LONG_TERM_CLOSURE_LAYER_ID),
+      // Every club's closures (the maintainer's S6), then their point cross:
+      // conditions/trail_closures.json is kept on the phone (#447), so a
+      // hiker with no signal still has them.
+      ...bandLayers(CLUB_CLOSURE_LAYER_ID),
+      closurePointId(CLUB_CLOSURE_LAYER_ID),
       WARNING_LAYER_ID,
       // The hiker's mark itself, over the warning pins (v1.3.2 release
       // review): a 44 px filled warning pin hid the 36 px mark entirely.

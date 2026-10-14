@@ -58,12 +58,22 @@
 // ALONG the line can be read at that length, so below CLOSURE_NEAR_MIN_ZOOM a
 // closure is one ✕ at the middle of its run instead.
 //
-// ONE TREATMENT, FOUR FEEDS, AND THE ATC'S. map/style.ts calls
+// ONE TREATMENT, FIVE FEEDS, AND THE ATC'S. map/style.ts calls
 // buildClosureLayers once per source that can carry a closed line - the
-// closures feed, the A.T.'s long-term-closed lines, the nearby network's, and
-// the corridor sketch's - and lib/atcUpdateStyle.ts calls it for the ATC's
-// band at twice the spacing. Only the id, the source, the filter and the
-// spacing may differ.
+// closures feed, the A.T.'s long-term-closed lines, the nearby network's, the
+// corridor sketch's, and every club's closures from
+// conditions/trail_closures.json (map/clubClosureLayers.ts) - and
+// lib/atcUpdateStyle.ts calls it for the ATC's band at twice the spacing.
+// Only the id, the source, the filter and the spacing may differ.
+//
+// A CLOSURE AT A POINT IS THE FAR MARK, AT THE POINT (the maintainer's
+// standard S6, poll of 2026-10-11: "a point one ✕"). A bridge out has no run
+// to knock out of a trail, so it is drawn as the one mark the far zooms
+// already teach, from CLOSURE_MARK_MIN_ZOOM in and at every zoom after, since
+// there is no chain to hand over to. Only the clubs' feed carries points, so
+// that layer is built beside it (map/clubClosureLayers.ts's
+// `buildClosurePointLayer`), out of the launch bundle this module is in, from
+// this module's constants; its id is `closurePointId`.
 
 import type { LayerSpecification } from '@maplibre/maplibre-gl-style-spec'
 
@@ -314,6 +324,13 @@ export function closureMarkId(bandId: string): string {
  *  map/style.ts repaints on a sheet change and what the tests walk. */
 export function closureLayerIds(bandId: string): string[] {
   return [bandId, closureTraceId(bandId), closureCrossesId(bandId), closureMarkId(bandId)]
+}
+
+/** The id of the one cross per point closure of `bandId`'s feed
+ *  (map/clubClosureLayers.ts's `buildClosurePointLayer`). Only a feed that
+ *  carries points has one, so it is not in `closureLayerIds`. */
+export function closurePointId(bandId: string): string {
+  return `${bandId}-point`
 }
 
 export interface ClosureLayerOptions {

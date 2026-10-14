@@ -23,7 +23,7 @@
 
 import type { Map as MapLibreMap, MapMouseEvent, PointLike } from 'maplibre-gl'
 import { atcBandIdAt } from './atcUpdateLayers'
-import { closureIdAt } from './closureLayers'
+import { closureIdAt, clubClosureIdAt } from './closureLayers'
 import { warningIdAt } from './warningLayers'
 import { highlightIdAt } from './corridorLayers'
 import { poiIdAt } from './poiTaps'
@@ -233,8 +233,10 @@ export function tappedLineAt(
   // reason and one more: both are safety marks drawn ON the line, and a tap
   // on barrier tape that opened the trail's blaze sheet instead of the
   // closure would answer the wrong question on the one path that is about
-  // danger.
+  // danger. A club's closure (the maintainer's S6, 2026-10-11) is the same
+  // mark on the same line, and yields the line for the same reason.
   if (closureIdAt(map, point) !== null) return null
+  if (clubClosureIdAt(map, point) !== null) return null
   if (warningIdAt(map, point) !== null) return null
   // And a highlight mark (#858), for the same reason: it is a small target a
   // hiker aimed at, sitting on the corridor line that is always under it.

@@ -45,6 +45,7 @@ import {
   NETWORK_OVERVIEW_SOURCE_ID,
   NETWORK_OVERVIEW_LAYER_ID,
   NETWORK_OVERVIEW_CLOSURE_LAYER_ID,
+  CLUB_CLOSURE_LAYER_ID,
   BACKDROP_LAYER_ID,
   MAP_BACKGROUND_COLOR,
   CENTERLINE_SOURCE,
@@ -132,12 +133,17 @@ import {
   closureCrossesId,
   closureLayerIds,
   closureMarkId,
+  closurePointId,
   closureTraceId,
   CLOSURE_LAYER_ID,
   LONG_TERM_CLOSED_FILTER,
   LONG_TERM_CLOSURE_LAYER_ID,
 } from '../lib/closureStyle'
 import { CAMERA_ZOOM_TILE_OFFSET } from '../lib/archiveCoverage'
+
+/** The one point cross in the style: the clubs' feed alone carries points
+ *  (the maintainer's S6, map/clubClosureLayers.ts). */
+const CLUB_CLOSURE_POINT_LAYER_ID = closurePointId(CLUB_CLOSURE_LAYER_ID)
 import {
   NEARBY_TRAIL_LABEL_LAYER_ID,
   TRAIL_LABEL_LAYER_ID,
@@ -507,7 +513,9 @@ describe('buildMapStyle', () => {
       expect(ids.slice(at, at + expected.length), bandId).toEqual(expected)
     }
     // And nothing else in the style places the cross along a line, so the
-    // sweep above is over the whole set rather than the four it knows.
+    // sweep above is over the whole set rather than the four it knows. The
+    // clubs' feed adds one cross per point closure, right after its mark
+    // (the maintainer's S6).
     const chains = style()
       .layers.filter(
         (l) =>
@@ -520,7 +528,11 @@ describe('buildMapStyle', () => {
       [...CLOSURE_BAND_IDS, ATC_UPDATE_LAYER_ID]
         .flatMap((id) => [closureCrossesId(id), closureMarkId(id)])
         .filter((id) => id !== closureCrossesId(NETWORK_OVERVIEW_CLOSURE_LAYER_ID))
+        .concat(CLUB_CLOSURE_POINT_LAYER_ID)
         .sort(),
+    )
+    expect(ids[ids.indexOf(closureMarkId(CLUB_CLOSURE_LAYER_ID)) + 1]).toBe(
+      CLUB_CLOSURE_POINT_LAYER_ID,
     )
   })
 
@@ -537,7 +549,11 @@ describe('buildMapStyle', () => {
     // src/test/atcAlertProminence.test.ts, which asserts the last two layers
     // by name.
     const ids = style().layers.map((l) => l.id)
-    const safety = [...CLOSURE_BAND_IDS.flatMap(closureLayerIds), WARNING_LAYER_ID]
+    const safety = [
+      ...CLOSURE_BAND_IDS.flatMap(closureLayerIds),
+      CLUB_CLOSURE_POINT_LAYER_ID,
+      WARNING_LAYER_ID,
+    ]
     // The one exception inside the safety group: the hiker's own mark, over
     // the warning pins since the v1.3.2 release review, because a 44 px
     // filled warning pin over the 36 px hollow mark hid the hiker entirely.
@@ -3279,6 +3295,8 @@ describe("the hiker's mark, over everything (#1581)", () => {
       ...bandLayers(NEARBY_LONG_TERM_CLOSURE_LAYER_ID),
       ...bandLayers(CLOSURE_LAYER_ID),
       ...bandLayers(LONG_TERM_CLOSURE_LAYER_ID),
+      ...bandLayers(CLUB_CLOSURE_LAYER_ID),
+      CLUB_CLOSURE_POINT_LAYER_ID,
       WARNING_LAYER_ID,
       ...bandLayers(ATC_UPDATE_LAYER_ID),
       ATC_UPDATE_POINT_LAYER_ID,

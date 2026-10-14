@@ -31,6 +31,7 @@ vi.mock('./config', async (importOriginal) => ({
 
 import { useConditions } from './useConditions'
 import * as notices from './publishedNotices'
+import { trailClosuresDocument } from '../../preview-shots/fixtures/clubClosures.mjs'
 
 const NOTICES_URL = 'https://data.example/conditions/notices.json'
 
@@ -363,5 +364,71 @@ describe('conditions/hazard_areas.json, read at launch whatever is planned (deci
       expect(spy.mock.calls.map(([input]) => String(input))).toContain(HAZARD_URL),
     )
     expect(result.current.hazardFile).toBeNull()
+  })
+})
+
+describe('conditions/trail_closures.json, read at launch whatever is planned (the maintainer’s S6, 2026-10-11)', () => {
+  const CLOSURES_URL = 'https://data.example/conditions/trail_closures.json'
+
+  /** A bucket serving the club closures (the hand-made file) and
+   *  notices.json, or neither (404, as production's does). */
+  function bucketWithClosures({
+    serves,
+  }: {
+    serves: boolean
+  }): MockInstance<typeof fetch> {
+    return vi.spyOn(globalThis, 'fetch').mockImplementation(async (input, init) => {
+      if (!serves) return new Response('', { status: 404 })
+      if (String(input) === CLOSURES_URL) {
+        return new Response(JSON.stringify(trailClosuresDocument()), { status: 200 })
+      }
+      if (String(input) !== NOTICES_URL) return new Response('', { status: 404 })
+      return init?.method === 'HEAD'
+        ? new Response(null, { status: 200 })
+        : new Response(JSON.stringify(A_NOTICES_DOCUMENT), { status: 200 })
+    })
+  }
+
+  afterEach(() => vi.restoreAllMocks())
+
+  it('downloads every club closure with no hike planned, and still no byte of notices.json', async () => {
+    const spy = bucketWithClosures({ serves: true })
+    const { result } = renderHook(() => useConditions(true, true, false))
+    await waitFor(() => expect(result.current.closureFile?.items).toHaveLength(4))
+    expect(result.current.closureFile?.items.map((closure) => closure.shape)).toEqual([
+      'line',
+      'area',
+      'point',
+      'line',
+    ])
+    expect(noticeRequests(spy)).toEqual(['HEAD'])
+    expect(result.current.clubNotices).toBeNull()
+  })
+
+  it('keeps the closures it holds when a later read finds no file, never reading that as no closure', async () => {
+    bucketWithClosures({ serves: true })
+    const read = vi.spyOn(notices, 'fetchPublishedTrailClosures')
+    const { result, rerender } = renderHook(
+      ({ planned }) => useConditions(true, true, planned),
+      { initialProps: { planned: false } },
+    )
+    await waitFor(() => expect(result.current.closureFile?.items).toHaveLength(4))
+
+    // The next read answers nothing for the file: a 404 with no kept copy,
+    // or a dead spot. Planning a hike is what runs the read again here.
+    read.mockResolvedValue(null)
+    rerender({ planned: true })
+    await waitFor(() => expect(read).toHaveBeenCalledTimes(2))
+    await read.mock.results[1].value
+    expect(result.current.closureFile?.items).toHaveLength(4)
+  })
+
+  it('holds no closure file on a bucket that serves none, as production’s does today', async () => {
+    const spy = bucketWithClosures({ serves: false })
+    const { result } = renderHook(() => useConditions(true, true, false))
+    await waitFor(() =>
+      expect(spy.mock.calls.map(([input]) => String(input))).toContain(CLOSURES_URL),
+    )
+    expect(result.current.closureFile).toBeNull()
   })
 })

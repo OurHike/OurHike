@@ -138,6 +138,7 @@ import {
   buildClosureLayers,
   closureCrossesId,
   closureMarkId,
+  closurePointId,
   closureTraceId,
   LONG_TERM_CLOSED_FILTER,
   LONG_TERM_CLOSURE_LAYER_ID,
@@ -145,6 +146,11 @@ import {
 import { buildDroughtLayer } from '../lib/droughtStyle'
 import { buildAtcUpdateSource, ATC_UPDATE_SOURCE_ID } from './atcUpdateLayers'
 import { buildClosureSource, CLOSURE_SOURCE_ID } from './closureLayers'
+import {
+  buildClubClosureLayers,
+  buildClubClosureSource,
+  CLUB_CLOSURE_SOURCE_ID,
+} from './clubClosureLayers'
 import {
   buildCorridorLayers,
   buildCorridorSource,
@@ -669,7 +675,12 @@ export function attachMapAppearance(
         if (map.getLayer(bandId) === undefined) continue
         map.setPaintProperty(bandId, 'line-color', tapeGround as never)
         map.setPaintProperty(closureTraceId(bandId), 'line-color', ink as never)
-        for (const symbolId of [closureCrossesId(bandId), closureMarkId(bandId)]) {
+        // The point cross too, on the one feed that has points (the clubs').
+        for (const symbolId of [
+          closureCrossesId(bandId),
+          closureMarkId(bandId),
+          closurePointId(bandId),
+        ]) {
           if (map.getLayer(symbolId) === undefined) continue
           map.setPaintProperty(symbolId, 'icon-color', ink as never)
           map.setPaintProperty(symbolId, 'icon-halo-color', tapeGround as never)
@@ -2402,6 +2413,11 @@ export function buildMapStyle({
       // hiker needs is the organization's name on the specific area, which
       // chrome/HazardAreaSheet.tsx renders from the registry.
       [HAZARD_SOURCE_ID]: buildHazardSource(),
+      // Every club's closures (the maintainer's S6, 2026-10-11), empty until
+      // conditions/trail_closures.json lands. No `attribution`, for the
+      // hazard areas' reason above: the closing organization is named on
+      // the closure's own sheet (map/clubClosureLayers.ts).
+      [CLUB_CLOSURE_SOURCE_ID]: buildClubClosureSource(),
       // Where the downloaded map ends (#557), empty until the shell knows
       // which cells are on the phone and empty on every phone that holds the
       // whole sheet or nothing. No attribution: the line is a fact about
@@ -3008,6 +3024,11 @@ export function buildMapStyle({
         bandId: LONG_TERM_CLOSURE_LAYER_ID,
         filter: LONG_TERM_CLOSED_FILTER,
       }),
+      // THE FIFTH FEED, EVERY CLUB'S CLOSURES (the maintainer's S6,
+      // 2026-10-11): the same four layers over their own source, then one
+      // cross per point closure. In the group, at its height, for the reason
+      // the four above are.
+      ...buildClubClosureLayers(tapeGround, closureInkColor),
       // The warning pins over the bands: a pin is a point and a band is
       // hundreds of pixels long, so a band drawn over a pin hides the whole
       // mark where a pin over a band hides a stripe of it. The same argument

@@ -496,6 +496,24 @@ export interface OrgNotice {
 }
 
 /**
+ * How a club closure is drawn on the map (the maintainer's standard S6, poll
+ * of 2026-10-11): crossed out along its own line, crossed out along the trail
+ * stretches the pipeline cut inside its area, or one cross at its point.
+ */
+export type ClosureShape = 'line' | 'area' | 'point'
+
+/**
+ * One row of conditions/trail_closures.json: a conditions/notices.json row
+ * that closes the trail, placed by its own geometry, with the shape it is
+ * drawn as. lib/publishedNotices.ts's `validTrailClosure` is what makes a row
+ * one of these, and refuses any row it cannot draw.
+ */
+export interface TrailClosure extends OrgNotice {
+  shape: ClosureShape
+  place: { kind: 'geometry'; geometry: NoticeGeometryValue }
+}
+
+/**
  * NYNJTC's own trail alerts, or null if there isn't a usable set.
  *
  * The second publisher in the notice family and the first that is not the

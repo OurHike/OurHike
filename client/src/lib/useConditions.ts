@@ -37,6 +37,7 @@ import {
   fetchPublishedWorkProjects,
   type OrgNotice,
   type PublishedConditions,
+  type TrailClosure,
 } from './publishedConditions'
 import type { DroughtBand } from '../map/droughtLayers'
 import type { AtcUpdate } from './atcUpdates'
@@ -186,6 +187,14 @@ export interface Conditions {
    */
   hazardFile: PublishedConditions<OrgNotice> | null
   /**
+   * Every club closure, from conditions/trail_closures.json (the
+   * maintainer's S6, poll of 2026-10-11), read whatever is planned, as
+   * `hazardFile` is, or null when that file has not reached this phone. Never
+   * set back to null by a 404 or a dead spot: null is "no answer", never "no
+   * closure", and the map then draws no club closure, as before the file.
+   */
+  closureFile: PublishedConditions<TrailClosure> | null
+  /**
    * This week's drought bands, and the week they describe (#720).
    *
    * Empty rather than null when there is nothing: unlike a closure, an
@@ -260,6 +269,8 @@ export function useConditions(
   const [hazardFile, setHazardFile] = useState<PublishedConditions<OrgNotice> | null>(
     null,
   )
+  const [closureFile, setClosureFile] =
+    useState<PublishedConditions<TrailClosure> | null>(null)
   const [atcReviewedAt, setAtcReviewedAt] = useState<Date | null>(null)
   const [drought, setDrought] = useState<readonly DroughtBand[]>([])
   const [droughtWeek, setDroughtWeek] = useState<{ start: Date; end: Date } | null>(null)
@@ -477,6 +488,10 @@ export function useConditions(
   // weak-signal trailhead the areas waited behind a planned hike's download
   // of notices.json (UA's was 11,811,546 bytes on 2026-10-09), or behind the
   // HEAD with nothing planned.
+  //
+  // AND THE CLUB CLOSURES, THE SAME WAY (the maintainer's S6, 2026-10-11):
+  // conditions/trail_closures.json on a promise of its own, read whatever is
+  // planned, a null keeping what this phone holds.
   useEffect(() => {
     if (!ready) return
     let cancelled = false
@@ -501,6 +516,14 @@ export function useConditions(
       .then(
         (hazards) => {
           if (!cancelled && hazards !== null) setHazardFile(hazards)
+        },
+        () => undefined,
+      )
+    void reader
+      .then(({ fetchPublishedTrailClosures }) => fetchPublishedTrailClosures({ online }))
+      .then(
+        (closures) => {
+          if (!cancelled && closures !== null) setClosureFile(closures)
         },
         () => undefined,
       )
@@ -590,6 +613,7 @@ export function useConditions(
     clubNoticesListed,
     clubNoticesMissing: clubNotices === null && clubNoticesMissing,
     hazardFile,
+    closureFile,
     drought,
     droughtWeek,
     workProjects,

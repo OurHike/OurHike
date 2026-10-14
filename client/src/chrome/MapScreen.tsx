@@ -31,6 +31,7 @@ import { TabBar } from './TabBar'
 import type { TabId } from './tabs'
 import { Legend } from './Legend'
 import type { HazardArea } from '../lib/hazardAreas'
+import type { TrailClosure } from '../lib/publishedConditions'
 import { InViewSheet } from './InViewSheet'
 import { useDesktop } from '../lib/useDesktop'
 import type { HikerMode } from '../lib/hikerMode'
@@ -278,6 +279,16 @@ export interface MapScreenProps {
   onSelectHazardArea?: (noticeId: string) => void
   /** The tapped area's card, or null - the atcUpdateSheet pattern. */
   hazardAreaSheet?: ReactNode
+  /**
+   * Every club closure that closes the trail today, from
+   * conditions/trail_closures.json (the maintainer's S6, 2026-10-11),
+   * crossed out on the map (map/clubClosureLayers.ts).
+   */
+  clubClosures?: readonly TrailClosure[]
+  /** A club closure was tapped, by notice id. */
+  onSelectClubClosure?: (noticeId: string) => void
+  /** The tapped club closure's sheet, or null - the atcUpdateSheet pattern. */
+  clubClosureSheet?: ReactNode
   /** The closure tape was tapped, by closure id (#1373, F12), and the sheet
    *  the shell renders for it - the atcUpdateSheet pattern, on the mark
    *  #245 drew and left for a tap. */
@@ -941,6 +952,9 @@ export function MapScreen({
   hazardAreas,
   onSelectHazardArea,
   hazardAreaSheet,
+  clubClosures,
+  onSelectClubClosure,
+  clubClosureSheet,
   onSelectClosure,
   closureSheet,
   onSelectWarning,
@@ -1696,6 +1710,8 @@ export function MapScreen({
               onSelectAtcUpdate={onSelectAtcUpdate}
               hazardAreas={hazardAreas}
               onSelectHazardArea={onSelectHazardArea}
+              clubClosures={clubClosures}
+              onSelectClubClosure={onSelectClubClosure}
               onSelectClosure={onSelectClosure}
               onSelectWarning={onSelectWarning}
               workdays={workdays}
@@ -1827,6 +1843,9 @@ export function MapScreen({
             {/* The two safety sheets (#1373, F12), in the same slot family:
                 a stretch of tape and a pin, neither anchored to a card. */}
             {closureSheet}
+            {/* A club closure's sheet (the maintainer's S6), beside the
+                tape's: the same mark, from a club's own notice. */}
+            {clubClosureSheet}
             {warningSheet}
             {workdaySheet}
 

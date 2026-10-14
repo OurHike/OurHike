@@ -33,11 +33,19 @@
 // every phone read notices.json before decision 77, on a promise of its own
 // so that nothing about notices.json holds it back; its key is here for the
 // reason the states' key is.
+//
+// AND EVERY CLUB CLOSURE AT LAUNCH, FOR THE MAP (the maintainer's polls of
+// 2026-10-11: Q2 "Build the map file now", and standard S6 as drawn):
+// conditions/trail_closures.json, the rows of notices.json that close a
+// trail, each with the shape the map crosses it out as. Read like the hazard
+// areas, whatever is planned, by `fetchPublishedTrailClosures`; ATC's rows
+// are not in it, because ATC's own band already draws them.
 
 import {
   fetchPublished,
   PUBLISHED_NOTICES_KEY,
   readPublished,
+  type ClosureShape,
   type NoticeHazard,
   type NoticePlace,
   type NoticeStateArea,
@@ -45,10 +53,12 @@ import {
   type PublishedConditions,
   type PublishedRead,
   type PublishedReadOptions,
+  type TrailClosure,
 } from './publishedConditions'
 import type { NoticeGeometryValue } from './noticeGeometry'
 import { DATA_CONFIGURED, dataUrl } from './config'
 import { MANIFEST_READ_TIMEOUT_MS } from './dataManifest'
+import { ATC_SOURCE_KEY } from './notices'
 
 /**
  * How long a planned hike's download of conditions/notices.json may take
@@ -91,6 +101,12 @@ export const PUBLISHED_NOTICE_STATES_KEY = 'conditions/notice_states.json'
  *  serves a 404, and the map draws the areas from notices.json where that
  *  file has reached this phone, as it did before this file existed. */
 export const PUBLISHED_HAZARD_AREAS_KEY = 'conditions/hazard_areas.json'
+
+/** Every club closure the map crosses out (the maintainer's S6, 2026-10-11),
+ *  rewritten hourly. On the dbt path only, like the two keys above, so a
+ *  bucket without it serves a 404 and the map draws no club closure, as
+ *  before this file existed. */
+export const PUBLISHED_TRAIL_CLOSURES_KEY = 'conditions/trail_closures.json'
 
 const HAZARDS: ReadonlySet<string> = new Set(['hunting', 'shooting', 'burned_area'])
 
@@ -371,6 +387,118 @@ export async function fetchPublishedHazardAreas(
   for (const row of published.items) {
     const notice = validNotice(row)
     if (notice !== null && notice.hazard !== null) items.push(notice)
+  }
+  return { ...published, items }
+}
+
+/** Whether `value` is a [lon, lat] this map can draw: two finite numbers on
+ *  the globe, a third (an elevation) allowed and ignored. */
+function isLonLat(value: unknown): boolean {
+  if (!Array.isArray(value) || value.length < 2) return false
+  const [lon, lat] = value as unknown[]
+  return (
+    typeof lon === 'number' &&
+    typeof lat === 'number' &&
+    Math.abs(lon) <= 180 &&
+    Math.abs(lat) <= 90
+  )
+}
+
+/** A line of two or more drawable positions. */
+function isLine(value: unknown): boolean {
+  return Array.isArray(value) && value.length >= 2 && value.every(isLonLat)
+}
+
+/**
+ * Whether a closure's geometry is the one its shape is drawn from, with every
+ * coordinate drawable: a LineString or MultiLineString for a `line` (the
+ * notice's own line) and an `area` (the trail stretches the pipeline cut
+ * inside it), a Point for a `point`. Checked whole here because every closure
+ * shares one GeoJSON source on the map (map/clubClosureLayers.ts), and one
+ * row's unreadable coordinates must not cost the others their marks.
+ */
+function drawable(shape: ClosureShape, geometry: NoticeGeometryValue): boolean {
+  const { type, coordinates } = geometry
+  if (shape === 'point') return type === 'Point' && isLonLat(coordinates)
+  if (type === 'LineString') return isLine(coordinates)
+  return (
+    type === 'MultiLineString' &&
+    Array.isArray(coordinates) &&
+    coordinates.length > 0 &&
+    coordinates.every(isLine)
+  )
+}
+
+const CLOSURE_SHAPES: ReadonlySet<string> = new Set(['line', 'area', 'point'])
+
+/**
+ * One conditions/trail_closures.json row, or null for one the map cannot
+ * draw as a closure. The row is a conditions/notices.json row read by
+ * `validNotice`, so a field it repairs there is repaired the same way here;
+ * then the map's own refusals, each a row the file's contract does not allow:
+ *
+ *  - no `shape`, or one that is not line, area or point;
+ *  - a place that is not a geometry, or not the one its shape is drawn from
+ *    (`drawable`): an area row's polygon is refused, never crossed out along
+ *    its edge, because its trails are what close;
+ *  - `obstructs_trail` not true: a row that does not close the trail is no
+ *    closure to draw, and a crossed-out trail that is open is the false
+ *    alarm CLAUDE.md's "miss rather than cry wolf" rules out;
+ *  - a `hazard`: decision 67's areas are never drawn as closed
+ *    (lib/hazardAreas.ts says why);
+ *  - ATC's own rows, whose band map/atcUpdateLayers.ts already draws from
+ *    ATC's own file: a second mark on the same stretch would open a second
+ *    sheet.
+ *
+ * Whether it draws TODAY is not decided here: lib/noticeCurrency.ts's
+ * `obstructsOn` holds a closure back until the day before its own start,
+ * on the phone's own calendar (chrome/noticesPanel.tsx).
+ */
+export function validTrailClosure(value: unknown): TrailClosure | null {
+  const notice = validNotice(value)
+  if (notice === null) return null
+  const shape = (value as Record<string, unknown>).shape
+  if (typeof shape !== 'string' || !CLOSURE_SHAPES.has(shape)) return null
+  const { place } = notice
+  if (place.kind !== 'geometry' || !drawable(shape as ClosureShape, place.geometry)) {
+    return null
+  }
+  if (!notice.obstructs_trail || notice.hazard !== null) return null
+  if (notice.source_key === ATC_SOURCE_KEY) return null
+  return { ...notice, place, shape: shape as ClosureShape }
+}
+
+/**
+ * conditions/trail_closures.json's closures (the maintainer's S6), or null if
+ * there isn't a usable file. Every row the map cannot draw is refused one at
+ * a time (`validTrailClosure`), never the file.
+ *
+ * Null on a bucket without the file, which on a 404 or in a dead spot is the
+ * copy this phone kept (#447) if it kept one, as every file here: the caller
+ * reads null as "no answer", never as "no closure".
+ *
+ * Within MANIFEST_READ_TIMEOUT_MS, as the hazard areas are. @unvalidated: no
+ * trail_closures.json has been published yet. The maintainer's S6 page
+ * estimated it from UA's notices.json of 2026-10-11 at about 2.0 MB, 354 KB
+ * gzipped, which 20 s lets through above about 142 kbps; slower than that, a
+ * phone shows the copy it kept. What would settle it: the published file's
+ * own size, and timings of this read at trailheads, which nothing records.
+ */
+export async function fetchPublishedTrailClosures(
+  options?: PublishedReadOptions,
+): Promise<PublishedConditions<TrailClosure> | null> {
+  const { signal, clear } = deadline(MANIFEST_READ_TIMEOUT_MS)
+  const published = await fetchPublished<unknown>(
+    PUBLISHED_TRAIL_CLOSURES_KEY,
+    'closures',
+    signal,
+    options,
+  ).finally(clear)
+  if (published === null) return null
+  const items: TrailClosure[] = []
+  for (const row of published.items) {
+    const closure = validTrailClosure(row)
+    if (closure !== null) items.push(closure)
   }
   return { ...published, items }
 }

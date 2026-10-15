@@ -50,9 +50,13 @@ query, and what this run did with each table (table_states()).
 PEOPLE. The two queries select no person column: export_conditions.py's text
 leaves them in the database, and ConditionsQuery.rows() refuses a row set
 naming WITHHELD_COLUMNS before anything is returned, so before anything is
-kept. NWS's property names match none of _kinds.py's person rules (Reasoned:
-NWS_TEXT_PROPERTIES and NWS_JSON_PROPERTIES against PERSON_FIELDS and
-PERSON_SHAPED, 2026-10-10). The recording stays on the runner, and reaches the
+kept. The properties NwsAlerts lands match none of _kinds.py's person rules
+(Reasoned: NWS_TEXT_PROPERTIES and NWS_JSON_PROPERTIES against PERSON_FIELDS
+and PERSON_SHAPED, 2026-10-10); `sender` among them is the issuing office's
+mailbox. The body kept here is NWS's whole answer, byte for byte, so it also
+holds what NwsAlerts does not land, among them `replacedBy`, the address of
+the alert that replaced one, which PERSON_SHAPED's `by` rule would read as a
+person's. The recording stays on the runner, and reaches the
 comparison only through the leg's private history store (hand_off.py
 put-bundle), never as an Actions artifact, which anyone could download from a
 public repository.

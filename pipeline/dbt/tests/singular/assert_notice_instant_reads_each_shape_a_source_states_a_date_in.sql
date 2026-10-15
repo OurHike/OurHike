@@ -7,12 +7,14 @@
 -- "from August 13, 26"; and IDPR's '3/26/2027 (annual renewal expected)'
 -- (an area restriction's Date_Order_Expires, the same read), a day followed
 -- by words, which read as no date until the same day, so its order greyed
--- months before the end it states. 14 of these 41 cases fail on the reading
+-- months before the end it states. 14 of these 39 cases fail on the reading
 -- before then, every day followed by words and every month's name (run
--- 2026-10-11 against both macros' compiled SQL); the last three are IDPR's
--- own values. A day followed by words is that day; words with no day, a day
--- out of the middle of prose, a range, words naming another date, a day
--- that does not exist and a year of one or three digits are none. Every dbt
+-- 2026-10-11 against both macros' compiled SQL, and again on 2026-10-15
+-- against 245dff9b's notice_instant(), the one f911d1d7 replaced, in DuckDB
+-- 1.5.5 at UTC); the last three are IDPR's own values. A day followed by
+-- words is that day; words with no day, a day out of the middle of prose, a
+-- range, words naming another date, a day that does not exist and a year of
+-- one or three digits are none. Every dbt
 -- command build_marts.py runs has TZ=UTC, the zone a value with no offset
 -- is read in. Returns one row per value read otherwise than it should be.
 with cases as (

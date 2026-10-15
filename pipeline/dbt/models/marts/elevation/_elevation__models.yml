@@ -62,10 +62,9 @@ models:
                     severity: warn
                     tags: [elementary_check]
                     enabled: "{{ env_var('OURHIKE_ELEMENTARY_CHECKS', 'false') == 'true' }}"
+        # The key is v1's line_sample_key, included above with its unique
+        # and not_null tests (decision 197).
         data_tests:
-          - dbt_utils.unique_combination_of_columns:
-              arguments:
-                combination_of_columns: [line_id, seq]
           - dbt_utils.expression_is_true:
               arguments:
                 expression: "part_start or seq > 0"
@@ -143,9 +142,8 @@ models:
             severity: warn
             tags: [elementary_check]
             enabled: "{{ env_var('OURHIKE_ELEMENTARY_CHECKS', 'false') == 'true' }}"
-      - dbt_utils.unique_combination_of_columns:
-          arguments:
-            combination_of_columns: [line_id, seq]
+      # One row per (line_id, seq) is line_sample_key's unique test
+      # (decision 197), below.
       # The first sample of a line begins a piece by definition (#559): a
       # consumer starts a new run at every part_start without special-casing
       # the first.
@@ -176,6 +174,20 @@ models:
                 else cast(printf('%.0f', elevation_m / cast('{{ var("elevation_metres_per_foot") }}' as double)) as decimal(6, 1))
               end)
     columns:
+      - name: line_sample_key
+        description: >
+          The row's key (decision 197): dbt_utils.generate_surrogate_key over
+          line_id and seq, the md5 of their text joined by '-'. Its unique
+          test fails on any two rows sharing (line_id, seq), which is what the
+          combination test it replaced checked. Never null by construction,
+          since the macro writes a null input as a placeholder, so line_id's
+          and seq's own not_null tests are what hold the values. A position,
+          as seq is: a line that gains a sample at its start gives every
+          later sample a new key. No phone file prints it.
+        data_type: varchar
+        constraints:
+          - type: not_null
+        data_tests: [unique, not_null]
       - name: line_id
         description: >
           The profiled line: 'AT' for the A.T., as export_poi.py's TRAIL_ID

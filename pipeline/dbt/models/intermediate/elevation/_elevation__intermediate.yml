@@ -10,9 +10,6 @@ models:
       and the mile half of build_profile. step_dem_sampling reads every row;
       int_elevation__profile drops the ones two pieces both cover.
     data_tests:
-      - dbt_utils.unique_combination_of_columns:
-          arguments:
-            combination_of_columns: [line_id, sample_index]
       # A point in lon/lat order, and on the A.T.: x first is a longitude
       # within the A.T.'s spread (-84.2 at Springer to -68.9 at Katahdin) and
       # y a latitude within its own (34.6 to 45.9), each widened by about half
@@ -22,6 +19,13 @@ models:
           arguments:
             expression: "line_id != 'AT' or (lon between -84.7 and -68.4 and lat between 34.1 and 46.4)"
     columns:
+      - name: sample_point_key
+        description: >
+          The row's key (decision 197): dbt_utils.generate_surrogate_key over
+          line_id and sample_index. Its unique test fails on any two rows
+          sharing them, the combination test it replaced; never null by
+          construction, so the two inputs' own not_null tests hold the values.
+        data_tests: [unique, not_null]
       - name: line_id
         description: The profiled line, 'AT' for the A.T. (export_poi.py's TRAIL_ID).
         data_tests: [not_null]
@@ -70,13 +74,20 @@ models:
       profile_records. The numbers are text so unit tests hold them exactly;
       the elevation mart casts them.
     data_tests:
-      - dbt_utils.unique_combination_of_columns:
-          arguments:
-            combination_of_columns: [line_id, seq]
+      # A rule, not the key: EL07 publishes each walk sample at most once.
+      # The key is the published sample, (line_id, seq), below.
       - dbt_utils.unique_combination_of_columns:
           arguments:
             combination_of_columns: [line_id, sample_index]
     columns:
+      - name: profile_sample_key
+        description: >
+          The row's key (decision 197): dbt_utils.generate_surrogate_key over
+          line_id and seq, the published sample. Its unique test fails on any
+          two rows sharing them, the combination test it replaced; never null
+          by construction, so the two inputs' own not_null tests hold the
+          values.
+        data_tests: [unique, not_null]
       - name: line_id
         description: The profiled line, 'AT' for the A.T.
         data_tests: [not_null]
@@ -125,11 +136,14 @@ models:
       export_network_elevation.edge_sample_points, which both network
       exporters walk an edge with. An edge with no projected length reads its
       first vertex once; an edge with no vertex reads nothing.
-    data_tests:
-      - dbt_utils.unique_combination_of_columns:
-          arguments:
-            combination_of_columns: [edge_id, sample_index]
     columns:
+      - name: edge_sample_point_key
+        description: >
+          The row's key (decision 197): dbt_utils.generate_surrogate_key over
+          edge_id and sample_index. Its unique test fails on any two rows
+          sharing them, the combination test it replaced; never null by
+          construction, so the two inputs' own not_null tests hold the values.
+        data_tests: [unique, not_null]
       - name: edge_id
         description: The edge (int_trail_network__edges).
         data_tests:
@@ -187,13 +201,17 @@ models:
       export_network_profile.edge_profile's rounding). Null where the DEM has
       no answer, never 0.
     data_tests:
-      - dbt_utils.unique_combination_of_columns:
-          arguments:
-            combination_of_columns: [edge_id, sample_index]
       - dbt_utils.expression_is_true:
           arguments:
             expression: "(elevation_m is null) = (elevation_ft is null)"
     columns:
+      - name: edge_sample_key
+        description: >
+          The row's key (decision 197): dbt_utils.generate_surrogate_key over
+          edge_id and sample_index. Its unique test fails on any two rows
+          sharing them, the combination test it replaced; never null by
+          construction, so the two inputs' own not_null tests hold the values.
+        data_tests: [unique, not_null]
       - name: edge_id
         description: The edge.
         data_tests: [not_null]
@@ -335,10 +353,16 @@ models:
       what models/marts/elevation/elevation.sql held until then, every
       contracted column but _first_seen_at and _changed_at.
       int_elevation__history snapshots it, and the mart reads that snapshot.
-    data_tests:
-      - dbt_utils.unique_combination_of_columns:
-          arguments:
-            combination_of_columns: [line_id, seq]
+      The mart's YAML describes every column.
+    columns:
+      - name: line_sample_key
+        description: >
+          The row's key (decision 197): dbt_utils.generate_surrogate_key over
+          line_id and seq, the mart's grain, which the mart carries. Its
+          unique test fails on any two rows sharing them, the combination
+          test it replaced; never null by construction, and the mart's
+          contract holds line_id and seq not null.
+        data_tests: [unique, not_null]
 
 exposures:
   - name: step_dem_sampling

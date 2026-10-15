@@ -30,6 +30,10 @@
 -- live centerline of that day at 6 decimals, with one-vertex, no-length,
 -- sub-metre and off-the-DEM edges among them: the same 143,019 samples, the
 -- same count on every edge, at the same lon/lat to the bit.
+--
+-- THE KEY, edge_sample_point_key, is dbt_utils.generate_surrogate_key over
+-- (edge_id, sample_index) (decision 197: every model has one column that is
+-- unique and not null).
 with edges as (
     select
         edge_id,
@@ -143,20 +147,32 @@ single as (
         list_extract(list_extract(coordinates, 1), 2) as lat
     from lengths
     where vertex_count = 1 or (vertex_count >= 2 and not length_m > 0)
+),
+
+sampled as (
+    select
+        edge_id,
+        edge_index,
+        cast(sample_index as integer) as sample_index,
+        st_x(point_4326) as lon,
+        st_y(point_4326) as lat
+    from placed
+    union all
+    select
+        edge_id,
+        edge_index,
+        0 as sample_index,
+        lon,
+        lat
+    from single
 )
 
 select
+    {{ dbt_utils.generate_surrogate_key(['edge_id', 'sample_index']) }}
+        as edge_sample_point_key,
     edge_id,
     edge_index,
-    cast(sample_index as integer) as sample_index,
-    st_x(point_4326) as lon,
-    st_y(point_4326) as lat
-from placed
-union all
-select
-    edge_id,
-    edge_index,
-    0 as sample_index,
+    sample_index,
     lon,
     lat
-from single
+from sampled

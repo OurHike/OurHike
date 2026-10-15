@@ -60,6 +60,10 @@
 -- own round() disagreed on 112,122 of them (measured 2026-10-02 on DuckDB
 -- 1.5.5). It is text so a unit test holds it exactly, and
 -- int_elevation__profile casts it.
+--
+-- THE KEY, sample_point_key, is dbt_utils.generate_surrogate_key over
+-- (line_id, sample_index), the walk position (decision 197: every model has
+-- one column that is unique and not null).
 with recursive pieces as (
     select
         piece_id,
@@ -203,18 +207,31 @@ placed as (
             always_xy := true
         ) as point_4326
     from miles
+),
+
+numbered as (
+    select
+        -- The A.T., as export_poi.py's TRAIL_ID names it on every POI.
+        'AT' as line_id,
+        cast(
+            row_number() over (order by piece_id, step) - 1 as integer
+        ) as sample_index,
+        piece_id,
+        along_m,
+        mile,
+        point_4326
+    from placed
 )
 
 select
-    -- The A.T., as export_poi.py's TRAIL_ID names it on every POI.
-    'AT' as line_id,
-    cast(
-        row_number() over (order by piece_id, step) - 1 as integer
-    ) as sample_index,
+    {{ dbt_utils.generate_surrogate_key(['line_id', 'sample_index']) }}
+        as sample_point_key,
+    line_id,
+    sample_index,
     piece_id,
     along_m,
     mile,
     printf('%.3f', mile) as distance_mi_text,
     st_x(point_4326) as lon,
     st_y(point_4326) as lat
-from placed
+from numbered

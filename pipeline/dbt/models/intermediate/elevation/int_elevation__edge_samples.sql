@@ -21,6 +21,10 @@
 -- does, and assert_every_elevation_sample_was_read_at_its_own_point fails the
 -- build on any point of int_elevation__dem_points the step did not read at
 -- that point.
+--
+-- THE KEY, edge_sample_key, is dbt_utils.generate_surrogate_key over
+-- (edge_id, sample_index) (decision 197: every model has one column that is
+-- unique and not null).
 with points as (
     select * from {{ ref('int_elevation__edge_sample_points') }}
 ),
@@ -30,6 +34,10 @@ dem as (
 )
 
 select
+    {{ dbt_utils.generate_surrogate_key([
+        'points.edge_id',
+        'points.sample_index',
+    ]) }} as edge_sample_key,
     points.edge_id,
     points.edge_index,
     points.sample_index,

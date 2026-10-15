@@ -39,9 +39,11 @@
 {#- The body of every int_<mart>__history snapshot: the final model's whole
     row, its hash, and the build that wrote it. `skip` adds columns to leave
     out of the hash beyond row_hash_load_columns(), for a column that changes
-    on every run while the row does not. It also gives the snapshot its
-    post-hook, row_history_refresh() with the same `skip`, so the columns
-    left out of the hash are named once.
+    on every run while the row does not, or one that cannot change while the
+    snapshot's unique_key does not (int_elevation__history's
+    line_sample_key, a hash of that key, says why). It also gives the
+    snapshot its post-hook, row_history_refresh() with the same `skip`, so
+    the columns left out of the hash are named once.
 
     Example, snapshots/closures/int_closures__history.sql, inside its
     snapshot block after the block's one config:

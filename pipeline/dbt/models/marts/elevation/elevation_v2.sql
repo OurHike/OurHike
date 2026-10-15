@@ -28,6 +28,8 @@ with v1 as (
 )
 
 select
+    -- v1's key, the same row's (decision 197).
+    line_sample_key,
     line_id,
     seq,
     cast(distance_mi * 1000 as bigint) as distance_milli_mi,

@@ -20,13 +20,14 @@
 // lib/noticeCurrency.ts's notCurrent() about its notice, as a row of the
 // planned-hike list does (the maintainer's frame A, 2026-10-10), and would
 // grey its Advisory tag, with that module's line under its source, once the
-// notice's `current_until` day had passed. But pub_conditions_notices writes
-// no `current_until` key on a row that carries a `hazard`, and
-// conditions/hazard_areas.json copies those rows as written, so notCurrent()
-// answers null for every area a build publishes: a row with no key carries
-// no verdict. The greyed branch is there for a row that does carry a day,
-// which today is only a test's fixture. The map draws the area either way:
-// drawings are the maintainer's call, and unchanged.
+// notice's `current_until` day had passed, or at once where it is null. But
+// pub_conditions_notices writes no `current_until` key on a row that carries
+// a `hazard`, and conditions/hazard_areas.json copies those rows as written,
+// so notCurrent() answers null for every area a build publishes: a row with
+// no key carries no verdict. The greyed branch is there for a row that
+// carries the key, a day or null, which today only a test's fixture does.
+// The map draws the area either way: drawings are the maintainer's call, and
+// unchanged.
 
 import { longDate } from '../lib/atcNoticeText'
 import { HAZARD_ADVISORIES, hazardDates } from '../lib/hazardAreas'

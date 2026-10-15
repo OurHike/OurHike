@@ -1860,20 +1860,32 @@ def _run_started_at(result: dict) -> float | None:
 
 def cut_suggested_hike_details(path: Path, processed_dir: Path) -> dict[str, dict]:
     """pub_suggested_hikes_detail's file, `{"details": [...]}`, as the object per
-    hike a phone fetches when somebody opens it: `{key: {path, sha256}}`, in
-    collect_artifacts()' entry shape, the files under DETAIL_CUT_DIRNAME.
+    hike a phone fetches when somebody opens it: `{key: {path, sha256,
+    size_bytes}}`, in collect_artifacts()' entry shape, the files under
+    DETAIL_CUT_DIRNAME.
 
     export_suggested_hikes.py's own number_details() and
     write_detail_objects() name and write them, so the dbt writer's objects
     carry the exporter's key rule (lib/suggestedHikesData.ts's detailKeyFor,
     `<source>:<digits>`) and its bytes, and an id that rule cannot name raises
     before anything is cut. Cut here, from the file this run's results prove
-    was written, so an object can never be older than its writer's run."""
+    was written, so an object can never be older than its writer's run.
+
+    WITH `size_bytes`, which write_detail_objects() leaves to its caller, as
+    collect_artifacts() measures the exporter's copies. Without it the
+    manifest carried no size for a cut detail: 201 of the 202
+    `suggested_hikes_detail_*.json` entries in UA's release 2026-10-10-2
+    (Measured 2026-10-15), each a SKIP in check 22, which `--strict` fails,
+    and a size the client cannot weigh before it fetches the file whole
+    (lib/client_contract.py's check_launch_budget)."""
     import export_suggested_hikes  # only the dbt path cuts the details
 
     details = json.loads(path.read_text(encoding="utf-8"))["details"]
     numbered = export_suggested_hikes.number_details(details)
-    return export_suggested_hikes.write_detail_objects(numbered, processed_dir / DETAIL_CUT_DIRNAME)
+    cut = export_suggested_hikes.write_detail_objects(numbered, processed_dir / DETAIL_CUT_DIRNAME)
+    for entry in cut.values():
+        entry["size_bytes"] = from_manifest_path(entry["path"]).stat().st_size
+    return cut
 
 
 def collect_dbt_phone_files(

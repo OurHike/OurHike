@@ -305,6 +305,18 @@ FORMAT = 1
 #: history.json back, which nobody has measured, would settle it. Elementary's folders keep the same number.
 KEEP_SAVES = 24
 
+#: How many times Store.get tries a download from an s3:// store before its failure stands, and the seconds before the
+#: second try (twice that before the third). s3fs 2026.9.0's get_file() fetches a file larger than its 50 MB block as
+#: ranged parts, ten at a time, and retries none of them: one part whose socket read stalls past s3fs's 15 s
+#: read_timeout fails the whole download. Its one-stream path, for smaller files, reads a stalled stretch again, up to
+#: five tries (read in s3fs/core.py, `_download_file_part_concurrent` against `_get_file`). That is how
+#: check-conditions.yml run 66 failed on 2026-10-15, 16 s into taking run 688's warehouse.duckdb.gz, after runs 62 to 65
+#: had taken theirs the same way. So the whole file is tried again, on s3fs's own list of retryable errors. Three tries
+#: and 5 s are @unvalidated: how often R2 stalls a part would settle them, and the one stall seen so far is too few to
+#: say.
+GET_ATTEMPTS = 3
+GET_RETRY_SECONDS = 5
+
 #: Elementary's schema in the warehouse: dbt_project.yml's `elementary: +schema`, which macros/generate_schema_name.sql
 #: keeps as it is. Only KEPT's tables in it are restored, dropped or saved.
 ELEMENTARY_SCHEMA = "elementary"
@@ -446,6 +458,8 @@ class Store:
 
     def __init__(self, url: str):
         self.url = url.rstrip("/")
+        #: What get() tries again (GET_ATTEMPTS): s3fs's own list, set below for an s3:// store; nothing elsewhere.
+        self.retryable: tuple[type[BaseException], ...] = ()
         parts = urlsplit(self.url)
         if parts.scheme in ("", "file"):
             self.fs = None
@@ -464,6 +478,9 @@ class Store:
             )
             self.root = f"{parts.netloc}{unquote(parts.path)}".rstrip("/")
             self.bucket = parts.netloc
+            from s3fs.core import S3_RETRYABLE_ERRORS
+
+            self.retryable = S3_RETRYABLE_ERRORS
         else:
             raise Refused(f"{url}: a history store is a directory, a file:// URL or an s3:// URL")
 
@@ -517,10 +534,21 @@ class Store:
                 raise Refused(f"{self.url}/{relative} is named by {pointer} and is not there")
             local.write_bytes(source.read_bytes())
             return
-        try:
-            self.fs.get_file(self._path(relative), str(local))
-        except FileNotFoundError as error:
-            raise Refused(f"{self.url}/{relative} is named by {pointer} and is not there") from error
+        for attempt in range(1, GET_ATTEMPTS + 1):
+            try:
+                self.fs.get_file(self._path(relative), str(local))
+                return
+            except FileNotFoundError as error:
+                raise Refused(f"{self.url}/{relative} is named by {pointer} and is not there") from error
+            except self.retryable as error:
+                if attempt == GET_ATTEMPTS:
+                    raise
+                print(
+                    f"row_history: {self.url}/{relative}: download {attempt} of {GET_ATTEMPTS} failed "
+                    f"({type(error).__name__}); trying the whole file again",
+                    flush=True,
+                )
+                time.sleep(GET_RETRY_SECONDS * attempt)
 
     def save_folders(self, folder: str = SAVES) -> list[str]:
         if self.fs is None:

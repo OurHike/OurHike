@@ -207,6 +207,63 @@ def test_a_store_url_that_is_not_a_directory_file_or_s3_is_refused():
         row_history.Store("https://example.org/history")
 
 
+# --- A download that stalls (GET_ATTEMPTS) --------------------------------------------------------------------------
+#
+# check-conditions.yml run 66 (2026-10-15) failed 16 s into taking its warehouse: s3fs fetched the file as ranged parts
+# and one part's read stalled past its 15 s timeout, which s3fs does not retry. These hold Store.get to trying the whole
+# file again, and to never trying a missing one again.
+
+
+class _StallingFs:
+    """An s3fs stand-in whose get_file raises `failures` in turn, then writes `body`."""
+
+    def __init__(self, failures, body=b"warehouse"):
+        self.failures = list(failures)
+        self.body = body
+        self.calls = 0
+
+    def get_file(self, remote, local):
+        self.calls += 1
+        if self.failures:
+            raise self.failures.pop(0)
+        with open(local, "wb") as out:
+            out.write(self.body)
+
+
+def _s3_like_store(tmp_path, fs):
+    store = row_history.Store(str(tmp_path / "store"))
+    store.fs, store.root, store.retryable = fs, "bucket/history/conditions_ua", (TimeoutError,)
+    return store
+
+
+def test_a_download_whose_part_stalls_once_is_tried_again_and_lands(tmp_path, monkeypatch):
+    monkeypatch.setattr(row_history.time, "sleep", lambda seconds: None)
+    fs = _StallingFs([TimeoutError("Read timeout on endpoint URL")])
+    local = tmp_path / "warehouse.duckdb.gz"
+
+    _s3_like_store(tmp_path, fs).get("checks/warehouse.duckdb.gz", local)
+
+    assert (fs.calls, local.read_bytes()) == (2, b"warehouse")
+
+
+def test_a_download_that_stalls_every_try_fails_after_get_attempts(tmp_path, monkeypatch):
+    monkeypatch.setattr(row_history.time, "sleep", lambda seconds: None)
+    fs = _StallingFs([TimeoutError("stall")] * row_history.GET_ATTEMPTS)
+
+    with pytest.raises(TimeoutError, match="stall"):
+        _s3_like_store(tmp_path, fs).get("checks/warehouse.duckdb.gz", tmp_path / "warehouse.duckdb.gz")
+    assert fs.calls == row_history.GET_ATTEMPTS
+
+
+def test_a_missing_file_is_refused_at_once_and_never_tried_again(tmp_path, monkeypatch):
+    monkeypatch.setattr(row_history.time, "sleep", lambda seconds: None)
+    fs = _StallingFs([FileNotFoundError("no such key")])
+
+    with pytest.raises(Refused, match="is named by history.json and is not there"):
+        _s3_like_store(tmp_path, fs).get("saves/a/int_things__history.parquet", tmp_path / "t.parquet")
+    assert fs.calls == 1
+
+
 # --- Names read back from the store (lib/store_names.py) ----------------------------------------------------------
 #
 # history.json and elementary.json are written by a save, and could be by anyone else holding the store's key. The

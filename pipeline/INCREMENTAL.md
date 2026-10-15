@@ -1,12 +1,64 @@
 # Per-source clocks, a private raw store, and deltas at each stage's own unit — design
 
 Companion to [DATA_RELEASES.md](DATA_RELEASES.md), [DBT.md](DBT.md) and
-[R2_LAYOUT.md](R2_LAYOUT.md). **Status: designed 2026-09-09, revised 2026-09-24 to add a
-step cache between the raw store and the public bucket and to settle the storage format
-(#1653). Nothing is built beyond what
-[#1311 — The vector build went from 20 to 108 minutes in twelve days: a corridor union
-over 466k lines paid twice, every external layer re-fetched every run, and a publish that
-pays a round-trip per object](https://github.com/OurHike/OurHike/issues/1311) landed.**
+[R2_LAYOUT.md](R2_LAYOUT.md). **Status: designed 2026-09-09, revised 2026-09-24 under
+[#1653 — Write down where processed pipeline data lives between runs: a private step
+cache keyed by input hash, and which format holds it](https://github.com/OurHike/OurHike/issues/1653)
+to add a step cache between the raw store and the public bucket and to settle the storage
+format. Partly built since, in the shape [ELT.md](ELT.md) gives it, by PR #1805 — dlt →
+dbt re-platform as one go/no-go change, which uses dlt as the mechanism for this
+document's tiers and clocks. The sections below are the design as written on 2026-09-24,
+not a description of what runs.** What is true of it, checked against that pull request's
+branch at `2a826f01` on 2026-10-15:
+
+- **Built.** Phase 0, which
+  [#1311 — The vector build went from 20 to 108 minutes in twelve days: a corridor union
+  over 466k lines paid twice, every external layer re-fetched every run, and a publish
+  that pays a round-trip per object](https://github.com/OurHike/OurHike/issues/1311)
+  landed before the rest. The private raw store, tier 1: the R2 bucket `our-hike-raw`,
+  named by the secret `R2_RAW_BUCKET`, with dlt's loads under `raw/` (ELT.md decision
+  43). The extract job, as dlt resources in `pipeline/extract/` on two lanes (ELT.md
+  decision 1): monthly, by `refresh-reference.yml`, scheduled for 05:15 UTC on the 3rd;
+  and hourly, by `publish-conditions.yml` and by `extract-notices.yml` every 4 hours
+  (decision 61), on UA's legs only until the cutover in **#1811 — Fast follows after PR
+  #1805's dlt → dbt re-platform: the hiker's own download choice, the cutover, and what
+  the port found in today's code** moves production's (decision 92). Each resource's
+  change check, with three values through `lib/freshness_state.py`'s `Freshness`, so an
+  upstream found FRESH is left out of the run rather than fetched again. `log.json`, as
+  the append-only table `_extract_runs`: one row per resource per run, with
+  `recorded_marker` and `upstream_marker` (`extract/_run.py`). `current/` and
+  `current/index.json` for OSM's fourteen Geofabrik extracts, at the 30-day maximum age
+  (`extract/_geofabrik.py`, for **#1652 — Download OSM's Geofabrik extracts at most once
+  a month, into a private raw bucket that outlives the 7-day Actions cache**). The
+  private key validator, `lib/raw_keys.py`. A write-once step cache under the same
+  bucket's `steps/`, holding each monthly build's pinned inputs
+  (`steps/raw_inputs/<raw_run>/`) and its warehouse (`steps/dbt_warehouse/`), which
+  `prune_raw_store.py` prunes after each monthly build (ELT.md decisions 205 to 207).
+- **Superseded by ELT.md's decisions.** The daily `extract-sources.yml` became the
+  monthly lane (decision 1). The second private bucket for the step cache, and the
+  separate read and write tokens, became one bucket and one read-and-write key,
+  `R2_RAW_ACCESS_KEY_ID` and `R2_RAW_SECRET_ACCESS_KEY` (decision 43). So "the build job
+  cannot write raw" no longer holds: `build-reference.yml`'s build job holds that key.
+  "The extract job cannot publish" still holds for `refresh-reference.yml`'s extract job
+  and for `extract-notices.yml`, which hold no public-bucket key, and holds more weakly
+  for `publish-conditions.yml`'s extract steps, which run in the same job as its "Publish
+  to R2" step, though without that step's keys in their own environment (ELT.md,
+  "Secrets and buckets: a maintainer action"). Phase 4's exporters reading the marts
+  became the `pub_` writer models in `pipeline/dbt/models/publish/`, which write phone
+  files from the eleven marts (decision 24), with one dbt snapshot per mart for row dates
+  (decision 57).
+- **Not built.** The as-sent copies of every other source under `current/`, and every
+  `snapshots/<source_key>/`: the monthly lane's as-landed GeoJSON
+  (`as_landed/<load_id>/`) stands in for them for parity, and is not the upstream's
+  bytes. The `change` grade `lib/data_change.classify()` was to add to each log row. The
+  step cache keyed by a hash of each step's inputs, code and versions
+  (`steps/<step name>/<key>/` with `inputs.json`), and its first unit, the per-edge climb
+  and profile of **#1651 — The two graph-elevation steps resample all 656,621 edges every
+  run, and re-read 9.5M DEM points whenever the Actions cache is cold**; the DEM samples
+  those steps read are still kept in the Actions cache (`build-reference.yml`'s
+  `ELEVATION_ANSWERS`). The browse copy, `browse/ourhike.duckdb`. DuckLake, which ELT.md
+  plans for its phases 3 and 4.
+
 Written before the code, per this project's usual convention — the same one DBT.md and
 DATA_RELEASES.md follow, and for the same reason: the decisions below are cheaper to
 disagree with here than in a workflow file.

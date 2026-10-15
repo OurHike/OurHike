@@ -140,7 +140,7 @@ Present, among others: `ST_LineLocatePoint`, `ST_LineInterpolatePoints`,
 | final | `int_<mart>__final` | `intermediate/<mart>/` | intermediates | the mart's rows, every contracted column but the two row dates ([Row dates](#row-dates-one-snapshot-per-mart)) |
 | row history | `int_<mart>__history` | `snapshots/<mart>/` | its `int_<mart>__final` | a dbt snapshot: every version of every row, whole, schema `intermediate` |
 | mart | one of the eleven names | `marts/<mart>/` | its history; its final model instead when `OURHIKE_ROW_HISTORY=off` | `row_history_mart()`: the current rows and their two dates. Contract, `access: public`, exposures |
-| reporting | `rpt_<thing>` | `reporting/` | marts | counts for the docs page |
+| reporting | `rpt_<thing>` | `reporting/` | marts | counts for the dbt Charts boards. Not built: no `rpt_` model exists, and ELT.md decision 209 moved the boards to a later issue ([Docs and charts](#docs-and-charts-are-built-never-committed)) |
 | publish | `pub_<file>` | `publish/` | the marts its exposure names | writes one phone file |
 
 `<club>` is the club's extract folder name: `trail_orgs.json`'s `slug` with `-`
@@ -510,15 +510,25 @@ R2 keys, format, coordinate decimals, offline tier and size budget.
   warehouse, and `pipeline/check_docs_site.py` checks what they copy into
   `_site/data/`. Its one exemption is the unit tests' own coordinates, which
   the page carries; whether it should is open (ELT.md, "Docs and charts").
-- **dbt Charts boards are YAML in `pipeline/dbt/charts/`, rendered only once
-  dbt Charts supports dbt v2** (decision 19): `dbt-charts` 0.8.0 pins
-  `dbt-core>=1.8,<2`. That is a named external blocker. Do not work around it
-  with a second dbt version. A board reads only `rpt_` models, and never uses
-  `point_map`, `bubble_map` or `geoshape`; a pytest refuses both.
+- **No dbt Charts board is written yet** (ELT.md decision 209, the
+  maintainer's poll of 2026-10-15): there is no `pipeline/dbt/charts/`
+  folder, no board and no `rpt_` model. **#1811 — Fast follows after PR
+  #1805's dlt → dbt re-platform: the hiker's own download choice, the
+  cutover, and what the port found in today's code** writes them once dbt
+  Charts runs on dbt 2. The blocker, measured 2026-10-15 against PyPI:
+  `dbt-charts` 0.9.1, the newest release, requires `dbt-core>=1.8,<2`, and
+  this project runs `dbt` 2.0.6 (decision 32). Do not work around it with a
+  second dbt version (decision 19). Until then `/data/quality/` (decision
+  102) is the page that shows each mart's rows and checks.
+- **The rules those boards follow** (decision 10): a board reads only `rpt_`
+  models, and never uses `point_map`, `bubble_map` or `geoshape`. No pytest
+  enforces either yet: no test names those chart types (checked
+  2026-10-15). The first board brings one (ELT.md, "Docs and charts").
 - **Commit neither.** `target/`, `dbt_packages/` and `logs/` are gitignored
   (`pipeline/dbt/.gitignore`), and so is the warehouse (`pipeline/data/`).
-  Nothing ignores a rendered file under `pipeline/dbt/charts/` (checked
-  2026-10-01), so render into `target/`.
+  Nothing would ignore a rendered file under `pipeline/dbt/charts/` once
+  that folder exists (checked 2026-10-01, and again 2026-10-15 with
+  `git check-ignore`), so render into `target/`.
 
 ## The commands CI runs today
 

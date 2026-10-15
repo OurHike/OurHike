@@ -54,11 +54,26 @@ def _result(family: str, outcome: str = "no_differences", records: int = 3, **fi
     }
 
 
-def _run(root: Path, hour: float, verdicts: dict[str, str], *, run: int | None = None, records: int = 3, leg: str = "ua") -> Path:
+#: The commit every run here is built on unless a test says otherwise: a full sha, as check-conditions.yml's
+#: `--commit "$COMMIT"` (github.sha) writes it into run.json.
+COMMIT = "e49ca601" + "0" * 32
+OTHER = "a1b2c3d4" + "0" * 32
+
+
+def _run(
+    root: Path,
+    hour: float,
+    verdicts: dict[str, str],
+    *,
+    run: int | None = None,
+    records: int = 3,
+    leg: str = "ua",
+    commit: str | None = COMMIT,
+) -> Path:
     """One parity job's artifact, `hour` hours after START, as gh run download writes it: run.json and results/."""
     at = START + timedelta(hours=hour)
     number = run if run is not None else 38000000000 + int(hour * 60)
-    folder = root / f"{number}-{leg}"
+    folder = root / f"{number}-{leg}-{commit}"
     (folder / hourly_parity.RESULTS_DIR).mkdir(parents=True)
     families = {}
     for family, verdict in verdicts.items():
@@ -76,7 +91,7 @@ def _run(root: Path, hour: float, verdicts: dict[str, str], *, run: int | None =
         "format": hourly_parity.HOURLY_FORMAT,
         "run": str(number),
         "attempt": "1",
-        "commit": "e49ca601" + "0" * 32,
+        "commit": commit,
         "leg": leg,
         "built_at": at.strftime("%Y-%m-%d %H:%M:%S"),
         "families": families,
@@ -85,15 +100,18 @@ def _run(root: Path, hour: float, verdicts: dict[str, str], *, run: int | None =
     return folder
 
 
-def _soak(root: Path, hours: int = 72, step: float = 1.0, verdict: str = "equal", skip=(), changed=None) -> Path:
-    """A run every `step` hours from START to START + `hours`, each comparing closures and work_projects."""
+def _soak(
+    root: Path, hours: int = 72, step: float = 1.0, verdict: str = "equal", skip=(), changed=None, commit=COMMIT, start=0
+) -> Path:
+    """A run every `step` hours from START + `start` to START + `start` + `hours`, each comparing closures and
+    work_projects, every one built on `commit`."""
     count = int(hours / step) + 1
     for index in range(count):
         if index in skip:
             continue
-        hour = index * step
+        hour = start + index * step
         verdicts = {"closures": verdict, "work_projects": "no_records"} | (changed or {}).get(index, {})
-        _run(root, hour, verdicts)
+        _run(root, hour, verdicts, commit=commit)
     return root
 
 
@@ -192,6 +210,109 @@ def test_only_the_ua_legs_runs_cover_the_soak_and_any_legs_difference_still_coun
     assert coverage.state == "short" and "no hourly comparison of the ua leg (SOAK_LEG) was read" in coverage.detail
 
 
+def test_a_soak_run_on_an_older_commit_never_covers_the_newest_one(tmp_path):
+    """The 2026-10-15 review's finding S2-2: 73 clean hours built on one commit and a single hour on the next read
+    `clear`, as if the 72 hours had run the newest code. Decision 112 asks for a fresh soak on the final branch, and
+    decisions 142 and 148 restart it on a push that changes the hourly lane. Each run.json names the commit its build
+    ran (check-conditions.yml passes github.sha, and take-bundle refuses a bundle another commit's build put), so the
+    soak judged is the newest ua run's commit, and every other commit's run is set aside and said."""
+    root = _soak(tmp_path, commit=OTHER)
+    _run(root, 73, {"closures": "equal"})
+
+    coverage = soak_coverage(load_hourly(root), "closures")
+
+    assert coverage.state == "short", coverage.detail
+    assert "span 0.0 h" in coverage.detail and "built on e49ca6010000" in coverage.detail
+    assert "set aside 73 runs of the ua leg built on another commit: 73 on a1b2c3d40000 (2026-10-10 03:50 UTC to " in (
+        coverage.detail
+    )
+
+
+def test_another_branchs_ua_runs_never_fill_an_hour_of_the_soak(tmp_path):
+    """gh run download of every check-conditions run fetches other branches' hourly-parity-ua too: two of them in the
+    judged commit's two missing hours (decision 158 allows one) leave the gap a gap."""
+    root = _soak(tmp_path, skip=(30, 31))
+    for hour in (30, 31):
+        _run(root, hour, {"closures": "equal"}, commit=OTHER)
+
+    coverage = soak_coverage(load_hourly(root), "closures")
+
+    assert coverage.state == "short" and "3.0 h apart" in coverage.detail, coverage.detail
+    assert "set aside 2 runs of the ua leg built on another commit: 2 on a1b2c3d40000" in coverage.detail
+
+
+def test_the_commit_judged_can_be_named_and_a_commit_whose_hourly_lane_is_the_same_added(tmp_path):
+    """--commit names the commit judged, in full or by its first seven characters or more. Decision 142 restarts the
+    soak only for a push that changes the hourly lane, so a second --commit counts a commit the person running the gate
+    vouches for, and the answer names both."""
+    root = _soak(tmp_path, hours=40, commit=OTHER)
+    _soak(root, hours=31, start=41)
+    runs = load_hourly(root)
+
+    newest_only = soak_coverage(runs, "closures")
+    older_named = soak_coverage(runs, "closures", commits=[OTHER[:7]])
+    both = soak_coverage(runs, "closures", commits=[COMMIT, OTHER[:12]])
+
+    assert newest_only.state == "short" and "span 31.0 h" in newest_only.detail
+    assert older_named.state == "short" and "span 40.0 h" in older_named.detail
+    assert "set aside 32 runs of the ua leg built on another commit: 32 on e49ca6010000" in older_named.detail
+    assert both.state == "clear" and "commits judged e49ca6010000, a1b2c3d40000" in both.detail, both.detail
+    assert "set aside" not in both.detail
+
+
+def test_a_short_commit_a_run_json_names_still_matches_itself_and_nothing_shorter_than_git_s_seven(tmp_path):
+    """CI writes github.sha in full; a run.json written by hand may name `c0ffee`, as the review's own script did. The
+    newest run's commit is judged by default, so its runs count, and a prefix under 7 characters matches no other."""
+    root = _soak(tmp_path, commit="c0ffee")
+
+    assert soak_coverage(load_hourly(root), "closures").state == "clear"
+    assert soak_coverage(load_hourly(_soak(tmp_path / "full")), "closures", commits=[COMMIT[:6]]).state == "short"
+
+
+def test_a_run_naming_no_commit_is_set_aside_and_said(tmp_path):
+    root = _soak(tmp_path)
+    _run(root, 30.5, {"closures": "equal"}, commit=None)
+
+    coverage = soak_coverage(load_hourly(root), "closures")
+
+    assert coverage.state == "clear" and "set aside 1 run of the ua leg naming no commit" in coverage.detail
+    nameless = tmp_path / "nameless"
+    _run(nameless, 0, {"closures": "equal"}, commit=None)
+    assert "names no commit, so which code the soak ran is unknown" in soak_coverage(load_hourly(nameless), "closures").detail
+
+
+def test_a_difference_on_any_commit_still_makes_the_key_differ_and_names_that_commit(tmp_path):
+    """Strict on purpose: a difference found on an older commit may be a defect the newer one still has, on data its
+    hours never met, so it stays until somebody reads it and takes that run out of --hourly-dir."""
+    root = _soak(tmp_path)
+    _run(root, 10.5, {"closures": "differs"}, commit=OTHER)
+
+    coverage = soak_coverage(load_hourly(root), "closures")
+
+    assert coverage.state == "differs"
+    assert "on a1b2c3d40000, not a commit judged" in coverage.detail
+
+
+def test_main_judges_the_commit_named_says_which_and_refuses_one_that_is_not_a_commit(tmp_path):
+    arguments = _report_arguments(tmp_path)
+    root = _soak(tmp_path / "soak", commit=OTHER)
+    _run(root, 73, {"closures": "equal"})
+
+    assert gate_report.main([*arguments, "--hourly-dir", str(root), "--commit", "e49c"]) == 2
+    assert gate_report.main([*arguments, "--commit", OTHER]) == 2, "--commit judges the hourly runs, so it needs them"
+    assert gate_report.main([*arguments, "--hourly-dir", str(root), "--strict"]) == 1
+    newest = json.loads((tmp_path / "out" / "gate_report.json").read_text())
+    assert newest["inputs"]["hourly_commits"] == [COMMIT]
+    assert "built on a commit judged (e49ca6010000; the newest ua run's)" in (tmp_path / "out" / "gate_report.md").read_text()
+    assert gate_report.main([*arguments, "--hourly-dir", str(root), "--commit", OTHER, "--strict"]) == 0
+
+    report = json.loads((tmp_path / "out" / "gate_report.json").read_text())
+    assert report["inputs"]["hourly_commits"] == [OTHER]
+    markdown = (tmp_path / "out" / "gate_report.md").read_text()
+    assert "built on a commit judged (a1b2c3d40000; named by --commit)" in markdown
+    assert "set aside 1 run of the ua leg built on another commit: 1 on e49ca6010000" in markdown
+
+
 def test_comparisons_of_two_empty_files_count_only_for_a_family_the_monthly_rule_lets_be_empty(tmp_path, monkeypatch):
     """The real reviewed work-projects file holds no rows, so each hour compares two empty lists: the monthly lane's
     MAY_COMPARE_NO_RECORDS rule decides whether that says anything, here as there."""
@@ -226,7 +347,9 @@ def test_a_run_json_in_another_format_is_refused_by_name(tmp_path):
         load_hourly(tmp_path)
 
 
-def test_main_reads_the_soaks_artifacts_and_says_so_and_refuses_a_folder_with_none(tmp_path):
+def _report_arguments(tmp_path: Path) -> list[str]:
+    """gate_report.py's arguments over a dbt manifest whose one exposure is the closures writer, and one monthly
+    parity result that reaches no key of it."""
     manifest = {
         "nodes": {CLOSURES.writer: {"config": {"materialized": "phone_file", "location": CLOSURES.location}}},
         "exposures": {
@@ -242,7 +365,7 @@ def test_main_reads_the_soaks_artifacts_and_says_so_and_refuses_a_folder_with_no
     (tmp_path / "parity" / "spurs.json").write_text(
         json.dumps({**_result("closures"), "family": "spurs", "new_file_name": "spurs.json"})
     )
-    arguments = [
+    return [
         "--parity-dir",
         str(tmp_path / "parity"),
         "--out",
@@ -250,6 +373,10 @@ def test_main_reads_the_soaks_artifacts_and_says_so_and_refuses_a_folder_with_no
         "--dbt-manifest",
         str(tmp_path / "manifest.json"),
     ]
+
+
+def test_main_reads_the_soaks_artifacts_and_says_so_and_refuses_a_folder_with_none(tmp_path):
+    arguments = _report_arguments(tmp_path)
     (tmp_path / "empty").mkdir()
 
     assert gate_report.main([*arguments, "--hourly-dir", str(tmp_path / "empty")]) == 2

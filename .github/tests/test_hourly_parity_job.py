@@ -267,6 +267,18 @@ def test_a_bundle_that_cannot_be_taken_is_an_hour_not_compared_never_a_red_step(
     ]
 
 
+def test_the_compare_step_runs_after_a_take_that_failed_or_timed_out_so_the_hour_is_recorded():
+    """A take step killed at its 2-minute cap fails, and an `if:` with no status function carries an implicit
+    success(), so the compare step was skipped and the hour left no run.json: the gate read it as a run that never came,
+    which decision 158's gap rule absorbs (the 2026-10-15 review's finding S2-3). With !cancelled() it runs, finds
+    TAKEN empty, and writes every family not compared; the upload keeps that whatever the compare step's outcome."""
+    compare, upload = _step(CHECKS, "parity", COMPARE), _step(CHECKS, "parity", UPLOAD)
+
+    assert "!cancelled()" in compare["if"] and "steps.wanted.outputs.run == 'true'" in compare["if"]
+    assert "steps.take" not in compare["if"], "the take's outcome reaches the step as TAKEN, never as a reason to skip"
+    assert "steps.compare.outcome == 'success' || steps.compare.outcome == 'failure'" in upload["if"]
+
+
 @pytest.mark.parametrize("taken", ["true", "false", ""])
 def test_the_compare_step_names_the_build_and_says_when_no_bundle_came(tmp_path, taken):
     """An empty TAKEN is a take step that never ran: no bundle came, said, as for one that was not taken."""

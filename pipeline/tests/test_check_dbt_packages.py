@@ -64,6 +64,52 @@ def test_a_packages_own_git_folder_is_left_out(tmp_path):
     assert _run(packages, manifest) == 0
 
 
+def _hidden_macro(packages: Path) -> Path:
+    """The 2026-10-15 review's probe (workflows.md S2-6): a macro written under a package's own .git, which the check
+    leaves out, so no pin covers it."""
+    hidden = packages / "dbt_utils" / ".git" / "hooks2"
+    hidden.mkdir(parents=True)
+    (hidden / "payload.sql").write_text("{% macro probe() %}{{ log('ran', info=True) }}{% endmacro %}\n", encoding="utf-8")
+    return hidden / "payload.sql"
+
+
+def test_a_macro_added_through_a_symlink_fails_and_names_the_link_and_its_target(tmp_path, capsys):
+    """The review's reproduction: a symlink in macros/ to a file under the package's .git passed as `all 3 files
+    match`, and dbt 2.0.6 parsed the macro and ran it. Every file the four packages shipped is a regular file (0
+    symlinks in the tree the dbt skill's workaround installs, Measured 2026-10-15 with `find -type l`), so a symlink is
+    a difference whatever it points at."""
+    packages, manifest = _tree(tmp_path), tmp_path / "packages.sha256"
+    _run(packages, manifest, "--write")
+    _hidden_macro(packages)
+    (packages / "dbt_utils" / "macros" / "zz_probe.sql").symlink_to("../.git/hooks2/payload.sql")
+
+    assert _run(packages, manifest) == 1
+    out = capsys.readouterr().out
+    assert "symlink   dbt_utils/macros/zz_probe.sql -> ../.git/hooks2/payload.sql" in out
+
+
+def test_a_symlinked_folder_and_a_symlink_named_git_fail_too(tmp_path, capsys):
+    """A link to a folder is never walked, and a package's `.git` is left out only as a real folder at its root."""
+    packages, manifest = _tree(tmp_path), tmp_path / "packages.sha256"
+    _run(packages, manifest, "--write")
+    (packages / "dbt_utils" / "more_macros").symlink_to("macros", target_is_directory=True)
+    (packages / "elementary" / ".git").symlink_to("../dbt_utils/macros", target_is_directory=True)
+
+    assert _run(packages, manifest) == 1
+    out = capsys.readouterr().out
+    assert "symlink   dbt_utils/more_macros -> macros" in out
+    assert "symlink   elementary/.git -> ../dbt_utils/macros" in out
+
+
+def test_write_refuses_a_tree_holding_a_symlink_so_none_is_pinned_around(tmp_path, capsys):
+    packages, manifest = _tree(tmp_path), tmp_path / "packages.sha256"
+    (packages / "dbt_utils" / "macros" / "zz_probe.sql").symlink_to(_hidden_macro(packages))
+
+    assert _run(packages, manifest, "--write") == 1
+    assert not manifest.exists()
+    assert "symlink   dbt_utils/macros/zz_probe.sql -> " in capsys.readouterr().out
+
+
 def test_no_packages_folder_fails_with_its_own_exit(tmp_path):
     assert _run(tmp_path / "absent", tmp_path / "packages.sha256") == 2
 

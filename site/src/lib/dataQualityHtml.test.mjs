@@ -187,11 +187,15 @@ describe("Needs a look, the Show menu and the Chart buttons, as markup", () => {
     expect(renderBody(lookingView()).match(/<details class="dq-panel dq-fold" data-fold="\w+" open>/g)).toHaveLength(4);
   });
 
-  it("draws the Show menu as a native select in its two groups, the chart's series selected", () => {
+  it("draws the Show menu as a native select in its groups, Needs a look by kind, the chart's series selected", () => {
     const page = manyView();
     const body = renderBody(page);
     expect(body).toContain('<label class="dq-show__label" for="dq-show">Show</label>');
-    expect(body.match(/<optgroup label="([^"]+)">/g)).toEqual(['<optgroup label="Needs a look">', '<optgroup label="Every finished table">']);
+    expect(body.match(/<optgroup label="([^"]+)">/g)).toEqual([
+      '<optgroup label="Needs a look · Volume">',
+      '<optgroup label="Needs a look · Anomalies">',
+      '<optgroup label="Every finished table">',
+    ]);
     const selected = [...body.matchAll(/<option value="([^"]*)" selected>/g)].map((m) => m[1].replaceAll("&quot;", '"'));
     expect(selected).toEqual([page.sections.chart.key]);
     // 30: the 38 there were before decision 203, less the 8 freshness histories.

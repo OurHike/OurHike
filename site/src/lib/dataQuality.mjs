@@ -1061,17 +1061,33 @@ function needsALook(series, items) {
 }
 
 /**
- * The Show menu's two groups. "Needs a look" lists its series in the order
- * the list above it does, worst first; "Every mart" in By mart's order. A
+ * The kind a series' metric belongs to, for a series no entry names: a row
+ * count is volume, an age is freshness, and every other metric an anomaly
+ * check's (KINDS' order and words).
+ */
+function metricKind(metric) {
+  if (metric === MART_METRIC) return "volume";
+  if (metric === LAST_READ || metric === "freshness") return "freshness";
+  return "anomalies";
+}
+
+/**
+ * The Show menu's groups. "Needs a look" lists its series in the order the
+ * list above it does, worst first, split by kind in KINDS' order, "Needs a
+ * look · Volume" and the rest; "Every finished table" in By mart's order. A
  * series is listed once, in the group its flag puts it in, so a mart whose
  * row count needs a look is under "Needs a look" and not again under "Every
- * mart" - the shape the maintainer chose from (round 2's frames, 2026-10-08).
- * A group with nothing in it is left out.
+ * finished table" - the shape the maintainer chose from (round 2's frames,
+ * 2026-10-08). By kind since the review of 2026-10-15 (thread 4279330043):
+ * UA's hourly file put 127 options in one group, 97 of them one kind's. A
+ * series takes the kind of the first entry that names it, else its metric's
+ * (metricKind). A group with nothing in it is left out.
  */
 function menuOf(series, items, marts) {
   const look = [];
   const other = [];
   const placed = new Set();
+  const kinds = new Map();
   const place = (list, s) => {
     const key = seriesKey(s);
     if (placed.has(key)) return;
@@ -1080,18 +1096,21 @@ function menuOf(series, items, marts) {
   };
   for (const item of items) {
     const own = seriesOf(item, series);
-    if (own && needsALook(own, items)) place(look, own);
+    if (!own) continue;
+    if (!kinds.has(seriesKey(own))) kinds.set(seriesKey(own), item.kind);
+    if (needsALook(own, items)) place(look, own);
   }
   for (const mart of marts) {
     const own = martSeries(mart, series);
     if (own && !needsALook(own, items)) place(other, own);
   }
   for (const s of series) place(needsALook(s, items) ? look : other, s);
+  const kindOf = (s) => kinds.get(seriesKey(s)) ?? metricKind(s.metric);
   return {
     look,
     other,
     groups: [
-      { label: "Needs a look", options: look },
+      ...KINDS.map((kind) => ({ label: `Needs a look · ${kind.label}`, options: look.filter((s) => kindOf(s) === kind.id) })),
       { label: "Every finished table", options: other },
     ]
       .filter((group) => group.options.length > 0)

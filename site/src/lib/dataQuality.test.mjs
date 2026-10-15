@@ -514,12 +514,17 @@ describe("Needs a look, listed and folded (round 3's option D)", () => {
 describe("the Show menu", () => {
   const optionLabels = (group) => group.options.map((option) => option.label);
 
-  it("lists the entries' histories under Needs a look, worst first, then every other finished table under Every finished table, in By finished table's order", () => {
+  it("lists the entries' histories under Needs a look by kind, worst first, then every other finished table under Every finished table, in By finished table's order", () => {
+    // By kind since the review of 2026-10-15 (thread 4279330043): one group of 127 options was 97 of one kind.
     const { menu, chart } = manyView().sections;
-    expect(menu.map((group) => group.label)).toEqual(["Needs a look", "Every finished table"]);
-    const [look, marts] = menu;
-    expect(look.options[0]).toEqual({ key: chart.key, label: "Null rate of trail_status in trail_lines · Monthly" });
-    expect(optionLabels(look).slice(1, 3)).toEqual([
+    expect(menu.map((group) => group.label)).toEqual([
+      "Needs a look · Volume",
+      "Needs a look · Anomalies",
+      "Every finished table",
+    ]);
+    const [volume, anomalies, marts] = menu;
+    expect(anomalies.options[0]).toEqual({ key: chart.key, label: "Null rate of trail_status in trail_lines · Monthly" });
+    expect(optionLabels(volume).slice(0, 2)).toEqual([
       "Rows in preview_fixture_07__water_sources · Monthly",
       "Rows in preview_fixture_03__trails · Monthly",
     ]);
@@ -540,9 +545,9 @@ describe("the Show menu", () => {
     const keys = menu.flatMap((group) => group.options.map((option) => option.key));
     expect(new Set(keys).size).toBe(keys.length);
     expect(new Set(keys)).toEqual(new Set(charts.keys()));
-    const [look, marts] = menu;
-    expect(optionLabels(look)).toContain("Rows in trail_lines · Monthly");
-    expect(optionLabels(marts)).not.toContain("Rows in trail_lines · Monthly");
+    const look = menu.filter((group) => group.label.startsWith("Needs a look"));
+    expect(look.flatMap(optionLabels)).toContain("Rows in trail_lines · Monthly");
+    expect(optionLabels(menu.at(-1))).not.toContain("Rows in trail_lines · Monthly");
   });
 
   it("works the two groups out from the entries when the file does not flag its series", () => {
@@ -554,7 +559,7 @@ describe("the Show menu", () => {
     expect(unflagged).toEqual(manyView().sections.menu);
     const older = page(read(examples.monthlyWithWarnings(), "monthly"), MISSING).sections.menu;
     expect(older).toEqual([
-      { label: "Needs a look", options: [{ key: expect.any(String), label: "Rows in preview_fixture__trails · Monthly" }] },
+      { label: "Needs a look · Volume", options: [{ key: expect.any(String), label: "Rows in preview_fixture__trails · Monthly" }] },
     ]);
   });
 
@@ -736,7 +741,7 @@ describe("Chart buttons", () => {
     expect(network.chart).toBe(seriesKey({ lane: "monthly", table: "trail_network_v1", metric: "row_count" }));
     expect(network.chartName).toBe("Chart rows in trail_network_v1, Monthly");
     expect(marts.every((mart) => mart.chart !== null)).toBe(true);
-    expect(menu[1].options[0].label).toBe("Rows in trail_network_v1 · Monthly");
+    expect(menu.at(-1).options[0].label).toBe("Rows in trail_network_v1 · Monthly");
   });
 
   it("show a mart's highest version's row count when it has two, in either order, and list both in the menu", () => {
@@ -838,7 +843,7 @@ describe("the menu and the buttons, in step", () => {
   it("clear a pressed button when the menu chooses another series", () => {
     const s = sections();
     const pressed = chooseFromRow(s, rowOf(s, "preview_fixture_12__shelters", "Volume"));
-    const other = s.menu[1].options[0].key;
+    const other = s.menu.at(-1).options[0].key;
     const shown = chartControls(s, chooseFromMenu(other));
     expect(chartControls(s, pressed).pressed).toHaveLength(1);
     expect(shown.selected).toBe(other);

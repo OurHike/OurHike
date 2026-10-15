@@ -205,16 +205,23 @@ question, not this artifact's. The manifest records each source's steward and
 attribution so that screen has one place to read them from when it does.
 """
 
+import gzip
 import json
 import math
 import resource
+import shutil
+import tempfile
 import time
 from pathlib import Path
 
 import duckdb
 import numpy as np
+import pmtiles.tile as pmtiles_tile
+import pmtiles.writer as pmtiles_writer
 import shapely
-from pmtiles.reader import MmapSource, Reader
+from pmtiles.reader import MmapSource, Reader, all_tiles
+from pmtiles.tile import zxy_to_tileid
+from pmtiles.writer import write as write_pmtiles
 from shapely import wkt as shapely_wkt
 from shapely.geometry import MultiLineString, shape
 from shapely.ops import transform as shapely_transform
@@ -351,6 +358,95 @@ TILES_MAX_ZOOM = 14
 # draws the same, and the whole network's cost at sizes other than 1,000 was
 # not measured.
 TILES_CHUNK_VERTICES = 1_000
+
+# THE CONTEXT ZOOMS CARRY WHAT THE MAP READS THERE, AND EVERY LINE AT FULL
+# PRECISION (decision 202). GDAL's vector-tile writer has a per-tile budget,
+# MAX_SIZE, 500,000 bytes unless told otherwise, and it does not refuse a tile
+# over it. GDAL 3.8.5 - the version inside DuckDB 1.5.5's spatial extension -
+# re-encodes such a tile on a coarser grid, 4096 units across halving down to
+# 128 (EncodeTile in ogr/ogrsf_frmts/mvt/ogrmvtdataset.cpp), truncates every
+# vertex onto it and deletes each line that falls inside one cell
+# (GetReducedPrecisionGeometry). Measured 2026-10-15 on UA release
+# 2026-10-10-2's context archive: 19 of its 907 tiles were written that way,
+# Washington's z5/5/11 on a 256-unit grid - 3.3 km a cell, drawn by the map as
+# staircases and little boxes with the short lines gone. ad932107's
+# write_tiles - one COPY for z5-z14, TILES_CHUNK_VERTICES' chunking included -
+# run over that release's own lines file coarsens 24 of the 939 tiles it
+# writes at z5-z8 (the first row of the table below).
+#
+# What fills a dense low-zoom tile is per-line text, not geometry: split by
+# protobuf field and gzipped apart, Washington/Oregon's full-precision
+# z5/5/11 was 576,232 bytes of values and 150,040 of tag indexes against
+# 249,548 of geometry - mostly each line's own `id` and `name`. So z5-z8 carry
+# TILES_CONTEXT_PROPERTIES and nothing else, which is what the phone reads at
+# those zooms (client/src at ad932107):
+#
+#   - the band's own paint and filter - map/style.ts's TILED_SKETCH_BAND and
+#     buildNetworkOverviewLayer, map/nearbyTrails.ts's filters and ghosting:
+#     `source` and `blaze_color`;
+#   - map/trailsInView.ts's one pass over TAPPABLE_BLAZE_LAYER_IDS, which
+#     lists the band (map/styleIds.ts): `name`, for "Trails in view" and the
+#     long-trail badges - which is why `name` stays and every row keeps it;
+#   - `trail_status`, the safety column write_overview keeps in the sketch for
+#     the same reason: a closed line must never fold into an open one.
+#
+# Everything else - `id`, `length_miles`, the closure fields, `line_kind`,
+# `duplicate_of` - is read only by a tap's sheet (map/lineTaps.ts's
+# asTappedLine). At z5-z8 a tap now gets what a tap on the sketch below z5
+# already gets, and from CORRIDOR_MAX_ZOOM (9), where the sheet's own layers,
+# the names, the closure tape and the shared ground start, the tiles carry
+# every property exactly as before.
+#
+# The shared-ground halves (#1384, concurrent_trails.geojson) are left out of
+# z5-z8 altogether rather than merged in without their pair fields. Nothing
+# draws one below z9: map/style.ts builds the shared-ground layers from
+# CORRIDOR_MAX_ZOOM, and both of the band's filters refuse a feature that
+# carries `concurrent_with` (map/nearbyTrails.ts's SHARED_GROUND_EXCLUDED).
+# Stripped of that property, a half would pass those filters and draw as a
+# second plain line over its own trail.
+#
+# The lines whose kept properties are identical are then merged, per z8 tile
+# of each line's centre, with ST_LineMerge over ST_Collect - which joins lines
+# at shared ends and moves no vertex. A merged feature stays inside one z8
+# cell's reach, so GDAL clips it against a handful of tiles and
+# TILES_CHUNK_VERTICES' cost does not come back. Measured nationwide, z5-z8,
+# 2026-10-15, on UA 2026-10-10-2's lines file alone - the old cut also
+# carried that release's shared-ground pairs at these zooms, so its row is
+# if anything low:
+#
+#                                        archive      largest tile   coarsened
+#   the old single cut                42,698,639        498,413          24
+#   every property, never coarsened   57,331,102      3,021,898           0
+#   the four properties               30,053,217      1,551,165           0
+#   the four, merged (this cut)       24,240,145      1,131,929           0
+#
+# The last row is write_tiles itself, in 111 s; the middle two are the same
+# lines cut with MAX_SIZE out of reach. Merging takes z5's 265,032 features
+# to 89,898.
+TILES_CONTEXT_MAX_ZOOM = 8  # the context archive's top: publish-vector-data.yml's --context-zoom 8
+TILES_CONTEXT_PROPERTIES = ("source", "name", "blaze_color", "trail_status")
+
+# A BACKSTOP, NOT THE FIX. The largest tile the cut writes nationwide is
+# 1,131,929 bytes (z5/6/12, Colorado and Utah), and the largest above the
+# context zooms about 684,290 (z9/150/192, New York and north Jersey, cut from
+# the lines around it: the old 500,000 coarsened it to 1,024 units and
+# deleted 4,396 of its 17,899 lines) - measured 2026-10-15 on UA
+# 2026-10-10-2's lines. At this size GDAL redraws nothing; a tile that
+# outgrows it fails the cut (degraded_tiles) instead of publishing a grid.
+# @unvalidated against growth: the headroom over the largest tile is 33%.
+#
+# So the zooms above the context zooms are cut as before except for any tile
+# the old 500,000 coarsened, which is now written whole. Read back by
+# degraded_tiles, that release's published nearby_trails.pmtiles
+# (313,725,638 bytes) holds 20 coarsened tiles: the 19 at z5-z8 and
+# z9/150/192 on a 2,048-unit grid. The read-back took 20.7 s, and
+# merge_bands copied the same archive in 11.3 s at a peak of 484 MB -
+# measured 2026-10-15 on the shared worker machine, not a runner.
+TILES_MAX_BYTES = 1_500_000
+# GDAL's own defaults for the grid and the per-tile line cap, written out so
+# the check after the cut reads the same numbers the writer was handed.
+TILES_EXTENT = 4096
+TILES_MAX_FEATURES = 200_000
 
 
 def _metres_per_pixel(zoom: float, latitude: float = 40.0) -> float:
@@ -1921,6 +2017,185 @@ def tile_input_sql(lines_sql: str, most: int = TILES_CHUNK_VERTICES) -> str:
     """
 
 
+def context_lines_sql(lines_sql: str) -> str:
+    """`lines_sql`'s lines as the context zooms carry them: TILES_CONTEXT_PROPERTIES
+    only, and the lines sharing all of them merged, per z8 tile of each line's
+    centre, into one feature (the TILES_CONTEXT_PROPERTIES block says why).
+
+    Ordered by each group's first line and merged in the input's own order, so
+    the same lines make the same bytes on every run: GROUP BY alone promises no
+    order, and an archive whose hash moved with the scheduler would read to
+    publish.py as a change."""
+    keys = ", ".join(TILES_CONTEXT_PROPERTIES)
+    n = 2**TILES_CONTEXT_MAX_ZOOM
+    return f"""
+        WITH src AS (
+            SELECT {keys}, geom, ST_Centroid(geom) AS _centre, row_number() OVER () AS _row
+            FROM ({lines_sql})
+        ),
+        cells AS (
+            SELECT {keys}, geom, _row,
+                floor((ST_X(_centre) + 180) / 360 * {n}) AS _cell_x,
+                floor((1 - ln(tan(radians(ST_Y(_centre))) + 1 / cos(radians(ST_Y(_centre)))) / pi()) / 2 * {n}) AS _cell_y
+            FROM src
+        )
+        SELECT {keys}, ST_LineMerge(ST_Collect(list(geom ORDER BY _row))) AS geom
+        FROM cells
+        GROUP BY {keys}, _cell_x, _cell_y
+        ORDER BY min(_row)
+    """
+
+
+class _GzipWithoutTime:
+    """gzip for the pmtiles writer, with the header's timestamp at zero.
+
+    pmtiles 3.7's writer gzips the metadata and every directory with
+    gzip.compress, which stamps the current second into each gzip header - so
+    the same tiles made a different archive, and a different sha256, on every
+    run. publish.py takes a changed hash as a changed artifact, and gzips its
+    own uploads with mtime=0 for that reason; this is the same choice, made
+    for the one writer that does not offer it."""
+
+    decompress = staticmethod(gzip.decompress)
+
+    @staticmethod
+    def compress(data: bytes, compresslevel: int = 9) -> bytes:
+        return gzip.compress(data, compresslevel, mtime=0)
+
+
+def merge_bands(bands: list[Path], path: Path, min_zoom: int, max_zoom: int) -> None:
+    """Write archives that hold disjoint zoom bands, lowest first, as one
+    archive declaring `min_zoom` to `max_zoom`.
+
+    Bands read in zoom order hand the writer tile ids in ascending order, the
+    order it writes a clustered archive in; it streams each tile's bytes to a
+    temporary file and holds only a directory entry per tile. Each tile's bytes
+    are copied as GDAL wrote them. The format facts and the metadata come from
+    the top band - its `vector_layers` lists every field - with the layer's
+    minzoom set to `min_zoom`, and the bounds are the union.
+
+    THE ZOOMS DECLARED ARE THE ZOOMS CUT, as GDAL's single cut declared them:
+    it writes MINZOOM-MAXZOOM into the header whether or not every zoom holds a
+    tile, down to a network so small that no zoom does (a 349-byte archive with
+    no tiles at all). The pmtiles writer instead reads the range off the tiles
+    it was handed and cannot finalize none, so the header is put back to the
+    range cut, and with no tile anywhere the bottom band's empty archive is
+    the answer."""
+    if all(_tile_count(band) == 0 for band in bands):
+        shutil.copyfile(bands[0], path)
+        _declare_zooms(path, min_zoom, max_zoom)
+        return
+    files = [band.open("rb") for band in bands]
+    try:
+        readers = [Reader(MmapSource(f)) for f in files]
+        headers = [reader.header() for reader in readers]
+        metadata = readers[-1].metadata()
+        for layer in metadata.get("vector_layers", []):
+            layer["minzoom"] = min_zoom
+        top = headers[-1]
+        header = {
+            "tile_type": top["tile_type"],
+            "tile_compression": top["tile_compression"],
+            "min_lon_e7": min(h["min_lon_e7"] for h in headers),
+            "min_lat_e7": min(h["min_lat_e7"] for h in headers),
+            "max_lon_e7": max(h["max_lon_e7"] for h in headers),
+            "max_lat_e7": max(h["max_lat_e7"] for h in headers),
+            "center_lon_e7": top["center_lon_e7"],
+            "center_lat_e7": top["center_lat_e7"],
+            "center_zoom": top["center_zoom"],
+        }
+        saved = pmtiles_tile.gzip, pmtiles_writer.gzip
+        pmtiles_tile.gzip = pmtiles_writer.gzip = _GzipWithoutTime
+        try:
+            with write_pmtiles(str(path)) as writer:
+                for f in files:
+                    for (z, x, y), data in all_tiles(MmapSource(f)):
+                        writer.write_tile(zxy_to_tileid(z, x, y), data)
+                writer.finalize(header, metadata)
+        finally:
+            pmtiles_tile.gzip, pmtiles_writer.gzip = saved
+    finally:
+        for f in files:
+            f.close()
+    _declare_zooms(path, min_zoom, max_zoom)
+
+
+def _tile_count(path: Path) -> int:
+    with path.open("rb") as f:
+        return Reader(MmapSource(f)).header()["addressed_tiles_count"]
+
+
+def _declare_zooms(path: Path, min_zoom: int, max_zoom: int) -> None:
+    """Rewrite an archive's fixed 127-byte header to declare `min_zoom`-`max_zoom`."""
+    with path.open("r+b") as f:
+        header = pmtiles_tile.deserialize_header(f.read(127))
+        header["min_zoom"], header["max_zoom"] = min_zoom, max_zoom
+        f.seek(0)
+        f.write(pmtiles_tile.serialize_header(header))
+
+
+def _protobuf_fields(buffer: bytes):
+    """(field number, value) for each field of one protobuf message: an int for
+    a varint, the bytes for a length-delimited field, None for a fixed-width
+    one. Enough of the wire format to read an MVT tile's layers back."""
+    i, end = 0, len(buffer)
+
+    def varint(i: int) -> tuple[int, int]:
+        value = shift = 0
+        while True:
+            byte = buffer[i]
+            i += 1
+            value |= (byte & 0x7F) << shift
+            shift += 7
+            if byte < 0x80:
+                return value, i
+
+    while i < end:
+        key, i = varint(i)
+        wire = key & 7
+        if wire == 0:
+            value, i = varint(i)
+        elif wire == 2:
+            length, i = varint(i)
+            value, i = buffer[i : i + length], i + length
+        elif wire in (1, 5):
+            value, i = None, i + (8 if wire == 1 else 4)
+        else:
+            raise ValueError(f"protobuf wire type {wire} at byte {i}")
+        yield key >> 3, value
+
+
+def degraded_tiles(path: Path) -> list[tuple[int, int, int, str]]:
+    """(z, x, y, what happened) for every tile GDAL did not write whole.
+
+    Each tile is read back: a layer whose `extent` (MVT Layer field 5, 4096 when
+    absent) is not TILES_EXTENT was re-quantized onto a coarser grid, and one
+    holding TILES_MAX_FEATURES lines or more was cut to its longest ones. Those
+    are the only two ways GDAL 3.8.5's EncodeTile writes fewer lines than it
+    was handed: its longest-first discard runs only after the grid has
+    already been coarsened to 128, or at the line cap. So no tile can lose
+    more lines than it keeps without one of the two showing here - apart
+    from a line shorter than one unit at its zoom, which no grid can draw."""
+    found = []
+    with path.open("rb") as f:
+        for (z, x, y), data in all_tiles(MmapSource(f)):
+            raw = gzip.decompress(data) if data[:2] == b"\x1f\x8b" else data
+            for field, layer in _protobuf_fields(raw):
+                if field != 3:  # Tile.layers
+                    continue
+                extent, lines = 4096, 0
+                for layer_field, value in _protobuf_fields(layer):
+                    if layer_field == 5:  # Layer.extent
+                        extent = value
+                    elif layer_field == 2:  # Layer.features
+                        lines += 1
+                if extent != TILES_EXTENT:
+                    found.append((z, x, y, f"a {extent}-unit grid, not {TILES_EXTENT}"))
+                elif lines >= TILES_MAX_FEATURES:
+                    found.append((z, x, y, f"{lines:,} lines, GDAL's cap"))
+    return found
+
+
 def write_tiles(geojson_path: Path, concurrent_path: Path | None = None) -> dict:
     """Tile the artifact just written into TILES_ARTIFACT_NAME and return its
     manifest entry (#1257).
@@ -1937,7 +2212,9 @@ def write_tiles(geojson_path: Path, concurrent_path: Path | None = None) -> dict
     for it, which is what the client's `has` filters read. Passed only when
     the file holds a feature: ST_Read of an empty collection is a table with
     no columns (lib/corridor.py's count_features has the failure), and there
-    is nothing to union in.
+    is nothing to union in. Unioned into the zooms above
+    TILES_CONTEXT_MAX_ZOOM only: the context zooms are cut from the lines file
+    alone (the TILES_CONTEXT_PROPERTIES block says why).
 
     GDAL's PMTiles driver builds an MBTiles beside the output and converts it,
     so the run needs roughly the archive's own size again in scratch space
@@ -1947,6 +2224,16 @@ def write_tiles(geojson_path: Path, concurrent_path: Path | None = None) -> dict
     built for: a creation option GDAL silently ignored would publish a
     tileset the map never asks the right zooms of, and the failure on the
     phone is an empty map with no error anywhere.
+
+    TWO CUTS, ONE ARCHIVE (decision 202). z5 to TILES_CONTEXT_MAX_ZOOM are cut
+    from the lines file alone through context_lines_sql - TILES_CONTEXT_PROPERTIES
+    only, lines sharing them merged - and the zooms above from tile_input_sql
+    over the lines and the shared-ground pairs exactly as before; the
+    two are joined by merge_bands under the one layer name the client already
+    reads, so no style changes. Both cuts run with MAX_SIZE at
+    TILES_MAX_BYTES, and the archive is then read back tile by tile: any tile
+    GDAL coarsened or cut to its line cap (degraded_tiles) fails the run, so
+    a grid of staircases can never reach the bucket again.
     """
     path = OUT_DIR / TILES_ARTIFACT_NAME
     # COPY TO refuses to overwrite for these drivers - export_trails.py's own
@@ -1955,23 +2242,48 @@ def write_tiles(geojson_path: Path, concurrent_path: Path | None = None) -> dict
 
     con = duckdb.connect()
     con.execute("INSTALL spatial; LOAD spatial;")
-    lines = f"SELECT * FROM ST_Read('{geojson_path.as_posix()}')"
+    plain = f"SELECT * FROM ST_Read('{geojson_path.as_posix()}')"
+    lines = plain
     if concurrent_path is not None:
-        lines = f"{lines} UNION ALL BY NAME SELECT * FROM ST_Read('{concurrent_path.as_posix()}')"
-    con.execute(
-        f"""
-        COPY ({tile_input_sql(lines)})
-        TO '{path.as_posix()}'
-        WITH (
-            FORMAT GDAL, DRIVER 'PMTiles', LAYER_NAME '{TILES_LAYER}',
-            DATASET_CREATION_OPTIONS (
-                'MINZOOM={TILES_MIN_ZOOM}', 'MAXZOOM={TILES_MAX_ZOOM}',
-                'NAME={TILES_ARTIFACT_NAME.removesuffix(".pmtiles")}',
-                'DESCRIPTION=Trail lines other organizations maintain, as vector tiles'
+        lines = f"{plain} UNION ALL BY NAME SELECT * FROM ST_Read('{concurrent_path.as_posix()}')"
+
+    top_context = min(TILES_CONTEXT_MAX_ZOOM, TILES_MAX_ZOOM)
+    bands = []
+    if TILES_MIN_ZOOM <= top_context:
+        bands.append((TILES_MIN_ZOOM, top_context, context_lines_sql(plain)))
+    if TILES_MAX_ZOOM > top_context:
+        bands.append((max(TILES_MIN_ZOOM, top_context + 1), TILES_MAX_ZOOM, tile_input_sql(lines)))
+
+    # The bands are written into a directory of their own that goes away with
+    # them, so a run that dies between the two cuts leaves nothing in
+    # OUT_DIR for publish.py to mistake for an artifact.
+    with tempfile.TemporaryDirectory(prefix=".tile-bands-", dir=path.parent) as scratch:
+        parts = []
+        for low, high, select in bands:
+            part = Path(scratch) / f"z{low}-{high}.pmtiles"
+            # SRS spelled out: a merged line is a new geometry whose type
+            # carries no CRS, and GDAL handed one reads degrees as Web
+            # Mercator metres - every line lands within a metre of 0,0 and
+            # nothing complains. EXTENT and MAX_FEATURES are GDAL's own
+            # defaults, named so degraded_tiles checks what the writer was told.
+            con.execute(
+                f"""
+                COPY ({select})
+                TO '{part.as_posix()}'
+                WITH (
+                    FORMAT GDAL, DRIVER 'PMTiles', LAYER_NAME '{TILES_LAYER}', SRS 'EPSG:4326',
+                    DATASET_CREATION_OPTIONS (
+                        'MINZOOM={low}', 'MAXZOOM={high}',
+                        'EXTENT={TILES_EXTENT}', 'MAX_SIZE={TILES_MAX_BYTES}',
+                        'MAX_FEATURES={TILES_MAX_FEATURES}',
+                        'NAME={TILES_ARTIFACT_NAME.removesuffix(".pmtiles")}',
+                        'DESCRIPTION=Trail lines other organizations maintain, as vector tiles'
+                    )
+                )
+                """
             )
-        )
-        """
-    )
+            parts.append(part)
+        merge_bands(parts, path, TILES_MIN_ZOOM, TILES_MAX_ZOOM)
 
     with path.open("rb") as f:
         header = Reader(MmapSource(f)).header()
@@ -1981,6 +2293,18 @@ def write_tiles(geojson_path: Path, concurrent_path: Path | None = None) -> dict
             f"{path} declares zooms {zooms}, not the z{TILES_MIN_ZOOM}-z{TILES_MAX_ZOOM} the client is "
             "built for (client/src/lib/config.ts). GDAL did not honour the creation options, and a "
             "tileset the map asks the wrong zooms of draws nothing."
+        )
+
+    degraded = degraded_tiles(path)
+    if degraded:
+        shown = ", ".join(f"z{z}/{x}/{y} ({what})" for z, x, y, what in degraded[:10])
+        raise SystemExit(
+            f"{path}: GDAL did not write {len(degraded)} tile(s) whole - {shown}"
+            f"{', ...' if len(degraded) > 10 else ''}. A tile over MAX_SIZE ({TILES_MAX_BYTES:,} bytes) is "
+            "redrawn on a coarser grid with every line shorter than a cell deleted, and one at "
+            f"MAX_FEATURES ({TILES_MAX_FEATURES:,}) keeps only its longest lines: either draws on a phone "
+            "as staircases with gaps. Raise TILES_MAX_BYTES or carry less at the context zooms "
+            "(TILES_CONTEXT_PROPERTIES), and say which in the commit."
         )
 
     return {

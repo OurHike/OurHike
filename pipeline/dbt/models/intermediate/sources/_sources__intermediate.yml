@@ -417,12 +417,12 @@ unit_tests:
         rows:
           - {licence_basis: stated_by_org, applies_to: any}
           - {licence_basis: maintainer_authorisation, applies_to: any}
-          - {licence_basis: maintainer_clearinghouse, applies_to: nys_clearinghouse}
+          - {licence_basis: maintainer_clearinghouse, applies_to: nys_clearinghouse, covers_own_words_named_by: '\bdecisions?\s+(\d+[a-z]?(\([a-z]\))?(,\s*|\s+and\s+|\s+or\s+))*(20|22)\b'}
           - {licence_basis: public_gis, applies_to: gis}
           - {licence_basis: public_domain, applies_to: federal}
       - input: ref('licence_restriction_phrases')
         rows:
-          - {restriction: 'not_a_restriction', pattern: '\b(none stated|copyrighttext|accessinformation|licenseinfo)\b', written_for: 'dec_lands', why: 'The registry''s own labels for where each quoted text was read'}
+          - {restriction: 'not_a_restriction', pattern: '\b(none stated|copyrighttext|accessinformation|licenseinfo)\b', written_for: 'buckeye_retail_map_outlines', why: 'The registry''s own labels for where each quoted text was read'}
           - {restriction: 'not_a_restriction', pattern: '\b(provided|provides these geographic data|distributed|licensed) ["“''‘]?as[ -]is["”''’]?( and ["“]?as available["”]?)?', written_for: 'mohonk_preserve_boundary', why: 'A warranty disclaimer: says what the data is not promised to be, restricts nothing. Decision 193 (the maintainer''s poll, 2026-10-14) reads a warranty line by its class, so the phrase reads it however it is quoted, hyphenated or introduced: Indiana DNR''s "distributed “AS-IS”" (in_dnr_open_trails) as Mohonk''s "provided ''as is''"'}
           - {restriction: 'not_a_restriction', pattern: '\b(without|with no|no|any) (any )?(representation or )?(warranty|warranties|guarantees?)\b', written_for: 'nps_park_boundaries', why: 'A warranty disclaimer'}
           - {restriction: 'not_a_restriction', pattern: '\b(makes|make|gives|give|provide|provides) no (claims|warranty|warranties)\b', written_for: 'trta_special_management_areas', why: 'A warranty disclaimer'}
@@ -500,7 +500,6 @@ unit_tests:
           - {restriction: 'ownership', licence_basis: 'maintainer_clearinghouse', answered_by: 'decision 193', named_by: '.*', why: 'As above, on a NYS DEC or OPRHP layer the clearinghouse lists (decisions 20 and 22)'}
           - {restriction: 'ownership', licence_basis: 'maintainer_authorisation', answered_by: 'decision 37', named_by: '\bdecisions?\s+(\d+[a-z]?(\([a-z]\))?(,\s*|\s+and\s+|\s+or\s+))*37\b', why: 'As decision 37''s no_reuse answer on the maintainer''s authorisation, for the same row''s copyright line (Wisconsin DNR''s park closures view)'}
           - {restriction: 'ownership', licence_basis: 'maintainer_authorisation', answered_by: 'decision 55', named_by: '\bdecisions?\s+(\d+[a-z]?(\([a-z]\))?(,\s*|\s+and\s+|\s+or\s+))*55\b', why: 'A copyright line on a club''s notice or page, which publishes as facts and a link, copying no wording, as decision 55 answers its no_reuse words (poll, 2026-10-03)'}
-          - {restriction: 'no_reuse', licence_basis: 'maintainer_clearinghouse', answered_by: 'decisions 20 and 22', named_by: '\bdecisions?\s+(\d+[a-z]?(\([a-z]\))?(,\s*|\s+and\s+|\s+or\s+))*(20|22)\b', why: 'A DEC or OPRHP dataset the NYS GIS Clearinghouse lists publishes, its own "Secondary Distribution of the data is not allowed" or "Do not redistribute" quoted beside it (the maintainer, 2026-10-01)'}
           - {restriction: 'no_reuse', licence_basis: 'stated_by_org', answered_by: 'njdep_licence', named_by: '\bnjdep_licence\b', why: 'The NJDEP Data Distribution Agreement read in full: it regulates reproduction rather than forbidding it, and its conditions travel with the layer (sources.json''s njdep_licence, under decision 38)'}
           - {restriction: 'permission', licence_basis: 'maintainer_authorisation', answered_by: 'decision 55', named_by: '\bdecisions?\s+(\d+[a-z]?(\([a-z]\))?(,\s*|\s+and\s+|\s+or\s+))*55\b', why: 'Terms that ask permission to copy, not to read: a notice publishes as facts and a link'}
           - {restriction: 'purpose_limited', licence_basis: 'public_gis', answered_by: 'decision 37', named_by: '\bdecisions?\s+(\d+[a-z]?(\([a-z]\))?(,\s*|\s+and\s+|\s+or\s+))*37\b', why: 'An internal-use limit on an anonymous public GIS endpoint (decision 37''s "internal use")'}
@@ -580,7 +579,11 @@ unit_tests:
       "Do not use this data for navigation" and "not suitable for
       navigation" hold as cannot_be_met, and "Redistribution", "not
       permitted", "not authorized" and "Unauthorized" hold where no phrase
-      explains them. The seeds are mocked as the seed files are
+      explains them. Then decision 213, Q25 (2026-10-15): a clearinghouse
+      dataset's own words, whatever class they read as, publish where the
+      row's licence names decisions 20 and 22, and hold where it names
+      neither, and a navigation line still holds such a row. The seeds are
+      mocked as the seed files are
       (tests/test_dbt_publication_rule_five.py).
     model: int_sources__publication
     given:
@@ -598,6 +601,9 @@ unit_tests:
           - {source_key: 'words_no_phrase_explains', provider: 'A', kind: 'club_arcgis_layer', reaches_hikers: true, licence_basis: 'public_gis', entry: '{"terms": "For use by club members only.", "licence": "decision 21a"}'}
           - {source_key: 'public_domain_purposes', provider: 'A', kind: 'club_arcgis_layer', reaches_hikers: true, licence_basis: 'stated_by_org', entry: '{"terms": "These data should be used for administrative purposes only.", "licence": "PUBLIC DOMAIN, on 17 U.S.C. 105."}'}
           - {source_key: 'clearinghouse_redistribution', provider: 'D', kind: 'club_arcgis_layer', reaches_hikers: true, licence_basis: 'maintainer_clearinghouse', entry: '{"terms": "Secondary Distribution of the data is not allowed.", "licence": "Listed in the NYS GIS Clearinghouse, so decisions 20 and 22 publish it."}'}
+          - {source_key: 'clearinghouse_words_its_ruling_covers', provider: 'D', kind: 'club_arcgis_layer', reaches_hikers: true, licence_basis: 'maintainer_clearinghouse', entry: '{"terms": "Data may NOT be distributed outside DEC without permission. The data are provided for informational and non-commercial purposes. The user must be aware of data conditions.", "licence": "DECISIONS 20 AND 22: a dataset the NYS GIS Clearinghouse lists."}'}
+          - {source_key: 'clearinghouse_words_naming_no_ruling', provider: 'D', kind: 'club_arcgis_layer', reaches_hikers: true, licence_basis: 'maintainer_clearinghouse', entry: '{"terms": "Data may NOT be distributed outside DEC without permission. The data are provided for informational and non-commercial purposes. The user must be aware of data conditions.", "licence": "Listed in the NYS GIS Clearinghouse."}'}
+          - {source_key: 'clearinghouse_navigation_line', provider: 'D', kind: 'club_arcgis_layer', reaches_hikers: true, licence_basis: 'maintainer_clearinghouse', entry: '{"terms": "NOT FOR NAVIGATION. Secondary Distribution of the data is not allowed.", "licence": "decisions 20 and 22"}'}
           - {source_key: 'verbatim_words', provider: 'A', kind: 'club_arcgis_layer', reaches_hikers: true, licence_basis: 'public_gis', entry: '{"terms_verbatim": "Do not redistribute.", "licence": "decision 21a"}'}
           - {source_key: 'narration_only', provider: 'A', kind: 'published_notices', reaches_hikers: true, licence_basis: 'maintainer_authorisation', entry: '{"terms": "None found: no terms page is linked from the post (footer scanned for terms, privacy, legal and copyright links: only Facebook).", "licence": "Facts and a link only, on decision 55"}'}
           - {source_key: 'copyright_on_a_notice', provider: 'A', kind: 'published_notices', reaches_hikers: true, licence_basis: 'maintainer_authorisation', entry: '{"terms": "The site footer: \"Copyright 2012 - Fixture Trail Association. All rights reserved.\" No terms page.", "licence": "MAINTAINER AUTHORISATION on decision 55 (facts and a link)"}'}
@@ -649,12 +655,12 @@ unit_tests:
         rows:
           - {licence_basis: stated_by_org, applies_to: any}
           - {licence_basis: maintainer_authorisation, applies_to: any}
-          - {licence_basis: maintainer_clearinghouse, applies_to: nys_clearinghouse}
+          - {licence_basis: maintainer_clearinghouse, applies_to: nys_clearinghouse, covers_own_words_named_by: '\bdecisions?\s+(\d+[a-z]?(\([a-z]\))?(,\s*|\s+and\s+|\s+or\s+))*(20|22)\b'}
           - {licence_basis: public_gis, applies_to: gis}
           - {licence_basis: public_domain, applies_to: federal}
       - input: ref('licence_restriction_phrases')
         rows:
-          - {restriction: 'not_a_restriction', pattern: '\b(none stated|copyrighttext|accessinformation|licenseinfo)\b', written_for: 'dec_lands', why: 'The registry''s own labels for where each quoted text was read'}
+          - {restriction: 'not_a_restriction', pattern: '\b(none stated|copyrighttext|accessinformation|licenseinfo)\b', written_for: 'buckeye_retail_map_outlines', why: 'The registry''s own labels for where each quoted text was read'}
           - {restriction: 'not_a_restriction', pattern: '\b(provided|provides these geographic data|distributed|licensed) ["“''‘]?as[ -]is["”''’]?( and ["“]?as available["”]?)?', written_for: 'mohonk_preserve_boundary', why: 'A warranty disclaimer: says what the data is not promised to be, restricts nothing. Decision 193 (the maintainer''s poll, 2026-10-14) reads a warranty line by its class, so the phrase reads it however it is quoted, hyphenated or introduced: Indiana DNR''s "distributed “AS-IS”" (in_dnr_open_trails) as Mohonk''s "provided ''as is''"'}
           - {restriction: 'not_a_restriction', pattern: '\b(without|with no|no|any) (any )?(representation or )?(warranty|warranties|guarantees?)\b', written_for: 'nps_park_boundaries', why: 'A warranty disclaimer'}
           - {restriction: 'not_a_restriction', pattern: '\b(makes|make|gives|give|provide|provides) no (claims|warranty|warranties)\b', written_for: 'trta_special_management_areas', why: 'A warranty disclaimer'}
@@ -732,7 +738,6 @@ unit_tests:
           - {restriction: 'ownership', licence_basis: 'maintainer_clearinghouse', answered_by: 'decision 193', named_by: '.*', why: 'As above, on a NYS DEC or OPRHP layer the clearinghouse lists (decisions 20 and 22)'}
           - {restriction: 'ownership', licence_basis: 'maintainer_authorisation', answered_by: 'decision 37', named_by: '\bdecisions?\s+(\d+[a-z]?(\([a-z]\))?(,\s*|\s+and\s+|\s+or\s+))*37\b', why: 'As decision 37''s no_reuse answer on the maintainer''s authorisation, for the same row''s copyright line (Wisconsin DNR''s park closures view)'}
           - {restriction: 'ownership', licence_basis: 'maintainer_authorisation', answered_by: 'decision 55', named_by: '\bdecisions?\s+(\d+[a-z]?(\([a-z]\))?(,\s*|\s+and\s+|\s+or\s+))*55\b', why: 'A copyright line on a club''s notice or page, which publishes as facts and a link, copying no wording, as decision 55 answers its no_reuse words (poll, 2026-10-03)'}
-          - {restriction: 'no_reuse', licence_basis: 'maintainer_clearinghouse', answered_by: 'decisions 20 and 22', named_by: '\bdecisions?\s+(\d+[a-z]?(\([a-z]\))?(,\s*|\s+and\s+|\s+or\s+))*(20|22)\b', why: 'A DEC or OPRHP dataset the NYS GIS Clearinghouse lists publishes, its own "Secondary Distribution of the data is not allowed" or "Do not redistribute" quoted beside it (the maintainer, 2026-10-01)'}
           - {restriction: 'no_reuse', licence_basis: 'stated_by_org', answered_by: 'njdep_licence', named_by: '\bnjdep_licence\b', why: 'The NJDEP Data Distribution Agreement read in full: it regulates reproduction rather than forbidding it, and its conditions travel with the layer (sources.json''s njdep_licence, under decision 38)'}
           - {restriction: 'permission', licence_basis: 'maintainer_authorisation', answered_by: 'decision 55', named_by: '\bdecisions?\s+(\d+[a-z]?(\([a-z]\))?(,\s*|\s+and\s+|\s+or\s+))*55\b', why: 'Terms that ask permission to copy, not to read: a notice publishes as facts and a link'}
           - {restriction: 'purpose_limited', licence_basis: 'public_gis', answered_by: 'decision 37', named_by: '\bdecisions?\s+(\d+[a-z]?(\([a-z]\))?(,\s*|\s+and\s+|\s+or\s+))*37\b', why: 'An internal-use limit on an anonymous public GIS endpoint (decision 37''s "internal use")'}
@@ -761,6 +766,9 @@ unit_tests:
         - {source_key: 'words_no_phrase_explains', may_publish: false, publication_rule: 'restrictive_terms_no_decision_answers', terms_restrictions: 'unclassified', unanswered_restrictions: 'unclassified'}
         - {source_key: 'public_domain_purposes', may_publish: true, publication_rule: 'registered_and_publishable', terms_restrictions: 'purpose_limited', unanswered_restrictions: null}
         - {source_key: 'clearinghouse_redistribution', may_publish: true, publication_rule: 'registered_and_publishable', terms_restrictions: 'no_reuse', unanswered_restrictions: null}
+        - {source_key: 'clearinghouse_words_its_ruling_covers', may_publish: true, publication_rule: 'registered_and_publishable', terms_restrictions: 'commercial, no_reuse, permission, unclassified', unanswered_restrictions: null}
+        - {source_key: 'clearinghouse_words_naming_no_ruling', may_publish: false, publication_rule: 'restrictive_terms_no_decision_answers', terms_restrictions: 'commercial, no_reuse, permission, unclassified', unanswered_restrictions: 'commercial, no_reuse, permission, unclassified'}
+        - {source_key: 'clearinghouse_navigation_line', may_publish: false, publication_rule: 'restrictive_terms_no_decision_answers', terms_restrictions: 'cannot_be_met, no_reuse', unanswered_restrictions: 'cannot_be_met'}
         - {source_key: 'verbatim_words', may_publish: false, publication_rule: 'restrictive_terms_no_decision_answers', terms_restrictions: 'no_reuse', unanswered_restrictions: 'no_reuse'}
         - {source_key: 'narration_only', may_publish: true, publication_rule: 'registered_and_publishable', terms_restrictions: null, unanswered_restrictions: null}
         - {source_key: 'copyright_on_a_notice', may_publish: true, publication_rule: 'registered_and_publishable', terms_restrictions: 'ownership', unanswered_restrictions: null}

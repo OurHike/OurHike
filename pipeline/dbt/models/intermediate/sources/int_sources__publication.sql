@@ -21,8 +21,9 @@
 -- - `maintainer_clearinghouse` (decisions 20 and 22) covers NYS DEC and
 --   OPRHP alone, so another steward's row with that basis is refused. The
 --   13 rows whose datasets the NYS GIS Clearinghouse lists carry it since
---   2026-10-15; tests/test_organizations.py holds it to those two
---   organizations' rows before this guard would see one.
+--   2026-10-15, each quoting its item's own words in `terms`, which the
+--   basis answers (rule 5, below); tests/test_organizations.py holds it to
+--   those two organizations' rows before this guard would see one.
 -- - `public_gis` (decision 21a) needs a GIS endpoint: an ArcGIS or Socrata
 --   layer (`club_arcgis_layer` is a club's ArcGIS layer that only the
 --   extract reads, lib/source_registry.py), a GIS file or an OGC API
@@ -89,10 +90,26 @@
 --   `why` names: "not to be used", "not intended" or "not intended to be
 --   used" for navigation or planning, "not for navigation", "do not use ...
 --   for navigation" and "not suitable for navigation".
+--   A BASIS THAT IS A RULING ON THE DATASET ITSELF answers the dataset's
+--   own words, whatever class they read as, except `cannot_be_met`
+--   (decision 213, Q25, the maintainer's poll of 2026-10-15: "Decisions 20
+--   and 22 cover a clearinghouse dataset's own restrictive words, so quote
+--   them in its `terms`"). The publishable_licence_bases seed says which
+--   bases are such a ruling, in `covers_own_words_named_by`: the words a
+--   row's `licence` must name the ruling by, as an answers row's
+--   `named_by` does. Only `maintainer_clearinghouse` has one today
+--   (decisions 20 and 22 rule on a DEC or OPRHP dataset by its listing in
+--   the NYS GIS Clearinghouse, not on any wording of it), so DEC's "may NOT
+--   be distributed outside DEC without permission" and OPRHP's "informational
+--   and non-commercial purposes" are quoted on their rows and publish. Words
+--   forbidding a use the app makes still hold such a row: decision 38 and
+--   decision 193 hold them however worded, and no ruling on a dataset
+--   makes a navigation line safe to navigate by.
 --   THE BACKSTOP. Once every phrase is cut out of the words, any
 --   restriction-shaped word left (may not, prohibited, only, distribute,
 --   licence and the rest of the `unclassified` row's list) is
---   `unclassified`, and no decision answers it. So a wording neither seed
+--   `unclassified`, and no answers row answers it; only a basis that is a
+--   ruling on the dataset itself does, above. So a wording neither seed
 --   has met holds its row until a person adds the phrase that explains it,
 --   rather than publishing by default.
 --   The rule comes after every other, so it changes no `publication_rule`
@@ -169,6 +186,10 @@ answers as (
     select * from {{ ref('licence_restriction_answers') }}
 ),
 
+bases as (
+    select * from {{ ref('publishable_licence_bases') }}
+),
+
 registered as (
     select
         sources.source_key,
@@ -176,6 +197,16 @@ registered as (
         sources.reaches_hikers,
         sources.licence_basis,
         organizations.steward_id,
+        -- Rule 5's general answer: the row's basis is a maintainer's ruling
+        -- on the dataset itself, and its licence names that ruling.
+        coalesce(
+            regexp_matches(
+                coalesce(json_extract_string(sources.entry, '$.licence'), ''),
+                bases.covers_own_words_named_by,
+                'i'
+            ),
+            false
+        ) as basis_covers_own_words,
         nullif(
             trim(
                 concat_ws(
@@ -191,6 +222,7 @@ registered as (
         ) as licence_text
     from sources
     left join organizations on sources.provider = organizations.provider
+    left join bases on sources.licence_basis = bases.licence_basis
 ),
 
 -- Each class's phrases as one alternation, for regexp_replace to cut out.
@@ -267,7 +299,10 @@ judged as (
         restricted.source_key,
         restricted.restriction,
         coalesce(bool_or(answers.restriction is not null), false)
-            as is_answered
+        or (
+            registered.basis_covers_own_words
+            and restricted.restriction != 'cannot_be_met'
+        ) as is_answered
     from restricted
     inner join registered on restricted.source_key = registered.source_key
     left join answers
@@ -275,7 +310,10 @@ judged as (
             restricted.restriction = answers.restriction
             and answers.licence_basis in (registered.licence_basis, 'any')
             and regexp_matches(registered.licence_text, answers.named_by, 'i')
-    group by restricted.source_key, restricted.restriction
+    group by
+        restricted.source_key,
+        restricted.restriction,
+        registered.basis_covers_own_words
 ),
 
 rule_five as (
@@ -288,10 +326,6 @@ rule_five as (
         ) as unanswered_restrictions
     from judged
     group by source_key
-),
-
-bases as (
-    select * from {{ ref('publishable_licence_bases') }}
 ),
 
 unregistered as (

@@ -1,5 +1,5 @@
 restriction,pattern,written_for,why
-not_a_restriction,"\b(none stated|copyrighttext|accessinformation|licenseinfo)\b",dec_lands,"The registry's own labels for where each quoted text was read"
+not_a_restriction,"\b(none stated|copyrighttext|accessinformation|licenseinfo)\b",buckeye_retail_map_outlines,"The registry's own labels for where each quoted text was read"
 not_a_restriction,"\b(provided|provides these geographic data|distributed|licensed) [""“'‘]?as[ -]is[""”'’]?( and [""“]?as available[""”]?)?",mohonk_preserve_boundary,"A warranty disclaimer: says what the data is not promised to be, restricts nothing. Decision 193 (the maintainer's poll, 2026-10-14) reads a warranty line by its class, so the phrase reads it however it is quoted, hyphenated or introduced: Indiana DNR's ""distributed “AS-IS”"" (in_dnr_open_trails) as Mohonk's ""provided 'as is'"""
 not_a_restriction,"\b(without|with no|no|any) (any )?(representation or )?(warranty|warranties|guarantees?)\b",nps_park_boundaries,"A warranty disclaimer"
 not_a_restriction,"\b(makes|make|gives|give|provide|provides) no (claims|warranty|warranties)\b",trta_special_management_areas,"A warranty disclaimer"

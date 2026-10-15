@@ -65,7 +65,10 @@ seeds:
       text matches. A class answer (decision 193: an ownership or copyright
       line on a public GIS item publishes) names `.*`, which every licence
       matches, so no row has to name it. No row answers `cannot_be_met` or
-      `unclassified`.
+      `unclassified`. A basis that is a maintainer's ruling on the dataset
+      itself answers its own words through publishable_licence_bases'
+      `covers_own_words_named_by` instead (decision 213, Q25), so no row
+      here repeats it.
     config:
       column_types:
         restriction: varchar

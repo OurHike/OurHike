@@ -485,12 +485,14 @@ def _network_old(name: str) -> dict:
 #: Why a network line's published id can differ between the two writers
 #: (TL05), by case. tests/test_dbt_trail_lines_network_parity.py holds each to
 #: a unit-test row where the two answer that way, so none outlives its reason.
+#: Each case is a line one side numbers by its place or its staging key: a line
+#: both sides publish under an id of its own is never explained, whatever the
+#: two ids are, because a phone joins a graph cell's edges to a tile's lines by
+#: that id (client/src/lib/lineClimb.ts) and keeps cells across releases. The
+#: GlobalID read in any case was explained here until 2026-10-15
+#: (`globalid_in_any_case`), which is how 72,618 lines of six layers on monthly
+#: run 30 passed the gate under ids no phone holds (tests/test_parity_line_ids.py).
 NETWORK_ID_REASONS = {
-    "globalid_in_any_case": (
-        "an improvement (TL05): the SQL reads a layer's GlobalID whatever its case, then its object id (OBJECTID or "
-        "FID), then Socrata's row id, where resolve_feature_id() matches only 'GlobalID' and falls back to the "
-        "feature's server row id or to its place in the file"
-    ),
     "feature_id_not_landed": (
         "expected by TL05's ledger row: the extract lands a feature's properties and geometry and not its GeoJSON "
         "id, so a line whose only id is a GeoJSON id that is not its layer's object id is numbered by its place in "
@@ -551,8 +553,11 @@ AS_LANDED_ID_REASON = (
 def _network_id_reasons(old: dict, new: dict) -> dict[str, str]:
     """The `properties.id` differences that are only a line's id, each with its reason.
 
-    A line is the same line in both files when its source, other properties and geometry are, and every id such a line
-    carries differently is explained by the case its ids show. Two positional ids for one line are never explained:
+    A line is the same line in both files when its source, other properties and geometry are, and an id such a line
+    carries differently is explained only where one side numbers it by place or by its staging key, by the case its
+    ids show. A line both sides publish under an id of its own, a GlobalID, an object id or a Socrata row id, is never
+    explained, whichever ids they are: that is the id a phone joins on (NETWORK_ID_REASONS). Two positional ids for one
+    line are never explained:
     where the dbt writer publishes one, it numbers the layer in its raw table's order, the fetched file's
     (int_trail_lines__network_judged's `source_row`), as today's exporter does, so a line they number differently is
     a defect. A layer whose staging model keeps no such order is published under its staging key (STAGING_KEY). A line
@@ -596,7 +601,7 @@ def _network_id_reasons(old: dict, new: dict) -> dict[str, str]:
                 continue  # an object id the dbt file numbers by place: a dropped column, never explained (docstring)
             case = "feature_id_not_landed"
         else:
-            case = "globalid_in_any_case"
+            continue  # an id of the line's own on both sides, and not the same one: never explained (docstring)
         for feature_id in set(was) | set(now):
             reasons[f"properties.id {feature_id}"] = NETWORK_ID_REASONS[case]
     return reasons

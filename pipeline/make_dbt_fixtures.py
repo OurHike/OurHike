@@ -1404,14 +1404,32 @@ def _registered_trail_lines_layer(key: str, name_field: str | None):
     The three with no name column get rows with no name key at all, which is
     their real shape and the one `declared_name`'s `name_constant` branch is
     for.
+
+    EACH ROW CARRIES ITS LAYER'S OBJECT ID under the name its sources.json row
+    gives it (`object_id_field`: OBJECTID, FID on cotrex_trails and
+    nc_mst_trail, OBJECTID_1 on pasda_dcnr_trails), which ArcGIS writes as the
+    feature's GeoJSON id and lib/feature_id.py publishes where a layer has no
+    `GlobalID`. Until 2026-10-15 all seventeen carried an OBJECTID, a column
+    cotrex_trails' and nc_mst_trail's live layers do not use as their object
+    id. A field that only looks like one, NOT_THE_OBJECT_ID's, is written
+    beside it with values the object id never takes.
     """
+    object_id_field = _registry_entry(key)["object_id_field"]
     rows = []
     for index in range(2):
-        row = {"OBJECTID": index + 1}
+        row = {object_id_field: index + 1}
+        if key in NOT_THE_OBJECT_ID:
+            row[NOT_THE_OBJECT_ID[key]] = OBJECT_ID_START + index
         if name_field is not None:
             row[name_field] = f"Fixture {key.replace('_', ' ').title()} {index + 1}"
         rows.append(row)
     return _features(rows, _line)
+
+
+#: A field named like an object id that is not the layer's: pasda_dcnr_trails' esriFieldTypeOID field is
+#: OBJECTID_1, beside an OBJECTID that is not its object id (pipeline/ELT.md's TL05, read 2026-10-08;
+#: tests/test_extract_pin.py), so a model reading OBJECTID there publishes the wrong id.
+NOT_THE_OBJECT_ID = {"pasda_dcnr_trails": "OBJECTID"}
 
 
 # Each layer's KEY columns, for the base models that key and dedupe it (pipeline/ELT.md, "One key per
@@ -1457,8 +1475,9 @@ KEY_FIELDS = {
 
 
 #: Where a network line layer's object id is numbered from when its builder writes none
-#: (_trail_lines_network_fixtures()): above every OBJECTID a builder writes, so pasda_dcnr_trails' OBJECTID_1 never
-#: equals the OBJECTID beside it, as on the live layer, and a model that read the wrong one would publish another id.
+#: (_trail_lines_network_fixtures()), and NOT_THE_OBJECT_ID's look-alike fields: above every object id a builder
+#: writes, so pasda_dcnr_trails' OBJECTID never equals its OBJECTID_1, as on the live layer, and a model that read the
+#: wrong one would publish another id.
 OBJECT_ID_START = 1000
 
 

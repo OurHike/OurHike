@@ -42,6 +42,11 @@ renamed as (
             'globalid',
         ]) }} as trail_segment_key,
         globalid,
+        -- The layer's object id (sources.json's `object_id_field`), which
+        -- ArcGIS writes as each feature's GeoJSON `id`: the id
+        -- lib/feature_id.py publishes a line under where it has no GlobalID
+        -- (TL05, int_trail_lines__network_judged's `published_id`).
+        objectid,
         name,
         alt_name,
         unit,

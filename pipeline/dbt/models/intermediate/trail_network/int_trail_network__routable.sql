@@ -31,6 +31,13 @@
 -- drops it before routable_lines() counts anything. The counts are not
 -- published yet (trail_graph_manifest.json's stats are stage 4's).
 --
+-- `trail_id` IS THE LINE'S PUBLISHED ID, the mart's `published_id`: the `id`
+-- nearby_trails.geojson and trails.geojson publish, which build_trail_graph.py
+-- copies onto every edge and a phone joins a graph cell's edges to a tile's
+-- lines by (client/src/lib/lineClimb.ts). `part_id`, and so every edge id
+-- after it, is built on `trail_line_id`, the mart's key, which stays as it
+-- was (TL05).
+--
 -- `part_order` is the part's place in routable_lines()' list, which is the
 -- order every later model and step_node_lines reads the parts in. Geometry
 -- is WKT text in lon/lat (a 2.0.6 unit test cannot hold a GEOMETRY), every
@@ -38,6 +45,7 @@
 with lines as (
     select
         trail_line_id,
+        published_id,
         club,
         source_key,
         _loaded_at,
@@ -105,7 +113,7 @@ routable as (
         row_number() over (order by line_order, part_index) - 1 as part_order,
         line_order,
         part_index,
-        trail_line_id as trail_id,
+        published_id as trail_id,
         source_key,
         club,
         _loaded_at,
@@ -124,7 +132,7 @@ refused_parts as (
         cast(null as bigint) as part_order,
         line_order,
         part_index,
-        trail_line_id as trail_id,
+        published_id as trail_id,
         source_key,
         club,
         _loaded_at,
@@ -143,7 +151,7 @@ refused_lines as (
         cast(null as bigint) as part_order,
         line_order,
         cast(null as bigint) as part_index,
-        trail_line_id as trail_id,
+        published_id as trail_id,
         source_key,
         club,
         _loaded_at,

@@ -112,6 +112,7 @@ chosen as (
 
 select
     trail_line_id,
+    published_id,
     club,
     source_key,
     _loaded_at,

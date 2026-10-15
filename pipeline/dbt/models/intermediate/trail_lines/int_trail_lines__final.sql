@@ -28,6 +28,7 @@
 with lines as (
     select
         trail_line_id,
+        published_id,
         club,
         source_key,
         _loaded_at,
@@ -54,6 +55,7 @@ with lines as (
     union all
     select
         trail_line_id,
+        published_id,
         club,
         source_key,
         _loaded_at,
@@ -80,6 +82,7 @@ with lines as (
     union all
     select
         trail_line_id,
+        published_id,
         club,
         source_key,
         _loaded_at,

@@ -94,6 +94,7 @@ lines as (
         judged.file_row,
         judged.duplicate_of as senior_source,
         judged.trail_line_id,
+        judged.published_id,
         judged.name,
         judged.trail_status,
         judged.trail_status_basis,
@@ -289,6 +290,7 @@ select
     lines.club,
     lines.file_row,
     lines.trail_line_id,
+    lines.published_id,
     case
         when coalesce(lines.name, '') = ''
             then coalesce(longest_name.junior_name, lines.name)

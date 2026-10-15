@@ -10,5 +10,5 @@ select
     trail_line.trail_status
 from {{ ref('trail_network') }} as edges
 inner join {{ ref('trail_lines', v=1) }} as trail_line
-    on edges.trail_id = trail_line.trail_line_id
+    on edges.trail_id = trail_line.published_id
 where lower(coalesce(trail_line.trail_status, '')) = 'closed'

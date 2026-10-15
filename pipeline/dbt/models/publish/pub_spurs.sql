@@ -7,7 +7,8 @@
 -- `destination_poi_id`, `junction_mile`, `length_ft` and `name`, and both
 -- levels' keys sorted, as json.dumps(sort_keys=True) sorts them (ids in
 -- code-point order, which DuckDB's byte order of UTF-8 text is). The client
--- reads `spurs[line.id]` for a line it drew (client/src/lib/lineDetail.ts).
+-- reads `spurs[line.id]` for a line it drew (client/src/lib/lineDetail.ts),
+-- so the key is the mart's `published_id`, the id trails.geojson publishes.
 --
 -- Written verbatim by phone_file's json_document format, because a file
 -- whose top-level keys are data has no column list (that format's header).
@@ -28,7 +29,7 @@ select
             map_from_entries(
                 list(
                     {
-                        'k': trail_line_id,
+                        'k': published_id,
                         'v': json_object(
                             'destination_distance_m',
                             spur_destination_distance_m,
@@ -38,7 +39,7 @@ select
                             'name', name
                         )
                     }
-                    order by trail_line_id
+                    order by published_id
                 )
             )
         ),

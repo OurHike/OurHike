@@ -11,9 +11,10 @@ by running the Python over each dbt unit test's own rows, one test per model:
   missing_declared_fields(), name_constant_conflicts() and dlt's own
   normalize_identifier() (TL01, TL08, TL09);
 - int_trail_lines__network_judged: keep_reason(), declared_name(),
-  load_boundary() and lib/feature_id.py (TL04-TL07, TL10, TL11, TL13, TL05),
-  where DELIBERATE_IDS holds the three id rows that differ on purpose and
-  parity.py's NETWORK_ID_REASONS has to name the same three cases;
+  load_boundary() and lib/feature_id.py's id, `published_id` (TL04-TL07,
+  TL10, TL11, TL13, TL05), where DELIBERATE_IDS holds the two id rows that
+  differ on purpose and parity.py's NETWORK_ID_REASONS has to name the same
+  two cases;
 - int_trail_lines__network_counts: count_problems();
 - int_trail_lines__network_deduplicated: deduplicate(), publication first;
 - int_trail_lines__network_area_closures: apply_area_closures(), NYS Parks'
@@ -283,6 +284,16 @@ def test_the_registry_checks_answer_what_the_python_answers():
                 source["key"],
                 field,
             )
+        # TL05's two fields: each one's column, the GeoJSON id's column (Socrata's row id, else the object id), and
+        # each declared one the layer did not land, global id first.
+        spelling, object_id = source.get("global_id_field"), source.get("object_id_field")
+        assert want["global_id_column"] == (naming.normalize_identifier(spelling) if spelling else None), source["key"]
+        socrata = source.get("kind") == "socrata_geojson_layer"
+        object_column = naming.normalize_identifier(object_id) if object_id else None
+        assert want["feature_id_column"] == ("_socrata_id" if socrata else object_column), source["key"]
+        columns = {name for props in landed.get(source["key"], []) for name in props}
+        missing_ids = [f for f in (spelling, object_id) if f and columns and naming.normalize_identifier(f) not in columns]
+        assert json.loads(want["missing_id_fields"]) == missing_ids, source["key"]
     assert [key for key, row in expected.items() if row["declares_name_twice"]] == export_nearby_trails.name_constant_conflicts(
         sources
     )
@@ -355,17 +366,20 @@ JUDGED = "int_trail_lines__network_judged_answers_what_keep_reason_answers"
 
 #: Unit-test rows whose published id the SQL and the Python build differently
 #: on purpose, by the parity reason each is (parity.py's NETWORK_ID_REASONS).
-#: Emptying this, or that, turns the tests below red.
+#: Each is a line one side numbers by place or staging key: a line both sides
+#: publish under an id of its own is never one. The GlobalID read in any case
+#: was a third until 2026-10-15, when `published_id` began reading it only
+#: where the layer spells it `GlobalID`. Emptying this, or that, turns the
+#: tests below red.
 DELIBERATE_IDS = {
-    "sql::a_globalid_in_capitals_is_still_the_id": "globalid_in_any_case",
     "sql::a_feature_id_the_extract_does_not_land": "feature_id_not_landed",
     "sql::a_line_with_no_id_and_no_file_order_takes_its_staging_key": "staging_key_for_a_line_with_no_id",
 }
 
-#: What the Python's feature carried that the warehouse does not: the
-#: GlobalID's own spelling, and the GeoJSON `id` the extract does not land.
+#: What the Python's feature carried that the warehouse does not: a GeoJSON
+#: `id` the extract does not land. The GlobalID's own spelling is the given
+#: source's `global_id_field`, as sources.json declares it.
 PYTHON_FEATURES = {
-    "sql::a_globalid_in_capitals_is_still_the_id": {"globalid": "GLOBALID"},
     "sql::a_feature_id_the_extract_does_not_land": {"feature_id": "row-7"},
 }
 
@@ -405,14 +419,14 @@ def test_keep_reason_declared_name_and_the_id_chain_answer_what_the_unit_test_ex
 
     for row in _rows(test, "int_trail_lines__network_unioned"):
         key, source = row["trail_segment_key"], sources[row["source_key"]]
+        source_row = source_rows[row["source_key"]]
         landed = json.loads(row["properties"])
-        properties = _registry_properties(source_rows[row["source_key"]], landed)
-        hints = PYTHON_FEATURES.get(key, {})
-        if "globalid" in properties:
-            properties[hints.get("globalid", "GlobalID")] = properties.pop("globalid")
-        # The GeoJSON `id` today's fetch writes is the layer's object id, under whichever of its two names it lands.
-        object_id = next((landed[name] for name in ("objectid", "fid") if landed.get(name) is not None), None)
-        feature_id = hints.get("feature_id", object_id)
+        properties = _registry_properties(source_row, landed)
+        # The GlobalID as the fetched feature carries it: under the spelling its layer's sources.json row declares.
+        if source_row["global_id_column"] in properties:
+            properties[source_row["global_id_field"]] = properties.pop(source_row["global_id_column"])
+        # The GeoJSON `id` today's fetch writes: the object id or Socrata row id, in the column the row names for it.
+        feature_id = PYTHON_FEATURES.get(key, {}).get("feature_id", landed.get(source_row["feature_id_column"]))
         geometry = shapely.from_wkt(row["geom"]) if row.get("geom") else None
         boundary, refused = boundaries[row["source_key"]]
         want = expected[key]
@@ -442,9 +456,9 @@ def test_keep_reason_declared_name_and_the_id_chain_answer_what_the_unit_test_ex
         with contextlib.redirect_stdout(io.StringIO()):
             python_id = f"{source['key']}:{resolve_feature_id(source['key'], {'id': feature_id} if feature_id is not None else {}, properties, row.get('source_row') or 0)}"
         if key in DELIBERATE_IDS:
-            assert want["trail_line_id"] != python_id, f"{key} is no longer a deliberate difference"
+            assert want["published_id"] != python_id, f"{key} is no longer a deliberate difference"
         else:
-            assert want["trail_line_id"] == python_id, key
+            assert want["published_id"] == python_id, key
 
 
 def test_every_deliberate_id_difference_is_a_reason_parity_names():
@@ -776,7 +790,10 @@ def _line(feature_id: str, name: str, coordinates: list) -> dict:
     }
 
 
-def test_parity_explains_an_id_only_difference_and_nothing_else():
+def test_parity_never_explains_a_line_both_files_publish_under_ids_of_its_own():
+    """Today's object id beside the dbt writer's GlobalID for one line, its other properties and geometry equal: the
+    pair parity explained as `globalid_in_any_case` until 2026-10-15, and a phone holding today's graph cells cannot
+    join the dbt writer's tiles by. Both ids are differences, unexplained (tests/test_parity_line_ids.py)."""
     family = parity.FAMILIES["nearby_trails"]
     old = {
         "type": "FeatureCollection",
@@ -787,10 +804,8 @@ def test_parity_explains_an_id_only_difference_and_nothing_else():
         "features": [_line("s:{G-1}", "A", [[0.0, 0.0], [1.0, 1.0]]), _line("s:2", "B renamed", [[2.0, 2.0], [3.0, 3.0]])],
     }
     found = parity.differences(old, new, family)
-    reasons = family.explained(old, new)
     assert {what for what, _, _ in found} == {"properties.id s:1", "properties.id s:{G-1}", "properties.id s:2"}
-    assert set(reasons) == {"properties.id s:1", "properties.id s:{G-1}"}
-    assert reasons["properties.id s:1"] == parity.NETWORK_ID_REASONS["globalid_in_any_case"]
+    assert family.explained(old, new) == {}
 
 
 def test_parity_explains_copies_of_one_line_the_dbt_writer_published_once_and_not_a_line_it_lost():
@@ -934,13 +949,14 @@ def test_parity_still_explains_a_place_beside_a_feature_id_that_is_not_an_object
 
 
 def test_parity_does_not_call_a_staging_key_what_a_line_with_a_globalid_publishes():
-    """A positional id beside an id of any other form is TL05's GlobalID case, never the staging key's."""
+    """A positional id beside a GlobalID is never the staging key's case, and since 2026-10-15 never explained at all:
+    a layer whose GlobalID is the id today's exporter publishes it there too, a property no as-landed copy drops."""
     line = [[0.0, 0.0], [1.0, 1.0]]
     reasons = parity._network_id_reasons(
         {"features": [_line("s:generated-0", "A", line)]},
         {"features": [_line("s:{0742349B-6D9A-3D7C-C353-F7E8F7EE3C9B}", "A", line)]},
     )
-    assert set(reasons.values()) == {parity.NETWORK_ID_REASONS["globalid_in_any_case"]}
+    assert reasons == {}
 
 
 def test_parity_explains_a_name_a_line_inherits_from_another_swallowed_copy_and_nothing_else():

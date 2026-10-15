@@ -9,6 +9,11 @@
 -- no kind defaulting to arcgis_feature_layer. Those layers are the network's
 -- (int_trail_lines__network_sources), clipped to their own ground.
 --
+-- `global_id_field` and `object_id_field` are the two fields
+-- lib/feature_id.py's id reads, as sources.json names them (TL05,
+-- macros/resolve_feature_id.sql): ATC spells its GlobalID `GlobalID`, so a
+-- side trail is published under it.
+--
 -- The Python finds a source's features at data/raw/<key>.geojson, so a new
 -- entry here would be read with no other change. A model cannot read a file
 -- it has no staging model for, so the test on `staged` stops the build
@@ -22,6 +27,8 @@ select
     file_row,
     json_extract_string(entry, '$.blaze_field') as blaze_field,
     json_extract_string(entry, '$.blaze_default') as blaze_default,
+    json_extract_string(entry, '$.global_id_field') as global_id_field,
+    json_extract_string(entry, '$.object_id_field') as object_id_field,
     source_key in ('centerline', 'side_trails') as staged
 from registry
 where

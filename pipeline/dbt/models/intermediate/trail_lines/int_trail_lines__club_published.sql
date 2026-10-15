@@ -188,6 +188,9 @@ chosen as (
 
 select
     chosen.source_key || ':' || chosen.trail_segment_key as trail_line_id,
+    -- No exporter publishes a club's own line (decision 64), so no phone
+    -- holds another id for it: its published id is its key.
+    chosen.source_key || ':' || chosen.trail_segment_key as published_id,
     chosen.club,
     chosen.source_key,
     chosen._loaded_at,

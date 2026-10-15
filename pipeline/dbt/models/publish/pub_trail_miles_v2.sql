@@ -33,7 +33,7 @@ trails_file as (
 
 coded as (
     select
-        trail_line_id,
+        published_id,
         feature_order,
         len(vertex_milli_miles) as vertex_count,
         list_transform(
@@ -60,7 +60,7 @@ from (
                 to_json(
                     map_from_entries(
                         list(
-                            { 'k': trail_line_id, 'v': deltas }
+                            { 'k': published_id, 'v': deltas }
                             order by feature_order
                         )
                     )

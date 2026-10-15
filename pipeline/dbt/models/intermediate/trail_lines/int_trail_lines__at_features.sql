@@ -15,7 +15,10 @@
 -- says where that was measured), so the second step reads the OBJECTID, and
 -- the third the row's place in the raw table. The centerline's segment ids
 -- are never published (its chains are numbered instead), so it takes no
--- OBJECTID step.
+-- OBJECTID step. `published_id` is that chain as the network's lines build
+-- it, macros/resolve_feature_id.sql over the registry's `global_id_field`
+-- (ATC's `GlobalID`, so the same id as `trail_line_id`, which stays the
+-- key) and the stg models' `objectid`, the field `object_id_field` names.
 --
 -- The name is the layer's `Name`, and the blaze int_trail_lines__blazes's,
 -- which is export_trails.normalize_source_features()'s decode.
@@ -39,6 +42,8 @@ staged as (
         trail_segment_key,
         'centerline' as source_key,
         coalesce(source_id, 'generated-' || source_row) as feature_id,
+        source_id as global_id,
+        cast(null as varchar) as object_id,
         name,
         cast(null as varchar) as trail_type,
         cast(null as double) as length_ft,
@@ -53,6 +58,8 @@ staged as (
         coalesce(
             source_id, cast(objectid as varchar), 'generated-' || source_row
         ) as feature_id,
+        source_id as global_id,
+        cast(objectid as varchar) as object_id,
         name,
         trail_type,
         length_ft,
@@ -71,6 +78,13 @@ select
     staged.source_row,
     staged.feature_id,
     staged.source_key || ':' || staged.feature_id as trail_line_id,
+    {{ resolve_feature_id(
+        'staged.source_key',
+        'sources.global_id_field',
+        'staged.global_id',
+        'staged.object_id',
+        'staged.source_row'
+    ) }} as published_id,
     staged.name,
     blazes.blaze_color,
     staged.trail_type,

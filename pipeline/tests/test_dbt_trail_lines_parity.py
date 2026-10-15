@@ -752,6 +752,8 @@ def test_the_at_features_rows_are_resolve_feature_ids_answers():
         resolved = str(resolve_feature_id(source, feature, properties, row["source_row"]))
         _compare(test["name"], key, resolved, expected[key]["feature_id"])
         assert expected[key]["trail_line_id"] == f"{source}:{expected[key]['feature_id']}", key
+        # The id trails.geojson and spurs.json publish, macros/resolve_feature_id.sql over ATC's declared `GlobalID`.
+        _compare(test["name"], key, f"{source}:{resolved}", expected[key]["published_id"], " published_id")
         assert expected[key]["source_order"] == order[source], key
         geometry = _geojson(row.get("geom"))
         is_line = geometry is not None and geometry["type"] in ("LineString", "MultiLineString")

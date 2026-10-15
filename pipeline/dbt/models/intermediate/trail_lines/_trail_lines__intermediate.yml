@@ -309,6 +309,24 @@ models:
         description: The field a feature's blaze is read from, where the source has one.
       - name: blaze_default
         description: The blaze of a feature that has none, where the source states one.
+      - name: global_id_field
+        description: >
+          The source's GlobalID field as the layer spells it (sources.json),
+          which resolve_feature_id() reads only where it is exactly
+          `GlobalID`.
+        data_tests:
+          - accepted_values:
+              arguments:
+                values: [GlobalID]
+      - name: object_id_field
+        description: >
+          The source's object id field (sources.json), whose value ArcGIS
+          writes as each feature's GeoJSON id. The A.T.'s staging models carry
+          it as `objectid`, so int_trail_lines__at_features reads that column.
+        data_tests:
+          - accepted_values:
+              arguments:
+                values: [OBJECTID]
       - name: staged
         description: >
           Whether a staging model lands the source's features. Only
@@ -329,7 +347,14 @@ models:
         description: The staging key.
         data_tests: [not_null, unique]
       - name: trail_line_id
-        description: "`<source>:<feature id>`, lib/feature_id.py's chain."
+        description: "`<source>:<feature id>`, lib/feature_id.py's chain, the row's key."
+        data_tests: [not_null, unique]
+      - name: published_id
+        description: >
+          The id trails.geojson and spurs.json publish for a side trail,
+          macros/resolve_feature_id.sql over the registry's id fields: the
+          same as `trail_line_id` while ATC spells its GlobalID `GlobalID`.
+          Never published for a centerline segment, whose chain is.
         data_tests: [not_null, unique]
       - name: feature_id
         description: >
@@ -652,7 +677,10 @@ models:
       for the mart.
     columns:
       - name: trail_line_id
-        description: The published feature id.
+        description: The side trail's key.
+        data_tests: [not_null, unique]
+      - name: published_id
+        description: The id trails.geojson and spurs.json publish for the side trail.
         data_tests: [not_null, unique]
 
   - name: int_trail_lines__at_published
@@ -668,7 +696,10 @@ models:
       export_nearby_trails._rounded_geometry cuts it.
     columns:
       - name: trail_line_id
-        description: The published feature id, as the trail_lines mart describes it.
+        description: The line's key, as the trail_lines mart describes it.
+        data_tests: [not_null, unique]
+      - name: published_id
+        description: The id trails.geojson publishes, as the trail_lines mart describes it.
         data_tests: [not_null, unique]
   - name: int_trail_lines__final
     description: >
@@ -679,6 +710,9 @@ models:
     columns:
       - name: trail_line_id
         description: The mart's key.
+        data_tests: [not_null, unique]
+      - name: published_id
+        description: The id a phone reads, as the trail_lines mart describes it.
         data_tests: [not_null, unique]
 
 unit_tests:

@@ -9,7 +9,9 @@
 -- - `edges`: one object per edge in edge_index order, its keys in
 --   build_graph()'s order, `from`, `to`, `length_m`, `trail_id`, `source`,
 --   `name`, `blaze_color`, every one present and null where unknown, as the
---   Python writes None.
+--   Python writes None. `trail_id` is the line's `published_id` in the
+--   trail_lines mart, the `id` nearby_trails.geojson publishes, which a
+--   phone joins each edge to its tile's line by (TL05).
 -- No vertices: those are trail_graph_geometry.json's, index-aligned with
 -- `edges` (pub_trail_graph_geometry), because the geometry is by far the
 -- heavier half and is only needed once the builder opens.

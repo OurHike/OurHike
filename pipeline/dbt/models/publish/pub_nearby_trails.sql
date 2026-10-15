@@ -14,7 +14,10 @@
 --
 -- THE PROPERTIES, records_to_geojson()'s:
 -- - `id`, `source`, `name` (null where nothing names the line, never left
---   out), `blaze_color`, `trail_status`;
+--   out), `blaze_color`, `trail_status`. `id` is the mart's `published_id`,
+--   today's exporter's id for the same feature (TL05), which the tiles cut
+--   from this file carry and a phone joins each graph edge's `trail_id` to;
+--   never `trail_line_id`, the row's key, which reads a GlobalID in any case;
 -- - `length_miles`, the 1 m line's own length in miles on the WGS84
 --   ellipsoid (`published_length_m`, decision 97), rounded to 2 decimals as
 --   Python's round() does (the printf cast, which the published model's
@@ -46,7 +49,7 @@ features as (
             'type', 'Feature',
             'properties', json_merge_patch(
                 json_object(
-                    'id', trail_line_id,
+                    'id', published_id,
                     'source', source_key,
                     'name', name,
                     'blaze_color', blaze_color,

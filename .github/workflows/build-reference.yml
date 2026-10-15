@@ -346,7 +346,13 @@ jobs:
       # target/run_results.json holds at the end, with the data-quality
       # file's added, though that file's pass runs after them
       # (build_marts.py's docstring, "THE DATA-QUALITY FILE IS WRITTEN
-      # LAST"). Its steps land the pin's
+      # LAST"). Before that pass it runs `dbt source freshness` over the
+      # monthly lane's sources, 472 (Measured 2026-10-15, dbt ls) (decision 203:
+      # how long since this lane's extract last read each one or confirmed
+      # it unchanged, warning at 35 days and red at 62), which the monthly
+      # data-quality page records and which never fails this step
+      # (build_marts.py's docstring, "EACH SOURCE'S FRESHNESS IS MEASURED FOR
+      # THE DATA-QUALITY FILE"). Its steps land the pin's
       # water scans, which the step above wrote under data/raw/derived/
       # (build_marts.py's lane_args for step_osm_water and step_site_water).
       #

@@ -38,10 +38,14 @@
 #      leg read (hand_off.py says why);
 #   2. runs `build_marts.py --lane hourly --checks-only`: Elementary's history
 #      restored alone, from the save the build just made; Elementary's own
-#      tables with the checks' switch; every check the lane has; the lane's
-#      data-quality file, counting the build's results and the checks'; and
-#      Elementary's history saved back, so the next hour's checks learn
-#      from this one;
+#      tables with the checks' switch; every check the lane has; each
+#      source's freshness, on publish-conditions.yml's own freshness step's
+#      selection (decision 203: how long since the extract last read each
+#      source or confirmed it unchanged, against its own limits), recorded
+#      on the page and never turning this run red, since that step is the
+#      one that does (decision 100); the lane's data-quality file, counting
+#      the build's results, the checks' and the freshness; and Elementary's
+#      history saved back, so the next hour's checks learn from this one;
 #   3. puts conditions/data_quality.json in place under the leg's prefix
 #      (`publish.py --sidecar`): the one object it writes, page data for
 #      ourhike.org/data/quality/, in no manifest's artifacts. It writes no
@@ -406,8 +410,14 @@ jobs:
       # (run 593's 31.8 s without it, times the 86 s against 47 s the
       # sandbox measured with and without it); the data-quality pass, 13.8 s
       # in run 593; and Elementary's history, restored in 1.45 s there and
-      # saved in a few: 8.5 to 12 minutes in all. The step's summary line
-      # settles it.
+      # saved in a few: 8.5 to 12 minutes in all. The sources' freshness
+      # adds about what publish-conditions.yml's own freshness step takes, 11
+      # s for 267 sources in a sandbox (its comment), and its end-of-run hook
+      # writing one row a source; dropping decision 203's 597 learned
+      # freshness checks took more than that away (0.32 to 0.35 s of CPU a
+      # check, build_marts.py's docstring). The step's summary line settles
+      # it. A source past its error limit never fails this step:
+      # build_marts.py records the freshness run's exit and goes on.
       - name: Run every check of the hourly lane, and write the data-quality file
         id: checks
         if: steps.take.outputs.taken == 'true'

@@ -160,14 +160,30 @@ export interface PublishedRead<T> {
 }
 
 /**
+ * What a file that arrived carries over from the copy this phone kept, given
+ * both documents as they are stored: the document to parse and keep in its
+ * place. `kept` is null when this phone kept none. lib/publishedNotices.ts's
+ * `keepUncutAreas` is the one today.
+ */
+export type CarryFromKept = (
+  arrived: Record<string, unknown>,
+  kept: Record<string, unknown> | null,
+) => Record<string, unknown>
+
+/**
  * `fetchPublished` with the reason a read came back empty: one path, so
  * that the two can never disagree about what a 404 or a dead spot returns.
+ *
+ * `carry`, when given, rewrites a file that arrived before it is parsed and
+ * kept, from the copy kept before it, so what the phone keeps is what it
+ * shows.
  */
 export async function readPublished<T>(
   key: string,
   field: PublishedField,
   signal?: AbortSignal,
   options: PublishedReadOptions = {},
+  carry?: CarryFromKept,
 ): Promise<PublishedRead<T>> {
   if (!DATA_CONFIGURED) return { published: null, notServed: true }
 
@@ -186,7 +202,11 @@ export async function readPublished<T>(
       return { published: kept, notServed: kept === null && response.status === 404 }
     }
 
-    const document = (await response.json()) as Record<string, unknown>
+    const arrived = (await response.json()) as Record<string, unknown>
+    const document =
+      carry === undefined
+        ? arrived
+        : carry(arrived, (await recallPublished(key))?.document ?? null)
     const parsed = parsePublished<T>(document, field)
     // Kept only when it parsed. Storing bytes this build cannot read would
     // give the next offline session a copy that fails the same way, with the

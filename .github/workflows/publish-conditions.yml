@@ -1355,11 +1355,15 @@ jobs:
       # the run's summary, naming both, and never stops the build for it. Run
       # 676 (2026-10-15) restored release 2026-10-10-2's entry, which was UA's
       # current release that morning (Measured: its log, and UA's
-      # latest.json read the same day). With no entry at all (the first hours
-      # after this lands, or production, whose latest.json named no release
-      # on 2026-10-11, and which publish-weather.yml does not prepare) it
+      # latest.json read the same day). Production's entries come from
+      # publish-weather.yml's `production-lines` job (decision 213, Q11),
+      # which prepares nothing while production's latest.json names no
+      # release (none did on 2026-10-15). With no entry at all (the first
+      # hours after this lands, or production before its first release) it
       # lands none and warns: every line and point closure still publishes,
-      # and every area closure, crossed out or shaded, misses the hour.
+      # every area closure, crossed out or shaded, misses the hour, and
+      # conditions/trail_closures.json says so (`areas_cut` false, the areas
+      # in `uncut_areas`), so a phone keeps the areas it last drew.
       #
       # ONE MINUTE, AND NEVER A FAILED JOB (review finding S2-7, the same
       # review). Run 676 restored 86,479,282 bytes in 1.4 s (Measured, its

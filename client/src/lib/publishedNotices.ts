@@ -492,10 +492,62 @@ export function validTrailClosure(value: unknown): TrailClosure | null {
   return { ...notice, place, shape: shape as ClosureShape }
 }
 
+/** The shapes an area closure is drawn as: its trails crossed out, or itself shaded. */
+const AREA_SHAPES: ReadonlySet<unknown> = new Set(['area', 'shade'])
+
+/**
+ * conditions/trail_closures.json as it arrived, with the area closures it
+ * could not draw this hour carried over from the copy this phone kept
+ * (decision 213, Q11, the maintainer's poll of 2026-10-15, "Now, in this
+ * PR"). pipeline/dbt's pub_conditions_trail_closures lists in `uncut_areas`
+ * every area closure standing this hour that its cut has no row for: all of
+ * them in an hour with no trail lines to cut against (`areas_cut` false),
+ * which on production is every hour until its lines are prepared. Without
+ * this, a phone that refreshed in such an hour kept a file with no area in
+ * it and drew none until it next connected.
+ *
+ * For each id listed, the area or shade row the kept copy holds for it is
+ * added after the file's own rows, as it was, unless the file already holds
+ * a row of that id. An id the kept copy has no area row for adds nothing:
+ * there is no drawing to keep, and none is guessed. A closure lifted since
+ * the kept copy is listed nowhere, so it is not carried and leaves the map
+ * with the file that leaves it out, as on any hour. A file with no
+ * `uncut_areas` (one written before it, or a cut hour with every area drawn)
+ * is kept exactly as it arrived.
+ *
+ * What a carried row shows is the kept copy's: its trail stretches and its
+ * words as of the hour they were cut, under the newer file's `generated_at`.
+ */
+export function keepUncutAreas(
+  arrived: Record<string, unknown>,
+  kept: Record<string, unknown> | null,
+): Record<string, unknown> {
+  const { closures, uncut_areas: uncut } = arrived
+  if (kept === null || !Array.isArray(closures) || !Array.isArray(uncut)) return arrived
+  if (!Array.isArray(kept.closures)) return arrived
+  const listed = new Set(uncut.filter((id): id is string => typeof id === 'string'))
+  const present = new Set(
+    closures.map((row) => (row as Record<string, unknown> | null)?.notice_id),
+  )
+  const carried = kept.closures.filter((row: unknown) => {
+    if (typeof row !== 'object' || row === null) return false
+    const { notice_id: id, shape } = row as Record<string, unknown>
+    return (
+      typeof id === 'string' &&
+      listed.has(id) &&
+      !present.has(id) &&
+      AREA_SHAPES.has(shape)
+    )
+  })
+  if (carried.length === 0) return arrived
+  return { ...arrived, closures: [...closures, ...carried] }
+}
+
 /**
  * conditions/trail_closures.json's closures (the maintainer's S6), or null if
  * there isn't a usable file. Every row the map cannot draw is refused one at
- * a time (`validTrailClosure`), never the file.
+ * a time (`validTrailClosure`), never the file. An area closure the file
+ * could not draw this hour is the one the kept copy drew (`keepUncutAreas`).
  *
  * Null on a bucket without the file, which on a 404 or in a dead spot is the
  * copy this phone kept (#447 — The closures baseline is unavailable in
@@ -516,11 +568,12 @@ export async function fetchPublishedTrailClosures(
   options?: PublishedReadOptions,
 ): Promise<PublishedConditions<TrailClosure> | null> {
   const { signal, clear } = deadline(MANIFEST_READ_TIMEOUT_MS)
-  const published = await fetchPublished<unknown>(
+  const { published } = await readPublished<unknown>(
     PUBLISHED_TRAIL_CLOSURES_KEY,
     'closures',
     signal,
     options,
+    keepUncutAreas,
   ).finally(clear)
   if (published === null) return null
   const items: TrailClosure[] = []

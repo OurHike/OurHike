@@ -260,3 +260,85 @@ jobs:
           R2_ACCESS_KEY_ID: ${{ secrets.R2_ACCESS_KEY_ID }}
           R2_SECRET_ACCESS_KEY: ${{ secrets.R2_SECRET_ACCESS_KEY }}
         run: python publish.py
+
+  # PRODUCTION'S TRAIL LINES, FOR publish-conditions.yml'S PRODUCTION LEG
+  # (decision 213, Q11, the maintainer's poll of 2026-10-15, "Now, in this
+  # PR"). The build job above prepares UA's release alone, so the
+  # conditions job's production leg found no entry and cut no area: once
+  # production publishes conditions/trail_closures.json from dbt, every one
+  # of its hours would leave every area closure out (#1811 — Fast follows
+  # after PR #1805's dlt → dbt re-platform, section 5 of its comment of
+  # 2026-10-14). This prepares production's current release the same way,
+  # under `closure-trail-lines-v2-production-<release>-`, the prefix that
+  # leg restores (.github/tests/test_closure_trail_lines_cache.py holds the
+  # two to each other).
+  #
+  # A JOB OF ITS OWN, SO IT CAN NEVER DELAY OR STOP A FORECAST: the publish
+  # job needs only `build`, and nothing here publishes. It reads
+  # production's public latest.json and release files and writes an Actions
+  # cache entry, nothing else, so it carries no secret and no environment
+  # gate, as the build job's UA steps carry none. Production's latest.json
+  # named no release on 2026-10-15 (read that evening), and then this
+  # prepares nothing and says so; the first hour after a release reaches
+  # production it downloads that release's two line files (141 MB and 1.6
+  # MB on the wire for UA's 2026-10-10-2) and prepares them, in the 101.4 to
+  # 130.6 s prepare_closure_trail_lines.py took for UA's (Measured
+  # 2026-10-11), within the same five-minute cap. Every other hour it is one
+  # latest.json request and one cache lookup.
+  production-lines:
+    name: Prepare production's trail lines for the closures' cut
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    defaults:
+      run:
+        working-directory: pipeline
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/setup-python@v7
+        with:
+          python-version: "3.14"
+          cache: pip
+          cache-dependency-path: pipeline/requirements.txt
+
+      - name: Install dependencies
+        run: pip install -r requirements.txt
+
+      - name: Name production's current release, for the closure trail lines
+        id: lines-release
+        continue-on-error: true
+        timeout-minutes: 1
+        env:
+          OURHIKE_DATA_ENV: production
+          DATA_BASE_URL: ${{ vars.DATA_BASE_URL }}
+        run: python prepare_closure_trail_lines.py --release-output "$GITHUB_OUTPUT"
+
+      - name: Look for the release's closure trail lines
+        id: lines-cache
+        if: ${{ !cancelled() && steps.lines-release.outputs.release != '' }}
+        uses: actions/cache/restore@v6
+        with:
+          path: |
+            pipeline/data/raw/closure_trail_lines/lines.parquet
+            pipeline/data/raw/closure_trail_lines/release.json
+          key: closure-trail-lines-v2-production-${{ steps.lines-release.outputs.release }}-${{ hashFiles('pipeline/prepare_closure_trail_lines.py') }}
+          lookup-only: true
+
+      - name: Prepare the release's trail lines for the closures' cut
+        id: lines
+        if: ${{ !cancelled() && steps.lines-release.outputs.release != '' && steps.lines-cache.outputs.cache-hit != 'true' }}
+        continue-on-error: true
+        timeout-minutes: 5
+        env:
+          OURHIKE_DATA_ENV: production
+          DATA_BASE_URL: ${{ vars.DATA_BASE_URL }}
+        run: python prepare_closure_trail_lines.py
+
+      - name: Save the release's closure trail lines
+        if: always() && steps.lines.outcome == 'success' && steps.lines-release.outputs.release != '' && hashFiles('pipeline/prepare_closure_trail_lines.py') != '' && hashFiles('pipeline/data/raw/closure_trail_lines/release.json') != ''
+        uses: actions/cache/save@v6
+        with:
+          path: |
+            pipeline/data/raw/closure_trail_lines/lines.parquet
+            pipeline/data/raw/closure_trail_lines/release.json
+          key: closure-trail-lines-v2-production-${{ steps.lines-release.outputs.release }}-${{ hashFiles('pipeline/prepare_closure_trail_lines.py') }}

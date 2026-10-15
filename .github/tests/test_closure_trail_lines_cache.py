@@ -72,9 +72,40 @@ def test_the_weather_job_looks_up_and_saves_one_key_over_the_paths_the_condition
     )
 
 
+def test_the_weather_workflow_prepares_productions_lines_under_the_key_the_production_leg_restores():
+    """Decision 213, Q11: the conditions job's production leg restores `<PREFIX>production-`, so an hour there cuts its
+    areas only if something saves under that prefix, which the build job, preparing UA's release, never does."""
+    lookup, save = _caching(_steps(WEATHER, "production-lines"))
+    (restore,) = _caching(_steps(CONDITIONS, "publish"))
+
+    assert lookup["uses"].startswith("actions/cache/restore") and lookup["with"].get("lookup-only") is True
+    assert save["uses"].startswith("actions/cache/save")
+    assert _paths(lookup) == _paths(save) == _paths(restore) == PATHS
+    assert lookup["with"]["key"] == save["with"]["key"]
+    assert save["with"]["key"].startswith(f"{PREFIX}production-")
+    restored = restore["with"]["restore-keys"].replace("${{ matrix.data_environment }}", "production")
+    assert save["with"]["key"].startswith(restored)
+    for step in _steps(WEATHER, "production-lines"):
+        if "prepare_closure_trail_lines.py" in str(step.get("run", "")):
+            assert step["env"]["OURHIKE_DATA_ENV"] == "production", step["name"]
+            assert step.get("continue-on-error") is True and step.get("timeout-minutes"), step["name"]
+
+
+def test_preparing_productions_lines_never_delays_a_forecast_and_publishes_nothing():
+    """Its own job, which the publish job does not wait for, holding no secret: it reads production's public files
+    and writes a cache entry, and a slow or failed run costs the next conditions hour its new lines, never a forecast."""
+    workflow = yaml.safe_load(WEATHER.read_text(encoding="utf-8"))
+    job = workflow["jobs"]["production-lines"]
+    needs = workflow["jobs"]["publish"].get("needs")
+
+    assert "production-lines" not in ([needs] if isinstance(needs, str) else list(needs or []))
+    assert "secrets." not in yaml.safe_dump(job)
+    assert not any("publish.py" in str(step.get("run", "")) for step in job["steps"])
+
+
 def test_every_key_on_either_side_names_the_scripts_schema():
     """No step of either workflow keys the lines without the schema, so none can restore or save an older one's."""
-    for workflow, job in ((WEATHER, "build"), (CONDITIONS, "publish")):
+    for workflow, job in ((WEATHER, "build"), (WEATHER, "production-lines"), (CONDITIONS, "publish")):
         for step in _steps(workflow, job):
             settings = step.get("with") or {}
             for field in ("key", "restore-keys"):

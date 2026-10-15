@@ -30,8 +30,10 @@ THE STORE AT URL, a local directory, a file:// URL or s3://<bucket>/<prefix>:
 history.json names the current save, the save before it, and for every
 snapshot table its file, row count, sha256 and history start (its earliest
 dbt_valid_from: a row first seen then was already upstream when history
-began). The newest KEEP_SAVES folders are kept, so a save that recorded a bad
-load can be undone by pointing history.json at the one before.
+began). The newest keep_saves() folders are kept, so a save that recorded a bad
+load can be undone by pointing history.json at the one before: KEEP_SAVES (24)
+unless row_history_stores.toml's [keep_saves] names the store, which it does
+for `monthly`, 3 (decision 206; prune_raw_store.py reads the same row).
 
 s3:// goes through s3fs, with the credentials the workflows already give the
 raw store's key for dlt (DESTINATION__FILESYSTEM__CREDENTIALS__AWS_ACCESS_KEY_ID,
@@ -283,6 +285,7 @@ from pathlib import Path
 from urllib.parse import unquote, urlsplit
 
 import duckdb
+import tomllib
 
 # _quote() lived here; it moved to lib/store_names.py so extract/_warehouse.py quotes with the same function.
 from lib.store_names import StoreNameRefused, relative_path, table_name
@@ -300,10 +303,19 @@ RECEIPT_TABLE = "restored"
 POINTER = "history.json"
 SAVES = "saves"
 FORMAT = 1
-#: How many save folders stay in the store, the current one included. @unvalidated: two years of monthly saves
-#: and a day of hourly ones, a round number. How long a bad load goes unnoticed before someone points
-#: history.json back, which nobody has measured, would settle it. Elementary's folders keep the same number.
+#: How many save folders stay in a store, the current one included, unless row_history_stores.toml's [keep_saves]
+#: names the store (keep_saves()). Elementary's folders keep the same number. The hourly stores keep this:
+#: @unvalidated, a day of hourly saves, a round number, and how long a bad load goes unnoticed before someone points
+#: history.json back, which nobody has measured, would settle it. The monthly store keeps 3, the newest and two
+#: back (decision 206, the maintainer's poll of 2026-10-15, "3 saves"), asked when its 6 saves held about 16 GB
+#: (Reasoned from Actions logs and two listings of the bucket, not a listing of the store itself).
 KEEP_SAVES = 24
+#: The fewest a store may keep: the current save and the one it was built on, the way back (keep_saves() refuses
+#: fewer, since a slice of the newest none would keep every folder and of a negative number the oldest).
+MIN_KEEP_SAVES = 2
+#: Each store's own settings, by its name (store_name()): build_marts.py reads its [started] and
+#: [elementary_started], keep_saves() its [keep_saves], and prune_raw_store.py reads keep_saves() too.
+STORES_FILE = Path(__file__).with_name("row_history_stores.toml")
 
 #: How many times Store.get tries a download from an s3:// store before its failure stands, and the seconds before the
 #: second try (twice that before the third). s3fs 2026.9.0's get_file() fetches a file larger than its 50 MB block as
@@ -638,9 +650,28 @@ def _new_save_id() -> str:
     return datetime.now(UTC).strftime("%Y%m%dT%H%M%S%fZ") + "-" + secrets.token_hex(3)
 
 
-def _prune(store: Store, folder: str, save_id: str, kept: str | None) -> None:
-    """Remove `folder`'s saves beyond the newest KEEP_SAVES, never this save or the one it was built on."""
-    for old in store.save_folders(folder)[:-KEEP_SAVES]:
+def store_name(url: str) -> str:
+    """A store's name in row_history_stores.toml: the last part of its URL, `monthly` for s3://<bucket>/history/monthly
+    (build_marts.py's history_store_name(), which imports only the standard library; tests hold the two equal)."""
+    return url.rstrip("/").rsplit("/", 1)[-1]
+
+
+def keep_saves(name: str, path: Path | None = None) -> int:
+    """How many save folders the store `name` keeps, its current one included: row_history_stores.toml's [keep_saves]
+    row for it, else KEEP_SAVES. Elementary's folders keep the same number. Refused below MIN_KEEP_SAVES."""
+    path = path or STORES_FILE
+    value = tomllib.loads(path.read_text(encoding="utf-8")).get("keep_saves", {}).get(name, KEEP_SAVES)
+    if isinstance(value, bool) or not isinstance(value, int) or value < MIN_KEEP_SAVES:
+        raise Refused(
+            f"{path.name}'s [keep_saves] gives {name} {value!r}: a store keeps at least {MIN_KEEP_SAVES} saves, the "
+            "current one and the one it was built on"
+        )
+    return value
+
+
+def _prune(store: Store, folder: str, save_id: str, kept: str | None, keep: int) -> None:
+    """Remove `folder`'s saves beyond the newest `keep` (keep_saves()), never this save or the one it was built on."""
+    for old in store.save_folders(folder)[:-keep]:
         if old not in (save_id, kept):
             store.remove_save(old, folder)
 
@@ -1010,7 +1041,7 @@ def _by_table(counts: dict[str, int]) -> str:
     return ", ".join(f"{table} {rows:,}" for table, rows in sorted(counts.items()))
 
 
-def _write_rows(store: Store, url: str, con: duckdb.DuckDBPyConnection, plan: _RowsSave, save_id: str) -> str:
+def _write_rows(store: Store, url: str, con: duckdb.DuckDBPyConnection, plan: _RowsSave, save_id: str, keep: int) -> str:
     started = time.monotonic()
     entries = {}
     with tempfile.TemporaryDirectory() as scratch:
@@ -1033,7 +1064,7 @@ def _write_rows(store: Store, url: str, con: duckdb.DuckDBPyConnection, plan: _R
         "tables": entries,
     }
     store.write_text(POINTER, json.dumps(pointer, indent=2, sort_keys=True) + "\n")
-    _prune(store, SAVES, save_id, plan.restored_save)
+    _prune(store, SAVES, save_id, plan.restored_save, keep)
     return (
         f"saved {len(entries)} snapshot tables, {sum(plan.counts.values())} rows ({_by_table(plan.counts)}), to {url} "
         f"as save {save_id}, in {time.monotonic() - started:.2f} s"
@@ -1133,6 +1164,8 @@ def save(
     cutoff = now - timedelta(days=keep_days)
     store = Store(url)
     store.check_reachable()
+    # The store's own count, read before anything is written, so a bad [keep_saves] row refuses the save whole.
+    keep = keep_saves(store_name(url))
     failure = None
     lines = []
     with duckdb.connect(str(warehouse)) as con:
@@ -1161,7 +1194,7 @@ def save(
                 if elementary_on_failure != "degrade":
                     raise
                 failure = _failure(error)
-        lines.insert(0, _write_rows(store, url, con, rows, save_id))
+        lines.insert(0, _write_rows(store, url, con, rows, save_id, keep))
     if failure is not None:
         failure += (
             f". The row history was saved; Elementary's history was not, and {ELEMENTARY_POINTER} keeps naming its "
@@ -1169,7 +1202,7 @@ def save(
         )
     elif written:
         try:
-            _prune(store, ELEMENTARY_SAVES, save_id, elementary.restored_save)
+            _prune(store, ELEMENTARY_SAVES, save_id, elementary.restored_save, keep)
         except Exception as error:  # noqa: BLE001 - as above
             if elementary_on_failure != "degrade":
                 raise
@@ -1203,6 +1236,7 @@ def save_elementary(
     try:
         store = Store(url)
         store.check_reachable()
+        keep = keep_saves(store_name(url))
         with duckdb.connect(str(warehouse)) as con:
             plan = _check_elementary_save(store, url, con, warehouse, alone=True)
             if plan is None:
@@ -1224,7 +1258,7 @@ def save_elementary(
     if not written:
         return line
     try:
-        _prune(store, ELEMENTARY_SAVES, save_id, plan.restored_save)
+        _prune(store, ELEMENTARY_SAVES, save_id, plan.restored_save, keep)
     except Exception as error:  # noqa: BLE001 - as above
         if elementary_on_failure != "degrade":
             raise

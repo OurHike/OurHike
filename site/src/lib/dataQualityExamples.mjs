@@ -15,8 +15,15 @@
 //
 // TWO SHAPES OF FILE. The light examples are the contract's first shape: no
 // `in_needs_a_look`, no `metric` on most entries, no `mart` on a series, a
-// series only behind a volume or freshness entry - what an older file looks
-// like, which the page still reads whole. monthlyManyProblems and
+// series only behind a volume entry - what an older file looks like, which
+// the page still reads whole.
+//
+// A SOURCE'S FRESHNESS IS dbt's SINCE DECISION 203 (2026-10-15): an entry of
+// metric `last_read_age`, the seconds since OurHike last read the source or
+// confirmed it unchanged, its `expected_max` the source's error limit, and
+// no series, as pipeline/dbt/macros/data_quality.sql writes it ("FRESHNESS").
+// The limits here are the pipeline's: 24 hours for an hourly notice source,
+// 2 for NWS's alerts, 48 for a daily source, 62 days for a monthly one. monthlyManyProblems and
 // hourlyManyProblems are the shape the maintainer's round-3 choice asked for
 // (2026-10-08): a series for every mart's row count and for every entry with
 // a history, each flagged `in_needs_a_look` and naming its `mart`, every
@@ -43,6 +50,24 @@ const MONTHLY_ROWS = [5231, 5240, 5236, 5252, 5249, 5261, 5270, 5268, 5279, 5285
  * pipeline/dbt/dbt_project.yml has the measurement).
  */
 export const NEEDED = 11;
+
+const HOUR_S = 3600;
+const DAY_S = 24 * HOUR_S;
+/** A source's freshness entry as the pipeline writes it (the header, "A SOURCE'S FRESHNESS"). */
+function lastRead(table, status, seconds, limit) {
+  return {
+    kind: "freshness",
+    table,
+    column: null,
+    status,
+    value: seconds,
+    expected_min: null,
+    expected_max: limit,
+    since: null,
+    metric: "last_read_age",
+    test: "source_freshness",
+  };
+}
 
 /**
  * The band Elementary 0.26.0 stores at each point, the one it scored that
@@ -221,18 +246,8 @@ export function hourlyWithWarning() {
     totals: totalOf(byKind),
     kinds: byKind,
     learning: { builds: 168, needed: NEEDED },
-    needs_a_look: [
-      {
-        kind: "freshness",
-        table: "preview_fixture__alerts",
-        column: null,
-        status: "warn",
-        value: 93_600,
-        expected_min: 600,
-        expected_max: 43_200,
-        since: "2026-10-06T21:05:00Z",
-      },
-    ],
+    // Read 13 hours ago: past its 12-hour warning, inside its 24-hour limit.
+    needs_a_look: [lastRead("preview_fixture__alerts", "warn", 13 * HOUR_S, 24 * HOUR_S)],
     series: [],
     by_mart: marts(HOURLY_MARTS),
   };
@@ -393,7 +408,7 @@ export function monthlyManyProblems() {
   );
   items.push(entry("volume", "preview_fixture_30__trails", "error", { metric: "row_count", since: at }));
   items.push(entry("volume", "preview_fixture_05__parking", "error", { metric: "row_count", since: at }));
-  items.push(entry("freshness", "preview_fixture_29__trails", "error", { metric: "freshness", since: at }));
+  items.push(entry("freshness", "preview_fixture_29__trails", "error", { metric: "last_read_age", test: "source_freshness" }));
   items.push(entry("anomalies", "elevation", "error", { column: "loss_ft", metric: "average", since: at }));
 
   [
@@ -418,21 +433,14 @@ export function monthlyManyProblems() {
       }),
     ),
   );
+  // Five monthly sources past their 35-day warning, inside their 62-day limit: no history, so no series.
   [
-    ["preview_fixture_02__trails", 30, 41],
-    ["preview_fixture_14__shelters", 30, 63],
-    ["preview_fixture_08__viewpoints", 31, 52],
-    ["preview_fixture_23__water_sources", 30, 47],
-    ["preview_fixture_17__trailheads", 31, 90],
-  ].forEach(([table, level, last], i) =>
-    add(
-      withHistory("freshness", table, "warn", {
-        metric: "freshness",
-        points: monthly(level * DAY, last * DAY, 200 + i, { jitter: 0.04 }),
-        since: at,
-      }),
-    ),
-  );
+    ["preview_fixture_02__trails", 41],
+    ["preview_fixture_14__shelters", 59],
+    ["preview_fixture_08__viewpoints", 52],
+    ["preview_fixture_23__water_sources", 47],
+    ["preview_fixture_17__trailheads", 36],
+  ].forEach(([table, days]) => items.push(lastRead(table, "warn", days * DAY_S, 62 * DAY_S)));
   for (const [table, column] of [
     ["preview_fixture_03__trails", "trail_class"],
     ["preview_fixture_12__shelters", "capacity"],
@@ -500,13 +508,11 @@ export function hourlyManyProblems() {
     items.push(one);
     series.push(own);
   };
-  [
-    ["preview_fixture_19__closures", 6 * HOUR, 26 * HOUR, "2026-10-06T21:05:00Z"],
-    ["preview_fixture_07__alerts", 1.5 * HOUR, 9 * HOUR, at],
-    ["preview_fixture_24__notices", 9 * HOUR, 50 * HOUR, at],
-  ].forEach(([table, level, last, since], i) =>
-    add(withHistory("freshness", table, "warn", { metric: "freshness", points: week(level, last, 500 + i, { jitter: 0.25 }), since })),
-  );
+  // Three sources past their warnings: an hourly club's notices, NWS-like alerts against their 2 hours, and a daily
+  // source's notices against its 48 hours.
+  items.push(lastRead("preview_fixture_19__closures", "warn", 13 * HOUR_S, 24 * HOUR_S));
+  items.push(lastRead("preview_fixture_07__alerts", "warn", 1.5 * HOUR_S, 2 * HOUR_S));
+  items.push(lastRead("preview_fixture_24__notices", "warn", 40 * HOUR_S, 48 * HOUR_S));
   [
     ["preview_fixture_19__closures", 17, 0],
     ["warnings", 955, 1410],

@@ -209,11 +209,13 @@ describe("the page, state by state", () => {
     expect(view.cards[0].learning.detail).toBe(
       "Its anomaly checks compare each build with the ones before it, and can't flag anything until they have 11 builds, this one included. Until then they pass even if something is wrong.",
     );
-    for (const id of ["freshness", "volume", "anomalies"]) {
+    for (const id of ["volume", "anomalies"]) {
       expect(tile(view, id).learning).toBe(
         "Learning, 3 of 11 monthly builds: until then its anomaly checks can't flag anything.",
       );
     }
+    // Each source's freshness has a fixed limit since decision 203, so its passes mean what they say from the start.
+    expect(tile(view, "freshness").learning).toBeNull();
     expect(tile(view, "schema").learning).toBeNull();
     expect(tile(view, "dbt_tests").learning).toBeNull();
     expect(view.sections.quiet).toContain("still learning");
@@ -278,14 +280,13 @@ describe("the page, state by state", () => {
         "Null rate: 4.2% in this build, flagged as high. No earlier range to compare it with.",
       );
       expect(columns).toBe("Its columns changed since the last build.");
-      expect(late).toBe(
-        "26 hours between updates in this build, flagged as high. No earlier range to compare it with.",
-      );
+      // A source's freshness (decision 203) in the maintainer's frame's words, and no since: the value is how long.
+      expect(late).toBe("Read or confirmed 13 h ago · limit 24 h.");
       expect(view.sections.items.map((item) => item.since)).toEqual([
         "Since this build",
         "Since 7 Sep 2026, 06:12 UTC",
         "Since this build",
-        "Since 6 Oct 2026, 21:05 UTC",
+        null,
       ]);
     });
 
@@ -621,7 +622,8 @@ describe("the range a Needs a look row quotes (decision 130)", () => {
   it("quotes, on every heavy-file row with a history, the band its chart draws at the point Elementary flagged", () => {
     const { items, charts } = manyView().sections;
     const charted = items.filter((item) => item.chart !== null);
-    expect(charted).toHaveLength(30);
+    // 22: the 30 there were before decision 203, less the 8 freshness entries, which have no history any more.
+    expect(charted).toHaveLength(22);
     for (const item of charted) {
       const chart = charts.get(item.chart);
       const point = chart.points.findLast((candidate) => candidate.outside !== null);
@@ -693,7 +695,8 @@ describe("Chart buttons", () => {
   it("sit on every entry with a history and on no other", () => {
     const { items } = manyView().sections;
     const charted = items.filter((item) => item.chart !== null);
-    expect(charted).toHaveLength(30);
+    expect(charted).toHaveLength(22);
+    expect(items.filter((item) => item.kind === "Freshness").every((item) => item.chart === null)).toBe(true);
     expect(items.filter((item) => ["dbt tests", "Schema"].includes(item.kind)).every((item) => item.chart === null)).toBe(true);
     expect(items.filter((item) => item.status === "Could not run").every((item) => item.chart === null)).toBe(true);
     expect(charted[0]).toMatchObject({
@@ -911,5 +914,56 @@ describe("formatting", () => {
     expect(after(13 * 3_600_000)).toBe("13 hours ago");
     expect(after(3 * 86_400_000)).toBe("3 days ago");
     expect(after(-10 * 60_000)).toBeNull();
+  });
+});
+
+describe("each source's freshness (decision 203)", () => {
+  const items = (view) => view.sections.items.filter((item) => item.kind === "Freshness");
+
+  it("words each row as the maintainer's frame did: hours on the hourly run, days on the monthly build", () => {
+    const view = page(read(examples.monthlyManyProblems(), "monthly"), read(examples.hourlyManyProblems(), "hourly"));
+    const sentences = Object.fromEntries(items(view).map((item) => [item.table, item.sentence]));
+    expect(sentences).toMatchObject({
+      preview_fixture_02__trails: "Read or confirmed 41 d ago · limit 62 d.",
+      preview_fixture_17__trailheads: "Read or confirmed 36 d ago · limit 62 d.",
+      preview_fixture_19__closures: "Read or confirmed 13 h ago · limit 24 h.",
+      preview_fixture_07__alerts: "Read or confirmed 1.5 h ago · limit 2 h.",
+      preview_fixture_24__notices: "Read or confirmed 40 h ago · limit 48 h.",
+      preview_fixture_29__trails: "The check could not run, so this went unchecked in this build.",
+    });
+    expect(items(view).every((item) => item.chart === null && item.since === null)).toBe(true);
+    expect(tile(view, "freshness").about).toBeUndefined();
+    expect(tile(view, "freshness").caption).toBe("sources on time");
+  });
+
+  it("names its first row on the Freshness card in the same words", () => {
+    const view = page(MISSING, read(examples.hourlyWithWarning(), "hourly"));
+    expect(tile(view, "freshness").note).toEqual([
+      { code: "preview_fixture__alerts" },
+      ": read or confirmed 13 h ago · limit 24 h.",
+      "",
+    ]);
+  });
+
+  it("says what the kind measures when nothing of it needs a look", () => {
+    const view = page(read(examples.monthlyAllGreen(), "monthly"), MISSING);
+    expect(tile(view, "freshness").note).toEqual([
+      "How long since OurHike last read each source, or confirmed it unchanged, against that source's limit.",
+    ]);
+  });
+
+  it("gives a row with no limit its age alone", () => {
+    const file = examples.hourlyWithWarning();
+    file.needs_a_look[0].expected_max = null;
+    const [row] = page(MISSING, read(file, "hourly")).sections.items;
+    expect(row.sentence).toBe("Read or confirmed 13 h ago.");
+  });
+
+  it("prints an older file's event freshness as a bare number, its words gone with the check", () => {
+    const file = examples.hourlyWithWarning();
+    file.needs_a_look = [{ ...file.needs_a_look[0], metric: "event_freshness", test: "event_freshness_anomalies", value: 20648336 }];
+    const [row] = page(MISSING, read(file, "hourly")).sections.items;
+    expect(row.sentence).not.toContain("from event to load");
+    expect(row.sentence).toBe("Measured 20,648,336 in this build.");
   });
 });

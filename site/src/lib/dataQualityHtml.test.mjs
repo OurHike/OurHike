@@ -159,7 +159,7 @@ describe("Needs a look, the Show menu and the Chart buttons, as markup", () => {
   it("draws a Chart button on each row with a history and two per mart, the first chart's row pressed as the page opens", () => {
     const page = manyView();
     const body = renderBody(page);
-    expect(body.match(/<button type="button" class="dq-chart-btn"/g)).toHaveLength(30 + 11);
+    expect(body.match(/<button type="button" class="dq-chart-btn"/g)).toHaveLength(22 + 11);
     expect(body.match(/class="dq-chart-btn dq-chart-btn--inline"/g)).toHaveLength(11);
     const pressed = [...body.matchAll(/data-row="([^"]+)" aria-pressed="true"/g)].map((m) => m[1]);
     expect(pressed).toEqual([page.sections.opening]);
@@ -194,7 +194,8 @@ describe("Needs a look, the Show menu and the Chart buttons, as markup", () => {
     expect(body.match(/<optgroup label="([^"]+)">/g)).toEqual(['<optgroup label="Needs a look">', '<optgroup label="Every finished table">']);
     const selected = [...body.matchAll(/<option value="([^"]*)" selected>/g)].map((m) => m[1].replaceAll("&quot;", '"'));
     expect(selected).toEqual([page.sections.chart.key]);
-    expect(body.match(/<option /g)).toHaveLength(38);
+    // 30: the 38 there were before decision 203, less the 8 freshness histories.
+    expect(body.match(/<option /g)).toHaveLength(30);
   });
 
   it("leaves the menu out when the files hold one series, and the Chart column out when no mart has one", () => {

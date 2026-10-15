@@ -11,11 +11,12 @@
 -- silent.
 --
 -- Returns one row per notice source that may publish, is held, had rows
--- this build, and has no row in the closures or warnings mart. Warns, never
--- fails: every other file still publishes. `holds_a_source` makes
--- build_marts.py print these rows and turn the run red after the publish
--- (its PARTIAL_EXIT).
-{{ config(severity='warn', meta={'holds_a_source': true}) }}
+-- this build, and has no row in the closures or warnings mart. No
+-- tolerance and no severity of its own (decision 204): an error in dev and
+-- CI, and in production and UA a warning, so every other file still
+-- publishes, which `holds_a_source` makes build_marts.py print and turn red
+-- after the publish (its PARTIAL_EXIT).
+{{ config(meta={'holds_a_source': true}) }}
 
 with notice_sources as (
     select distinct source_key

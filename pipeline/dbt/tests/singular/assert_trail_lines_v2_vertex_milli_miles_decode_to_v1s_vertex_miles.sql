@@ -7,6 +7,10 @@
 -- differently from a v1 phone: a mile not rounded at 3 decimals, which
 -- thousandths cannot carry. A mile is a safety field (pipeline/ELT.md, "The
 -- eleven marts"), so any row fails the build. Returns no rows.
+-- A gate on a mart a hiker's safety reads (decision 204, dbt_project.yml's
+-- `marts:` gates): an error in every environment, so in production a
+-- failure holds the files below at their last good copy.
+{{ config(severity='error') }}
 with v1 as (
     select
         trail_line_id,

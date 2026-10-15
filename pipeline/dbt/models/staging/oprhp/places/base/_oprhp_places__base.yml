@@ -3,13 +3,12 @@ version: 2
 models:
   - name: base_oprhp__park_polygons
     data_tests:
-      # Says how many rows the dedupe dropped. Each is an exact copy
-      # (duplicates_are_exact on the raw table), so this only reports.
-      - dbt_utils.equal_rowcount:
+      # Warns when the dedupe dropped any row, each an exact copy
+      # (duplicates_are_exact on the raw table), and is an error once the
+      # copies are half the raw table (decision 204, the generic test's).
+      - equal_rowcount_to_raw:
           arguments:
             compare_model: source('oprhp', 'raw_nysparks__oprhp_park_polygons')
-          config:
-            severity: warn
     description: >
       NYS OPRHP's park polygons, one row per parcel as the layer holds them,
       keyed and deduped, every column as it landed. int_places__park_units

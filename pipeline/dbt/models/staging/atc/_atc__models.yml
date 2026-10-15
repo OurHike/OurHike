@@ -3,13 +3,12 @@ version: 2
 models:
   - name: stg_atc__shelters
     data_tests:
-      # Says how many rows the dedupe dropped. Each is an exact copy
-      # (duplicates_are_exact on the raw table), so this only reports.
-      - dbt_utils.equal_rowcount:
+      # Warns when the dedupe dropped any row, each an exact copy
+      # (duplicates_are_exact on the raw table), and is an error once the
+      # copies are half the raw table (decision 204, the generic test's).
+      - equal_rowcount_to_raw:
           arguments:
             compare_model: source('atc', 'raw_atc__shelters')
-          config:
-            severity: warn
     description: >
       ATC shelters, one row per shelter, keyed and deduplicated, with every
       upstream column the extract lands. Their poi_type ('shelter') and
@@ -29,13 +28,12 @@ models:
         data_tests: [not_null, unique]
   - name: stg_atc__campsites
     data_tests:
-      # Says how many rows the dedupe dropped. Each is an exact copy
-      # (duplicates_are_exact on the raw table), so this only reports.
-      - dbt_utils.equal_rowcount:
+      # Warns when the dedupe dropped any row, each an exact copy
+      # (duplicates_are_exact on the raw table), and is an error once the
+      # copies are half the raw table (decision 204, the generic test's).
+      - equal_rowcount_to_raw:
           arguments:
             compare_model: source('atc', 'raw_atc__campsites')
-          config:
-            severity: warn
     description: >
       ATC campsites, in stg_atc__shelters' shape and for its reasons.
     columns:
@@ -51,13 +49,12 @@ models:
         data_tests: [not_null, unique]
   - name: stg_atc__viewpoints
     data_tests:
-      # Says how many rows the dedupe dropped. Each is an exact copy
-      # (duplicates_are_exact on the raw table), so this only reports.
-      - dbt_utils.equal_rowcount:
+      # Warns when the dedupe dropped any row, each an exact copy
+      # (duplicates_are_exact on the raw table), and is an error once the
+      # copies are half the raw table (decision 204, the generic test's).
+      - equal_rowcount_to_raw:
           arguments:
             compare_model: source('atc', 'raw_atc__viewpoints')
-          config:
-            severity: warn
     description: >
       ATC viewpoints, in stg_atc__shelters' shape and for its reasons.
     columns:
@@ -73,13 +70,12 @@ models:
         data_tests: [not_null, unique]
   - name: stg_atc__parking
     data_tests:
-      # Says how many rows the dedupe dropped. Each is an exact copy
-      # (duplicates_are_exact on the raw table), so this only reports.
-      - dbt_utils.equal_rowcount:
+      # Warns when the dedupe dropped any row, each an exact copy
+      # (duplicates_are_exact on the raw table), and is an error once the
+      # copies are half the raw table (decision 204, the generic test's).
+      - equal_rowcount_to_raw:
           arguments:
             compare_model: source('atc', 'raw_atc__parking')
-          config:
-            severity: warn
     description: >
       ATC parking areas, in stg_atc__shelters' shape and for its reasons.
     columns:
@@ -95,13 +91,12 @@ models:
         data_tests: [not_null, unique]
   - name: stg_atc__privies
     data_tests:
-      # Says how many rows the dedupe dropped. Each is an exact copy
-      # (duplicates_are_exact on the raw table), so this only reports.
-      - dbt_utils.equal_rowcount:
+      # Warns when the dedupe dropped any row, each an exact copy
+      # (duplicates_are_exact on the raw table), and is an error once the
+      # copies are half the raw table (decision 204, the generic test's).
+      - equal_rowcount_to_raw:
           arguments:
             compare_model: source('atc', 'raw_atc__privies')
-          config:
-            severity: warn
     description: >
       ATC privies, in stg_atc__shelters' shape and for its reasons.
     columns:
@@ -117,13 +112,12 @@ models:
         data_tests: [not_null, unique]
   - name: stg_atc__communities
     data_tests:
-      # Says how many rows the dedupe dropped. Each is an exact copy
-      # (duplicates_are_exact on the raw table), so this only reports.
-      - dbt_utils.equal_rowcount:
+      # Warns when the dedupe dropped any row, each an exact copy
+      # (duplicates_are_exact on the raw table), and is an error once the
+      # copies are half the raw table (decision 204, the generic test's).
+      - equal_rowcount_to_raw:
           arguments:
             compare_model: source('atc', 'raw_atc__communities')
-          config:
-            severity: warn
     description: >
       ATC's official A.T. Community towns, in stg_atc__shelters' shape. They
       publish as resupply at confidence 'low', a designation proxy rather
@@ -143,13 +137,12 @@ models:
         data_tests: [not_null, unique]
   - name: stg_atc__bridges
     data_tests:
-      # Says how many rows the dedupe dropped. Each is an exact copy
-      # (duplicates_are_exact on the raw table), so this only reports.
-      - dbt_utils.equal_rowcount:
+      # Warns when the dedupe dropped any row, each an exact copy
+      # (duplicates_are_exact on the raw table), and is an error once the
+      # copies are half the raw table (decision 204, the generic test's).
+      - equal_rowcount_to_raw:
           arguments:
             compare_model: source('atc', 'raw_atc__bridges')
-          config:
-            severity: warn
     description: >
       Bridges staged but NOT unioned into points_of_interest - the poi_type_mapping
       seed records the layer as deliberately-unmapped and #99 records the
@@ -167,13 +160,12 @@ models:
         data_tests: [not_null, unique]
   - name: stg_atc__centerline_segments
     data_tests:
-      # Says how many rows the dedupe dropped. Each is an exact copy
-      # (duplicates_are_exact on the raw table), so this only reports.
-      - dbt_utils.equal_rowcount:
+      # Warns when the dedupe dropped any row, each an exact copy
+      # (duplicates_are_exact on the raw table), and is an error once the
+      # copies are half the raw table (decision 204, the generic test's).
+      - equal_rowcount_to_raw:
           arguments:
             compare_model: source('atc', 'raw_atc__centerline')
-          config:
-            severity: warn
     description: >
       Per-segment centerline attributes (surface, status, club acronyms) and,
       since stage 3 of #1793, the segment's geometry, which the trail_lines
@@ -189,10 +181,13 @@ models:
         description: The segment's GlobalID.
         data_tests:
           # WARN: the key falls back to OBJECTID, so a missing GlobalID is
-          # reported rather than fatal.
-          - not_null:
-              config:
-                severity: warn
+          # reported rather than fatal. An error when no segment has one
+          # (decision 204, tests/generic/rows_named.sql): the layer stopped
+          # serving the field, not one segment.
+          - rows_named:
+              name: stg_atc__centerline_segments_names_a_segment_with_no_globalid
+              arguments:
+                named: "source_id is null"
           - unique
       - name: geom
         description: >
@@ -206,13 +201,12 @@ models:
           segments in this order, as the Python reads the GeoJSON file.
   - name: stg_atc__side_trails
     data_tests:
-      # Says how many rows the dedupe dropped. Each is an exact copy
-      # (duplicates_are_exact on the raw table), so this only reports.
-      - dbt_utils.equal_rowcount:
+      # Warns when the dedupe dropped any row, each an exact copy
+      # (duplicates_are_exact on the raw table), and is an error once the
+      # copies are half the raw table (decision 204, the generic test's).
+      - equal_rowcount_to_raw:
           arguments:
             compare_model: source('atc', 'raw_atc__side_trails')
-          config:
-            severity: warn
     description: >
       Side-trail attributes including the raw Blaze vocabulary. No
       accepted_values on blaze on purpose - TRAIL_BLAZE_COLORS.md documents
@@ -229,10 +223,13 @@ models:
         description: The side trail's GlobalID.
         data_tests:
           # WARN: the key falls back to OBJECTID, so a missing GlobalID is
-          # reported rather than fatal.
-          - not_null:
-              config:
-                severity: warn
+          # reported rather than fatal. An error when no side trail has one
+          # (decision 204, tests/generic/rows_named.sql): the layer stopped
+          # serving the field, not one trail.
+          - rows_named:
+              name: stg_atc__side_trails_names_a_trail_with_no_globalid
+              arguments:
+                named: "source_id is null"
           - unique
       - name: objectid
         description: >
@@ -252,13 +249,12 @@ models:
           the index lib/feature_id.py's `generated-<index>` id uses.
   - name: stg_atc__club_sections
     data_tests:
-      # Says how many rows the dedupe dropped. Each is an exact copy
-      # (duplicates_are_exact on the raw table), so this only reports.
-      - dbt_utils.equal_rowcount:
+      # Warns when the dedupe dropped any row, each an exact copy
+      # (duplicates_are_exact on the raw table), and is an error once the
+      # copies are half the raw table (decision 204, the generic test's).
+      - equal_rowcount_to_raw:
           arguments:
             compare_model: source('atc', 'raw_atc__trail_club_sections')
-          config:
-            severity: warn
     description: >
       Club maintenance sections, with upstream's ACROYNM spelling corrected
       to club_acronym at the rename.
@@ -274,13 +270,12 @@ models:
         data_tests: [not_null, unique]
   - name: stg_atc__half_mile_markers
     data_tests:
-      # Says how many rows the dedupe dropped. Each is an exact copy
-      # (duplicates_are_exact on the raw table), so this only reports.
-      - dbt_utils.equal_rowcount:
+      # Warns when the dedupe dropped any row, each an exact copy
+      # (duplicates_are_exact on the raw table), and is an error once the
+      # copies are half the raw table (decision 204, the generic test's).
+      - equal_rowcount_to_raw:
           arguments:
             compare_model: source('atc', 'raw_atc__half_mile_points_from_springer')
-          config:
-            severity: warn
     description: >
       ATC's half-mile scale - the calibration authority behind the mile
       axis (#652). source_id is Point_ID; the layer has no GlobalID.
@@ -303,13 +298,12 @@ models:
           between two equally near markers on it.
   - name: stg_atc__treadway
     data_tests:
-      # Says how many rows the dedupe dropped. Each is an exact copy
-      # (duplicates_are_exact on the raw table), so this only reports.
-      - dbt_utils.equal_rowcount:
+      # Warns when the dedupe dropped any row, each an exact copy
+      # (duplicates_are_exact on the raw table), and is an error once the
+      # copies are half the raw table (decision 204, the generic test's).
+      - equal_rowcount_to_raw:
           arguments:
             compare_model: source('atc', 'raw_atc__at_treadway')
-          config:
-            severity: warn
     description: >
       Built treadway segments with construction inventory.
     columns:

@@ -3,13 +3,12 @@ version: 2
 models:
   - name: base_nycdot__nyc_cscl_paths
     data_tests:
-      # Says how many rows the dedupe dropped. Each is an exact copy
-      # (duplicates_are_exact on the raw table), so this only reports.
-      - dbt_utils.equal_rowcount:
+      # Warns when the dedupe dropped any row, each an exact copy
+      # (duplicates_are_exact on the raw table), and is an error once the
+      # copies are half the raw table (decision 204, the generic test's).
+      - equal_rowcount_to_raw:
           arguments:
             compare_model: source('nycdot', 'raw_nycdot__nyc_cscl_paths')
-          config:
-            severity: warn
     description: >
       NYC Street Centerline - pedestrian ways (path, boardwalk, step street,
       non-vehicular), every row, keyed and deduped. Nothing reads it yet: the
@@ -23,13 +22,12 @@ models:
         data_tests: [not_null, unique]
   - name: base_nycdot__nyc_park_drives
     data_tests:
-      # Says how many rows the dedupe dropped. Each is an exact copy
-      # (duplicates_are_exact on the raw table), so this only reports.
-      - dbt_utils.equal_rowcount:
+      # Warns when the dedupe dropped any row, each an exact copy
+      # (duplicates_are_exact on the raw table), and is an error once the
+      # copies are half the raw table (decision 204, the generic test's).
+      - equal_rowcount_to_raw:
           arguments:
             compare_model: source('nycdot', 'raw_nycdot__nyc_park_drives')
-          config:
-            severity: warn
     description: >
       NYC park drives that are closed to cars (Central Park and Prospect
       Park), every row, keyed and deduped. Nothing reads it yet: the stage-3
@@ -43,13 +41,12 @@ models:
         data_tests: [not_null, unique]
   - name: base_nycdot__nyc_dot_greenways
     data_tests:
-      # Says how many rows the dedupe dropped. Each is an exact copy
-      # (duplicates_are_exact on the raw table), so this only reports.
-      - dbt_utils.equal_rowcount:
+      # Warns when the dedupe dropped any row, each an exact copy
+      # (duplicates_are_exact on the raw table), and is an error once the
+      # copies are half the raw table (decision 204, the generic test's).
+      - equal_rowcount_to_raw:
           arguments:
             compare_model: source('nycdot', 'raw_nycdot__nyc_dot_greenways')
-          config:
-            severity: warn
     description: >
       NYC DOT Greenways (current, off-street), every row, keyed and deduped.
       Nothing reads it yet: the stage-3 unions of #1793 do.

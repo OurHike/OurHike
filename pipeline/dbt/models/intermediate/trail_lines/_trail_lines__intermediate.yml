@@ -214,16 +214,18 @@ models:
       # The gate passes when it scored nothing: no piece with four snapped
       # markers holds a marker out, and three errors of 0.0 clear every bar,
       # as export_elevation.measure_marker_agreement's single 0.0 clears
-      # require_marker_agreement. A warning, not a refusal, because the CI
-      # fixture's axis holds no such piece; on ATC's live layers 2,020
-      # markers are scored (2026-10-02). Whether a gate that scored nothing
-      # should stop the build is the maintainer's call.
+      # require_marker_agreement. So this says when it scored nothing. It
+      # holds or it does not, so its warning and its error are the same row
+      # (decision 204, the maintainer's "Build as proposed", 2026-10-15): an
+      # error in dev and CI, whose fixture axis holds one piece with four
+      # snapped markers for it (make_dbt_fixtures.py's _half_mile_layer()),
+      # and in production and UA a warning that build_marts.py reports as an
+      # error, red after the publish. On ATC's live layers 2,020 markers are
+      # scored (2026-10-02).
       - dbt_utils.expression_is_true:
           name: int_trail_lines__mile_axis_holdout_warns_when_it_scored_nothing
           arguments:
             expression: "holdout_marker_count > 0"
-          config:
-            severity: warn
     columns:
       - name: holdout_marker_count
         description: >
@@ -366,28 +368,29 @@ models:
         description: >
           The GlobalID, else the OBJECTID (side trails only), else
           `generated-<source_row>`. resolve_feature_id() warns on the last;
-          so does this.
+          so does this, and is an error when every feature has no id
+          (decision 204, tests/generic/rows_named.sql): the layer's id
+          fields, not one feature.
         data_tests:
-          - dbt_utils.expression_is_true:
+          - rows_named:
               name: int_trail_lines__at_features_warns_of_a_feature_with_no_id
               arguments:
-                expression: "not like 'generated-%'"
-              config:
-                severity: warn
+                named: "feature_id like 'generated-%'"
       - name: blaze_color
         description: int_trail_lines__blazes' colour for the feature.
         data_tests: [not_null]
       - name: has_line_geometry
         description: >
           Whether the geometry is a LineString or MultiLineString. Anything
-          else is skipped, with a warning, as export_trails.py warns and skips.
+          else is skipped, with a warning, as export_trails.py warns and skips;
+          an error when no feature has a line (decision 204,
+          tests/generic/rows_named.sql), the layer's geometry rather than one
+          feature's.
         data_tests:
-          - accepted_values:
+          - rows_named:
               name: int_trail_lines__at_features_skips_a_feature_with_no_line
               arguments:
-                values: [true]
-              config:
-                severity: warn
+                named: "not has_line_geometry"
 
   - name: int_trail_lines__corridor
     description: >
@@ -546,11 +549,11 @@ models:
           # export_spurs.py's "no published POIs" warning
           # (test_a_run_with_no_published_pois_warns_rather_than_resolving_nothing_quietly):
           # every spur resolving to nothing reads as a trail network where
-          # nothing leads anywhere.
+          # nothing leads anywhere. It holds or it does not, so its warning
+          # and its error are the same row (decision 204): an error in dev
+          # and CI, reported as an error in production and UA.
           - dbt_utils.at_least_one:
               name: int_trail_lines__spur_destinations_warns_when_no_poi_is_published
-              config:
-                severity: warn
       - name: poi_type
         description: One of DESTINATION_POI_TYPES.
         data_tests:
@@ -596,14 +599,14 @@ models:
       - name: type_undecodable
         description: >
           A Type that is there and does not decode, which export_spurs.py
-          counts in one warning and does not treat as a spur.
+          counts in one warning and does not treat as a spur. An error when
+          no side trail's Type decodes (decision 204,
+          tests/generic/rows_named.sql): the coded-value domain, not one row.
         data_tests:
-          - accepted_values:
+          - rows_named:
               name: int_trail_lines__spurs_warns_of_an_undecodable_type
               arguments:
-                values: [false]
-              config:
-                severity: warn
+                named: "type_undecodable"
       - name: spur_record_json
         description: The spurs.json record, keys sorted, as JSON text.
 
@@ -636,13 +639,13 @@ models:
       spell a club's name and never decide a stretch.
     data_tests:
       # Two polygons naming one acronym: the Python keeps the later, this the
-      # lower GlobalID's, so the two would name the club differently.
-      - dbt_utils.expression_is_true:
+      # lower GlobalID's, so the two would name the club differently. An
+      # error when every club is named twice (decision 204,
+      # tests/generic/rows_named.sql): a doubled layer, not one club.
+      - rows_named:
           name: int_trail_lines__club_names_name_each_club_once
           arguments:
-            expression: "polygon_count <= 1"
-          config:
-            severity: warn
+            named: "not (polygon_count <= 1)"
     columns:
       - name: acronym
         description: The polygon's ACROYNM, stripped; never empty or all digits.

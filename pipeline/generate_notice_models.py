@@ -244,10 +244,18 @@ TABLE_BASES = frozenset(
 #: - daily: each is 24 more, Reasoned. extract/_run.py's due() leaves a daily resource out until its last good check
 #:   is DUE_AFTER["daily"] (24 h) old, and a run that leaves it out writes no row, so a healthy daily source is up to
 #:   a day and a notices run past its last row by design; its 24 hours unread then count from when it fell due.
-#: A source whose sources.json row says reaches_hikers false only warns: extract/_run.py's quiet_refusals() keeps its
-#: refusal from failing the extract run, and nothing a hiker sees waits on it. tests/test_notice_source_freshness.py
-#: holds the daily row to the hourly one plus DUE_AFTER, and the conditions job's hand-written sources to these.
+#: A source whose sources.json row says reaches_hikers false warns at these hours too, and errors only after
+#: UNSHIPPED_ERROR_DAYS: extract/_run.py's quiet_refusals() keeps its refusal from failing the extract run, and nothing
+#: a hiker sees waits on it. tests/test_notice_source_freshness.py holds the daily row to the hourly one plus
+#: DUE_AFTER, and the conditions job's hand-written sources to these.
 FRESHNESS_HOURS = {"hourly": (12, 24), "daily": (36, 48)}
+#: WHEN A NOTICE SOURCE NO HIKER SEES (sources.json's reaches_hikers false) TURNS RED, in days: decision 204 (the
+#: maintainer, 2026-10-15, "Every test should have both the warning and error thresholds"; his "Build as proposed"
+#: took this number) gave the warn-only sources of decision 100 an error. A week is long enough not to redden the
+#: hourly run for a host's bad day on a source nobody is shown, and short enough that a reader that stopped working
+#: shows red within the week, before the source is reviewed into shipping. @unvalidated: settled by how often a
+#: healthy unshipped source passes a week unread, from publish-conditions.yml's freshness step over a month.
+UNSHIPPED_ERROR_DAYS = 7
 #: NWS's active alerts, which the hourly conditions leg reads (nws/_nws__sources.yml, hand-written): red after 2 hours
 #: unread, the maintainer's poll of 2026-10-07 (decision 101, "Both, NWS red after 2 h"), and a warning at half that,
 #: as FRESHNESS_HOURS grades its own. A severe thunderstorm warning mostly lasts under 4 hours (Reasoned).
@@ -1004,26 +1012,6 @@ def _duplicates_key(source: NoticeSource) -> list[str]:
     return items
 
 
-def _exactness_severity(source: NoticeSource) -> str:
-    """`warn`, for every club notice source, shipping or not, because the gate holds a conflicting source.
-
-    A failing test on a raw table skips every model downstream of it, which for
-    a notice source is every club's closures and warnings, and every
-    conditions file with them: ATC's, NYNJTC's and NWS's in the hourly job,
-    which reads club notices too (decision 61). So the base model counts the
-    different rows on each key itself (`key_versions`, macros/notices.sql's
-    notice_row_version(), the hash duplicates_are_exact compares), and
-    int_closures__gate holds a source with any key over one: its notices are
-    held, never published as one arbitrary copy, and every other source's
-    publish. The test still names the keys, as a warning; its header's "the
-    answer to a failure is a better key" stands, and the hold is what keeps
-    that answer from costing every other club its closures
-    (tests/test_generated_notice_models.py holds the two together).
-    """
-    del source
-    return "warn"
-
-
 def _dump(document: dict) -> str:
     return yaml.safe_dump(document, sort_keys=False, width=100, allow_unicode=True)
 
@@ -1045,19 +1033,18 @@ def is_pdf_notice(source: NoticeSource) -> bool:
 
 
 def notice_freshness(source: NoticeSource) -> dict:
-    """A notice source's dbt freshness by its cadence, a PDF notice's included: FRESHNESS_HOURS for the hourly and
-    daily ones, a reaches_hikers false one warning only (decision 100), and make_dbt_staging.py's
-    MONTHLY_FRESHNESS_DAYS for the one monthly source, USFWS's hunt units (tests/test_generated_notice_models.py's ARC-1
-    test holds it the only one), as for every monthly source (decision 203). Its reaches_hikers false leaves it its
-    error: decision 100 made only the notices legs' sources warn-only, and decision 204 revisits that rule."""
+    """A notice source's dbt freshness by its cadence, a PDF notice's included, always with both thresholds (decision
+    204): FRESHNESS_HOURS for the hourly and daily ones, and for a reaches_hikers false one the same warning and an
+    error after UNSHIPPED_ERROR_DAYS (decision 100 made it warn only); make_dbt_staging.py's MONTHLY_FRESHNESS_DAYS
+    for the one monthly source, USFWS's hunt units (tests/test_generated_notice_models.py's ARC-1 test holds it the
+    only one), as for every monthly source (decision 203)."""
     if source.cadence == "monthly":
         warn, error = MONTHLY_FRESHNESS_DAYS
         return {"warn_after": {"count": warn, "period": "day"}, "error_after": {"count": error, "period": "day"}}
     warn, error = FRESHNESS_HOURS[source.cadence]
-    freshness = {"warn_after": {"count": warn, "period": "hour"}}
-    if (source.entry or {}).get("reaches_hikers") is not False:
-        freshness["error_after"] = {"count": error, "period": "hour"}
-    return freshness
+    if (source.entry or {}).get("reaches_hikers") is False:
+        return {"warn_after": {"count": warn, "period": "hour"}, "error_after": {"count": UNSHIPPED_ERROR_DAYS, "period": "day"}}
+    return {"warn_after": {"count": warn, "period": "hour"}, "error_after": {"count": error, "period": "hour"}}
 
 
 def _source_tags(source: NoticeSource) -> list[str]:
@@ -1090,12 +1077,18 @@ def render_sources_yml(club: str, sources: list[NoticeSource], areas: frozenset[
                 "freshness": notice_freshness(source),
             },
             "data_tests": [
-                {
-                    "duplicates_are_exact": {
-                        "arguments": {"key_columns": _duplicates_key(source)},
-                        "config": {"severity": _exactness_severity(source)},
-                    }
-                },
+                # No severity of its own (decision 204): the project's switch decides, and int_closures__gate
+                # holds a conflicting source either way. The base model counts the different rows on each key
+                # itself (`key_versions`, macros/notices.sql's notice_row_version(), the hash
+                # duplicates_are_exact compares), and the gate holds a source with any key over one: its notices
+                # are held, never published as one arbitrary copy. A failing test on a raw table skips every
+                # model below it, which for a notice source is every club's closures and warnings and every
+                # conditions file with them (decision 61), so in production and UA the switch makes it a warning,
+                # every other source still publishes, and build_marts.py reports it as an error, red after the
+                # publish. In dev and CI it is an error that stops the build, so a fixture that trips it is fixed
+                # before it merges. Until decision 204 it warned everywhere, and CI never stopped on it.
+                # tests/test_generated_notice_models.py holds the test and the hold together.
+                {"duplicates_are_exact": {"arguments": {"key_columns": _duplicates_key(source)}}},
                 # Elementary's checks on every raw table (decision 102), from their one home.
                 *raw_table_checks(),
             ],

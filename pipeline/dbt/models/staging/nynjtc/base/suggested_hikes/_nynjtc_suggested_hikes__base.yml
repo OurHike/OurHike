@@ -3,13 +3,12 @@ version: 2
 models:
   - name: base_nynjtc__nynjtc_hike_finder
     data_tests:
-      # Says how many rows the dedupe dropped. Each is an exact copy
-      # (duplicates_are_exact on the raw table), so this only reports.
-      - dbt_utils.equal_rowcount:
+      # Warns when the dedupe dropped any row, each an exact copy
+      # (duplicates_are_exact on the raw table), and is an error once the
+      # copies are half the raw table (decision 204, the generic test's).
+      - equal_rowcount_to_raw:
           arguments:
             compare_model: source('nynjtc', 'raw_nynjtc__nynjtc_hike_finder')
-          config:
-            severity: warn
     description: >
       NYNJTC's Hike Finder export, one row per hike as lib/hikefinder.py
       parses its page, keyed, with every field the page carries. Read by
@@ -43,11 +42,9 @@ models:
           beside it.
   - name: base_nynjtc__nynjtc_hike_photos
     data_tests:
-      - dbt_utils.equal_rowcount:
+      - equal_rowcount_to_raw:
           arguments:
             compare_model: source('nynjtc', 'raw_nynjtc__nynjtc_hike_photos')
-          config:
-            severity: warn
     description: >
       reference/nynjtc_hike_photos.json, one row per row of the file, each
       the JSON its reviewer wrote. Read by int_suggested_hikes__photos.

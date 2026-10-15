@@ -25,7 +25,14 @@ sources:
         # @unvalidated: 7 hours is pipeline/ELT.md's hourly row, the worst
         # measured publish-conditions.yml gap (6.3 h) rounded up; the 99th
         # percentile of _extract_runs.checked_at gaps over 30 days settles it.
+        # The error is 24 hours, the conditions leg's other tables' (decision
+        # 101), since decision 204 gives every source both: @unvalidated as
+        # theirs. Not tagged conditions_job: a failed read of these stops the
+        # whole leg, red at once (extract/_run.py's stops_the_leg(),
+        # tests/test_notice_source_freshness.py), so the hourly freshness step
+        # would only repeat that red. CI's `dbt source freshness` measures them.
         warn_after: {count: 7, period: hour}
+        error_after: {count: 24, period: hour}
     tables:
       - name: raw_ourhike__closures
         data_tests:
@@ -33,15 +40,21 @@ sources:
           - duplicates_are_exact:
               arguments:
                 key_columns: ["'ourhike_closures'", "id"]
-          # Elementary's checks (make_dbt_staging.py's raw_table_checks(), decision 102), each at warn.
+          # Elementary's checks (make_dbt_staging.py's raw_table_checks(), decision 102), each with its two thresholds (decision 204).
           - elementary.volume_anomalies:
               config:
-                severity: warn
+                severity: error
+                fail_calc: "{{ var('elementary_anomaly_level') }}"
+                warn_if: ">0"
+                error_if: ">1"
                 tags: [elementary_check]
                 enabled: "{{ env_var('OURHIKE_ELEMENTARY_CHECKS', 'false') == 'true' }}"
           - elementary.schema_changes:
               config:
-                severity: warn
+                severity: error
+                fail_calc: "{{ var('elementary_schema_change_level') }}"
+                warn_if: ">0"
+                error_if: ">1"
                 tags: [elementary_check]
                 enabled: "{{ env_var('OURHIKE_ELEMENTARY_CHECKS', 'false') == 'true' }}"
         description: >
@@ -58,15 +71,21 @@ sources:
           - duplicates_are_exact:
               arguments:
                 key_columns: ["'ourhike_reports'", "id"]
-          # Elementary's checks (make_dbt_staging.py's raw_table_checks(), decision 102), each at warn.
+          # Elementary's checks (make_dbt_staging.py's raw_table_checks(), decision 102), each with its two thresholds (decision 204).
           - elementary.volume_anomalies:
               config:
-                severity: warn
+                severity: error
+                fail_calc: "{{ var('elementary_anomaly_level') }}"
+                warn_if: ">0"
+                error_if: ">1"
                 tags: [elementary_check]
                 enabled: "{{ env_var('OURHIKE_ELEMENTARY_CHECKS', 'false') == 'true' }}"
           - elementary.schema_changes:
               config:
-                severity: warn
+                severity: error
+                fail_calc: "{{ var('elementary_schema_change_level') }}"
+                warn_if: ">0"
+                error_if: ">1"
                 tags: [elementary_check]
                 enabled: "{{ env_var('OURHIKE_ELEMENTARY_CHECKS', 'false') == 'true' }}"
         description: >
@@ -84,15 +103,21 @@ sources:
           - duplicates_are_exact:
               arguments:
                 key_columns: ["'ourhike_notes'", "id"]
-          # Elementary's checks (make_dbt_staging.py's raw_table_checks(), decision 102), each at warn.
+          # Elementary's checks (make_dbt_staging.py's raw_table_checks(), decision 102), each with its two thresholds (decision 204).
           - elementary.volume_anomalies:
               config:
-                severity: warn
+                severity: error
+                fail_calc: "{{ var('elementary_anomaly_level') }}"
+                warn_if: ">0"
+                error_if: ">1"
                 tags: [elementary_check]
                 enabled: "{{ env_var('OURHIKE_ELEMENTARY_CHECKS', 'false') == 'true' }}"
           - elementary.schema_changes:
               config:
-                severity: warn
+                severity: error
+                fail_calc: "{{ var('elementary_schema_change_level') }}"
+                warn_if: ">0"
+                error_if: ">1"
                 tags: [elementary_check]
                 enabled: "{{ env_var('OURHIKE_ELEMENTARY_CHECKS', 'false') == 'true' }}"
         description: >
@@ -109,15 +134,21 @@ sources:
           - duplicates_are_exact:
               arguments:
                 key_columns: ["'ourhike_disputes'", "poi_id"]
-          # Elementary's checks (make_dbt_staging.py's raw_table_checks(), decision 102), each at warn.
+          # Elementary's checks (make_dbt_staging.py's raw_table_checks(), decision 102), each with its two thresholds (decision 204).
           - elementary.volume_anomalies:
               config:
-                severity: warn
+                severity: error
+                fail_calc: "{{ var('elementary_anomaly_level') }}"
+                warn_if: ">0"
+                error_if: ">1"
                 tags: [elementary_check]
                 enabled: "{{ env_var('OURHIKE_ELEMENTARY_CHECKS', 'false') == 'true' }}"
           - elementary.schema_changes:
               config:
-                severity: warn
+                severity: error
+                fail_calc: "{{ var('elementary_schema_change_level') }}"
+                warn_if: ">0"
+                error_if: ">1"
                 tags: [elementary_check]
                 enabled: "{{ env_var('OURHIKE_ELEMENTARY_CHECKS', 'false') == 'true' }}"
         description: >

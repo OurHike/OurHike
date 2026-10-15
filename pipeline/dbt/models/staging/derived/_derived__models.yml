@@ -3,13 +3,11 @@ version: 2
 models:
   - name: stg_derived__dem_samples
     data_tests:
-      # Says how many rows the dedupe dropped, which for a step that writes
-      # one row per sample point is none.
-      - dbt_utils.equal_rowcount:
+      # Warns if the dedupe drops any row, which for a step that writes
+      # one row per sample point never happens.
+      - equal_rowcount_to_raw:
           arguments:
             compare_model: source('derived', 'dem_samples')
-          config:
-            severity: warn
     description: >
       The DEM's answer at each elevation sample point, from
       step_dem_sampling's derived.dem_samples: the line and sample it
@@ -42,13 +40,11 @@ models:
         data_tests: [not_null]
   - name: stg_derived__closure_trail_lines
     data_tests:
-      # Says how many rows the dedupe dropped, which for a step that writes
-      # one row per line id is none.
-      - dbt_utils.equal_rowcount:
+      # Warns if the dedupe drops any row, which for a step that writes
+      # one row per line id never happens.
+      - equal_rowcount_to_raw:
           arguments:
             compare_model: source('derived', 'closure_trail_lines')
-          config:
-            severity: warn
     description: >
       The release's trail lines that may run inside an area closure, the
       A.T.'s own among them (decision 192), from step_closure_trail_lines's
@@ -76,13 +72,11 @@ models:
         data_tests: [not_null]
   - name: stg_derived__weather_squares
     data_tests:
-      # Says how many rows the dedupe dropped, which for one document per
-      # release is none.
-      - dbt_utils.equal_rowcount:
+      # Warns if the dedupe drops any row, which for one document per
+      # release never happens.
+      - equal_rowcount_to_raw:
           arguments:
             compare_model: source('derived', 'weather_squares')
-          config:
-            severity: warn
     description: >
       The NBM weather squares build_weather_squares.py chose for a release,
       from step_weather_squares's derived.weather_squares: squares.json's
@@ -108,13 +102,11 @@ models:
         data_tests: [not_null]
   - name: stg_derived__graph_pieces
     data_tests:
-      # Says how many rows the dedupe dropped, which for a step that writes
-      # one row per piece and landing is none.
-      - dbt_utils.equal_rowcount:
+      # Warns if the dedupe drops any row, which for a step that writes
+      # one row per piece and landing never happens.
+      - equal_rowcount_to_raw:
           arguments:
             compare_model: source('derived', 'graph_pieces')
-          config:
-            severity: warn
     description: >
       The junction graph's pieces and landings from step_node_lines's
       derived.graph_pieces: every routable part cut where
@@ -151,13 +143,11 @@ models:
 
   - name: stg_derived__site_water
     data_tests:
-      # Says how many rows the dedupe dropped, which for a step that writes
-      # one row per site is none.
-      - dbt_utils.equal_rowcount:
+      # Warns if the dedupe drops any row, which for a step that writes
+      # one row per site never happens.
+      - equal_rowcount_to_raw:
           arguments:
             compare_model: source('derived', 'site_water')
-          config:
-            severity: warn
     description: >
       Which A.T. shelters and campsites have water a hiker can walk to, from
       step_site_water's derived.site_water: the site, and the water it can
@@ -199,13 +189,11 @@ models:
 
   - name: stg_derived__osm_water
     data_tests:
-      # Says how many rows the dedupe dropped: fetch_osm_water.py's
-      # scan_states() already keeps one row per node, so none.
-      - dbt_utils.equal_rowcount:
+      # Warns if the dedupe drops any row: fetch_osm_water.py's
+      # scan_states() already keeps one row per node, so it never happens.
+      - equal_rowcount_to_raw:
           arguments:
             compare_model: source('derived', 'osm_water')
-          config:
-            severity: warn
     description: >
       OSM's water points, from step_osm_water's derived.osm_water, one row
       per node, its properties as fetch_osm_water.py writes them. Read by
@@ -229,11 +217,9 @@ models:
 
   - name: stg_derived__osm_water_grade
     data_tests:
-      - dbt_utils.equal_rowcount:
+      - equal_rowcount_to_raw:
           arguments:
             compare_model: source('derived', 'osm_water_grade')
-          config:
-            severity: warn
     description: >
       The verdict on every corridor OSM water point, from
       step_osm_water_grade's derived.osm_water_grade. Read by
@@ -257,11 +243,9 @@ models:
 
   - name: stg_derived__poi_photos
     data_tests:
-      - dbt_utils.equal_rowcount:
+      - equal_rowcount_to_raw:
           arguments:
             compare_model: source('derived', 'poi_photos')
-          config:
-            severity: warn
     description: >
       The photo manifests, from step_poi_photos's derived.poi_photos: one row
       per found photo, Commons and ATC, in each POI's list order. Read by
@@ -285,11 +269,9 @@ models:
 
   - name: stg_derived__long_path_guide
     data_tests:
-      - dbt_utils.equal_rowcount:
+      - equal_rowcount_to_raw:
           arguments:
             compare_model: source('derived', 'long_path_guide')
-          config:
-            severity: warn
     description: >
       NYNJTC's Long Path guide as waypoints, from step_long_path_guide's
       derived.long_path_guide, one row per record. Read by

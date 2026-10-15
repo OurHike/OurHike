@@ -14,9 +14,10 @@ tests/test_dbt_row_dates_builds.py drives dbt through builds and a restore.
 - every mart file selects both dates: a mart through row_history_mart(), a
   later version (points_of_interest_v2, say) by naming them;
 - every mart's contract is enforced and declares both `timestamptz`, each
-  with a not_null test that warns rather than fails only when
-  OURHIKE_ROW_HISTORY is off (a conditions leg built without its history,
-  build_marts.py's --history-on-failure degrade);
+  with a not_null test that warns rather than fails when OURHIKE_ROW_HISTORY
+  is off (a conditions leg built without its history, build_marts.py's
+  --history-on-failure degrade), and, as every test does since decision 204,
+  when OURHIKE_DATA_ENV is production or ua (dbt_project.yml's switch);
 - every mart reads int_<mart>__history and int_<mart>__final under its own
   key, the snapshot's body is row_history_snapshot('int_<mart>__final')
   under that key (with a `skip=[...]` list, for a column that changes on
@@ -44,8 +45,9 @@ SNAPSHOT_BODY = re.compile(
     r"row_history_snapshot\(\s*'(\w+)'\s*(?:,\s*skip=\[[^\]]*\]\s*)?\).*?\{%\s*endsnapshot\s*%\}",
     re.S,
 )
-#: What the not_null tests on the two dates must say, so a degraded conditions leg's null dates warn.
-SEVERITY = "{{ 'warn' if env_var('OURHIKE_ROW_HISTORY', 'on') == 'off' else 'error' }}"
+#: What the not_null tests on the two dates must say, so a degraded conditions leg's null dates warn, and production's
+#: and UA's do, as dbt_project.yml's switch makes every other test's (decision 204).
+SEVERITY = "{{ 'warn' if env_var('OURHIKE_ROW_HISTORY', 'on') == 'off' or env_var('OURHIKE_DATA_ENV', 'dev') in ['production', 'ua'] else 'error' }}"
 
 
 def _keys(text: str) -> list[str]:

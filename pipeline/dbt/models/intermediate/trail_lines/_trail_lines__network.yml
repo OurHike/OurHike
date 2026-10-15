@@ -354,15 +354,15 @@ models:
               arguments:
                 values: [mapped, deferred, unmapped, absent]
           # The loud one: a value nobody has reviewed draws neutral, and the
-          # Python prints a WARNING per feature naming it. A warn here counts
-          # them in the build's own output, where a person sees it; the fix
-          # is a row in reference/blaze_mapping.json.
-          - accepted_values:
+          # Python prints a WARNING per feature naming it. A warn here names
+          # those rows in the build's own output, where a person sees them;
+          # the fix is a row in reference/blaze_mapping.json. An error when
+          # no row is reviewed (decision 204, tests/generic/rows_named.sql):
+          # the table or the reader, not one value.
+          - rows_named:
               name: int_trail_lines__blazes_every_blaze_value_is_reviewed
               arguments:
-                values: [mapped, deferred, absent]
-              config:
-                severity: warn
+                named: "blaze_disposition not in ('mapped', 'deferred', 'absent')"
 
   - name: int_trail_lines__network_area_closures
     description: >
@@ -484,12 +484,13 @@ models:
           arguments:
             expression: "st_geometrytype(st_geomfromgeojson(geom_geojson)) in ('LINESTRING', 'MULTILINESTRING')"
       # Warn: the Python does not require a valid line, and keeps a
-      # steward's line whose vertices all sit on one point.
-      - dbt_utils.expression_is_true:
+      # steward's line whose vertices all sit on one point. An error when
+      # every line is invalid (decision 204, tests/generic/rows_named.sql):
+      # the geometry reader, not one steward's line.
+      - rows_named:
+          name: int_trail_lines__network_published_names_an_invalid_line
           arguments:
-            expression: "st_isvalid(st_geomfromgeojson(geom_geojson))"
-          config:
-            severity: warn
+            named: "not st_isvalid(st_geomfromgeojson(geom_geojson))"
       - dbt_utils.expression_is_true:
           arguments:
             expression: "(trail_status is null) = (trail_status_basis is null)"

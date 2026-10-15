@@ -4,9 +4,17 @@
 -- that moved a mile or reworded a name, or an ATC renamed point, turns a
 -- checked source into an unchecked one with every other test green. Warns,
 -- because the source still ships on the measurement as a whole; the row is
--- for a person to re-pair or remove. Asked only of a build that holds GATC's
--- rows: the fixture warehouse never does (its table is read off a PDF).
-{{ config(severity='warn') }}
+-- for a person to re-pair or remove. An error when no row pairs (decision
+-- 204, macros/test_levels.sql's named_rows_level(), over `total_rows`, the
+-- seed's rows): a republish that moved everything, not a name to re-pair.
+-- Asked only of a build that holds GATC's rows: the fixture warehouse never
+-- does (its table is read off a PDF).
+{{ config(
+    fail_calc=named_rows_level(),
+    warn_if='>0',
+    error_if='>1',
+    meta={'scores_a_level': true}
+) }}
 with names as (
     select * from {{ ref('gatc_water_atc_names') }}
 ),
@@ -21,6 +29,10 @@ namesakes as (
 
 landed as (
     select count(*) as gatc_rows from sources
+),
+
+totals as (
+    select count(*) as total_rows from names
 ),
 
 gatc_halves as (
@@ -45,9 +57,11 @@ select
     names.gatc_mile,
     names.entry_starts,
     gatc_halves.gatc_mile is not null as has_gatc_row,
-    atc_halves.gatc_mile is not null as has_atc_point
+    atc_halves.gatc_mile is not null as has_atc_point,
+    totals.total_rows
 from names
 cross join landed
+cross join totals
 left join gatc_halves
     on
         names.gatc_mile = gatc_halves.gatc_mile

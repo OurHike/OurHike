@@ -8,14 +8,13 @@ models:
       GATC printed beside it, which list it is in, and the document's manifest.
       stg_gatc__water_sources reads it.
     data_tests:
-      # Says how many rows the dedupe dropped. Each is an exact copy
-      # (duplicates_are_exact on the raw table), so this only reports.
+      # Warns when the dedupe dropped any row, each an exact copy
+      # (duplicates_are_exact on the raw table), and is an error once the
+      # copies are half the raw table (decision 204, the generic test's).
       # A raw table that never landed passes (tests/generic/).
       - equal_rowcount_to_raw:
           arguments:
             compare_model: source('gatc', 'raw_gatc__gatc_water_sources')
-          config:
-            severity: warn
     columns:
       - name: water_source_key
         description: >

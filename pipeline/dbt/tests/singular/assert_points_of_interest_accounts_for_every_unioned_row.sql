@@ -6,6 +6,10 @@
 -- mart's other rows are made rather than read: the synthesized CSI water
 -- points (source atc_csi) and the tombstones. Fails by returning the
 -- poi_keys that are in neither, or in both.
+-- A gate on a mart a hiker's safety reads (decision 204, dbt_project.yml's
+-- `marts:` gates): an error in every environment, so in production a
+-- failure holds the files below at their last good copy.
+{{ config(severity='error') }}
 with unioned as (
     select poi_key from {{ ref('int_points_of_interest__unioned') }}
 ),

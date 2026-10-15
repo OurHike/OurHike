@@ -13,13 +13,12 @@ version: 2
 models:
   - name: stg_nynjtc__long_path
     data_tests:
-      # Says how many rows the dedupe dropped. Each is an exact copy
-      # (duplicates_are_exact on the raw table), so this only reports.
-      - dbt_utils.equal_rowcount:
+      # Warns when the dedupe dropped any row, each an exact copy
+      # (duplicates_are_exact on the raw table), and is an error once the
+      # copies are half the raw table (decision 204, the generic test's).
+      - equal_rowcount_to_raw:
           arguments:
             compare_model: source('nynjtc', 'raw_nynjtc__nynjtc_long_path')
-          config:
-            severity: warn
     description: >
       The Long Path's per-segment attributes - the first trail in this
       warehouse that is not the A.T. - with the layer's object id, FID,
@@ -55,13 +54,12 @@ models:
         data_tests: [not_null, unique]
   - name: stg_nynjtc__highlands_trail
     data_tests:
-      # Says how many rows the dedupe dropped. Each is an exact copy
-      # (duplicates_are_exact on the raw table), so this only reports.
-      - dbt_utils.equal_rowcount:
+      # Warns when the dedupe dropped any row, each an exact copy
+      # (duplicates_are_exact on the raw table), and is an error once the
+      # copies are half the raw table (decision 204, the generic test's).
+      - equal_rowcount_to_raw:
           arguments:
             compare_model: source('nynjtc', 'raw_nynjtc__nynjtc_highlands_trail')
-          config:
-            severity: warn
     description: >
       The Highlands Trail's 12 sections, with the layer's object id,
       OBJECTID, which is each line's published id. NO BLAZE COLUMN, because

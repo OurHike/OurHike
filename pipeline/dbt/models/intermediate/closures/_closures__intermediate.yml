@@ -440,16 +440,18 @@ models:
       source with a row here, so the source carries its last good rows and
       every other source and file publishes.
     data_tests:
-      # Warn, not error (decision 81): the gate holds the source, so the row
-      # never reaches a mart. `holds_a_source` makes build_marts.py print the
-      # rows and turn the run red after the publish (its PARTIAL_EXIT). The
-      # marts' own region tests failed at error until then, and stopped every
-      # hourly file (soak runs 525 to 527).
+      # The gate holds the source, so the row never reaches a mart (decision
+      # 81). `holds_a_source` makes build_marts.py print the rows and turn
+      # the run red after the publish (its PARTIAL_EXIT). No severity of its
+      # own (decision 204): a warning in production and UA, which build on,
+      # and an error in dev and CI, where no fixture row should land outside
+      # its box. The marts' own region tests failed at error in production
+      # until decision 81, and stopped every hourly file (soak runs 525 to
+      # 527).
       - dbt_utils.expression_is_true:
           arguments:
             expression: "false"
           config:
-            severity: warn
             meta:
               holds_a_source: true
     columns:
@@ -476,13 +478,20 @@ models:
       file passes and publishes `atc_updates: []`, as export_atc_updates.py
       does.
     data_tests:
-      # Warns, never fails: failing the build would hold back every source
-      # for one. publish.py names each held file and why, after the upload.
-      - dbt_utils.expression_is_true:
+      # Names every held source, and never stops a build for one of them:
+      # publish.py names each held file and why, after the upload. Its two
+      # thresholds (decision 204): a warning for any held source, an error
+      # once half the gate's sources are held, which is the extract or the
+      # gate broken rather than a club's rows (tests/generic/rows_named.sql;
+      # @unvalidated, half is the lead's pick). Measured: the fixture build of
+      # 76e71a8d held 110 of its 326 sources, every one absent from the
+      # fixture warehouse (34%), and UA's hourly page of 2026-10-15 04:38 UTC
+      # showed this test passing.
+      - rows_named:
+          name: int_closures__gate_holds_no_source
           arguments:
-            expression: "passed"
-          config:
-            severity: warn
+            named: "not passed"
+            error_share: 0.5
     columns:
       - name: source_key
         description: >
@@ -611,7 +620,12 @@ models:
       area conditions/notices.json marks obstructing is a row here (the
       model's header says why). Its tests warn rather than fail: this builds
       in stage A, where a failure would stop every conditions file of the
-      hour, and the marts' own keys already hold each id to one row.
+      hour, and the marts' own keys already hold each id to one row. They
+      stay at warn in every environment, a recorded exception (decision 197,
+      the maintainer's "Keep warn, a recorded exception", and
+      seeds/model_key_exceptions.csv), with the project's two thresholds
+      declared (decision 204); `stays_at_warn` keeps build_marts.py and the
+      data-quality file from reporting them as errors.
     columns:
       - name: notice_id
         description: The notice's id, its mart row's closure_id or warning_id, as conditions/notices.json carries it.
@@ -619,9 +633,13 @@ models:
           - not_null:
               config:
                 severity: warn
+                meta:
+                  stays_at_warn: decision 197
           - unique:
               config:
                 severity: warn
+                meta:
+                  stays_at_warn: decision 197
       - name: source_key
         description: The notice's source, a row of seeds/notice_readers.csv.
       - name: xmin
@@ -655,13 +673,15 @@ models:
       Builds in what step_closure_trail_lines' table unblocks, so every GEOS
       operation is in TRY() and its tests warn: a failure here would stop
       every conditions file of the hour, where an area it cannot cut is only
-      left out.
+      left out. Its consistency test names each row whose stretches and
+      shade disagree, and is an error when every row does (decision 204,
+      tests/generic/rows_named.sql); its key tests stay at warn, decision
+      197's recorded exception.
     data_tests:
-      - dbt_utils.expression_is_true:
+      - rows_named:
+          name: int_closures__area_trail_cuts_draws_each_area_one_way
           arguments:
-            expression: "(stretches > 0) = (stretches_geojson is not null) and (stretches > 0) = (shade_geojson is null)"
-          config:
-            severity: warn
+            named: "not ((stretches > 0) = (stretches_geojson is not null) and (stretches > 0) = (shade_geojson is null))"
     columns:
       - name: notice_id
         description: The area closure's notice_id.
@@ -669,9 +689,13 @@ models:
           - not_null:
               config:
                 severity: warn
+                meta:
+                  stays_at_warn: decision 197
           - unique:
               config:
                 severity: warn
+                meta:
+                  stays_at_warn: decision 197
       - name: stretches
         description: >
           How many stretches the MultiLineString holds; 0 for an area no

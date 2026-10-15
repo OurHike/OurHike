@@ -9,13 +9,14 @@ models:
       those files. What a challenge place may name (CH01).
     data_tests:
       # export_challenges.main()'s "no published POIs" WARNING: every place
-      # would drop, which looks like a club that published nothing.
+      # would drop, which looks like a club that published nothing. It holds
+      # or it does not, so its warning and its error are the same row
+      # (decision 204): an error in dev and CI, a warning that build_marts.py
+      # reports as an error in production and UA.
       - dbt_utils.at_least_one:
           name: challenges_have_published_pois_to_name
           arguments:
             column_name: poi_id
-          config:
-            severity: warn
     columns:
       - name: poi_id
         description: The POI's published id.
@@ -34,13 +35,13 @@ models:
     data_tests:
       # CH13: with no centerline the radius check is skipped, never silently.
       # export_challenges.main() printed this as a ::warning:: annotation;
-      # here it is a WARN line in the build.
+      # here it holds or it does not, so its warning and its error are the
+      # same row (decision 204): an error in dev and CI, reported as an error
+      # in production and UA, where the build goes on.
       - dbt_utils.at_least_one:
           name: challenges_distance_check_has_a_centerline_to_measure_against
           arguments:
             column_name: trail_line_id
-          config:
-            severity: warn
     columns:
       - name: trail_line_id
         description: The chain's published id, centerline:chain:<n>.
@@ -164,19 +165,20 @@ models:
         description: The challenge's id.
         data_tests:
           # Every challenge that resolved reaches the mart, unless may_publish
-          # holds its source back. WARN, because that is a decision and not a
-          # defect: it names a challenge rule 6 of "Who may publish" holds
-          # back until its club's permission is recorded. The ATC's list has
-          # its row (unregistered_publishing_sources, ELT.md decision 47, on
-          # the maintainer's authorisation), so on today's files it names none.
-          - relationships:
+          # holds its source back. A warning, because that is a decision and
+          # not a defect: it names a challenge rule 6 of "Who may publish"
+          # holds back until its club's permission is recorded. The ATC's
+          # list has its row (unregistered_publishing_sources, ELT.md
+          # decision 47, on the maintainer's authorisation), so on today's
+          # files it names none. An error when no resolved challenge reaches
+          # the mart at all (decision 204, tests/generic/rows_named.sql).
+          - rows_named:
               name: challenges_every_resolved_challenge_may_publish
               arguments:
                 to: ref('challenges', v=1)
                 field: challenge_id
               config:
                 where: "problem is null"
-                severity: warn
       - name: report_label
         description: How the exporter names the file when it drops it.
         data_tests: [not_null]
@@ -189,13 +191,18 @@ models:
     data_tests:
       # The exporter's closing ::warning::, "N challenge(s) and M item(s) did
       # not publish, and K publishers.json line(s) were refused": a refusal
-      # never fails the run, and is never silent either.
+      # is never silent. A warning for any, and an error past 50 (decision
+      # 204): every row here is a refusal, so a share would always be all of
+      # them, and a count is the threshold. @unvalidated: 50 is the lead's
+      # pick, above the fixture build's 13 invented refusals (76e71a8d,
+      # 2026-10-15) and UA's none (its monthly page of 2026-10-10), settled
+      # by the refusals a monthly run reports over the first season.
       - dbt_utils.expression_is_true:
           name: challenges_every_publisher_challenge_and_item_publishes
           arguments:
             expression: "problem is null"
           config:
-            severity: warn
+            error_if: ">50"
     columns:
       - name: refusal_order
         description: The line's place in the report, from 1.

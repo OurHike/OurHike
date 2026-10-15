@@ -9,13 +9,12 @@ version: 2
 models:
   - name: stg_oprhp__trails
     data_tests:
-      # Says how many rows the dedupe dropped. Each is an exact copy
-      # (duplicates_are_exact on the raw table), so this only reports.
-      - dbt_utils.equal_rowcount:
+      # Warns when the dedupe dropped any row, each an exact copy
+      # (duplicates_are_exact on the raw table), and is an error once the
+      # copies are half the raw table (decision 204, the generic test's).
+      - equal_rowcount_to_raw:
           arguments:
             compare_model: source('oprhp', 'raw_nysparks__oprhp_trails')
-          config:
-            severity: warn
     description: >
       NYS Parks' 16,641 statewide segments, the largest layer in the
       warehouse. Two blaze columns rather than the three the layer has: only
@@ -35,13 +34,12 @@ models:
         data_tests: [not_null]
   - name: stg_oprhp__trail_closures
     data_tests:
-      # Says how many rows the dedupe dropped. Each is an exact copy
-      # (duplicates_are_exact on the raw table), so this only reports.
-      - dbt_utils.equal_rowcount:
+      # Warns when the dedupe dropped any row, each an exact copy
+      # (duplicates_are_exact on the raw table), and is an error once the
+      # copies are half the raw table (decision 204, the generic test's).
+      - equal_rowcount_to_raw:
           arguments:
             compare_model: source('oprhp', 'raw_nysparks__oprhp_trail_closures')
-          config:
-            severity: warn
     description: >
       OPRHP's temporary closure polygons - a safety surface, and the layer
       whose freshness matters most of anything Phase D stages. TWO COLUMNS
@@ -69,13 +67,12 @@ models:
         data_tests: [not_null]
   - name: stg_oprhp__facilities
     data_tests:
-      # Says how many rows the dedupe dropped. Each is an exact copy
-      # (duplicates_are_exact on the raw table), so this only reports.
-      - dbt_utils.equal_rowcount:
+      # Warns when the dedupe dropped any row, each an exact copy
+      # (duplicates_are_exact on the raw table), and is an error once the
+      # copies are half the raw table (decision 204, the generic test's).
+      - equal_rowcount_to_raw:
           arguments:
             compare_model: source('oprhp', 'raw_nysparks__oprhp_facilities')
-          config:
-            severity: warn
     description: >
       NYS Parks' 8,823 facility points, keyed and deduplicated, every column
       kept. The entry declares no poi_type: rows are typed one by one

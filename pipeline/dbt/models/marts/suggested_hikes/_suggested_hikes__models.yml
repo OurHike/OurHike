@@ -15,7 +15,7 @@ models:
         enforced: true
     data_tests:
       # Elementary's checks (decision 102; pipeline/ELT.md, "The checks, and
-      # where each goes"), each at warn and run by build_marts.py after the
+      # where each goes"), each with its two thresholds (decision 204) and run by build_marts.py after the
       # writers: the hikes at each build; the hikes per club and source, so one
       # club's hikes vanishing cannot hide inside the total; each column's null
       # rate, the long text (a hike's overview, description, directions,
@@ -26,14 +26,20 @@ models:
       # errored, measured 2026-10-08), so it could check nothing here.
       - elementary.volume_anomalies:
           config:
-            severity: warn
+            severity: error
+            fail_calc: "{{ var('elementary_anomaly_level') }}"
+            warn_if: ">0"
+            error_if: ">1"
             tags: [elementary_check]
             enabled: "{{ env_var('OURHIKE_ELEMENTARY_CHECKS', 'false') == 'true' }}"
       - elementary.dimension_anomalies:
           arguments:
             dimensions: [club, source_key]
           config:
-            severity: warn
+            severity: error
+            fail_calc: "{{ var('elementary_anomaly_level') }}"
+            warn_if: ">0"
+            error_if: ">1"
             tags: [elementary_check]
             enabled: "{{ env_var('OURHIKE_ELEMENTARY_CHECKS', 'false') == 'true' }}"
       - elementary.all_columns_anomalies:
@@ -41,7 +47,10 @@ models:
             column_anomalies: [null_percent]
             exclude_regexp: "^(overview|description|directions|public_transport|route_notes|highlight_note|measured_note|shelf_record|detail_record|highlight_record)$"
           config:
-            severity: warn
+            severity: error
+            fail_calc: "{{ var('elementary_anomaly_level') }}"
+            warn_if: ">0"
+            error_if: ">1"
             tags: [elementary_check]
             enabled: "{{ env_var('OURHIKE_ELEMENTARY_CHECKS', 'false') == 'true' }}"
       # SH08: absent means never priced, never 0, and both feet go together.
@@ -84,11 +93,14 @@ models:
       # validSegments). Every route the step forms has two or more, so one
       # with fewer is a defect in the step, not a refusal; warn, because
       # export_suggested_hikes.py would publish it and the client drop it.
-      - dbt_utils.expression_is_true:
+      # An error when every suggested hike has fewer (decision 204,
+      # tests/generic/rows_named.sql): the step, not one route.
+      - rows_named:
+          name: suggested_hikes_names_a_route_with_fewer_than_two_ends
           arguments:
-            expression: "phone_file != 'suggested_hikes' or json_array_length(json_extract(segments, '$[0]')) >= 2"
+            named: "json_array_length(json_extract(segments, '$[0]')) < 2"
           config:
-            severity: warn
+            where: "phone_file = 'suggested_hikes'"
       - dbt_utils.expression_is_true:
           arguments:
             expression: "phone_file != 'highlights' or json_array_length(highlight_legs) > 0"
@@ -323,13 +335,15 @@ models:
         data_tests:
           - not_null:
               config:
-                # warn only on a leg build_marts.py built without its history,
-                # where both dates are null and the run is red already.
-                severity: "{{ 'warn' if env_var('OURHIKE_ROW_HISTORY', 'on') == 'off' else 'error' }}"
+                # warn on a leg build_marts.py built without its history,
+                # where both dates are null and the run is red already, and
+                # in production and UA, where build_marts.py reports a
+                # failure as an error unless the history is off (decision 204).
+                severity: "{{ 'warn' if env_var('OURHIKE_ROW_HISTORY', 'on') == 'off' or env_var('OURHIKE_DATA_ENV', 'dev') in ['production', 'ua'] else 'error' }}"
       - name: _changed_at
         description: "{{ doc('row_changed_at') }}"
         data_type: timestamptz
         data_tests:
           - not_null:
               config:
-                severity: "{{ 'warn' if env_var('OURHIKE_ROW_HISTORY', 'on') == 'off' else 'error' }}"
+                severity: "{{ 'warn' if env_var('OURHIKE_ROW_HISTORY', 'on') == 'off' or env_var('OURHIKE_DATA_ENV', 'dev') in ['production', 'ua'] else 'error' }}"

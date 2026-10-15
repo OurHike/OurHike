@@ -223,12 +223,45 @@ ELEMENTARY_CHECK = "elementary_check"
 ELEMENTARY_ENABLED = "{{ env_var('OURHIKE_ELEMENTARY_CHECKS', 'false') == 'true' }}"
 
 
-def elementary_check_config() -> dict:
-    """Every Elementary check's `config`, a new dict each call (so yaml.safe_dump writes no alias between checks): at
-    warn, never error, because at error severity one failed Elementary test skipped the 10 checks below it (the spike,
-    measured 2026-10-07; pipeline/ELT.md, "Data quality (decision 102)", "All at warn"); tagged ELEMENTARY_CHECK; and
-    enabled with the checks' own switch alone (ELEMENTARY_ENABLED)."""
-    return {"severity": "warn", "tags": [ELEMENTARY_CHECK], "enabled": ELEMENTARY_ENABLED}
+#: ELEMENTARY'S CHECKS' TWO THRESHOLDS (decision 204, the maintainer, 2026-10-15: "Every test should have both the
+#: warning and error thresholds"; his "Build as proposed" took these). An anomaly check has one sensitivity, so its
+#: `fail_calc` scores the rows Elementary returns, each carrying `is_anomalous`, `anomaly_score`, `metric_value` and
+#: `training_avg` (0.26.0's get_read_anomaly_scores_query()), as a level: 1, a warning, where Elementary flagged a
+#: point (past dbt_project.yml's anomaly_sensitivity of 3 deviations, and past an `ignore_small_changes` where a check
+#: sets one); 2, an error, where that point is also past 6 deviations and more than 50% from its training average.
+#: A schema change is a warning for an added column and an error for a removed or retyped one, the two a base
+#: model's select or cast breaks on. Both expressions are dbt_project.yml vars, their one home, because a YAML config
+#: is rendered with `var()` but no project macro. Measured on dbt 2.0.6 with Elementary 0.26.0 in a scratch project
+#: (2026-10-15): after ten equal builds a row count doubled, and the level scored 1 at these bars and 2 with the
+#: deviation bar at 2.9, a dbt warning and a dbt error, while ignore_small_changes at 25% passed a null rate moving
+#: from 10% to 11% that warned without it; and one model built three times scored 0, then 1 with a column added,
+#: then 2 with one removed, read off `test_sub_type`, the name 0.26.0's schema_changes gives the change in the rows it
+#: returns. Each check is an error by severity in every environment: the checks pass is a `dbt test` after the
+#: writers, where a failure skips nothing (measured the same day) and, in production and UA, never changes the run's
+#: exit (decisions 102 and 110), so a level 2 there is a red row on the data-quality page and an error on the run
+#: summary, and nothing more; in dev and CI, build_marts.py fails the job at its end. @unvalidated: 6 deviations and 50%
+#: are the lead's picks, settled by the first season's errors. A lane whose window holds n builds cannot score past
+#: (n - 1) / sqrt(n) deviations (dbt_project.yml's ELEMENTARY'S TRAINING AND DETECTION), so the monthly lane's 13
+#: builds in 400 days can never reach 6 and its checks only ever warn (Reasoned).
+ELEMENTARY_ANOMALY_LEVEL = "{{ var('elementary_anomaly_level') }}"
+ELEMENTARY_SCHEMA_CHANGE_LEVEL = "{{ var('elementary_schema_change_level') }}"
+#: The checks scored as an anomaly level; exposure_schema_validity keeps the project's zero tolerance, any column a
+#: phone file reads missing or retyped being an error.
+ANOMALY_CHECKS = ("volume_anomalies", "dimension_anomalies", "column_anomalies", "all_columns_anomalies")
+
+
+def elementary_check_config(kind: str) -> dict:
+    """An Elementary check's `config`, a new dict each call (so yaml.safe_dump writes no alias between checks), for
+    `kind` (its name without `elementary.`): an error by severity, its two thresholds (above), tagged
+    ELEMENTARY_CHECK, and enabled with the checks' own switch alone (ELEMENTARY_ENABLED). The keys are in the order a
+    hand-written check writes them, which tests/test_elementary_checks.py compares."""
+    config: dict = {"severity": "error"}
+    if kind in ANOMALY_CHECKS:
+        config.update(fail_calc=ELEMENTARY_ANOMALY_LEVEL, warn_if=">0", error_if=">1")
+    elif kind == "schema_changes":
+        config.update(fail_calc=ELEMENTARY_SCHEMA_CHANGE_LEVEL, warn_if=">0", error_if=">1")
+    config.update(tags=[ELEMENTARY_CHECK], enabled=ELEMENTARY_ENABLED)
+    return config
 
 
 def raw_table_checks() -> list[dict]:
@@ -252,8 +285,8 @@ def raw_table_checks() -> list[dict]:
     `loaded_at_query` (LOADED_AT_QUERY) alone, which build_marts.py runs before the data-quality file.
     """
     return [
-        {"elementary.volume_anomalies": {"config": elementary_check_config()}},
-        {"elementary.schema_changes": {"config": elementary_check_config()}},
+        {"elementary.volume_anomalies": {"config": elementary_check_config("volume_anomalies")}},
+        {"elementary.schema_changes": {"config": elementary_check_config("schema_changes")}},
     ]
 
 
@@ -268,7 +301,10 @@ def raw_table_checks_yaml(indent: int) -> list[str]:
                 continue
             lines.append(f"{pad}    {key}:")
             for field, value in body[key].items():
-                shown = _yaml_list(value) if isinstance(value, list) else json.dumps(value) if "{{" in str(value) else value
+                # Quoted where YAML would read the text otherwise: Jinja, and a threshold such as ">0", whose `>`
+                # would open a folded block.
+                quoted = "{{" in str(value) or str(value).startswith(">")
+                shown = _yaml_list(value) if isinstance(value, list) else json.dumps(value) if quoted else value
                 lines.append(f"{pad}      {field}: {shown}")
     return lines
 
@@ -977,14 +1013,14 @@ def base_yaml(folder: str, folder_tables: list[Table]) -> str:
         lines += [
             f"  - name: {table.base}",
             "    data_tests:",
-            "      # Says how many rows the dedupe dropped. Each is an exact copy",
-            "      # (duplicates_are_exact on the raw table), so this only reports.",
-            "      # A raw table that never landed passes (tests/generic/).",
+            "      # Warns when the dedupe dropped any row, each an exact copy",
+            "      # (duplicates_are_exact on the raw table), and is an error once",
+            "      # the copies are half the raw table (decision 204; its two",
+            "      # thresholds are the generic test's). A raw table that never",
+            "      # landed passes (tests/generic/equal_rowcount_to_raw.sql).",
             "      - equal_rowcount_to_raw:",
             "          arguments:",
             f"            compare_model: source('{folder}', '{table.source_table}')",
-            "          config:",
-            "            severity: warn",
             "    description: >",
             _folded(
                 f"{table.title}, every row, keyed and deduped (decision 40), the layer's own columns under dlt's "

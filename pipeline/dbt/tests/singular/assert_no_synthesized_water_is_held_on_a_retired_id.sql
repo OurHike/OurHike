@@ -1,7 +1,11 @@
 -- Every shelter or campsite whose synthesized water point
 -- int_points_of_interest__water holds because its id is a retired ledger row
--- (that model's header), one row each, at warn: the anchor, the retired id
--- and the release that retired it. For a person to write a `same` override
+-- (that model's header), one row each: the anchor, the retired id and the
+-- release that retired it, with `total_rows`, every anchor that synthesized
+-- water or was held from it. A warning for any; an error when every one of
+-- them is held (decision 204, macros/test_levels.sql's named_rows_level()),
+-- which is the ledger or the ids broken wholesale rather than places to
+-- review. For a person to write a `same` override
 -- where it is the same place returning (reconcile_poi_identity.py:585-592's
 -- door back in), or to wait for real water to land at the site (#1652 —
 -- Download OSM's Geofabrik extracts at most once a month, into a private raw
@@ -17,7 +21,13 @@
 --
 -- Measured 2026-10-02 on ATC's live layers against the committed ledger: 21
 -- (assert_no_live_poi_reuses_a_retired_id.sql's header).
-{{ config(severity='warn', store_failures=true) }}
+{{ config(
+    store_failures=true,
+    fail_calc=named_rows_level(),
+    warn_if='>0',
+    error_if='>1',
+    meta={'scores_a_level': true}
+) }}
 
 with held as (
     select
@@ -33,12 +43,20 @@ ledger as (
         poi_id,
         retired
     from {{ ref('base_ourhike__poi_identity') }}
+),
+
+candidates as (
+    select count(*) as total_rows
+    from {{ ref('int_points_of_interest__water') }}
+    where held_csi_water_id is not null or synthesized_description is not null
 )
 
 select
     held.poi_id,
     held.name,
     held.held_csi_water_id,
-    ledger.retired
+    ledger.retired,
+    candidates.total_rows
 from held
 left join ledger on held.held_csi_water_id = ledger.poi_id
+cross join candidates

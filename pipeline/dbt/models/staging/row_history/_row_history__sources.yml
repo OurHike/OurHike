@@ -23,28 +23,29 @@ sources:
       freshness:
         # @unvalidated, the threshold of the hourly sources: a snapshot every
         # conditions leg writes. What settles it is the gap between saves the
-        # store's history.json records.
+        # store's history.json records. The error is twice the warning, 14
+        # days, since decision 204 gives every source both: @unvalidated, the
+        # same gaps settle it.
         warn_after: {count: 7, period: day}
+        error_after: {count: 14, period: day}
     tables:
       - name: int_closures__history
         description: >
           Every version of every closures mart row (snapshots/closures/).
           Key: dbt's own dbt_scd_id, one per version.
         data_tests:
-          # Rows sharing stg_row_history__closures's key must be exact copies (decision 40).
+          # Rows sharing stg_row_history__closures's key must be exact copies (decision 40),
+          # with no tolerance and no severity of its own (decision 204): the project's switch decides.
           - duplicates_are_exact:
               arguments:
                 key_columns: ["'int_closures__history'", "dbt_scd_id"]
-              config:
-                severity: warn
       - name: int_warnings__history
         description: >
           Every version of every warnings mart row (snapshots/warnings/).
           Key: dbt's own dbt_scd_id, one per version.
         data_tests:
-          # Rows sharing stg_row_history__warnings's key must be exact copies (decision 40).
+          # Rows sharing stg_row_history__warnings's key must be exact copies (decision 40),
+          # with no tolerance and no severity of its own (decision 204): the project's switch decides.
           - duplicates_are_exact:
               arguments:
                 key_columns: ["'int_warnings__history'", "dbt_scd_id"]
-              config:
-                severity: warn

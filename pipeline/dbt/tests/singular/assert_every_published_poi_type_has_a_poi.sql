@@ -7,6 +7,10 @@
 -- and ships. Counted from the types rather than from the rows, so a type
 -- that vanished entirely counts 0 instead of not appearing. Fails by
 -- returning each empty type.
+-- A gate on a mart a hiker's safety reads (decision 204, dbt_project.yml's
+-- `marts:` gates): an error in every environment, so in production a
+-- failure holds the files below at their last good copy.
+{{ config(severity='error') }}
 with types as (
     select * from {{ ref('poi_types') }}
     where

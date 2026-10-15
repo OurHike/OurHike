@@ -1082,11 +1082,10 @@ def test_a_trail_that_only_touches_at_a_point_stays_open(tmp_path, monkeypatch):
     rather than against the boolean. A point is not a walkable section, so
     there is nothing to close.
 
-    NOT the same as a trail running ALONG the boundary, which shapely counts
-    as inside the polygon because a polygon contains its own edge - and which
-    this deliberately leaves closed. A trail coincident with the edge of a
-    closed area is on the line the steward drew, and erring open there would
-    be guessing in the direction that gets somebody hurt.
+    A trail running ALONG the boundary is the next test's case: shapely
+    counts it as inside, because a polygon contains its own edge, and until
+    decision 213 this left it closed; rule 6 of that decision ("Only inside
+    closes", the maintainer's poll of 2026-10-15) opens it.
     """
     touches_the_corner = [(-74.15, 41.15), (-74.10, 41.20)]
     manifest, body = _run(
@@ -1104,6 +1103,31 @@ def test_a_trail_that_only_touches_at_a_point_stays_open(tmp_path, monkeypatch):
     assert feature["properties"]["trail_status"] == "open"
     assert "closure_kind" not in feature["properties"]
     assert manifest["closures"]["closed"] == 0
+
+
+def test_a_trail_along_the_edge_of_a_closed_area_stays_open(tmp_path, monkeypatch):
+    """Decision 213, rule 6 ("Only inside closes"): a trail lying within AREA_EDGE_M (2 m) of the closed area's outline
+    runs along its edge, not inside it, so it ships open, whole. 0.00001 degrees of longitude is 0.84 m at this
+    latitude; the trail beside it 0.0001 in (8.4 m) is inside, and closes."""
+    along_the_west_edge = [(-74.09999, 41.21), (-74.09999, 41.29)]
+    just_inside = [(-74.0999, 41.21), (-74.0999, 41.29)]
+    manifest, body = _run(
+        tmp_path,
+        monkeypatch,
+        [_oprhp_source(), _closure_source()],
+        {
+            "oprhp_trails": [
+                _feature(along_the_west_edge, _oprhp_properties(Name="Edge Trail")),
+                _feature(just_inside, _oprhp_properties(Name="Inner Trail")),
+            ],
+            "oprhp_trail_closures": [_area(CLOSED_SQUARE)],
+        },
+        mapping={"oprhp_trails": {"mapped": {"Red": "Red"}}},
+    )
+
+    status = {feature["properties"]["name"]: feature["properties"]["trail_status"] for feature in body["features"]}
+    assert status == {"Edge Trail": "open", "Inner Trail": "closed"}
+    assert manifest["closures"]["closed"] == 1
 
 
 def test_an_empty_closures_layer_is_a_good_week_not_a_failure(tmp_path, monkeypatch):

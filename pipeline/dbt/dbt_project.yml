@@ -367,6 +367,22 @@ vars:
   trail_lines_network_overview_min_feature_m: 1873.7331444281513
   trail_lines_network_overview_seam_tolerance_m: 936.8665722140756
   trail_lines_network_overview_seam_decimals: 3
+  # Decision 213, rule 6 (the maintainer's poll of 2026-10-15, "Only inside
+  # closes"): when an area is closed, a trail stretch the cut finds inside it
+  # closes only if it reaches more than this far in from the area's outline.
+  # One lying wholly within it, along the edge, stays open. Read by both cuts
+  # of an area closure onto lines, the hourly one
+  # (int_closures__area_trail_cuts) and the monthly one
+  # (int_trail_lines__network_area_closures, where parity holds it to
+  # export_nearby_trails.py's AREA_EDGE_M). @unvalidated: the maintainer's
+  # number, not a measurement. It clears the 0.78 m the hourly lines' 5
+  # decimal places can move a vertex (macros/notice_phone_geometry.sql) with
+  # room; what would settle it is how far trails that follow an area's edge
+  # on the ground are drawn from that edge, source by source, which nobody
+  # has measured. On UA's live areas of 2026-10-15, 1,081 of the 5,090
+  # stretches inside an area lay wholly within 2 m of its outline (25.99 of
+  # 3,554.09 miles; int_closures__area_trail_cuts' header has how).
+  area_closure_edge_m: 2.0
 
   # The trail_lines family (stage 3 of #1793). First, export_elevation.py's
   # marker calibration of the A.T. mile axis, read by the

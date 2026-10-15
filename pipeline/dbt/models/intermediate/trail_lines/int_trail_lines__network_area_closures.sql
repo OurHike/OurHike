@@ -36,6 +36,19 @@
 --   its one id, so no two features share an id; the open part keeps every
 --   property of its line. A part of several pieces stays a MultiLineString
 --   (_merge()), never merged across the gap the closure made.
+-- - ONLY A PIECE INSIDE THE GROUND CLOSES, NOT ONE ALONG ITS EDGE (decision
+--   213, rule 6, the maintainer's poll of 2026-10-15, "Only inside closes",
+--   applied to both cuts of an area closure onto lines, this one and the
+--   hourly int_closures__area_trail_cuts): an `inside` piece closes only if
+--   some part of it lies more than `area_closure_edge_m` (2 m) in from the
+--   union's outline, measured in EPSG:5070; one lying wholly within that
+--   band is open, and joins the `outside` pieces, after them. A line whose
+--   every inside piece lies along the edge ships unchanged, as one that only
+--   touches the boundary does. apply_area_closures() asks the same, with
+--   AREA_EDGE_M. Measured 2026-10-15 on NYS Parks' four live areas against
+--   the nearby lines of UA's release 2026-10-10-2 (which carry this
+--   network's lines, simplified): 130 pieces inside, 24.87 miles, 28 of them
+--   (0.07 miles) wholly within 2 m of the edge.
 -- Measured 2026-10-02 against shapely 2.1.2 (GEOS 3.13.1), on DuckDB 1.5.4
 -- with spatial 28db190 (the engine dbt 2.0.6 runs) and again on 1.5.5:
 -- ST_Intersection and ST_Difference gave the same pieces, vertex for vertex,
@@ -92,22 +105,37 @@ closed_ground as (
     having count(*) > 0
 ),
 
+-- The band within `area_closure_edge_m` of the closed ground's outline, in
+-- EPSG:5070 (decision 213, rule 6, above).
+edged_ground as (
+    select
+        geom,
+        st_buffer(
+            st_transform(
+                st_boundary(geom), 'EPSG:4326', 'EPSG:5070', always_xy := true
+            ),
+            {{ var('area_closure_edge_m') }}
+        ) as edge_band
+    from closed_ground
+),
+
 touched as (
     select
         lines.*,
-        st_intersection(lines.geom, closed_ground.geom) as inside_geom,
-        st_difference(lines.geom, closed_ground.geom) as outside_geom
+        edged_ground.edge_band,
+        st_intersection(lines.geom, edged_ground.geom) as inside_geom,
+        st_difference(lines.geom, edged_ground.geom) as outside_geom
     from lines
-    cross join closed_ground
-    where st_intersects(lines.geom, closed_ground.geom)
+    cross join edged_ground
+    where st_intersects(lines.geom, edged_ground.geom)
 ),
 
 -- _line_parts(): each atomic piece, depth first as shapely walks them, kept
 -- when it is a LineString of two or more distinct vertices, which is exactly
 -- when its bounding box has a width or a height.
-parted as (
+walkable as (
     select
-        *,
+        * exclude (inside_geom, outside_geom),
         list_filter(
             list_transform(
                 st_dump(inside_geom),
@@ -118,7 +146,7 @@ parted as (
                 st_xmin(part) < st_xmax(part)
                 or st_ymin(part) < st_ymax(part)
             )
-        ) as inside_parts,
+        ) as inside_walkable,
         list_filter(
             list_transform(
                 st_dump(outside_geom),
@@ -129,8 +157,51 @@ parted as (
                 st_xmin(part) < st_xmax(part)
                 or st_ymin(part) < st_ymax(part)
             )
-        ) as outside_parts
+        ) as outside_walkable
     from touched
+),
+
+-- Rule 6: an inside piece lying wholly within the edge band is open, after
+-- the outside pieces.
+banded as (
+    select
+        * exclude (inside_walkable),
+        list_transform(
+            inside_walkable,
+            lambda part: struct_pack(
+                part := part,
+                along := st_covers(
+                    edge_band,
+                    st_transform(
+                        part, 'EPSG:4326', 'EPSG:5070', always_xy := true
+                    )
+                )
+            )
+        ) as inside_banded
+    from walkable
+),
+
+parted as (
+    select
+        * exclude (inside_banded, outside_walkable, edge_band),
+        list_transform(
+            list_filter(
+                inside_banded,
+                lambda piece: not struct_extract(piece, 'along')
+            ),
+            lambda piece: struct_extract(piece, 'part')
+        ) as inside_parts,
+        list_concat(
+            outside_walkable,
+            list_transform(
+                list_filter(
+                    inside_banded,
+                    lambda piece: struct_extract(piece, 'along')
+                ),
+                lambda piece: struct_extract(piece, 'part')
+            )
+        ) as outside_parts
+    from banded
 ),
 
 split_lines as (

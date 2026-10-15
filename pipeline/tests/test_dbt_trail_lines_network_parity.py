@@ -226,6 +226,7 @@ def test_the_network_vars_are_the_python_constants():
     assert variables["trail_lines_network_duplicate_tolerance_m"] == DUPLICATE_TOLERANCE_M
     assert variables["trail_lines_network_duplicate_min_share"] == DUPLICATE_MIN_SHARE
     assert variables["trail_lines_network_inside_boundary_min_fraction"] == export_nearby_trails.INSIDE_BOUNDARY_MIN_FRACTION
+    assert variables["area_closure_edge_m"] == export_nearby_trails.AREA_EDGE_M
     assert variables["trail_lines_network_overview_simplify_tolerance_m"] == export_trails.OVERVIEW_SIMPLIFY_TOLERANCE_M
     assert variables["trail_lines_network_chain_tolerance_m"] == export_nearby_trails.CHAIN_TOLERANCE_M
     assert variables["trail_lines_network_named_trail_threshold_miles"] == export_nearby_trails.NAMED_TRAIL_THRESHOLD_MILES

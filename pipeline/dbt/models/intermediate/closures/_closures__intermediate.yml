@@ -4362,6 +4362,39 @@ unit_tests:
         - {notice_id: 'club_area:2', stretches: 0, stretches_geojson: null, shade_geojson: '{"type":"Polygon","coordinates":[[[-71.3,44.206],[-71.296,44.206],[-71.296,44.199],[-71.3,44.199],[-71.3,44.206]]]}'}
         - {notice_id: 'club_area:3', stretches: 0, stretches_geojson: null, shade_geojson: '{"type":"Polygon","coordinates":[[[-74.258,41.215],[-74.242,41.215],[-74.242,41.195],[-74.258,41.195],[-74.258,41.215]]]}'}
 
+  - name: int_closures__area_trail_cuts_leaves_a_trail_along_the_edge_open
+    model: int_closures__area_trail_cuts
+    description: >
+      Decision 213, rule 6 ("Only inside closes"): a stretch closes only if
+      it reaches more than `area_closure_edge_m` (2 m) in from the area's
+      outline. A trail weaving across the south edge, as a line rounded to 5
+      decimal places does against an area that is not, leaves pieces about a
+      metre inside, and a trail following the west edge 0.8 m inside lies
+      wholly in the band: neither is crossed out, and the trail crossing the
+      area still is. An area whose only trail runs along its edge has no
+      stretch, so it is shaded.
+    given:
+      - input: ref('int_closures__trail_closure_areas')
+        rows:
+          - {notice_id: 'club_area:1', area_geojson: '{"type":"Polygon","coordinates":[[[-73.975,41.032],[-73.965,41.032],[-73.965,41.04],[-73.975,41.04],[-73.975,41.032]]]}'}
+          - {notice_id: 'club_area:2', area_geojson: '{"type":"Polygon","coordinates":[[[-71.3,44.199],[-71.296,44.199],[-71.296,44.206],[-71.3,44.206],[-71.3,44.199]]]}'}
+      - input: ref('stg_derived__closure_trail_lines')
+        format: sql
+        rows: |
+          select
+              line_id,
+              st_geomfromtext(wkt) as geom
+          from (values
+              ('across', 'LINESTRING (-73.97 41.03, -73.97 41.035)'),
+              ('weaving_on_the_south_edge', 'LINESTRING (-73.974 41.03201, -73.972 41.03199, -73.97 41.03201, -73.968 41.03199, -73.966 41.03201)'),
+              ('along_the_west_edge', 'LINESTRING (-73.97499 41.034, -73.97499 41.038)'),
+              ('along_the_east_edge', 'LINESTRING (-71.29601 44.2, -71.29601 44.205)')
+          ) as lines (line_id, wkt)
+    expect:
+      rows:
+        - {notice_id: 'club_area:1', stretches: 1, stretches_geojson: '{"type":"MultiLineString","coordinates":[[[-73.97,41.032],[-73.97,41.035]]]}', shade_geojson: null}
+        - {notice_id: 'club_area:2', stretches: 0, stretches_geojson: null, shade_geojson: '{"type":"Polygon","coordinates":[[[-71.3,44.206],[-71.296,44.206],[-71.296,44.199],[-71.3,44.199],[-71.3,44.206]]]}'}
+
   - name: int_closures__area_trail_cuts_keeps_a_lone_stretch_as_a_multilinestring_of_one
     model: int_closures__area_trail_cuts
     description: >

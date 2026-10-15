@@ -1328,7 +1328,12 @@ unit_tests:
       three branches the pytest reaches only through main(): the reason
       of the area a line overlaps most, a tie going to the area first in
       the layer (whose key sorts second, so a tie broken by key would
-      answer the other), and an area with no reason. The expected rows
+      answer the other), and an area with no reason. And decision 213's
+      rule 6, "Only inside closes": a trail following the square's west
+      edge 0.84 m inside ships unchanged, and a trail running 1.1 m inside
+      its south edge, then out and back in across it, closes only the
+      stretch that goes in, its stretch along the edge open after the
+      stretch outside. The expected rows
       are apply_area_closures()' own, which
       tests/test_dbt_trail_lines_network_parity.py recomputes from these
       rows.
@@ -1344,6 +1349,8 @@ unit_tests:
           - {"trail_segment_key": "apply_area_closures[the reason of the area overlapped most]", "source_key": "oprhp_trails", "club": "nysparks", "file_row": 3, "trail_line_id": "oprhp_trails:6", "name": "Fixture Trail", "trail_status": "open", "trail_status_basis": "stated", "closure_kind": null, "blaze_color": "Red", "duplicate_of": null, "geom_wkt": "LINESTRING (-73.495 41.19, -73.495 41.26)"}
           - {"trail_segment_key": "apply_area_closures[a tie goes to the area first in the layer]", "source_key": "oprhp_trails", "club": "nysparks", "file_row": 3, "trail_line_id": "oprhp_trails:7", "name": "Fixture Trail", "trail_status": "open", "trail_status_basis": "stated", "closure_kind": null, "blaze_color": "Red", "duplicate_of": null, "geom_wkt": "LINESTRING (-73.25 41.23, -73.25 41.27)"}
           - {"trail_segment_key": "apply_area_closures[an area with no reason closes without one]", "source_key": "oprhp_trails", "club": "nysparks", "file_row": 3, "trail_line_id": "oprhp_trails:8", "name": "Fixture Trail", "trail_status": "open", "trail_status_basis": "default_without_status_column", "closure_kind": null, "blaze_color": "Red", "duplicate_of": null, "geom_wkt": "LINESTRING (-73.05 41.25, -73.04 41.26)"}
+          - {"trail_segment_key": "apply_area_closures[a trail along the edge stays open]", "source_key": "oprhp_trails", "club": "nysparks", "file_row": 3, "trail_line_id": "oprhp_trails:9", "name": "Fixture Trail", "trail_status": "open", "trail_status_basis": "stated", "closure_kind": null, "blaze_color": "Red", "duplicate_of": null, "geom_wkt": "LINESTRING (-74.09999 41.21, -74.09999 41.29)"}
+          - {"trail_segment_key": "apply_area_closures[a stretch along the edge stays open beside one inside]", "source_key": "oprhp_trails", "club": "nysparks", "file_row": 3, "trail_line_id": "oprhp_trails:10", "name": "Fixture Trail", "trail_status": "open", "trail_status_basis": "stated", "closure_kind": null, "blaze_color": "Red", "duplicate_of": null, "geom_wkt": "LINESTRING (-74.09 41.20001, -74.08 41.20001, -74.08 41.19, -74.06 41.19, -74.06 41.25)"}
       - input: ref('int_closures__oprhp_areas')
         rows:
           - {"closure_key": "area-square", "source_row": 1, "closure_reason": "Area Closed - No Entry due to extreme rainfall event in 2023", "closure_place": "Bear Mtn./Harriman", "geom_geojson": "{\"type\": \"Polygon\", \"coordinates\": [[[-74.1, 41.2], [-74.0, 41.2], [-74.0, 41.3], [-74.1, 41.3], [-74.1, 41.2]]]}"}
@@ -1368,6 +1375,9 @@ unit_tests:
         - {"trail_segment_key": "apply_area_closures[the reason of the area overlapped most]:open", "trail_line_id": "oprhp_trails:6:open", "trail_status": "open", "trail_status_basis": "stated", "closure_kind": null, "closure_reason": null, "closure_source": null, "geom_wkt": "MULTILINESTRING ((-73.495 41.19, -73.495 41.2), (-73.495 41.21, -73.495 41.22), (-73.495 41.25, -73.495 41.26))"}
         - {"trail_segment_key": "apply_area_closures[a tie goes to the area first in the layer]:closed", "trail_line_id": "oprhp_trails:7", "trail_status": "closed", "trail_status_basis": "closed_area", "closure_kind": "area", "closure_reason": "Closed: the outer area", "closure_source": "oprhp_trail_closures", "geom_wkt": "LINESTRING (-73.25 41.23, -73.25 41.27)"}
         - {"trail_segment_key": "apply_area_closures[an area with no reason closes without one]:closed", "trail_line_id": "oprhp_trails:8", "trail_status": "closed", "trail_status_basis": "closed_area", "closure_kind": "area", "closure_reason": null, "closure_source": "oprhp_trail_closures", "geom_wkt": "LINESTRING (-73.05 41.25, -73.04 41.26)"}
+        - {"trail_segment_key": "apply_area_closures[a trail along the edge stays open]", "trail_line_id": "oprhp_trails:9", "trail_status": "open", "trail_status_basis": "stated", "closure_kind": null, "closure_reason": null, "closure_source": null, "geom_wkt": "LINESTRING (-74.09999 41.21, -74.09999 41.29)"}
+        - {"trail_segment_key": "apply_area_closures[a stretch along the edge stays open beside one inside]:closed", "trail_line_id": "oprhp_trails:10:closed", "trail_status": "closed", "trail_status_basis": "closed_area", "closure_kind": "area", "closure_reason": "Area Closed - No Entry due to extreme rainfall event in 2023", "closure_source": "oprhp_trail_closures", "geom_wkt": "LINESTRING (-74.06 41.2, -74.06 41.25)"}
+        - {"trail_segment_key": "apply_area_closures[a stretch along the edge stays open beside one inside]:open", "trail_line_id": "oprhp_trails:10:open", "trail_status": "open", "trail_status_basis": "stated", "closure_kind": null, "closure_reason": null, "closure_source": null, "geom_wkt": "MULTILINESTRING ((-74.08 41.2, -74.08 41.19, -74.06 41.19, -74.06 41.2), (-74.09 41.20001, -74.08 41.20001, -74.08 41.2))"}
   - name: int_trail_lines__network_area_closures_leaves_every_trail_as_it_was_with_no_closed_area
     description: >
       A week with nothing closed (an empty layer, or one never fetched):

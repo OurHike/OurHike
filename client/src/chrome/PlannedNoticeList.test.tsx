@@ -1,4 +1,5 @@
 import { describe, expect, it, afterEach } from 'vitest'
+import { DATA_BUILT_URL } from '../lib/dataPages'
 import { cleanup, render, screen, within } from '@testing-library/react'
 import { PlannedNoticeList } from './PlannedNoticeList'
 import type { PlannedNotices, PlannedStretch } from '../lib/plannedNotices'
@@ -136,6 +137,18 @@ describe('PlannedNoticeList', () => {
     expect(
       within(fromClubs).getByRole('link', { name: 'Read Green Mountain Club’s notice' }),
     ).toBeTruthy()
+  })
+
+  it('says the notices came from each organization’s own published notices, and links how OurHike gathers and checks them (Q24 of #1805)', () => {
+    renderList({ empty: 'nothing_planned', undated: 0, hikes: [] })
+
+    const age = screen.getByText(/^Gathered by OurHike on /)
+    expect(age).toHaveTextContent(
+      'Gathered by OurHike on October 4, 2026 from each organization’s own published notices. How OurHike gathers and checks these ›',
+    )
+    expect(
+      within(age).getByRole('link', { name: 'How OurHike gathers and checks these ›' }),
+    ).toHaveAttribute('href', DATA_BUILT_URL)
   })
 
   it('says why there is nothing with no hike planned, and lists no club’s notices', () => {

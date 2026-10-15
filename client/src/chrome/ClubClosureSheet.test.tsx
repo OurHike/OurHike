@@ -5,6 +5,7 @@
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { cleanup, render, screen, within } from '@testing-library/react'
 import { ClubClosureSheet } from './ClubClosureSheet'
+import { DATA_BUILT_URL } from '../lib/dataPages'
 import { NoticeRow } from './PlannedNoticeList'
 import type { TrailClosure } from '../lib/publishedConditions'
 import { validTrailClosure } from '../lib/publishedNotices'
@@ -125,5 +126,18 @@ describe('ClubClosureSheet', () => {
     ).toBeInTheDocument()
     cleanup()
     expect(within(sheet(closure())).queryByText(/Gathered by OurHike/)).toBeNull()
+  })
+
+  it('says the closure came from the organization’s own published notices, and links how OurHike gathers and checks it (Q24 of #1805)', () => {
+    const shown = sheet(closure(), new Date('2026-10-11T09:00:00Z'))
+    const age = within(shown).getByText(/^Gathered by OurHike on /)
+    expect(age).toHaveTextContent(
+      /^Gathered by OurHike on October 11, 2026 from .+’s own published notices\. How OurHike gathers and checks this ›$/,
+    )
+    const link = within(age).getByRole('link', {
+      name: 'How OurHike gathers and checks this ›',
+    })
+    expect(link).toHaveAttribute('href', DATA_BUILT_URL)
+    expect(link).toHaveAttribute('target', '_blank')
   })
 })

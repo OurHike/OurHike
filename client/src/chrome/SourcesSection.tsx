@@ -29,6 +29,7 @@
 // not giving - and a steward that recorded neither renders exactly as it did
 // before: no button, no empty row, no placeholder.
 
+import { DATA_BUILT_URL, DATA_QUALITY_URL } from '../lib/dataPages'
 import {
   layerCountLine,
   type Steward,
@@ -57,8 +58,14 @@ const THIS_SURFACE = 'sources_screen'
  * card actually carries a link - which is the same rule, kept.
  */
 const FRAMING = 'Each organization below sets its own licence for the data it publishes.'
+// "On a card" since Q24 put the site's two data pages under this line: those
+// are OurHike's own pages, and "every link below" would have taken them in.
 const FRAMING_LINKS =
-  'Every link below opens the organization’s own site — OurHike takes no cut and holds no money.'
+  'Every link on a card below opens the organization’s own site — OurHike takes no cut and holds no money.'
+
+/** The line over the two links to the site's data pages (Q24). */
+export const DATA_PAGES_LINE =
+  'How OurHike gathers these organizations’ data, and how its checks went on the last build:'
 
 /** The support line, where the organization granted this screen. */
 function donateLink(steward: Steward): StewardSupport | null {
@@ -93,6 +100,34 @@ export function SourcesSection({ stewards }: SourcesSectionProps) {
       <p className="settings__note">
         {anyLink ? `${FRAMING} ${FRAMING_LINKS}` : FRAMING}
       </p>
+
+      {/* HOW OURHIKE GATHERS IT, AND HOW THE CHECKS WENT (Q24 of #1805, the
+          maintainer's "All three as drawn", 2026-10-15): the site's two data
+          pages, in this screen's own link style. Not "every hour": the
+          hourly schedule ran at a median of one run every 4 hours when it
+          was measured (publish-conditions.yml, 2026-09-25), and the quality
+          page says when its last build was. */}
+      <div className="sources__data">
+        <p className="settings__note">{DATA_PAGES_LINE}</p>
+        <p className="sources__links">
+          <a
+            className="sources__link"
+            href={DATA_BUILT_URL}
+            target="_blank"
+            rel="noreferrer"
+          >
+            How the data is built ›
+          </a>
+          <a
+            className="sources__link"
+            href={DATA_QUALITY_URL}
+            target="_blank"
+            rel="noreferrer"
+          >
+            Data quality ›
+          </a>
+        </p>
+      </div>
 
       <ul className="sources__list">
         {stewards.map((steward) => {

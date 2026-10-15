@@ -78,12 +78,12 @@ uploads it, as it uploads a failed step's results. Until the 2026-10-15
 adversarial review (finding S2-3) run.json was written once, after the last
 family, so such an hour left none, and gate_report.py read it as a run that
 never came, which decision 158's 2.5-hour rule absorbs. That is how the gate
-tells the two apart: an hour whose parity job reached its compare step has a
+tells the two apart: an hour whose `hourly_parity.py compare` began has a
 run.json, a take that failed or timed out included (check-conditions.yml
 runs the compare step after it, and every family reads not compared); an
 hour with none is one whose build was never dispatched, or whose parity job
-was cancelled or lost its runner before that step, and only those fall under
-decision 158.
+was cancelled, lost its runner or had no Python before that command began,
+and only those fall under decision 158.
 
 NO RECORD AND NO PERSON FIELD IS PRINTED OR UPLOADED. parity.py runs with
 --keys-only, so its console and its result files carry each difference's key

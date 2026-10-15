@@ -101,9 +101,10 @@ precisely what "clean across the soak" means here:
   those after it: hourly_parity.py writes run.json before the first family
   and after each (its docstring, "A COMPARISON THAT STOPS PART WAY"), and
   check-conditions.yml runs the compare step after a take that failed, so
-  every hour whose parity job reached that step has a run.json. An hour with
-  none is a build never dispatched, or a parity job cancelled or lost before
-  that step, and only such an hour is a gap SOAK_MAX_GAP_HOURS can absorb;
+  every hour whose `hourly_parity.py compare` began has a run.json. An hour
+  with none is a build never dispatched, or a parity job cancelled, lost or
+  without a Python before that command began, and only such an hour is a gap
+  SOAK_MAX_GAP_HOURS can absorb;
 - otherwise the key passes only when EVERY run of the UA leg (SOAK_LEG,
   decision 46) BUILT ON A COMMIT JUDGED, in the soak's last SOAK_HOURS
   (counted back from the newest such run, and reaching back to one at or

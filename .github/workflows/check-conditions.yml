@@ -602,10 +602,10 @@ jobs:
       # 0.1 to 0.9 s each, most of it Python starting (Measured 2026-10-10 in
       # a shared sandbox); the summary's seconds column gives a runner's.
       #
-      # EVERY HOUR THAT GETS HERE LEAVES A run.json, so the gate can tell an
-      # hour whose comparison started from one that never ran (the 2026-10-15
-      # adversarial review, finding S2-3). `!cancelled()`: a bare `if:`
-      # carries an implicit success(), so a take its cap stopped skipped
+      # EVERY HOUR WHOSE COMPARISON BEGINS LEAVES A run.json, so the gate can
+      # tell it from an hour that never ran (the 2026-10-15 adversarial
+      # review, finding S2-3). `!cancelled()`: a bare `if:` carries an
+      # implicit success(), so a take its cap stopped skipped
       # this step and the hour left nothing, which gate_report.py read as a
       # run that never came and decision 158's 2.5 hours absorbed; now this
       # step runs, finds TAKEN empty, and says every family was not compared.

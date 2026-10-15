@@ -288,7 +288,30 @@ ${s.chart ? renderChartSection(s, shown) : ""}
 <section class="dq-section" aria-labelledby="dq-marts-title">
 <h2 id="dq-marts-title">By finished table</h2>
 ${renderMarts(s.marts, shown.pressed)}
-</section>`.text;
+</section>
+${s.lastPosts.length ? renderLastPosts(s.lastPosts) : ""}`.text;
+}
+
+/**
+ * Each source's last post (decision 213's rule 23, the maintainer's poll of
+ * 2026-10-15: "Not now, show last post"): the newest edit date each published
+ * source's own layer states, as information. No status, icon or colour, and
+ * no warning for a long gap: how often a source posts is not checked here.
+ */
+export function renderLastPosts(posts) {
+  return html`<section class="dq-section" aria-labelledby="dq-posts-title">
+<h2 id="dq-posts-title">Each source's last post</h2>
+<p class="dq-scope">The newest edit date each source's own layer gives, as the monthly build read it. Shown for information: how long a source goes between posts is not checked.</p>
+<div class="dq-panel dq-table-wrap">
+<table class="dq-table" aria-labelledby="dq-posts-title">
+<thead><tr><th scope="col">Source</th><th scope="col">Last post</th></tr></thead>
+<tbody>
+${posts.map((post) => html`<tr><td>${post.title}</td><td>${post.day}</td></tr>
+`)}
+</tbody>
+</table>
+</div>
+</section>`;
 }
 
 // ---------------------------------------------------------------- the chart

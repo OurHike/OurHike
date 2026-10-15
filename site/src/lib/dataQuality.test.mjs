@@ -1022,3 +1022,37 @@ describe("a row's point, at the file's precision (the review of 2026-10-15, thre
     expect(row.sentence).toContain("No earlier range to compare it with.");
   });
 });
+
+describe("each source's last post (decision 213's rule 23: no gap warning, the last post shown)", () => {
+  const POSTS = [
+    { source: "dec_hiking_trails", title: "DEC hiking trails", edited_on: "2026-09-18" },
+    { source: "oprhp_trail_closures", title: "OPRHP temporary trail closures", edited_on: "2026-10-07" },
+  ];
+
+  it("reads the monthly file's last posts in its order, each day worded, and nothing else about them", () => {
+    const view = page(read({ ...examples.monthlyAllGreen(), last_posts: POSTS }, "monthly"), MISSING);
+    expect(view.sections.lastPosts).toEqual([
+      { title: "DEC hiking trails", source: "dec_hiking_trails", day: "18 Sep 2026" },
+      { title: "OPRHP temporary trail closures", source: "oprhp_trail_closures", day: "7 Oct 2026" },
+    ]);
+  });
+
+  it("counts no last post as a check: the totals and what needs a look are the file's without them", () => {
+    const without = page(read(examples.monthlyAllGreen(), "monthly"), MISSING);
+    const withPosts = page(read({ ...examples.monthlyAllGreen(), last_posts: POSTS }, "monthly"), MISSING);
+    expect(withPosts.cards).toEqual(without.cards);
+    expect(withPosts.sections.items).toEqual(without.sections.items);
+    expect(withPosts.sections.tiles).toEqual(without.sections.tiles);
+  });
+
+  it("reads a file written before the field as listing none, and the hourly lane's as never listing any", () => {
+    expect(page(read(examples.monthlyAllGreen(), "monthly"), MISSING).sections.lastPosts).toEqual([]);
+    const hourly = { ...examples.hourlyAllGreen(), last_posts: POSTS };
+    expect(page(MISSING, read(hourly, "hourly")).sections.lastPosts).toEqual([]);
+  });
+
+  it("refuses a file whose last post is not dated YYYY-MM-DD", () => {
+    const bad = { ...examples.monthlyAllGreen(), last_posts: [{ ...POSTS[0], edited_on: "18/09/2026" }] };
+    expect(readQualityFile(bad, "monthly").ok).toBe(false);
+  });
+});

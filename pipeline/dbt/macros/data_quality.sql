@@ -271,6 +271,17 @@
       (models/marts/<mart>/, models/intermediate/<mart>/, snapshots/<mart>/,
       tests/<mart>/), as totals, by mart name. Staging and raw tables belong to
       no one mart.
+    - `last_posts`: each published source's last post, the newest edit date
+      its own layer states (ArcGIS's editingInfo.dataLastEditDate, as
+      int_sources__data_edited dates a table), as `source` (the registry key),
+      `title` and `edited_on` (YYYY-MM-DD), ordered by title. Information, not
+      a check: decision 213's rule 23 (the maintainer's poll of 2026-10-15,
+      "Not now, show last post") puts no warning on a gap between posts, so
+      nothing here is counted in `totals` and the page gives it no status.
+      Published sources only, as the rest of this file (int_sources__final's
+      may_publish); a source whose layer states no edit date has no entry.
+      The monthly lane's file only: the hourly lane reads no layer's edit
+      date, so its list is empty.
 
     Measured 2026-10-08 on dbt 2.0.6, Elementary 0.26.0 and DuckDB, in a
     scratch project of one source and one model over nine builds, the shapes
@@ -1210,5 +1221,24 @@ select
                 cast('[]' as json)
             )
         from marts_tally
-    ) as by_mart
+    ) as by_mart,
+    {%- if lane == 'monthly' %}
+    (
+        select
+            coalesce(
+                to_json(list({
+                    'source': edited.source_key,
+                    'title': final_sources.title,
+                    'edited_on': edited.data_edited_on
+                } order by final_sources.title, edited.source_key)),
+                cast('[]' as json)
+            )
+        from {{ ref('int_sources__data_edited') }} as edited
+        inner join {{ ref('int_sources__final') }} as final_sources
+            on edited.source_key = final_sources.source_key
+        where final_sources.may_publish
+    ) as last_posts
+    {%- else %}
+    cast('[]' as json) as last_posts
+    {%- endif %}
 {%- endmacro %}

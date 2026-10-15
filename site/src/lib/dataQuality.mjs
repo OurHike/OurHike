@@ -427,6 +427,16 @@ function instant(v, where, { optional = false } = {}) {
   return new Date(ms);
 }
 
+const ISO_DAY = /^\d{4}-\d{2}-\d{2}$/;
+
+/** A UTC day written YYYY-MM-DD, as a Date at its midnight. */
+function day(v, where) {
+  if (typeof v !== "string" || !ISO_DAY.test(v)) fail(`${where} is not a YYYY-MM-DD day`);
+  const ms = Date.parse(`${v}T00:00:00Z`);
+  if (Number.isNaN(ms)) fail(`${where} is not a date`);
+  return new Date(ms);
+}
+
 function kind(v, where) {
   if (!KIND.has(v)) fail(`${where} is not one of the five kinds`);
   return v;
@@ -508,7 +518,20 @@ function parse(value, lane) {
     ...counts(entry, `by_mart[${i}]`),
   }));
 
-  return { lane, builtAt, totals, kinds, learning: { builds, needed }, items, series, marts };
+  // Decision 213's rule 23 (the maintainer's poll, 2026-10-15): each published
+  // source's last post, the newest edit date its own layer states, shown as
+  // information and never as a status. Absent in a file from before it.
+  const lastPosts = (value.last_posts === undefined ? [] : list(value.last_posts, "last_posts")).map((entry, i) => {
+    const where = `last_posts[${i}]`;
+    if (!isObject(entry)) fail(`${where} is not an object`);
+    return {
+      source: name(entry.source, `${where}.source`),
+      title: name(entry.title, `${where}.title`),
+      editedOn: day(entry.edited_on, `${where}.edited_on`),
+    };
+  });
+
+  return { lane, builtAt, totals, kinds, learning: { builds, needed }, items, series, marts, lastPosts };
 }
 
 /**
@@ -1406,7 +1429,16 @@ function sectionsView(lanes, read) {
       ? null
       : ((items.find((item) => item.chart === firstKey) ?? marts.find((mart) => mart.chart === firstKey))?.id ?? null);
 
+  // Each source's last post, from the monthly file, in its order (by title).
+  // Information only: no pill, no icon, no colour, and no age, which would
+  // read as a judgement the page does not make (decision 213's rule 23).
+  const lastPosts = read
+    .filter((file) => file.lane === "monthly")
+    .flatMap((file) => file.lastPosts)
+    .map((post) => ({ title: post.title, source: post.source, day: formatDay(post.editedOn) }));
+
   return {
+    lastPosts,
     scope: scopeLine(lanes, read),
     tiles: KINDS.map((kind) => tile(kind, read, merged, learning, series)),
     items,

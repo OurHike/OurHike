@@ -39,7 +39,7 @@ models:
     description: >
       Writes data_quality.json, the monthly lane's file for
       ourhike.org/data/quality/: one row, format, lane, built_at, totals,
-      kinds, learning, needs_a_look, series and by_mart, which phone_file
+      kinds, learning, needs_a_look, series, by_mart and last_posts, which phone_file
       copies to processed_dir/data_quality.json as one JSON document.
       macros/data_quality.sql says what each holds.
     config:
@@ -77,6 +77,11 @@ models:
         data_type: json
       - name: by_mart
         description: The counted checks on each mart's own models, intermediates, snapshot and singular tests.
+        data_type: json
+      - name: last_posts
+        description: >
+          Each published source's last post, the newest edit date its own layer states, as source, title and
+          edited_on: information only, no check (decision 213's rule 23, macros/data_quality.sql).
         data_type: json
 
   - name: pub_conditions_data_quality
@@ -120,6 +125,9 @@ models:
         data_type: json
       - name: by_mart
         description: The counted checks on each mart's own models, intermediates, snapshot and singular tests.
+        data_type: json
+      - name: last_posts
+        description: Empty on the hourly lane, which reads no layer's edit date (macros/data_quality.sql).
         data_type: json
 
 exposures:

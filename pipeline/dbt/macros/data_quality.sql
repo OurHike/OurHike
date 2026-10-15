@@ -64,6 +64,22 @@
     holds its rows too, and its row counts and failing-row counts would
     describe them.
 
+    AN ERROR PAST ITS THRESHOLD (decision 204, the maintainer, 2026-10-15:
+    "Every test should have both the warning and error thresholds"; "Build as
+    proposed", his poll answer the same day). In production and UA
+    dbt_project.yml's switch makes every failing test warn, and dbt
+    evaluates no error_if under warn (measured on dbt 2.0.6 the same day), so
+    a dbt test that warned with more failures than its own error_if, read
+    from Elementary's dbt_tests in the `>N` form every test declares
+    (pipeline/tests/test_dbt_test_thresholds.py), counts as failed here, as
+    build_marts.py's relabelled_errors() reports it in the run's log. A test
+    whose meta says stays_at_warn (decision 197's four closures key tests)
+    stays a warning, an Elementary check keeps dbt's own status (its
+    `failures` is Elementary's count, not the level its fail_calc scored),
+    and a test whose `failures` is a level, 0, 1 or 2 (macros/test_levels.sql:
+    `level_tests` below, or a singular test whose meta says scores_a_level),
+    writes no value, a level being no count of rows.
+
     FRESHNESS IS dbt's SOURCE FRESHNESS, one check per source (decision 203,
     the maintainer, 2026-10-15: freshness is OurHike's own last successful
     read of a source, never the source's own dates). build_marts.py runs
@@ -187,7 +203,8 @@
       (not_null, volume_anomalies, schema_changes, a singular test's own
       name), without which a dbt test's or a schema change's entry could not
       say what ran.
-      `value` is a dbt test's failing rows; an anomaly's measured value at
+      `value` is a dbt test's failing rows (none for a test that scores a
+      level, above, "AN ERROR PAST ITS THRESHOLD"); an anomaly's measured value at
       its anomalous bucket, with Elementary's expected band there (whole
       numbers for the whole_metrics below, the band to 3 places); a dimension
       anomaly's number of dimension values out of band (the values themselves
@@ -322,15 +339,39 @@
     {#- The newest points of each series kept (the header, "series", where
         the cap is @unvalidated). -#}
     {%- set series_points = 168 -%}
+    {#- The generic tests whose `failures` is a level, 0, 1 or 2, not a count
+        of rows (macros/test_levels.sql); a singular one says so in its meta,
+        `scores_a_level` (the header, "AN ERROR PAST ITS THRESHOLD"). -#}
+    {%- set level_tests = ['rows_named', 'equal_rowcount_to_raw'] -%}
 with recursive
+
+-- Each dbt test's error threshold, whether it stays at warn, and whether its
+-- `failures` is a level rather than a count of rows (decision 204, the
+-- header's "AN ERROR PAST ITS THRESHOLD").
+test_thresholds as (
+    select
+        unique_id as test_unique_id,
+        case
+            when regexp_full_match(trim(coalesce(error_if, '')), '>\s*[0-9]+')
+                then cast(regexp_extract(error_if, '[0-9]+') as bigint)
+        end as error_above,
+        coalesce(json_extract_string(meta, '$.stays_at_warn'), '') != '' as stays_at_warn,
+        lower(short_name) in ('{{ level_tests | join("', '") }}')
+        or coalesce(json_extract_string(meta, '$.scores_a_level'), '') = 'true' as scores_a_level
+    from {{ ref('elementary', 'dbt_tests') }}
+),
 
 -- Every result the lane's history holds, skipped runs left out, each with
 -- its status as a rank (0 pass, 1 warn, 2 fail, 3 error or anything else)
--- and its metric: an anomaly's metric or a schema change, else null.
+-- and its metric: an anomaly's metric or a schema change, else null. A dbt
+-- test that warned past its own error_if ranks as failed: production and UA
+-- make every failing test warn (dbt_project.yml's switch) and dbt evaluates
+-- no error_if under warn, so this is where the page tells an error from a
+-- warning, as build_marts.py's relabelled_errors() does in the run's log.
 results as (
     select
         id as result_id,
-        test_unique_id,
+        elementary_test_results.test_unique_id,
         invocation_id,
         coalesce(detected_at, created_at) as detected_at,
         created_at,
@@ -341,12 +382,19 @@ results as (
         test_short_name,
         failures,
         try_cast(json_extract_string(test_params, '$.days_back') as integer) as days_back,
-        case lower(status)
-            when 'pass' then 0
-            when 'warn' then 1
-            when 'fail' then 2
+        case
+            when lower(status) = 'pass' then 0
+            when
+                lower(status) = 'warn'
+                and test_type = 'dbt_test'
+                and not coalesce(test_thresholds.stays_at_warn, false)
+                and failures > coalesce(test_thresholds.error_above, 0)
+                then 2
+            when lower(status) = 'warn' then 1
+            when lower(status) = 'fail' then 2
             else 3
         end as status_rank,
+        coalesce(test_thresholds.scores_a_level, false) as scores_a_level,
         case
             when
                 test_type in ('anomaly_detection', 'schema_change')
@@ -354,8 +402,10 @@ results as (
                 then lower(test_sub_type)
         end as metric
     from {{ ref('elementary', 'elementary_test_results') }}
+    left join test_thresholds
+        on elementary_test_results.test_unique_id = test_thresholds.test_unique_id
     where
-        test_unique_id is not null
+        elementary_test_results.test_unique_id is not null
         and lower(status) != 'skipped'
         and coalesce(lower(test_short_name), '') not in ('{{ learned_freshness_tests | join("', '") }}')
         and coalesce(lower(test_sub_type), '') not in ('{{ learned_freshness_metrics | join("', '") }}')
@@ -746,6 +796,8 @@ issues as (
             when counted.metric in ('{{ whole_metrics | join("', '") }}')
                 then to_json(cast(round(anomalous.metric_value) as bigint))
             when counted.metric in ('{{ count_metrics | join("', '") }}') then to_json(round(anomalous.metric_value, 3))
+            -- A level (macros/test_levels.sql) is no count of rows, so no value.
+            when counted.scores_a_level then null
             when counted.kind = 'dbt_tests' then to_json(counted.failures)
             when counted.kind = 'schema' and counted.test_type = 'dbt_test' then to_json(counted.failures)
         end as value,

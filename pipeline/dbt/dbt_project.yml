@@ -461,6 +461,15 @@ vars:
   # (`_changed_at`, and when a key leaves), never a number picked by hand for
   # one source or one closure.
   notice_freshness_limit_days: 90
+  # Decision 213, rule 9 (the maintainer's poll of 2026-10-15, "Hold until a
+  # month before"): a recurring season a source states in words
+  # (int_closures__club_notices' rule 1, macros/notice_season.sql) publishes
+  # only from this many days before its `starts_on`, for every source with a
+  # season field; a notice that states no season is not held for its start
+  # (decision 167). @unvalidated: the maintainer's number, not a measurement.
+  # What would settle it is how far ahead hikers plan the trips a seasonal
+  # closure would change, which nothing records.
+  notice_season_lead_days: 30
   poi_site_name_radius_m: 150.0            # lib/poi_sites.py NAME_MATCH_RADIUS_M
   poi_site_proximity_radius_m: 60.0        # lib/poi_sites.py PROXIMITY_RADIUS_M
   poi_site_max_radius_m: 1609.344          # lib/poi_sites.py MAX_SITE_RADIUS_M

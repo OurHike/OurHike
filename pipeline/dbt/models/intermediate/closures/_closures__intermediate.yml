@@ -2561,6 +2561,8 @@ unit_tests:
     model: int_closures__club_notices
     overrides:
       vars:
+        # Overriding vars replaces them all in a unit test: rule 9's lead.
+        notice_season_lead_days: 30
         notices_build_date: "2026-10-05"
     given:
       - input: ref('int_closures__club_notices_unioned')
@@ -3042,6 +3044,8 @@ unit_tests:
     model: int_closures__club_notices
     overrides:
       vars:
+        # Overriding vars replaces them all in a unit test: rule 9's lead.
+        notice_season_lead_days: 30
         notices_build_date: "2026-10-15"
     given:
       - input: ref('int_closures__club_notices_unioned')
@@ -3340,11 +3344,14 @@ unit_tests:
       ahead, where it is year-round, where a month is misspelt ('Februrary')
       and where the range states its years. An end before its own start
       (IDPR's White Pine Fire Scar Closure) and a start before 1900 close
-      no trail, both dates kept.
+      no trail, both dates kept. Rule 9's lead time is set past every row
+      here, so its hold, which would hold the seasons more than 30 days
+      ahead, is its own test's.
     model: int_closures__club_notices
     overrides:
       vars:
         notices_build_date: "2026-10-15"
+        notice_season_lead_days: 1000
     given:
       - input: ref('int_closures__club_notices_unioned')
         rows:
@@ -3393,6 +3400,57 @@ unit_tests:
         - {notice_id: 'idpr_area_restrictions:end_before_start', reads_as: 'closes_trail', read_from: 'category ''closure'' with its title ''closure''', obstructs_trail: null, held_because: null, starts_on: '2027-06-05', ends_on: '2027-05-31'}
         - {notice_id: 'nps_yell_bear_management_areas:start_before_1900', reads_as: 'closes_trail', read_from: 'status ''closed''', obstructs_trail: null, held_because: null, starts_on: '0026-05-01', ends_on: '2026-12-01'}
 
+  - name: int_closures__club_notices_holds_a_recurring_season_until_30_days_before_it_starts
+    description: >
+      Decision 213, rule 9 ("Hold until a month before"), on a build pinned
+      to 2026-10-15: a season a row's own words state publishes only from 30
+      days (`notice_season_lead_days`) before its start. A season starting
+      2026-11-15, 31 days ahead, is held and closes no trail yet; one
+      starting 2026-11-14, 30 days ahead, publishes as upcoming and closes
+      its trail, as does one under way. A closure whose start is ahead and
+      which states no season is no recurring season, and publishes when read
+      (decision 167), however far ahead its start is.
+    model: int_closures__club_notices
+    overrides:
+      vars:
+        notices_build_date: "2026-10-15"
+        notice_season_lead_days: 30
+    given:
+      - input: ref('int_closures__club_notices_unioned')
+        rows:
+          - {notice_key: 'thirty_one_days_ahead', source_key: 'cotrex_seasonal_closures', club: 'cotrex', notice_type: 'closures', reader: 'arcgis_layer', listing: 'full', category: 'Wildlife', starts_at: '2024-11-15 00:00:00+00', ends_at: '2025-03-31 00:00:00+00', rescinded_at: null, source_edited_at: null, source_url: null, locality: null, geom_geojson: '{"type":"Polygon","coordinates":[[[-106.9,39.4],[-106.8,39.4],[-106.8,39.5],[-106.9,39.5],[-106.9,39.4]]]}', _loaded_at: '2026-10-15 00:00:00+00', source_id: 'thirty_one_days_ahead', title: 'Fixture Winter Range Closure', status: null, narrative: null, site_type: null, season: 'November 15 - March 31', layer_title: 'SCs_All_COTREX_Oct2025_overwriteweblayer'}
+          - {notice_key: 'thirty_days_ahead', source_key: 'cotrex_seasonal_closures', club: 'cotrex', notice_type: 'closures', reader: 'arcgis_layer', listing: 'full', category: 'Wildlife', starts_at: '2024-11-14 00:00:00+00', ends_at: '2025-03-31 00:00:00+00', rescinded_at: null, source_edited_at: null, source_url: null, locality: null, geom_geojson: '{"type":"Polygon","coordinates":[[[-106.9,39.4],[-106.8,39.4],[-106.8,39.5],[-106.9,39.5],[-106.9,39.4]]]}', _loaded_at: '2026-10-15 00:00:00+00', source_id: 'thirty_days_ahead', title: 'Fixture Elk Winter Closure', status: null, narrative: null, site_type: null, season: 'November 14 - March 31', layer_title: 'SCs_All_COTREX_Oct2025_overwriteweblayer'}
+          - {notice_key: 'under_way', source_key: 'cotrex_seasonal_closures', club: 'cotrex', notice_type: 'closures', reader: 'arcgis_layer', listing: 'full', category: 'Wildlife', starts_at: '2025-10-01 00:00:00+00', ends_at: '2026-06-30 00:00:00+00', rescinded_at: null, source_edited_at: null, source_url: null, locality: null, geom_geojson: '{"type":"Polygon","coordinates":[[[-106.9,39.4],[-106.8,39.4],[-106.8,39.5],[-106.9,39.5],[-106.9,39.4]]]}', _loaded_at: '2026-10-15 00:00:00+00', source_id: 'under_way', title: 'Fixture Meadow Seasonal Wildlife Closure', status: null, narrative: null, site_type: null, season: 'October 1 - June 30', layer_title: 'SCs_All_COTREX_Oct2025_overwriteweblayer'}
+          - {notice_key: 'no_season', source_key: 'idpr_area_restrictions', club: 'idpr', notice_type: 'closures', reader: 'arcgis_layer', listing: 'full', category: 'Area Closure', starts_at: '2027-03-01 12:00:00+00', ends_at: '2027-04-01 12:00:00+00', rescinded_at: null, source_edited_at: null, source_url: null, locality: null, geom_geojson: '{"type":"Polygon","coordinates":[[[-106.9,39.4],[-106.8,39.4],[-106.8,39.5],[-106.9,39.5],[-106.9,39.4]]]}', _loaded_at: '2026-10-15 00:00:00+00', source_id: 'no_season', title: 'Fixture Burn Area Closure', status: null, narrative: null, site_type: null, season: null, layer_title: 'Area Restrictions'}
+      - input: ref('notice_words')
+        rows:
+          - {word: 'closed', read_in: 'status category title layer', matches: 'words', reads_as: 'closes_trail', outranks_status: 'false', category_needs_title: 'false', why: 'The source''s own word that the trail, road or area is closed. It reads every notice_status_values value read as closing that holds it: ''Closed'', Michigan''s six and TDEC''s ''Temporarily Closed'' values, ''Closed Repairs'' and Florida''s eight ''Closed-<reason>'' values. 3,403 statuses and 385 titles in the live read; 2,999 of the statuses are USFS recreation sites''. In a layer''s own name too: Santa Clara County Parks'' ''Areas Closed to the Public'', Portland Parks'' ''Closed Assets'' (layer documents read 2026-10-15)'}
+          - {word: 'closure', read_in: 'status category title layer', matches: 'words', reads_as: 'closes_trail', outranks_status: 'false', category_needs_title: 'true', why: 'As ''closed'': ''Full Closure'' (King County, California State Parks) and ''Temporary Closure'' (USACE), their notice_status_values rows, and in the live read IDPR''s area types (''Area Closure'', ''Fire Area Closure''), USFS forest orders'' ''Safety Closure'' and ''Closure for Resource Protection'', Superior NF''s ''Closure Order''. Not ''closures'' outside a title, where it names a topic in a feed''s category (''Closures and NTH North''). In a category it names the kind of notice the source files the row as, not a state, so it closes the trail only where the row''s title holds a closing word too (category_needs_title): USFS''s forest orders are typed ''Safety Closure'', ''Closure for Resource Protection'' or ''Recreation Closure'' whatever they bar (''Forest Wide - Alcohol'', ''Reckless Driving''). In the live read 90 of R04''s 131 orders so typed, 7 of R03''s 38 and 165 of Superior''s 168 ''Closure Order'' points (159 of them untitled) name no closure in their titles, and CDTC''s 18 current ''Closure'' alerts are titled by place (''Camp Creek Fire''): all stay notices, as the per-source seeds left them. In a layer''s own name it is what the layer holds, never a kind needing a title: Superior''s ''Closure_Point'', Region 6''s ''Region6FireClosureLine'', WSPRC''s ''TemporaryClosure'' (layer documents read 2026-10-15, a capital after a small letter read as a new word)'}
+          - {word: 'closures', read_in: 'title layer', matches: 'words', reads_as: 'closes_trail', outranks_status: 'false', category_needs_title: 'false', why: 'The plural, in a title alone: a placed row''s headline naming its closures, which agrees with a category''s ''closure'' too: 9 of USFS R04''s orders in the live read, ''Big Cottonwood Trail Closures'' among them (the order its sources.json notes cite as in force), and R03''s ''Tonto Creek Crossing Road Closures''. A page, a feed item or a post is never placed, so a headline such as ''Current Trail Closures'' is read for no closure, and a category''s ''Closures'' names a feed''s topic (''Closures and NTH North''). In a layer''s own name too, where it names what the layer holds (the maintainer''s poll of 2026-10-15: a layer closes by its own name only if that name says so): IDPR''s ''Emergency Route Closures'', Yosemite''s ''Trail Closures (Yosemite)'', FLTC''s ''Closures_'' (layer documents read 2026-10-15)'}
+      - input: ref('notice_word_overrides')
+        rows: []
+      - input: ref('notice_hazard_areas')
+        rows: []
+      - input: ref('notice_category_labels')
+        rows: []
+      - input: ref('int_closures__steward_areas')
+        format: sql
+        rows: |
+          select
+              cast(null as varchar) as steward_area_key,
+              cast(null as varchar) as source_key,
+              cast(null as varchar) as areas_source_key,
+              cast(null as varchar) as area_key,
+              cast(null as varchar) as area_id,
+              cast(null as varchar) as geom_geojson
+          where false
+    expect:
+      rows:
+        - {notice_id: 'cotrex_seasonal_closures:thirty_one_days_ahead', obstructs_trail: null, held_because: 'its season starts on 2026-11-15, more than 30 days after this build: a recurring season publishes from that many days before it starts (decision 213, rule 9)', starts_on: '2026-11-15'}
+        - {notice_id: 'cotrex_seasonal_closures:thirty_days_ahead', obstructs_trail: true, held_because: null, starts_on: '2026-11-14'}
+        - {notice_id: 'cotrex_seasonal_closures:under_way', obstructs_trail: true, held_because: null, starts_on: '2026-10-01'}
+        - {notice_id: 'idpr_area_restrictions:no_season', obstructs_trail: true, held_because: null, starts_on: '2027-03-01'}
+
   - name: int_closures__club_notices_reads_a_facility_its_title_names_as_a_site_and_a_trail_named_after_one_as_the_trail
     description: >
       The facilities the review of 2026-10-15 found still crossed out
@@ -3408,6 +3466,8 @@ unit_tests:
     model: int_closures__club_notices
     overrides:
       vars:
+        # Overriding vars replaces them all in a unit test: rule 9's lead.
+        notice_season_lead_days: 30
         notices_build_date: "2026-10-15"
     given:
       - input: ref('int_closures__club_notices_unioned')
@@ -3473,6 +3533,8 @@ unit_tests:
     model: int_closures__club_notices
     overrides:
       vars:
+        # Overriding vars replaces them all in a unit test: rule 9's lead.
+        notice_season_lead_days: 30
         notices_build_date: "2026-10-15"
     given:
       - input: ref('int_closures__club_notices_unioned')
@@ -3541,6 +3603,8 @@ unit_tests:
     model: int_closures__club_notices
     overrides:
       vars:
+        # Overriding vars replaces them all in a unit test: rule 9's lead.
+        notice_season_lead_days: 30
         notices_build_date: "2026-10-15"
     given:
       - input: ref('int_closures__club_notices_unioned')

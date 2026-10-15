@@ -70,6 +70,25 @@
 --    the plain reading of COTREX's own words, its layer is the one it
 --    overwrote in October 2025 ('SCs_All_COTREX_Oct2025_…'), and nobody has
 --    asked COTREX whether each closure is set again this season.
+--    A RECURRING SEASON PUBLISHES ONLY FROM 30 DAYS BEFORE IT STARTS
+--    (decision 213, rule 9, the maintainer's poll of 2026-10-15, "Hold until
+--    a month before", over the recommended "publish when read"). A row
+--    whose own words state a season, as above, and whose `starts_on` is
+--    more than `notice_season_lead_days` after the build's UTC date is held,
+--    for every source with a season field. From that day it publishes as
+--    upcoming like any notice whose start is ahead, and the phone closes the
+--    trail from the day before `starts_on`. The rule names recurring
+--    seasons and is no wider: a notice whose start is ahead and which states
+--    no season (USFS Region 4's forest orders, IDPR's emergency closures)
+--    still publishes when read, as the next paragraph has it (decision 167).
+--    A phone that does not connect between the 30th day before a season and
+--    its start does not learn of that season until it does. Read live
+--    2026-10-15: of COTREX's 128 rows, 99 had a `starts_on` after 2026-11-14
+--    in UA's conditions/notices.json of 21:26 UTC (88 of them closing a
+--    trail: 52 crossed out and 36 shaded in its trail_closures.json). This
+--    holds those 99 until their 30th day before: each is a season's start
+--    (Reasoned: every one of the 108 rows stating a range had its own end
+--    already passed, and a start that far ahead is no row's own).
 --    ONE WHOSE OWN DATES CONTRADICT EACH OTHER CLOSES NO TRAIL (status rule
 --    1's contradiction test, for the shape the review of 2026-10-15 found,
 --    S2-5): an end before its own start, or a start or an end before 1900
@@ -1273,6 +1292,15 @@ judged as (
                     'its own category, ' || coalesce(category, 'none')
                     || ', is not one notice_hazard_areas reads as '
                     || hazard
+            when
+                season_starts_on is not null
+                and starts_on
+                > build_date + {{ var('notice_season_lead_days') }}
+                then
+                    'its season starts on ' || starts_on || ', more than '
+                    || '{{ var('notice_season_lead_days') }} days after this '
+                    || 'build: a recurring season publishes from that many '
+                    || 'days before it starts (decision 213, rule 9)'
             {{ notice_date_holds('build_date', 'rescinded_on') }}
         end as held_because,
         {{ notice_has_ended('ends_on', 'build_date') }} as has_ended,

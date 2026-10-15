@@ -79,6 +79,10 @@ python ../check_dbt_packages.py
 # No --vars, ever: dbt_rt.invocations publishes vars_override with the page.
 # The base's trailing `?` is deliberate: duckdb-wasm/loader.js says why.
 dbt docs generate --profiles-dir . --output-dir "$out" --duckdb-cdn-base "/data/duckdb/duckdb.js?"
+# OurHike's name on dbt's page: its title, a bar back to the site and to
+# /data/quality/, light by default, and dbt's Upgrade cards hidden (the
+# script's docstring says how, and what of dbt's page it relies on).
+python "$here/../../scripts/brand_docs_page.py" "$out/index.html"
 if [ -e "$out/duckdb" ]; then
   echo "::error::dbt wrote $out/duckdb, the path DuckDB-WASM is served from. Move one of them." >&2
   exit 1

@@ -206,6 +206,10 @@ test('the Show menu chooses from the keyboard on a laptop @desktop', async ({ pa
   await menu(page).focus()
   // Space opens the list (Enter does not, measured in Chromium 141's
   // base-select, 2026-10-08), ArrowDown moves one series down it, Enter takes it.
+  // The list groups Needs a look by kind since the review of #1805 on
+  // 2026-10-15 (thread 4279330043), Volume first, so the series below the
+  // opening chart, the first anomaly's, is the next anomaly's: trail_lines'
+  // surface.
   await page.keyboard.press('Space')
   await expect
     .poll(() => menu(page).evaluate((select) => select.matches(':open')))
@@ -213,8 +217,8 @@ test('the Show menu chooses from the keyboard on a laptop @desktop', async ({ pa
   await page.keyboard.press('ArrowDown')
   await page.keyboard.press('Enter')
   await expect(title(page)).not.toHaveText(before ?? '')
-  await expect(title(page)).toContainText('preview_fixture_07__water_sources')
-  expect(await menu(page).inputValue()).toContain('preview_fixture_07__water_sources')
+  await expect(title(page)).toContainText('surface')
+  expect(await menu(page).inputValue()).toContain('"surface"')
 })
 
 test('a mart charts from its own column on a laptop @desktop', async ({ page }) => {

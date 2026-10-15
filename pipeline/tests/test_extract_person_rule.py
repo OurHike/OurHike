@@ -335,6 +335,30 @@ def test_a_wordpress_plugin_field_that_names_the_author_never_lands_and_every_fi
     assert set(row) == set(WORDPRESS_COLUMNS_MODELS_READ), "the name filter leaves out people and nothing else"
 
 
+def test_a_person_field_inside_a_posts_acf_object_never_lands_and_the_status_beside_it_still_does(registry, requests_mock):
+    """The Great Allegheny Passage's alerts carry their status in an `acf` object that models read whole
+    (seeds/notice_source_fields.csv's `acf.$.status`), so `acf` itself cannot be a person field. The rule read only a
+    post's top-level names: `contact_email` at the top was left out while the same name inside `acf` landed, and so
+    did a `reported_by` there (review finding S2-2 of 2026-10-15). A name at any depth is judged as a top-level one is,
+    a list's objects included, and the row's own `person_fields` (here LISTED) reach it too."""
+    requests_mock.get(f"{WP_SITE}/wp-json/wp/v2/categories", json=[{"id": 6, "slug": "trail-alerts"}])
+    acf = {
+        "status": "Fully Obstructed",
+        "visibility": "Visible",
+        "contact_email": "a.staffer@example.org",
+        "reported_by": "A. Staffer",
+        "detours": [{"note": "Use the road", "inspector_name": "A. Staffer"}],
+    }
+    post = {"id": 1, "title": {"rendered": "Pinkerton Tunnel"}, "acf": acf}
+    requests_mock.get(f"{WP_SITE}/wp-json/wp/v2/posts", json=[post], headers={"X-WP-Total": "1"})
+
+    (row,) = list(_kinds.WordpressPosts(key="club_alerts", club="testclub", type="closures").rows({}))
+
+    assert "A. Staffer" not in json.dumps(row) and "a.staffer@example.org" not in json.dumps(row)
+    assert row["acf"] == {"status": "Fully Obstructed", "visibility": "Visible", "detours": [{"note": "Use the road"}]}
+    assert row["title"] == {"rendered": "Pinkerton Tunnel"}, "a nested name nobody's is kept"
+
+
 # --- a field name written with spaces, hyphens or dots ----------------------------------------------------------
 
 #: How KML ExtendedData, a QGIS GeoJSON export or a CSV header spells a person's field, and the name dlt's sql_ci_v1

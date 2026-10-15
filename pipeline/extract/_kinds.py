@@ -487,11 +487,31 @@ class PersonRuled:
         return self.person_rule.field_rules
 
     def without_people(self, rows: list[dict]) -> list[dict]:
-        """`rows` with every field the rule leaves out removed, the person-shaped names printed once for the read."""
-        names = {name for row in rows for name in row}
-        dropped = self.person_rule.left_out(names)
+        """`rows` with every field the rule leaves out removed, at any depth, the person-shaped names printed once.
+
+        A name inside an object, or inside an object in a list, is judged as a
+        top-level one is, and nothing inside a field left out is read at all:
+        the Great Allegheny Passage's alerts carry their status in an `acf`
+        object models read whole, so a person field a site adds there was
+        landing (review finding S2-2 of 2026-10-15). Nested values land as
+        JSON in their one column (extract/_run.py's max_table_nesting=0), so
+        this changes what a column holds, never which columns a table has.
+        """
+        rule, names, dropped = self.person_rule, set(), {}
+
+        def kept(value):
+            if isinstance(value, list):
+                return [kept(item) for item in value]
+            if not isinstance(value, dict):
+                return value
+            for name in value.keys() - names:
+                names.add(name)
+                dropped.update(rule.left_out([name]))
+            return {name: kept(inner) for name, inner in value.items() if name.lower() not in dropped}
+
+        landed = [kept(row) for row in rows]
         report_shaped(self.key, dropped, names)
-        return [{name: value for name, value in row.items() if name.lower() not in dropped} for row in rows]
+        return landed
 
 
 def left_out_of_row(name: str, listed: set[str], dropped: dict[str, str], rule: PersonRule) -> bool:
@@ -1249,7 +1269,9 @@ class WordpressPosts(PersonRuled, Resource):
     a post's columns but its prose in `properties` (GMC's six hike
     taxonomies among them), the notices' wording union reads every text
     column of the base model, and each site's own taxonomy and plugin
-    fields would need listing per row. What the name rule cannot see is a
+    fields would need listing per row. The rule reads a name at any depth
+    (PersonRuled.without_people), so a `contact_email` inside GAP's `acf`
+    object is left out as one at the top is. What it cannot see is a
     person under a name it does not know, nested or not; such a field is
     the row's `person_fields`, as `content` is where a post carries a
     telephone number.

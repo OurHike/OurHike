@@ -50,6 +50,7 @@ import struct
 from pathlib import Path
 from urllib.parse import quote
 
+from lib.work_projects import FIXTURE_STAND_IN
 from load_raw import RAW_DIR
 
 # One waypoint per documented icon code (fetch_opentrail.ICON_LEGEND's
@@ -2573,6 +2574,68 @@ def _ourhike_postgres() -> dict:
     }
 
 
+def _work_projects_stand_in() -> dict:
+    """reference/work_projects.json's shape with rows in it, written to lib/work_projects.FIXTURE_STAND_IN.
+
+    The reviewed file's `rows` are empty by the maintainer's decision of
+    2026-08-20 on #760, so CI compared both writers of
+    conditions/work_projects.json on no row; fixture mode and parity.py's old
+    side read this in its place (lib/work_projects.py says why and where).
+    INVENTED, AND MARKED SO: an invented club, every text starting 'Fixture',
+    ids starting 'fixture:', links on example.org. No person data: the contact
+    is a page, never a name, an address or a number. One row per shape the
+    published rows take: a contact-mode day with every optional field; an
+    in-app weekend placed by mile alone with every optional field left out, so
+    published_rows()'s defaults are compared; and a cancelled day placed by
+    coordinates alone.
+    """
+    return {
+        "_README": [
+            "INVENTED for CI: make_dbt_fixtures.py writes this into the fixtures' raw directory, in place of",
+            "reference/work_projects.json, whose rows stay empty. Nothing that publishes reads it.",
+        ],
+        "reviewed_at": "2026-10-15",
+        "rows": [
+            {
+                "id": "fixture:2026-11-07-trail-day",
+                "club_name": "Fixture Trail Club",
+                "title": "Fixture trail maintenance day",
+                "description": "Fixture: bring gloves and water; meet at the kiosk.",
+                "lat": 41.2671,
+                "lon": -74.0893,
+                "mile": 1385.2,
+                "starts_on": "2026-11-07",
+                "ends_on": "2026-11-07",
+                "status": "upcoming",
+                "capacity": 12,
+                "signup_mode": "contact",
+                "signup_contact": "https://example.org/fixture-workday-signup",
+            },
+            {
+                "id": "fixture:2026-11-14-shelter-weekend",
+                "club_name": "Fixture Trail Club",
+                "title": "Fixture shelter repair weekend",
+                "mile": 1026.7,
+                "starts_on": "2026-11-14",
+                "ends_on": "2026-11-15",
+                "signup_mode": "in_app",
+            },
+            {
+                "id": "fixture:2026-10-03-cancelled-day",
+                "club_name": "Fixture Trail Club",
+                "title": "Fixture blowdown clearing, called off",
+                "lat": 41.2702,
+                "lon": -74.0811,
+                "starts_on": "2026-10-03",
+                "ends_on": "2026-10-03",
+                "status": "cancelled",
+                "signup_mode": "contact",
+                "signup_contact": "https://example.org/fixture-workday-cancelled",
+            },
+        ],
+    }
+
+
 # --- ATC's Trail Updates, as their website serves them (#1793, stage 3) -------
 #
 # extract/_kinds.py's AtcTrailUpdatePages reads ATC's trail-updates sitemap and
@@ -3749,11 +3812,13 @@ def _club_wordpress_fixtures() -> dict[str, str]:
 
 def closures_and_warnings_fixtures() -> dict[str, str]:
     """The closures and warnings family's fixture files, under conditions/: NWS, NYNJTC's WordPress, OurHike's Postgres,
-    ATC's site, the JSON API notice sources, and the clubs' notice pages, feeds and WordPress posts."""
+    ATC's site, the JSON API notice sources, and the clubs' notice pages, feeds and WordPress posts; and the stand-in
+    for reference/work_projects.json's empty rows, at lib/work_projects.FIXTURE_STAND_IN."""
     return {
         "conditions/nws_alerts.json": json.dumps(_nws_alerts()),
         "conditions/nynjtc_trail_alerts.json": json.dumps(_nynjtc_trail_alerts()),
         "conditions/ourhike_postgres.json": json.dumps(_ourhike_postgres()),
+        FIXTURE_STAND_IN: json.dumps(_work_projects_stand_in()),
         "conditions/atc_trail_updates.json": json.dumps(_atc_trail_updates()),
         "weather/squares.json": json.dumps(_weather_squares(), separators=(",", ":")),
         **_json_api_fixtures(),

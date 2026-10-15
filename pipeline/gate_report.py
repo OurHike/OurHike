@@ -217,10 +217,10 @@ LOCATION_FIELDS = frozenset(
 #: The POI types are lib/poi_schema.ALLOWED_EMPTY_POI_TYPES, the list
 #: export_poi.py's own completeness gate reads, so the two cannot drift.
 #: work_projects is the maintainer's: decision 162 (poll, 2026-10-11). So are
-#: closures and reports: decision 199 (poll, 2026-10-15). Each of those two is
+#: closures and reports: decision 199 (poll, 2026-10-15). Each of those three is
 #: listed only while CI's fixture family compares its writer on rows, which
 #: tests/test_gate_report.py's
-#: test_closures_and_reports_compare_no_records_only_while_ci_compares_their_writers_on_rows
+#: test_an_empty_conditions_family_counts_only_while_ci_compares_its_writer_on_rows
 #: holds.
 MAY_COMPARE_NO_RECORDS: dict[str, str] = {
     f"poi_{poi_type}{version}": (
@@ -237,8 +237,10 @@ MAY_COMPARE_NO_RECORDS: dict[str, str] = {
         "reference/work_projects.json's `rows` is empty by the maintainer's decision of 2026-08-20 on #760 (Volunteer "
         "opportunities on a map, the next fourteen days): no invented workday may reach a hiker, so both writers' "
         "files hold no record on real data (0 rows, read 2026-10-11). Decision 162 (poll, 2026-10-11) counts it as "
-        "covered: CI's fixture family compares the writer on rows on every push, and the soak shows both real files "
-        "empty"
+        "covered: CI's fixture family compares the writer on rows each time pipeline-tests.yml's dbt job runs, 3 "
+        "invented workdays that fixture mode and parity.py's old side both read in place of the empty file "
+        "(lib/work_projects.FIXTURE_STAND_IN, since the maintainer's poll of 2026-10-15; until then it compared 0), "
+        "and the soak shows both real files empty"
     ),
     "closures": (
         "OurHike's own database on UA holds no verified public closure: conditions/closures.json carries OurHike's "

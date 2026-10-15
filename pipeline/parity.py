@@ -395,20 +395,27 @@ def _work_projects_old() -> dict:
     """export_work_projects.py's file for reference/work_projects.json, from its own main(), written into a temporary folder.
 
     It has no builder that returns the document, so main() runs as a bake runs
-    it, with only OUT_DIR, OUT_PATH and MANIFEST_PATH moved, and the file it
-    wrote is read back.
+    it, with OUT_DIR, OUT_PATH and MANIFEST_PATH moved, and the file it
+    wrote is read back. Over the fixtures, RAW_DIR holds make_dbt_fixtures.py's
+    stand-in for the reviewed file (lib/work_projects.FIXTURE_STAND_IN), which
+    fixture mode landed for the writer too, so REVIEWED_PATH moves to it: both
+    sides then read the same invented rows, where git's copy has none. Over an
+    hour's answers (--answers-dir) there is no stand-in, and both read git's.
     """
     import contextlib
     import io
     import tempfile
 
     import export_work_projects
+    from lib.work_projects import FIXTURE_STAND_IN
 
-    names = ("OUT_DIR", "OUT_PATH", "MANIFEST_PATH")
+    names = ("OUT_DIR", "OUT_PATH", "MANIFEST_PATH", "REVIEWED_PATH")
     real = {name: getattr(export_work_projects, name) for name in names}
+    stand_in = RAW_DIR / FIXTURE_STAND_IN
     with tempfile.TemporaryDirectory() as folder:
         out = Path(folder)
         moved = {"OUT_DIR": out, "OUT_PATH": out / "work_projects.json", "MANIFEST_PATH": out / "manifest.json"}
+        moved["REVIEWED_PATH"] = stand_in if stand_in.is_file() else real["REVIEWED_PATH"]
         for name, path in moved.items():
             setattr(export_work_projects, name, path)
         try:
@@ -418,9 +425,9 @@ def _work_projects_old() -> dict:
             for name, path in real.items():
                 setattr(export_work_projects, name, path)
         if code != 0:
-            raise SystemExit("export_work_projects.py refuses reference/work_projects.json, so it publishes nothing")
+            raise SystemExit(f"export_work_projects.py refuses {moved['REVIEWED_PATH']}, so it publishes nothing")
         if not moved["OUT_PATH"].exists():
-            raise SystemExit("reference/work_projects.json is not reviewed, so export_work_projects.py publishes nothing")
+            raise SystemExit(f"{moved['REVIEWED_PATH']} is not reviewed, so export_work_projects.py publishes nothing")
         return json.loads(moved["OUT_PATH"].read_text(encoding="utf-8"))
 
 

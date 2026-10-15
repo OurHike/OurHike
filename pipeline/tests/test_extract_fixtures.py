@@ -43,6 +43,7 @@ from extract._kinds import (
     WordpressTerms,
 )
 from extract._pages_points import PagePoints
+from lib.work_projects import FIXTURE_STAND_IN
 
 
 @pytest.fixture(scope="module")
@@ -586,6 +587,32 @@ def test_the_reviewed_files_land_from_git_whole(fixtures):
         document = json.loads(resource.file.read_text())
         rows = 1 if resource.rows_key is None else len(document[resource.rows_key])
         assert counts[resource.table] == rows, resource.table
+
+
+def test_the_work_projects_stand_in_lands_in_place_of_the_empty_reviewed_file(fixtures, tmp_path):
+    """reference/work_projects.json's `rows` are empty by the maintainer's decision of 2026-08-20 on #760, so CI's
+    work_projects family compared both writers on none. Fixture mode reads make_dbt_fixtures.py's invented rows
+    (lib/work_projects.FIXTURE_STAND_IN) in its place, under the same table, and parity.py's old side reads the same file
+    (tests/test_gate_report.py), so the family compares rows (decisions 162 and 199). Fixtures without the stand-in land
+    git's file, as before."""
+    root, counts = fixtures
+    (resource,) = [
+        r for r in fixture_resources(root / "raw")[0] if isinstance(r, ReviewedFile) and r.table == "raw_ourhike__work_projects"
+    ]
+    written = json.loads((root / "raw" / FIXTURE_STAND_IN).read_text())
+
+    assert resource.file.resolve() == (root / "raw" / FIXTURE_STAND_IN).resolve()
+    with duckdb.connect(str(root / "warehouse.duckdb"), read_only=True) as con:
+        ((row_json, path),) = con.execute("select row_json, _path from raw.raw_ourhike__work_projects").fetchall()
+    landed = json.loads(row_json)
+    assert counts["raw_ourhike__work_projects"] == 1 and path.endswith(FIXTURE_STAND_IN)
+    assert landed["rows"] == written["rows"] and len(landed["rows"]) >= 1
+    assert all(row["id"].startswith("fixture:") and row["title"].startswith("Fixture") for row in landed["rows"])
+
+    (bare,) = [
+        r for r in fixture_resources(tmp_path)[0] if isinstance(r, ReviewedFile) and r.table == "raw_ourhike__work_projects"
+    ]
+    assert bare.path == "reference/work_projects.json"
 
 
 def test_a_folder_of_challenge_files_lands_one_verbatim_row_per_file(fixtures):

@@ -12,11 +12,17 @@
 //
 // WHAT TO LOOK FOR. The card: "Its anomaly checks compare each build with the
 // ones before it, and can't flag anything until they have 11 builds, this one
-// included. Until then they pass even if something is wrong." Under
-// Freshness, Volume and Anomalies, the same caveat beside each "All pass":
-// "Learning, 3 of 11 monthly builds: until then its anomaly checks can't flag
-// anything." And the five cards' sentences, with none of the pipeline's words
-// ("raw table", "mart", "retyped upstream", "phone file", "safety columns").
+// included. Until then they pass even if something is wrong." Under Volume
+// and Anomalies, the same caveat beside each "All pass": "Learning, 3 of 11
+// monthly builds: until then its anomaly checks can't flag anything." And the
+// five cards' sentences, with none of the pipeline's words ("raw table",
+// "mart", "retyped upstream", "phone file", "safety columns").
+//
+// FRESHNESS LEARNS NOTHING SINCE DECISION 203 (the maintainer, 2026-10-15):
+// each source is held to its own fixed limits from OurHike's last read of
+// it, so its card carries no caveat, counts "296 of 296 sources on time", and
+// says "How long since OurHike last read each source, or confirmed it
+// unchanged, against that source's limit."
 //
 // WHY INVENTED, AND THE CLOCK, as in data-quality-needs-a-look.mjs: no
 // published release carries the file yet, and the examples' own clock keeps
@@ -36,7 +42,7 @@ import { labelInvented, serveDataQuality } from './fixtures/dataQuality.mjs'
 export const caption =
   'docs.ourhike.org/data/quality/ on a laptop while the anomaly checks are learning, from INVENTED example files (no release carries the file yet): the monthly card says they can’t flag anything until 11 builds, and each kind of check says what it covers. Nothing in this frame was measured.'
 export const alt =
-  'The data quality page at desktop width, scrolled to a dashed amber pill saying the figures are invented, above two white cards. "Monthly build" reads "Release 2026-10-03-2 · built 7 Oct 2026, 06:12 UTC, 17 hours ago", three pills with 0 warnings and 0 failed, and a learning line, "Learning, 3 of 11 builds", with a sentence saying its anomaly checks cannot flag anything until they have 11 builds and pass until then even if something is wrong. "Hourly conditions" beside it has every check passed. Below, the heading "The five kinds of check" over five cards - Freshness, Volume, Schema, dbt tests and Anomalies - each with a green "All pass", a large count, a sentence saying what that kind of check looks at, and on Freshness, Volume and Anomalies the line "Learning, 3 of 11 monthly builds: until then its anomaly checks can’t flag anything."'
+  'The data quality page at desktop width, scrolled to a dashed amber pill saying the figures are invented, above two white cards. "Monthly build" reads "Release 2026-10-03-2 · built 7 Oct 2026, 06:12 UTC, 17 hours ago", three pills with 0 warnings and 0 failed, and a learning line, "Learning, 3 of 11 builds", with a sentence saying its anomaly checks cannot flag anything until they have 11 builds and pass until then even if something is wrong. "Hourly conditions" beside it has every check passed. Below, the heading "The five kinds of check" over five cards - Freshness, Volume, Schema, dbt tests and Anomalies - each with a green "All pass", a large count, a sentence saying what that kind of check looks at, Freshness\'s "How long since OurHike last read each source, or confirmed it unchanged, against that source\'s limit.", and on Volume and Anomalies the line "Learning, 3 of 11 monthly builds: until then its anomaly checks can’t flag anything."'
 
 export const desktop = true
 

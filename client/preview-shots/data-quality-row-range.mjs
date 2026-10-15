@@ -13,12 +13,18 @@
 // "Its columns changed since the last build." where it said "Its columns no
 // longer match what Elementary expected.": a schema_changes check compares
 // the table with the build before, so that is what changed means here. The light files carry no history for the null rate of
-// trail_lines.surface or for preview_fixture__alerts' time between updates
-// (the contract's first shape), so those two rows say which side Elementary
-// flagged each on and that there is no earlier range: "flagged as high. No
-// earlier range to compare it with." The words are the maintainer's ask of
-// the same day, shown the first wording: "both of those are jargony ... be
-// more concise and simple".
+// trail_lines.surface (the contract's first shape), so that row says which
+// side Elementary flagged it on and that there is no earlier range: "flagged
+// as high. No earlier range to compare it with." The words are the
+// maintainer's ask of the same day, shown the first wording: "both of those
+// are jargony ... be more concise and simple".
+//
+// AND DECISION 203 (the maintainer, 2026-10-15): the freshness row on
+// preview_fixture__alerts reads "Read or confirmed 13 h ago · limit 24 h.",
+// the time since OurHike last read the source against that source's own
+// limit, where it said "26 hours between updates in this build, flagged as
+// high. No earlier range to compare it with." A source's freshness has no
+// history and no range to quote, so its row names no "Since" either.
 //
 // WHY A RECIPE OF ITS OWN. data-quality-needs-a-look.mjs frames the heavy
 // files from their sixth row, whose rows could not run and quote no range, and
@@ -38,9 +44,9 @@ import {
 import { labelInvented, serveDataQuality } from './fixtures/dataQuality.mjs'
 
 export const caption =
-  "docs.ourhike.org/data/quality/'s Needs a look on a laptop, from INVENTED example files (no release carries the file yet): the row on preview_fixture__trails quotes the usual 5,199 to 5,322 rows, the range the chart draws at that build, and the two rows whose files carry no history say they have no earlier range. Nothing in this frame was measured."
+  "docs.ourhike.org/data/quality/'s Needs a look on a laptop, from INVENTED example files (no release carries the file yet): the row on preview_fixture__trails quotes the usual 5,199 to 5,322 rows, the range the chart draws at that build, the null-rate row, whose file carries no history, says it has no earlier range, and the freshness row says how long since OurHike last read the source, against its limit. Nothing in this frame was measured."
 export const alt =
-  'The data quality page at desktop width, scrolled to a dashed amber pill saying the figures are invented, above the serif heading "Needs a look" and a bold line "Warnings · 4, by kind". Four open white folds follow, each headed by an amber triangle, a kind and "1 warning", and each holding one row: an amber stripe on its left, the kind and a table in code type, a sentence, and on the right an amber "Warned" pill over its lane and since when. Freshness, on preview_fixture__alerts: "26 hours between updates in this build, flagged as high. No earlier range to compare it with." Volume, on preview_fixture__trails, with a dark green "Chart" button: "4,118 rows in this build, below the usual 5,199 to 5,322." Schema, on preview_fixture__trails and trail_class: "Its columns changed since the last build." Anomalies, on trail_lines and surface, at the bottom edge: "Null rate: 4.2% in this build, flagged as high. No earlier range to compare it with."'
+  'The data quality page at desktop width, scrolled to a dashed amber pill saying the figures are invented, above the serif heading "Needs a look" and a bold line "Warnings · 4, by kind". Four open white folds follow, each headed by an amber triangle, a kind and "1 warning", and each holding one row: an amber stripe on its left, the kind and a table in code type, a sentence, and on the right an amber "Warned" pill over its lane and since when. Freshness, on preview_fixture__alerts, its pill over "Hourly" alone: "Read or confirmed 13 h ago · limit 24 h." Volume, on preview_fixture__trails, with a dark green "Chart" button: "4,118 rows in this build, below the usual 5,199 to 5,322." Schema, on preview_fixture__trails and trail_class: "Its columns changed since the last build." Anomalies, on trail_lines and surface, at the bottom edge: "Null rate: 4.2% in this build, flagged as high. No earlier range to compare it with."'
 
 export const desktop = true
 

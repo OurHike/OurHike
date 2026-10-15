@@ -18,9 +18,10 @@
 // card the range expected from the builds before, the one its row quotes, so
 // a card names a side of it only where that range gives the side Elementary
 // flagged, and otherwise says which side Elementary flagged. The light files
-// hold no history for the freshness or the anomalies entry, so Freshness
-// reads "26 hours between updates, flagged as high." and Anomalies "Null
-// rate: 4.2%, flagged as high.", where each said "above its expected range".
+// hold no history for the anomalies entry, so Anomalies reads "Null rate:
+// 4.2%, flagged as high.", where it said "above its expected range";
+// Freshness said the same of "26 hours between updates" until decision 203,
+// below.
 //
 // AND THE WORD-CHOICE REVIEW OF #1805 (2026-10-09), in this frame: the
 // monthly card's line starts "Release 2026-10-03-2", not "Made release";
@@ -30,6 +31,13 @@
 // the one kind with nothing to look at, says what it covers in a visitor's
 // words: "Unique IDs, required values filled in, links between tables, and
 // each finished table's promised columns."
+//
+// AND DECISION 203 (the maintainer, 2026-10-15), in this frame: a source's
+// freshness is measured from OurHike's last read of it, read or confirmed
+// unchanged, against that source's own limits, so Freshness counts sources,
+// "295 of 296 sources on time", where it said "checks on time", and its note
+// reads "preview_fixture__alerts: read or confirmed 13 h ago · limit 24 h.",
+// the words of the frame the maintainer was shown.
 //
 // FROM THE TABS DOWN, because the site's nav above them is every page's and
 // is not what this pull request changed; the chart and the per-mart table are
@@ -48,9 +56,9 @@ import {
 import { labelInvented, serveDataQuality } from './fixtures/dataQuality.mjs'
 
 export const caption =
-  'docs.ourhike.org/data/quality/ on a laptop, from INVENTED example files (no release carries the file yet): the data tabs, both build cards and the five kinds of check. Nothing in this frame was measured.'
+  "docs.ourhike.org/data/quality/ on a laptop, from INVENTED example files (no release carries the file yet): the data tabs, both build cards and the five kinds of check, Freshness counted in sources and timed from OurHike's last read of each. Nothing in this frame was measured."
 export const alt =
-  'The data quality page at desktop width. A white band holds two tabs, "How the data is built" and "Data quality", the second highlighted in pale green. Below, the eyebrow "docs.ourhike.org/data/quality", the serif heading "Data quality", a grey paragraph saying the page shows counts and table names, never rows, and a dashed amber pill reading "Invented figures, routed in by the preview recipe. Nothing here was measured." Two white cards side by side, "Monthly build" and "Hourly conditions", each with a line naming when it was built and three pills - a number passed with a green check, a number of warnings with an amber triangle, and "0 failed" - then the heading "The five kinds of check" over five cards: Freshness, Volume, Schema, dbt tests and Anomalies, each with an amber "1 late"-style pill or a green "All pass", a large count of checks passed and a short note naming a table.'
+  'The data quality page at desktop width. A white band holds two tabs, "How the data is built" and "Data quality", the second highlighted in pale green. Below, the eyebrow "docs.ourhike.org/data/quality", the serif heading "Data quality", a grey paragraph saying the page shows counts and table names, never rows, and a dashed amber pill reading "Invented figures, routed in by the preview recipe. Nothing here was measured." Two white cards side by side, "Monthly build" and "Hourly conditions", each with a line naming when it was built and three pills - a number passed with a green check, a number of warnings with an amber triangle, and "0 failed" - then the heading "The five kinds of check" over five cards: Freshness, Volume, Schema, dbt tests and Anomalies, each with an amber "1 late"-style pill or a green "All pass", a large count passed and a short note naming a table. Freshness reads "295 of 296 sources on time" and "preview_fixture__alerts: read or confirmed 13 h ago · limit 24 h."'
 
 export const desktop = true
 

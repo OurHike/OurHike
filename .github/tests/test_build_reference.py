@@ -73,19 +73,28 @@ def refresh() -> dict:
     return _load(WORKFLOWS / REFRESH)
 
 
-def test_it_runs_only_on_a_dispatch_whose_one_input_is_a_required_raw_run(workflow):
-    """No schedule (the lane's clock is refresh-reference.yml's) and no input that could name an environment."""
+def test_it_runs_only_on_a_dispatch_whose_inputs_are_the_raw_run_and_the_retention_steps_two_switches(workflow):
+    """No schedule (the lane's clock is refresh-reference.yml's) and no input that could name an environment. The
+    retention step's two (decision 205) have defaults, so refresh-reference.yml's dispatch, which passes the raw_run
+    alone, builds and then only lists."""
     triggers = _triggers(workflow)
 
     assert set(triggers) == {"workflow_dispatch"}
-    (name,) = triggers["workflow_dispatch"]["inputs"]
-    spec = triggers["workflow_dispatch"]["inputs"]["raw_run"]
-    assert name == "raw_run" and spec["required"] is True and spec["type"] == "string"
+    inputs = triggers["workflow_dispatch"]["inputs"]
+    assert set(inputs) == {"raw_run", "retention", "retention_only"}
+    assert inputs["raw_run"]["required"] is True and inputs["raw_run"]["type"] == "string"
+    assert inputs["retention"]["type"] == "choice" and inputs["retention"]["options"] == ["list", "delete"]
+    assert inputs["retention"]["default"] == "list", "the first run after the merge lists, and deletes nothing"
+    assert inputs["retention_only"] == {**inputs["retention_only"], "type": "boolean", "default": False}
 
 
 def test_every_run_names_its_raw_run_in_its_title(workflow):
-    """check-upstream-freshness.yml dates UA's monthly data by the raw_run in a run's title (its display_title)."""
-    assert workflow["run-name"] == "Build reference data from raw_run ${{ inputs.raw_run }}"
+    """check-upstream-freshness.yml dates UA's monthly data by the raw_run in the title (display_title) of a run whose
+    confirm job passed; a retention_only run, whose confirm job is skipped, names the raw_run it keeps as UA's."""
+    title = workflow["run-name"]
+
+    assert "format('Build reference data from raw_run {0}', inputs.raw_run)" in title
+    assert "inputs.retention_only && format('Retention step alone, keeping raw_run {0}" in title
 
 
 def test_nothing_in_it_names_any_environment_but_ua(workflow):
@@ -147,7 +156,7 @@ def test_only_the_publish_job_holds_the_public_buckets_keys_or_the_write_switch(
             assert not holds and not writes, f"{job_id} holds {sorted(holds)} or R2_WRITE_ENABLED"
 
 
-@pytest.mark.parametrize("job_id", ["build", "parity"])
+@pytest.mark.parametrize("job_id", ["build", "parity", "maintain"])
 def test_a_job_holding_the_raw_store_key_names_every_raw_secret_before_it_uses_one(workflow, job_id):
     steps = workflow["jobs"][job_id]["steps"]
     first = next(index for index, step in enumerate(steps) if _secrets(step))
@@ -417,6 +426,8 @@ def test_the_publish_job_stages_the_dbt_writers_files_on_ua_inside_publish_data(
     step = next(step for step in job["steps"] if step.get("run") == "python publish.py")
 
     assert step["env"]["OURHIKE_PHONE_FILES"] == "dbt" and step["env"]["OURHIKE_DATA_ENV"] == "ua"
+    # The pin it was built from, which latest.json records and the retention step keeps (decision 205).
+    assert step["env"]["OURHIKE_RAW_RUN"] == "${{ inputs.raw_run }}"
     assert job["concurrency"] == {"group": "publish-data", "cancel-in-progress": False}
     assert job["needs"] == "build"
 
@@ -456,6 +467,83 @@ def test_the_weekly_planner_gives_way_on_its_schedule_only_once_the_monthly_lane
     assert '"schedule"' in script and f"{NAME}/runs?branch=main&status=completed" in script and CONFIRM in script
     assert "workflow_dispatch" in _triggers(workflow), "the dispatch stays (decision 28a)"
     assert not _secrets(give_way) and not _secrets(workflow["jobs"]["plan"])
+
+
+# --- The retention step (decision 205): pipeline/prune_raw_store.py ---
+
+
+def _prune_step(workflow: dict) -> dict:
+    (step,) = [step for step in workflow["jobs"]["maintain"]["steps"] if "prune_raw_store.py" in (step.get("run") or "")]
+    return step
+
+
+def test_the_retention_step_runs_once_ua_is_confirmed_or_alone_and_never_holds_the_public_buckets_key(workflow):
+    """After the publish and its confirm job, so this run's raw_run is what UA serves; a failure there is its own red
+    job, the release already confirmed. Under retention_only it runs with every other job skipped."""
+    job = workflow["jobs"]["maintain"]
+
+    assert job["needs"] == ["build", "publish", "confirm"]
+    assert job["if"] == "${{ !cancelled() && (inputs.retention_only || needs.confirm.result == 'success') }}"
+    assert "concurrency" not in job, "the workflow's raw-lake-monthly, as every job here"
+    assert workflow["concurrency"]["group"] == "raw-lake-monthly"
+    assert _secrets(job) == RAW_STORE_SECRETS | {"R2_ENDPOINT_URL"}
+    assert "continue-on-error" not in job and isinstance(job["timeout-minutes"], int)
+
+
+def test_retention_only_skips_the_build_and_so_every_job_after_it(workflow):
+    jobs = workflow["jobs"]
+
+    assert jobs["build"]["if"] == "${{ !inputs.retention_only }}"
+    assert jobs["publish"]["needs"] == "build" and jobs["parity"]["needs"] == "build", "skipped with the build"
+    for job_id in ("confirm", "parity-report"):
+        assert "needs.build.result == 'success'" in jobs[job_id]["if"], job_id
+
+
+def _run_prune_step(workflow: dict, tmp_path: Path, retention: str) -> list[str]:
+    """The step's script, with a stand-in for the extract venv's python that records its argv."""
+    python = tmp_path / "runner" / "extract" / "bin" / "python"
+    python.parent.mkdir(parents=True, exist_ok=True)
+    python.write_text(
+        f"#!{sys.executable}\nimport json, os, sys\n"
+        "with open(os.environ['STUB_LOG'], 'w') as log:\n    json.dump(sys.argv[1:], log)\n"
+    )
+    python.chmod(0o755)
+    subprocess.run(
+        [*BASH, _prune_step(workflow)["run"]],
+        cwd=tmp_path,
+        env={
+            **os.environ,
+            "RUNNER_TEMP": str(tmp_path / "runner"),
+            "R2_RAW_BUCKET": "our-hike-raw",
+            "DATA_BASE_URL": "https://data.example.org",
+            "RAW_RUN": RAW_RUN,
+            "RETENTION": retention,
+            "GITHUB_STEP_SUMMARY": str(tmp_path / "summary.md"),
+            "STUB_LOG": str(tmp_path / "argv.json"),
+        },
+        check=True,
+        timeout=30,
+    )
+    return json.loads((tmp_path / "argv.json").read_text())
+
+
+@pytest.mark.parametrize("retention", ["list", "delete"])
+def test_the_retention_step_lists_by_default_and_deletes_only_on_retention_delete(workflow, tmp_path, retention):
+    argv = _run_prune_step(workflow, tmp_path, retention)
+
+    assert argv[:3] == ["prune_raw_store.py", "--raw-bucket", "our-hike-raw"]
+    assert argv[argv.index("--keep-raw-run") + 1] == f"ua={RAW_RUN}", "this run's raw_run is what UA serves"
+    assert argv[argv.index("--data-base-url") + 1] == "https://data.example.org"
+    assert argv[argv.index("--summary") + 1] == str(tmp_path / "summary.md")
+    assert ("--delete" in argv) is (retention == "delete")
+
+
+def test_the_retention_steps_inputs_reach_it_through_env(workflow):
+    step = _prune_step(workflow)
+
+    assert step["env"]["RAW_RUN"] == "${{ inputs.raw_run }}" and step["env"]["RETENTION"] == "${{ inputs.retention }}"
+    assert step["env"]["DATA_BASE_URL"] == "${{ vars.DATA_BASE_URL }}"
+    assert RAW_STORE_SECRETS <= _secrets(step) and not _secrets(step) & PUBLIC_BUCKET_SECRETS
 
 
 # --- Parity ---

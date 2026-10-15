@@ -15,6 +15,13 @@
 //
 // Every launch here is a fresh evaluation of lib/dataRelease.ts, because the
 // session's release is decided once when the module loads.
+//
+// ONE CASE DOES MOVE A PHONE OFF ITS RECORD, AND NOT THROUGH THE POINTER
+// (decision 211, #1833): a recorded release whose own manifest answers exactly
+// 404 is forgotten, record and mirror, so the next launch reads DATA_RELEASE.
+// So every phone below that keeps its record has its release still served
+// (stillServed), and "forgetting a recorded release whose folder is gone"
+// holds the rest.
 
 import { existsSync, readFileSync } from 'node:fs'
 import { join } from 'node:path'
@@ -26,6 +33,7 @@ const idb = vi.hoisted(() => ({
   store: new Map<string, unknown>(),
   failGet: false,
   failSet: false,
+  failDel: false,
 }))
 
 vi.mock('idb-keyval', () => ({
@@ -36,6 +44,10 @@ vi.mock('idb-keyval', () => ({
   set: vi.fn(async (key: string, value: unknown) => {
     if (idb.failSet) throw new Error('QuotaExceededError')
     idb.store.set(key, value)
+  }),
+  del: vi.fn(async (key: string) => {
+    if (idb.failDel) throw new Error('IndexedDB is unavailable')
+    idb.store.delete(key)
   }),
 }))
 
@@ -124,10 +136,18 @@ const releaseManifest =
   () =>
     new Response(manifestOf(release), { status: 200 })
 
+/** `release`'s own manifest, still in the bucket. readDataChannel asks for it
+ *  whenever the phone holds a record of it, and a 404 there forgets the
+ *  record (decision 211), so a test whose phone keeps its record serves it. */
+function stillServed(release: string): Record<string, Route> {
+  return { [`${BASE}/releases/${release}/manifest.json`]: releaseManifest(release) }
+}
+
 beforeEach(() => {
   idb.store.clear()
   idb.failGet = false
   idb.failSet = false
+  idb.failDel = false
 })
 
 afterEach(() => {
@@ -277,24 +297,38 @@ describe('reading the pointer', () => {
     expect(idb.store.get(KEY)).toMatchObject({ release: NEWER, environment: 'ua' })
   })
 
-  it('does not fetch the release manifest again for an entry it already recorded', async () => {
+  // Since decision 211 a phone with a record sends one HEAD for that release's
+  // manifest on every read; before it, this read made one request, the
+  // pointer's.
+  it('sends one uncached HEAD for an entry it already recorded, and never GETs that manifest again', async () => {
     rememberPointer(LAST_GOOD)
     const release = await launch()
     const fetchMock = serve({
+      ...stillServed(LAST_GOOD),
       [`${BASE}/channels.json`]: channels({ production: { v1: LAST_GOOD } }),
     })
 
-    expect(await release.readDataChannel(BASE)).toEqual({
+    expect(await release.readDataChannel(BASE)).toStrictEqual({
       outcome: 'unchanged',
       recorded: LAST_GOOD,
     })
-    expect(fetchMock).toHaveBeenCalledTimes(1)
+    expect(
+      fetchMock.mock.calls.map(([url, init]) => [
+        String(url),
+        init?.method ?? 'GET',
+        init?.cache,
+      ]),
+    ).toEqual([
+      [`${BASE}/releases/${LAST_GOOD}/manifest.json`, 'HEAD', 'no-store'],
+      [`${BASE}/channels.json`, 'GET', 'no-store'],
+    ])
   })
 
   it('follows a rollback like any other move: the pointer is what the train moves', async () => {
     rememberPointer(NEWER)
     const release = await launch()
     serve({
+      ...stillServed(NEWER),
       [`${BASE}/channels.json`]: channels({ production: { v1: LAST_GOOD } }),
       [`${BASE}/releases/${LAST_GOOD}/manifest.json`]: releaseManifest(LAST_GOOD),
     })
@@ -321,7 +355,7 @@ describe('reading the pointer', () => {
     idb.store.set(KEY, record(LAST_GOOD))
     const release = await launch()
     expect(release.SESSION_RELEASE).toBe(COMPILED)
-    serve({})
+    serve(stillServed(LAST_GOOD))
 
     await release.readDataChannel(BASE)
 
@@ -402,7 +436,7 @@ describe('a phone never ends with no data because of the pointer', () => {
     async (_, routes, outcome) => {
       rememberPointer(LAST_GOOD)
       const release = await launch()
-      serve(routes())
+      serve({ ...stillServed(LAST_GOOD), ...routes() })
 
       expect(await release.readDataChannel(BASE)).toEqual({
         outcome,
@@ -440,7 +474,10 @@ describe('a phone never ends with no data because of the pointer', () => {
     vi.useFakeTimers()
     rememberPointer(LAST_GOOD)
     const release = await launch()
-    serve({ [`${BASE}/channels.json`]: () => new Promise<Response>(() => {}) })
+    serve({
+      ...stillServed(LAST_GOOD),
+      [`${BASE}/channels.json`]: () => new Promise<Response>(() => {}),
+    })
 
     const answer = release.readDataChannel(BASE)
     await vi.advanceTimersByTimeAsync(release.CHANNEL_READ_TIMEOUT_MS)
@@ -451,7 +488,10 @@ describe('a phone never ends with no data because of the pointer', () => {
   it('reports an aborted read as unreachable and keeps the record', async () => {
     rememberPointer(LAST_GOOD)
     const release = await launch()
-    serve({ [`${BASE}/channels.json`]: () => new Promise<Response>(() => {}) })
+    serve({
+      ...stillServed(LAST_GOOD),
+      [`${BASE}/channels.json`]: () => new Promise<Response>(() => {}),
+    })
     const controller = new AbortController()
 
     const answer = release.readDataChannel(BASE, { signal: controller.signal })
@@ -489,7 +529,7 @@ describe('a phone never ends with no data because of the pointer', () => {
     vi.useFakeTimers()
     rememberPointer(LAST_GOOD)
     const release = await launch()
-    serve({ [`${BASE}/channels.json`]: stalled })
+    serve({ ...stillServed(LAST_GOOD), [`${BASE}/channels.json`]: stalled })
 
     const seen = settledSoFar(release.readDataChannel(BASE))
     await vi.advanceTimersByTimeAsync(release.CHANNEL_READ_TIMEOUT_MS)
@@ -502,6 +542,7 @@ describe('a phone never ends with no data because of the pointer', () => {
     rememberPointer(LAST_GOOD)
     const release = await launch()
     serve({
+      ...stillServed(LAST_GOOD),
       [`${BASE}/channels.json`]: channels({ production: { v1: NEWER } }),
       [`${BASE}/releases/${NEWER}/manifest.json`]: stalled,
     })
@@ -516,7 +557,7 @@ describe('a phone never ends with no data because of the pointer', () => {
   it('settles when the caller aborts while the body is still arriving', async () => {
     rememberPointer(LAST_GOOD)
     const release = await launch()
-    serve({ [`${BASE}/channels.json`]: stalled })
+    serve({ ...stillServed(LAST_GOOD), [`${BASE}/channels.json`]: stalled })
     const controller = new AbortController()
 
     const answer = release.readDataChannel(BASE, { signal: controller.signal })
@@ -562,6 +603,7 @@ describe('a phone never ends with no data because of the pointer', () => {
     idb.failGet = true
     const release = await launch()
     serve({
+      ...stillServed(LAST_GOOD),
       [`${BASE}/channels.json`]: channels({ production: { v1: NEWER } }),
       [`${BASE}/releases/${NEWER}/manifest.json`]: releaseManifest(NEWER),
     })
@@ -570,6 +612,173 @@ describe('a phone never ends with no data because of the pointer', () => {
       outcome: 'recorded',
       recorded: NEWER,
     })
+  })
+})
+
+describe('forgetting a recorded release whose folder is gone (decision 211)', () => {
+  // #1833 — A phone that recorded a data release keeps reading it after the
+  // folder is gone, and no app update moves it off. The maintainer's poll of
+  // 2026-10-15, "As drawn": exactly 404 for the recorded release's own
+  // manifest forgets it, record and mirror; any other answer, or none, keeps
+  // it; this session keeps its release, and the next launch reads DATA_RELEASE
+  // and then the pointer. In these tests an unrouted URL answers 404, so a
+  // phone whose release is not in `serve`'s routes has lost its folder.
+  const recordedManifest = `${BASE}/releases/${LAST_GOOD}/manifest.json`
+
+  it('deletes the record and its mirror when the recorded manifest answers 404, and a pointer still naming it is unresolved', async () => {
+    rememberPointer(LAST_GOOD)
+    const release = await launch()
+    serve({ [`${BASE}/channels.json`]: channels({ production: { v1: LAST_GOOD } }) })
+
+    expect(await release.readDataChannel(BASE)).toStrictEqual({
+      outcome: 'unresolved',
+      recorded: null,
+      forgotten: LAST_GOOD,
+    })
+    expect(idb.store.has(KEY)).toBe(false)
+    expect(window.localStorage.getItem(KEY)).toBeNull()
+  })
+
+  it('keeps SESSION_RELEASE for this session after forgetting, and starts the next launch on DATA_RELEASE', async () => {
+    rememberPointer(LAST_GOOD)
+    const release = await launch()
+    serve({})
+
+    await release.readDataChannel(BASE)
+
+    // A session never changes release part-way (lib/dataRelease.ts).
+    expect(release.SESSION_RELEASE).toBe(LAST_GOOD)
+    expect(release.releasePath('trails.geojson')).toBe(
+      `releases/${LAST_GOOD}/trails.geojson`,
+    )
+    const next = await launch()
+    expect(next.SESSION_RELEASE).toBe(COMPILED)
+    expect(next.SESSION_FOLLOWS_POINTER).toBe(false)
+  })
+
+  // A bucket move like decision 43's of 2026-10-02 copied nothing, so the
+  // folder and channels.json went together and the pointer cannot help.
+  it('forgets the record when channels.json answers 404 too, as after a bucket move', async () => {
+    rememberPointer(LAST_GOOD)
+    const release = await launch()
+    serve({})
+
+    expect(await release.readDataChannel(BASE)).toStrictEqual({
+      outcome: 'unreachable',
+      recorded: null,
+      forgotten: LAST_GOOD,
+    })
+    expect(idb.store.has(KEY)).toBe(false)
+    expect(window.localStorage.getItem(KEY)).toBeNull()
+    expect((await launch()).SESSION_RELEASE).toBe(COMPILED)
+  })
+
+  it('records a pointer entry that resolves after forgetting, for the launch after', async () => {
+    rememberPointer(LAST_GOOD)
+    const release = await launch()
+    serve({
+      ...stillServed(NEWER),
+      [`${BASE}/channels.json`]: channels({ production: { v1: NEWER } }),
+    })
+
+    expect(await release.readDataChannel(BASE)).toStrictEqual({
+      outcome: 'recorded',
+      recorded: NEWER,
+      forgotten: LAST_GOOD,
+    })
+    expect((await launch()).SESSION_RELEASE).toBe(NEWER)
+  })
+
+  const keptAnswers: [string, Route][] = [
+    ['answers 200', releaseManifest(LAST_GOOD)],
+    ['fails without an answer', () => Promise.reject(new TypeError('Failed to fetch'))],
+    ['answers 500', () => new Response('', { status: 500 })],
+    ['answers 503', () => new Response('', { status: 503 })],
+    ['answers 403', () => new Response('', { status: 403 })],
+    ['answers 410, which is not 404', () => new Response('', { status: 410 })],
+  ]
+
+  it.each(keptAnswers)(
+    'keeps the record and its mirror when the recorded manifest %s',
+    async (_, route) => {
+      rememberPointer(LAST_GOOD)
+      const release = await launch()
+      serve({
+        [recordedManifest]: route,
+        [`${BASE}/channels.json`]: channels({ production: { v1: LAST_GOOD } }),
+      })
+
+      expect(await release.readDataChannel(BASE)).toStrictEqual({
+        outcome: 'unchanged',
+        recorded: LAST_GOOD,
+      })
+      expect(idb.store.get(KEY)).toMatchObject({ release: LAST_GOOD })
+      expect(JSON.parse(window.localStorage.getItem(KEY) ?? 'null')).toMatchObject({
+        release: LAST_GOOD,
+      })
+      expect((await launch()).SESSION_RELEASE).toBe(LAST_GOOD)
+    },
+  )
+
+  it('keeps the record when the recorded manifest never answers, giving up at CHANNEL_READ_TIMEOUT_MS', async () => {
+    vi.useFakeTimers()
+    rememberPointer(LAST_GOOD)
+    const release = await launch()
+    serve({ [recordedManifest]: () => new Promise<Response>(() => {}) })
+
+    const answer = release.readDataChannel(BASE)
+    await vi.advanceTimersByTimeAsync(release.CHANNEL_READ_TIMEOUT_MS)
+
+    expect(await answer).toStrictEqual({ outcome: 'unreachable', recorded: LAST_GOOD })
+    expect(idb.store.get(KEY)).toMatchObject({ release: LAST_GOOD })
+    expect(window.localStorage.getItem(KEY)).not.toBeNull()
+  })
+
+  it('keeps the record when the caller aborts before the recorded manifest answers', async () => {
+    rememberPointer(LAST_GOOD)
+    const release = await launch()
+    const fetchMock = serve({ [recordedManifest]: () => new Promise<Response>(() => {}) })
+    const controller = new AbortController()
+
+    const answer = release.readDataChannel(BASE, { signal: controller.signal })
+    await vi.waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(1))
+    controller.abort()
+
+    expect(await answer).toStrictEqual({ outcome: 'unreachable', recorded: LAST_GOOD })
+    expect(idb.store.get(KEY)).toMatchObject({ release: LAST_GOOD })
+  })
+
+  it('removes the mirror even when IndexedDB refuses to delete the record, and forgets again on the next read', async () => {
+    rememberPointer(LAST_GOOD)
+    idb.failDel = true
+    const release = await launch()
+    serve({})
+
+    expect(await release.readDataChannel(BASE)).toStrictEqual({
+      outcome: 'unreachable',
+      recorded: null,
+      forgotten: LAST_GOOD,
+    })
+    expect(window.localStorage.getItem(KEY)).toBeNull()
+
+    // The record IndexedDB kept writes the mirror back on the next read
+    // (recallChannel), and that read's own check removes it again.
+    const next = await launch()
+    expect(next.SESSION_RELEASE).toBe(COMPILED)
+    serve({})
+    expect(await next.readDataChannel(BASE)).toMatchObject({ forgotten: LAST_GOOD })
+    expect(window.localStorage.getItem(KEY)).toBeNull()
+  })
+
+  it('sends no HEAD from a phone with no record', async () => {
+    const release = await launch()
+    const fetchMock = serve({})
+
+    await release.readDataChannel(BASE)
+
+    expect(fetchMock.mock.calls.map(([url]) => String(url))).toEqual([
+      `${BASE}/channels.json`,
+    ])
   })
 })
 

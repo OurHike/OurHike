@@ -247,7 +247,10 @@ export function availableRefresh(
   // A session reads the fallback while holding pointer data only when the
   // mirror of the pointer record was lost and the record and the data were
   // not (lib/dataRelease.ts); the next launch reads the repaired mirror and
-  // asks honestly. A deliberate rollback is not this case: it moves the
+  // asks honestly. Or, since decision 211, when lib/dataChannel.ts forgot a
+  // recorded release whose folder answered 404: then nothing is offered until
+  // a pointer read records a release that resolves, and the launch after
+  // that asks honestly. A deliberate rollback is not this case: it moves the
   // pointer, and a session following the pointer offers it like any move,
   // marked `older` below so the row does not call it newer.
   if (!session.followsPointer && stored.fromPointer === true) return null

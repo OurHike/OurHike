@@ -23,9 +23,10 @@
  * THE COMPILED FALLBACK, `DATA_RELEASE` below, is what a session reads when
  * this phone has never recorded a pointer it could verify: a first run, a
  * phone that has never reached `channels.json`, or a record that did not
- * survive. It is kept for exactly that, and `pages.yml` and `ua.yml` still
- * assert it resolves, because a first run that cannot reach the pointer reads
- * it.
+ * survive - including one lib/dataChannel.ts forgot because its release's
+ * own manifest answered 404 (decision 211). It is kept for exactly that, and
+ * `pages.yml` and `ua.yml` still assert it resolves, because a first run that
+ * cannot reach the pointer reads it.
  *
  * WHY A COMMITTED CONSTANT rather than a repository variable, which is the
  * one question DATA_RELEASES.md left open and the maintainer settled on
@@ -209,6 +210,10 @@ export const CHANNELS_KEY = 'channels.json'
  * disagree". Here the correction is for the next launch, because a session
  * that changed release mid-way would verify one release's bytes against
  * another's manifest.
+ *
+ * DELETED, BOTH, in one case only: lib/dataChannel.ts's readDataChannel
+ * forgets a recorded release whose own `releases/<id>/manifest.json` answers
+ * exactly 404 (decision 211), so the next launch reads DATA_RELEASE.
  */
 export const CHANNEL_RECORD_KEY = 'ourhike:data-channel'
 

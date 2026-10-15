@@ -273,7 +273,7 @@ exposures:
         # the one phone file reading that mart: with more, Elementary 0.26.0 needs
         # context["render"], which dbt 2.0.6 lacks.
         referenced_columns:
-          - {column_name: trail_line_id, data_type: string}
+          - {column_name: published_id, data_type: string}
           - {column_name: line_kind, data_type: string}
           - {column_name: feature_order, data_type: numeric}
           - {column_name: vertex_milli_miles, data_type: other}

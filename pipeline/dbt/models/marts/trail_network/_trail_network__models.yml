@@ -72,7 +72,8 @@ models:
     columns:
       - name: edge_id
         description: >
-          The edge's key: its parent line's trail_id, `#`, the part of that
+          The edge's key: its parent line's `trail_line_id`, the trail_lines
+          mart's key (not `trail_id`, its published id), `#`, the part of that
           line it lies on and, after `.`, the piece along that part, each
           from 1 (`centerline:chain:12#1.3`). Global to a build: noding is
           global, so one changed line moves the pieces of every line it
@@ -111,7 +112,11 @@ models:
         constraints:
           - type: not_null
       - name: trail_id
-        description: The parent line's `id` in the trail_lines mart, published as `trail_id`.
+        description: >
+          The parent line's `published_id` in the trail_lines mart, the `id`
+          nearby_trails.geojson publishes for it, published as `trail_id`: a
+          phone joins a graph cell's edges to a tile's lines by it
+          (client/src/lib/lineClimb.ts).
         data_type: varchar
         constraints:
           - type: not_null
@@ -119,7 +124,7 @@ models:
           - relationships:
               arguments:
                 to: ref('trail_lines', v=1)
-                field: trail_line_id
+                field: published_id
       - name: name
         description: The parent line's name; null where nothing names it.
         data_type: varchar

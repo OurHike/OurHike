@@ -31,8 +31,9 @@
 --   measures it), a tie going to the area first in the layer, and
 --   closure_source the closure layer's own registry key (#1142: the sheet
 --   speaks the closing organization's name, not the line's);
--- - where both parts exist the closed one's id gains `:closed` and the open
---   one's `:open`, so no two features share an id; the open part keeps every
+-- - where both parts exist the closed one's ids, its key and its published
+--   id, gain `:closed` and the open one's `:open`, as the Python suffixes
+--   its one id, so no two features share an id; the open part keeps every
 --   property of its line. A part of several pieces stays a MultiLineString
 --   (_merge()), never merged across the gap the closure made.
 -- Measured 2026-10-02 against shapely 2.1.2 (GEOS 3.13.1), on DuckDB 1.5.4
@@ -166,6 +167,11 @@ closed_parts as (
                 then split_lines.trail_line_id || ':closed'
             else split_lines.trail_line_id
         end as trail_line_id,
+        case
+            when len(split_lines.outside_parts) > 0
+                then split_lines.published_id || ':closed'
+            else split_lines.published_id
+        end as published_id,
         split_lines.name,
         'closed' as trail_status,
         'closed_area' as trail_status_basis,
@@ -194,6 +200,7 @@ open_parts as (
         club,
         file_row,
         trail_line_id || ':open' as trail_line_id,
+        published_id || ':open' as published_id,
         name,
         trail_status,
         trail_status_basis,
@@ -221,6 +228,7 @@ unsplit as (
         lines.club,
         lines.file_row,
         lines.trail_line_id,
+        lines.published_id,
         lines.name,
         lines.trail_status,
         lines.trail_status_basis,

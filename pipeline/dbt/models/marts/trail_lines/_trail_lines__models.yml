@@ -6,9 +6,9 @@ models:
       Every line a phone draws from a trail file, one row per published line
       (pipeline/ELT.md, "The eleven marts"): the A.T.'s centerline chains,
       side trails and spurs, which trails.geojson carries, and every other
-      organization's lines, which nearby_trails.geojson carries. Keyed by the
-      `id` both files publish, which spurs.json and trail_miles.json key
-      their records by too. Only rows whose source may publish
+      organization's lines, which nearby_trails.geojson carries. Keyed by
+      `trail_line_id`; `published_id` is the `id` both files publish, which
+      spurs.json and trail_miles.json key their records by too. Only rows whose source may publish
       (int_sources__publication). trails.geojson, trail_miles.json and
       spurs.json are written from it.
     config:
@@ -256,13 +256,32 @@ models:
     columns:
       - name: trail_line_id
         description: >
-          The published feature id, the `id` property both files carry:
+          The row's key, which int_trail_lines__history keys every version
+          on and the junction graph's edge ids are built from:
           `centerline:chain:<n>` for a chain of the A.T.'s centerline,
           numbered in bounds order and stable only for identical input
           (export_trails.merge_chain_records); `side_trails:<feature id>` for
           a side trail or spur, the id from lib/feature_id.py's GlobalID,
           then the feature's own id, then `generated-<index>`;
-          `<source key>:<feature id>` for a network line.
+          `<source key>:<feature id>` for a network line, its GlobalID read
+          in any case. Published until 2026-10-15; `published_id` is.
+        data_type: varchar
+        constraints:
+          - type: not_null
+        data_tests: [not_null, unique]
+      - name: published_id
+        description: >
+          The id a phone joins on: the `id` both files carry, the key
+          spurs.json and trail_miles.json key their records by, and the
+          `trail_id` each graph edge carries (trail_network's). Today's
+          exporters' id for the same feature, built by their rule,
+          macros/resolve_feature_id.sql (TL05): the GlobalID only where the
+          layer spells it exactly `GlobalID`, then the object id or Socrata
+          row id, then `generated-<index>`. The same as `trail_line_id` on
+          every A.T. line, club line and network line whose layer spells its
+          GlobalID `GlobalID` or has none; on usfs_trails, DEC's, NJ's,
+          NJDEP's, MassGIS's, PASDA's and NYC CSCL's and park drives' lines,
+          their object or row id, where `trail_line_id` holds the GlobalID.
         data_type: varchar
         constraints:
           - type: not_null

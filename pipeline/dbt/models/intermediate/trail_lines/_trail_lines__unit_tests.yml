@@ -25,14 +25,16 @@ unit_tests:
       The OBJECTID stands in for the feature's GeoJSON `id`, which ArcGIS
       serves equal to it (stg_atc__side_trails says where that was measured),
       and the centerline takes no OBJECTID step: its segment ids are never
-      published. tests/test_dbt_trail_lines_parity.py runs resolve_feature_id()
-      over the same rows.
+      published. `published_id` is the same chain through
+      macros/resolve_feature_id.sql, over the sources' declared `GlobalID`,
+      so it equals the key on every row. tests/test_dbt_trail_lines_parity.py
+      runs resolve_feature_id() over the same rows.
     model: int_trail_lines__at_features
     given:
       - input: ref('int_trail_lines__at_sources')
         rows:
-          - {source_key: "centerline", file_row: 3}
-          - {source_key: "side_trails", file_row: 4}
+          - {source_key: "centerline", file_row: 3, global_id_field: "GlobalID", object_id_field: "OBJECTID"}
+          - {source_key: "side_trails", file_row: 4, global_id_field: "GlobalID", object_id_field: "OBJECTID"}
       - input: ref('int_trail_lines__blazes')
         rows:
           - {trail_segment_key: "test_export_trails::test_export_trails_keeps_a_multilinestring_feature_instead_of_silently_dropping_it", blaze_color: "White"}
@@ -65,18 +67,18 @@ unit_tests:
           - {trail_segment_key: "sql::a_point_is_not_a_line", source_id: "s-point", objectid: 13, source_row: 6, geom: "POINT (-74 41)"}
     expect:
       rows:
-        - {trail_segment_key: "sql::a_centerline_segment_with_no_globalid_takes_its_place_in_the_layer", source_key: "centerline", source_order: 3, feature_id: "generated-1", trail_line_id: "centerline:generated-1", blaze_color: "White", has_line_geometry: true}
-        - {trail_segment_key: "test_export_trails::test_export_trails_keeps_a_multilinestring_feature_instead_of_silently_dropping_it", source_key: "centerline", source_order: 3, feature_id: "c-multi", trail_line_id: "centerline:c-multi", blaze_color: "White", has_line_geometry: true}
-        - {trail_segment_key: "sql::a_point_is_not_a_line", source_key: "side_trails", source_order: 4, feature_id: "s-point", trail_line_id: "side_trails:s-point", blaze_color: "Blue", has_line_geometry: false}
-        - {trail_segment_key: "test_export_spurs::test_a_null_global_id_resolves_to_the_same_id_on_both_sides", source_key: "side_trails", source_order: 4, feature_id: "11", trail_line_id: "side_trails:11", blaze_color: "Blue", has_line_geometry: true}
-        - {trail_segment_key: "test_export_trails::test_export_trails_falls_back_to_feature_id_when_global_id_is_explicitly_null", source_key: "side_trails", source_order: 4, feature_id: "10", trail_line_id: "side_trails:10", blaze_color: "Blue", has_line_geometry: true}
-        - {trail_segment_key: "test_export_trails::test_export_trails_substitutes_a_synthetic_id_and_warns_when_a_feature_has_no_global_id_or_top_level_id", source_key: "side_trails", source_order: 4, feature_id: "generated-43", trail_line_id: "side_trails:generated-43", blaze_color: "Blue", has_line_geometry: true}
-        - {trail_segment_key: "test_export_trails::test_export_trails_warns_and_skips_a_feature_with_missing_geometry", source_key: "side_trails", source_order: 4, feature_id: "s-no-line", trail_line_id: "side_trails:s-no-line", blaze_color: "Blue", has_line_geometry: false}
-        - {trail_segment_key: "test_lib_feature_id::test_a_falsy_but_real_globalid_is_kept_verbatim", source_key: "side_trails", source_order: 4, feature_id: "0", trail_line_id: "side_trails:0", blaze_color: "Blue", has_line_geometry: true}
-        - {trail_segment_key: "test_lib_feature_id::test_an_explicit_null_globalid_falls_back_to_the_features_own_id", source_key: "side_trails", source_order: 4, feature_id: "8", trail_line_id: "side_trails:8", blaze_color: "Blue", has_line_geometry: true}
-        - {trail_segment_key: "test_lib_feature_id::test_both_absent_substitutes_a_positional_id_and_warns", source_key: "side_trails", source_order: 4, feature_id: "generated-41", trail_line_id: "side_trails:generated-41", blaze_color: "Blue", has_line_geometry: true}
-        - {trail_segment_key: "test_lib_feature_id::test_globalid_wins_when_present", source_key: "side_trails", source_order: 4, feature_id: "abc-123", trail_line_id: "side_trails:abc-123", blaze_color: "Blue", has_line_geometry: true}
-        - {trail_segment_key: "test_lib_feature_id::test_the_synthetic_id_is_unique_within_a_source", source_key: "side_trails", source_order: 4, feature_id: "generated-42", trail_line_id: "side_trails:generated-42", blaze_color: "Blue", has_line_geometry: true}
+        - {trail_segment_key: "sql::a_centerline_segment_with_no_globalid_takes_its_place_in_the_layer", source_key: "centerline", source_order: 3, feature_id: "generated-1", trail_line_id: "centerline:generated-1", published_id: "centerline:generated-1", blaze_color: "White", has_line_geometry: true}
+        - {trail_segment_key: "test_export_trails::test_export_trails_keeps_a_multilinestring_feature_instead_of_silently_dropping_it", source_key: "centerline", source_order: 3, feature_id: "c-multi", trail_line_id: "centerline:c-multi", published_id: "centerline:c-multi", blaze_color: "White", has_line_geometry: true}
+        - {trail_segment_key: "sql::a_point_is_not_a_line", source_key: "side_trails", source_order: 4, feature_id: "s-point", trail_line_id: "side_trails:s-point", published_id: "side_trails:s-point", blaze_color: "Blue", has_line_geometry: false}
+        - {trail_segment_key: "test_export_spurs::test_a_null_global_id_resolves_to_the_same_id_on_both_sides", source_key: "side_trails", source_order: 4, feature_id: "11", trail_line_id: "side_trails:11", published_id: "side_trails:11", blaze_color: "Blue", has_line_geometry: true}
+        - {trail_segment_key: "test_export_trails::test_export_trails_falls_back_to_feature_id_when_global_id_is_explicitly_null", source_key: "side_trails", source_order: 4, feature_id: "10", trail_line_id: "side_trails:10", published_id: "side_trails:10", blaze_color: "Blue", has_line_geometry: true}
+        - {trail_segment_key: "test_export_trails::test_export_trails_substitutes_a_synthetic_id_and_warns_when_a_feature_has_no_global_id_or_top_level_id", source_key: "side_trails", source_order: 4, feature_id: "generated-43", trail_line_id: "side_trails:generated-43", published_id: "side_trails:generated-43", blaze_color: "Blue", has_line_geometry: true}
+        - {trail_segment_key: "test_export_trails::test_export_trails_warns_and_skips_a_feature_with_missing_geometry", source_key: "side_trails", source_order: 4, feature_id: "s-no-line", trail_line_id: "side_trails:s-no-line", published_id: "side_trails:s-no-line", blaze_color: "Blue", has_line_geometry: false}
+        - {trail_segment_key: "test_lib_feature_id::test_a_falsy_but_real_globalid_is_kept_verbatim", source_key: "side_trails", source_order: 4, feature_id: "0", trail_line_id: "side_trails:0", published_id: "side_trails:0", blaze_color: "Blue", has_line_geometry: true}
+        - {trail_segment_key: "test_lib_feature_id::test_an_explicit_null_globalid_falls_back_to_the_features_own_id", source_key: "side_trails", source_order: 4, feature_id: "8", trail_line_id: "side_trails:8", published_id: "side_trails:8", blaze_color: "Blue", has_line_geometry: true}
+        - {trail_segment_key: "test_lib_feature_id::test_both_absent_substitutes_a_positional_id_and_warns", source_key: "side_trails", source_order: 4, feature_id: "generated-41", trail_line_id: "side_trails:generated-41", published_id: "side_trails:generated-41", blaze_color: "Blue", has_line_geometry: true}
+        - {trail_segment_key: "test_lib_feature_id::test_globalid_wins_when_present", source_key: "side_trails", source_order: 4, feature_id: "abc-123", trail_line_id: "side_trails:abc-123", published_id: "side_trails:abc-123", blaze_color: "Blue", has_line_geometry: true}
+        - {trail_segment_key: "test_lib_feature_id::test_the_synthetic_id_is_unique_within_a_source", source_key: "side_trails", source_order: 4, feature_id: "generated-42", trail_line_id: "side_trails:generated-42", published_id: "side_trails:generated-42", blaze_color: "Blue", has_line_geometry: true}
 
   - name: int_trail_lines__at_clipped_keeps_whole_what_touches_the_corridor
     description: >

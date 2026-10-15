@@ -34,7 +34,7 @@ from (
                     json_object(
                         'type', 'Feature',
                         'properties', json_object(
-                            'id', trail_line_id,
+                            'id', published_id,
                             'source', source_key,
                             'name', name,
                             'blaze_color', blaze_color

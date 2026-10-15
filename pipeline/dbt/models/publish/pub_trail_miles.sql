@@ -47,7 +47,7 @@ from (
                 to_json(
                     map_from_entries(
                         list(
-                            { 'k': trail_line_id, 'v': vertex_miles }
+                            { 'k': published_id, 'v': vertex_miles }
                             order by feature_order
                         )
                     )

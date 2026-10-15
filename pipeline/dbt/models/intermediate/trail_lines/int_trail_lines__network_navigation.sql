@@ -78,6 +78,7 @@ select
     club,
     file_row,
     trail_line_id,
+    published_id,
     name,
     trail_status,
     trail_status_basis,

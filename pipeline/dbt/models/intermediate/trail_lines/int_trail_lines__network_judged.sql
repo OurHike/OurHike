@@ -16,29 +16,40 @@
 -- is @unvalidated in the Python's own comment, which names what would
 -- settle it: a real drive between 0.8 and 1.0.
 --
--- `trail_line_id` is `{source_key}:{id}` (TL05, lib/feature_id.py): the
--- first non-null of GlobalID, OBJECTID, FID and Socrata's `_socrata_id`,
--- else `generated-<n>` (`layer_position` below), else the row's staging
--- key. The Python reads `GlobalID` in exactly that case and then the
--- GeoJSON feature's `id`, which the extract lands only as the layer's
--- object id column; dlt lowercases every column, so case cannot be matched
--- here.
+-- `published_id` IS THE ID A PHONE JOINS ON (TL05): nearby_trails.geojson's
+-- `id` and each graph edge's `trail_id`, built as lib/feature_id.py builds
+-- it (macros/resolve_feature_id.sql): the GlobalID only where the layer
+-- spells it exactly `GlobalID`, then the feature's GeoJSON id, its object
+-- id or Socrata row id, then `generated-<n>` (`layer_position` below), then
+-- the row's staging key. dlt lowercases every column, so the spelling and
+-- the object id field are the registry's (int_trail_lines__network_sources'
+-- `global_id_field` and `feature_id_column`).
 --
--- OBJECTID AND FID ARE BOTH THE OBJECT ID, the field ArcGIS copies into a
--- feature's GeoJSON `id`, under the two names the registered layers use.
--- Read from the 24 ArcGIS network layers' metadata on 2026-10-08 (the 25th,
--- DEC's, refused the connection): the object id field is OBJECTID on 20,
--- FID on 3 (cotrex_trails, nc_mst_trail, nynjtc_long_path) and OBJECTID_1
--- on pasda_dcnr_trails, which carries a GLOBALID read first. Asked for two
--- features each, cotrex_trails, nc_mst_trail and both NYNJTC layers
--- answered a GeoJSON `id` equal to their object id field. So today's fetch
--- and export publish `cotrex_trails:<FID>`, and so does this model; until
--- FID was read here, those two layers' 97,220 lines on monthly run 30
+-- `trail_line_id` IS THE ROW'S KEY, kept as it was (`{source_key}:{id}`,
+-- the first non-null of a GlobalID in any case, OBJECTID, FID and Socrata's
+-- `_socrata_id`, then the same two last steps), because the mart's row
+-- history and the graph's edge ids are keyed on it. It was published until
+-- 2026-10-15, when UA's release 2026-10-10-2 showed it naming every line of
+-- eight layers by a GlobalID today's exporter never reads: usfs_trails
+-- (`globalid`), DEC's, NJ's, NJDEP's, MassGIS's and PASDA's (`GLOBALID`)
+-- and NYC's CSCL paths and park drives, so a phone holding graph cells
+-- from before the cutover would have lost the climb on those lines.
+--
+-- THE OBJECT ID IS THE FIELD ArcGIS copies into a feature's GeoJSON `id`,
+-- named per layer by the registry's `object_id_field`. Read from the 24
+-- ArcGIS network layers' metadata on 2026-10-08 (the 25th, DEC's, refused
+-- the connection): OBJECTID on 20, FID on 3 (cotrex_trails, nc_mst_trail,
+-- nynjtc_long_path) and OBJECTID_1 on pasda_dcnr_trails, beside an
+-- OBJECTID that is not its object id. Asked for two features each,
+-- cotrex_trails, nc_mst_trail and both NYNJTC layers answered a GeoJSON
+-- `id` equal to their object id field. So today's fetch and export publish
+-- `cotrex_trails:<FID>`, and so does `published_id`; until FID was read
+-- here, those two layers' 97,220 lines on monthly run 30
 -- (refresh-reference.yml 37772454847) were numbered by their rank in
--- staging-key order instead. That the two names cover every layer is
--- @unvalidated past the registry of 2026-10-08: a layer registered later
--- whose object id has a third name, and no GlobalID, falls to the staging
--- key, which one metadata read of the new layer would catch.
+-- staging-key order instead. `trail_line_id` still reads OBJECTID, then
+-- FID, for the key it has always had. A layer registered later names its
+-- own object id field, and int_trail_lines__network_sources' test stops the
+-- build where that column did not land.
 --
 -- THE STAGING KEY, THE LAST RESORT, where a row has none of the four ids
 -- and its stg model keeps no raw-table order: decision 40's key, as every
@@ -138,6 +149,14 @@ read_fields as (
             json_extract_string(unioned.properties, '$.fid'),
             json_extract_string(unioned.properties, '$._socrata_id')
         ) as upstream_id,
+        -- resolve_feature_id()'s inputs, by the registry's names for them.
+        sources.global_id_field,
+        json_extract_string(
+            unioned.properties, '$.' || sources.global_id_column
+        ) as global_id,
+        json_extract_string(
+            unioned.properties, '$.' || sources.feature_id_column
+        ) as feature_id,
         unioned.geom,
         unioned._loaded_at,
         unioned.properties,
@@ -397,6 +416,14 @@ select
     || coalesce(
         upstream_id, 'generated-' || layer_position, trail_segment_key
     ) as trail_line_id,
+    {{ resolve_feature_id(
+        'source_key',
+        'global_id_field',
+        'global_id',
+        'feature_id',
+        'layer_position',
+        last_resort='trail_segment_key'
+    ) }} as published_id,
     case
         when name_constant is not null then name_constant
         when is_placeholder then null

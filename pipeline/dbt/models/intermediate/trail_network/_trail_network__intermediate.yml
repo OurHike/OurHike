@@ -40,7 +40,11 @@ models:
       - name: part_index
         description: The part's place in its line, from 1; null where the whole line is refused.
       - name: trail_id
-        description: The line's `id` in the trail_lines mart, published on each edge as `trail_id`.
+        description: >
+          The line's `published_id` in the trail_lines mart, the `id`
+          nearby_trails.geojson publishes, published on each edge as
+          `trail_id` (TL05). Never its `trail_line_id`, the key `part_id` is
+          built on.
         data_tests: [not_null]
       - name: source_key
         description: The line's registry key, published on each edge as `source`.
@@ -206,7 +210,7 @@ models:
       - name: _loaded_at
         description: When the parent line's raw table was loaded, UTC.
       - name: trail_id
-        description: The parent line's `id`, published as `trail_id`.
+        description: The parent line's `published_id`, published as `trail_id`.
       - name: name
         description: The parent line's name, null where nothing names it.
       - name: blaze_color

@@ -862,7 +862,9 @@ jobs:
           "$RUNNER_TEMP/pipeline/bin/python" parity.py --json-dir data/processed/parity challenges --new data/processed/dbt/challenges.json
           # The junction graph: build_trail_graph.py over the dbt writers'
           # nearby_trails.geojson and trails.geojson beside the new file, so
-          # both paths read the same lines.
+          # both paths read the same lines, each edge's trail_id then read
+          # as today's nearby_trails.geojson publishes its line's id: a
+          # phone joins a cell's edges to a tile's lines by it.
           "$RUNNER_TEMP/pipeline/bin/python" parity.py --json-dir data/processed/parity trail_graph --new data/processed/dbt/trail_graph.json
           "$RUNNER_TEMP/pipeline/bin/python" parity.py --json-dir data/processed/parity trail_graph_geometry --new data/processed/dbt/trail_graph_geometry.json
           # Stage 6's v2 files (decision 44), each against the v1 file this

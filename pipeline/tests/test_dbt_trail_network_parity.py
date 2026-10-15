@@ -91,12 +91,13 @@ def test_every_unit_test_is_on_a_model_this_file_holds_to_the_python():
 
 
 def _features(rows: list[dict]) -> list[dict]:
-    """The mart's rows as the features nearby_trails.geojson and trails.geojson carry, in feature order."""
+    """The mart's rows as the features nearby_trails.geojson and trails.geojson carry, in feature order: each under its
+    `published_id`, the `id` both files publish (TL05)."""
     return [
         {
             "type": "Feature",
             "properties": {
-                "id": row["trail_line_id"],
+                "id": row["published_id"],
                 "source": row["source_key"],
                 "trail_status": row.get("trail_status"),
             },
@@ -118,8 +119,12 @@ def test_each_routable_unit_test_is_routable_lines(test):
     expected = test["expect"]["rows"]
     routable = sorted((row for row in expected if row.get("refused_because") is None), key=lambda row: row["part_order"])
     assert [row["part_order"] for row in routable] == list(range(len(routable)))
-    assert [row["part_id"].split("#")[0] for row in routable] == [entry["properties"]["id"] for entry in kept]
+    # A part is named for its line's key, and its edges carry the line's published id, the Python's `id`.
+    key_of = {row["published_id"]: row["trail_line_id"] for row in rows}
+    assert [row["part_id"].split("#")[0] for row in routable] == [key_of[entry["properties"]["id"]] for entry in kept]
     for row, entry in zip(routable, kept):
+        if "trail_id" in row:
+            assert row["trail_id"] == entry["properties"]["id"], row["part_id"]
         if "geom_wkt" in row:
             assert list(shapely_wkt.loads(row["geom_wkt"]).coords) == list(entry["line"].coords), row["part_id"]
     assert Counter(row["refused_because"] for row in expected if row.get("refused_because")) == Counter(

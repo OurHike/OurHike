@@ -27,6 +27,9 @@ side_trails as (
 lines as (
     select
         trail_line_id,
+        -- A chain's id is export_trails.merge_chain_records()' number, which
+        -- trails.geojson and trail_miles.json both publish.
+        trail_line_id as published_id,
         club,
         source_key,
         _loaded_at,
@@ -47,6 +50,7 @@ lines as (
     union all
     select
         trail_line_id,
+        published_id,
         club,
         source_key,
         _loaded_at,
@@ -119,6 +123,7 @@ drawn as (
 
 select
     trail_line_id,
+    published_id,
     club,
     source_key,
     _loaded_at,

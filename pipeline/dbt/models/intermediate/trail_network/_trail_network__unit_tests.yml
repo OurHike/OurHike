@@ -37,11 +37,11 @@ unit_tests:
     given:
       - input: ref('trail_lines', v=1)
         rows:
-          - {trail_line_id: 'oprhp_trails:1', source_key: oprhp_trails, line_kind: network, feature_order: 0, trail_status: open, geom_geojson: '{"type": "LineString", "coordinates": [[-74.1, 41.25], [-74.08, 41.25]]}'}
-          - {trail_line_id: 'oprhp_trails:9', source_key: oprhp_trails, line_kind: network, feature_order: 1, trail_status: Closed, geom_geojson: '{"type": "LineString", "coordinates": [[-74.1, 41.26], [-74.08, 41.26]]}'}
-          - {trail_line_id: 'oprhp_trails:10', source_key: oprhp_trails, line_kind: network, feature_order: 2, trail_status: closed, geom_geojson: '{"type": "LineString", "coordinates": [[-74.1, 41.27], [-74.08, 41.27]]}'}
-          - {trail_line_id: 'oprhp_trails:11', source_key: oprhp_trails, line_kind: network, feature_order: 3, trail_status: CLOSED, geom_geojson: '{"type": "LineString", "coordinates": [[-74.1, 41.28], [-74.08, 41.28]]}'}
-          - {trail_line_id: 'oprhp_trails:12', source_key: oprhp_trails, line_kind: network, feature_order: 4, trail_status: ' Closed ', geom_geojson: '{"type": "LineString", "coordinates": [[-74.1, 41.29], [-74.08, 41.29]]}'}
+          - {trail_line_id: 'oprhp_trails:1', published_id: 'oprhp_trails:1', source_key: oprhp_trails, line_kind: network, feature_order: 0, trail_status: open, geom_geojson: '{"type": "LineString", "coordinates": [[-74.1, 41.25], [-74.08, 41.25]]}'}
+          - {trail_line_id: 'oprhp_trails:9', published_id: 'oprhp_trails:9', source_key: oprhp_trails, line_kind: network, feature_order: 1, trail_status: Closed, geom_geojson: '{"type": "LineString", "coordinates": [[-74.1, 41.26], [-74.08, 41.26]]}'}
+          - {trail_line_id: 'oprhp_trails:10', published_id: 'oprhp_trails:10', source_key: oprhp_trails, line_kind: network, feature_order: 2, trail_status: closed, geom_geojson: '{"type": "LineString", "coordinates": [[-74.1, 41.27], [-74.08, 41.27]]}'}
+          - {trail_line_id: 'oprhp_trails:11', published_id: 'oprhp_trails:11', source_key: oprhp_trails, line_kind: network, feature_order: 3, trail_status: CLOSED, geom_geojson: '{"type": "LineString", "coordinates": [[-74.1, 41.28], [-74.08, 41.28]]}'}
+          - {trail_line_id: 'oprhp_trails:12', published_id: 'oprhp_trails:12', source_key: oprhp_trails, line_kind: network, feature_order: 4, trail_status: ' Closed ', geom_geojson: '{"type": "LineString", "coordinates": [[-74.1, 41.29], [-74.08, 41.29]]}'}
     expect:
       rows:
         - {part_id: 'oprhp_trails:1#1', part_order: 0, trail_id: 'oprhp_trails:1', refused_because: null, geom_wkt: 'LINESTRING (-74.1 41.25, -74.08 41.25)'}
@@ -60,9 +60,9 @@ unit_tests:
     given:
       - input: ref('trail_lines', v=1)
         rows:
-          - {trail_line_id: 'oprhp_trails:1', source_key: oprhp_trails, line_kind: network, feature_order: 0, trail_status: open, geom_geojson: null}
-          - {trail_line_id: 'oprhp_trails:2', source_key: oprhp_trails, line_kind: network, feature_order: 1, trail_status: open, geom_geojson: '{"type": "LineString", "coordinates": []}'}
-          - {trail_line_id: 'oprhp_trails:3', source_key: oprhp_trails, line_kind: network, feature_order: 2, trail_status: open, geom_geojson: '{"type": "Polygon", "coordinates": [[[-74.1, 41.25], [-74.09, 41.25], [-74.09, 41.26], [-74.1, 41.25]]]}'}
+          - {trail_line_id: 'oprhp_trails:1', published_id: 'oprhp_trails:1', source_key: oprhp_trails, line_kind: network, feature_order: 0, trail_status: open, geom_geojson: null}
+          - {trail_line_id: 'oprhp_trails:2', published_id: 'oprhp_trails:2', source_key: oprhp_trails, line_kind: network, feature_order: 1, trail_status: open, geom_geojson: '{"type": "LineString", "coordinates": []}'}
+          - {trail_line_id: 'oprhp_trails:3', published_id: 'oprhp_trails:3', source_key: oprhp_trails, line_kind: network, feature_order: 2, trail_status: open, geom_geojson: '{"type": "Polygon", "coordinates": [[[-74.1, 41.25], [-74.09, 41.25], [-74.09, 41.26], [-74.1, 41.25]]]}'}
     expect:
       rows:
         - {part_id: 'oprhp_trails:1#', part_order: null, refused_because: empty}
@@ -79,8 +79,8 @@ unit_tests:
     given:
       - input: ref('trail_lines', v=1)
         rows:
-          - {trail_line_id: 'oprhp_trails:1', source_key: oprhp_trails, line_kind: network, feature_order: 0, trail_status: open, geom_geojson: '{"type": "MultiLineString", "coordinates": [[[-74.1, 41.25], [-74.09, 41.25]], [[-74.1, 41.27], [-74.09, 41.27]]]}'}
-          - {trail_line_id: 'oprhp_trails:2', source_key: oprhp_trails, line_kind: network, feature_order: 1, trail_status: open, geom_geojson: '{"type": "LineString", "coordinates": [[-74.1, 41.29], [-74.09, 41.29]]}'}
+          - {trail_line_id: 'oprhp_trails:1', published_id: 'oprhp_trails:1', source_key: oprhp_trails, line_kind: network, feature_order: 0, trail_status: open, geom_geojson: '{"type": "MultiLineString", "coordinates": [[[-74.1, 41.25], [-74.09, 41.25]], [[-74.1, 41.27], [-74.09, 41.27]]]}'}
+          - {trail_line_id: 'oprhp_trails:2', published_id: 'oprhp_trails:2', source_key: oprhp_trails, line_kind: network, feature_order: 1, trail_status: open, geom_geojson: '{"type": "LineString", "coordinates": [[-74.1, 41.29], [-74.09, 41.29]]}'}
     expect:
       rows:
         - {part_id: 'oprhp_trails:1#1', part_order: 0, part_index: 1, trail_id: 'oprhp_trails:1', geom_wkt: 'LINESTRING (-74.1 41.25, -74.09 41.25)'}
@@ -99,17 +99,36 @@ unit_tests:
     given:
       - input: ref('trail_lines', v=1)
         rows:
-          - {trail_line_id: 'oprhp_trails:2', source_key: oprhp_trails, line_kind: network, feature_order: 1, trail_status: open, geom_geojson: '{"type": "LineString", "coordinates": [[-74.1, 41.26], [-74.09, 41.26]]}'}
-          - {trail_line_id: 'centerline:1', source_key: centerline, line_kind: centerline, feature_order: 0, geom_geojson: '{"type": "LineString", "coordinates": [[-74.1, 41.27], [-74.09, 41.27]]}'}
-          - {trail_line_id: 'side_trails:5', source_key: side_trails, line_kind: side_trail, feature_order: 1, geom_geojson: '{"type": "LineString", "coordinates": [[-74.1, 41.28], [-74.09, 41.28]]}'}
-          - {trail_line_id: 'road_approaches:1', source_key: road_approaches, line_kind: side_trail, feature_order: 2, geom_geojson: '{"type": "LineString", "coordinates": [[-74.1, 41.29], [-74.09, 41.29]]}'}
-          - {trail_line_id: 'oprhp_trails:1', source_key: oprhp_trails, line_kind: network, feature_order: 0, trail_status: open, geom_geojson: '{"type": "LineString", "coordinates": [[-74.1, 41.25], [-74.09, 41.25]]}'}
+          - {trail_line_id: 'oprhp_trails:2', published_id: 'oprhp_trails:2', source_key: oprhp_trails, line_kind: network, feature_order: 1, trail_status: open, geom_geojson: '{"type": "LineString", "coordinates": [[-74.1, 41.26], [-74.09, 41.26]]}'}
+          - {trail_line_id: 'centerline:1', published_id: 'centerline:1', source_key: centerline, line_kind: centerline, feature_order: 0, geom_geojson: '{"type": "LineString", "coordinates": [[-74.1, 41.27], [-74.09, 41.27]]}'}
+          - {trail_line_id: 'side_trails:5', published_id: 'side_trails:5', source_key: side_trails, line_kind: side_trail, feature_order: 1, geom_geojson: '{"type": "LineString", "coordinates": [[-74.1, 41.28], [-74.09, 41.28]]}'}
+          - {trail_line_id: 'road_approaches:1', published_id: 'road_approaches:1', source_key: road_approaches, line_kind: side_trail, feature_order: 2, geom_geojson: '{"type": "LineString", "coordinates": [[-74.1, 41.29], [-74.09, 41.29]]}'}
+          - {trail_line_id: 'oprhp_trails:1', published_id: 'oprhp_trails:1', source_key: oprhp_trails, line_kind: network, feature_order: 0, trail_status: open, geom_geojson: '{"type": "LineString", "coordinates": [[-74.1, 41.25], [-74.09, 41.25]]}'}
     expect:
       rows:
         - {part_id: 'oprhp_trails:1#1', part_order: 0, is_at: false, source_key: oprhp_trails, geom_wkt: 'LINESTRING (-74.1 41.25, -74.09 41.25)'}
         - {part_id: 'oprhp_trails:2#1', part_order: 1, is_at: false, source_key: oprhp_trails, geom_wkt: 'LINESTRING (-74.1 41.26, -74.09 41.26)'}
         - {part_id: 'centerline:1#1', part_order: 2, is_at: true, source_key: centerline, geom_wkt: 'LINESTRING (-74.1 41.27, -74.09 41.27)'}
         - {part_id: 'side_trails:5#1', part_order: 3, is_at: true, source_key: side_trails, geom_wkt: 'LINESTRING (-74.1 41.28, -74.09 41.28)'}
+
+  - name: int_trail_network__routable_each_edge_carries_its_lines_published_id
+    description: >
+      An edge's `trail_id` is the id nearby_trails.geojson publishes for its
+      line, the mart's `published_id`, which build_trail_graph.py copies
+      from the feature's `id` and a phone joins a graph cell's edges to a
+      tile's lines by (client/src/lib/lineClimb.ts). A part's id is built on
+      the line's key, `trail_line_id`, so every edge id after it stays as it
+      was. The line is USFS-shaped: its key holds the GlobalID, read in any
+      case, and its published id the OBJECTID, as today's exporter
+      publishes it (TL05).
+    model: int_trail_network__routable
+    given:
+      - input: ref('trail_lines', v=1)
+        rows:
+          - {trail_line_id: 'usfs_trails:{G-1}', published_id: 'usfs_trails:9168450', source_key: usfs_trails, line_kind: network, feature_order: 0, trail_status: open, geom_geojson: '{"type": "LineString", "coordinates": [[-74.1, 41.25], [-74.09, 41.25]]}'}
+    expect:
+      rows:
+        - {part_id: 'usfs_trails:{G-1}#1', part_order: 0, trail_id: 'usfs_trails:9168450', refused_because: null, geom_wkt: 'LINESTRING (-74.1 41.25, -74.09 41.25)'}
 
   # ---------------------------------------------------------- the cuts
 

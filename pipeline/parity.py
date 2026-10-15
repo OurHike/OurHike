@@ -485,12 +485,16 @@ def _network_old(name: str) -> dict:
 #: Why a network line's published id can differ between the two writers
 #: (TL05), by case. tests/test_dbt_trail_lines_network_parity.py holds each to
 #: a unit-test row where the two answer that way, so none outlives its reason.
+#: Each case is a line one side numbers by its place or its staging key: a line
+#: both sides publish under an id of its own is never explained, whatever the
+#: two ids are. A phone joins a graph cell's edges to a tile's lines by that id
+#: (client/src/lib/lineClimb.ts), and draws a tile cell it holds before asking
+#: the bucket (client/src/map/networkTiles.ts), so its tiles can be from an
+#: older release than its graph. The GlobalID read in any case was explained
+#: here until 2026-10-15 (`globalid_in_any_case`), which is how 72,618 lines of
+#: six layers on monthly run 30 passed the gate under ids no phone holds
+#: (tests/test_parity_line_ids.py).
 NETWORK_ID_REASONS = {
-    "globalid_in_any_case": (
-        "an improvement (TL05): the SQL reads a layer's GlobalID whatever its case, then its object id (OBJECTID or "
-        "FID), then Socrata's row id, where resolve_feature_id() matches only 'GlobalID' and falls back to the "
-        "feature's server row id or to its place in the file"
-    ),
     "feature_id_not_landed": (
         "expected by TL05's ledger row: the extract lands a feature's properties and geometry and not its GeoJSON "
         "id, so a line whose only id is a GeoJSON id that is not its layer's object id is numbered by its place in "
@@ -551,16 +555,24 @@ AS_LANDED_ID_REASON = (
 def _network_id_reasons(old: dict, new: dict) -> dict[str, str]:
     """The `properties.id` differences that are only a line's id, each with its reason.
 
-    A line is the same line in both files when its source, other properties and geometry are, and every id such a line
-    carries differently is explained by the case its ids show. Two positional ids for one line are never explained:
-    where the dbt writer publishes one, it numbers the layer in its raw table's order, the fetched file's
-    (int_trail_lines__network_judged's `source_row`), as today's exporter does, so a line they number differently is
-    a defect. A layer whose staging model keeps no such order is published under its staging key (STAGING_KEY). A line
-    the old side numbers by place and the dbt writer by its object id, a whole number, is the old side's input
-    (AS_LANDED_ID_REASON). The other way round is never explained: an object id today's exporter publishes beside a
-    place in the dbt file means a staging model dropped the object id column, which renames the line at cutover. That
-    is what the two NYNJTC models did until 2026-10-09, while this function explained it as feature_id_not_landed.
+    A line is the same line in both files when its source, other properties and geometry are, and an id such a line
+    carries differently is explained only where one side numbers it by place or by its staging key, by the case its
+    ids show. A line both sides publish under an id of its own, a GlobalID, an object id or a Socrata row id, is never
+    explained, whichever ids they are: that is the id a phone joins on (NETWORK_ID_REASONS). Two positional ids for one
+    line are never explained: where the dbt writer publishes one, it numbers the layer in its raw table's order, the
+    fetched file's (int_trail_lines__network_judged's `source_row`), as today's exporter does, so a line they number
+    differently is a defect. A layer whose staging model keeps no such order is published under its staging key
+    (STAGING_KEY). A line the old side numbers by place and the dbt writer by its object id, a whole number, is the old
+    side's input (AS_LANDED_ID_REASON). The other way round is never explained: an object id today's exporter publishes
+    beside a place in the dbt file means a staging model dropped the object id column, which renames the line at
+    cutover. That is what the two NYNJTC models did until 2026-10-09, while this function explained it as
+    feature_id_not_landed.
     """
+    return _line_id_reasons(_network_line_ids(old), _network_line_ids(new))
+
+
+def _line_id_reasons(old_ids: dict[str, list[str]], new_ids: dict[str, list[str]]) -> dict[str, str]:
+    """_network_id_reasons() over two files' _network_line_ids(), which the junction graph's old side reads too."""
 
     def positional(feature_id: str) -> bool:
         return ":generated-" in feature_id
@@ -571,7 +583,6 @@ def _network_id_reasons(old: dict, new: dict) -> dict[str, str]:
     def object_id(feature_id: str) -> bool:
         return feature_id.partition(":")[2].isdigit()
 
-    old_ids, new_ids = _network_line_ids(old), _network_line_ids(new)
     reasons: dict[str, str] = {}
     for shared in old_ids.keys() & new_ids.keys():
         was, now = sorted(old_ids[shared]), sorted(new_ids[shared])
@@ -596,20 +607,21 @@ def _network_id_reasons(old: dict, new: dict) -> dict[str, str]:
                 continue  # an object id the dbt file numbers by place: a dropped column, never explained (docstring)
             case = "feature_id_not_landed"
         else:
-            case = "globalid_in_any_case"
+            continue  # an id of the line's own on both sides, and not the same one: never explained (docstring)
         for feature_id in set(was) | set(now):
             reasons[f"properties.id {feature_id}"] = NETWORK_ID_REASONS[case]
     return reasons
 
 
 def _network_line_ids(document: dict) -> dict[str, list[str]]:
-    """{a line's source, properties but `id`, and geometry, as canonical JSON: every id the file publishes it under}."""
+    """{the sha256 of a line's source, properties but `id`, and geometry, as canonical JSON: every id the file publishes
+    it under}. The digest and not the JSON, so the junction graph's old side holds two whole network files' lines
+    beside the graph (_todays_line_ids())."""
     found: dict[str, list[str]] = {}
     for feature in document.get("features") or []:
         properties = {name: value for name, value in feature["properties"].items() if name != "id"}
-        found.setdefault(canonical({"properties": properties, "geometry": feature["geometry"]}), []).append(
-            str(feature["properties"]["id"])
-        )
+        line = canonical({"properties": properties, "geometry": feature["geometry"]})
+        found.setdefault(hashlib.sha256(line.encode("utf-8")).hexdigest(), []).append(str(feature["properties"]["id"]))
     return found
 
 
@@ -2370,9 +2382,18 @@ FAMILIES["challenges"] = Family(old=_challenges_old, records="challenges", key="
 # phone files, so the old side builds the graph from the dbt writers' copies
 # of nearby_trails.geojson and trails.geojson beside `--new`: both paths then
 # read the same lines, and a difference is the graph's rules alone, not one
-# of the explained differences upstream (the GlobalID ids, the A.T.'s six
-# decimals). An edge has no id but its place, so edges are keyed by their
-# index; `nodes` is compared whole as a top-level field.
+# of the explained differences upstream (the A.T.'s six decimals, decision
+# 40's copies). EXCEPT THE LINE'S ID: on the old side, each edge's
+# `trail_id` is the id today's nearby_trails.geojson publishes its line
+# under (_todays_line_ids()), because a phone joins a graph cell's edges to a
+# tile's lines by it (client/src/lib/lineClimb.ts), and its tiles can be from
+# an older release than its graph (NETWORK_ID_REASONS). Built from the dbt
+# writers' lines alone, both sides carried the dbt writers' ids, so this
+# family could not see that the dbt writer's trail_graph.json in UA's
+# release 2026-10-10-2 carried none of the 78,356 ids that the graph cells
+# phones read give the lines of eight layers (Measured 2026-10-15;
+# pipeline/ELT.md's TL05). An edge has no id but its place, so edges are
+# keyed by their index; `nodes` is compared whole as a top-level field.
 @functools.cache
 def _trail_graph_built(new_dir: Path) -> tuple[list, list, list]:
     """build_trail_graph.build() over the two files in `new_dir`: its nodes, its edges and their geometry, as JSON reads them."""
@@ -2475,9 +2496,40 @@ def _indexed_geometry(document: list, path: Path | None = None) -> dict:
     return {"edges": [{"edge_index": index, "coordinates": entry} for index, entry in enumerate(document)]}
 
 
+def _todays_line_ids(new_dir: Path) -> dict[str, str]:
+    """{an id the dbt writer's nearby_trails.geojson beside `--new` publishes: the id today's file publishes that line
+    under}, for each line the two files publish under other ids that the nearby_trails family does not explain.
+
+    A line is the same line in both files as _network_line_ids() reads it, alike in every property but `id` and in
+    geometry, and only a line each file publishes once is mapped. Every other line keeps the dbt writer's id, and the
+    nearby_trails family answers for it: a line that differs in anything else is that family's difference, and a pair
+    it explains (NETWORK_ID_REASONS, AS_LANDED_ID_REASON, NETWORK_COPY_REASON) is no difference here either, so the
+    graph neither repeats a reason nor reads the old side's input as the writer's defect. Today's file is the run the
+    nearby_trails family compares (_network_old()); the dbt writer's is build_trail_graph.py's INPUT_NAME."""
+    import build_trail_graph
+
+    today = _network_line_ids(_network_old("nearby_trails.geojson"))
+    dbt = _network_line_ids(json.loads((new_dir / build_trail_graph.INPUT_NAME).read_text(encoding="utf-8")))
+    explained = _line_id_reasons(today, dbt)
+    return {
+        dbt[line][0]: today[line][0]
+        for line in today.keys() & dbt.keys()
+        if len(today[line]) == len(dbt[line]) == 1
+        and today[line] != dbt[line]
+        and f"properties.id {dbt[line][0]}" not in explained
+    }
+
+
 def _trail_graph_old(new_dir: Path) -> dict:
+    """The graph build_trail_graph.build() makes of the dbt writers' lines, each edge under its line's id in today's
+    nearby_trails.geojson (the comment above _trail_graph_built())."""
+    todays = _todays_line_ids(new_dir)
     nodes, edges, _ = _trail_graph_built(new_dir)
-    return _indexed_edges({"nodes": nodes, "edges": edges})
+    document = _indexed_edges({"nodes": nodes, "edges": edges})
+    # _indexed_edges() wrote new edge objects, so _trail_graph_built()'s cached graph is left as it was built.
+    for edge in document["edges"]:
+        edge["trail_id"] = todays.get(edge["trail_id"], edge["trail_id"])
+    return document
 
 
 def _trail_graph_geometry_old(new_dir: Path) -> dict:

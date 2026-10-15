@@ -21,6 +21,17 @@
 -- publish"). Every network source is kept whatever it says, because
 -- export_nearby_trails.py runs the build-stopping registry checks (TL08,
 -- TL09) over held-back sources too.
+--
+-- THE TWO FIELDS A LINE'S PUBLISHED ID IS READ FROM (TL05,
+-- macros/resolve_feature_id.sql): `global_id_field`, the layer's GlobalID as
+-- the layer spells it, which lib/feature_id.py reads only where that is
+-- exactly `GlobalID`, and the GeoJSON id the Python falls back to, which
+-- ArcGIS sets to the object id the entry's `object_id_field` names and
+-- Socrata to its row id, landed as `_socrata_id`. Both are the registry's,
+-- because the warehouse holds neither: dlt lands every column lower-cased,
+-- and lands no GeoJSON id. `object_id_field` matches its column without
+-- case, as every field here does: the Python reads that value through the
+-- feature's `id`, never by the field's name.
 with registry as (
     select * from {{ ref('stg_registry__sources') }}
 ),
@@ -86,7 +97,9 @@ declared as (
         json_extract_string(entry, '$.boundary_source') as boundary_source,
         cast(
             json_extract(entry, '$.boundary_names') as varchar[]
-        ) as boundary_names
+        ) as boundary_names,
+        json_extract_string(entry, '$.global_id_field') as global_id_field,
+        json_extract_string(entry, '$.object_id_field') as object_id_field
     from lines
 ),
 
@@ -135,6 +148,22 @@ field_names as (
         coalesce(name_field, 'Name') as field_name,
         0 as field_order
     from declared
+    -- The two id fields, at places below zero: no filter reads them, so TL08
+    -- never counts them, and `missing_id_fields` below does instead.
+    union all
+    select
+        source_key,
+        global_id_field as field_name,
+        -1 as field_order
+    from declared
+    where global_id_field is not null
+    union all
+    select
+        source_key,
+        object_id_field as field_name,
+        -2 as field_order
+    from declared
+    where object_id_field is not null
 ),
 
 -- dlt's sql_ci_v1, in its own order: strip; each run of characters outside
@@ -258,6 +287,34 @@ missing as (
     inner join landed on field_columns.source_key = landed.source_key
     where field_columns.field_order > 0
     group by field_columns.source_key
+),
+
+-- Each id field's column, and the declared ones the layer did not land. A
+-- layer that stops landing the column its published id is read from would
+-- publish every line under another id, the climb a phone joins by lost on
+-- each, so the test on `missing_id_fields` stops the build instead.
+id_columns as (
+    select
+        field_columns.source_key,
+        any_value(field_columns.column_name) filter (
+            where field_columns.field_order = -1
+        ) as global_id_column,
+        any_value(field_columns.column_name) filter (
+            where field_columns.field_order = -2
+        ) as object_id_column,
+        list(
+            field_columns.field_name order by field_columns.field_order desc
+        ) filter (
+            where
+            landed.landed_columns is not null
+            and not list_contains(
+                landed.landed_columns, field_columns.column_name
+            )
+        ) as missing_id_fields
+    from field_columns
+    left join landed on field_columns.source_key = landed.source_key
+    where field_columns.field_order < 0
+    group by field_columns.source_key
 )
 
 select
@@ -281,6 +338,17 @@ select
         to_json(coalesce(missing.missing_declared_fields, []))
         as varchar
     ) as missing_declared_fields,
+    id_columns.global_id_column,
+    -- The column holding the feature's GeoJSON id (resolve_feature_id()'s
+    -- second step): Socrata's row id, else the declared object id.
+    case
+        when declared.kind = 'socrata_geojson_layer' then '_socrata_id'
+        else id_columns.object_id_column
+    end as feature_id_column,
+    cast(
+        to_json(coalesce(id_columns.missing_id_fields, []))
+        as varchar
+    ) as missing_id_fields,
     -- A source both junior in one declared pair and senior in another, which
     -- deduplicate()'s pair-by-pair order would answer and
     -- int_trail_lines__network_deduplicated does not: its test stops the
@@ -297,3 +365,4 @@ left join columns_by_source
     on declared.source_key = columns_by_source.source_key
 left join named_columns on declared.source_key = named_columns.source_key
 left join missing on declared.source_key = missing.source_key
+left join id_columns on declared.source_key = id_columns.source_key

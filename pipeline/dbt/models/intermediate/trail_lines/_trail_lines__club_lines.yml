@@ -84,7 +84,13 @@ models:
               and closure_source is null
     columns:
       - name: trail_line_id
-        description: "`<source key>:<the line's key>`, the id nearby_trails.geojson publishes."
+        description: "`<source key>:<the line's key>`, the mart's key for the line."
+        data_tests: [not_null, unique]
+      - name: published_id
+        description: >
+          The id nearby_trails.geojson publishes: the key itself, because no
+          exporter publishes a club's own line (decision 64), so no phone
+          holds another id for it.
         data_tests: [not_null, unique]
       - name: source_key
         description: The layer's sources.json key.
@@ -109,7 +115,7 @@ models:
             expression: "through_route is null"
     columns:
       - name: trail_line_id
-        description: The club line's published id.
+        description: The club line's key; the sketch publishes no line id.
         data_tests: [not_null, unique]
       - name: source_key
         description: The layer's sources.json key.

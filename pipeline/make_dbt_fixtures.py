@@ -1404,14 +1404,32 @@ def _registered_trail_lines_layer(key: str, name_field: str | None):
     The three with no name column get rows with no name key at all, which is
     their real shape and the one `declared_name`'s `name_constant` branch is
     for.
+
+    EACH ROW CARRIES ITS LAYER'S OBJECT ID under the name its sources.json row
+    gives it (`object_id_field`: OBJECTID, FID on cotrex_trails and
+    nc_mst_trail, OBJECTID_1 on pasda_dcnr_trails), which ArcGIS writes as the
+    feature's GeoJSON id and lib/feature_id.py publishes where a layer has no
+    `GlobalID`. Until 2026-10-15 all seventeen carried an OBJECTID, a column
+    cotrex_trails' and nc_mst_trail's live layers do not use as their object
+    id. A field that only looks like one, NOT_THE_OBJECT_ID's, is written
+    beside it with values the object id never takes.
     """
+    object_id_field = _registry_entry(key)["object_id_field"]
     rows = []
     for index in range(2):
-        row = {"OBJECTID": index + 1}
+        row = {object_id_field: index + 1}
+        if key in NOT_THE_OBJECT_ID:
+            row[NOT_THE_OBJECT_ID[key]] = OBJECT_ID_START + index
         if name_field is not None:
             row[name_field] = f"Fixture {key.replace('_', ' ').title()} {index + 1}"
         rows.append(row)
     return _features(rows, _line)
+
+
+#: A field named like an object id that is not the layer's: pasda_dcnr_trails' esriFieldTypeOID field is
+#: OBJECTID_1, beside an OBJECTID that is not its object id (pipeline/ELT.md's TL05, read 2026-10-08;
+#: tests/test_extract_pin.py), so a model reading OBJECTID there publishes the wrong id.
+NOT_THE_OBJECT_ID = {"pasda_dcnr_trails": "OBJECTID"}
 
 
 # Each layer's KEY columns, for the base models that key and dedupe it (pipeline/ELT.md, "One key per
@@ -1454,6 +1472,13 @@ KEY_FIELDS = {
     "external/nyc_cscl_paths.geojson": {"globalid": lambda i: f"{{fixture-cscl-{i}}}"},
     "external/nyc_park_drives.geojson": {"globalid": lambda i: f"{{fixture-drive-{i}}}"},
 }
+
+
+#: Where a network line layer's object id is numbered from when its builder writes none
+#: (_trail_lines_network_fixtures()), and NOT_THE_OBJECT_ID's look-alike fields: above every object id a builder
+#: writes, so pasda_dcnr_trails' OBJECTID never equals its OBJECTID_1, as on the live layer, and a model that read the
+#: wrong one would publish another id.
+OBJECT_ID_START = 1000
 
 
 def _with_key_fields(collection: dict, fields: dict) -> dict:
@@ -5501,18 +5526,26 @@ def _trail_lines_network_fixtures(files: dict[str, dict | str | bytes]) -> dict[
     - oprhp_trail_closures' NETWORK_CLOSED_AREAS, after its own triangle, so
       parity reaches every branch of apply_area_closures().
     - each network line feature's own `id`, which the live servers write and
-      the builders above leave off: an ArcGIS layer's is its object id,
-      OBJECTID or else FID where the fixture carries one (the two names the
-      registered network layers use, and the order
-      int_trail_lines__network_judged reads them in), and a Socrata layer's
-      is the row id lib/socrata.py promotes onto the feature, `row-<n>` in
-      the order extract/_fixtures.py's adapter numbers them.
-      lib/feature_id.py falls back to that `id` where a layer has no
+      the builders above leave off: an ArcGIS layer's is its object id, the
+      field its sources.json row names as `object_id_field` (OBJECTID, FID,
+      or pasda_dcnr_trails' OBJECTID_1), written first where a builder
+      carries none, numbered from OBJECT_ID_START so it never equals an
+      OBJECTID a builder wrote for another purpose; a Socrata layer's is the
+      row id lib/socrata.py promotes onto the feature, `row-<n>` in the order
+      extract/_fixtures.py's adapter numbers them. lib/feature_id.py falls
+      back to that `id` where a layer has no field spelled exactly
       `GlobalID`, so without it every such row's published id would be
       positional. That ArcGIS's GeoJSON `id` is the layer's object id is
       measured: equal on 34 of 34 features of 18 registered layers, one per
       host, on-premises servers among them, and on all 43 and 12 features of
-      the two NYNJTC layers (read live 2026-10-09).
+      the two NYNJTC layers (read live 2026-10-09). USFS's, NJ's and
+      NJDEP's builders wrote none until 2026-10-15, so their lines were
+      numbered by place on both sides and the fixtures never showed the ids
+      phones hold for them.
+    - the layer's GlobalID, spelled as its row's `global_id_field` names it,
+      where a builder carries none: pasda_dcnr_trails' GLOBALID (read
+      2026-10-08, pipeline/ELT.md's TL05), so CI's parity reaches a GlobalID
+      spelled otherwise beside an object id that is not named OBJECTID.
 
     The extract lands none of these ids as an `id` (its rows are a feature's
     properties and geometry), so the warehouse is unchanged by them; an
@@ -5565,11 +5598,14 @@ def _trail_lines_network_fixtures(files: dict[str, dict | str | bytes]) -> dict[
             continue
         for index, feature in enumerate(out[name]["features"]):
             properties = feature.setdefault("properties", {})
-            object_id = next((properties[name] for name in ("OBJECTID", "FID") if properties.get(name) is not None), None)
+            if entry.get("global_id_field") and entry["global_id_field"] not in properties:
+                properties[entry["global_id_field"]] = f"{{fixture-{key.replace('_', '-')}-{index}}}"
             if kinds[key] == "socrata_geojson_layer":
                 feature["id"] = f"row-{index}"
-            elif object_id is not None:
-                feature["id"] = object_id
+            else:
+                if properties.get(entry["object_id_field"]) is None:
+                    properties[entry["object_id_field"]] = OBJECT_ID_START + index
+                feature["id"] = properties[entry["object_id_field"]]
             # A field the registry declares and no builder above writes (#1778's
             # builder writes the name column alone, and two of its layers have
             # since declared a blaze field). The exporter refuses a layer missing

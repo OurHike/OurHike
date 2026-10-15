@@ -66,8 +66,11 @@
 // corridor sketch's, and every club's closures from
 // conditions/trail_closures.json (map/clubClosureLayers.ts) - and
 // lib/atcUpdateStyle.ts calls it for the ATC's band at twice the spacing.
-// Only the id, the source, the filter and the spacing may differ, and, on the
-// clubs' feed alone, how long the far mark stays (`markUntil`, decision 198).
+// Only the id, the source, the filter and the spacing may differ, and the
+// zooms a feed starts or stops at, which map/style.ts sets for the network's
+// and map/clubClosureLayers.ts for the clubs' (nothing below the pin seam),
+// and, on the clubs' feed alone, how long the far mark stays (`markUntil`,
+// decision 198).
 //
 // A CLOSURE AT A POINT IS THE FAR MARK, AT THE POINT (the maintainer's
 // standard S6, poll of 2026-10-11: "a point one ✕"). A bridge out has no run

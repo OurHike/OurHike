@@ -25,10 +25,12 @@
 // MultiLineString beside the others, so in this file it would be one more
 // stretch, drawn the same. What would show the decision is the mark lying
 // over the A.T.'s own red line, and the phone draws that line from the
-// release's trails.geojson, which is held to its published hash
-// (lib/trailData.ts), so a recipe cannot invent one; over farmland there is
-// no real one. map/style.test.ts holds the order instead: every crossed-out
-// layer above the A.T.'s.
+// release's trails.geojson, which lib/trailData.ts holds to the hash its
+// manifest names (and takes unchecked where the manifest names none). So an
+// invented A.T. line would mean routing a forged manifest as well, which
+// this fixture does not do; over farmland there is no real one.
+// map/style.test.ts holds the order instead: every crossed-out layer above
+// the A.T.'s.
 //
 // NOBODY'S DATA, NO ORGANIZATION'S NOTICE, AND NO REAL ORGANIZATION, as in
 // fixtures/notCurrentNotices.mjs: every organization, source key and title is

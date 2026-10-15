@@ -1,5 +1,6 @@
 // The notices list for a planned hike whose conditions/notices.json is not on
-// this phone: option A of the maintainer's poll of 2026-10-09, on #1805.
+// this phone: option A of the maintainer's poll of 2026-10-09, on PR #1805 —
+// dlt → dbt re-platform as one go/no-go change.
 //
 // WHY THIS SCREEN NEEDED A CAMERA. A planned hike's notices come only from
 // conditions/notices.json (decision 77 downloads it once a hike is planned).

@@ -74,9 +74,11 @@ export interface HazardAdvisory {
 export interface StretchAdvisory extends HazardAdvisory {
   id: string
   /** lib/noticeCurrency.ts's line when the area's own notice no longer reads
-   *  as current on the phone's day ("Its source gives no date. It may no
-   *  longer apply."), so the stretch's card greys the advisory as the area's
-   *  card does; null or absent while it reads as current. */
+   *  as current on the phone's day, so the stretch's card greys the advisory
+   *  as the area's card would; null or absent while it reads as current.
+   *  Null for every area a build publishes while decision 156 stands: no
+   *  hazard row carries `current_until` (chrome/HazardAreaSheet.tsx's
+   *  header says why). */
   notCurrent?: string | null
 }
 

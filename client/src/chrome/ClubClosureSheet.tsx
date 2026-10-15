@@ -9,13 +9,16 @@
 // its date, and its page. A hiker who meets the same closure in the list and
 // on the map reads the same words, and the two cannot drift apart.
 //
-// IN THE CLOSING ORGANIZATION'S VOICE, as #1142 taught the tapped-line sheet
-// to speak a temporary closure: the organization's name comes from the
-// registry on the row (lib/notices.ts's noticeOrgLabel), and the note under
-// it is chrome/OrgNoticeSheet.tsx's, which says the closure is theirs and not
-// OurHike's, that OurHike has not checked the trail, and that it works out no
-// detour. The route a hiker builds still goes through the closure (the
-// maintainer's Q2 answer, 2026-10-11), so that last sentence is load-bearing.
+// IN THE CLOSING ORGANIZATION'S VOICE, the voice the tapped-line sheet
+// learned for a temporary closure in #1142 — The tapped-line sheet reads a
+// temporary closure in the long-term voice: reason dropped, steward
+// creditable to the wrong org, date from the wrong layer. The organization's
+// name comes from the registry on the row (lib/notices.ts's noticeOrgLabel),
+// and the note under it is chrome/OrgNoticeSheet.tsx's, which says the
+// closure is theirs and not OurHike's, that OurHike has not checked the
+// trail, and that it works out no detour. The route a hiker builds still goes
+// through the closure (the maintainer's Q2 answer, 2026-10-11), so that last
+// sentence is load-bearing.
 //
 // A CLOSURE THAT MAY NO LONGER APPLY SAYS SO HERE AND ONLY HERE. The map
 // draws it with the same full mark (the maintainer chose "B: same mark" over

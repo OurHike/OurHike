@@ -1,5 +1,6 @@
-// Fixtures for planned-hike-notices-not-current.mjs (#1805, the maintainer's
-// frame A, poll of 2026-10-10): one invented day hike planned for today, and
+// Fixtures for planned-hike-notices-not-current.mjs (PR #1805 — dlt → dbt
+// re-platform as one go/no-go change; the maintainer's frame A, poll of
+// 2026-10-10): one invented day hike planned for today, and
 // a conditions/notices.json holding four invented notices on its route - one
 // that reads as current and three that may no longer apply, each for a
 // different reason the pipeline's `current_until` gives

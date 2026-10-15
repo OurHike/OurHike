@@ -36,16 +36,19 @@
 --    it draws the trail closed only from the day before `starts_on` on its
 --    own calendar, and tags the notice "Starts <date>" until then. The day
 --    before, because `starts_on` is the UTC day of the source's start
---    instant, and an instant stated in a United States zone (UTC-4 to
---    UTC-10) falls in that zone on that UTC day or the day before it, never
---    after; so a phone in the trail's zone closes the trail up to a day
---    early, never a day late (Reasoned from the zones' offsets, not measured
---    on any source). A start the source states as a day alone (an ArcGIS
---    DateOnly field, or epoch milliseconds at UTC midnight) is that day, and
---    the phone closes the trail the whole day before it. `current_until` is
---    not moved by the start (macros/notice_current_until.sql: its own end
---    first), so an upcoming notice with no end and no edit date carries a
---    null one; until its start the phone's tag says what it is.
+--    instant: in a United States zone behind UTC (UTC-4 to UTC-11) that
+--    instant falls on that UTC day or the day before it, and in Guam and
+--    the Northern Marianas (UTC+10) on that day or the day after. So a
+--    phone in the trail's zone closes the trail up to a day early, or two
+--    in Guam and the Northern Marianas, never a day late (Reasoned from the
+--    zones' offsets, as client/src/lib/noticeCurrency.ts's obstructsOn()
+--    says, not measured on any source). A start the source states as a day
+--    alone (an ArcGIS DateOnly field, or epoch milliseconds at UTC midnight)
+--    is that day, and the phone closes the trail the whole day before it.
+--    `current_until` is not moved by the start
+--    (macros/notice_current_until.sql: its own end first), so an upcoming
+--    notice with no end and no edit date carries a null one; until its
+--    start the phone's tag says what it is.
 --    ONE WHOSE OWN WORDS STATE A SEASON IS READ IN THE SEASON THAT HAS NOT
 --    ENDED (pipeline/ELT.md, "Status, water and expiry rules", rule 4: an
 --    expiry "neither infinite nor last year's date"; the review of
@@ -260,8 +263,9 @@
 --    season's where rule 1 reads one, is not more than
 --    one day behind the build's UTC date (macros/notice_date_holds.sql's
 --    notice_has_ended(): a day stated in a club's own zone has ended
---    everywhere in the United States, UTC-4 to UTC-10, by 10:00 UTC the day
---    after, so the margin reads a closure as closing a day too long, never a
+--    everywhere in the United States by 11:00 UTC the day after, American
+--    Samoa (UTC-11) being the last zone to finish it and Guam (UTC+10) the
+--    first, so the margin reads a closure as closing a day too long, never a
 --    day too short; Reasoned, not measured on any source). The USFS R06 fire
 --    closures carried 'Active' beside an end date already past on 112 of 938
 --    lines, and CDPR 'Full Closure' beside a passed StatusReopenDate is the

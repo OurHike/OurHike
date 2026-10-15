@@ -8,7 +8,12 @@ import type { GeoJSONSource, Map as MapLibreMap, MapMouseEvent } from 'maplibre-
 import type { TrailClosure } from '../lib/publishedConditions'
 import { atcBandIdAt } from './atcUpdateLayers'
 import { addClosureShadeImages } from './closureShade'
-import { CLUB_CLOSURE_SOURCE_ID, clubClosureShadeIdAt } from './clubClosureLayers'
+import {
+  CLUB_CLOSURE_CHAIN_FROM_PROPERTY,
+  CLUB_CLOSURE_SOURCE_ID,
+  clubClosureChainFrom,
+  clubClosureShadeIdAt,
+} from './clubClosureLayers'
 import { closureIdAt, clubClosureIdAt, CLUB_CLOSURE_ID_PROPERTY } from './closureLayers'
 import { tappedLineAt } from './lineTaps'
 import { poiPinAt } from './poiPinProbe'
@@ -21,7 +26,10 @@ export interface ClubClosureFeatureCollection {
   features: Array<{
     type: 'Feature'
     geometry: TrailClosure['place']['geometry']
-    properties: { [CLUB_CLOSURE_ID_PROPERTY]: string }
+    properties: {
+      [CLUB_CLOSURE_ID_PROPERTY]: string
+      [CLUB_CLOSURE_CHAIN_FROM_PROPERTY]?: number
+    }
   }>
 }
 
@@ -32,17 +40,27 @@ export interface ClubClosureFeatureCollection {
  * feature id through `parseInt`. Which layer draws a feature is its geometry's
  * (map/clubClosureLayers.ts): a line or an area's cut stretches along the
  * crossed-out mark, a point as one cross, a shade's polygon as the hatch.
+ * A line closure also carries the zoom its chain takes over from its far
+ * mark (decision 198), worked out from its geometry alone.
  */
 export function clubClosureFeatureCollection(
   closures: readonly TrailClosure[],
 ): ClubClosureFeatureCollection {
   return {
     type: 'FeatureCollection',
-    features: closures.map((closure) => ({
-      type: 'Feature',
-      geometry: closure.place.geometry,
-      properties: { [CLUB_CLOSURE_ID_PROPERTY]: closure.notice_id },
-    })),
+    features: closures.map((closure) => {
+      const chainFrom = clubClosureChainFrom(closure.place.geometry)
+      return {
+        type: 'Feature',
+        geometry: closure.place.geometry,
+        properties: {
+          [CLUB_CLOSURE_ID_PROPERTY]: closure.notice_id,
+          ...(chainFrom === null
+            ? {}
+            : { [CLUB_CLOSURE_CHAIN_FROM_PROPERTY]: chainFrom }),
+        },
+      }
+    }),
   }
 }
 

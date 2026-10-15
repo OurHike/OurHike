@@ -180,20 +180,20 @@ def test_a_site_with_no_data_folder_still_gets_the_docs(tmp_path: Path, workflow
 
 
 def test_the_script_substitutes_both_placeholders_and_escapes_them():
-    page = configure.configure(_minimal_page(), data_url='https://data.example.org/env/ua/?a=1&b="2"', release="2026-10-03-2")
+    page = configure.configure(_minimal_page(), data_url='https://data.example.org/env/ua/?a=1&b="2"', release="2026-10-10-2")
     assert configure.BASE_PLACEHOLDER not in page
     assert configure.RELEASE_PLACEHOLDER not in page
     assert 'data-base="https://data.example.org/env/ua/?a=1&amp;b=&quot;2&quot;"' in page
-    assert 'data-release="2026-10-03-2"' in page
+    assert 'data-release="2026-10-10-2"' in page
     assert 'data-base="https://data.example.org"' in configure.configure(
-        _minimal_page(), data_url="https://data.example.org/", release="2026-10-03-2"
+        _minimal_page(), data_url="https://data.example.org/", release="2026-10-10-2"
     ), "a trailing slash is dropped, as the page drops it"
 
 
 def test_no_data_url_leaves_the_page_saying_it_is_not_configured():
-    page = configure.configure(_minimal_page(), data_url="", release="2026-10-03-2")
+    page = configure.configure(_minimal_page(), data_url="", release="2026-10-10-2")
     assert 'data-base="__DATA_BASE_URL__"' in page
-    assert 'data-release="2026-10-03-2"' in page
+    assert 'data-release="2026-10-10-2"' in page
 
 
 @pytest.mark.parametrize(
@@ -207,7 +207,7 @@ def test_no_data_url_leaves_the_page_saying_it_is_not_configured():
 )
 def test_the_script_refuses_a_page_whose_placeholders_moved(page: str):
     with pytest.raises(configure.Refused):
-        configure.configure(page, data_url="https://data.example.org", release="2026-10-03-2")
+        configure.configure(page, data_url="https://data.example.org", release="2026-10-10-2")
 
 
 def test_the_script_reads_the_release_pages_yml_checks():

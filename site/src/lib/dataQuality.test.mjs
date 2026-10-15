@@ -30,7 +30,7 @@ import {
 import * as examples from "./dataQualityExamples.mjs";
 
 const NOW = new Date("2026-10-08T01:00:00Z");
-const CONFIG = configFrom({ base: "https://data.example.invalid/", release: "2026-10-03-2" });
+const CONFIG = configFrom({ base: "https://data.example.invalid/", release: "2026-10-10-2" });
 const read = (json, lane) => settleLane({ state: "read", json }, lane);
 const page = (monthly, hourly, now = NOW) => buildPage({ config: CONFIG, monthly, hourly, now });
 const MISSING = { state: "missing" };
@@ -40,7 +40,7 @@ const texts = (pills) => pills.map((p) => p.text);
 describe("where the page reads its two files", () => {
   it("reads the monthly file from the pinned release's folder and the hourly one beside the conditions files", () => {
     expect(laneUrl(CONFIG, "monthly")).toBe(
-      "https://data.example.invalid/releases/2026-10-03-2/data_quality.json",
+      "https://data.example.invalid/releases/2026-10-10-2/data_quality.json",
     );
     expect(laneUrl(CONFIG, "hourly")).toBe("https://data.example.invalid/conditions/data_quality.json");
   });
@@ -50,7 +50,7 @@ describe("where the page reads its two files", () => {
     expect(config.configured).toBe(false);
     expect(laneUrl(config, "monthly")).toBeNull();
     expect(laneUrl(config, "hourly")).toBeNull();
-    expect(configFrom({ base: "  ", release: "2026-10-03-2" }).configured).toBe(false);
+    expect(configFrom({ base: "  ", release: "2026-10-10-2" }).configured).toBe(false);
   });
 
   it("cannot find the monthly file without a release id, and still finds the hourly one", () => {
@@ -156,7 +156,7 @@ describe("the page, state by state", () => {
   it("nothing published yet: names the release it looked in, and is not a failure", () => {
     const view = page(MISSING, MISSING);
     expect(view.cards[0].meta).toBe("Not published yet");
-    expect(view.cards[0].detail).toContain("Release 2026-10-03-2 has no data-quality file");
+    expect(view.cards[0].detail).toContain("Release 2026-10-10-2 has no data-quality file");
     expect(view.cards[1].detail).toBe("The hourly run has not published a data-quality file yet.");
     expect(view.notice.title).toBe("Nothing is published yet");
     expect(view.notice.body).toContain("not the same as a check failing");

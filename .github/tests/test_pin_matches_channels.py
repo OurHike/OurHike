@@ -33,7 +33,7 @@ COMMAND = "python3 .github/scripts/check_pin_matches_channels.py"
 DEPLOYS = [("pages.yml", "Publish to GitHub Pages"), ("ua.yml", "Publish UA")]
 #: The base each environment's build is given: production is the bucket root, UA its prefix.
 BASES = {"production": "https://data.example.org", "ua": "https://data.example.org/environments/ua"}
-PINNED = "2026-10-03-2"
+PINNED = "2026-10-10-2"
 OTHER = "2026-09-24-2"
 CLIENT = f"// a comment line\nexport const DATA_RELEASE = '{PINNED}'\n\nexport const DATA_SCHEMA_VERSION = 'v1'\n"
 
@@ -113,7 +113,7 @@ def test_a_channels_json_that_is_not_json_is_refused(tmp_path: Path):
     assert "is not JSON" in done.stdout
 
 
-@pytest.mark.parametrize("entry", ["../../latest", 20261003, "2026-10-03-2\n::warning::injected"])
+@pytest.mark.parametrize("entry", ["../../latest", 20261003, "2026-10-10-2\n::warning::injected"])
 def test_an_entry_that_is_not_a_release_id_is_refused_without_repeating_it(tmp_path: Path, entry):
     """A phone ignores such an entry (lib/dataChannel.ts's entryIn), and the message is a workflow command."""
     done = _run(tmp_path, {"production": {"v1": entry}})

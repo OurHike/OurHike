@@ -23,7 +23,8 @@
 // rate: 4.2%, flagged as high.", where each said "above its expected range".
 //
 // AND THE WORD-CHOICE REVIEW OF #1805 (2026-10-09), in this frame: the
-// monthly card's line starts "Release 2026-10-03-2", not "Made release";
+// monthly card's line starts "Release <the pinned id>" (2026-10-10-2 since
+// 2026-10-15), not "Made release";
 // Volume's note says "below its usual range", not "its expected range"; the
 // two notes above say "flagged as high" where they said "flagged by
 // Elementary", the verdict's one wording on the page now; and dbt tests,

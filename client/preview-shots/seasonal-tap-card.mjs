@@ -18,16 +18,20 @@
 // ... the next source." until the word-choice review of #1805, 2026-10-09:
 // "source" meant a publisher in one sentence and a water point in the next.)
 //
-// THE TAP IS INVENTED, AND THE CAPTION SAYS SO. The release this build pins
-// (lib/dataRelease.ts) was published before decision 65 was built, and no
-// feature in its nearby_poi.geojson carries `water_caution` (UA's
-// 2026-10-03-2, read 2026-10-04: 0 of 19,802). The recipe's `before` adds
-// one record to that file on the way in and rewrites the manifest's hash to
-// match (fixtures/releaseInjection.mjs): named "Example tap (preview
+// THE TAP IS INVENTED, AND THE CAPTION SAYS SO. The recipe was written
+// against a release published before decision 65 was built, in whose
+// nearby_poi.geojson no feature carried `water_caution` (UA's 2026-10-03-2,
+// read 2026-10-04: 0 of 19,802). The recipe's `before` adds one record to
+// the pinned release's file on the way in and rewrites the manifest's hash
+// to match (fixtures/releaseInjection.mjs): named "Example tap (preview
 // fixture)", source key `preview_fixture`, which no organization holds, so
 // the card credits nobody. It sits beside Bear Mountain State Park's public
-// parking area; there is no claim that a tap is there. Everything else on screen is
-// the pinned release as it stands.
+// parking area; there is no claim that a tap is there. Everything else on
+// screen is the pinned release as it stands. The release pinned since
+// 2026-10-15, 2026-10-10-2, carries the caution on real taps (read
+// 2026-10-15: 420 of 55,409 features, every one `no_shutoff_season`), so a
+// recipe opening one of those, with nothing invented, is the stronger
+// picture and has not been written.
 //
 // Reached by search rather than by pin, for the reason
 // waypoint-site-parts.mjs gives: a tap on the canvas needs pixel coordinates a
@@ -43,7 +47,7 @@
 import { injectIntoRelease } from './fixtures/releaseInjection.mjs'
 
 export const caption =
-  'Decision 65: a plumbed tap shown as unconfirmed water, with the season caution under the unconfirmed line. The tap is INVENTED (“Example tap (preview fixture)”), added to the pinned release’s nearby_poi.geojson by the recipe, because no published release carries water_caution yet'
+  'Decision 65: a plumbed tap shown as unconfirmed water, with the season caution under the unconfirmed line. The tap is INVENTED (“Example tap (preview fixture)”), added to the pinned release’s nearby_poi.geojson by the recipe, which was written before any release carried water_caution'
 export const alt =
   'A waypoint card for “Example tap (preview fixture)”, a water point marked unconfirmed, with a separate boxed note reading “Tap water. Its listing doesn’t say when it’s turned off for the season, and taps like this are often off out of season. Carry enough to reach the next water.” Or, where this build has no waypoint data, the search panel reading “Nothing here by that name.”'
 

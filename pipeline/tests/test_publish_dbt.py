@@ -22,7 +22,7 @@ import pytest
 from moto import mock_aws
 
 import publish
-from lib import data_env, releases
+from lib import client_contract, data_env, releases
 
 BUCKET = "ourhike-test-bucket"
 
@@ -1227,6 +1227,26 @@ def test_the_detail_writers_file_is_cut_into_one_object_per_hike(project):
         assert written == json.dumps(detail, ensure_ascii=False, separators=(",", ":")).encode("utf-8")
         assert entry["sha256"] == publish.sha256_file(publish.from_manifest_path(entry["path"]))
     assert {"suggested_hikes_detail_50.json", publish.DETAIL_FAMILY_KEY} <= found.owned
+
+
+def test_every_cut_detail_carries_the_size_check_22_weighs(project):
+    """UA's release 2026-10-10-2 listed 201 of its 202 details with no
+    `size_bytes` (Measured 2026-10-15): the cut handed publish() `{path,
+    sha256}` alone, so check 22 skipped each one and `--strict` would fail the
+    release on them. Each cut entry now carries the bytes its file holds, and
+    check 22 weighs every one."""
+    _write_details(project)
+    project.build(writers=DETAIL_WRITERS)
+
+    found = project.collect()
+
+    details = {key: entry for key, entry in found.artifacts.items() if key.startswith("suggested_hikes_detail_")}
+    assert len(details) == len(DETAILS)
+    for entry in details.values():
+        assert entry["size_bytes"] == len(publish.from_manifest_path(entry["path"]).read_bytes())
+    reports = client_contract.check_launch_budget({"artifacts": details})
+    assert [(row["key"], row["state"]) for row in reports] == [("whole-fetched artifacts", client_contract.OK)]
+    assert reports[0]["detail"].startswith(f"{len(DETAILS)} within the ")
 
 
 def test_a_detail_cut_leaves_no_object_from_an_earlier_cut(project):

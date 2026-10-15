@@ -12,33 +12,40 @@
 // (#1597) - and nothing in map/ was changed to make it so. That sameness is
 // what this frame is for.
 //
-// THE LINE IS INVENTED, AND THE CAPTION SAYS SO. The release this build pins
-// (lib/dataRelease.ts) was published before decision 64 was built, and no
-// feature in its sketch carries `line_kind` (UA's 2026-10-03-2, read
-// 2026-10-04: 0 of 211). So the recipe's `before` appends one club group to
-// that release's network_overview.geojson on the way in and rewrites the
+// THE LINE IS INVENTED, AND THE CAPTION SAYS SO. The recipe was written
+// against a release published before decision 64 was built, whose sketch no
+// feature carried `line_kind` in (UA's 2026-10-03-2, read 2026-10-04: 0 of
+// 211). So the recipe's `before` appends one club group to the pinned
+// release's network_overview.geojson on the way in and rewrites the
 // manifest's hash to match (fixtures/releaseInjection.mjs): a W-shaped line
 // across central Nevada, source key `preview_fixture`, which no organization
 // holds. There is no claim that a trail is there.
 //
-// AND THE SKETCH IS CUT TO THE FRAME, which is the part a reader would not
-// guess. UA's 2026-10-03-2 sketch is 41,216,145 bytes decoded, over the
-// 33,554,432-byte launch budget (lib/artifactBudget.ts, #1254), so the app
-// declines it at the manifest and draws no sketch at all - measured in the
-// sandbox 2026-10-04, the console's own warning. The edit keeps only the
-// published features with a vertex inside FRAME, unchanged, so what draws
-// around the invented line is the pinned release's own haze for that
-// ground (BLM's and USFS's) and nothing is moved or restyled. Where a
-// release's sketch is under the budget the cut changes nothing on screen.
+// THE PINNED RELEASE HAS CLUB LINES OF ITS OWN NOW, and two cross this frame.
+// 2026-10-10-2, pinned since 2026-10-15, carries 12 club groups, and the
+// Arizona Trail Association's and BLM's Old Spanish National Historic Trail
+// lines have vertices inside the view this camera spans (Measured 2026-10-15
+// against its sketch, for a 390 x 844 map at z4.6; Reasoned that the map
+// fills the phone). They draw in the same style beside the invented line. A
+// recipe framing one of them, with no invented line, is the stronger
+// picture and has not been written.
+//
+// THE WHOLE SKETCH DRAWS. Until 2026-10-15 the edit also cut the sketch to
+// this frame, because 2026-10-03-2's was 41,216,145 bytes decoded, over the
+// 33,554,432-byte launch budget (lib/artifactBudget.ts, #1254), and the app
+// declined it at the manifest and drew no sketch at all. 2026-10-10-2's is
+// 2,710,574 bytes, so the published features arrive as published, with the
+// invented group appended.
 //
 // WHY NO SHEET. A club group in the sketch carries no `name`, like the
 // network's own haze groups, and map/lineTaps.ts opens nothing on an unnamed
 // line, so a tap at this zoom answers nothing. A club line's sheet
 // (chrome/LineSheet.tsx's "Club line" note) opens from the tiled band
 // (nearby_trails.pmtiles, z5 up), which a recipe cannot edit on the way in -
-// it is read by range, tile by tile - and which carries no club line until a
-// release is published with one. lib/lineDetail.test.ts and
-// chrome/LineSheet.test.tsx hold that sheet until then.
+// it is read by range, tile by tile. 2026-10-03-2, built before decision 64,
+// had no club line to tile; whether 2026-10-10-2's tiles carry its 12 has not
+// been read. Until a recipe opens one, lib/lineDetail.test.ts and
+// chrome/LineSheet.test.tsx hold that sheet.
 //
 // The camera is seeded through lib/cameraMemory.ts's session-storage key at
 // z4.6: under the sketch's ceiling (map/style.ts's NETWORK_SKETCH_MAX_ZOOM,
@@ -52,7 +59,7 @@
 import { injectIntoRelease } from './fixtures/releaseInjection.mjs'
 
 export const caption =
-  'Decision 64: a club’s trail line in the opening sketch, drawn in the style every other organization’s line already has (thinner, dashed, the same red). The W-shaped line across central Nevada is INVENTED, added to the pinned release’s network_overview.geojson by the recipe, because no published release carries a club line yet; the rest of the sketch is cut to this frame, because the pinned sketch is over the app’s launch budget and would otherwise not draw at all'
+  'Decision 64: a club’s trail line in the opening sketch, drawn in the style every other organization’s line already has (thinner, dashed, the same red). The W-shaped line across central Nevada is INVENTED, added to the pinned release’s network_overview.geojson by the recipe, which was written before any release carried a club line; the pinned release’s own club lines, the Arizona Trail’s and the Old Spanish Trail’s, cross this frame too, drawn the same way'
 export const alt =
   'The map zoomed out over central Nevada, with a thin dashed red W-shaped line at the centre among the other thin dashed red lines of the trail network; no sheet is open.'
 
@@ -63,10 +70,6 @@ export const wait = 12000
 const CENTER = [-116.5, 39.4]
 const ZOOM = 4.6
 
-/** [west, south, east, north]: wider than a 390 px phone at ZOOM, so no
- *  feature that reaches the screen is cut. */
-const FRAME = [-121, 35.5, -112, 43.5]
-
 const W_LINE = [
   [-117.2, 39.0],
   [-116.85, 39.8],
@@ -74,20 +77,6 @@ const W_LINE = [
   [-116.15, 39.8],
   [-115.8, 39.0],
 ]
-
-function crossesFrame(feature) {
-  const geometry = feature.geometry ?? {}
-  const lines =
-    geometry.type === 'MultiLineString'
-      ? geometry.coordinates
-      : geometry.type === 'LineString'
-        ? [geometry.coordinates]
-        : []
-  const [west, south, east, north] = FRAME
-  return lines.some((line) =>
-    line.some(([lon, lat]) => lon >= west && lon <= east && lat >= south && lat <= north),
-  )
-}
 
 export async function before(page) {
   // lib/cameraMemory.ts's contract: { center: [lon, lat], zoom }, read once
@@ -102,7 +91,7 @@ export async function before(page) {
     'network_overview.geojson': (published) => ({
       ...published,
       features: [
-        ...(published.features ?? []).filter(crossesFrame),
+        ...(published.features ?? []),
         {
           type: 'Feature',
           geometry: { type: 'MultiLineString', coordinates: [W_LINE] },

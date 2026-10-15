@@ -28,7 +28,7 @@ import * as examples from "./dataQualityExamples.mjs";
 
 const read = (path) => readFileSync(fileURLToPath(new URL(path, import.meta.url)), "utf8");
 const NOW = new Date("2026-10-08T01:00:00Z");
-const CONFIG = configFrom({ base: "https://data.example.invalid", release: "2026-10-03-2" });
+const CONFIG = configFrom({ base: "https://data.example.invalid", release: "2026-10-10-2" });
 const lane = (json, which) => settleLane({ state: "read", json }, which);
 const MISSING = { state: "missing" };
 const view = (monthly, hourly) => buildPage({ config: CONFIG, monthly, hourly, now: NOW });

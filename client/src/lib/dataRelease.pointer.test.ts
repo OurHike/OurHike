@@ -54,7 +54,11 @@ const COMPILED = /^export const DATA_RELEASE = '([^']+)'$/m.exec(
   ),
 )?.[1] as string
 const LAST_GOOD = '2026-10-01'
-const NEWER = '2026-10-03-2'
+// A release no build pins, so an entry naming it is seen to move a session
+// off the compiled pin. Until 2026-10-15 this was 2026-10-03-2, the pin
+// itself, and "never mid-session" below held whether or not the record moved
+// anything.
+const NEWER = '2026-10-15'
 
 /** One launch of the app: lib/dataRelease.ts and the pointer reader it is
  *  split from, lib/dataChannel.ts, evaluated afresh against `base`. */
@@ -130,6 +134,13 @@ afterEach(() => {
   vi.unstubAllEnvs()
   vi.unstubAllGlobals()
   vi.useRealTimers()
+})
+
+describe('the releases these tests name', () => {
+  it('names a pointer entry and a last good release that are not the compiled pin', () => {
+    expect(COMPILED).toMatch(/^\d{4}-\d{2}-\d{2}(-\d+)?$/)
+    expect(new Set([COMPILED, LAST_GOOD, NEWER]).size).toBe(3)
+  })
 })
 
 describe('which release a session reads', () => {

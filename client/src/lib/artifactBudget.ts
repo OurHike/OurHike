@@ -56,10 +56,20 @@
 // thread (the shape lib/trailIndexBuild.ts already has), the budget for it can
 // loosen then, with a measurement.
 //
-// pipeline/verify_release.py reads this declaration (check 22) so a release
-// carrying a text artifact over it fails the gate instead of reaching a phone -
-// the same one-home argument that has the gate reading config.ts's keys. The
-// literal below is the contract: keep it a number, not an expression.
+// pipeline/lib/client_contract.py reads this declaration (check 22) - the same
+// one-home argument that has the pipeline reading config.ts's keys - and three
+// places refuse a release carrying a file a phone fetches whole over it:
+// publish.py before it stages a release folder, the deploy guards in ua.yml
+// and pages.yml before a build pinned to one ships (pr-preview.yml warns), and
+// verify_release.py, the promotion gate, which a UA publish never passes
+// through. Until 2026-10-15 that gate was the only one, and UA's release
+// 2026-10-03-2 reached every UA phone with a 41,216,145-byte
+// network_overview.geojson, which each declined (review 5528343443 on
+// PR #1805). Still not weighed: a folder staged before then, reached through
+// an uploaded channels.json (publish.py --channels checks only that its
+// manifest exists), and an entry with no size_bytes, which oversized() below
+// leaves to the weigh after the body arrives. The literal below is the
+// contract: keep it a number, not an expression.
 
 /** Decoded bytes - what a fetched artifact occupies once the gzip is off. */
 export const LAUNCH_ARTIFACT_BUDGET_BYTES = 33_554_432

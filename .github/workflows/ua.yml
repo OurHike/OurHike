@@ -229,6 +229,13 @@ jobs:
       # exist in both" into a red deploy rather than something to remember.
       # Since decision 44 the pin is the compiled fallback a first run reads
       # before it has verified a channels.json entry (lib/dataRelease.ts).
+      #
+      # AND WHAT IT HOLDS MUST FIT A LAUNCH: check 22 on the manifest just
+      # fetched (.github/scripts/check_launch_budget.py). Release 2026-10-03-2
+      # resolved here and carried a network_overview.geojson over the launch
+      # budget, so every UA phone declined it and its opening map drew the
+      # A.T. alone (review 5528343443 on PR #1805). The steps below hold
+      # channels.json to this same release, so this one weigh covers it.
       - name: Confirm the pinned data release exists
         if: steps.can.outputs.deploy == 'true'
         working-directory: client
@@ -245,12 +252,14 @@ jobs:
             exit 1
           fi
           manifest="${DATA_URL%/}/releases/${release}/manifest.json"
-          if curl -fsS --retry 3 --max-time 30 -o /dev/null "$manifest"; then
+          pinned="${RUNNER_TEMP:-/tmp}/pinned-manifest.json"
+          if curl -fsS --retry 3 --max-time 30 -o "$pinned" "$manifest"; then
             echo "Pinned release ${release} resolves at ${DATA_URL%/}."
           else
             echo "::error::DATA_RELEASE is pinned to ${release}, but ${manifest} does not resolve. UA would deploy unable to fetch anything."
             exit 1
           fi
+          python3 ../.github/scripts/check_launch_budget.py "$pinned" --release "$release"
 
       # Decision 44's pointer, against UA's own base: pages.yml's step of the
       # same name, which says why both it and the step above must hold. The

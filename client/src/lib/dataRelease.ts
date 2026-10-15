@@ -159,9 +159,32 @@
  * artifacts in UA, 1,561 of them elevation or profile files, among them
  * elevation_profile.json and trail_graph_elevation.json (Measured 2026-10-03).
  *
+ * THEN TO 2026-10-10-2, because 2026-10-03-2 declines its own network sketch.
+ * Its manifest lists network_overview.geojson at 41,216,145 bytes decoded,
+ * over lib/artifactBudget.ts's LAUNCH_ARTIFACT_BUDGET_BYTES (33,554,432), so
+ * the app declines it at the manifest and the opening map draws the A.T.
+ * alone. UA serves no channels.json (a 404), so that was every UA phone
+ * (review 5528343443 on PR #1805; Measured 2026-10-15). The oversized sketch
+ * was main's three-decimal cut (c85ab715), fixed on this branch by 70153e89
+ * and 4724d46f on 2026-10-05, after this line last moved.
+ *
+ * build-reference.yml run 2 (38044889854) staged 2026-10-10-2 in UA on
+ * 2026-10-10, from the dbt path, green in every job with all 41 parity
+ * families matching (pipeline/ELT.md, "Work in flight"). Measured 2026-10-15
+ * against its folder: 4,449 artifacts, every key 2026-10-03-2 lists among
+ * them (eleven v2 files and two hike details are the rest); its sketch
+ * 2,710,574 bytes; check 22 passes, the largest file a phone fetches whole
+ * being trail_graph_cell_n37w108.json at 29,993,542; check 2 finds 32 of the
+ * 35 keys config.ts declares, the other three the background tiers
+ * packages.ts withdraws, as for 2026-10-03-2; check 20 finds every cell its
+ * four cell indexes name; and all 199 hikes in suggested_hikes.json have their
+ * detail. UA's environments/ua/latest.json names it. Production holds no
+ * release at all, so its channels.json entry stays where the release train
+ * left it (decision 145, RELEASING.md §10).
+ *
  * @see pipeline/DATA_RELEASES.md §4, pipeline/R2_LAYOUT.md
  */
-export const DATA_RELEASE = '2026-10-03-2'
+export const DATA_RELEASE = '2026-10-10-2'
 
 /**
  * The schema version of the phone files this build reads (decision 44): the

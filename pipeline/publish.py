@@ -75,7 +75,7 @@ from boto3.s3.transfer import TransferConfig
 from botocore.config import Config as BotocoreConfig
 
 import check_contract_versions
-from lib import data_change, data_env, releases
+from lib import client_contract, data_change, data_env, releases
 from lib.content_types import BINARY_TYPES, COMPRESSIBLE_TYPES
 from lib.hashing import sha256_file
 from lib.manifest_paths import from_manifest_path, to_manifest_path
@@ -1860,20 +1860,32 @@ def _run_started_at(result: dict) -> float | None:
 
 def cut_suggested_hike_details(path: Path, processed_dir: Path) -> dict[str, dict]:
     """pub_suggested_hikes_detail's file, `{"details": [...]}`, as the object per
-    hike a phone fetches when somebody opens it: `{key: {path, sha256}}`, in
-    collect_artifacts()' entry shape, the files under DETAIL_CUT_DIRNAME.
+    hike a phone fetches when somebody opens it: `{key: {path, sha256,
+    size_bytes}}`, in collect_artifacts()' entry shape, the files under
+    DETAIL_CUT_DIRNAME.
 
     export_suggested_hikes.py's own number_details() and
     write_detail_objects() name and write them, so the dbt writer's objects
     carry the exporter's key rule (lib/suggestedHikesData.ts's detailKeyFor,
     `<source>:<digits>`) and its bytes, and an id that rule cannot name raises
     before anything is cut. Cut here, from the file this run's results prove
-    was written, so an object can never be older than its writer's run."""
+    was written, so an object can never be older than its writer's run.
+
+    WITH `size_bytes`, which write_detail_objects() leaves to its caller, as
+    collect_artifacts() measures the exporter's copies. Without it the
+    manifest carried no size for a cut detail: 201 of the 202
+    `suggested_hikes_detail_*.json` entries in UA's release 2026-10-10-2
+    (Measured 2026-10-15), each a SKIP in check 22, which `--strict` fails,
+    and a size the client cannot weigh before it fetches the file whole
+    (lib/client_contract.py's check_launch_budget)."""
     import export_suggested_hikes  # only the dbt path cuts the details
 
     details = json.loads(path.read_text(encoding="utf-8"))["details"]
     numbered = export_suggested_hikes.number_details(details)
-    return export_suggested_hikes.write_detail_objects(numbered, processed_dir / DETAIL_CUT_DIRNAME)
+    cut = export_suggested_hikes.write_detail_objects(numbered, processed_dir / DETAIL_CUT_DIRNAME)
+    for entry in cut.values():
+        entry["size_bytes"] = from_manifest_path(entry["path"]).stat().st_size
+    return cut
 
 
 def collect_dbt_phone_files(
@@ -2131,6 +2143,47 @@ def load_remote_json(s3_client, bucket: str, manifest_key: str = MANIFEST_KEY) -
 def writes_enabled() -> bool:
     """Whether this environment is explicitly allowed to publish to R2."""
     return os.environ.get(WRITE_ENABLED_ENV_VAR, "").strip().lower() in {"1", "true", "yes", "on"}
+
+
+def refuse_over_launch_budget(release_id: str, artifacts: dict[str, dict]) -> None:
+    """Refuse a release folder that would carry a file a phone fetches whole
+    over the client's launch budget: check 22 (lib/client_contract.py's
+    check_launch_budget), run on the entries that folder's manifest would list.
+
+    WHY HERE, AND NOT ONLY AT THE PROMOTION GATE. verify_release.py runs check
+    22, and only verify-release.yml runs verify_release.py, by hand, before a
+    promotion; a UA publish never passes through it. So UA's release
+    2026-10-03-2 was staged with a 41,216,145-byte network_overview.geojson
+    against the 33,554,432-byte budget, and UA serves no channels.json, so
+    every UA phone read that release through the compiled pin and declined
+    the sketch at the manifest: its opening map drew the A.T. alone (review
+    5528343443 on PR #1805, Measured 2026-10-15).
+
+    publish() calls this BEFORE ITS FIRST ARTIFACT UPLOAD, not only before the
+    copies into the folder. The flat keys are uploaded first and latest.json
+    is written last, so a refusal between the two would leave flat keys whose
+    bytes latest.json does not describe. Only photographs have landed by then,
+    and publish() already counts a photograph nothing references as harmless.
+
+    A SKIP IS NOT A REFUSAL. An entry with no `size_bytes` (one carried forward
+    from before sizes were published) cannot be weighed here, and the client
+    weighs its body once it arrives (client/src/lib/artifactBudget.ts), so it
+    is left to the client, as check 22 reports it."""
+    over = [
+        found
+        for found in client_contract.check_launch_budget({"artifacts": artifacts})
+        if found["state"] == client_contract.FAILED
+    ]
+    if not over:
+        return
+    for found in over:
+        print(f"::error title={found['key']} is over the launch budget::{found['detail']}")
+    raise RuntimeError(
+        f"Release {release_id} would carry {len(over)} file(s) a phone fetches whole over the launch budget "
+        f"({', '.join(found['key'] for found in over)}), so it was not staged and no artifact was uploaded. "
+        "Cut the file under client/src/lib/artifactBudget.ts's LAUNCH_ARTIFACT_BUDGET_BYTES, or raise that "
+        "budget there with a measurement, and publish again."
+    )
 
 
 def _stage_release(
@@ -2522,6 +2575,19 @@ def publish(
         index_key = data_env.scope_key(environment, releases.RELEASE_INDEX_KEY)
         release_index = load_remote_json(s3_client, bucket, index_key)
         release_id = releases.next_release_id(releases.index_ids(release_index))
+        # Check 22 on the folder this version would stage, BEFORE THE FIRST
+        # ARTIFACT UPLOAD (refuse_over_launch_budget says why then): the
+        # entries the manifest below merges, carried forward and this run's,
+        # with the sizes it will publish.
+        refuse_over_launch_budget(
+            release_id,
+            {
+                **{
+                    name: entry for name, entry in {**remote_artifacts, **artifacts}.items() if releases.is_release_artifact(name)
+                },
+                **release_only_manifest_entries(held_in_release, in_release, changes),
+            },
+        )
 
     def upload_key(name: str) -> str:
         if release_only(name):

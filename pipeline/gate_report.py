@@ -1,11 +1,12 @@
 """gate_report: one answer for every R2 key today's pipeline publishes, from the shadow run's parity results.
 
     python gate_report.py --parity-dir <dir> --out <dir> [--dbt-manifest dbt/target/manifest.json] [--strict]
-        [--summary <file>] [--hourly-dir <the soak's hourly-parity-* artifacts>]
+        [--summary <file>] [--hourly-dir <the soak's hourly-parity-* artifacts> [--commit <sha> ...]]
 
 Exits 0 once both files are written, whatever they say; 1 with --strict when
 any key blocks go (KeyRow.blocks_go); 2 when there are no parity results or
-no dbt manifest to read. --summary appends the counts to a file, the run's
+no dbt manifest to read, or a --commit that is not a sha or comes without
+--hourly-dir. --summary appends the counts to a file, the run's
 step summary in build-reference.yml's parity-report job.
 
 Decision 30's go/no-go gate (pipeline/ELT.md, "The go/no-go gate") needs
@@ -91,16 +92,31 @@ artifacts, one folder per run, as `gh run download` writes them. A key whose
 writer has no monthly result is then judged by soak_coverage(), which says
 precisely what "clean across the soak" means here:
 - one hourly comparison that found a difference nothing explains, or that
-  crashed, anywhere in the results, makes the key `differs`;
+  crashed, anywhere in the results and on any commit, makes the key
+  `differs`, and the detail names each such run's commit: a difference an
+  older commit's hour found may be a defect the newer code still has, on data
+  its own hours never met, so it stands until somebody reads it and takes
+  that run out of --hourly-dir;
 - otherwise the key passes only when EVERY run of the UA leg (SOAK_LEG,
-  decision 46) in the soak's last SOAK_HOURS (counted back from that leg's
-  newest run in the results, and reaching back to a run at or before that
-  start) compared it clean, and no two of those runs are more than
-  SOAK_MAX_GAP_HOURS apart, so an hour with no comparison (an input that was
-  not this hour's, a writer held back, a run that never came) is a hole the
-  soak has to cover again rather than a pass. Clean is
+  decision 46) BUILT ON A COMMIT JUDGED, in the soak's last SOAK_HOURS
+  (counted back from the newest such run, and reaching back to one at or
+  before that start), compared it clean, and no two of those runs are more
+  than SOAK_MAX_GAP_HOURS apart, so an hour with no comparison (an input that
+  was not this hour's, a writer held back, a run that never came) is a hole
+  the soak has to cover again rather than a pass. Clean is
   `equal`, or `no_records` (both files empty) for a family
-  MAY_COMPARE_NO_RECORDS lists, the monthly lane's rule;
+  MAY_COMPARE_NO_RECORDS lists, the monthly lane's rule. The commit judged is
+  --commit's, else the newest UA run's (judged_commits()). Each run.json names
+  the commit its build ran: check-conditions.yml passes its own github.sha as
+  `--commit`, and take-bundle refuses a bundle another commit's build put, so
+  a run that compared anything compared that commit's build (one that took no
+  bundle compared nothing, and is never clean whatever it names). A UA run
+  built on any other commit, another branch's included, is set aside, never
+  fills an hour, and is named with its commit and span in the key's detail:
+  decision 112 asks for a fresh soak on the final branch. --commit given
+  twice counts a commit whose hourly lane is the same, which decision 142
+  does not restart the soak for; that sameness is the person's to vouch for,
+  so the report names every commit it counted;
 - anything else stays blocking, as `not_ported` with why
   `soak_not_covered`, and the detail names what is short.
 A key that has a monthly result is judged by it, unless an hourly comparison
@@ -547,6 +563,8 @@ SOAK_HOURS = 72
 #: The leg whose runs can cover the soak: decision 46's "an hourly dispatch of the conditions lane on UA". Another
 #: leg's run can still make a key differ, and never fills an hour UA missed. Decided, not picked.
 SOAK_LEG = "ua"
+#: What --commit takes: a commit's sha, in full or by its first seven characters or more (git's own short form).
+COMMIT_SHAPE = re.compile(r"[0-9a-fA-F]{7,40}")
 #: The longest two consecutive runs of the soak may be apart and still both count, in hours. Decided: decision 158, the
 #: maintainer's poll of 2026-10-11, "Allow one missed hour". The soak's routine dispatches publish-conditions.yml at :18
 #: every hour from the session that watches the pull request, and runs 617 to 624 (2026-10-10, 11:20 to 18:19 UTC) began
@@ -633,15 +651,64 @@ class Coverage:
     differing: int = 0
 
 
-def soak_coverage(runs: list[HourlyRun], family: str) -> Coverage:
-    """Whether `family`'s hourly comparisons are clean across the soak: the module docstring, "THE HOURLY COMPARISONS"."""
+def judged_commits(runs: list[HourlyRun], commits: list[str] | None = None) -> list[str]:
+    """The commits whose builds may cover the soak: `commits` (--commit) where given, else the newest SOAK_LEG run's
+    alone, or none when that run names no commit (the module docstring, "THE HOURLY COMPARISONS")."""
+    if commits:
+        return list(commits)
+    soak = [run for run in runs if run.leg == SOAK_LEG]
+    return [soak[-1].commit] if soak and soak[-1].commit else []
+
+
+def _built_on(commit: str | None, judged: list[str]) -> bool:
+    """Whether a run.json's `commit` (github.sha, in full) is one of `judged`, each a sha or its first 7 or more."""
+    if not commit or len(commit) < 7:
+        return False
+    return any(commit.lower().startswith(sha.lower()) or sha.lower().startswith(commit.lower()) for sha in judged)
+
+
+def _which(run: HourlyRun, judged: list[str]) -> str:
+    """The commit `run` was built on, as a detail names it, and whether it is one judged."""
+    if not run.commit:
+        return "naming no commit"
+    return f"on {run.commit[:12]}" + ("" if _built_on(run.commit, judged) else ", not a commit judged")
+
+
+def _set_aside(aside: list[HourlyRun]) -> str:
+    """The SOAK_LEG runs soak_coverage() did not count, by commit with their span, and why, or "" for none."""
+    if not aside:
+        return ""
+    by_commit: dict[str | None, list[HourlyRun]] = {}
+    for run in aside:
+        by_commit.setdefault(run.commit, []).append(run)
+    parts = [
+        f"{len(group)} {'on ' + commit[:12] if commit else 'naming none'} ({_stamp(group[0].at)} to {_stamp(group[-1].at)})"
+        for commit, group in sorted(by_commit.items(), key=lambda item: item[1][0].at)
+    ]
+    runs = f"{len(aside)} run{'s' if len(aside) > 1 else ''} of the {SOAK_LEG} leg"
+    if set(by_commit) == {None}:
+        what = f"{runs} naming no commit ({_stamp(aside[0].at)} to {_stamp(aside[-1].at)})"
+    else:
+        what = f"{runs} built on another commit{' or naming none' if None in by_commit else ''}: {', '.join(parts)}"
+    return (
+        f"; set aside {what}, because a soak covers only the code its builds ran (decision 112: a fresh soak on the "
+        "final branch). A commit whose hourly lane is the same counts once named with --commit (decision 142 restarts "
+        "the soak only for a push that changes the lane)"
+    )
+
+
+def soak_coverage(runs: list[HourlyRun], family: str, commits: list[str] | None = None) -> Coverage:
+    """Whether `family`'s hourly comparisons are clean across the soak of the commits judged (judged_commits(), from
+    --commit): the module docstring, "THE HOURLY COMPARISONS"."""
     if not runs:
         return Coverage("short", "no hourly comparison was read")
+    judged = judged_commits(runs, commits)
     differing = [run for run in runs if (run.families.get(family) or {}).get("verdict") in ("differs", "failed")]
     if differing:
         newest = differing[-1]
         named = "; ".join(
-            f"run {run.run} ({run.families[family].get('why') or run.families[family]['verdict']})" for run in differing[-3:]
+            f"run {run.run} {_which(run, judged)} ({run.families[family].get('why') or run.families[family]['verdict']})"
+            for run in differing[-3:]
         )
         return Coverage(
             "differs",
@@ -650,18 +717,30 @@ def soak_coverage(runs: list[HourlyRun], family: str) -> Coverage:
             result=newest.results.get(family),
             differing=len(differing),
         )
-    soak = [run for run in runs if run.leg == SOAK_LEG]
-    if not soak:
+    legged = [run for run in runs if run.leg == SOAK_LEG]
+    if not legged:
         legs = ", ".join(sorted({run.leg for run in runs}))
         return Coverage("short", f"no hourly comparison of the {SOAK_LEG} leg (SOAK_LEG) was read, only of {legs}")
+    if not judged:
+        return Coverage(
+            "short",
+            f"the newest {SOAK_LEG} run, {legged[-1].run}, names no commit, so which code the soak ran is unknown: "
+            "give gate_report.py --commit",
+        )
+    soak = [run for run in legged if _built_on(run.commit, judged)]
+    aside = _set_aside([run for run in legged if not _built_on(run.commit, judged)])
+    shas = ", ".join(sha[:12] for sha in judged)
+    built = f"built on {'commits judged ' if len(judged) > 1 else ''}{shas}"
+    if not soak:
+        return Coverage("short", f"no hourly comparison of the {SOAK_LEG} leg {built} was read{aside}")
     end = soak[-1].at
     start = end - timedelta(hours=SOAK_HOURS)
     before = [run for run in soak if run.at <= start]
     if not before:
         return Coverage(
             "short",
-            f"the {SOAK_LEG} leg's hourly comparisons read span {_hours(end - soak[0].at)} ({_stamp(soak[0].at)} to "
-            f"{_stamp(end)}), short of the soak's {SOAK_HOURS} h (SOAK_HOURS)",
+            f"the {SOAK_LEG} leg's hourly comparisons {built} span {_hours(end - soak[0].at)} ({_stamp(soak[0].at)} "
+            f"to {_stamp(end)}), short of the soak's {SOAK_HOURS} h (SOAK_HOURS){aside}",
         )
     window = [before[-1], *[run for run in soak if run.at > start]]
     unclean = [run for run in window if not _clean(family, run.families.get(family))]
@@ -673,7 +752,8 @@ def soak_coverage(runs: list[HourlyRun], family: str) -> Coverage:
         )
         return Coverage(
             "short",
-            f"{len(unclean)} of the {len(window)} runs in the soak's last {SOAK_HOURS} h did not compare it clean ({named})",
+            f"{len(unclean)} of the {len(window)} runs in the soak's last {SOAK_HOURS} h did not compare it clean "
+            f"({named}); every run counted was {built}{aside}",
         )
     gaps = [(later.at - earlier.at, earlier, later) for earlier, later in zip(window, window[1:], strict=False)]
     widest, earlier, later = max(gaps, key=lambda gap: gap[0]) if gaps else (timedelta(0), window[0], window[0])
@@ -681,15 +761,14 @@ def soak_coverage(runs: list[HourlyRun], family: str) -> Coverage:
         return Coverage(
             "short",
             f"runs {earlier.run} and {later.run} are {_hours(widest)} apart ({_stamp(earlier.at)} to {_stamp(later.at)}), "
-            f"more than SOAK_MAX_GAP_HOURS ({SOAK_MAX_GAP_HOURS} h): an hour went uncompared",
+            f"more than SOAK_MAX_GAP_HOURS ({SOAK_MAX_GAP_HOURS} h): an hour went uncompared; every run counted was "
+            f"{built}{aside}",
         )
-    legs = ", ".join(sorted({run.leg for run in window}))
-    commits = ", ".join(sorted({str(run.commit)[:12] for run in window}))
     return Coverage(
         "clear",
         f"compared on real data in every one of the {len(window)} runs of the soak's last {SOAK_HOURS} h, "
         f"{_stamp(window[0].at)} to {_stamp(end)}, at most {_hours(widest)} apart, with no unexplained difference "
-        f"(leg {legs}; commit {commits})",
+        f"(leg {SOAK_LEG}; {built}){aside}",
         result=window[-1].results.get(family),
     )
 
@@ -915,12 +994,17 @@ def _from_hourly(row: KeyRow, coverage: Coverage, family: str, key: str) -> None
 
 
 def key_rows(
-    today: list[TodayKey], dbt: list[DbtKey], results: dict[str, dict], hourly: list[HourlyRun] | None = None
+    today: list[TodayKey],
+    dbt: list[DbtKey],
+    results: dict[str, dict],
+    hourly: list[HourlyRun] | None = None,
+    commits: list[str] | None = None,
 ) -> tuple[list[KeyRow], list[dict], list[DbtKey]]:
     """Every today key's answer, the parity results that reach no today key, and the dbt keys today does not publish.
 
     `hourly` is load_hourly()'s runs: a key whose writer the monthly lane has no result for is judged by its family's
-    soak_coverage(), and an hourly difference makes any key differ (the module docstring, "THE HOURLY COMPARISONS")."""
+    soak_coverage() over the builds of `commits` (judged_commits()), and an hourly difference makes any key differ (the
+    module docstring, "THE HOURLY COMPARISONS")."""
     by_pattern = {key_pattern(entry.key): entry for entry in dbt}
     by_location: dict[str, list[dict]] = {}
     for result in results.values():
@@ -948,7 +1032,7 @@ def key_rows(
             row.exposure, row.writer = owned.exposure, owned.writer
             matched = by_location.get(owned.location or "", [])
             hourly_family = hourly_by_location.get(owned.location or "")
-            coverage = soak_coverage(hourly, hourly_family) if hourly and hourly_family else None
+            coverage = soak_coverage(hourly, hourly_family, commits) if hourly and hourly_family else None
             if coverage is not None and (coverage.state == "differs" or not matched):
                 _from_hourly(row, coverage, hourly_family, entry.key)
                 used.update(result["family"] for result in matched)
@@ -1057,8 +1141,10 @@ def render_markdown(rows: list[KeyRow], unmatched: list[dict], new_keys: list[Db
         + (
             f", and {inputs['hourly_runs']} hourly comparisons on real data in `{inputs['hourly_dir']}`, "
             f"{inputs['hourly_span']}: a key the monthly lane compares nothing for is clean only when every run of the "
-            f"soak's last {SOAK_HOURS} h compared it clean, none more than {SOAK_MAX_GAP_HOURS} h apart "
-            "(gate_report.soak_coverage())."
+            f"soak's last {SOAK_HOURS} h built on a commit judged "
+            f"({', '.join(sha[:12] for sha in inputs['hourly_commits']) or 'none: the newest run names no commit'}; "
+            f"{inputs['hourly_commits_from']}) compared it clean, none more than {SOAK_MAX_GAP_HOURS} h apart "
+            "(gate_report.soak_coverage()); a run built on any other commit is set aside, and the key's row says which."
             if inputs.get("hourly_runs")
             else "."
         ),
@@ -1143,7 +1229,7 @@ def render_markdown(rows: list[KeyRow], unmatched: list[dict], new_keys: list[Db
     return "\n".join(lines)
 
 
-def build_report(parity_dir: Path, dbt_manifest: Path, hourly_dir: Path | None = None) -> dict:
+def build_report(parity_dir: Path, dbt_manifest: Path, hourly_dir: Path | None = None, commits: list[str] | None = None) -> dict:
     results = load_results(parity_dir)
     if not results:
         raise FileNotFoundError(f"{parity_dir} holds no parity results; run parity.py with --json-dir {parity_dir} first")
@@ -1153,12 +1239,14 @@ def build_report(parity_dir: Path, dbt_manifest: Path, hourly_dir: Path | None =
     hourly = load_hourly(hourly_dir) if hourly_dir is not None else None
     if hourly_dir is not None and not hourly:
         raise FileNotFoundError(f"{hourly_dir} holds no hourly comparison ({RUN_FILE}); download the soak's artifacts into it")
-    rows, unmatched, new_keys = key_rows(today_keys(), dbt_keys(manifest), results, hourly)
+    rows, unmatched, new_keys = key_rows(today_keys(), dbt_keys(manifest), results, hourly, commits)
     inputs = {"parity_dir": _shown(parity_dir), "dbt_manifest": _shown(dbt_manifest), "results": len(results)}
     if hourly:
         inputs["hourly_dir"] = _shown(hourly_dir)
         inputs["hourly_runs"] = len(hourly)
         inputs["hourly_span"] = f"{_stamp(hourly[0].at)} to {_stamp(hourly[-1].at)}"
+        inputs["hourly_commits"] = judged_commits(hourly, commits)
+        inputs["hourly_commits_from"] = "named by --commit" if commits else f"the newest {SOAK_LEG} run's"
     return {
         "format": REPORT_FORMAT,
         "inputs": inputs,
@@ -1212,9 +1300,25 @@ def main(argv: list[str] | None = None) -> int:
         help="the soak's hourly-parity-* artifacts, one folder per run (gh run download): soak_coverage() judges a key "
         "the monthly lane compares nothing for",
     )
+    parser.add_argument(
+        "--commit",
+        dest="commits",
+        action="append",
+        default=None,
+        help="the commit whose soak is judged, its sha in full or its first 7 characters or more: only runs built on it "
+        "cover the soak (default: the newest ua run's commit). Give it again for a commit whose hourly lane is the "
+        "same, which decision 142 does not restart the soak for",
+    )
     args = parser.parse_args(argv)
+    if args.commits and args.hourly_dir is None:
+        print("gate_report: --commit judges the hourly comparisons, so it needs --hourly-dir", file=sys.stderr)
+        return 2
+    malformed = [commit for commit in args.commits or [] if not COMMIT_SHAPE.fullmatch(commit)]
+    if malformed:
+        print(f"gate_report: --commit takes a sha, 7 to 40 hex characters, not {', '.join(malformed)}", file=sys.stderr)
+        return 2
     try:
-        report = build_report(args.parity_dir, args.dbt_manifest, args.hourly_dir)
+        report = build_report(args.parity_dir, args.dbt_manifest, args.hourly_dir, args.commits)
     except (FileNotFoundError, ValueError) as problem:
         print(f"gate_report: {problem}", file=sys.stderr)
         return 2

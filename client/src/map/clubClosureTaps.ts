@@ -68,9 +68,9 @@ export function clubClosureFeatureCollection(
   }
 }
 
-/** PROTOTYPE (Q22): one Point per closure, for the far-out marks' source,
- *  keyed by notice id as the line features are, so a tap on a far-out mark
- *  opens the same sheet. */
+/** One Point per closure, for the z5-z6 small ✕'s source
+ *  (map/clubClosureLayers.ts's buildClubClosureFarLayer), keyed by notice id
+ *  as the line features are, so a tap on a ✕ opens the same sheet. */
 export function clubClosureFarCollection(closures: readonly TrailClosure[]) {
   return {
     type: 'FeatureCollection' as const,
@@ -104,7 +104,7 @@ export function attachClubClosureData(
       if (source === undefined || typeof source.setData !== 'function') return
       addClosureShadeImages(map)
       source.setData(clubClosureFeatureCollection(closures) as never)
-      // PROTOTYPE (Q22): the far-out marks' source, when the style has one.
+      // The z5-z6 small ✕s' source, from the same closures.
       const far = map.getSource<GeoJSONSource>(CLUB_CLOSURE_FAR_SOURCE_ID)
       if (far !== undefined && typeof far.setData === 'function') {
         far.setData(clubClosureFarCollection(closures) as never)

@@ -1,4 +1,5 @@
 import { describe, it, expect, vi } from 'vitest'
+import { CLUB_CLOSURE_FAR_LAYER_ID } from './styleIds'
 import {
   ATC_UPDATE_BAND_LAYER_IDS,
   ATC_UPDATE_LAYER_ID,
@@ -517,7 +518,8 @@ describe('buildMapStyle', () => {
     // And nothing else in the style places the cross along a line, so the
     // sweep above is over the whole set rather than the four it knows. The
     // clubs' feed adds one cross per point closure, right after its mark
-    // (the maintainer's S6).
+    // (the maintainer's S6), and one small ✕ per closure at z5 and z6 right
+    // after that (Q22).
     const chains = style()
       .layers.filter(
         (l) =>
@@ -530,11 +532,14 @@ describe('buildMapStyle', () => {
       [...CLOSURE_BAND_IDS, ATC_UPDATE_LAYER_ID]
         .flatMap((id) => [closureCrossesId(id), closureMarkId(id)])
         .filter((id) => id !== closureCrossesId(NETWORK_OVERVIEW_CLOSURE_LAYER_ID))
-        .concat(CLUB_CLOSURE_POINT_LAYER_ID)
+        .concat(CLUB_CLOSURE_POINT_LAYER_ID, CLUB_CLOSURE_FAR_LAYER_ID)
         .sort(),
     )
     expect(ids[ids.indexOf(closureMarkId(CLUB_CLOSURE_LAYER_ID)) + 1]).toBe(
       CLUB_CLOSURE_POINT_LAYER_ID,
+    )
+    expect(ids[ids.indexOf(CLUB_CLOSURE_POINT_LAYER_ID) + 1]).toBe(
+      CLUB_CLOSURE_FAR_LAYER_ID,
     )
   })
 
@@ -592,6 +597,7 @@ describe('buildMapStyle', () => {
     const safety = [
       ...CLOSURE_BAND_IDS.flatMap(closureLayerIds),
       CLUB_CLOSURE_POINT_LAYER_ID,
+      CLUB_CLOSURE_FAR_LAYER_ID,
       WARNING_LAYER_ID,
     ]
     // The one exception inside the safety group: the hiker's own mark, over
@@ -3337,6 +3343,7 @@ describe("the hiker's mark, over everything (#1581)", () => {
       ...bandLayers(LONG_TERM_CLOSURE_LAYER_ID),
       ...bandLayers(CLUB_CLOSURE_LAYER_ID),
       CLUB_CLOSURE_POINT_LAYER_ID,
+      CLUB_CLOSURE_FAR_LAYER_ID,
       WARNING_LAYER_ID,
       ...bandLayers(ATC_UPDATE_LAYER_ID),
       ATC_UPDATE_POINT_LAYER_ID,

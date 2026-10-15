@@ -92,6 +92,12 @@ export const NETWORK_OVERVIEW_CLOSURE_LAYER_ID = 'network-overview-closure-band'
  *  also carries points, drawn on lib/closureStyle.ts's `closurePointId`. */
 export const CLUB_CLOSURE_LAYER_ID = 'club-closure-band'
 
+/** The small ✕ each club closure gets at z5 and z6 (map/clubClosureLayers.ts's
+ *  buildClubClosureFarLayer). Here, beside the band's, because
+ *  map/closureLayers.ts's tap reads it and is in the launch bundle, where
+ *  map/clubClosureLayers.ts is not. */
+export const CLUB_CLOSURE_FAR_LAYER_ID = 'club-closure-far'
+
 /**
  * The paper layer of every closure feed: the closures feed's, the A.T.'s
  * long-term-closed lines, the nearby network's, the corridor-view sketch's

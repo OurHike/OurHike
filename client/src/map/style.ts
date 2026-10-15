@@ -147,9 +147,13 @@ import { buildDroughtLayer } from '../lib/droughtStyle'
 import { buildAtcUpdateSource, ATC_UPDATE_SOURCE_ID } from './atcUpdateLayers'
 import { buildClosureSource, CLOSURE_SOURCE_ID } from './closureLayers'
 import {
+  buildClubClosureFarLayer,
+  buildClubClosureFarSource,
   buildClubClosureLayers,
   buildClubClosureShadeLayer,
   buildClubClosureSource,
+  CLUB_CLOSURE_FAR_LAYER_ID,
+  CLUB_CLOSURE_FAR_SOURCE_ID,
   CLUB_CLOSURE_SHADE_LAYER_ID,
   CLUB_CLOSURE_SOURCE_ID,
   clubClosureShadeImageId,
@@ -689,6 +693,15 @@ export function attachMapAppearance(
           map.setPaintProperty(symbolId, 'icon-color', ink as never)
           map.setPaintProperty(symbolId, 'icon-halo-color', tapeGround as never)
         }
+      }
+      // The z5-z6 small ✕ (Q22), the same ink on the same paper.
+      if (map.getLayer(CLUB_CLOSURE_FAR_LAYER_ID) !== undefined) {
+        map.setPaintProperty(CLUB_CLOSURE_FAR_LAYER_ID, 'icon-color', ink as never)
+        map.setPaintProperty(
+          CLUB_CLOSURE_FAR_LAYER_ID,
+          'icon-halo-color',
+          tapeGround as never,
+        )
       }
       // The shade's hatch (decision 191) is a coloured pattern, one image
       // per ink family (map/closureShade.ts), so a sheet change names the
@@ -2432,6 +2445,9 @@ export function buildMapStyle({
       // hazard areas' reason above: the closing organization is named on
       // the closure's own sheet (map/clubClosureLayers.ts).
       [CLUB_CLOSURE_SOURCE_ID]: buildClubClosureSource(),
+      // And one point per closure for its small ✕ at z5 and z6 (Q22), from
+      // the same file, with no attribution for the same reason.
+      [CLUB_CLOSURE_FAR_SOURCE_ID]: buildClubClosureFarSource(),
       // Where the downloaded map ends (#557), empty until the shell knows
       // which cells are on the phone and empty on every phone that holds the
       // whole sheet or nothing. No attribution: the line is a fact about
@@ -3051,6 +3067,10 @@ export function buildMapStyle({
       // cross per point closure. In the group, at its height, for the reason
       // the four above are.
       ...buildClubClosureLayers(tapeGround, closureInkColor),
+      // Farther out, z5 and z6 only, one small ✕ per club closure, thinned by
+      // collision (Q22, the maintainer's variant A of 2026-10-15). It stops
+      // at the zoom the layers above start at, so the two never draw together.
+      buildClubClosureFarLayer(tapeGround, closureInkColor),
       // The warning pins over the bands: a pin is a point and a band is
       // hundreds of pixels long, so a band drawn over a pin hides the whole
       // mark where a pin over a band hides a stripe of it. The same argument

@@ -13,6 +13,9 @@ file holds, without dbt, that every source the rule covers carries it:
 - each errors after FRESHNESS_HOURS for its cadence, and a source whose
   sources.json row says reaches_hikers false only warns, as
   extract/_run.py's quiet_refusals() keeps its refusal from failing the run;
+  the one monthly notice source warns and errors after make_dbt_staging.py's
+  MONTHLY_FRESHNESS_DAYS, as every monthly source does (decision 203,
+  tests/test_source_freshness.py);
 - each is tagged with the job whose run log measures it, which is how
   publish-conditions.yml's freshness step selects them.
 
@@ -27,6 +30,7 @@ import pytest
 import yaml
 
 import generate_notice_models as generator
+import make_dbt_staging
 from extract._contract import all_resources, discover, discover_shared
 from extract._run import DUE_AFTER, HOURLY_JOB_TABLES, LEGS, NOTICES_JOB, leg_tables, stops_the_leg
 
@@ -93,7 +97,8 @@ def test_every_generated_notice_source_measures_from_the_run_log_by_its_cadence(
         # A PDF notice included: CI's freshness leaves it out by its tag, never by dropping its thresholds
         # (tests/test_generated_notice_models.py).
         if source.cadence == "monthly":
-            expected = (7 * 24, None)
+            # Decision 203: every monthly source's pair, USFWS's hunt units' too (tests/test_source_freshness.py).
+            expected = tuple(days * 24 for days in make_dbt_staging.MONTHLY_FRESHNESS_DAYS)
         else:
             hours = generator.FRESHNESS_HOURS[source.cadence]
             quiet = (source.entry or {}).get("reaches_hikers") is False

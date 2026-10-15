@@ -14,6 +14,7 @@ import { buildPage, configFrom, formatCount, settleLane } from "./dataQuality.mj
 import {
   axisLabels,
   chartLayout,
+  flaggedLabel,
   icon,
   name,
   nearestPoint,
@@ -159,7 +160,7 @@ describe("Needs a look, the Show menu and the Chart buttons, as markup", () => {
   it("draws a Chart button on each row with a history and two per mart, the first chart's row pressed as the page opens", () => {
     const page = manyView();
     const body = renderBody(page);
-    expect(body.match(/<button type="button" class="dq-chart-btn"/g)).toHaveLength(30 + 11);
+    expect(body.match(/<button type="button" class="dq-chart-btn"/g)).toHaveLength(22 + 11);
     expect(body.match(/class="dq-chart-btn dq-chart-btn--inline"/g)).toHaveLength(11);
     const pressed = [...body.matchAll(/data-row="([^"]+)" aria-pressed="true"/g)].map((m) => m[1]);
     expect(pressed).toEqual([page.sections.opening]);
@@ -187,14 +188,19 @@ describe("Needs a look, the Show menu and the Chart buttons, as markup", () => {
     expect(renderBody(lookingView()).match(/<details class="dq-panel dq-fold" data-fold="\w+" open>/g)).toHaveLength(4);
   });
 
-  it("draws the Show menu as a native select in its two groups, the chart's series selected", () => {
+  it("draws the Show menu as a native select in its groups, Needs a look by kind, the chart's series selected", () => {
     const page = manyView();
     const body = renderBody(page);
     expect(body).toContain('<label class="dq-show__label" for="dq-show">Show</label>');
-    expect(body.match(/<optgroup label="([^"]+)">/g)).toEqual(['<optgroup label="Needs a look">', '<optgroup label="Every finished table">']);
+    expect(body.match(/<optgroup label="([^"]+)">/g)).toEqual([
+      '<optgroup label="Needs a look · Volume">',
+      '<optgroup label="Needs a look · Anomalies">',
+      '<optgroup label="Every finished table">',
+    ]);
     const selected = [...body.matchAll(/<option value="([^"]*)" selected>/g)].map((m) => m[1].replaceAll("&quot;", '"'));
     expect(selected).toEqual([page.sections.chart.key]);
-    expect(body.match(/<option /g)).toHaveLength(38);
+    // 30: the 38 there were before decision 203, less the 8 freshness histories.
+    expect(body.match(/<option /g)).toHaveLength(30);
   });
 
   it("leaves the menu out when the files hold one series, and the Chart column out when no mart has one", () => {
@@ -375,5 +381,31 @@ describe("classes the page uses", () => {
       [...markup.matchAll(/class="([^"{]*)"/g)].flatMap((m) => m[1].split(/\s+/)).filter((c) => c.startsWith("dq-")),
     );
     expect([...used].filter((c) => !defined.has(c) && !(c in HOOKS))).toEqual([]);
+  });
+});
+
+describe("the flagged point's label (the review of 2026-10-15, thread 4279330043)", () => {
+  it("stays inside the plot, clear of the y-axis's labels, at every width from a small phone to a laptop", () => {
+    const charts = [manyView(), lookingView()].flatMap((page) => [...page.sections.charts.values()]);
+    let checked = 0;
+    for (const chart of charts) {
+      const flagged = chart.points.findLastIndex((point) => point.outside);
+      if (flagged === -1) continue;
+      for (let width = 300; width <= 1300; width += 10) {
+        const layout = chartLayout(chart, width);
+        const label = flaggedLabel(chart, layout, flagged);
+        expect(label.start, `${chart.key} at ${width}`).toBeGreaterThanOrEqual(layout.plot.left);
+        expect(label.end, `${chart.key} at ${width}`).toBeLessThanOrEqual(layout.plot.left + layout.plot.width);
+        checked += 1;
+      }
+    }
+    expect(checked).toBeGreaterThan(1000);
+  });
+
+  it("keeps the value in the label where it fits, and says only which side where it does not", () => {
+    const chart = manyView().sections.chart;
+    const flagged = chart.points.findLastIndex((point) => point.outside);
+    expect(flaggedLabel(chart, chartLayout(chart, 900), flagged).text).toBe("Null rate: 31%, flagged as high");
+    expect(flaggedLabel(chart, chartLayout(chart, 200), flagged).text).toBe("Flagged as high");
   });
 });

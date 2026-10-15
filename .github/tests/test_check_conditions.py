@@ -31,6 +31,8 @@ from test_conditions_production_leg_needs_main import MAIN, OTHER_REFS, PHONE_FI
 WORKFLOWS = Path(__file__).resolve().parents[1] / "workflows"
 CHECKS = WORKFLOWS / "check-conditions.yml"
 BAKE = WORKFLOWS / "publish-conditions.yml"
+#: publish-conditions.yml's freshness step: decision 100's red, in dbt's source freshness.
+FRESHNESS_STEP = "Check the notice sources' freshness, red after 24 hours unread (dbt path)"
 BUILD_RUN = "37800000001"
 
 
@@ -285,6 +287,19 @@ def test_the_one_object_the_checks_write_is_conditions_data_quality_json_after_t
     names = [step.get("name") for step in steps]
     assert names.index("Run every check of the hourly lane, and write the data-quality file") < names.index(publish["name"])
     assert not [step for step in steps if "upload-artifact" in str(step.get("uses", ""))]
+
+
+def test_the_checks_run_measures_freshness_only_through_build_marts_so_a_late_source_never_turns_it_red():
+    """Decision 203: the hourly page's freshness is the checks run's `dbt source freshness`, which build_marts.py runs
+    before the data-quality file, on publish-conditions.yml's own freshness selection (pipeline/tests/
+    test_build_marts.py holds the two equal), and whose exit it records and never raises. So this workflow runs no
+    freshness of its own: publish-conditions.yml's freshness step is the one that turns an hour red (decision 100)."""
+    runs = "\n".join(str(step.get("run", "")) for job in _load(CHECKS)["jobs"].values() for step in job.get("steps") or [])
+    checks = _step(CHECKS, "check", "Run every check of the hourly lane, and write the data-quality file")["run"]
+
+    assert "source freshness" not in runs
+    assert "build_marts.py --lane hourly --checks-only" in checks
+    assert re.search(r"source freshness", _step(BAKE, "publish", FRESHNESS_STEP)["run"]), "the hour's red stays there"
 
 
 def test_the_warehouse_crosses_through_the_legs_history_store_the_build_and_its_checks_both_name():

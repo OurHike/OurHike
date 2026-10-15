@@ -328,7 +328,10 @@ def test_the_build_runs_through_build_marts_monthly_lane_and_no_dbt_command_of_i
     runs = _runs(workflow["jobs"]["build"])
 
     assert "python build_marts.py --lane monthly" in runs
-    assert not re.search(r"\bdbt (build|run|seed|test)\b", runs), "the build order is build_marts.py's alone"
+    assert not re.search(r"\bdbt (build|run|seed|test|source)\b", runs), "the build order is build_marts.py's alone"
+    # The monthly sources' freshness too (decision 203): build_marts.py runs it before the data-quality file, which
+    # records it, and its exit never becomes the build's (pipeline/tests/test_build_marts.py).
+    assert "source freshness" not in runs
 
 
 def test_the_build_builds_from_the_pin_and_writes_only_under_steps(workflow):

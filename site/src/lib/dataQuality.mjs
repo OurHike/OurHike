@@ -70,9 +70,11 @@ export const RELEASE_ID = /^\d{4}-\d{2}-\d{2}(-\d+)?$/;
  * 2026-10-09). Each sentence still claims no more than the checks do, read
  * against ELT.md's table and pipeline/dbt's YAML on 2026-10-09: schema
  * validity runs on the marts a single phone file reads, not on every file,
- * so Schema says "files the app reads" and not "each"; freshness runs on
- * the hourly and daily sources only (make_dbt_staging.py's
- * FRESHNESS_CADENCES), so Freshness says so; minimum and maximum
+ * so Schema says "files the app reads" and not "each"; freshness is dbt's
+ * source freshness, one check per source, measured from when OurHike last
+ * read it or confirmed it unchanged (decision 203, the maintainer,
+ * 2026-10-15; pipeline/dbt/macros/data_quality.sql's "FRESHNESS"), so
+ * Freshness says that and not "between updates"; minimum and maximum
  * run on water distance and elevation only, so Anomalies names the lowest
  * and highest of those two; and the blank rate runs on the columns of all 11
  * finished tables but their geometry and long text (all_columns_anomalies,
@@ -83,9 +85,9 @@ export const KINDS = [
   {
     id: "freshness",
     label: "Freshness",
-    passed: "checks on time",
+    passed: "sources on time",
     problem: "late",
-    about: "How long each hourly or daily source goes between updates, against its usual gap.",
+    about: "How long since OurHike last read each source, or confirmed it unchanged, against that source's limit.",
   },
   {
     id: "volume",
@@ -129,10 +131,20 @@ const KIND = new Map(KINDS.map((kind) => [kind.id, kind]));
  * is scored against a mean that counts it (pipeline/dbt/dbt_project.yml has
  * the measurement). Schema changes compare with the one build before
  * (0.26.0's test_schema_changes.sql calls
- * `get_columns_changes_from_last_run_query`, read 2026-10-08), and dbt tests
- * with nothing, so neither learns.
+ * `get_columns_changes_from_last_run_query`, read 2026-10-08), dbt tests
+ * with nothing, and freshness with each source's own fixed limits since
+ * decision 203, so none of the three learns.
  */
-export const LEARNING_KINDS = new Set(["freshness", "volume", "anomalies"]);
+export const LEARNING_KINDS = new Set(["volume", "anomalies"]);
+
+/**
+ * The metric of a source's freshness entry (decision 203): the seconds since
+ * OurHike's extract last read the source or confirmed it unchanged, against
+ * its error limit, `expected_max` (pipeline/dbt/macros/data_quality.sql's
+ * "FRESHNESS"). It has no history, so no series, and its row says what it
+ * measured in the maintainer's frame's words (lastReadSentence).
+ */
+export const LAST_READ = "last_read_age";
 
 /**
  * A check's status as the page words it. `rank` orders "Needs a look", worst
@@ -148,20 +160,24 @@ export const STATUSES = {
 const OTHER_STATUS_RANK = 3;
 
 /**
- * How a metric's value is worded, by Elementary's own metric names. Its
- * freshness metrics are in seconds: 0.26.0 computes both with
- * `timediff("second", ...)` (macros/edr/data_monitoring/monitors_query/
- * table_monitoring_query.sql), and its `*_percent` metrics run 0 to 100, as
- * `value / total * 100.0` (macros/utils/percent_query.sql), both read
- * 2026-10-08. If the data-quality pass converts either before writing the
- * file, this is the table to change. `floor` is the least a value can be, so a
+ * How a metric's value is worded, by Elementary's own metric names, and
+ * LAST_READ, the one name the pipeline gives a measure of dbt's. A source's
+ * freshness is in seconds, and so is Elementary's `freshness`, which a file
+ * written before decision 203 still carries (0.26.0's
+ * table_monitoring_query.sql takes it as `timediff("second", ...)`); its
+ * `*_percent` metrics run 0 to 100, as `value / total * 100.0`
+ * (macros/utils/percent_query.sql), both read 2026-10-08. If the data-quality
+ * pass converts either before writing the file, this is the table to change.
+ * Elementary's event_freshness, the time since a club last edited a notice,
+ * is gone with decision 203, and its words with it: an older file's entry of
+ * it is printed as a bare number. `floor` is the least a value can be, so a
  * band whose lower edge Elementary put below it (a mean minus deviations can
  * go negative) is printed from the floor rather than as "-3 rows".
  */
 const METRICS = {
   row_count: { label: "Rows", kind: "count", unit: ["row", "rows"], floor: 0 },
+  [LAST_READ]: { label: "Since the last read", kind: "duration", phrase: "since the last read", floor: 0 },
   freshness: { label: "Time between updates", kind: "duration", phrase: "between updates", floor: 0 },
-  event_freshness: { label: "Time from an event to its load", kind: "duration", phrase: "from event to load", floor: 0 },
   null_count: { label: "Nulls", kind: "count", floor: 0 },
   null_percent: { label: "Null rate", kind: "percent", floor: 0 },
   zero_count: { label: "Zeros", kind: "count", floor: 0 },
@@ -256,6 +272,14 @@ function durationUnit(seconds) {
 function inUnit(seconds, [, size]) {
   const amount = seconds / size;
   return Math.abs(amount) >= 10 || Number.isInteger(amount) ? Math.round(amount) : Math.round(amount * 10) / 10;
+}
+
+const HOUR_UNIT = DURATION_UNITS[2];
+const DAY_UNIT = DURATION_UNITS[3];
+
+/** Seconds in one unit, abbreviated: 7920 in hours is "2.2 h", 3456000 in days "40 d". */
+function inShort(seconds, unit) {
+  return `${formatNumber(inUnit(seconds, unit))} ${DURATION_ABBREVIATIONS[unit[0]]}`;
 }
 
 /** Seconds as a duration a person reads: 93600 is "26 hours". */
@@ -780,6 +804,7 @@ export const FLAGGED_AS = { above: "high", below: "low" };
  */
 function itemSentence(item, series) {
   if (item.status === "error") return "The check could not run, so this went unchecked in this build.";
+  if (item.metric === LAST_READ && item.value !== null) return `${capitalised(lastReadSentence(item))}.`;
   const counted = countSentences(item);
   if (counted) return counted.long;
   const metric = item.metric ?? DEFAULT_METRIC[item.kind] ?? null;
@@ -806,6 +831,24 @@ function itemSentence(item, series) {
 }
 
 /**
+ * A SOURCE'S FRESHNESS, IN THE WORDS OF THE FRAME THE MAINTAINER WAS SHOWN
+ * (decision 203, the lead's freshness_basis.html, 2026-10-15): "read or
+ * confirmed 2.2 h ago · limit 24 h". Hours on the hourly run's rows and days
+ * on the monthly build's, whose limits are 35 and 62 days, each to one
+ * decimal under ten and whole above it, as formatDuration rounds. The limit
+ * is the file's `expected_max`, the source's error limit, or its warning
+ * limit where it has none (data_quality.sql's "FRESHNESS"); a row without one
+ * says when it was read and no more.
+ */
+function lastReadSentence(item) {
+  const unit = item.lane === "monthly" ? DAY_UNIT : HOUR_UNIT;
+  const ago = `read or confirmed ${inShort(item.value, unit)} ago`;
+  return item.max === null ? ago : `${ago} · limit ${inShort(item.max, unit)}`;
+}
+
+const capitalised = (text) => text.charAt(0).toUpperCase() + text.slice(1);
+
+/**
  * A kind's card names its first row in short. "Its usual range" there is
  * the row's range from the builds before (decision 130), so the card names a
  * side only where that range gives the side Elementary flagged; anywhere else
@@ -814,6 +857,7 @@ function itemSentence(item, series) {
  */
 function shortSentence(item, series) {
   if (item.status === "error") return "could not run.";
+  if (item.metric === LAST_READ && item.value !== null) return `${lastReadSentence(item)}.`;
   const counted = countSentences(item);
   if (counted) return counted.short;
   const metric = item.metric ?? DEFAULT_METRIC[item.kind] ?? null;
@@ -868,9 +912,10 @@ function mergedItems(read) {
 }
 
 /**
- * "May only mean", not "means": a kind that learns can also hold checks that
- * do not (dbt's own source freshness sits beside Elementary's under
- * Freshness), and those passes are real ones.
+ * Said only on the kinds that learn (LEARNING_KINDS): their passes may only
+ * mean that a check could not fire yet. Freshness is no longer one of them
+ * (decision 203): each source has a fixed limit, so its passes are real ones
+ * from the first build.
  */
 function learningNote(read) {
   const parts = read
@@ -1016,17 +1061,33 @@ function needsALook(series, items) {
 }
 
 /**
- * The Show menu's two groups. "Needs a look" lists its series in the order
- * the list above it does, worst first; "Every mart" in By mart's order. A
+ * The kind a series' metric belongs to, for a series no entry names: a row
+ * count is volume, an age is freshness, and every other metric an anomaly
+ * check's (KINDS' order and words).
+ */
+function metricKind(metric) {
+  if (metric === MART_METRIC) return "volume";
+  if (metric === LAST_READ || metric === "freshness") return "freshness";
+  return "anomalies";
+}
+
+/**
+ * The Show menu's groups. "Needs a look" lists its series in the order the
+ * list above it does, worst first, split by kind in KINDS' order, "Needs a
+ * look · Volume" and the rest; "Every finished table" in By mart's order. A
  * series is listed once, in the group its flag puts it in, so a mart whose
  * row count needs a look is under "Needs a look" and not again under "Every
- * mart" - the shape the maintainer chose from (round 2's frames, 2026-10-08).
- * A group with nothing in it is left out.
+ * finished table" - the shape the maintainer chose from (round 2's frames,
+ * 2026-10-08). By kind since the review of 2026-10-15 (thread 4279330043):
+ * UA's hourly file put 127 options in one group, 97 of them one kind's. A
+ * series takes the kind of the first entry that names it, else its metric's
+ * (metricKind). A group with nothing in it is left out.
  */
 function menuOf(series, items, marts) {
   const look = [];
   const other = [];
   const placed = new Set();
+  const kinds = new Map();
   const place = (list, s) => {
     const key = seriesKey(s);
     if (placed.has(key)) return;
@@ -1035,18 +1096,21 @@ function menuOf(series, items, marts) {
   };
   for (const item of items) {
     const own = seriesOf(item, series);
-    if (own && needsALook(own, items)) place(look, own);
+    if (!own) continue;
+    if (!kinds.has(seriesKey(own))) kinds.set(seriesKey(own), item.kind);
+    if (needsALook(own, items)) place(look, own);
   }
   for (const mart of marts) {
     const own = martSeries(mart, series);
     if (own && !needsALook(own, items)) place(other, own);
   }
   for (const s of series) place(needsALook(s, items) ? look : other, s);
+  const kindOf = (s) => kinds.get(seriesKey(s)) ?? metricKind(s.metric);
   return {
     look,
     other,
     groups: [
-      { label: "Needs a look", options: look },
+      ...KINDS.map((kind) => ({ label: `Needs a look · ${kind.label}`, options: look.filter((s) => kindOf(s) === kind.id) })),
       { label: "Every finished table", options: other },
     ]
       .filter((group) => group.options.length > 0)
@@ -1113,12 +1177,26 @@ function sideOf(value, min, max) {
  * holding the entry's value and the range Elementary scored it against
  * (flaggedPoints says why that point is the entry's). An entry without all
  * three numbers, or whose numbers are no point's, cannot be placed.
+ *
+ * COMPARED AT THE FILE'S PRECISION, 3 decimal places (data_quality.sql
+ * writes a rate so), never exactly. A file written before 2026-10-15 wrote a
+ * series point from Elementary's 4-byte FLOAT as 99.76000213623047 where its
+ * entry read 99.76, so no point matched and every null-rate row said "No
+ * earlier range to compare it with" (UA's hourly file, closures_v1's atc_id;
+ * the review of 2026-10-15, thread 4279329354). The pipeline writes both the
+ * same way since, and this reads the files written before it.
  */
 function pointOf(item, series) {
   if (item.value === null || item.min === null || item.max === null) return -1;
   return series.points.findLastIndex(
-    (point) => point.value === item.value && point.min === item.min && point.max === item.max,
+    (point) => sameAtFilePrecision(point.value, item.value) && sameAtFilePrecision(point.min, item.min) && sameAtFilePrecision(point.max, item.max),
   );
+}
+
+/** Whether two of the file's numbers are one, to the 3 places it writes a rate to. Null matches only null. */
+function sameAtFilePrecision(a, b) {
+  if (a === null || b === null) return a === b;
+  return Math.round(a * 1000) === Math.round(b * 1000);
 }
 
 /**

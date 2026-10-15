@@ -1,8 +1,9 @@
 """/data/quality/, the data-quality page (pipeline/ELT.md decision 102, step 4), as both site builds deploy it.
 
-The page ships two placeholders and reads its two files in the visitor's
+The page ships three placeholders and reads its two files in the visitor's
 browser, so it is right only if the deploy points it at the data the app in
-the same deploy reads. `.github/scripts/configure_quality_page.py` makes that
+the same deploy reads, and its notes link at the commit the deploy was built
+from. `.github/scripts/configure_quality_page.py` makes that
 substitution in pages.yml's "Assemble the site" and pr-preview.yml's "Assemble
 the preview", and it lands under /data/, the dbt docs' path, so the same two
 steps must keep the docs and the page from replacing each other. These tests
@@ -13,6 +14,7 @@ reading them: nothing else exercises either before a deploy does.
 from __future__ import annotations
 
 import os
+import re
 import subprocess
 from pathlib import Path
 
@@ -34,6 +36,15 @@ PAGE_SOURCES = [
 COMMAND = "python .github/scripts/configure_quality_page.py _site/data/quality/index.html"
 SITE_BUILDS = [("pages.yml", "Assemble the site"), ("pr-preview.yml", "Assemble the preview")]
 DOCS_COPY = 'cp -r "$DOCS_DIR"/. _site/data/'
+ELT = REPO_ROOT / "pipeline" / "ELT.md"
+#: The notes link as the page ships it, up to its anchor.
+NOTES_LINK = "https://github.com/OurHike/OurHike/blob/__SOURCE_COMMIT__/pipeline/ELT.md#"
+#: The commit each site build names: pages.yml builds the commit it runs on, a preview the pull request's head.
+SOURCE_COMMITS = {
+    "pages.yml": "${{ github.sha }}",
+    "pr-preview.yml": "${{ github.event.pull_request.head.sha || github.sha }}",
+}
+COMMIT = "0123456789abcdef0123456789abcdef01234567"
 
 
 def _steps(workflow: str) -> list[dict]:
@@ -50,7 +61,15 @@ def _commands(run: str) -> list[str]:
 
 
 def _minimal_page() -> str:
-    return '<main id="data-quality" data-base="__DATA_BASE_URL__" data-release="__DATA_RELEASE__"></main>'
+    return (
+        '<main id="data-quality" data-base="__DATA_BASE_URL__" data-release="__DATA_RELEASE__">'
+        '<a href="https://github.com/OurHike/OurHike/blob/__SOURCE_COMMIT__/pipeline/ELT.md">notes</a></main>'
+    )
+
+
+def _github_anchor(heading: str) -> str:
+    """The id GitHub gives a Markdown heading: lower case, punctuation dropped, each space a hyphen."""
+    return re.sub(r"[^\w\- ]", "", heading.strip().lower()).replace(" ", "-")
 
 
 # ---------------------------------------------------------------- the page
@@ -67,6 +86,17 @@ def test_the_page_carries_each_placeholder_once_on_the_element_its_script_reads(
     assert 'data-release="__DATA_RELEASE__"' in template
     assert template.count(configure.BASE_PLACEHOLDER) == 1
     assert template.count(configure.RELEASE_PLACEHOLDER) == 1
+
+
+def test_the_notes_link_names_the_deployed_commit_and_a_heading_the_notes_have():
+    """`blob/main/` answered 404 on every preview, pipeline/ELT.md not being on main yet (review of #1805); the
+    commit's own link resolves before the merge and after it. The anchor is held to a heading ELT.md still has."""
+    template = PAGE.read_text(encoding="utf-8").split("---", 2)[2]
+    assert template.count(configure.SOURCE_PLACEHOLDER) == 1
+    assert "/blob/main/" not in template
+    (anchor,) = re.findall(re.escape(NOTES_LINK) + r'([^"]+)"', template)
+    headings = [line.lstrip("#") for line in ELT.read_text(encoding="utf-8").splitlines() if line.startswith("#")]
+    assert anchor in {_github_anchor(heading) for heading in headings}
 
 
 @pytest.mark.parametrize("path", PAGE_SOURCES, ids=lambda path: path.name)
@@ -86,6 +116,11 @@ def test_both_site_builds_point_the_page_at_the_data_their_app_reads(workflow: s
     assert COMMAND in _commands(step["run"])
     app = _step(workflow, "Build the app")["env"]["VITE_DATA_BASE_URL"]
     assert step["env"]["DATA_URL"] == app, f"{workflow} points /data/quality/ at another base than its app reads"
+
+
+@pytest.mark.parametrize(("workflow", "assemble"), SITE_BUILDS)
+def test_both_site_builds_name_the_commit_they_build(workflow: str, assemble: str):
+    assert _step(workflow, assemble)["env"]["SOURCE_COMMIT"] == SOURCE_COMMITS[workflow]
 
 
 @pytest.mark.parametrize(("workflow", "assemble"), SITE_BUILDS)
@@ -179,35 +214,48 @@ def test_a_site_with_no_data_folder_still_gets_the_docs(tmp_path: Path, workflow
 # ---------------------------------------------------------------- the script
 
 
-def test_the_script_substitutes_both_placeholders_and_escapes_them():
-    page = configure.configure(_minimal_page(), data_url='https://data.example.org/env/ua/?a=1&b="2"', release="2026-10-10-2")
-    assert configure.BASE_PLACEHOLDER not in page
-    assert configure.RELEASE_PLACEHOLDER not in page
+def test_the_script_substitutes_every_placeholder_and_escapes_them():
+    page = configure.configure(
+        _minimal_page(), data_url='https://data.example.org/env/ua/?a=1&b="2"', release="2026-10-10-2", commit=COMMIT
+    )
+    for placeholder in (configure.BASE_PLACEHOLDER, configure.RELEASE_PLACEHOLDER, configure.SOURCE_PLACEHOLDER):
+        assert placeholder not in page
     assert 'data-base="https://data.example.org/env/ua/?a=1&amp;b=&quot;2&quot;"' in page
     assert 'data-release="2026-10-10-2"' in page
+    assert f'href="https://github.com/OurHike/OurHike/blob/{COMMIT}/pipeline/ELT.md"' in page
     assert 'data-base="https://data.example.org"' in configure.configure(
-        _minimal_page(), data_url="https://data.example.org/", release="2026-10-10-2"
+        _minimal_page(), data_url="https://data.example.org/", release="2026-10-10-2", commit=COMMIT
     ), "a trailing slash is dropped, as the page drops it"
 
 
 def test_no_data_url_leaves_the_page_saying_it_is_not_configured():
-    page = configure.configure(_minimal_page(), data_url="", release="2026-10-10-2")
+    page = configure.configure(_minimal_page(), data_url="", release="2026-10-10-2", commit=COMMIT)
     assert 'data-base="__DATA_BASE_URL__"' in page
     assert 'data-release="2026-10-10-2"' in page
+
+
+@pytest.mark.parametrize(
+    ("value", "expected"),
+    [(COMMIT, COMMIT), (f" {COMMIT}\n", COMMIT), ("", None), ("main", None), (COMMIT[:7], None), ("$(id)", None)],
+    ids=["a commit", "a commit with whitespace", "empty", "a branch", "a short commit", "not a commit"],
+)
+def test_only_a_full_commit_id_is_written_into_the_link(value: str, expected: str | None):
+    assert configure.source_commit(value) == expected
 
 
 @pytest.mark.parametrize(
     "page",
     [
         '<main data-base="__DATA_BASE_URL__"></main>',
-        '<main data-base="__DATA_BASE_URL__" data-release="__DATA_RELEASE__">__DATA_BASE_URL__</main>',
+        '<main data-base="__DATA_BASE_URL__" data-release="__DATA_RELEASE__">__DATA_BASE_URL__ __SOURCE_COMMIT__</main>',
+        '<main data-base="__DATA_BASE_URL__" data-release="__DATA_RELEASE__"></main>',
         "<main></main>",
     ],
-    ids=["no release placeholder", "a placeholder twice", "neither"],
+    ids=["no release placeholder", "a placeholder twice", "no source placeholder", "none"],
 )
 def test_the_script_refuses_a_page_whose_placeholders_moved(page: str):
     with pytest.raises(configure.Refused):
-        configure.configure(page, data_url="https://data.example.org", release="2026-10-10-2")
+        configure.configure(page, data_url="https://data.example.org", release="2026-10-10-2", commit=COMMIT)
 
 
 def test_the_script_reads_the_release_pages_yml_checks():
@@ -235,12 +283,12 @@ def test_the_script_refuses_a_client_whose_release_it_cannot_read(source: str):
         configure.pinned_release(source)
 
 
-def _run_script(tmp_path: Path, page: str, data_url: str) -> tuple[subprocess.CompletedProcess[str], Path]:
+def _run_script(tmp_path: Path, page: str, data_url: str, commit: str = COMMIT) -> tuple[subprocess.CompletedProcess[str], Path]:
     target = tmp_path / "index.html"
     target.write_text(page, encoding="utf-8")
     done = subprocess.run(
         ["python3", str(SCRIPT), str(target)],
-        env={**os.environ, "DATA_URL": data_url},
+        env={**os.environ, "DATA_URL": data_url, "SOURCE_COMMIT": commit},
         capture_output=True,
         text=True,
     )
@@ -252,9 +300,18 @@ def test_the_script_rewrites_the_page_it_is_given(tmp_path: Path):
     assert done.returncode == 0, done.stderr
     release = configure.pinned_release(DATA_RELEASE_FILE.read_text(encoding="utf-8"))
     assert target.read_text() == (
-        f'<main id="data-quality" data-base="https://data.example.org" data-release="{release}"></main>'
+        f'<main id="data-quality" data-base="https://data.example.org" data-release="{release}">'
+        f'<a href="https://github.com/OurHike/OurHike/blob/{COMMIT}/pipeline/ELT.md">notes</a></main>'
     )
     assert f"reads https://data.example.org, release {release}" in done.stdout
+    assert "::warning::" not in done.stdout
+
+
+def test_the_script_links_main_and_says_so_without_a_commit(tmp_path: Path):
+    done, target = _run_script(tmp_path, _minimal_page(), "https://data.example.org", commit="")
+    assert done.returncode == 0, done.stderr
+    assert "/blob/main/pipeline/ELT.md" in target.read_text()
+    assert "::warning::SOURCE_COMMIT is not a full commit id" in done.stdout
 
 
 def test_the_script_warns_rather_than_fails_without_a_data_url(tmp_path: Path):

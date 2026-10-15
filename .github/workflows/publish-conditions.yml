@@ -1912,7 +1912,9 @@ jobs:
   # here once every leg has built and published, with the legs this run ran
   # and this run as `build_run`, on this run's ref. Each of its legs takes
   # the warehouse its leg handed off above, runs every Elementary check of
-  # the lane and puts conditions/data_quality.json in place; one whose leg
+  # the lane and, on this file's own freshness selection, each source's
+  # freshness (decision 203), and puts conditions/data_quality.json in
+  # place; one whose leg
   # handed off nothing (the exporters path, or a build that failed) says so
   # and checks nothing. Beside them, its `parity` job takes the leg's
   # comparison bundle and compares the six conditions files with today's

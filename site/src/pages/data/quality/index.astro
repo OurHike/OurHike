@@ -22,6 +22,13 @@
 // would not find them. A page whose base was never substituted says it is not
 // configured rather than guessing one - the status page's rule.
 //
+// A THIRD, IN THE NOTES LINK. `__SOURCE_COMMIT__` becomes the commit the
+// deploy was built from, by the same script, so the link reaches
+// pipeline/ELT.md as it stood in that build: a `blob/main/` link answers 404
+// until pipeline/ELT.md is on main, and a commit's link resolves on a preview,
+// before the merge and after it. The script writes `main` when it is given no
+// commit.
+//
 // UNDER /data/, WHICH IS THE DBT DOCS' PATH. Both workflows copy the docs into
 // `_site/data/` after the site, and refuse a site that puts anything there
 // but `quality/`, and docs that bring a `quality/` of their own, so neither
@@ -133,7 +140,7 @@ const description =
       <p data-slot="made-from" hidden></p>
       <p>
         What each kind of check looks at, and where it runs, is written up in <a
-          href="https://github.com/OurHike/OurHike/blob/main/pipeline/ELT.md#the-checks-and-where-each-goes"
+          href="https://github.com/OurHike/OurHike/blob/__SOURCE_COMMIT__/pipeline/ELT.md#the-checks-and-where-each-goes"
           >the data platform's notes</a
         >.
       </p>

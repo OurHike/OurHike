@@ -1,8 +1,11 @@
 {#- When the extract last read a source's raw table, or confirmed it unchanged:
-    the `loaded_at_query` of every notice source's freshness (decision 100, the
-    maintainer's poll of 2026-10-07: "Red after 24h. But this should be Red in
-    the data source freshness feature of dbt. Not blocking a datasource
-    pipeline").
+    the `loaded_at_query` of every source's freshness since decision 203 (the
+    maintainer, 2026-10-15: freshness is OurHike's own last successful read,
+    in every lane; make_dbt_staging.py's LOADED_AT_QUERY), and of every notice
+    source's before it (decision 100, the maintainer's poll of 2026-10-07: "Red
+    after 24h. But this should be Red in the data source freshness feature of
+    dbt. Not blocking a datasource pipeline"). The Python steps' own tables are
+    the one exception: no run log row names them, so they keep `_loaded_at`.
 
     It reads the extract's run log, never the table's `_loaded_at`. A
     `_loaded_at` is stamped only when a resource runs, so a source whose change
@@ -25,7 +28,11 @@
     registered after the extract that reads it last ran. It counts from the
     newest row the log holds for any table, which in the hourly warehouse is
     this run's own read, so it passes until the notices leg first asks about
-    it. Before 2026-10-11 it read null, which dbt 2.0.6 reads as 1970-01-01:
+    it, and in the monthly warehouse the monthly extract's newest. So does a
+    table no extract reads at all: measured 2026-10-15 on the fixture
+    warehouse, 15 of the 802 sources `dbt source freshness` measured had no
+    row of their own (the run log itself, the two row-history tables, and 12
+    tables the fixtures do not land), and all 15 passed on the log's newest. Before 2026-10-11 it read null, which dbt 2.0.6 reads as 1970-01-01:
     on publish-conditions.yml run 634 RATC's three notice sources, new in that
     build's code, turned the run red before the notices leg had once run the
     code that reads them, and each notice source added later would have done

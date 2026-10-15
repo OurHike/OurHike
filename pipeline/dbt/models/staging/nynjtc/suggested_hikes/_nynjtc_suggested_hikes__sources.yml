@@ -16,22 +16,18 @@ sources:
       landed by nynjtc/photos.py).
     schema: raw
     config:
+      # When the extract last read each table or confirmed it unchanged, from
+      # its run log, never `_loaded_at` (decision 203): make_dbt_staging.py's
+      # LOADED_AT_QUERY and MONTHLY_FRESHNESS_DAYS say why, and
+      # tests/test_source_freshness.py holds every monthly source to them.
+      loaded_at_query: "{{ last_read_or_confirmed_at(this) }}"
       meta:
         cadence: monthly
+      freshness:
+        warn_after: {count: 35, period: day}
+        error_after: {count: 62, period: day}
     tables:
       - name: raw_nynjtc__nynjtc_hike_finder
-        config:
-          loaded_at_field: _loaded_at
-          freshness:
-            # The export serves no ETag, Last-Modified or feed (measured
-            # 2026-09-15), so PublishedHikes' change check answers UNKNOWN and
-            # every monthly run reloads the table: a `_loaded_at` older than a
-            # month and a few days is a monthly run that did not happen.
-            # @unvalidated: 35 days is a month plus the lane's slack, not a
-            # measurement; stage 5 of #1793 — Rebuild the data platform as
-            # dlt → dbt: seven contracted marts, a monthly refresh, published
-            # docs, and lighter phone downloads settles the per-cadence limits.
-            warn_after: {count: 35, period: day}
         data_tests:
           # Rows sharing base_nynjtc__nynjtc_hike_finder's key must be exact copies (decision 40).
           - duplicates_are_exact:

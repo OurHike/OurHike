@@ -9,9 +9,12 @@
 // other page has, and the tabs become a row beneath them - the shape
 // OrgNav.astro already gives the four org pages.
 //
-// ONLY THIS PAGE CARRIES THEM. /data/ itself is dbt's own docs app, built by
-// .github/actions/dbt-docs-site, and nothing of the site's is drawn on it, so
-// the way back from the docs is the browser's.
+// THE DOCS CARRY THEM TOO, IN A BAR OF THEIR OWN. /data/ itself is dbt's own
+// docs app, built by .github/actions/dbt-docs-site, where no component of the
+// site's can be drawn, so .github/scripts/brand_docs_page.py writes the same
+// two tabs, after the site's name, into dbt's page (the review of PR #1805,
+// 2026-10-15), and .github/tests/test_docs_page_brand.py holds its labels to
+// these.
 //
 // ROOT-RELATIVE ON PURPOSE, unlike the site's links on this page (Base.astro).
 // Both tabs are pages of the docs bundle, and every host that serves the

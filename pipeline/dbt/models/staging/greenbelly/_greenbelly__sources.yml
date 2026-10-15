@@ -11,11 +11,16 @@ sources:
       scrape is not rebuilt here (PO12, an edge rule).
     schema: raw
     config:
+      # When the extract last read each table or confirmed it unchanged, from
+      # its run log, never `_loaded_at` (decision 203): make_dbt_staging.py's
+      # LOADED_AT_QUERY and MONTHLY_FRESHNESS_DAYS say why, and
+      # tests/test_source_freshness.py holds every monthly source to them.
+      loaded_at_query: "{{ last_read_or_confirmed_at(this) }}"
       meta:
         cadence: monthly
-      # No freshness: a reviewed file's `_loaded_at` moves only when its
-      # bytes do (its change marker is the file's sha256), so a week-old
-      # stamp means nobody edited the list, not that the extract stopped.
+      freshness:
+        warn_after: {count: 35, period: day}
+        error_after: {count: 62, period: day}
     tables:
       - name: raw_greenbelly__shelter_capacity
         data_tests:

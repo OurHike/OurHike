@@ -10,26 +10,14 @@ sources:
       "nothing invented" rule for docs.
     schema: raw
     config:
-      loaded_at_field: _loaded_at
+      # When the extract last read each table or confirmed it unchanged, from
+      # its run log, never `_loaded_at` (decision 203): make_dbt_staging.py's
+      # LOADED_AT_QUERY and MONTHLY_FRESHNESS_DAYS say why, and
+      # tests/test_source_freshness.py holds every monthly source to them.
+      loaded_at_query: "{{ last_read_or_confirmed_at(this) }}"
       freshness:
-        # Measures "how recently did the extract read this layer", NOT
-        # upstream ATC staleness - the extract owns real upstream
-        # change-detection (dataLastEditDate, ETags). DBT.md is explicit that
-        # this narrower signal must be labelled as such. `_loaded_at` is
-        # stamped only when a resource runs, so a layer the change check
-        # found FRESH keeps its last read's stamp (pipeline/ELT.md, "dlt
-        # configuration requirements"), and on the monthly lane this 7-day
-        # threshold warns between reads; the per-cadence thresholds are
-        # stage 5 of #1793's.
-        #
-        # @unvalidated - 7 days is picked, not derived. Nobody has measured
-        # what load cadence makes this warehouse stale, and there is no bake
-        # schedule to derive one from yet: the extract lanes are not wired to
-        # their jobs until stage 4 of #1793. What would settle it is a decided cadence for the warehouse
-        # build, at which point the threshold is that cadence plus a margin.
-        # The same tag sits on the four Phase D source files, which inherited
-        # this number rather than measuring their own.
-        warn_after: {count: 7, period: day}
+        warn_after: {count: 35, period: day}
+        error_after: {count: 62, period: day}
     tables:
       - name: raw_atc__shelters
         data_tests:
@@ -370,13 +358,6 @@ sources:
                 severity: warn
                 tags: [elementary_check]
                 enabled: "{{ env_var('OURHIKE_ELEMENTARY_CHECKS', 'false') == 'true' }}"
-          - elementary.freshness_anomalies:
-              arguments:
-                timestamp_column: _loaded_at
-              config:
-                severity: warn
-                tags: [elementary_check]
-                enabled: "{{ env_var('OURHIKE_ELEMENTARY_CHECKS', 'false') == 'true' }}"
         config:
           # Read on the hourly conditions lane, as every closures type is
           # (extract/_contract.py's CADENCE_BY_TYPE). Its change marker is the
@@ -433,13 +414,6 @@ sources:
                 severity: warn
                 tags: [elementary_check]
                 enabled: "{{ env_var('OURHIKE_ELEMENTARY_CHECKS', 'false') == 'true' }}"
-          - elementary.freshness_anomalies:
-              arguments:
-                timestamp_column: _loaded_at
-              config:
-                severity: warn
-                tags: [elementary_check]
-                enabled: "{{ env_var('OURHIKE_ELEMENTARY_CHECKS', 'false') == 'true' }}"
         config:
           # The same file as raw_atc__atc_trail_updates, on the same lane,
           # measured from the run log for the same reason.
@@ -475,13 +449,6 @@ sources:
                 tags: [elementary_check]
                 enabled: "{{ env_var('OURHIKE_ELEMENTARY_CHECKS', 'false') == 'true' }}"
           - elementary.schema_changes:
-              config:
-                severity: warn
-                tags: [elementary_check]
-                enabled: "{{ env_var('OURHIKE_ELEMENTARY_CHECKS', 'false') == 'true' }}"
-          - elementary.freshness_anomalies:
-              arguments:
-                timestamp_column: _loaded_at
               config:
                 severity: warn
                 tags: [elementary_check]
@@ -553,13 +520,6 @@ sources:
           - name: _row
             description: The update's place in the sitemap, from 0.
       - name: raw_atc__water_distance
-        config:
-          # No freshness, as for every reviewed file: its `_loaded_at` moves
-          # only when its bytes do (its change marker is the file's sha256),
-          # so a week-old stamp means nobody re-ran build_water_distance.py,
-          # not that the extract stopped. The exceptions seed says so to the
-          # evaluator.
-          freshness: null
         data_tests:
           # Rows sharing base_atc__water_distance's key must be exact copies (decision 40).
           - duplicates_are_exact:

@@ -8,10 +8,16 @@ sources:
       each whole, as one row of the JSON a person reviewed into git.
     schema: raw
     config:
+      # When the extract last read each table or confirmed it unchanged, from
+      # its run log, never `_loaded_at` (decision 203): make_dbt_staging.py's
+      # LOADED_AT_QUERY and MONTHLY_FRESHNESS_DAYS say why, and
+      # tests/test_source_freshness.py holds every monthly source to them.
+      loaded_at_query: "{{ last_read_or_confirmed_at(this) }}"
       meta:
         cadence: monthly
-      # No freshness: a reviewed file's `_loaded_at` moves only when its
-      # bytes do, as for the podcasts source.
+      freshness:
+        warn_after: {count: 35, period: day}
+        error_after: {count: 62, period: day}
     tables:
       - name: raw_registry__sources
         data_tests:

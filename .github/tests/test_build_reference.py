@@ -76,7 +76,8 @@ def refresh() -> dict:
 def test_it_runs_only_on_a_dispatch_whose_inputs_are_the_raw_run_and_the_retention_steps_two_switches(workflow):
     """No schedule (the lane's clock is refresh-reference.yml's) and no input that could name an environment. The
     retention step's two (decision 205) have defaults, so refresh-reference.yml's dispatch, which passes the raw_run
-    alone, builds and then only lists."""
+    alone, builds and then deletes what the raw store no longer needs: decision 207, the maintainer's poll of
+    2026-10-15, "Yes, delete each month". `retention: list` is how a person asks for the list alone."""
     triggers = _triggers(workflow)
 
     assert set(triggers) == {"workflow_dispatch"}
@@ -84,7 +85,7 @@ def test_it_runs_only_on_a_dispatch_whose_inputs_are_the_raw_run_and_the_retenti
     assert set(inputs) == {"raw_run", "retention", "retention_only"}
     assert inputs["raw_run"]["required"] is True and inputs["raw_run"]["type"] == "string"
     assert inputs["retention"]["type"] == "choice" and inputs["retention"]["options"] == ["list", "delete"]
-    assert inputs["retention"]["default"] == "list", "the first run after the merge lists, and deletes nothing"
+    assert inputs["retention"]["default"] == "delete", "decision 207: every monthly run deletes what it no longer needs"
     assert inputs["retention_only"] == {**inputs["retention_only"], "type": "boolean", "default": False}
 
 
@@ -565,8 +566,9 @@ def _run_prune_step(workflow: dict, tmp_path: Path, retention: str) -> list[str]
     return json.loads((tmp_path / "argv.json").read_text())
 
 
-@pytest.mark.parametrize("retention", ["list", "delete"])
-def test_the_retention_step_lists_by_default_and_deletes_only_on_retention_delete(workflow, tmp_path, retention):
+@pytest.mark.parametrize("retention", ["delete", "list", ""])
+def test_the_retention_step_deletes_only_on_retention_delete_and_lists_on_any_other_value(workflow, tmp_path, retention):
+    """`delete` is the input's default since decision 207; `list`, or a value the step cannot read, lists only."""
     argv = _run_prune_step(workflow, tmp_path, retention)
 
     assert argv[:3] == ["prune_raw_store.py", "--raw-bucket", "our-hike-raw"]

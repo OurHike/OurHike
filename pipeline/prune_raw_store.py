@@ -6,9 +6,9 @@ and with --delete delete exactly that.
 
 build-reference.yml's `maintain` job runs it with the raw store's key only (decision 43), inside raw-lake-monthly: after
 each build whose confirm job found UA serving what it wrote, and alone when dispatched with retention_only. Its
-`retention` input is `list`, the default, or `delete`. It runs on the extract's own venv, as purge_person_fields.py does,
-whose bucket listing, units and delete it shares. The tests run it on a local `file://` store
-(tests/test_prune_raw_store.py).
+`retention` input is `delete`, the default since decision 207 (which passes --delete), or `list`. It runs on the
+extract's own venv, as purge_person_fields.py does, whose bucket listing, units and delete it shares. The tests run it
+on a local `file://` store (tests/test_prune_raw_store.py).
 
 WHY. The maintainer, 2026-10-15: "The R2 bucket already has 233.23 GB in the raw data folder. Should some of that get
 cleaned up? What's going on that we have so many copies of the raw data?" Every monthly run wrote a pin, its loads'

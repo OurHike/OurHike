@@ -12,13 +12,16 @@
 #
 # with the raw_run a refresh-reference.yml run's summary names, and as --ref
 # the branch whose code should build it. pipeline/ELT.md, "Rebuilding from a
-# pin", says what that costs and what it does not carry.
+# pin", says what that costs and what it does not carry. Once UA serves what
+# it built, that run deletes what the retention step no longer needs, as
+# every run does by default since decision 207; `-f retention=list` lists it
+# and deletes nothing.
 #
 # NOTHING HERE CAN REACH PRODUCTION (ELT.md, "Why a scheduled run cannot
 # reach production"; .github/tests/test_build_reference.py holds it):
 #   - The inputs are the raw_run, refused unless it has an extract run id's
-#     shape, and the retention step's two switches (`retention`, list or
-#     delete, and `retention_only`), and nothing names an environment: both
+#     shape, and the retention step's two switches (`retention`, delete or
+#     list, and `retention_only`), and nothing names an environment: both
 #     publish steps ("Publish to UA" and "Put the podcast list in place on
 #     UA") set OURHIKE_DATA_ENV to the literal `ua`. publish.py scopes every
 #     key it writes by that value (lib/data_env.py).
@@ -48,7 +51,8 @@
 #   maintain R2_RAW_* only. Decision 205's retention step
 #            (pipeline/prune_raw_store.py): once confirm has passed, or alone
 #            under retention_only, lists what the raw store keeps and why and
-#            what it no longer needs, and with retention=delete deletes that.
+#            what it no longer needs, and deletes that unless retention=list
+#            (decision 207 made delete the default).
 name: Build reference data from a pin
 
 # The raw_run in every run's title, so the run list says which pin each
@@ -64,7 +68,12 @@ on:
   # since the lane's clock is refresh-reference.yml's, and no input that
   # could name an environment: the raw_run, and the retention step's two
   # switches, each with a default, so refresh-reference.yml's dispatch,
-  # which passes the raw_run alone, builds and then lists.
+  # which passes the raw_run alone, builds and then deletes what the raw
+  # store no longer needs: decision 207, the maintainer's poll of
+  # 2026-10-15, "Yes, delete each month". Each run keeps what is served,
+  # one pin back and the monthly row history's 3 saves (decisions 205 and
+  # 206); a person who wants the list without the delete passes
+  # retention=list.
   workflow_dispatch:
     inputs:
       raw_run:
@@ -72,10 +81,10 @@ on:
         type: string
         required: true
       retention:
-        description: "The retention step (decision 205): list what the raw store no longer needs, or delete it after a person has read a list"
+        description: "The retention step (decisions 205 and 207): delete, the default, deletes what the raw store no longer needs, after the confirm job or alone under retention_only; list lists it and deletes nothing, for a person who wants to read the list first"
         type: choice
         options: [list, delete]
-        default: list
+        default: delete
       retention_only:
         description: "Skip the build and its publish, and run only the retention step, keeping raw_run as the one UA serves"
         type: boolean
@@ -950,9 +959,11 @@ jobs:
   # served one, the as-landed files the kept pins were copied from and each
   # table's current one, and the monthly row-history store's newest 3 saves
   # (decision 206). It lists the rest with its bytes and what the bucket
-  # costs before and after. `retention: list`, the default, deletes nothing;
-  # `retention: delete` deletes what the list names, each unit whole and its
-  # record first, then lists the bucket again and checks every key gone.
+  # costs before and after. `retention: delete`, the default since decision
+  # 207 (the maintainer's poll, 2026-10-15, "Yes, delete each month"),
+  # deletes what the list names, each unit whole and its record first, then
+  # lists the bucket again and checks every key gone; `retention: list`
+  # deletes nothing.
   #
   # AFTER THE PUBLISH, AND NEVER THE RELEASE'S COLOUR. It runs once the
   # confirm job has found UA serving what this run's build wrote, which is
@@ -962,11 +973,12 @@ jobs:
   # Under retention_only every other job is skipped and this one runs alone,
   # keeping raw_run as the one UA serves:
   #
+  #   gh workflow run build-reference.yml --ref <branch> -f raw_run=<UA's raw_run> -f retention_only=true -f retention=list
   #   gh workflow run build-reference.yml --ref <branch> -f raw_run=<UA's raw_run> -f retention_only=true
-  #   gh workflow run build-reference.yml --ref <branch> -f raw_run=<UA's raw_run> -f retention_only=true -f retention=delete
   #
-  # the second only after a person has read the first one's list (decision
-  # 205: the one-time cleanup deletes only after the maintainer has seen it).
+  # the first to read the list, the second to delete it. Decision 205's
+  # one-time cleanup went that way: run 3 listed, and run 4 deleted once the
+  # maintainer had read the list (2026-10-15, pipeline/ELT.md's row 205).
   #
   # IN raw-lake-monthly, as every job here (the workflow's group), so no run
   # of this file, refresh-reference.yml or purge-person-fields.yml can be
@@ -975,7 +987,7 @@ jobs:
   # the pin UA serves once a build has published since publish.py began
   # recording it, is read over public HTTPS, as the confirm job reads it.
   maintain:
-    name: Retention step - keep what is served and one pin back, list or delete the rest (decision 205)
+    name: Retention step - keep what is served and one pin back, delete the rest or list it (decisions 205 and 207)
     needs: [build, publish, confirm]
     if: ${{ !cancelled() && (inputs.retention_only || needs.confirm.result == 'success') }}
     runs-on: ubuntu-latest
@@ -1022,8 +1034,9 @@ jobs:
 
       # The inputs reach the script through env, the rule
       # .github/tests/test_run_steps_take_inputs_through_env.py holds; the
-      # script refuses a raw_run without an extract run id's shape.
-      - name: List what the raw store no longer needs, and with retention=delete delete it (prune_raw_store.py)
+      # script refuses a raw_run without an extract run id's shape. Only the
+      # value `delete`, the input's default, deletes; any other lists.
+      - name: List what the raw store no longer needs and delete it, unless retention=list (prune_raw_store.py)
         env:
           R2_RAW_BUCKET: ${{ secrets.R2_RAW_BUCKET }}
           DESTINATION__FILESYSTEM__CREDENTIALS__AWS_ACCESS_KEY_ID: ${{ secrets.R2_RAW_ACCESS_KEY_ID }}

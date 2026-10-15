@@ -20,9 +20,9 @@ table the build read whenever that table loaded this run:
   because its change check is never FRESH.
 The other conditions inputs are not this run's answers, and nothing here
 keeps them: ATC's reviewed file and the work projects are files in git, the
-same bytes on both sides; ATC's pages and NYNJTC's posts are read only when
-they move (NYNJTC's terms once a day), so the table a build reads is usually
-an earlier run's. hourly_parity.py says what each of those compares on.
+same bytes on both sides; ATC's pages are read and NYNJTC's posts landed
+only when they move (NYNJTC's terms once a day), so the table a build reads
+is usually an earlier run's. hourly_parity.py says what each of those compares on.
 
 ONLY THE TRANSPORT IS WRAPPED, as fixture mode swaps only the transport
 (extract/_fixtures.py): every session _kinds.session() makes has each of its

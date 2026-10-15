@@ -157,6 +157,19 @@ def robots_txt_answers_no_rules(request, monkeypatch):
 
 
 @pytest.fixture(autouse=True)
+def no_check_answer_kept_from_another_test():
+    """A reader whose change check reads the source keeps that answer for its read (extract/_notices.py's
+    _remember), by raw table, for REUSE_SECONDS. Two tests share a table name (WordpressPosts' raw_testclub__alerts
+    in several files), so an answer one test's check kept would be landed by the next test's read in its place.
+    Each test starts and ends with none kept, as each run's first check does (_forget)."""
+    from extract import _notices
+
+    _notices._ANSWERS.clear()
+    yield
+    _notices._ANSWERS.clear()
+
+
+@pytest.fixture(autouse=True)
 def no_outside_network(monkeypatch):
     """Make TESTING.md's "any unmocked request raises" structurally true (#324).
 

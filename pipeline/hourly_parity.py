@@ -42,8 +42,9 @@ no hour's answers can feed today's exporter, and each says why:
   it compares on the page rows the build read, as fetch_atc_updates.py's cache
   (`raw/atc_updates.json`): lib/atc_scrape.py's parse_update() output, the
   same function on both sides, minus the prose, which neither gate reads.
-- `nynjtc_alerts`: the extract reads NYNJTC's posts only when their
-  (id, modified_gmt) set moves and the place terms once a day; soak run 624
+- `nynjtc_alerts`: the extract lands NYNJTC's posts only when the posts as
+  they would land move (read whole by the change check since 2026-10-15; the
+  (id, modified_gmt) set before) and the place terms once a day; soak run 624
   read neither (its log, 2026-10-10). So it compares on the posts and terms
   the build read, rebuilt into the WordPress answers parse_alert() and
   parse_terms() read (`raw/conditions/nynjtc_trail_alerts.json`).

@@ -20,8 +20,8 @@ page, which its McAfee Knob page names for 'the latest news and alerts', a socia
 
 Each source's row in sources.json holds its terms verbatim, its live read of 2026-10-10 and its measured key.
 The readers are extract/_kinds.py's WordpressPosts and extract/_notices.py's PageNotice. A page is read every run, one
-request, and is FRESH only when what would land hashes as the last committed load did; a category is FRESH only when
-its count and its posts' (id, modified_gmt) pairs are unchanged. No prose and no person lands (decisions 55 and 59).
+request, and is FRESH only when what would land hashes as the last committed load did; so is a category, its posts
+read whole each run beside its count. No prose and no person lands (decisions 55 and 59).
 """
 
 from extract._kinds import wordpress_posts

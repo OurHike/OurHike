@@ -356,8 +356,9 @@ class WordpressChildPages(_kinds.WordpressPosts):
     WordpressPosts reads a category or a whole post type; a guide that a club publishes as pages under one
     parent (New Mexico Volunteers for the Outdoors' "Hike New Mexico", page 2040, 38 children on 2026-10-04) is
     neither, and reading every page of the site would land its donation and membership pages too. So the scope
-    is the parent's id, and everything else is WordpressPosts': X-WP-Total as the count and the proof, the
-    (id, modified) set as the change check, and PersonRule's leaving out of WP_DROPPED and the row's `person_fields`.
+    is the parent's id, and everything else is WordpressPosts': X-WP-Total as the count and the proof, a hash of
+    the pages as they land as the change check, and PersonRule's leaving out of WP_DROPPED and the row's
+    `person_fields`.
     """
 
     parent: int = 0

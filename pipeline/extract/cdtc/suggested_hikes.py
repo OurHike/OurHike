@@ -8,7 +8,7 @@
   robots.txt asks `Crawl-delay: 10`, honoured on every request.
 
 The reader is extract/_kinds.py's WordpressPosts and extract/_content.py's SiteTerms, as section C read GMC's hikes:
-X-WP-Total is the count and the proof, and the change check a hash of the (id, modified) set. The post bodies carry
+X-WP-Total is the count and the proof, and the change check a hash of the posts as they land. The post bodies carry
 ranger-district telephone numbers on 22 of the 60 (2026-10-04), so the row lists `content` and `excerpt` as
 person fields and neither loads (decision 59): what lands is each hike's title, link, dates and state, and a
 hike's distance, which only its prose states and inconsistently ('nearly 14 miles of trail', 'turn around after

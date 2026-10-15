@@ -14,8 +14,8 @@ registered layer and not a dataset of their own.
 Each source's row in sources.json holds its terms as found, its live read of 2026-10-04 and its
 measured key, `id`. The reader is extract/_kinds.py's WordpressPosts (or a narrower read of it in
 extract/_content.py): X-WP-Total is the count and the proof, and the change check is a hash of the
-scoped (id, modified) set, one small request, because a WordPress feed's validators are site-wide
-(the dlt skill, rule 4). Every request waits the host's Crawl-delay, or 2 s where it asks none.
+scoped posts as they land, read once a run and landed from that read, because a WordPress feed's
+validators are site-wide (the dlt skill, rule 4). Every request waits the host's Crawl-delay, or 2 s where it asks none.
 WP_DROPPED and the row's `person_fields` never load. A post's body, where it loads, stops at
 `base_`: a suggested hike publishes its facts and the link, never the club's own description
 (decision 55, the round brief's item 3). The lane is the type's, monthly.

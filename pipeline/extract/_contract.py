@@ -37,7 +37,7 @@ from __future__ import annotations
 
 import importlib.util
 import json
-from dataclasses import dataclass, replace
+from dataclasses import dataclass, field, replace
 from datetime import date
 from pathlib import Path
 from types import ModuleType
@@ -92,6 +92,19 @@ CADENCE_BY_TYPE = {"closures": "hourly", "warnings": "hourly"}
 # looks the same as a quiet trail; Resource.zero_proof says which kinds read
 # such a count.
 MAY_BE_EMPTY = frozenset({"closures", "warnings"})
+
+# A resource that rides another type's file, for that file's lane, says what
+# its rows are (Resource.holds, with holds_reason), and the run check judges
+# its table as that type's: whether it may land empty, and the shrink floor
+# (Resource.may_be_empty). Its lane, job and cadence stay its file's. FDEP's
+# park boundaries are the one: a places layer in fl_state_parks/closures.py,
+# so that the notices job reads it and the hourly build that places each
+# closed park by its own boundary holds it (decision 185). A boundary layer
+# landed empty or halved is a read gone wrong, never every closure lifted,
+# and as a closures table it would have loaded, un-placing every closed
+# Florida park until the next read (review finding S1-2 of 2026-10-15). The
+# layout test holds `holds` to a type outside MAY_BE_EMPTY: it can only take
+# that allowance away.
 
 # @unvalidated: the age at which a "not available" note must be looked at
 # again. 180 days is a round number, not a measurement; what would settle it
@@ -334,6 +347,10 @@ class Resource:
     type: str | None = None
     cadence_override: str | None = None
     cadence_reason: str | None = None
+    # Left out of repr, so definition_digest() (extract/_run.py), which hashes repr, moved for no resource when these
+    # were added: they judge a read and decide nothing a read lands.
+    holds: str | None = field(default=None, repr=False)
+    holds_reason: str | None = field(default=None, repr=False)
 
     @property
     def table(self) -> str:
@@ -368,8 +385,13 @@ class Resource:
         return CADENCE_BY_TYPE.get(self.type or "", DEFAULT_CADENCE)
 
     @property
+    def rows_type(self) -> str | None:
+        """The type its rows are: `holds` where the resource says (MAY_BE_EMPTY's comment), else its file's type."""
+        return self.holds or self.type
+
+    @property
     def may_be_empty(self) -> bool:
-        return self.type in MAY_BE_EMPTY
+        return self.rows_type in MAY_BE_EMPTY
 
     def change_check(self, recorded: dict | None) -> tuple[Freshness, dict | None]:
         """Our code, before dlt: (verdict, the upstream marker it compared).

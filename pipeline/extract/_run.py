@@ -24,11 +24,12 @@ refresh, published docs, and lighter phone downloads):
    last committed load recorded. FRESH leaves the resource out, so its table
    keeps its rows; STALE and UNKNOWN both read it whole.
 2. dlt extracts and normalizes what is left, every table `replace`.
-3. The run check (run_check()): each table present, non-empty unless its
-   type may be empty and the upstream's own count says zero (a count only a
-   kind with a Resource.zero_proof reads), not shorter than that count, and
-   not below COLLAPSE_FLOOR of its last loaded size. A failure aborts the
-   package, so nothing lands and no marker advances.
+3. The run check (run_check()): each table present, non-empty unless the
+   type its rows are (Resource.rows_type) may be empty and the upstream's own
+   count says zero (a count only a kind with a Resource.zero_proof reads), not
+   shorter than that count, and not below COLLAPSE_FLOOR of its last loaded
+   size. A failure aborts the package, so nothing lands and no marker
+   advances.
 4. The load, then the after-run check (committed()): the load committed, and
    the rows on disk are the rows normalized. A failure logs `unverified`, and
    extract/_warehouse.py refuses to read the tables.
@@ -1233,7 +1234,7 @@ def run_check(planned: list[Planned], rows: dict[str, int], proofs: dict[str, in
         proof = proofs.get(table)
         if landed == 0:
             if not resource.may_be_empty:
-                problems.append(f"{table}: 0 rows, and a {resource.type} table may not be empty")
+                problems.append(f"{table}: 0 rows, and a {resource.rows_type} table may not be empty")
             elif proof is None:
                 problems.append(
                     f"{table}: 0 rows and no upstream count read this run to prove it; "
@@ -1261,7 +1262,7 @@ def run_check(planned: list[Planned], rows: dict[str, int], proofs: dict[str, in
             # A table that may empty has no shrink floor, so it may shrink only
             # beside the same proof a zero needs.
             problems.append(
-                f"{table}: {landed} rows and no upstream count read this run; a {resource.type} table has no "
+                f"{table}: {landed} rows and no upstream count read this run; a {resource.rows_type} table has no "
                 "shrink floor, so a read cut short would pass as rows removed"
             )
         prior = previous.get(table)

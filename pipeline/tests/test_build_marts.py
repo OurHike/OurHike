@@ -3178,7 +3178,12 @@ def test_a_source_past_its_error_limit_is_logged_and_changes_neither_the_builds_
         ]
     }
     recorder = _DbtRuns(
-        tmp_path / "run_results.json", [(_is_freshness_run, 1, [], {tmp_path / "sources.json": json.dumps(sources)})]
+        tmp_path / "run_results.json",
+        [
+            # A checks pass with one passing check before it, so the only thing this build could annotate is freshness.
+            (_is_checks_run, 0, CHECK_RESULTS[2:], {}),
+            (_is_freshness_run, 1, [], {tmp_path / "sources.json": json.dumps(sources)}),
+        ],
     )
 
     code, _ = _main(monkeypatch, tmp_path, _manifest(*STEP_TABLES), recorder=recorder)

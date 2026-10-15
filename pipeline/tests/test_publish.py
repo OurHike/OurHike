@@ -2243,6 +2243,75 @@ def test_the_release_folder_manifest_is_stored_as_json_so_the_cdn_compresses_it(
     assert "artifacts" in json.loads(stored["Body"].read())
 
 
+# --- The pin behind an environment's data (decision 205): latest.json's raw_run ---
+#
+# prune_raw_store.py keeps the pin an environment's latest.json names, and its
+# stored warehouse; build-reference.yml's "Publish to UA" sets OURHIKE_RAW_RUN
+# to the raw_run it built from (lib/releases.RAW_RUN_FIELD says why).
+
+PINNED_RAW_RUN = "20261009T223039.840094Z"
+
+
+def _stored_json(s3_client, key: str = "latest.json") -> dict:
+    return json.loads(s3_client.get_object(Bucket=BUCKET, Key=key)["Body"].read())
+
+
+def test_a_build_from_a_pin_records_its_raw_run_in_latest_json_and_in_the_release_folder(monkeypatch, s3_client, local_artifacts):
+    monkeypatch.setenv(publish.RAW_RUN_ENV_VAR, PINNED_RAW_RUN)
+
+    result = publish.publish(local_artifacts, s3_client=s3_client, bucket=BUCKET)
+
+    assert result["raw_run"] == PINNED_RAW_RUN and _stored_json(s3_client)["raw_run"] == PINNED_RAW_RUN
+    folder = _stored_json(s3_client, f"releases/{result['release']}/manifest.json")
+    assert folder["raw_run"] == PINNED_RAW_RUN, "the release folder staged from it names the same pin"
+
+
+def test_a_publish_that_is_not_a_build_from_a_pin_carries_the_raw_run_forward(monkeypatch, s3_client, local_artifacts, tmp_path):
+    """A weather, conditions or basemap publish changes other files, and the monthly files still came from that pin."""
+    monkeypatch.setenv(publish.RAW_RUN_ENV_VAR, PINNED_RAW_RUN)
+    publish.publish(local_artifacts, s3_client=s3_client, bucket=BUCKET)
+    monkeypatch.delenv(publish.RAW_RUN_ENV_VAR)
+    changed = tmp_path / "trails.geojson"
+    changed.write_text('{"type": "FeatureCollection", "features": [{"id": "new"}]}')
+    local_artifacts["trails.geojson"]["sha256"] = publish.sha256_file(changed)
+
+    result = publish.publish(local_artifacts, s3_client=s3_client, bucket=BUCKET)
+
+    assert result["version_written"] and _stored_json(s3_client)["raw_run"] == PINNED_RAW_RUN
+
+
+def test_an_environment_no_build_from_a_pin_published_to_names_no_raw_run(s3_client, local_artifacts):
+    """Absent, never a guess: production's case until a promotion is built from a pin."""
+    result = publish.publish(local_artifacts, s3_client=s3_client, bucket=BUCKET)
+
+    assert result["raw_run"] is None and "raw_run" not in _stored_json(s3_client)
+
+
+def test_the_same_bytes_from_a_later_pin_write_no_version_and_latest_json_keeps_the_pin_that_built_them(
+    monkeypatch, s3_client, local_artifacts
+):
+    """Never a no-op version, so latest.json goes on naming the earlier pin; build-reference.yml's maintain job passes
+    its own raw_run too, and prune_raw_store.py keeps both."""
+    monkeypatch.setenv(publish.RAW_RUN_ENV_VAR, PINNED_RAW_RUN)
+    publish.publish(local_artifacts, s3_client=s3_client, bucket=BUCKET)
+    monkeypatch.setenv(publish.RAW_RUN_ENV_VAR, "20261103T051512.000001Z")
+
+    result = publish.publish(local_artifacts, s3_client=s3_client, bucket=BUCKET)
+
+    assert not result["version_written"]
+    assert result["raw_run"] == PINNED_RAW_RUN == _stored_json(s3_client)["raw_run"]
+
+
+@pytest.mark.parametrize("value", ["20261009T223039Z", "20261009T223039.840094Z; touch PWNED", "../20261009T223039.840094Z"])
+def test_a_raw_run_that_is_not_an_extract_runs_id_refuses_before_anything_uploads(monkeypatch, s3_client, local_artifacts, value):
+    monkeypatch.setenv(publish.RAW_RUN_ENV_VAR, value)
+
+    with pytest.raises(publish.UnknownRawRun, match="not an extract run's id"):
+        publish.publish(local_artifacts, s3_client=s3_client, bucket=BUCKET)
+
+    assert s3_client.list_objects_v2(Bucket=BUCKET).get("KeyCount", 0) == 0
+
+
 def test_a_failed_artifact_upload_fails_the_publish_rather_than_moving_the_pointer(s3_client, many_artifacts):
     """A worker's exception is the publish's exception. Swallowed, the run
     would go on to write a `latest.json` naming a version whose bytes are not

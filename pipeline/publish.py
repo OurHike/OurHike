@@ -49,6 +49,11 @@ key in place from its writer. The cutover is setting it; nothing does yet.
 lane's data-quality file in place on its own, as its checks run writes it
 after the build has published (publish_sidecar()), and nothing else.
 
+WHICH PIN, for a build from one: `OURHIKE_RAW_RUN` names the raw_run it read,
+and the version written records it as latest.json's `raw_run`, which every
+other publish carries forward (RAW_RUN_ENV_VAR says why, and
+prune_raw_store.py is what reads it).
+
 `python publish.py --channels` uploads the committed channels.json, decision
 44's pointer to the release folder each environment's phones read, and nothing
 else. It is the release train's step, run by a dispatch; publish() never does
@@ -1736,6 +1741,36 @@ def phone_files_source(value: str | None = None) -> str:
     return raw
 
 
+#: THE PIN THIS BUILD READ (decision 205, pipeline/ELT.md). build-reference.yml's "Publish to UA" sets it to the
+#: raw_run it built from, and publish() records it as latest.json's `raw_run` (lib/releases.RAW_RUN_FIELD) in the
+#: version it writes, and so in the release folder that version stages. Unset, a version carries the field forward
+#: from the manifest it replaces, so a weather, conditions or basemap publish leaves it naming the pin the monthly
+#: files came from. A publish of today's exporters' monthly files carries it forward too, and then it names the pin
+#: the last build from a pin read rather than what the environment serves; prune_raw_store.py keeps that pin, which
+#: is the conservative direction (Reasoned: publish-vector-data.yml, the one workflow that publishes those files, runs
+#: only on a dispatch). A version written with nothing to carry and nothing set has no field: no build from a pin has
+#: published there, which is production's case until a promotion is built from one.
+RAW_RUN_ENV_VAR = "OURHIKE_RAW_RUN"
+
+
+class UnknownRawRun(ValueError):
+    """A value of RAW_RUN_ENV_VAR that is not an extract run's id. Its own type so the command line turns it into a
+    sentence, as it does an unknown environment."""
+
+
+def raw_run_from_env(value: str | None = None) -> str | None:
+    """The raw_run this publish records: `value`, else `$OURHIKE_RAW_RUN`, else None (carry the manifest's forward)."""
+    raw = (value if value is not None else os.environ.get(RAW_RUN_ENV_VAR, "")).strip()
+    if raw == "":
+        return None
+    if not releases.RAW_RUN_PATTERN.match(raw):
+        raise UnknownRawRun(
+            f"{RAW_RUN_ENV_VAR}={raw!r} is not an extract run's id, which reads like 20261008T041936.333353Z "
+            "(build-reference.yml's raw_run). Nothing was published."
+        )
+    return raw
+
+
 def dbt_processed_dir() -> Path:
     """Where the pub_ writers wrote, by dbt_project.yml's `processed_dir` rule."""
     raw = Path(os.environ.get(DBT_PROCESSED_DIR_ENV_VAR) or DBT_PROCESSED_DIR_DEFAULT)
@@ -2321,6 +2356,7 @@ def publish(
     s3_client=None,
     bucket: str | None = None,
     environment: str | None = None,
+    raw_run: str | None = None,
 ) -> dict:
     """Diff `artifacts` (defaults to collect_artifacts()'s real output)
     against the bucket's current latest.json, upload only what changed, and
@@ -2343,7 +2379,11 @@ def publish(
     every environment, and which bytes that names is decided by the base URL
     the client was built against (client/src/lib/config.ts). That is what lets
     a manifest be read, diffed or promoted between environments without
-    rewriting it."""
+    rewriting it.
+
+    `raw_run`, defaulting to `$OURHIKE_RAW_RUN` (RAW_RUN_ENV_VAR), is the pin
+    a build from a pin read: the version written records it as latest.json's
+    `raw_run`, and with none given carries the replaced manifest's forward."""
     if not writes_enabled():
         raise PermissionError(f"R2 writes are disabled. Set {WRITE_ENABLED_ENV_VAR}=true before publishing.")
 
@@ -2351,6 +2391,10 @@ def publish(
     # where it is publishing fails while it still cannot reach the bucket.
     environment = data_env.resolve(environment)
     prefix = data_env.prefix_for(environment)
+    # The same, for the pin this build says it read: a malformed one refuses
+    # before anything is uploaded, rather than being written into the manifest
+    # every phone fetches.
+    raw_run = raw_run_from_env(raw_run)
 
     if artifacts is None:
         artifacts = collect_artifacts()
@@ -2639,6 +2683,8 @@ def publish(
             "version_written": False,
             "version": remote_manifest["version"] if remote_manifest else None,
             "withdrawn": [],
+            # What latest.json still names: no version, so not this run's raw_run.
+            "raw_run": remote_manifest.get(releases.RAW_RUN_FIELD) if remote_manifest else None,
         }
 
     new_version = str(uuid.uuid4())
@@ -2704,6 +2750,13 @@ def publish(
     # mistake build metadata for something a hiker downloads.
     if sidecars:
         new_manifest["sidecars"] = {name: {"sha256": entry["sha256"]} for name, entry in sidecars.items()}
+    # THE PIN BEHIND THIS VERSION (RAW_RUN_ENV_VAR): this build's, else the
+    # one the replaced manifest named, so a publish that is not a build from a
+    # pin never drops it; absent when neither names one. Before the release
+    # manifest below, which is built from this one and so carries it too.
+    recorded_raw_run = raw_run or (remote_manifest.get(releases.RAW_RUN_FIELD) if remote_manifest else None)
+    if recorded_raw_run:
+        new_manifest[releases.RAW_RUN_FIELD] = recorded_raw_run
 
     if release_worthy:
         # The same manifest as the pointer's, minus what may not be frozen,
@@ -2794,6 +2847,7 @@ def publish(
         "release": release_id,
         "release_artifacts": staged,
         "withdrawn": withdrawn,
+        "raw_run": recorded_raw_run,
     }
 
 
@@ -3106,6 +3160,8 @@ def main(argv: list[str] | None = None) -> dict:
     environment = data_env.resolve()
     # The cutover switch, read as early and for the same reason.
     source = phone_files_source()
+    # And the pin a build from a pin read (RAW_RUN_ENV_VAR), for the same reason.
+    raw_run = raw_run_from_env()
 
     if args.channels:
         result = publish_channels(environment=environment)
@@ -3195,11 +3251,18 @@ def main(argv: list[str] | None = None) -> dict:
     where = data_env.prefix_for(environment) or "the bucket root"
     print(f"Publishing to the {environment} environment ({where}).")
 
-    result = publish(artifacts, sidecars=sidecars, environment=environment)
+    result = publish(artifacts, sidecars=sidecars, environment=environment, raw_run=raw_run)
     if result["version_written"]:
         print(f"Published version {result['version']}: uploaded {result['uploaded']}, skipped {result['skipped']}.")
         if result["sidecars"]:
             print(f"Build metadata published alongside it: {result['sidecars']}.")
+    if raw_run and result["version_written"]:
+        print(f"latest.json records raw_run {raw_run}, the pin this build read (decision 205).")
+    elif raw_run:
+        print(
+            f"No version written, so latest.json still names raw_run {result.get('raw_run') or 'none'} rather than "
+            f"this build's {raw_run}: what it serves is already these bytes (decision 205)."
+        )
     if result["photos_uploaded"]:
         # Reported whether or not a version was written: photos are outside
         # the manifest, so a run that uploads only photos legitimately writes
@@ -3225,7 +3288,7 @@ if __name__ == "__main__":
 
     try:
         main(sys.argv[1:])
-    except (PermissionError, data_env.UnknownEnvironment, UnknownPhoneFileSource) as exc:
+    except (PermissionError, data_env.UnknownEnvironment, UnknownPhoneFileSource, UnknownRawRun) as exc:
         # Both are refusals to publish rather than faults, and both are worth
         # reading as a sentence: a traceback for "you did not say where" buries
         # the one line that says what to type.

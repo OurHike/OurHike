@@ -27,6 +27,7 @@ import {
   closureLayerIds,
   closureMarkId,
   closurePointId,
+  closureTraceId,
 } from '../lib/closureStyle'
 import { ATC_UPDATE_LAYER_ID } from '../lib/atcUpdateStyle'
 import type { TrailClosure } from '../lib/publishedConditions'
@@ -68,6 +69,7 @@ import {
   attachMapAppearance,
   BACKDROP_LAYER_ID,
   BLAZE_LAYER_ID,
+  buildMapStyle,
   closureInk,
   closureTapeGround,
   CLUB_CLOSURE_LAYER_ID,
@@ -156,12 +158,12 @@ beforeEach(() => {
 })
 
 describe('how a club closure is drawn', () => {
-  it('crosses a line closure out with exactly the mark every closure feed wears, but for how long its far mark stays (decision 198)', () => {
-    // "Only the id, the source, the filter and the spacing may differ, and,
-    // on the clubs' feed alone, how long the far mark stays"
-    // (lib/closureStyle.ts): held as equality with the temporary-closure
-    // feed's own four layers, paint, layout and zooms, rather than as
-    // constants.
+  it('crosses a line closure out with exactly the mark every closure feed wears, but for its zooms and how long its far mark stays (decision 198)', () => {
+    // "Only the id, the source, the filter and the spacing may differ, and
+    // the zooms a feed starts or stops at ... and, on the clubs' feed alone,
+    // how long the far mark stays" (lib/closureStyle.ts): held as equality
+    // with the temporary-closure feed's own four layers, paint and layout,
+    // rather than as constants.
     const club = closureLayerIds(CLUB_CLOSURE_LAYER_ID).map(layer)
     const temporary = buildClosureLayers('closures', { ground: GROUND, ink: INK })
     expect(temporary.map((built) => built.id)).toEqual(closureLayerIds(CLOSURE_LAYER_ID))
@@ -171,10 +173,20 @@ describe('how a club closure is drawn', () => {
       expect((built as { layout?: unknown }).layout, built.id).toEqual(
         (temporary[index] as { layout?: unknown }).layout,
       )
-      expect((built as { minzoom?: unknown }).minzoom, built.id).toBe(
-        (temporary[index] as { minzoom?: unknown }).minzoom,
-      )
     })
+    // The chain and the far mark start where every feed's do. The paper and
+    // the trace, which the temporary feed draws at any zoom its source has,
+    // start at the pin seam here (thread 4279229785 of the review of #1805).
+    expect(club.map((built) => built.minzoom)).toEqual([
+      CLOSURE_MARK_MIN_ZOOM,
+      CLOSURE_MARK_MIN_ZOOM,
+      temporary[2].minzoom,
+      temporary[3].minzoom,
+    ])
+    expect(temporary.slice(0, 2).map((built) => built.minzoom)).toEqual([
+      undefined,
+      undefined,
+    ])
     const [paper, trace, chain, mark] = club as Array<{
       filter?: unknown
       maxzoom?: unknown
@@ -277,6 +289,7 @@ describe('how a club closure is drawn', () => {
       type: 'fill',
       source: CLUB_CLOSURE_SOURCE_ID,
       filter: CLUB_CLOSURE_SHADE_FILTER,
+      minzoom: CLOSURE_MARK_MIN_ZOOM,
       paint: {
         'fill-pattern': clubClosureShadeImageId('day'),
         'fill-antialias': false,
@@ -294,6 +307,34 @@ describe('how a club closure is drawn', () => {
           .paint as Record<string, unknown>
       )['fill-pattern'],
     ).toBe(clubClosureShadeImageId('red'))
+  })
+
+  it('draws nothing of a club closure farther out than the pin seam, and starts no mark lower than it did (thread 4279229785)', () => {
+    // Farther out the paper's 4 px and the trace's 1.4 px drew each closure
+    // as a smudge, and at z5 most of UA's are under a pixel long. Read off
+    // the built style, so a club layer added anywhere is held to it too.
+    const built = buildMapStyle({
+      topoArchiveUrl: 'pmtiles://ourhike-corridor',
+      trailsUrl: '/data/trails.geojson',
+    }).layers as Array<{
+      id: string
+      source?: string
+      minzoom?: number
+      maxzoom?: number
+    }>
+    const club = built.filter((each) => each.source === CLUB_CLOSURE_SOURCE_ID)
+    expect(Object.fromEntries(club.map((each) => [each.id, each.minzoom]))).toEqual({
+      [CLUB_CLOSURE_SHADE_LAYER_ID]: CLOSURE_MARK_MIN_ZOOM,
+      [CLUB_CLOSURE_LAYER_ID]: CLOSURE_MARK_MIN_ZOOM,
+      [closureTraceId(CLUB_CLOSURE_LAYER_ID)]: CLOSURE_MARK_MIN_ZOOM,
+      // Where they started before: the chain at its own zoom, and the far
+      // mark and the point cross at the seam.
+      [closureCrossesId(CLUB_CLOSURE_LAYER_ID)]: CLOSURE_NEAR_MIN_ZOOM,
+      [closureMarkId(CLUB_CLOSURE_LAYER_ID)]: CLOSURE_MARK_MIN_ZOOM,
+      [POINT_LAYER_ID]: CLOSURE_MARK_MIN_ZOOM,
+    })
+    // And none stops: the far mark stays as decision 198 set it.
+    expect(club.map((each) => each.maxzoom)).toEqual(club.map(() => undefined))
   })
 
   it('names the sheet’s hatch again on a sheet change', () => {

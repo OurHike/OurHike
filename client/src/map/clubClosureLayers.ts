@@ -28,6 +28,20 @@
 // keeps every line, however short (`buildClubClosureSource`), because the far
 // mark is placed on the line.
 //
+// NOTHING OF A CLUB CLOSURE DRAWS FARTHER OUT THAN CLOSURE_MARK_MIN_ZOOM, the
+// pin seam the far mark and the point cross already started at (thread
+// 4279229785 of the collaborator's review of #1805 — dlt → dbt re-platform as
+// one go/no-go change, 2026-10-15). The paper, the trace and the shade had no
+// minzoom, and lib/closureStyle.ts's widths stop tapering at that zoom, so
+// farther out every closure was a 4 px white paper under a 1.4 px dotted
+// trace whatever its length: on UA's file of 2026-10-15, 8,987 of the 10,262
+// line parts (88%) are under 1 px at z5 on MapLibre's 512 px tiles, and the
+// review saw its 1,661 closures draw as black-and-white smudges over the West
+// from the opening camera in (rendered at z5 to z7 the same day). The other
+// closure feeds were already held off those zooms by their own sources and
+// map/style.ts's clamps. Whether a closure should say anything below the seam
+// is the maintainer's call, and this does not make it: no mark starts lower.
+//
 // AN AREA NO MAPPED TRAIL RUNS INSIDE IS SHADED (decision 191, the poll of
 // 2026-10-14, "Shade them, no edge", from open-questions-1014.html's frame
 // A): its own outline, a `shade` row, filled with a light diagonal hatch in
@@ -122,6 +136,9 @@ export function buildClubClosureShadeLayer(
     type: 'fill',
     source: CLUB_CLOSURE_SOURCE_ID,
     filter: CLUB_CLOSURE_SHADE_FILTER as never,
+    // From the pin seam in, with the rest of the feed (the header's NOTHING
+    // OF A CLUB CLOSURE): farther out an area is a few pixels of hatch.
+    minzoom: CLOSURE_MARK_MIN_ZOOM,
     paint: {
       'fill-pattern': clubClosureShadeImageId(shadeInkFor(appearance)),
       'fill-antialias': false,
@@ -323,7 +340,11 @@ export function buildClosurePointLayer(
 
 /** The crossed-out mark along every closed line, then one cross per closed
  *  point, on the sheet's paper and in the closure ink (map/style.ts's
- *  closureTapeGround and closureInk). */
+ *  closureTapeGround and closureInk). None of it starts farther out than
+ *  CLOSURE_MARK_MIN_ZOOM (the header's NOTHING OF A CLUB CLOSURE): the
+ *  paper and the trace are held to it, as map/style.ts holds the network's
+ *  closure tiles to theirs; the chain, the far mark and the point cross
+ *  start where they already did. */
 export function buildClubClosureLayers(
   ground: string,
   ink: string,
@@ -335,7 +356,13 @@ export function buildClubClosureLayers(
       bandId: CLUB_CLOSURE_LAYER_ID,
       filter: CLUB_CLOSURE_LINE_FILTER,
       markUntil: CLUB_CLOSURE_CHAIN_FROM_PROPERTY,
-    }),
+    }).map(
+      (layer) =>
+        ({
+          ...layer,
+          minzoom: Math.max(layer.minzoom ?? 0, CLOSURE_MARK_MIN_ZOOM),
+        }) as LayerSpecification,
+    ),
     buildClosurePointLayer(
       CLUB_CLOSURE_SOURCE_ID,
       ground,

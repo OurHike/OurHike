@@ -24,7 +24,10 @@ build_trail_graph.py 40 m 57 s and export_network_elevation.py 39 m 43 s,
 against 19 s for export_poi.py; and the eight POI families each grade OSM
 water against EPQS through _osm_water_old(). The groups run side by side
 because the slowest ones share nothing: the network, the graph, and the DEM
-sampling behind the graph's climbs.
+sampling behind the graph's climbs. The graph group runs the network's
+exporter once more, for the line ids its edges are compared under
+(parity.py's _todays_line_ids()): about the exporter's 13 minutes above
+added to that group (Reasoned), rather than one group waiting on another.
 
 EACH FAMILY STILL SEES THE MODULES AS A PROCESS OF ITS OWN WOULD. The old sides
 set module paths on the exporters they run (export_poi's NETWORK_LINES_PATH,
@@ -133,7 +136,8 @@ GROUPS = {
         "challenges",
         "spurs",
     ),
-    # build_trail_graph.build(), once for the graph and its geometry (_trail_graph_built()).
+    # build_trail_graph.build(), once for the graph and its geometry (_trail_graph_built()), and
+    # export_nearby_trails.main() once more, for the ids today's file gives the graph's lines (_todays_line_ids()).
     "graph": ("trail_graph", "trail_graph_geometry"),
     # The DEM sampling along every edge, once for the climbs and the profiles (_graph_companions_old()).
     "graph_climbs": ("trail_graph_elevation", "trail_graph_profile"),

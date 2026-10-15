@@ -612,7 +612,8 @@ jobs:
     # publish-vector-data.yml's export steps, and that whole build job fits
     # its 180-minute timeout (run 37114537637, 2026-10-03: 2 h 22 min). That
     # run's slow steps, one per group: export_nearby_trails.py 13 m 13 s
-    # (`network`, and again under `pois`), build_trail_graph.py 40 m 57 s
+    # (`network`, and again under `pois` and under `graph`, whose edges are
+    # compared under today's line ids), build_trail_graph.py 40 m 57 s
     # (`graph`), and export_network_elevation.py 39 m 43 s then
     # export_network_profile.py 8 m 33 s (`graph_climbs`, which samples a
     # cold copy of the tile index here). Each runner also spends about

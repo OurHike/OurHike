@@ -403,14 +403,18 @@ seeds:
       warning that never closes a trail, drawn where a downloaded trail
       crosses it, with `hazard` saying which. A source with a
       `category_value` publishes only the rows whose own category (the
-      field notice_source_fields names) is one listed, compared without
-      case or surrounding space, so a parcel the layer itself marks as no
+      field notice_source_fields names) names one listed, by one standard
+      for every source (int_closures__club_notices' rule 6, 2026-10-15),
+      each read as words, case and punctuation aside: the row's code, or
+      its layer's label for the code (notice_category_labels), is a listed
+      value, or holds one as whole words beside none of 'no', 'not',
+      'prohibited' and 'closed'. So a parcel the layer itself marks as no
       hunting is held back rather than drawn as a hunting area; an empty
       `category_value` publishes every row. int_closures__club_notices holds
       the rest back with the category in the reason. Reasoned from the
-      values quoted in `why`; a value the layer adds later is held back
-      until a row lists it, which misses a new hunting category rather than
-      drawing a safety zone as one.
+      values quoted in `why`; a value the layer adds later that names no
+      listed one is held back until a row lists it, which misses a new
+      hunting category rather than drawing a safety zone as one.
     config:
       column_types:
         source_key: varchar
@@ -429,7 +433,12 @@ seeds:
               arguments:
                 values: [hunting, shooting, burned_area]
       - name: category_value
-        description: A category value that means the hazard is there, as the source writes it; empty for every row.
+        description: >
+          A category value that means the hazard is there, as the source
+          writes it or as its layer's coded-value domain labels the code it
+          stages (IATA's 'Open' is 'Open for public hunting'), or a phrase a
+          free-text category holds as whole words (NY Parks' 'Hunting area');
+          empty for every row.
       - name: why
         description: The evidence, quoted from the source's sources.json notes or the inventory's saved reads.
   - name: notice_steward_areas

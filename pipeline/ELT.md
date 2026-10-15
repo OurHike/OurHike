@@ -3866,11 +3866,19 @@ above, built before decision 76 merged; what the panel does with each is Reasone
 `usace_garrison_hunting_restrictions`, `blm_shooting_points` and
 `usfs_baer_assessments` reach hikers (`sources.json`), each as a warning with a
 `hazard` from `seeds/notice_hazard_areas.csv`. A hunting layer's row is an area only
-when its own category is one that seed lists as allowing hunting (so IATA's "No
+when its own category names a value that seed lists as allowing hunting (so IATA's "No
 hunting" is never drawn as a hunting area); a row with another category is held with
-that reason. `assert_a_hazard_area_never_closes_a_trail` holds that none is ever an
-obstruction. None of the four hunting layers carries season dates, so none is shown;
-the card says so rather than supplying one.
+that reason. "Names" is one standard for every hazard source (`int_closures__club_notices`'
+rule 6, 2026-10-15): the row's code, or its layer's label for the code
+(`seeds/notice_category_labels.csv`), is a listed value, or holds one as whole words
+beside none of 'no', 'not', 'prohibited' and 'closed'. Until then a category had to
+equal a listed value as written, so IATA's coded parcels ('Open', whose label the seed
+lists) and NY Parks' worded areas ('Big game deer hunting area.') were all held. Read
+live 2026-10-15, before and after: IATA 0 → 23 of 65 drawn, NY Parks 0 → 134 of 222,
+USACE 10 of 24, BLM 93 of 93 and BAER 242 of 242 unchanged (Measured, the model run
+over the five layers re-read that day). `assert_a_hazard_area_never_closes_a_trail`
+holds that none is ever an obstruction. None of the four hunting layers carries season
+dates, so none is shown; the card says so rather than supplying one.
 
 ### Phase F: the hourly lane's budget
 

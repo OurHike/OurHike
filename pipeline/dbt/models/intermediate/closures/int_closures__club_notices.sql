@@ -316,13 +316,36 @@
 --    if one reaches a mart.
 -- 6. A HAZARD AREA IS ONLY THE HAZARD ITS OWN CATEGORY SAYS (decision 67).
 --    A source seeds/notice_hazard_areas.csv lists with category values
---    publishes only the rows whose own category is one of them: IATA's
+--    publishes only the rows whose own category names one of them: IATA's
 --    'No hunting' parcels and NY Parks' safety zones are where hunting is
 --    not allowed, and drawing one as a hunting area would tell a hiker the
 --    opposite of what the layer says. The rest are held with the category
 --    in the reason. A source listed with no category value publishes every
---    row. Its dates are its own (`starts_on`, `ends_on`), and a layer with
---    no season field has none: none of the four hunting layers gives one
+--    row. ONE STANDARD FOR EVERY HAZARD SOURCE (decision 190's "apply
+--    standards across the orgs"), each value and each category read as
+--    words, as rule 2 reads a field's (lowercase, every run of characters
+--    that are not letters or digits one space, 'non' joined to the word
+--    after it):
+--    a. the category's own code, or its layer's label for the code
+--       (seeds/notice_category_labels.csv, the label WHAT A ROW SHOWS
+--       below), IS a listed value: IATA stages Hunting_Reg's code 'Open',
+--       whose label is the listed 'Open for public hunting'. The whole
+--       value is the seed's own reading of it, a negating word in it
+--       included: USACE's 'Closed to Center-fire Rifles Only / Trapping by
+--       Special Permit Only' is listed because only those rifles are barred;
+--    b. or the code or the label HOLDS a listed value as whole words, and
+--       none of the words that negate it ('no', 'not', 'prohibited',
+--       'closed', below): a free-text field names its hazard among other
+--       words, NY Parks' Description 'Big game deer hunting area.' holding
+--       the listed 'Hunting area'. Whole words, so 'Non-hunting area' (one
+--       word, 'nonhunting') and 'hunting areas' hold no 'hunting area'.
+--    Until 2026-10-15 a category had to equal a listed value, case and
+--    surrounding space aside, so IATA's 23 hunting parcels (staged as
+--    codes the seed did not list) and all 134 of NY Parks' hunting areas
+--    (24 wordings, none 'Hunting area' alone) were held and drawn as
+--    nothing (read live that day).
+--    Its dates are its own (`starts_on`, `ends_on`), and a layer with no
+--    season field has none: none of the four hunting layers gives one
 --    (seeds/notice_source_fields.csv), so their dates are null, never a
 --    season OurHike supplied.
 --
@@ -821,7 +844,7 @@ said as (
 ),
 
 -- Rule 6's seed: each hazard source once, with whether every row is the
--- hazard, and its category values as compared.
+-- hazard.
 hazard_sources as (
     select
         source_key,
@@ -831,12 +854,122 @@ hazard_sources as (
     group by source_key
 ),
 
+-- Rule 6's listed values, each as words, padded with a space each side.
 hazard_values as (
     select distinct
         source_key,
-        lower(trim(category_value)) as category_value
+        ' ' || trim(
+            regexp_replace(
+                regexp_replace(
+                    lower(category_value), '\bnon[^a-z0-9]+', 'non', 'g'
+                ),
+                '[^a-z0-9]+',
+                ' ',
+                'g'
+            )
+        ) || ' ' as value_words
     from {{ ref('notice_hazard_areas') }}
     where coalesce(trim(category_value), '') != ''
+),
+
+-- What rule 6 reads of the category of a source listed with category
+-- values: the code a row holds, and its layer's own label for that code.
+hazard_category_texts as (
+    select
+        notices.notice_key,
+        notices.source_key,
+        notices.category as category_text
+    from notices
+    inner join hazard_sources
+        on
+            notices.source_key = hazard_sources.source_key
+            and not hazard_sources.every_row
+    union all
+    select
+        notices.notice_key,
+        notices.source_key,
+        category_labels.label as category_text
+    from notices
+    inner join hazard_sources
+        on
+            notices.source_key = hazard_sources.source_key
+            and not hazard_sources.every_row
+    inner join category_labels
+        on
+            notices.source_key = category_labels.source_key
+            and notices.category = category_labels.code
+),
+
+-- Each as words, with the first of the words that negate a hazard it holds
+-- inside a longer value: 'no', 'not', 'prohibited' and 'closed', the
+-- smallest set that reads 'No hunting', 'hunting not permitted', 'hunting
+-- prohibited' and 'closed to hunting' (Reasoned from those wordings). The
+-- vocabulary has no such reading to borrow: its `not_a_closure` words would
+-- negate the hunting they qualify, 'only' in NY Parks' 'Big game deer bow
+-- only hunting area.' and IATA's 'Open for deer hunting by permit only',
+-- 'restricted' and 'limited' wherever a weapon is. A negating word anywhere
+-- in the value counts, so a 'Hunting area. No ATVs.' would be held: a miss
+-- rather than a no-hunting parcel drawn as hunting, the side rule 6 already
+-- errs on. No live row holds a listed value inside a longer value beside
+-- one of the four (read 2026-10-15: NY Parks' 134 wordings, the rest
+-- equal a listed value or hold none).
+hazard_category_words as (
+    select
+        notice_key,
+        source_key,
+        padded as text_words,
+        nullif(
+            regexp_extract(padded, ' (no|not|prohibited|closed) ', 1), ''
+        ) as negating_word
+    from (
+        select
+            notice_key,
+            source_key,
+            ' ' || trim(
+                regexp_replace(
+                    regexp_replace(
+                        lower(category_text), '\bnon[^a-z0-9]+', 'non', 'g'
+                    ),
+                    '[^a-z0-9]+',
+                    ' ',
+                    'g'
+                )
+            ) || ' ' as padded
+        from hazard_category_texts
+        where trim(coalesce(category_text, '')) != ''
+    ) as texts
+),
+
+-- Each row of a source listed with category values against each value its
+-- source lists: whether its code or its label is the value (a), and whether
+-- it holds the value as whole words.
+hazard_matches as (
+    select
+        hazard_category_words.notice_key,
+        hazard_category_words.negating_word,
+        hazard_category_words.text_words = hazard_values.value_words
+            as is_listed,
+        contains(
+            hazard_category_words.text_words, hazard_values.value_words
+        ) as holds_listed
+    from hazard_category_words
+    inner join hazard_values
+        on hazard_category_words.source_key = hazard_values.source_key
+),
+
+-- Rule 6's reading of each such row: its category names the hazard where
+-- its code or its label is a listed value (a), or holds one as whole words
+-- beside no negating word (b); `negated_by` is the negating word where one
+-- kept a listed value the row holds from counting.
+hazard_categories as (
+    select
+        notice_key,
+        bool_or(is_listed or (holds_listed and negating_word is null))
+            as names_the_hazard,
+        min(negating_word) filter (where holds_listed and not is_listed)
+            as negated_by
+    from hazard_matches
+    group by notice_key
 ),
 
 -- Each notice with its own dates (rule 1), the day its title says it starts
@@ -978,16 +1111,16 @@ read_words as (
         seasons.geom_geojson is not null as is_placed,
         hazard_sources.hazard,
         coalesce(hazard_sources.every_row, false) as hazard_every_row,
-        hazard_values.category_value is not null as hazard_category_listed
+        coalesce(hazard_categories.names_the_hazard, false)
+            as hazard_category_listed,
+        hazard_categories.negated_by as hazard_negated_by
     from seasons
     left join said on seasons.notice_key = said.notice_key
     left join titles_named on seasons.notice_key = titles_named.notice_key
     left join hazard_sources
         on seasons.source_key = hazard_sources.source_key
-    left join hazard_values
-        on
-            seasons.source_key = hazard_values.source_key
-            and lower(trim(seasons.category)) = hazard_values.category_value
+    left join hazard_categories
+        on seasons.notice_key = hazard_categories.notice_key
 ),
 
 -- The closing word rule 2's c1 reads: its status's or its category's, a
@@ -1122,6 +1255,16 @@ judged as (
                     || ' limits it to a use a hiker is not, and none of its '
                     || 'words bars every use: nothing for a hiker '
                     || '(seeds/notice_words.csv)'
+            when
+                hazard is not null
+                and not hazard_every_row
+                and not hazard_category_listed
+                and hazard_negated_by is not null
+                then
+                    'its own category, ' || category
+                    || ', holds what notice_hazard_areas reads as ' || hazard
+                    || ' beside ''' || hazard_negated_by
+                    || ''', which negates it'
             when
                 hazard is not null
                 and not hazard_every_row

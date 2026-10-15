@@ -27,6 +27,11 @@ layer's detours and reopenings are not its closures (S2-4), a season a row state
 that has not ended (S1-3), and dates that contradict each other close no trail (S2-5). Its second pass found
 facilities no site word named still crossed out (thread 4279221884): a dump station, a campground written 'CG', a
 district office and ten more now read as sites, and the site words say they are a deny-list.
+
+And decision 67's hazard areas (rule 6) are read by one standard for every hazard source: a category names its hazard
+where its code, or its layer's label for the code, is a value seeds/notice_hazard_areas.csv lists, or holds one as
+whole words beside no negating word. Until 2026-10-15 IATA's coded parcels and NY Parks' worded hunting areas were
+held for want of an exact match.
 """
 
 import csv
@@ -49,6 +54,9 @@ TEST_SEASON = (
 )
 TEST_FACILITIES = "int_closures__club_notices_reads_a_facility_its_title_names_as_a_site_and_a_trail_named_after_one_as_the_trail"
 TEST_SHOWN = "int_closures__club_notices_shows_a_category_by_its_layers_own_label_and_names_a_bare_identifier_by_it"
+TEST_HAZARD = (
+    "int_closures__club_notices_reads_a_hazard_category_by_its_code_its_label_or_its_words_and_never_beside_a_negating_word"
+)
 #: The reading tests, which mock the whole vocabulary, and the tests that mock only the words they need.
 WHOLE_VOCABULARY = (TEST, TEST_190, TEST_REVIEW)
 SOME_WORDS = (
@@ -57,6 +65,7 @@ SOME_WORDS = (
     TEST_SEASON,
     TEST_FACILITIES,
     TEST_SHOWN,
+    TEST_HAZARD,
 )
 
 
@@ -104,7 +113,8 @@ def test_no_field_reads_a_word_twice():
 
 def test_the_unit_tests_mocked_hazard_seed_is_the_seed_file():
     """Decision 67's hazard rule (rule 6) is tested on the categories the build reads."""
-    assert _given(_unit_tests()[TEST], "notice_hazard_areas") == seed("notice_hazard_areas")
+    for name in (TEST, TEST_HAZARD):
+        assert _given(_unit_tests()[name], "notice_hazard_areas") == seed("notice_hazard_areas"), name
 
 
 def test_no_hazard_seed_row_lists_a_category_that_says_the_hazard_is_absent():
@@ -570,3 +580,40 @@ def test_a_category_shows_its_layers_own_label_and_a_bare_identifier_is_named_by
         ("usfs_r08_prescribed_burns:burn_block", "HS84-1"),
     ):
         assert expected[key]["title"] == title, key
+
+
+def test_a_hazard_category_names_its_hazard_by_its_code_its_label_or_its_words_and_never_beside_a_negating_word():
+    """Rule 6, one standard for every hazard source (2026-10-15). IATA's layer stages Hunting_Reg's codes ('Open') and
+    the hazard seed lists its domain's labels, which seeds/notice_category_labels.csv decodes, so every IATA value the
+    seed lists is a label of a code it stages; NY Parks' Description is free text holding the listed 'Hunting area'
+    among other words. A value that holds a listed one beside 'no', 'not', 'prohibited' or 'closed' stays held, where
+    a listed value read whole is the seed's own reading (USACE's 'Closed to Center-fire Rifles Only / ...')."""
+    labels = {(row["source_key"], row["label"]) for row in seed("notice_category_labels")}
+    iata = [row for row in seed("notice_hazard_areas") if row["source_key"] == "iata_lands_hunting_regs"]
+    assert iata and all((row["source_key"], row["category_value"]) in labels for row in iata)
+    expected = _expected(TEST_HAZARD)
+    drawn = (
+        "iata_lands_hunting_regs:iata_open",
+        "iata_lands_hunting_regs:iata_permit",
+        "iata_lands_hunting_regs:iata_private",
+        "oprhp_hunting_areas:deer",
+        "oprhp_hunting_areas:gun_zone",
+        "oprhp_hunting_areas:opens",
+        "usace_garrison_hunting_restrictions:open_spaced",
+        "usace_garrison_hunting_restrictions:rifles",
+        "blm_shooting_points:range",
+    )
+    for key in drawn:
+        assert expected[key]["held_because"] is None, key
+    assert expected["iata_lands_hunting_regs:iata_open"]["category"] == "Open for public hunting"
+    for key, word in (("no_hunting_area", "no"), ("prohibited", "prohibited"), ("closed_to", "closed"), ("not_permitted", "not")):
+        assert expected[f"oprhp_hunting_areas:{key}"]["held_because"].endswith(f"beside '{word}', which negates it"), key
+    for key in (
+        "iata_lands_hunting_regs:iata_closed",
+        "oprhp_hunting_areas:safety_zone",
+        "oprhp_hunting_areas:no_hunting",
+        "oprhp_hunting_areas:non_hunting",
+        "oprhp_hunting_areas:plural",
+        "usace_garrison_hunting_restrictions:no_hunting_allowed",
+    ):
+        assert expected[key]["held_because"].endswith("is not one notice_hazard_areas reads as hunting"), key

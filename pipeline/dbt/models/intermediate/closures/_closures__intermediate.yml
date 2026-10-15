@@ -319,10 +319,11 @@ models:
         description: >
           Why the notice may not publish as current, in words for the job log:
           its own words say it is not current, or limit it to a use a hiker
-          is not (both rule 2, the field and word named), its own category is
-          not the hazard its source is listed for, or its own order was
-          rescinded. Never its own end date or its own start: both publish.
-          Null where it may.
+          is not (both rule 2, the field and word named), its own category
+          names no value its hazard source is listed for, or names one beside
+          a word that negates it (rule 6, the word named), or its own order
+          was rescinded. Never its own end date or its own start: both
+          publish. Null where it may.
       - name: key_versions
         description: >
           How many different raw rows share the notice's key, counted by its
@@ -2177,8 +2178,8 @@ unit_tests:
           - {notice_key: 'k41', source_key: 'ngpc_cowboy_trail_improvements', club: 'ngpc', notice_type: 'closures', reader: 'arcgis_layer', listing: 'full', category: ' not passable ', starts_at: null, ends_at: null, rescinded_at: null, source_edited_at: '2024-05-28 15:35:00+00', source_url: null, locality: 'Fixture Bridge', geom_geojson: null, _loaded_at: '2026-10-03 00:00:00+00', source_id: '41', title: null, status: ' open '}
       - input: ref('notice_hazard_areas')
         rows:
-          - {source_key: 'oprhp_hunting_areas', hazard: 'hunting', category_value: 'Hunting area', why: 'Hunting 1 ''Hunting area'' 135 of 224 (the row''s notes). Hunting 2 ''Restricted Area/Safety Zone'' 89 is where hunting is restricted, so it is not listed and its rows are held back. @unvalidated that Description carries ''Hunting area'' word for word: read from the notes and the fixture''s ''Restricted Area/Safety Zone'', not from a live value; a different spelling holds every NY Parks area back, a miss rather than a safety zone drawn as hunting'}
-          - {source_key: 'iata_lands_hunting_regs', hazard: 'hunting', category_value: 'Open for public hunting', why: 'One of Hunting_Reg''s four values (the row''s notes: No hunting | Open for public hunting | Open for deer hunting by permit only | Private hunting by agreement)'}
+          - {source_key: 'oprhp_hunting_areas', hazard: 'hunting', category_value: 'Hunting area', why: 'Description is the layer''s own free text, read as words (rule 6''s b): in the live read of 2026-10-15 it holds ''hunting area'' on all 134 rows the layer''s Hunting type marks 1 ''Hunting'', in 24 wordings (''Big game deer hunting area.'', ''Waterfowl hunting area.''), and on none of the 88 it marks 2 ''No Hunting'': 87 ''Restricted Area/Safety Zone'', where hunting is restricted, and 1 ''No Hunting'', held back. A wording that drops the phrase holds its area back, a miss rather than a safety zone drawn as hunting'}
+          - {source_key: 'iata_lands_hunting_regs', hazard: 'hunting', category_value: 'Open for public hunting', why: 'The label Hunting_Reg''s coded-value domain gives the code the layer stages, ''Open'' (notice_category_labels; rule 6''s a). Its four codes in the live read of 2026-10-15: Closed ''No hunting'' 42, Open 16, Permit ''Open for deer hunting by permit only'' 1, Private ''Private hunting by agreement'' 6'}
           - {source_key: 'iata_lands_hunting_regs', hazard: 'hunting', category_value: 'Open for deer hunting by permit only', why: 'As Open for public hunting: hunters may be on the parcel'}
           - {source_key: 'iata_lands_hunting_regs', hazard: 'hunting', category_value: 'Private hunting by agreement', why: 'As Open for public hunting: hunters may be on the parcel'}
           - {source_key: 'usace_garrison_hunting_restrictions', hazard: 'hunting', category_value: 'Open to Hunting / Trapping by Special Permit Only', why: 'Restriction''s own value, read in the decision 53 inventory''s saved distinct values (2026-10-03, five of five)'}
@@ -3415,6 +3416,108 @@ unit_tests:
         - {notice_id: 'wa_dnr_ifpl:precaution_zone', title: '685', category: '1.0'}
         - {notice_id: 'usfs_r04_forest_orders:road_order', title: 'NFSR 220 Road Closure', category: 'Safety Closure'}
         - {notice_id: 'usfs_r08_prescribed_burns:burn_block', title: 'HS84-1', category: 'Planned For Next 1 To 10 Days'}
+
+  - name: int_closures__club_notices_reads_a_hazard_category_by_its_code_its_label_or_its_words_and_never_beside_a_negating_word
+    description: >
+      Rule 6, one standard for every hazard source (decision 190's "apply
+      standards across the orgs"), on rows modelled on the live read of
+      2026-10-15. A category names its hazard where its own code, or its
+      layer's label for the code (seeds/notice_category_labels.csv), is a
+      listed value, compared as words: IATA stages Hunting_Reg's codes, so
+      its 'Open', 'Permit' and 'Private' parcels are hunting areas by their
+      labels and its 'Closed' ('No hunting') is held. A free-text category
+      names it where it holds a listed value as whole words: NY Parks'
+      'Big game deer hunting area.' holds 'Hunting area' and is drawn, its
+      'Restricted Area/Safety Zone' and 'No Hunting' are held. A value that
+      holds a listed one beside 'no', 'not', 'prohibited' or 'closed' is
+      held, the word in the reason (wordings invented here: no live row
+      says so), where a listed value read whole is the seed's own reading of
+      it, USACE's 'Closed to Center-fire Rifles Only / ...' included.
+      'Non-hunting area' and 'hunting areas' hold no 'hunting area', and a
+      source listed for every row (BLM) keeps every row. Until 2026-10-15 a
+      category had to equal a listed value, case and surrounding space
+      aside, so the IATA and NY Parks hunting areas here were held. The
+      hazard seed is mocked as the seed file is, the labels as rows of
+      theirs (tests/test_dbt_closures_club_notices.py).
+    model: int_closures__club_notices
+    overrides:
+      vars:
+        notices_build_date: "2026-10-15"
+    given:
+      - input: ref('int_closures__club_notices_unioned')
+        rows:
+          - {notice_key: 'iata_open', source_key: 'iata_lands_hunting_regs', club: 'iata', notice_type: 'warnings', reader: 'arcgis_layer', listing: 'full', category: 'Open', starts_at: null, ends_at: null, rescinded_at: null, source_edited_at: null, source_url: null, locality: 'Fixture', geom_geojson: '{"type":"Polygon","coordinates":[[[-89.5,44.5],[-89.45,44.5],[-89.45,44.51],[-89.5,44.5]]]}', _loaded_at: '2026-10-15 00:00:00+00', source_id: 'iata_open', title: 'Fixture Hunting Parcel', status: null, narrative: null, site_type: null, season: null, layer_title: 'IATA Lands Hunting Regulations'}
+          - {notice_key: 'iata_permit', source_key: 'iata_lands_hunting_regs', club: 'iata', notice_type: 'warnings', reader: 'arcgis_layer', listing: 'full', category: 'Permit', starts_at: null, ends_at: null, rescinded_at: null, source_edited_at: null, source_url: null, locality: 'Fixture', geom_geojson: '{"type":"Polygon","coordinates":[[[-89.5,44.5],[-89.45,44.5],[-89.45,44.51],[-89.5,44.5]]]}', _loaded_at: '2026-10-15 00:00:00+00', source_id: 'iata_permit', title: 'Fixture Permit Parcel', status: null, narrative: null, site_type: null, season: null, layer_title: 'IATA Lands Hunting Regulations'}
+          - {notice_key: 'iata_private', source_key: 'iata_lands_hunting_regs', club: 'iata', notice_type: 'warnings', reader: 'arcgis_layer', listing: 'full', category: 'Private', starts_at: null, ends_at: null, rescinded_at: null, source_edited_at: null, source_url: null, locality: 'Fixture', geom_geojson: '{"type":"Polygon","coordinates":[[[-89.5,44.5],[-89.45,44.5],[-89.45,44.51],[-89.5,44.5]]]}', _loaded_at: '2026-10-15 00:00:00+00', source_id: 'iata_private', title: 'Fixture Private Parcel', status: null, narrative: null, site_type: null, season: null, layer_title: 'IATA Lands Hunting Regulations'}
+          - {notice_key: 'iata_closed', source_key: 'iata_lands_hunting_regs', club: 'iata', notice_type: 'warnings', reader: 'arcgis_layer', listing: 'full', category: 'Closed', starts_at: null, ends_at: null, rescinded_at: null, source_edited_at: null, source_url: null, locality: 'Fixture', geom_geojson: '{"type":"Polygon","coordinates":[[[-89.5,44.5],[-89.45,44.5],[-89.45,44.51],[-89.5,44.5]]]}', _loaded_at: '2026-10-15 00:00:00+00', source_id: 'iata_closed', title: 'Fixture Preserve', status: null, narrative: null, site_type: null, season: null, layer_title: 'IATA Lands Hunting Regulations'}
+          - {notice_key: 'deer', source_key: 'oprhp_hunting_areas', club: 'nysparks', notice_type: 'warnings', reader: 'arcgis_layer', listing: 'full', category: 'Big game deer hunting area.', starts_at: null, ends_at: null, rescinded_at: null, source_edited_at: null, source_url: null, locality: 'Fixture', geom_geojson: '{"type":"Polygon","coordinates":[[[-89.5,44.5],[-89.45,44.5],[-89.45,44.51],[-89.5,44.5]]]}', _loaded_at: '2026-10-15 00:00:00+00', source_id: 'deer', title: 'Fixture State Park', status: null, narrative: null, site_type: null, season: null, layer_title: 'NYSHuntingBoundaries'}
+          - {notice_key: 'gun_zone', source_key: 'oprhp_hunting_areas', club: 'nysparks', notice_type: 'warnings', reader: 'arcgis_layer', listing: 'full', category: 'Big game deer gun zone and small game hunting area. ', starts_at: null, ends_at: null, rescinded_at: null, source_edited_at: null, source_url: null, locality: 'Fixture', geom_geojson: '{"type":"Polygon","coordinates":[[[-89.5,44.5],[-89.45,44.5],[-89.45,44.51],[-89.5,44.5]]]}', _loaded_at: '2026-10-15 00:00:00+00', source_id: 'gun_zone', title: 'Fixture State Park', status: null, narrative: null, site_type: null, season: null, layer_title: 'NYSHuntingBoundaries'}
+          - {notice_key: 'opens', source_key: 'oprhp_hunting_areas', club: 'nysparks', notice_type: 'warnings', reader: 'arcgis_layer', listing: 'full', category: 'Big game deer bow only and small game hunting area. Opens November 1st.', starts_at: null, ends_at: null, rescinded_at: null, source_edited_at: null, source_url: null, locality: 'Fixture', geom_geojson: '{"type":"Polygon","coordinates":[[[-89.5,44.5],[-89.45,44.5],[-89.45,44.51],[-89.5,44.5]]]}', _loaded_at: '2026-10-15 00:00:00+00', source_id: 'opens', title: 'Fixture State Park', status: null, narrative: null, site_type: null, season: null, layer_title: 'NYSHuntingBoundaries'}
+          - {notice_key: 'safety_zone', source_key: 'oprhp_hunting_areas', club: 'nysparks', notice_type: 'warnings', reader: 'arcgis_layer', listing: 'full', category: 'Restricted Area/Safety Zone', starts_at: null, ends_at: null, rescinded_at: null, source_edited_at: null, source_url: null, locality: 'Fixture', geom_geojson: '{"type":"Polygon","coordinates":[[[-89.5,44.5],[-89.45,44.5],[-89.45,44.51],[-89.5,44.5]]]}', _loaded_at: '2026-10-15 00:00:00+00', source_id: 'safety_zone', title: 'Fixture State Park', status: null, narrative: null, site_type: null, season: null, layer_title: 'NYSHuntingBoundaries'}
+          - {notice_key: 'no_hunting', source_key: 'oprhp_hunting_areas', club: 'nysparks', notice_type: 'warnings', reader: 'arcgis_layer', listing: 'full', category: 'No Hunting', starts_at: null, ends_at: null, rescinded_at: null, source_edited_at: null, source_url: null, locality: 'Fixture', geom_geojson: '{"type":"Polygon","coordinates":[[[-89.5,44.5],[-89.45,44.5],[-89.45,44.51],[-89.5,44.5]]]}', _loaded_at: '2026-10-15 00:00:00+00', source_id: 'no_hunting', title: 'Fixture State Park', status: null, narrative: null, site_type: null, season: null, layer_title: 'NYSHuntingBoundaries'}
+          - {notice_key: 'no_hunting_area', source_key: 'oprhp_hunting_areas', club: 'nysparks', notice_type: 'warnings', reader: 'arcgis_layer', listing: 'full', category: 'No hunting area.', starts_at: null, ends_at: null, rescinded_at: null, source_edited_at: null, source_url: null, locality: 'Fixture', geom_geojson: '{"type":"Polygon","coordinates":[[[-89.5,44.5],[-89.45,44.5],[-89.45,44.51],[-89.5,44.5]]]}', _loaded_at: '2026-10-15 00:00:00+00', source_id: 'no_hunting_area', title: 'Fixture State Park', status: null, narrative: null, site_type: null, season: null, layer_title: 'NYSHuntingBoundaries'}
+          - {notice_key: 'prohibited', source_key: 'oprhp_hunting_areas', club: 'nysparks', notice_type: 'warnings', reader: 'arcgis_layer', listing: 'full', category: 'Former hunting area. Hunting prohibited.', starts_at: null, ends_at: null, rescinded_at: null, source_edited_at: null, source_url: null, locality: 'Fixture', geom_geojson: '{"type":"Polygon","coordinates":[[[-89.5,44.5],[-89.45,44.5],[-89.45,44.51],[-89.5,44.5]]]}', _loaded_at: '2026-10-15 00:00:00+00', source_id: 'prohibited', title: 'Fixture State Park', status: null, narrative: null, site_type: null, season: null, layer_title: 'NYSHuntingBoundaries'}
+          - {notice_key: 'closed_to', source_key: 'oprhp_hunting_areas', club: 'nysparks', notice_type: 'warnings', reader: 'arcgis_layer', listing: 'full', category: 'Hunting area, closed to hunting until further notice', starts_at: null, ends_at: null, rescinded_at: null, source_edited_at: null, source_url: null, locality: 'Fixture', geom_geojson: '{"type":"Polygon","coordinates":[[[-89.5,44.5],[-89.45,44.5],[-89.45,44.51],[-89.5,44.5]]]}', _loaded_at: '2026-10-15 00:00:00+00', source_id: 'closed_to', title: 'Fixture State Park', status: null, narrative: null, site_type: null, season: null, layer_title: 'NYSHuntingBoundaries'}
+          - {notice_key: 'not_permitted', source_key: 'oprhp_hunting_areas', club: 'nysparks', notice_type: 'warnings', reader: 'arcgis_layer', listing: 'full', category: 'Hunting area: hunting not permitted', starts_at: null, ends_at: null, rescinded_at: null, source_edited_at: null, source_url: null, locality: 'Fixture', geom_geojson: '{"type":"Polygon","coordinates":[[[-89.5,44.5],[-89.45,44.5],[-89.45,44.51],[-89.5,44.5]]]}', _loaded_at: '2026-10-15 00:00:00+00', source_id: 'not_permitted', title: 'Fixture State Park', status: null, narrative: null, site_type: null, season: null, layer_title: 'NYSHuntingBoundaries'}
+          - {notice_key: 'non_hunting', source_key: 'oprhp_hunting_areas', club: 'nysparks', notice_type: 'warnings', reader: 'arcgis_layer', listing: 'full', category: 'Non-hunting area', starts_at: null, ends_at: null, rescinded_at: null, source_edited_at: null, source_url: null, locality: 'Fixture', geom_geojson: '{"type":"Polygon","coordinates":[[[-89.5,44.5],[-89.45,44.5],[-89.45,44.51],[-89.5,44.5]]]}', _loaded_at: '2026-10-15 00:00:00+00', source_id: 'non_hunting', title: 'Fixture State Park', status: null, narrative: null, site_type: null, season: null, layer_title: 'NYSHuntingBoundaries'}
+          - {notice_key: 'plural', source_key: 'oprhp_hunting_areas', club: 'nysparks', notice_type: 'warnings', reader: 'arcgis_layer', listing: 'full', category: 'Hunting areas', starts_at: null, ends_at: null, rescinded_at: null, source_edited_at: null, source_url: null, locality: 'Fixture', geom_geojson: '{"type":"Polygon","coordinates":[[[-89.5,44.5],[-89.45,44.5],[-89.45,44.51],[-89.5,44.5]]]}', _loaded_at: '2026-10-15 00:00:00+00', source_id: 'plural', title: 'Fixture State Park', status: null, narrative: null, site_type: null, season: null, layer_title: 'NYSHuntingBoundaries'}
+          - {notice_key: 'open_spaced', source_key: 'usace_garrison_hunting_restrictions', club: 'usace', notice_type: 'warnings', reader: 'arcgis_layer', listing: 'full', category: ' open to hunting / trapping by special permit only ', starts_at: null, ends_at: null, rescinded_at: null, source_edited_at: null, source_url: null, locality: 'Fixture', geom_geojson: '{"type":"Polygon","coordinates":[[[-89.5,44.5],[-89.45,44.5],[-89.45,44.51],[-89.5,44.5]]]}', _loaded_at: '2026-10-15 00:00:00+00', source_id: 'open_spaced', title: 'Fixture Recreation Area', status: null, narrative: null, site_type: null, season: null, layer_title: 'Restriction'}
+          - {notice_key: 'rifles', source_key: 'usace_garrison_hunting_restrictions', club: 'usace', notice_type: 'warnings', reader: 'arcgis_layer', listing: 'full', category: 'Closed to Center-fire Rifles Only / Trapping by Special Permit Only', starts_at: null, ends_at: null, rescinded_at: null, source_edited_at: null, source_url: null, locality: 'Fixture', geom_geojson: '{"type":"Polygon","coordinates":[[[-89.5,44.5],[-89.45,44.5],[-89.45,44.51],[-89.5,44.5]]]}', _loaded_at: '2026-10-15 00:00:00+00', source_id: 'rifles', title: 'Fixture Wildlife Area', status: null, narrative: null, site_type: null, season: null, layer_title: 'Restriction'}
+          - {notice_key: 'no_hunting_allowed', source_key: 'usace_garrison_hunting_restrictions', club: 'usace', notice_type: 'warnings', reader: 'arcgis_layer', listing: 'full', category: 'No Hunting Allowed / Trapping by Special Permit Only', starts_at: null, ends_at: null, rescinded_at: null, source_edited_at: null, source_url: null, locality: 'Fixture', geom_geojson: '{"type":"Polygon","coordinates":[[[-89.5,44.5],[-89.45,44.5],[-89.45,44.51],[-89.5,44.5]]]}', _loaded_at: '2026-10-15 00:00:00+00', source_id: 'no_hunting_allowed', title: 'Fixture Campground', status: null, narrative: null, site_type: null, season: null, layer_title: 'Restriction'}
+          - {notice_key: 'range', source_key: 'blm_shooting_points', club: 'blm', notice_type: 'warnings', reader: 'arcgis_layer', listing: 'full', category: 'Firearm (only)', starts_at: null, ends_at: null, rescinded_at: null, source_edited_at: null, source_url: null, locality: 'Fixture', geom_geojson: '{"type":"Point","coordinates":[-112.5,40.5]}', _loaded_at: '2026-10-15 00:00:00+00', source_id: 'range', title: 'Fixture Shooting Range', status: null, narrative: null, site_type: null, season: null, layer_title: 'Sheet1'}
+      - input: ref('notice_words')
+        rows: []
+      - input: ref('notice_word_overrides')
+        rows: []
+      - input: ref('notice_hazard_areas')
+        rows:
+          - {source_key: 'oprhp_hunting_areas', hazard: 'hunting', category_value: 'Hunting area', why: 'Description is the layer''s own free text, read as words (rule 6''s b): in the live read of 2026-10-15 it holds ''hunting area'' on all 134 rows the layer''s Hunting type marks 1 ''Hunting'', in 24 wordings (''Big game deer hunting area.'', ''Waterfowl hunting area.''), and on none of the 88 it marks 2 ''No Hunting'': 87 ''Restricted Area/Safety Zone'', where hunting is restricted, and 1 ''No Hunting'', held back. A wording that drops the phrase holds its area back, a miss rather than a safety zone drawn as hunting'}
+          - {source_key: 'iata_lands_hunting_regs', hazard: 'hunting', category_value: 'Open for public hunting', why: 'The label Hunting_Reg''s coded-value domain gives the code the layer stages, ''Open'' (notice_category_labels; rule 6''s a). Its four codes in the live read of 2026-10-15: Closed ''No hunting'' 42, Open 16, Permit ''Open for deer hunting by permit only'' 1, Private ''Private hunting by agreement'' 6'}
+          - {source_key: 'iata_lands_hunting_regs', hazard: 'hunting', category_value: 'Open for deer hunting by permit only', why: 'As Open for public hunting: hunters may be on the parcel'}
+          - {source_key: 'iata_lands_hunting_regs', hazard: 'hunting', category_value: 'Private hunting by agreement', why: 'As Open for public hunting: hunters may be on the parcel'}
+          - {source_key: 'usace_garrison_hunting_restrictions', hazard: 'hunting', category_value: 'Open to Hunting / Trapping by Special Permit Only', why: 'Restriction''s own value, read in the decision 53 inventory''s saved distinct values (2026-10-03, five of five)'}
+          - {source_key: 'usace_garrison_hunting_restrictions', hazard: 'hunting', category_value: 'Open to Bow Hunting Only / Trapping by Special Permit Only', why: 'As Open to Hunting: bow hunters may be on the area'}
+          - {source_key: 'usace_garrison_hunting_restrictions', hazard: 'hunting', category_value: 'Closed to Center-fire Rifles Only / Trapping by Special Permit Only', why: 'As Open to Hunting: only centre-fire rifles are barred'}
+          - {source_key: 'blm_shooting_points', hazard: 'shooting', category_value: '', why: 'Every row: the layer is BLM''s qualified recreational shooting sites (93 points on 2026-10-03, the row''s notes)'}
+          - {source_key: 'usfs_baer_assessments', hazard: 'burned_area', category_value: '', why: 'Every row: each polygon is a burned area under Burned Area Emergency Response assessment (the row''s notes: ignitions 2024-03-22 to 2026-08-26)'}
+      - input: ref('notice_category_labels')
+        rows:
+          - {source_key: 'iata_lands_hunting_regs', field: 'Hunting_Reg', code: 'Closed', label: 'No hunting', why: 'The label the layer''s own coded-value domain on Hunting_Reg gives the code (its layer document, read 2026-10-15)'}
+          - {source_key: 'iata_lands_hunting_regs', field: 'Hunting_Reg', code: 'Open', label: 'Open for public hunting', why: 'The label the layer''s own coded-value domain on Hunting_Reg gives the code (its layer document, read 2026-10-15)'}
+          - {source_key: 'iata_lands_hunting_regs', field: 'Hunting_Reg', code: 'Permit', label: 'Open for deer hunting by permit only', why: 'The label the layer''s own coded-value domain on Hunting_Reg gives the code (its layer document, read 2026-10-15)'}
+          - {source_key: 'iata_lands_hunting_regs', field: 'Hunting_Reg', code: 'Private', label: 'Private hunting by agreement', why: 'The label the layer''s own coded-value domain on Hunting_Reg gives the code (its layer document, read 2026-10-15)'}
+      - input: ref('int_closures__steward_areas')
+        format: sql
+        rows: |
+          select
+              cast(null as varchar) as steward_area_key,
+              cast(null as varchar) as source_key,
+              cast(null as varchar) as areas_source_key,
+              cast(null as varchar) as area_key,
+              cast(null as varchar) as area_id,
+              cast(null as varchar) as geom_geojson
+          where false
+    expect:
+      rows:
+        - {notice_id: 'iata_lands_hunting_regs:iata_open', reads_as: 'notice', obstructs_trail: null, held_because: null, category: 'Open for public hunting'}
+        - {notice_id: 'iata_lands_hunting_regs:iata_permit', reads_as: 'notice', obstructs_trail: null, held_because: null, category: 'Open for deer hunting by permit only'}
+        - {notice_id: 'iata_lands_hunting_regs:iata_private', reads_as: 'notice', obstructs_trail: null, held_because: null, category: 'Private hunting by agreement'}
+        - {notice_id: 'iata_lands_hunting_regs:iata_closed', reads_as: 'notice', obstructs_trail: null, held_because: 'its own category, Closed, is not one notice_hazard_areas reads as hunting', category: 'No hunting'}
+        - {notice_id: 'oprhp_hunting_areas:deer', reads_as: 'notice', obstructs_trail: null, held_because: null, category: 'Big game deer hunting area.'}
+        - {notice_id: 'oprhp_hunting_areas:gun_zone', reads_as: 'notice', obstructs_trail: null, held_because: null, category: 'Big game deer gun zone and small game hunting area. '}
+        - {notice_id: 'oprhp_hunting_areas:opens', reads_as: 'notice', obstructs_trail: null, held_because: null, category: 'Big game deer bow only and small game hunting area. Opens November 1st.'}
+        - {notice_id: 'oprhp_hunting_areas:safety_zone', reads_as: 'notice', obstructs_trail: null, held_because: 'its own category, Restricted Area/Safety Zone, is not one notice_hazard_areas reads as hunting', category: 'Restricted Area/Safety Zone'}
+        - {notice_id: 'oprhp_hunting_areas:no_hunting', reads_as: 'notice', obstructs_trail: null, held_because: 'its own category, No Hunting, is not one notice_hazard_areas reads as hunting', category: 'No Hunting'}
+        - {notice_id: 'oprhp_hunting_areas:no_hunting_area', reads_as: 'notice', obstructs_trail: null, held_because: 'its own category, No hunting area., holds what notice_hazard_areas reads as hunting beside ''no'', which negates it', category: 'No hunting area.'}
+        - {notice_id: 'oprhp_hunting_areas:prohibited', reads_as: 'notice', obstructs_trail: null, held_because: 'its own category, Former hunting area. Hunting prohibited., holds what notice_hazard_areas reads as hunting beside ''prohibited'', which negates it', category: 'Former hunting area. Hunting prohibited.'}
+        - {notice_id: 'oprhp_hunting_areas:closed_to', reads_as: 'notice', obstructs_trail: null, held_because: 'its own category, Hunting area, closed to hunting until further notice, holds what notice_hazard_areas reads as hunting beside ''closed'', which negates it', category: 'Hunting area, closed to hunting until further notice'}
+        - {notice_id: 'oprhp_hunting_areas:not_permitted', reads_as: 'notice', obstructs_trail: null, held_because: 'its own category, Hunting area: hunting not permitted, holds what notice_hazard_areas reads as hunting beside ''not'', which negates it', category: 'Hunting area: hunting not permitted'}
+        - {notice_id: 'oprhp_hunting_areas:non_hunting', reads_as: 'notice', obstructs_trail: null, held_because: 'its own category, Non-hunting area, is not one notice_hazard_areas reads as hunting', category: 'Non-hunting area'}
+        - {notice_id: 'oprhp_hunting_areas:plural', reads_as: 'notice', obstructs_trail: null, held_because: 'its own category, Hunting areas, is not one notice_hazard_areas reads as hunting', category: 'Hunting areas'}
+        - {notice_id: 'usace_garrison_hunting_restrictions:open_spaced', reads_as: 'notice', obstructs_trail: null, held_because: null, category: ' open to hunting / trapping by special permit only '}
+        - {notice_id: 'usace_garrison_hunting_restrictions:rifles', reads_as: 'notice', obstructs_trail: null, held_because: null, category: 'Closed to Center-fire Rifles Only / Trapping by Special Permit Only'}
+        - {notice_id: 'usace_garrison_hunting_restrictions:no_hunting_allowed', reads_as: 'notice', obstructs_trail: null, held_because: 'its own category, No Hunting Allowed / Trapping by Special Permit Only, is not one notice_hazard_areas reads as hunting', category: 'No Hunting Allowed / Trapping by Special Permit Only'}
+        - {notice_id: 'blm_shooting_points:range', reads_as: 'notice', obstructs_trail: null, held_because: null, category: 'Firearm (only)'}
 
   - name: int_closures__steward_areas_lets_only_a_publishable_one_version_polygon_of_a_linked_layer_place_a_point
     description: >

@@ -1,9 +1,10 @@
 """parity.py compares the line ids a phone joins on: nearby_trails' `id` and each graph edge's `trail_id`.
 
 A phone finds a line's climb by joining the graph cell's edges to the tile's line, `edge.trail_id === line.id`
-(client/src/lib/lineClimb.ts), and keeps cells from more than one release. So an id the dbt writers publish for a line
-must be the id today's exporters publish for it, or a phone holding cells from both sides of the cutover loses the
-climb row and its note on that line (client/src/lib/lineDetail.ts).
+(client/src/lib/lineClimb.ts). It draws a tile cell it holds before asking the bucket (client/src/map/networkTiles.ts),
+so its tiles can be from an older release than its graph. So an id the dbt writers publish for a line must be the id
+today's exporters publish for it, or a phone holding a stretch taken before the cutover loses the climb row and its
+note on that line once its graph is from after it (Reasoned from client/src/lib/lineDetail.ts).
 
 THE FINDING THESE HOLD, measured 2026-10-15 on UA's release 2026-10-10-2: every line of eight layers whose GlobalID is
 spelled other than `GlobalID` carried another id in the dbt writer's trail_graph.json than in the 779 graph cells

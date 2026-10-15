@@ -1225,6 +1225,7 @@
       "global_id_field": "GLOBALID",
       "global_id_field_comment": "Spelled `GLOBALID`, not `GlobalID`, so lib/feature_id.py's resolve_feature_id() never reads it and today's exporter publishes each line under its object id, the id a phone joins a graph edge to a line by. The dbt writers publish the same id (macros/resolve_feature_id.sql). In UA's release 2026-10-10-2 the dbt writer's trail_graph.json, which read this field in any case, carried none of the 5,228 ids that release's graph cells, cut by today's exporters, carry for this layer (Measured 2026-10-15).",
       "object_id_field": "OBJECTID",
+      "object_id_field_comment": "@unvalidated: this layer's metadata refused the connection when the other 24 network layers' were read on 2026-10-08 (pipeline/ELT.md's TL05), so OBJECTID here is ArcGIS's usual name rather than one read from this layer. Every one of its 5,228 ids in the graph cells of UA's release 2026-10-10-2 is a whole number, as an object id is (Measured 2026-10-15). int_trail_lines__network_sources' test stops the build if no `objectid` column lands; one read of the layer's metadata settles it.",
       "blaze_field": "MARKER",
       "name_field": "NAME",
       "foot_field": "FOOT",

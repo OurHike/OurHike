@@ -487,11 +487,13 @@ def _network_old(name: str) -> dict:
 #: a unit-test row where the two answer that way, so none outlives its reason.
 #: Each case is a line one side numbers by its place or its staging key: a line
 #: both sides publish under an id of its own is never explained, whatever the
-#: two ids are, because a phone joins a graph cell's edges to a tile's lines by
-#: that id (client/src/lib/lineClimb.ts) and keeps cells across releases. The
-#: GlobalID read in any case was explained here until 2026-10-15
-#: (`globalid_in_any_case`), which is how 72,618 lines of six layers on monthly
-#: run 30 passed the gate under ids no phone holds (tests/test_parity_line_ids.py).
+#: two ids are. A phone joins a graph cell's edges to a tile's lines by that id
+#: (client/src/lib/lineClimb.ts), and draws a tile cell it holds before asking
+#: the bucket (client/src/map/networkTiles.ts), so its tiles can be from an
+#: older release than its graph. The GlobalID read in any case was explained
+#: here until 2026-10-15 (`globalid_in_any_case`), which is how 72,618 lines of
+#: six layers on monthly run 30 passed the gate under ids no phone holds
+#: (tests/test_parity_line_ids.py).
 NETWORK_ID_REASONS = {
     "feature_id_not_landed": (
         "expected by TL05's ledger row: the extract lands a feature's properties and geometry and not its GeoJSON "
@@ -2384,14 +2386,14 @@ FAMILIES["challenges"] = Family(old=_challenges_old, records="challenges", key="
 # 40's copies). EXCEPT THE LINE'S ID: on the old side, each edge's
 # `trail_id` is the id today's nearby_trails.geojson publishes its line
 # under (_todays_line_ids()), because a phone joins a graph cell's edges to a
-# tile's lines by it (client/src/lib/lineClimb.ts) and keeps cells across
-# releases. Built from the dbt writers' lines alone, both sides carried the
-# dbt writers' ids, so this family could not see that UA's release
-# 2026-10-10-2 named every line of eight layers in its trail_graph.json by
-# an id that none of the graph cells phones read carries (78,356 trail_ids,
-# Measured 2026-10-15; pipeline/ELT.md's TL05). An edge has no id but its
-# place, so edges are keyed by their index; `nodes` is compared whole as a
-# top-level field.
+# tile's lines by it (client/src/lib/lineClimb.ts), and its tiles can be from
+# an older release than its graph (NETWORK_ID_REASONS). Built from the dbt
+# writers' lines alone, both sides carried the dbt writers' ids, so this
+# family could not see that the dbt writer's trail_graph.json in UA's
+# release 2026-10-10-2 carried none of the 78,356 ids that the graph cells
+# phones read give the lines of eight layers (Measured 2026-10-15;
+# pipeline/ELT.md's TL05). An edge has no id but its place, so edges are
+# keyed by their index; `nodes` is compared whole as a top-level field.
 @functools.cache
 def _trail_graph_built(new_dir: Path) -> tuple[list, list, list]:
     """build_trail_graph.build() over the two files in `new_dir`: its nodes, its edges and their geometry, as JSON reads them."""

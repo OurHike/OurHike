@@ -11,10 +11,12 @@
     THIS IS THE ID A PHONE JOINS ON, and it is today's exporters' id, not a
     better one. A phone finds a line's climb by joining a graph cell's edges
     to a tile's lines, `edge.trail_id === line.id`
-    (client/src/lib/lineClimb.ts), and keeps cells from more than one
-    release, so a line must keep its id across the cutover. Whether it
-    should ever move to its stable GlobalID is the maintainer's question,
-    with a plan for phones holding both (pipeline/ELT.md's TL05).
+    (client/src/lib/lineClimb.ts), and draws a tile cell it holds before
+    asking the bucket (client/src/map/networkTiles.ts), so its tiles can be
+    from an older release than its graph, and a line must keep its id across
+    the cutover. Whether it should ever move to its stable GlobalID is the
+    maintainer's question, with a plan for phones holding both
+    (pipeline/ELT.md's TL05).
 
     THE CASE IS DECLARED, NOT READ. dlt's sql_ci_v1 naming lands `GlobalID`,
     `GLOBALID` and `globalid` as one lower-case column, so a layer's spelling

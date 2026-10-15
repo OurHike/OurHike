@@ -714,6 +714,19 @@ vars:
     other_prefixes:
       - rpt_
       - pub_
+    # What fct_missing_primary_key_tests counts as a key: dbt's unique and
+    # not_null tests on one column. The package also takes a declared
+    # not_null constraint for the second, enforced contract or not (its
+    # "mixed method", int_model_test_summary.sql and base_node_columns.sql,
+    # 1.4.0). Its default also counts dbt_utils.unique_combination_of_columns,
+    # which decision 197 does not: the maintainer, 2026-10-15, "Every dbt
+    # model should have a unique id that is unique and not null", and of a
+    # key over several columns, "Multi column is fine if it is based on the
+    # dbt generate surrogate key macro". The evaluator reads neither a test's
+    # severity nor its `where`, so pipeline/tests/test_dbt_every_model_keyed.py
+    # holds both, counts a constraint only under an enforced contract, and
+    # reads the two recorded exceptions from seeds/model_key_exceptions.csv.
+    primary_key_test_macros: [["dbt.test_unique", "dbt.test_not_null"]]
 
 # dbt_utils has no DuckDB version of `deduplicate`, and its default joins the
 # kept rows back with a NATURAL JOIN, where NULL never equals NULL: every row

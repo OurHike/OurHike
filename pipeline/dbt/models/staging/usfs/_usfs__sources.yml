@@ -23,15 +23,21 @@ sources:
           - duplicates_are_exact:
               arguments:
                 key_columns: ["'usfs_trails'", "globalid"]
-          # Elementary's checks (make_dbt_staging.py's raw_table_checks(), decision 102), each at warn.
+          # Elementary's checks (make_dbt_staging.py's raw_table_checks(), decision 102), each with its two thresholds (decision 204).
           - elementary.volume_anomalies:
               config:
-                severity: warn
+                severity: error
+                fail_calc: "{{ var('elementary_anomaly_level') }}"
+                warn_if: ">0"
+                error_if: ">1"
                 tags: [elementary_check]
                 enabled: "{{ env_var('OURHIKE_ELEMENTARY_CHECKS', 'false') == 'true' }}"
           - elementary.schema_changes:
               config:
-                severity: warn
+                severity: error
+                fail_calc: "{{ var('elementary_schema_change_level') }}"
+                warn_if: ">0"
+                error_if: ">1"
                 tags: [elementary_check]
                 enabled: "{{ env_var('OURHIKE_ELEMENTARY_CHECKS', 'false') == 'true' }}"
         description: >
@@ -43,15 +49,21 @@ sources:
           - duplicates_are_exact:
               arguments:
                 key_columns: ["'usfs_rec_sites'", "globalid"]
-          # Elementary's checks (make_dbt_staging.py's raw_table_checks(), decision 102), each at warn.
+          # Elementary's checks (make_dbt_staging.py's raw_table_checks(), decision 102), each with its two thresholds (decision 204).
           - elementary.volume_anomalies:
               config:
-                severity: warn
+                severity: error
+                fail_calc: "{{ var('elementary_anomaly_level') }}"
+                warn_if: ">0"
+                error_if: ">1"
                 tags: [elementary_check]
                 enabled: "{{ env_var('OURHIKE_ELEMENTARY_CHECKS', 'false') == 'true' }}"
           - elementary.schema_changes:
               config:
-                severity: warn
+                severity: error
+                fail_calc: "{{ var('elementary_schema_change_level') }}"
+                warn_if: ">0"
+                error_if: ">1"
                 tags: [elementary_check]
                 enabled: "{{ env_var('OURHIKE_ELEMENTARY_CHECKS', 'false') == 'true' }}"
         description: >

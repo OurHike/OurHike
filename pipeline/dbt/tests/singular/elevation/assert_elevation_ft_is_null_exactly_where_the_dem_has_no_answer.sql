@@ -7,6 +7,10 @@
 -- Each published row is matched to the step's own row: an A.T. row through
 -- int_elevation__profile, which carries its place in the walk, and an edge's
 -- row directly, its seq being its sample_index. Returns no rows.
+-- A gate on a mart a hiker's safety reads (decision 204, dbt_project.yml's
+-- `marts:` gates): an error in every environment, so in production a
+-- failure holds the files below at their last good copy.
+{{ config(severity='error') }}
 with at_published as (
     select
         elevation.line_id,

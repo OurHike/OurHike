@@ -3,13 +3,11 @@ version: 2
 models:
   - name: base_podcasts__podcast_episodes
     data_tests:
-      # Says how many rows the dedupe dropped, which for a key unique by
-      # construction is none.
-      - dbt_utils.equal_rowcount:
+      # Warns if the dedupe drops any row, which for a key unique by
+      # construction never happens.
+      - equal_rowcount_to_raw:
           arguments:
             compare_model: source('podcasts', 'raw_podcasts__podcast_episodes')
-          config:
-            severity: warn
     description: >
       reference/podcast_episodes.json, every row, keyed, each row still the
       JSON its reviewer wrote. Read by int_podcasts__checked.

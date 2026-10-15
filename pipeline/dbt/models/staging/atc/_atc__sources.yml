@@ -25,15 +25,21 @@ sources:
           - duplicates_are_exact:
               arguments:
                 key_columns: ["'shelters'", "globalid"]
-          # Elementary's checks (make_dbt_staging.py's raw_table_checks(), decision 102), each at warn.
+          # Elementary's checks (make_dbt_staging.py's raw_table_checks(), decision 102), each with its two thresholds (decision 204).
           - elementary.volume_anomalies:
               config:
-                severity: warn
+                severity: error
+                fail_calc: "{{ var('elementary_anomaly_level') }}"
+                warn_if: ">0"
+                error_if: ">1"
                 tags: [elementary_check]
                 enabled: "{{ env_var('OURHIKE_ELEMENTARY_CHECKS', 'false') == 'true' }}"
           - elementary.schema_changes:
               config:
-                severity: warn
+                severity: error
+                fail_calc: "{{ var('elementary_schema_change_level') }}"
+                warn_if: ">0"
+                error_if: ">1"
                 tags: [elementary_check]
                 enabled: "{{ env_var('OURHIKE_ELEMENTARY_CHECKS', 'false') == 'true' }}"
         description: >
@@ -55,15 +61,21 @@ sources:
           - duplicates_are_exact:
               arguments:
                 key_columns: ["'campsites'", "globalid"]
-          # Elementary's checks (make_dbt_staging.py's raw_table_checks(), decision 102), each at warn.
+          # Elementary's checks (make_dbt_staging.py's raw_table_checks(), decision 102), each with its two thresholds (decision 204).
           - elementary.volume_anomalies:
               config:
-                severity: warn
+                severity: error
+                fail_calc: "{{ var('elementary_anomaly_level') }}"
+                warn_if: ">0"
+                error_if: ">1"
                 tags: [elementary_check]
                 enabled: "{{ env_var('OURHIKE_ELEMENTARY_CHECKS', 'false') == 'true' }}"
           - elementary.schema_changes:
               config:
-                severity: warn
+                severity: error
+                fail_calc: "{{ var('elementary_schema_change_level') }}"
+                warn_if: ">0"
+                error_if: ">1"
                 tags: [elementary_check]
                 enabled: "{{ env_var('OURHIKE_ELEMENTARY_CHECKS', 'false') == 'true' }}"
         description: >
@@ -83,15 +95,21 @@ sources:
           - duplicates_are_exact:
               arguments:
                 key_columns: ["'viewpoints'", "globalid"]
-          # Elementary's checks (make_dbt_staging.py's raw_table_checks(), decision 102), each at warn.
+          # Elementary's checks (make_dbt_staging.py's raw_table_checks(), decision 102), each with its two thresholds (decision 204).
           - elementary.volume_anomalies:
               config:
-                severity: warn
+                severity: error
+                fail_calc: "{{ var('elementary_anomaly_level') }}"
+                warn_if: ">0"
+                error_if: ">1"
                 tags: [elementary_check]
                 enabled: "{{ env_var('OURHIKE_ELEMENTARY_CHECKS', 'false') == 'true' }}"
           - elementary.schema_changes:
               config:
-                severity: warn
+                severity: error
+                fail_calc: "{{ var('elementary_schema_change_level') }}"
+                warn_if: ">0"
+                error_if: ">1"
                 tags: [elementary_check]
                 enabled: "{{ env_var('OURHIKE_ELEMENTARY_CHECKS', 'false') == 'true' }}"
         description: >
@@ -107,15 +125,21 @@ sources:
           - duplicates_are_exact:
               arguments:
                 key_columns: ["'parking'", "globalid"]
-          # Elementary's checks (make_dbt_staging.py's raw_table_checks(), decision 102), each at warn.
+          # Elementary's checks (make_dbt_staging.py's raw_table_checks(), decision 102), each with its two thresholds (decision 204).
           - elementary.volume_anomalies:
               config:
-                severity: warn
+                severity: error
+                fail_calc: "{{ var('elementary_anomaly_level') }}"
+                warn_if: ">0"
+                error_if: ">1"
                 tags: [elementary_check]
                 enabled: "{{ env_var('OURHIKE_ELEMENTARY_CHECKS', 'false') == 'true' }}"
           - elementary.schema_changes:
               config:
-                severity: warn
+                severity: error
+                fail_calc: "{{ var('elementary_schema_change_level') }}"
+                warn_if: ">0"
+                error_if: ">1"
                 tags: [elementary_check]
                 enabled: "{{ env_var('OURHIKE_ELEMENTARY_CHECKS', 'false') == 'true' }}"
         description: >
@@ -130,15 +154,21 @@ sources:
           - duplicates_are_exact:
               arguments:
                 key_columns: ["'privies'", "globalid"]
-          # Elementary's checks (make_dbt_staging.py's raw_table_checks(), decision 102), each at warn.
+          # Elementary's checks (make_dbt_staging.py's raw_table_checks(), decision 102), each with its two thresholds (decision 204).
           - elementary.volume_anomalies:
               config:
-                severity: warn
+                severity: error
+                fail_calc: "{{ var('elementary_anomaly_level') }}"
+                warn_if: ">0"
+                error_if: ">1"
                 tags: [elementary_check]
                 enabled: "{{ env_var('OURHIKE_ELEMENTARY_CHECKS', 'false') == 'true' }}"
           - elementary.schema_changes:
               config:
-                severity: warn
+                severity: error
+                fail_calc: "{{ var('elementary_schema_change_level') }}"
+                warn_if: ">0"
+                error_if: ">1"
                 tags: [elementary_check]
                 enabled: "{{ env_var('OURHIKE_ELEMENTARY_CHECKS', 'false') == 'true' }}"
         description: >
@@ -153,15 +183,21 @@ sources:
           - duplicates_are_exact:
               arguments:
                 key_columns: ["'communities'", "globalid"]
-          # Elementary's checks (make_dbt_staging.py's raw_table_checks(), decision 102), each at warn.
+          # Elementary's checks (make_dbt_staging.py's raw_table_checks(), decision 102), each with its two thresholds (decision 204).
           - elementary.volume_anomalies:
               config:
-                severity: warn
+                severity: error
+                fail_calc: "{{ var('elementary_anomaly_level') }}"
+                warn_if: ">0"
+                error_if: ">1"
                 tags: [elementary_check]
                 enabled: "{{ env_var('OURHIKE_ELEMENTARY_CHECKS', 'false') == 'true' }}"
           - elementary.schema_changes:
               config:
-                severity: warn
+                severity: error
+                fail_calc: "{{ var('elementary_schema_change_level') }}"
+                warn_if: ">0"
+                error_if: ">1"
                 tags: [elementary_check]
                 enabled: "{{ env_var('OURHIKE_ELEMENTARY_CHECKS', 'false') == 'true' }}"
         description: >
@@ -181,15 +217,21 @@ sources:
           - duplicates_are_exact:
               arguments:
                 key_columns: ["'bridges'", "globalid"]
-          # Elementary's checks (make_dbt_staging.py's raw_table_checks(), decision 102), each at warn.
+          # Elementary's checks (make_dbt_staging.py's raw_table_checks(), decision 102), each with its two thresholds (decision 204).
           - elementary.volume_anomalies:
               config:
-                severity: warn
+                severity: error
+                fail_calc: "{{ var('elementary_anomaly_level') }}"
+                warn_if: ">0"
+                error_if: ">1"
                 tags: [elementary_check]
                 enabled: "{{ env_var('OURHIKE_ELEMENTARY_CHECKS', 'false') == 'true' }}"
           - elementary.schema_changes:
               config:
-                severity: warn
+                severity: error
+                fail_calc: "{{ var('elementary_schema_change_level') }}"
+                warn_if: ">0"
+                error_if: ">1"
                 tags: [elementary_check]
                 enabled: "{{ env_var('OURHIKE_ELEMENTARY_CHECKS', 'false') == 'true' }}"
         description: >
@@ -207,15 +249,21 @@ sources:
           - duplicates_are_exact:
               arguments:
                 key_columns: ["'centerline'", "coalesce(globalid, cast(objectid as varchar))"]
-          # Elementary's checks (make_dbt_staging.py's raw_table_checks(), decision 102), each at warn.
+          # Elementary's checks (make_dbt_staging.py's raw_table_checks(), decision 102), each with its two thresholds (decision 204).
           - elementary.volume_anomalies:
               config:
-                severity: warn
+                severity: error
+                fail_calc: "{{ var('elementary_anomaly_level') }}"
+                warn_if: ">0"
+                error_if: ">1"
                 tags: [elementary_check]
                 enabled: "{{ env_var('OURHIKE_ELEMENTARY_CHECKS', 'false') == 'true' }}"
           - elementary.schema_changes:
               config:
-                severity: warn
+                severity: error
+                fail_calc: "{{ var('elementary_schema_change_level') }}"
+                warn_if: ">0"
+                error_if: ">1"
                 tags: [elementary_check]
                 enabled: "{{ env_var('OURHIKE_ELEMENTARY_CHECKS', 'false') == 'true' }}"
         description: >
@@ -228,10 +276,13 @@ sources:
           - name: GlobalID
             data_tests:
               # WARN: the staging key falls back to OBJECTID where a row has
-              # no GlobalID, so a missing one is reported, not fatal.
-              - not_null:
-                  config:
-                    severity: warn
+              # no GlobalID, so a missing one is reported, not fatal. An
+              # error when no row has one (decision 204,
+              # tests/generic/rows_named.sql): the layer stopped serving it.
+              - rows_named:
+                  name: raw_atc__centerline_names_a_row_with_no_globalid
+                  arguments:
+                    named: "GlobalID is null"
               - unique
       - name: raw_atc__side_trails
         data_tests:
@@ -239,15 +290,21 @@ sources:
           - duplicates_are_exact:
               arguments:
                 key_columns: ["'side_trails'", "coalesce(globalid, cast(objectid as varchar))"]
-          # Elementary's checks (make_dbt_staging.py's raw_table_checks(), decision 102), each at warn.
+          # Elementary's checks (make_dbt_staging.py's raw_table_checks(), decision 102), each with its two thresholds (decision 204).
           - elementary.volume_anomalies:
               config:
-                severity: warn
+                severity: error
+                fail_calc: "{{ var('elementary_anomaly_level') }}"
+                warn_if: ">0"
+                error_if: ">1"
                 tags: [elementary_check]
                 enabled: "{{ env_var('OURHIKE_ELEMENTARY_CHECKS', 'false') == 'true' }}"
           - elementary.schema_changes:
               config:
-                severity: warn
+                severity: error
+                fail_calc: "{{ var('elementary_schema_change_level') }}"
+                warn_if: ">0"
+                error_if: ">1"
                 tags: [elementary_check]
                 enabled: "{{ env_var('OURHIKE_ELEMENTARY_CHECKS', 'false') == 'true' }}"
         description: >
@@ -259,10 +316,13 @@ sources:
           - name: GlobalID
             data_tests:
               # WARN: the staging key falls back to OBJECTID where a row has
-              # no GlobalID, so a missing one is reported, not fatal.
-              - not_null:
-                  config:
-                    severity: warn
+              # no GlobalID, so a missing one is reported, not fatal. An
+              # error when no row has one (decision 204,
+              # tests/generic/rows_named.sql): the layer stopped serving it.
+              - rows_named:
+                  name: raw_atc__side_trails_names_a_row_with_no_globalid
+                  arguments:
+                    named: "GlobalID is null"
               - unique
       - name: raw_atc__trail_club_sections
         data_tests:
@@ -270,15 +330,21 @@ sources:
           - duplicates_are_exact:
               arguments:
                 key_columns: ["'trail_club_sections'", "globalid"]
-          # Elementary's checks (make_dbt_staging.py's raw_table_checks(), decision 102), each at warn.
+          # Elementary's checks (make_dbt_staging.py's raw_table_checks(), decision 102), each with its two thresholds (decision 204).
           - elementary.volume_anomalies:
               config:
-                severity: warn
+                severity: error
+                fail_calc: "{{ var('elementary_anomaly_level') }}"
+                warn_if: ">0"
+                error_if: ">1"
                 tags: [elementary_check]
                 enabled: "{{ env_var('OURHIKE_ELEMENTARY_CHECKS', 'false') == 'true' }}"
           - elementary.schema_changes:
               config:
-                severity: warn
+                severity: error
+                fail_calc: "{{ var('elementary_schema_change_level') }}"
+                warn_if: ">0"
+                error_if: ">1"
                 tags: [elementary_check]
                 enabled: "{{ env_var('OURHIKE_ELEMENTARY_CHECKS', 'false') == 'true' }}"
         description: >
@@ -296,15 +362,21 @@ sources:
           - duplicates_are_exact:
               arguments:
                 key_columns: ["'half_mile_points_from_springer'", "point_id"]
-          # Elementary's checks (make_dbt_staging.py's raw_table_checks(), decision 102), each at warn.
+          # Elementary's checks (make_dbt_staging.py's raw_table_checks(), decision 102), each with its two thresholds (decision 204).
           - elementary.volume_anomalies:
               config:
-                severity: warn
+                severity: error
+                fail_calc: "{{ var('elementary_anomaly_level') }}"
+                warn_if: ">0"
+                error_if: ">1"
                 tags: [elementary_check]
                 enabled: "{{ env_var('OURHIKE_ELEMENTARY_CHECKS', 'false') == 'true' }}"
           - elementary.schema_changes:
               config:
-                severity: warn
+                severity: error
+                fail_calc: "{{ var('elementary_schema_change_level') }}"
+                warn_if: ">0"
+                error_if: ">1"
                 tags: [elementary_check]
                 enabled: "{{ env_var('OURHIKE_ELEMENTARY_CHECKS', 'false') == 'true' }}"
         description: >
@@ -324,15 +396,21 @@ sources:
           - duplicates_are_exact:
               arguments:
                 key_columns: ["'at_treadway'", "globalid"]
-          # Elementary's checks (make_dbt_staging.py's raw_table_checks(), decision 102), each at warn.
+          # Elementary's checks (make_dbt_staging.py's raw_table_checks(), decision 102), each with its two thresholds (decision 204).
           - elementary.volume_anomalies:
               config:
-                severity: warn
+                severity: error
+                fail_calc: "{{ var('elementary_anomaly_level') }}"
+                warn_if: ">0"
+                error_if: ">1"
                 tags: [elementary_check]
                 enabled: "{{ env_var('OURHIKE_ELEMENTARY_CHECKS', 'false') == 'true' }}"
           - elementary.schema_changes:
               config:
-                severity: warn
+                severity: error
+                fail_calc: "{{ var('elementary_schema_change_level') }}"
+                warn_if: ">0"
+                error_if: ">1"
                 tags: [elementary_check]
                 enabled: "{{ env_var('OURHIKE_ELEMENTARY_CHECKS', 'false') == 'true' }}"
         description: >
@@ -347,15 +425,21 @@ sources:
           - duplicates_are_exact:
               arguments:
                 key_columns: ["'reference/atc_updates.json'", "_row"]
-          # Elementary's checks (make_dbt_staging.py's raw_table_checks(), decision 102), each at warn.
+          # Elementary's checks (make_dbt_staging.py's raw_table_checks(), decision 102), each with its two thresholds (decision 204).
           - elementary.volume_anomalies:
               config:
-                severity: warn
+                severity: error
+                fail_calc: "{{ var('elementary_anomaly_level') }}"
+                warn_if: ">0"
+                error_if: ">1"
                 tags: [elementary_check]
                 enabled: "{{ env_var('OURHIKE_ELEMENTARY_CHECKS', 'false') == 'true' }}"
           - elementary.schema_changes:
               config:
-                severity: warn
+                severity: error
+                fail_calc: "{{ var('elementary_schema_change_level') }}"
+                warn_if: ">0"
+                error_if: ">1"
                 tags: [elementary_check]
                 enabled: "{{ env_var('OURHIKE_ELEMENTARY_CHECKS', 'false') == 'true' }}"
         config:
@@ -403,15 +487,21 @@ sources:
           - duplicates_are_exact:
               arguments:
                 key_columns: ["'reference/atc_updates.json'", "_path"]
-          # Elementary's checks (make_dbt_staging.py's raw_table_checks(), decision 102), each at warn.
+          # Elementary's checks (make_dbt_staging.py's raw_table_checks(), decision 102), each with its two thresholds (decision 204).
           - elementary.volume_anomalies:
               config:
-                severity: warn
+                severity: error
+                fail_calc: "{{ var('elementary_anomaly_level') }}"
+                warn_if: ">0"
+                error_if: ">1"
                 tags: [elementary_check]
                 enabled: "{{ env_var('OURHIKE_ELEMENTARY_CHECKS', 'false') == 'true' }}"
           - elementary.schema_changes:
               config:
-                severity: warn
+                severity: error
+                fail_calc: "{{ var('elementary_schema_change_level') }}"
+                warn_if: ">0"
+                error_if: ">1"
                 tags: [elementary_check]
                 enabled: "{{ env_var('OURHIKE_ELEMENTARY_CHECKS', 'false') == 'true' }}"
         config:
@@ -442,15 +532,21 @@ sources:
           - duplicates_are_exact:
               arguments:
                 key_columns: ["'atc_trail_updates'", "slug"]
-          # Elementary's checks (make_dbt_staging.py's raw_table_checks(), decision 102), each at warn.
+          # Elementary's checks (make_dbt_staging.py's raw_table_checks(), decision 102), each with its two thresholds (decision 204).
           - elementary.volume_anomalies:
               config:
-                severity: warn
+                severity: error
+                fail_calc: "{{ var('elementary_anomaly_level') }}"
+                warn_if: ">0"
+                error_if: ">1"
                 tags: [elementary_check]
                 enabled: "{{ env_var('OURHIKE_ELEMENTARY_CHECKS', 'false') == 'true' }}"
           - elementary.schema_changes:
               config:
-                severity: warn
+                severity: error
+                fail_calc: "{{ var('elementary_schema_change_level') }}"
+                warn_if: ">0"
+                error_if: ">1"
                 tags: [elementary_check]
                 enabled: "{{ env_var('OURHIKE_ELEMENTARY_CHECKS', 'false') == 'true' }}"
         config:
@@ -525,15 +621,21 @@ sources:
           - duplicates_are_exact:
               arguments:
                 key_columns: ["'reference/water_distance.json'", "atc_global_id"]
-          # Elementary's checks (make_dbt_staging.py's raw_table_checks(), decision 102), each at warn.
+          # Elementary's checks (make_dbt_staging.py's raw_table_checks(), decision 102), each with its two thresholds (decision 204).
           - elementary.volume_anomalies:
               config:
-                severity: warn
+                severity: error
+                fail_calc: "{{ var('elementary_anomaly_level') }}"
+                warn_if: ">0"
+                error_if: ">1"
                 tags: [elementary_check]
                 enabled: "{{ env_var('OURHIKE_ELEMENTARY_CHECKS', 'false') == 'true' }}"
           - elementary.schema_changes:
               config:
-                severity: warn
+                severity: error
+                fail_calc: "{{ var('elementary_schema_change_level') }}"
+                warn_if: ">0"
+                error_if: ">1"
                 tags: [elementary_check]
                 enabled: "{{ env_var('OURHIKE_ELEMENTARY_CHECKS', 'false') == 'true' }}"
         description: >

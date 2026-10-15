@@ -11,8 +11,10 @@ file holds, without dbt, that every source the rule covers carries it:
   measures from macros/last_read_or_confirmed_at.sql, never from
   `_loaded_at`, which a FRESH check leaves at its last load;
 - each errors after FRESHNESS_HOURS for its cadence, and a source whose
-  sources.json row says reaches_hikers false only warns, as
-  extract/_run.py's quiet_refusals() keeps its refusal from failing the run;
+  sources.json row says reaches_hikers false warns as they do and errors
+  only after generate_notice_models.py's UNSHIPPED_ERROR_DAYS (decision 204:
+  every test has both thresholds), as extract/_run.py's quiet_refusals()
+  keeps its refusal from failing the run;
   the one monthly notice source warns and errors after make_dbt_staging.py's
   MONTHLY_FRESHNESS_DAYS, as every monthly source does (decision 203,
   tests/test_source_freshness.py);
@@ -102,7 +104,7 @@ def test_every_generated_notice_source_measures_from_the_run_log_by_its_cadence(
         else:
             hours = generator.FRESHNESS_HOURS[source.cadence]
             quiet = (source.entry or {}).get("reaches_hikers") is False
-            expected = (hours[0], None if quiet else hours[1])
+            expected = (hours[0], generator.UNSHIPPED_ERROR_DAYS * 24 if quiet else hours[1])
         if (warn, error) != expected:
             problems.append(f"{source.table} ({source.cadence}): warns at {warn} h and errors at {error} h, not {expected}")
     assert problems == []

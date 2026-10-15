@@ -3,13 +3,12 @@ version: 2
 models:
   - name: base_nws__alerts
     data_tests:
-      # Says how many rows the dedupe dropped. Each is an exact copy
-      # (duplicates_are_exact on the raw table), so this only reports.
-      - dbt_utils.equal_rowcount:
+      # Warns when the dedupe dropped any row, each an exact copy
+      # (duplicates_are_exact on the raw table), and is an error once the
+      # copies are half the raw table (decision 204, the generic test's).
+      - equal_rowcount_to_raw:
           arguments:
             compare_model: source('nws', 'raw_nws__alerts')
-          config:
-            severity: warn
     description: >
       Every active NWS alert, keyed, with NWS's text and times as NWS wrote
       them. Read by int_warnings__nws_relayed.

@@ -20,13 +20,13 @@ models:
           arguments:
             expression: "not loses_too_many_points_outside_region"
       # The record of every stray point cleared, one warned row per layer
-      # that lost any, so a monthly run's log names the layers to look at.
-      - dbt_utils.expression_is_true:
+      # that lost any, so a monthly run's log names the layers to look at;
+      # an error when every layer lost one (decision 204,
+      # tests/generic/rows_named.sql), the boxes rather than the layers.
+      - rows_named:
           name: places_layer_had_a_point_cleared_outside_its_region
           arguments:
-            expression: "points_outside_region = 0"
-          config:
-            severity: warn
+            named: "points_outside_region <> 0"
     columns:
       - name: source_key
         description: The layer's sources.json key.

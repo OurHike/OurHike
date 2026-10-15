@@ -3,13 +3,11 @@ version: 2
 models:
   - name: base_atc__challenges_atc
     data_tests:
-      # Says how many rows the dedupe dropped, which for a key unique by
-      # construction is none.
-      - dbt_utils.equal_rowcount:
+      # Warns if the dedupe drops any row, which for a key unique by
+      # construction never happens.
+      - equal_rowcount_to_raw:
           arguments:
             compare_model: source('atc', 'raw_atc__challenges_atc')
-          config:
-            severity: warn
     description: >
       reference/challenges/atc/*.json, every file, keyed, each still the JSON
       its reviewer wrote. Read by stg_atc__challenges.

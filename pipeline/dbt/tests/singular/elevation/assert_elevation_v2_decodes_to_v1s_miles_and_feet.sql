@@ -7,6 +7,10 @@
 -- where it is in v1, so a DEM gap stays unknown and never becomes 0.
 -- Elevation and miles are safety fields (pipeline/ELT.md, "The eleven
 -- marts"), so any row fails the build. Returns no rows.
+-- A gate on a mart a hiker's safety reads (decision 204, dbt_project.yml's
+-- `marts:` gates): an error in every environment, so in production a
+-- failure holds the files below at their last good copy.
+{{ config(severity='error') }}
 with v1 as (
     select
         line_id,

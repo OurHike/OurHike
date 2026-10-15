@@ -3,13 +3,11 @@ version: 2
 models:
   - name: stg_derived__formed_routes
     data_tests:
-      # Says how many rows the dedupe dropped, which for a step that writes
-      # one row per hike is none.
-      - dbt_utils.equal_rowcount:
+      # Warns if the dedupe drops any row, which for a step that writes
+      # one row per hike never happens.
+      - equal_rowcount_to_raw:
           arguments:
             compare_model: source('derived', 'formed_routes')
-          config:
-            severity: warn
     description: >
       Each Hike Finder hike's route as step_form_route measured it over the
       junction graph, typed: a generated route formed from the description,

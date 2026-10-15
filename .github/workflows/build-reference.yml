@@ -126,6 +126,11 @@ jobs:
     # publish, confirm, parity and parity-report jobs.
     if: ${{ !inputs.retention_only }}
     runs-on: ubuntu-latest
+    # "true" when build_marts.py exited PARTIAL_EXIT (decision 204): the build
+    # step's own comment says what that is, and the publish and the last job
+    # read it.
+    outputs:
+      partial: ${{ steps.build-marts.outputs.partial }}
     # Measured on monthly run 29 (37726904273, the Actions API's step times),
     # the first build to go green: "Build the warehouse from the pin" 5.3 min,
     # build_marts.py 70 and storing the warehouse 5.8, so 81 of this job's
@@ -385,8 +390,26 @@ jobs:
       # the pin above, under the names dlt reads. A restore that fails, or an
       # empty prefix once row_history_stores.toml lists `monthly`, stops the
       # build before dbt runs, so no run silently dates every row as new.
+      #
+      # A FAILURE HOLDS WHAT IT REACHES AND THE REST PUBLISHES (decision 204,
+      # the maintainer, 2026-10-15: "prod environment should ignore those, dev
+      # & ci should not"; "Build as proposed", his poll answer the same day).
+      # OURHIKE_DATA_ENV=ua is UA's switch for dbt_project.yml and
+      # build_marts.py: a failing test warns and dbt builds below it, a test
+      # past its own error threshold is reported as an error, and a failure
+      # dbt still raises (a writer's test, a unit test, a contract, a test at
+      # `severity: error`, a step) holds what it reaches, so each writer below
+      # keeps its last file. build_marts.py then exits PARTIAL_EXIT, 5, as it
+      # does for decision 81's held source or failed writer. This step records
+      # `partial` and succeeds, "Publish to UA" keeps a failed writer's key
+      # at the bucket's last copy (OURHIKE_BUILD_PARTIAL), and the last job
+      # turns the run red after the publish, as publish-conditions.yml does.
+      # Until decision 204 an exit of 5 failed this step, and UA got no
+      # monthly release at all. Any other exit still stops the build.
       - name: dbt build, the Python steps and the pub_ writers (build_marts.py --lane monthly)
+        id: build-marts
         env:
+          OURHIKE_DATA_ENV: ua
           R2_RAW_BUCKET: ${{ secrets.R2_RAW_BUCKET }}
           DESTINATION__FILESYSTEM__CREDENTIALS__AWS_ACCESS_KEY_ID: ${{ secrets.R2_RAW_ACCESS_KEY_ID }}
           DESTINATION__FILESYSTEM__CREDENTIALS__AWS_SECRET_ACCESS_KEY: ${{ secrets.R2_RAW_SECRET_ACCESS_KEY }}
@@ -408,9 +431,17 @@ jobs:
         # int_places__resolved in 2 m 40 s, and neither has run out of memory
         # since (runs 26 and 27 stopped in int_places__resolved on a text error
         # instead, which 3c5102c2 catches).
-        run: >-
-          python build_marts.py --lane monthly --python "$RUNNER_TEMP/pipeline/bin/python"
-          --history-url "s3://$R2_RAW_BUCKET/history/monthly" --history-python "$RUNNER_TEMP/extract/bin/python"
+        run: |
+          set +e
+          python build_marts.py --lane monthly --python "$RUNNER_TEMP/pipeline/bin/python" \
+            --history-url "s3://$R2_RAW_BUCKET/history/monthly" --history-python "$RUNNER_TEMP/extract/bin/python"
+          status=$?
+          set -e
+          if [ "$status" -eq 5 ]; then
+            echo "partial=true" >> "$GITHUB_OUTPUT"
+          elif [ "$status" -ne 0 ]; then
+            exit "$status"
+          fi
 
       # DECISION 31's NEW-DATA REVIEW, THE WAREHOUSE'S HALF (pipeline/ELT.md,
       # "The go/no-go gate"): new_data_report.py counts what the marts carry
@@ -549,6 +580,10 @@ jobs:
           OURHIKE_DATA_ENV: ua
           OURHIKE_PHONE_FILES: dbt
           OURHIKE_RAW_RUN: ${{ inputs.raw_run }}
+          # "true" when the build exited PARTIAL_EXIT: publish.py then keeps a
+          # failed writer's key at the bucket's last copy, its file never
+          # read, rather than refusing the whole publish (decisions 81 and 204).
+          OURHIKE_BUILD_PARTIAL: ${{ needs.build.outputs.partial }}
           R2_ENDPOINT_URL: ${{ secrets.R2_ENDPOINT_URL }}
           R2_BUCKET: ${{ secrets.R2_BUCKET }}
           R2_ACCESS_KEY_ID: ${{ secrets.R2_ACCESS_KEY_ID }}
@@ -629,6 +664,22 @@ jobs:
               print(f"::error title=Not on UA::{key}: the build wrote {written[key]['sha256']}, UA names {(served.get(key) or {}).get('sha256')}")
           raise SystemExit(1 if wrong else 0)
           PY
+
+  # Last, after the publish, for decision 204: what the build held back did
+  # not hold back the files that were written, and the run still goes red for
+  # it. The build step's log names each failure and what it held, and the run
+  # summary lists them.
+  held-back:
+    name: Fail the run if the build held part of itself back
+    needs: [build, publish]
+    if: always() && needs.build.outputs.partial == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Fail the run if the build held part of itself back
+        run: |
+          echo "::error title=Part of the monthly build held back::build_marts.py exited 5: a test past its error threshold, a source the gate held, a failed writer, or a failure that held what it reaches (decision 204), and everything else was published to UA. The build step's log and the run summary name each one; a held writer's file keeps its last published copy."
+          exit 1
 
   parity:
     name: Parity with today's exporters, on the pinned inputs (${{ matrix.group }})

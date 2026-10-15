@@ -59,7 +59,10 @@ models:
                   arguments:
                     column_anomalies: [null_percent, min, max]
                   config:
-                    severity: warn
+                    severity: error
+                    fail_calc: "{{ var('elementary_anomaly_level') }}"
+                    warn_if: ">0"
+                    error_if: ">1"
                     tags: [elementary_check]
                     enabled: "{{ env_var('OURHIKE_ELEMENTARY_CHECKS', 'false') == 'true' }}"
         # The key is v1's line_sample_key, included above with its unique
@@ -90,31 +93,40 @@ models:
           # Elementary 0.26.0 check them on dbt 2.0.6 (v1's comment says why).
           - elementary.volume_anomalies:
               config:
-                severity: warn
+                severity: error
+                fail_calc: "{{ var('elementary_anomaly_level') }}"
+                warn_if: ">0"
+                error_if: ">1"
                 tags: [elementary_check]
                 enabled: "{{ env_var('OURHIKE_ELEMENTARY_CHECKS', 'false') == 'true' }}"
           - elementary.dimension_anomalies:
               arguments:
                 dimensions: [club, source_key]
               config:
-                severity: warn
+                severity: error
+                fail_calc: "{{ var('elementary_anomaly_level') }}"
+                warn_if: ">0"
+                error_if: ">1"
                 tags: [elementary_check]
                 enabled: "{{ env_var('OURHIKE_ELEMENTARY_CHECKS', 'false') == 'true' }}"
           - elementary.all_columns_anomalies:
               arguments:
                 column_anomalies: [null_percent]
               config:
-                severity: warn
+                severity: error
+                fail_calc: "{{ var('elementary_anomaly_level') }}"
+                warn_if: ">0"
+                error_if: ">1"
                 tags: [elementary_check]
                 enabled: "{{ env_var('OURHIKE_ELEMENTARY_CHECKS', 'false') == 'true' }}"
           - elementary.exposure_schema_validity:
               config:
-                severity: warn
+                severity: error
                 tags: [elementary_check]
                 enabled: "{{ env_var('OURHIKE_ELEMENTARY_CHECKS', 'false') == 'true' }}"
     data_tests:
       # Elementary's checks (decision 102; pipeline/ELT.md, "The checks, and
-      # where each goes"), each at warn and run by build_marts.py after the
+      # where each goes"), each with its two thresholds (decision 204) and run by build_marts.py after the
       # writers: the samples at each build; the samples per club and source,
       # so one club's line vanishing cannot hide inside the total; and each
       # column's null rate (no geometry and no long text here). The
@@ -125,21 +137,30 @@ models:
       # nothing here.
       - elementary.volume_anomalies:
           config:
-            severity: warn
+            severity: error
+            fail_calc: "{{ var('elementary_anomaly_level') }}"
+            warn_if: ">0"
+            error_if: ">1"
             tags: [elementary_check]
             enabled: "{{ env_var('OURHIKE_ELEMENTARY_CHECKS', 'false') == 'true' }}"
       - elementary.dimension_anomalies:
           arguments:
             dimensions: [club, source_key]
           config:
-            severity: warn
+            severity: error
+            fail_calc: "{{ var('elementary_anomaly_level') }}"
+            warn_if: ">0"
+            error_if: ">1"
             tags: [elementary_check]
             enabled: "{{ env_var('OURHIKE_ELEMENTARY_CHECKS', 'false') == 'true' }}"
       - elementary.all_columns_anomalies:
           arguments:
             column_anomalies: [null_percent]
           config:
-            severity: warn
+            severity: error
+            fail_calc: "{{ var('elementary_anomaly_level') }}"
+            warn_if: ">0"
+            error_if: ">1"
             tags: [elementary_check]
             enabled: "{{ env_var('OURHIKE_ELEMENTARY_CHECKS', 'false') == 'true' }}"
       # One row per (line_id, seq) is line_sample_key's unique test
@@ -241,12 +262,15 @@ models:
                 min_value: -300
                 max_value: 20500
           # A safety column (decision 102): its null rate, lowest and highest
-          # sample against the builds before, at warn.
+          # sample against the builds before, with its two thresholds (decision 204).
           - elementary.column_anomalies:
               arguments:
                 column_anomalies: [null_percent, min, max]
               config:
-                severity: warn
+                severity: error
+                fail_calc: "{{ var('elementary_anomaly_level') }}"
+                warn_if: ">0"
+                error_if: ">1"
                 tags: [elementary_check]
                 enabled: "{{ env_var('OURHIKE_ELEMENTARY_CHECKS', 'false') == 'true' }}"
       - name: elevation_m
@@ -307,13 +331,15 @@ models:
         data_tests:
           - not_null:
               config:
-                # warn only on a leg build_marts.py built without its history,
-                # where both dates are null and the run is red already.
-                severity: "{{ 'warn' if env_var('OURHIKE_ROW_HISTORY', 'on') == 'off' else 'error' }}"
+                # warn on a leg build_marts.py built without its history,
+                # where both dates are null and the run is red already, and
+                # in production and UA, where build_marts.py reports a
+                # failure as an error unless the history is off (decision 204).
+                severity: "{{ 'warn' if env_var('OURHIKE_ROW_HISTORY', 'on') == 'off' or env_var('OURHIKE_DATA_ENV', 'dev') in ['production', 'ua'] else 'error' }}"
       - name: _changed_at
         description: "{{ doc('row_changed_at') }}"
         data_type: timestamptz
         data_tests:
           - not_null:
               config:
-                severity: "{{ 'warn' if env_var('OURHIKE_ROW_HISTORY', 'on') == 'off' else 'error' }}"
+                severity: "{{ 'warn' if env_var('OURHIKE_ROW_HISTORY', 'on') == 'off' or env_var('OURHIKE_DATA_ENV', 'dev') in ['production', 'ua'] else 'error' }}"

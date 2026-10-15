@@ -1435,6 +1435,18 @@ jobs:
       # and publishes every file that was written, and the last step below
       # turns the run red, as the extract's exit 3 does. 6 is both 4 and 5.
       #
+      # DECISION 204 WIDENS THAT TO EVERY FAILURE (the maintainer, 2026-10-15:
+      # "prod environment should ignore those, dev & ci should not"; "Build
+      # as proposed", his poll answer the same day). OURHIKE_DATA_ENV, this
+      # leg's own name, is the switch dbt_project.yml and build_marts.py both
+      # read: in production and UA a failing test warns and dbt builds below
+      # it, a test past its own error threshold is reported as an error, and
+      # a failure dbt still raises (a writer's test, a unit test, a contract,
+      # a test at `severity: error`, a step) holds only what it reaches, so
+      # each writer below keeps its last file and every other hourly file
+      # publishes. Each of these is PARTIAL_EXIT too. Until decision 204 any
+      # failure in stage A but one source's own stopped the hour.
+      #
       # `--no-history-save` when step 2b did not add the newest notices copy:
       # the history is restored and the build dates rows from it, but nothing
       # is saved, so a notice this build lacks is never closed in the history
@@ -1475,6 +1487,7 @@ jobs:
         timeout-minutes: 10
         env:
           ENVIRONMENT: ${{ matrix.data_environment }}
+          OURHIKE_DATA_ENV: ${{ matrix.data_environment }}
           R2_RAW_BUCKET: ${{ secrets.R2_RAW_BUCKET }}
           DESTINATION__FILESYSTEM__CREDENTIALS__AWS_ACCESS_KEY_ID: ${{ secrets.R2_RAW_ACCESS_KEY_ID }}
           DESTINATION__FILESYSTEM__CREDENTIALS__AWS_SECRET_ACCESS_KEY: ${{ secrets.R2_RAW_SECRET_ACCESS_KEY }}
@@ -1751,7 +1764,7 @@ jobs:
       - name: Fail the run if the build held a source or a writer back (dbt path)
         if: steps.build.outputs.partial == 'true'
         run: |
-          echo "::error title=Part of the build held back::The build held back a source for its rows or its own failed model, a writer that failed, a table the extract withdrew, or Elementary's history, which failed to restore or save while the row history did not (decision 102), and published everything else. The build step's log names each one and why; a held source carries its last good rows and a failed writer's file keeps its last published copy."
+          echo "::error title=Part of the build held back::The build held back a source for its rows or its own failed model, a writer that failed, a table the extract withdrew, Elementary's history, which failed to restore or save while the row history did not (decision 102), a test past its error threshold, or a failure that held what it reaches (decision 204), and published everything else. The build step's log and the run summary name each one and why; a held source carries its last good rows and a held or failed writer's file keeps its last published copy."
           exit 1
 
       # Last for the same reason: the closures and warnings files published

@@ -3,13 +3,12 @@ version: 2
 models:
   - name: base_ourhike__closures
     data_tests:
-      # Says how many rows the dedupe dropped. Each is an exact copy
-      # (duplicates_are_exact on the raw table), so this only reports.
-      - dbt_utils.equal_rowcount:
+      # Warns when the dedupe dropped any row, each an exact copy
+      # (duplicates_are_exact on the raw table), and is an error once the
+      # copies are half the raw table (decision 204, the generic test's).
+      - equal_rowcount_to_raw:
           arguments:
             compare_model: source('ourhike', 'raw_ourhike__closures')
-          config:
-            severity: warn
     description: >
       OurHike's moderator-verified closures, keyed, every column
       PUBLIC_CLOSURES_SQL selects. Read by int_closures__ourhike_checked.
@@ -28,11 +27,9 @@ models:
         description: Always `verified`, by the query; int_closures__ourhike_checked holds it to that.
   - name: base_ourhike__reports
     data_tests:
-      - dbt_utils.equal_rowcount:
+      - equal_rowcount_to_raw:
           arguments:
             compare_model: source('ourhike', 'raw_ourhike__reports')
-          config:
-            severity: warn
     description: >
       OurHike's public reports, keyed, every severity, every column
       PUBLIC_REPORTS_SQL selects. pub_conditions_reports writes all of them
@@ -55,11 +52,9 @@ models:
         description: normal or serious (app/models/report.py's Severity).
   - name: base_ourhike__notes
     data_tests:
-      - dbt_utils.equal_rowcount:
+      - equal_rowcount_to_raw:
           arguments:
             compare_model: source('ourhike', 'raw_ourhike__notes')
-          config:
-            severity: warn
     description: >
       OurHike's visible field notes, keyed. Public because the
       conditions/notes.json exposure names it: export_conditions.py still
@@ -110,11 +105,9 @@ models:
         data_type: varchar
   - name: base_ourhike__disputes
     data_tests:
-      - dbt_utils.equal_rowcount:
+      - equal_rowcount_to_raw:
           arguments:
             compare_model: source('ourhike', 'raw_ourhike__disputes')
-          config:
-            severity: warn
     description: >
       The places field notes say are gone, as account counts, keyed. Public
       because the conditions/disputes.json exposure names it:

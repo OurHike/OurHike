@@ -339,23 +339,25 @@ def test_every_category_label_is_for_the_field_its_source_stages_as_its_category
         assert row["label"] != row["code"], row
 
 
-def test_a_conflicting_key_holds_its_source_and_never_stops_the_build(files):
-    """Every club notice source's exactness test warns, and the gate holds the source instead.
+def test_a_conflicting_key_holds_its_source_and_stops_no_production_build(files):
+    """Every club notice source's exactness test takes the project's switch, and the gate holds the source.
 
     A failing test on a raw table skips everything downstream of it, every
     conditions file included, so one club's conflicting rows would stop ATC's,
-    NYNJTC's and NWS's too. The base model counts the conflict itself with the
-    hash the test compares, the staging model carries the count, and
-    int_closures__gate holds the source on it (its unit test
-    int_closures__gate_reads_its_sources_from_the_registry_and_the_run_log has
-    the case).
+    NYNJTC's and NWS's too. So the test sets no severity of its own (decision
+    204: dbt_project.yml's switch makes it a warning in production and UA,
+    reported as an error, and an error in dev and CI), the base model counts
+    the conflict itself with the hash the test compares, the staging model
+    carries the count, and int_closures__gate holds the source on it (its unit
+    test int_closures__gate_reads_its_sources_from_the_registry_and_the_run_log
+    has the case).
     """
     for path, text in files.items():
         if path.name.endswith("__sources.yml"):
             for source in yaml.safe_load(text)["sources"]:
                 for table in source["tables"]:
                     (test,) = [t["duplicates_are_exact"] for t in table["data_tests"] if "duplicates_are_exact" in t]
-                    assert test["config"]["severity"] == "warn", table["name"]
+                    assert "severity" not in (test.get("config") or {}), table["name"]
         elif path.name.startswith("base_"):
             version = re.search(r"notice_row_version\(\s*source\(\s*'[a-z0-9_]+',\s*'([a-z0-9_]+)'\s*\)\s*\)", text)
             assert version, f"{path.name} does not hash its raw rows with notice_row_version()"

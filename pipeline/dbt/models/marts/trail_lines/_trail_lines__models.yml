@@ -63,14 +63,20 @@ models:
           # on dbt 2.0.6 (v1's comment says why).
           - elementary.volume_anomalies:
               config:
-                severity: warn
+                severity: error
+                fail_calc: "{{ var('elementary_anomaly_level') }}"
+                warn_if: ">0"
+                error_if: ">1"
                 tags: [elementary_check]
                 enabled: "{{ env_var('OURHIKE_ELEMENTARY_CHECKS', 'false') == 'true' }}"
           - elementary.dimension_anomalies:
               arguments:
                 dimensions: [club, source_key]
               config:
-                severity: warn
+                severity: error
+                fail_calc: "{{ var('elementary_anomaly_level') }}"
+                warn_if: ">0"
+                error_if: ">1"
                 tags: [elementary_check]
                 enabled: "{{ env_var('OURHIKE_ELEMENTARY_CHECKS', 'false') == 'true' }}"
           - elementary.all_columns_anomalies:
@@ -78,17 +84,20 @@ models:
                 column_anomalies: [null_percent]
                 exclude_regexp: "^(geom_geojson|vertex_milli_miles)$"
               config:
-                severity: warn
+                severity: error
+                fail_calc: "{{ var('elementary_anomaly_level') }}"
+                warn_if: ">0"
+                error_if: ">1"
                 tags: [elementary_check]
                 enabled: "{{ env_var('OURHIKE_ELEMENTARY_CHECKS', 'false') == 'true' }}"
           - elementary.exposure_schema_validity:
               config:
-                severity: warn
+                severity: error
                 tags: [elementary_check]
                 enabled: "{{ env_var('OURHIKE_ELEMENTARY_CHECKS', 'false') == 'true' }}"
     data_tests:
       # Elementary's checks (decision 102; pipeline/ELT.md, "The checks, and
-      # where each goes"), each at warn and run by build_marts.py after the
+      # where each goes"), each with its two thresholds (decision 204) and run by build_marts.py after the
       # writers: the rows at each build; the rows per club and source, so one
       # club's layer vanishing cannot hide inside the national total; and each
       # column's null rate, the geometry and its per-vertex miles left out.
@@ -99,14 +108,20 @@ models:
       # measured 2026-10-08), so it could check nothing here.
       - elementary.volume_anomalies:
           config:
-            severity: warn
+            severity: error
+            fail_calc: "{{ var('elementary_anomaly_level') }}"
+            warn_if: ">0"
+            error_if: ">1"
             tags: [elementary_check]
             enabled: "{{ env_var('OURHIKE_ELEMENTARY_CHECKS', 'false') == 'true' }}"
       - elementary.dimension_anomalies:
           arguments:
             dimensions: [club, source_key]
           config:
-            severity: warn
+            severity: error
+            fail_calc: "{{ var('elementary_anomaly_level') }}"
+            warn_if: ">0"
+            error_if: ">1"
             tags: [elementary_check]
             enabled: "{{ env_var('OURHIKE_ELEMENTARY_CHECKS', 'false') == 'true' }}"
       - elementary.all_columns_anomalies:
@@ -114,7 +129,10 @@ models:
             column_anomalies: [null_percent]
             exclude_regexp: "^(geom_geojson|vertex_miles)$"
           config:
-            severity: warn
+            severity: error
+            fail_calc: "{{ var('elementary_anomaly_level') }}"
+            warn_if: ">0"
+            error_if: ">1"
             tags: [elementary_check]
             enabled: "{{ env_var('OURHIKE_ELEMENTARY_CHECKS', 'false') == 'true' }}"
       # ELT.md, "Geometry rules every mart obeys": GeoJSON text cannot carry
@@ -147,13 +165,13 @@ models:
       # with fewer than two distinct vertices is invalid, and both keep a
       # source line that arrives that way rather than drop it
       # (export_trails.simplify_records' never-drop rule), so one such line
-      # is reported rather than allowed to hold every line back.
-      - dbt_utils.expression_is_true:
+      # is reported rather than allowed to hold every line back. An error
+      # when every line is invalid (decision 204,
+      # tests/generic/rows_named.sql): the geometry reader, not one line.
+      - rows_named:
           name: trail_lines_geometries_are_valid
           arguments:
-            expression: "st_isvalid(st_geomfromgeojson(geom_geojson))"
-          config:
-            severity: warn
+            named: "not st_isvalid(st_geomfromgeojson(geom_geojson))"
       # A status and the basis it rests on come together: a stated one, or
       # the default a layer with no status column ships (TL10), which is a
       # default and not a finding.
@@ -369,13 +387,16 @@ models:
               arguments:
                 values: [open, closed]
           # A safety column (decision 102): its null rate against the builds
-          # before, at warn. Elementary's minimum and maximum are numeric
+          # before, with its two thresholds (decision 204). Elementary's minimum and maximum are numeric
           # monitors only (0.26.0's get_available_monitors()).
           - elementary.column_anomalies:
               arguments:
                 column_anomalies: [null_percent]
               config:
-                severity: warn
+                severity: error
+                fail_calc: "{{ var('elementary_anomaly_level') }}"
+                warn_if: ">0"
+                error_if: ">1"
                 tags: [elementary_check]
                 enabled: "{{ env_var('OURHIKE_ELEMENTARY_CHECKS', 'false') == 'true' }}"
       - name: trail_status_basis
@@ -513,13 +534,15 @@ models:
         data_tests:
           - not_null:
               config:
-                # warn only on a leg build_marts.py built without its history,
-                # where both dates are null and the run is red already.
-                severity: "{{ 'warn' if env_var('OURHIKE_ROW_HISTORY', 'on') == 'off' else 'error' }}"
+                # warn on a leg build_marts.py built without its history,
+                # where both dates are null and the run is red already, and
+                # in production and UA, where build_marts.py reports a
+                # failure as an error unless the history is off (decision 204).
+                severity: "{{ 'warn' if env_var('OURHIKE_ROW_HISTORY', 'on') == 'off' or env_var('OURHIKE_DATA_ENV', 'dev') in ['production', 'ua'] else 'error' }}"
       - name: _changed_at
         description: "{{ doc('row_changed_at') }}"
         data_type: timestamptz
         data_tests:
           - not_null:
               config:
-                severity: "{{ 'warn' if env_var('OURHIKE_ROW_HISTORY', 'on') == 'off' else 'error' }}"
+                severity: "{{ 'warn' if env_var('OURHIKE_ROW_HISTORY', 'on') == 'off' or env_var('OURHIKE_DATA_ENV', 'dev') in ['production', 'ua'] else 'error' }}"

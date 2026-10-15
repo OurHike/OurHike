@@ -163,11 +163,12 @@ models:
     data_tests:
       # Warns: dbt prints only a row count, so the model's post-hook logs
       # the rows, and int_places__final leaves them out (macros/storable_text.sql).
-      - dbt_utils.expression_is_true:
+      # An error when every row holds such text (decision 204,
+      # tests/generic/rows_named.sql): the reader, not one place's text.
+      - rows_named:
+          name: int_places__resolved_stores_its_text
           arguments:
-            expression: "broken_text is null"
-          config:
-            severity: warn
+            named: "broken_text is not null"
     columns:
       - name: place_id
         description: The published `id`; null only on a row whose id DuckDB could not store (broken_text).

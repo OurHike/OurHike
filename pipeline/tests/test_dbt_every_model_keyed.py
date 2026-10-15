@@ -15,8 +15,12 @@ on its own:
 
 "Unfiltered at error" is a test that fails the build on its first failing row: dbt's own
 `unique` or `not_null` generic test (macro.dbt.test_unique, macro.dbt.test_not_null), no
-`where`, severity error, and dbt's default `error_if` and `fail_calc`. A `where` or a threshold
-lets some duplicates through, which is no key.
+`where`, severity error, dbt's default `fail_calc`, and no tolerance in either threshold: dbt's
+default `!= 0`, or `>0`, which dbt_project.yml declares for every test since decision 204. A
+`where` or a threshold above that lets some duplicates through, which is no key. The severity
+is read as dev and CI parse it, with OURHIKE_DATA_ENV unset, where decision 204's switch makes
+it error; in production and UA the same switch makes a failing key test a warning that
+build_marts.py reports as an error, and the build goes on.
 
 WHY dbt_project_evaluator IS NOT ENOUGH. Its fct_missing_primary_key_tests reads neither a test's
 severity nor its `where` (int_model_test_summary.sql, 1.4.0), and its default
@@ -68,14 +72,18 @@ def model_name(node: dict) -> str:
     return f"{node['name']}.v{node['version']}" if node.get("version") is not None else node["name"]
 
 
+#: A threshold with no tolerance, spaces aside: dbt's default, and decision 204's form (dbt_project.yml).
+NO_TOLERANCE = frozenset({"!=0", ">0", ">=1", "<>0"})
+
+
 def _is(test: dict, severity: str) -> bool:
-    """Unfiltered at `severity`, failing on its first failing row: no `where`, dbt's default thresholds."""
+    """Unfiltered at `severity`, failing on its first failing row: no `where`, no tolerance in either threshold."""
     config = test.get("config") or {}
     return (
         not config.get("where")
         and str(config.get("severity", "error")).lower() == severity
-        and config.get("error_if", "!= 0") == "!= 0"
-        and config.get("warn_if", "!= 0") == "!= 0"
+        and "".join(str(config.get("error_if", "!= 0")).split()) in NO_TOLERANCE
+        and "".join(str(config.get("warn_if", "!= 0")).split()) in NO_TOLERANCE
         and config.get("fail_calc", "count(*)") == "count(*)"
     )
 
@@ -239,6 +247,16 @@ def test_a_threshold_that_lets_failing_rows_through_makes_no_key():
     assert check(_manifest(model, *tests), [])["unkeyed"] == ["pub_example"]
 
 
+def test_decision_204s_declared_zero_tolerance_is_still_a_key():
+    """dbt_project.yml writes every test's thresholds as `>0`, which fails on the first row as dbt's `!= 0` does."""
+    model = _model("pub_example")
+    tests = [
+        _test("unique", model[0], "id", error_if=">0", warn_if=">0"),
+        _test("not_null", model[0], "id", error_if="> 0", warn_if=">0"),
+    ]
+    assert check(_manifest(model, *tests), [])["keyed"] == ["pub_example"]
+
+
 def test_a_key_at_warn_fails_unless_a_row_records_it_at_warn():
     model = _model("int_closures__area_trail_cuts")
     tests = [
@@ -301,7 +319,7 @@ def manifest(tmp_path_factory) -> dict:
     """The project as dbt parses it now, into a directory of its own."""
     root = tmp_path_factory.mktemp("keyed_manifest")
     env = {
-        **os.environ,
+        **{name: value for name, value in os.environ.items() if name != "OURHIKE_DATA_ENV"},
         "DBT_ENGINE_SEND_ANONYMOUS_USAGE_STATS": "false",
         "OURHIKE_WAREHOUSE": str(root / "warehouse.duckdb"),
         "OURHIKE_PROCESSED_DIR": str(root / "processed"),

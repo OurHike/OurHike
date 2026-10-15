@@ -110,9 +110,84 @@ seeds:
 #   DBT_PROJECT_EVALUATOR_SEVERITY=warn dbt build -s package:dbt_project_evaluator
 # Not a global --warn-error, which would also escalate dbt's deprecation
 # warnings and every deliberate `warn`, such as source freshness.
+#
+# EVERY TEST'S TWO THRESHOLDS, AND WHO STOPS ON AN ERROR (decision 204, the
+# maintainer, 2026-10-15: "Every test should have both the warning and error
+# thresholds. If an error like freshness would prevent building the model,
+# then that should be enabled/disabled based on the environment. prod
+# environment should ignore those, dev & ci should not."; "Build as
+# proposed", his poll answer the same day).
+# - Every test declares `warn_if` and `error_if`. The default here is no
+#   tolerance: one failing row warns and is an error, which is what dbt's
+#   implicit `!= 0` meant before, now written down. A kind with a natural
+#   tolerance declares its own pair in its YAML or its generic test's
+#   config() (tests/test_dbt_test_thresholds.py holds every test to a pair in
+#   the `>N` form). Written `>0`, never dbt's `!= 0`, so a manifest tells a
+#   declared threshold from dbt's default.
+# - `severity` is the one switch, OURHIKE_DATA_ENV (lib/data_env.py's names).
+#   With `production` or `ua` a failing test warns, so `dbt build` builds what
+#   is below it, and build_marts.py and macros/data_quality.sql report every
+#   warning past its own error_if as an error, red after the publish. Unset
+#   (dev, CI, scripts/test.sh) or anything else, it is an error, and dbt
+#   skips everything below it. Measured on dbt 2.0.6 in a scratch project
+#   (2026-10-15): a failing error test skipped every model below its model;
+#   at warn, the same failure built them, and kept its row count in
+#   run_results.json; under warn, error_if is not evaluated.
+# - The pub_ writers' tests stay errors everywhere (`publish:` below): a
+#   writer is built before its tests run, and a failure removes that one
+#   phone file, which keeps the bucket's last copy (decision 81), where the
+#   switch would publish it.
+# - So do the tests outside publish/ whose own YAML or config() sets
+#   `severity: error`: 30 YAML entries and 14 singular tests (counted
+#   2026-10-15), most of them the invariants a hiker's safety turns on in the points_of_interest,
+#   places, trail_lines and elevation marts (a mile only on the A.T., a
+#   capacity absent or at least 1, a water distance never without its
+#   source), and Elementary's checks (make_dbt_staging.py's
+#   ELEMENTARY_ANOMALY_LEVEL). Each such test holds what it reaches until
+#   somebody looks: in production build_marts.py builds on past it and every
+#   writer below keeps its last published file. The checks run in a `dbt
+#   test` of their own after the writers, which skips nothing, and their
+#   exit stops dev and CI only (build_marts.py).
+# - So do the tests of the six marts a hiker's safety reads (`marts:`
+#   below): closures and warnings (in front of something dangerous), the
+#   points of interest (out of water), elevation (whether a hiker beats the
+#   dark), and the trail lines and network (lost), CLAUDE.md's four harms.
+#   That is the maintainer's "the safety writers get tests of their own"
+#   (decision 204's poll, "Build as proposed"), built as gates rather than as
+#   tests of the writers' JSON: the switch lets a failing test publish what
+#   is below it, and below these marts are phone files whose values a
+#   hiker's safety turns on, so a failure here holds those files at their
+#   last good copy (build_marts.py) and every other file publishes. A test
+#   there that holds a source (decision 81's region tests) keeps the switch
+#   in its own YAML, as its hold needs a warning. Counted 2026-10-15: 13
+#   singular tests read those marts at zero tolerance, each gated in its own
+#   config().
+# A test's own YAML wins over all of this, and a generic test's config()
+# over the defaults here (measured the same day).
 data_tests:
+  ourhike:
+    +severity: "{{ 'warn' if env_var('OURHIKE_DATA_ENV', 'dev') in ['production', 'ua'] else 'error' }}"
+    +warn_if: ">0"
+    +error_if: ">0"
+    publish:
+      +severity: error
+    marts:
+      closures:
+        +severity: error
+      warnings:
+        +severity: error
+      points_of_interest:
+        +severity: error
+      elevation:
+        +severity: error
+      trail_lines:
+        +severity: error
+      trail_network:
+        +severity: error
   dbt_project_evaluator:
     +severity: "{{ env_var('DBT_PROJECT_EVALUATOR_SEVERITY', 'error') }}"
+    +warn_if: ">0"
+    +error_if: ">0"
 
 vars:
   # Elementary keeps up to 5 failing rows per test by default (0.26.0's
@@ -175,6 +250,21 @@ vars:
   days_back: 14
   backfill_days: 2
   anomaly_sensitivity: 3
+  # ELEMENTARY'S CHECKS' TWO THRESHOLDS (decision 204), the `fail_calc` of
+  # every check, written here once because a YAML config renders var() and no
+  # project macro (make_dbt_staging.py's ELEMENTARY_ANOMALY_LEVEL says what
+  # each level is and what it was measured on). With `warn_if: ">0"` and
+  # `error_if: ">1"`: an anomaly check warns where Elementary flagged a point
+  # and is an error where that point is also past 6 deviations and more than
+  # 50% from its training average (both @unvalidated, the first season's
+  # errors settle them); a schema change warns for an added column and is an
+  # error for a removed or retyped one, read off `test_sub_type`, the name
+  # 0.26.0's get_columns_changes_query_generic() gives the change in the rows
+  # its test returns. Measured 2026-10-15 in a scratch project on dbt 2.0.6
+  # and Elementary 0.26.0: the same model built three times scored 0 (pass),
+  # then 1 (warn) with a column added, then 2 (error) with one removed.
+  elementary_anomaly_level: "coalesce(max(case when is_anomalous and abs(anomaly_score) > 6 and abs(metric_value - training_avg) > 0.5 * abs(training_avg) then 2 when is_anomalous then 1 else 0 end), 0)"
+  elementary_schema_change_level: "coalesce(max(case when test_sub_type in ('column_removed', 'type_changed') then 2 else 1 end), 0)"
 
   # Where the pub_ writers write, relative to pipeline/dbt/. A folder of its
   # own under data/processed/ while each family's Python writer still runs:

@@ -28,7 +28,7 @@ models:
         defined_in: podcasts
     data_tests:
       # Elementary's checks (decision 102; pipeline/ELT.md, "The checks, and
-      # where each goes"), each at warn and run by build_marts.py after the
+      # where each goes"), each with its two thresholds (decision 204) and run by build_marts.py after the
       # writers: the episodes at each build; the episodes per club and source,
       # so one show vanishing cannot hide inside the total; each column's null
       # rate (no geometry and no long text here); and the columns
@@ -37,26 +37,35 @@ models:
       # this mart (points_of_interest's comment says why more could not be).
       - elementary.volume_anomalies:
           config:
-            severity: warn
+            severity: error
+            fail_calc: "{{ var('elementary_anomaly_level') }}"
+            warn_if: ">0"
+            error_if: ">1"
             tags: [elementary_check]
             enabled: "{{ env_var('OURHIKE_ELEMENTARY_CHECKS', 'false') == 'true' }}"
       - elementary.dimension_anomalies:
           arguments:
             dimensions: [club, source_key]
           config:
-            severity: warn
+            severity: error
+            fail_calc: "{{ var('elementary_anomaly_level') }}"
+            warn_if: ">0"
+            error_if: ">1"
             tags: [elementary_check]
             enabled: "{{ env_var('OURHIKE_ELEMENTARY_CHECKS', 'false') == 'true' }}"
       - elementary.all_columns_anomalies:
           arguments:
             column_anomalies: [null_percent]
           config:
-            severity: warn
+            severity: error
+            fail_calc: "{{ var('elementary_anomaly_level') }}"
+            warn_if: ">0"
+            error_if: ">1"
             tags: [elementary_check]
             enabled: "{{ env_var('OURHIKE_ELEMENTARY_CHECKS', 'false') == 'true' }}"
       - elementary.exposure_schema_validity:
           config:
-            severity: warn
+            severity: error
             tags: [elementary_check]
             enabled: "{{ env_var('OURHIKE_ELEMENTARY_CHECKS', 'false') == 'true' }}"
     columns:
@@ -140,13 +149,15 @@ models:
         data_tests:
           - not_null:
               config:
-                # warn only on a leg build_marts.py built without its history,
-                # where both dates are null and the run is red already.
-                severity: "{{ 'warn' if env_var('OURHIKE_ROW_HISTORY', 'on') == 'off' else 'error' }}"
+                # warn on a leg build_marts.py built without its history,
+                # where both dates are null and the run is red already, and
+                # in production and UA, where build_marts.py reports a
+                # failure as an error unless the history is off (decision 204).
+                severity: "{{ 'warn' if env_var('OURHIKE_ROW_HISTORY', 'on') == 'off' or env_var('OURHIKE_DATA_ENV', 'dev') in ['production', 'ua'] else 'error' }}"
       - name: _changed_at
         description: "{{ doc('row_changed_at') }}"
         data_type: timestamptz
         data_tests:
           - not_null:
               config:
-                severity: "{{ 'warn' if env_var('OURHIKE_ROW_HISTORY', 'on') == 'off' else 'error' }}"
+                severity: "{{ 'warn' if env_var('OURHIKE_ROW_HISTORY', 'on') == 'off' or env_var('OURHIKE_DATA_ENV', 'dev') in ['production', 'ua'] else 'error' }}"

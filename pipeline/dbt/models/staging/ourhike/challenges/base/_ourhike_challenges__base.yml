@@ -3,13 +3,11 @@ version: 2
 models:
   - name: base_ourhike__challenges_publishers
     data_tests:
-      # Says how many rows the dedupe dropped, which for the one row of a
-      # file is none.
-      - dbt_utils.equal_rowcount:
+      # Warns if the dedupe drops any row, which for the one row of a
+      # file never happens.
+      - equal_rowcount_to_raw:
           arguments:
             compare_model: source('ourhike', 'raw_ourhike__challenges_publishers')
-          config:
-            severity: warn
     description: >
       reference/challenges/publishers.json whole, as its one row, keyed:
       where int_challenges__publishers reads which trails each organization

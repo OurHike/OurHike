@@ -3,13 +3,12 @@ version: 2
 models:
   - name: base_njgin__nj_statewide_trails
     data_tests:
-      # Says how many rows the dedupe dropped. Each is an exact copy
-      # (duplicates_are_exact on the raw table), so this only reports.
-      - dbt_utils.equal_rowcount:
+      # Warns when the dedupe dropped any row, each an exact copy
+      # (duplicates_are_exact on the raw table), and is an error once the
+      # copies are half the raw table (decision 204, the generic test's).
+      - equal_rowcount_to_raw:
           arguments:
             compare_model: source('njgin', 'raw_njgin__nj_statewide_trails')
-          config:
-            severity: warn
     description: >
       Statewide Trails in New Jersey (NJ Geospatial Forum Trails Task Force,
       hosted by NJDEP), every row, keyed and deduped. Nothing reads it yet:
@@ -23,13 +22,12 @@ models:
         data_tests: [not_null, unique]
   - name: base_njgin__njdep_park_trails
     data_tests:
-      # Says how many rows the dedupe dropped. Each is an exact copy
-      # (duplicates_are_exact on the raw table), so this only reports.
-      - dbt_utils.equal_rowcount:
+      # Warns when the dedupe dropped any row, each an exact copy
+      # (duplicates_are_exact on the raw table), and is an error once the
+      # copies are half the raw table (decision 204, the generic test's).
+      - equal_rowcount_to_raw:
           arguments:
             compare_model: source('njgin', 'raw_njgin__njdep_park_trails')
-          config:
-            severity: warn
     description: >
       NJ State Park Service Trails (NJDEP Bureau of GIS, Features/Land layer
       63), every row, keyed and deduped. Nothing reads it yet: the stage-3

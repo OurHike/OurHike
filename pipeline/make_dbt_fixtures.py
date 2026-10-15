@@ -133,6 +133,28 @@ def _club_sections_layer():
     )
 
 
+#: Three more markers on the first centerline segment (`_line(0)`), north of
+#: the one at its start, so that one piece of the mile axis carries the four
+#: snapped markers int_trail_lines__mile_axis_holdout needs to score any:
+#: its test int_trail_lines__mile_axis_holdout_warns_when_it_scored_nothing
+#: is an error in CI since decision 204 (the maintainer, 2026-10-15, "Every
+#: test should have both the warning and error thresholds"). Each `Measure`
+#: is the marker's own distance along that piece in EPSG:5070, in miles, as
+#: int_trail_lines__mile_axis_markers computes it (st_linelocatepoint times
+#: st_length, DuckDB 1.5.5's spatial, 2026-10-15), so the piece keeps the
+#: unit slope its one marker gave it and every mile on it stays where it
+#: was, to the last binary digit or so. Each sits within 100 m of the
+#: segment's first vertex, so club_sections.json gives it that segment's
+#: club (lib/club_sections.py's MILEPOST_SNAP_M), and the first stretch now
+#: ends a quarter mile past the last of them, 0.30 rather than 0.25.
+HOLDOUT_MARKERS = (
+    # (latitude on lon -74.0, Measure in miles, MeasureM in metres)
+    (41.00025, 0.01739432974584648, 27.993460210499556),
+    (41.0005, 0.03478865592464174, 55.98691468038664),
+    (41.00075, 0.05218297854410649, 83.98036342208651),
+)
+
+
 def _half_mile_layer():
     return _feature_collection(
         [
@@ -142,6 +164,14 @@ def _half_mile_layer():
                 "geometry": _point(i),
             }
             for i in range(4)
+        ]
+        + [
+            {
+                "type": "Feature",
+                "properties": {"Point_ID": 4 + i, "Measure": measure, "MeasureM": measure_m},
+                "geometry": {"type": "Point", "coordinates": [-74.0, latitude]},
+            }
+            for i, (latitude, measure, measure_m) in enumerate(HOLDOUT_MARKERS)
         ]
     )
 

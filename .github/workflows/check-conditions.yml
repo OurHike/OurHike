@@ -424,6 +424,10 @@ jobs:
         timeout-minutes: 20
         env:
           ENVIRONMENT: ${{ matrix.data_environment }}
+          # Decision 204's switch, as the build read it (publish-conditions.yml):
+          # each check's error is on this run's summary and the page, never its
+          # exit, and the project renders as the build's did.
+          OURHIKE_DATA_ENV: ${{ matrix.data_environment }}
           R2_RAW_BUCKET: ${{ secrets.R2_RAW_BUCKET }}
           DESTINATION__FILESYSTEM__CREDENTIALS__AWS_ACCESS_KEY_ID: ${{ secrets.R2_RAW_ACCESS_KEY_ID }}
           DESTINATION__FILESYSTEM__CREDENTIALS__AWS_SECRET_ACCESS_KEY: ${{ secrets.R2_RAW_SECRET_ACCESS_KEY }}

@@ -432,6 +432,44 @@ def test_the_publish_job_stages_the_dbt_writers_files_on_ua_inside_publish_data(
     assert job["needs"] == "build"
 
 
+#: The build step, which runs build_marts.py's monthly lane.
+MONTHLY_BUILD = "dbt build, the Python steps and the pub_ writers (build_marts.py --lane monthly)"
+
+
+@pytest.mark.parametrize(
+    ("status", "outcome", "outputs"),
+    [(0, 0, {}), (5, 0, {"partial": "true"}), (1, 1, {}), (4, 4, {}), (6, 6, {})],
+)
+def test_a_monthly_build_that_held_part_of_itself_back_publishes_to_ua_and_then_turns_the_run_red(
+    workflow, tmp_path, status, outcome, outputs
+):
+    """Decision 204 (the maintainer, 2026-10-15; "Build as proposed", his poll answer the same day): with
+    OURHIKE_DATA_ENV=ua, build_marts.py exits PARTIAL_EXIT, 5, when it built past an error or held what a failure
+    reaches, as decision 81's held source and failed writer do. The build step records `partial` and succeeds, the
+    publish keeps a failed writer's key at UA's last copy (OURHIKE_BUILD_PARTIAL), and a job after the publish turns
+    the run red. Until decision 204 an exit of 5 failed the step, and UA got no monthly release at all. Any other
+    exit still stops the build: the monthly lane never degrades its history, so 4 and 6 are not its answers. The
+    step's own script runs here under bash, with build_marts.py's python a stand-in that answers `status`."""
+    from test_notices_job import _base_env, _outputs, _run, _stand_in
+
+    _stand_in(tmp_path / "bin" / "python", status)
+    build = next(step for step in workflow["jobs"]["build"]["steps"] if step.get("name") == MONTHLY_BUILD)
+    finished = _run(build["run"], _base_env(tmp_path))
+
+    assert finished.returncode == outcome, finished.stdout + finished.stderr
+    assert _outputs(tmp_path) == outputs
+    assert build["id"] == "build-marts" and build["env"]["OURHIKE_DATA_ENV"] == "ua"
+    assert workflow["jobs"]["build"]["outputs"]["partial"] == "${{ steps.build-marts.outputs.partial }}"
+    publish_job = workflow["jobs"]["publish"]
+    publish = next(step for step in publish_job["steps"] if step.get("run") == "python publish.py")
+    assert publish["env"]["OURHIKE_BUILD_PARTIAL"] == "${{ needs.build.outputs.partial }}"
+    assert "if" not in publish_job and "if" not in publish, "the publish runs on a partial build, whose job succeeded"
+    red = workflow["jobs"]["held-back"]
+    assert set(red["needs"]) == {"build", "publish"}, "the run goes red only once the publish has had its turn"
+    assert "always()" in red["if"] and "needs.build.outputs.partial == 'true'" in red["if"]
+    assert red["steps"][-1]["run"].rstrip().endswith("exit 1")
+
+
 def test_confirm_runs_when_publish_was_cancelled_and_holds_no_credential(workflow):
     job = workflow["jobs"]["confirm"]
 

@@ -15,13 +15,13 @@ models:
       notes (SH02). step_form_route reads it to form each route.
     data_tests:
       # SH02, a review aid and never a gate: names every hike a person should
-      # read before trusting its route, and drops none.
-      - dbt_utils.expression_is_true:
+      # read before trusting its route, and drops none. An error when every
+      # hike is named (decision 204, tests/generic/rows_named.sql): Hike
+      # Finder's records or the reader broken, not some hikes to read.
+      - rows_named:
           name: int_suggested_hikes__hike_finder_names_every_hike_missing_what_a_route_needs
           arguments:
-            expression: "problems_json = '[]'"
-          config:
-            severity: warn
+            named: "problems_json <> '[]'"
     columns:
       - name: hike_number
         description: The export's hike id.
@@ -153,14 +153,14 @@ models:
       none.
     data_tests:
       # A curated list quietly shrinking is the failure nobody notices: every
-      # dropped row is named, as export_highlights.py prints them, and none
-      # fails the build.
-      - dbt_utils.expression_is_true:
+      # dropped row is named, as export_highlights.py prints them, and a
+      # few never stop a build. When every curated row drops it is an error
+      # (decision 204, tests/generic/rows_named.sql): the published POIs it
+      # resolves against, not the list.
+      - rows_named:
           name: int_suggested_hikes__highlights_names_every_curated_row_that_does_not_publish
           arguments:
-            expression: "problem is null"
-          config:
-            severity: warn
+            named: "problem is not null"
       # resolve() does not survive a row that is not an object, so neither
       # does the build.
       - dbt_utils.expression_is_true:

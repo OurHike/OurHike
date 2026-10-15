@@ -379,8 +379,15 @@ def _main(
     codes: dict[int, int] | None = None,
     extra: tuple[str, ...] = (),
     recorder: _Recorder | None = None,
+    environment: str | None = None,
 ) -> tuple[int, _Recorder]:
+    """main() over `manifest`, its commands answered by `recorder`, in the data `environment` (OURHIKE_DATA_ENV; None
+    unsets it, which is dev and CI: build_marts.py's docstring, "EVERY TEST HAS TWO THRESHOLDS")."""
     recorder = recorder or _Recorder(codes)
+    if environment is None:
+        monkeypatch.delenv("OURHIKE_DATA_ENV", raising=False)
+    else:
+        monkeypatch.setenv("OURHIKE_DATA_ENV", environment)
     (tmp_path / "manifest.json").write_text(json.dumps(manifest))
     monkeypatch.setattr(build_marts, "MANIFEST_PATH", tmp_path / "manifest.json")
     # So no dbt run's results but a test's own are ever read (the repository's target/ may hold a real build's).
@@ -1841,12 +1848,13 @@ def test_a_test_that_holds_a_source_warned_so_the_build_names_its_rows_publishes
             "attached_node": "model.ourhike.leaks",
             "test_metadata": {"name": "expression_is_true", "kwargs": {"expression": "false"}},
         },
-        quiet: {"config": {"meta": {}}},
+        # The gate's own review aid, a level test below its error threshold (decision 204).
+        quiet: {"config": {"meta": {}, "error_if": ">1"}},
         "model.ourhike.leaks": {"relation_name": '"warehouse"."intermediate"."leaks"'},
     }
     results = [
         {"unique_id": leak, "status": "warn", "failures": 1, "compiled_code": "select 1"},
-        {"unique_id": quiet, "status": "warn", "failures": 4, "compiled_code": "select 1"},
+        {"unique_id": quiet, "status": "warn", "failures": 1, "compiled_code": "select 1"},
     ]
     recorder = _DbtRuns(tmp_path / "run_results.json", [(_is_stage_a, 0, results, {})])
 
@@ -2476,6 +2484,7 @@ def test_an_hourly_build_writes_its_record_last_saying_when_it_started_and_that_
         "row_history": "on",
         "elementary_saved": True,
         "notices_read_at": None,
+        "held_nodes": [],
         "exit": 0,
     }
     assert f"{build_marts.BUILD_RECORD} written for the checks after this build" in capsys.readouterr().out
@@ -2745,11 +2754,12 @@ CHECK_RESULTS = [
 
 
 def test_a_check_that_errors_is_annotated_and_changes_neither_the_builds_exit_nor_its_save(monkeypatch, tmp_path, capsys):
-    """Decision 102: the checks never block a publish. A check that errors is said in the log and as an annotation,
-    never retried, and the build goes on to save its history and answers as it would have without the pass."""
+    """Decision 102: the checks never block a publish, which decision 204 keeps for production and UA. A check that
+    errors is said in the log and as an annotation, never retried, and the build goes on to save its history and
+    answers as it would have without the pass."""
     recorder = _DbtRuns(tmp_path / "run_results.json", [(_is_checks_run, 1, CHECK_RESULTS, {})])
 
-    code, _ = _main(monkeypatch, tmp_path, _manifest(*STEP_TABLES), recorder=recorder)
+    code, _ = _main(monkeypatch, tmp_path, _manifest(*STEP_TABLES), recorder=recorder, environment="ua")
 
     out = capsys.readouterr().out
     assert code == 0
@@ -2771,6 +2781,17 @@ def test_a_check_that_errors_is_annotated_and_changes_neither_the_builds_exit_no
     assert "::error" not in out
 
 
+def test_in_dev_a_check_that_errors_fails_the_build_at_its_end(monkeypatch, tmp_path, capsys):
+    """Decision 204: dev and CI do not build past a check that could not run, once the history is saved."""
+    recorder = _DbtRuns(tmp_path / "run_results.json", [(_is_checks_run, 1, CHECK_RESULTS, {})])
+
+    code, _ = _main(monkeypatch, tmp_path, _manifest(*STEP_TABLES), recorder=recorder)
+
+    assert code == 1
+    assert recorder.calls[-1][0][:3] == (*RESTORE, "save")
+    assert "exit 1: 1 of Elementary's checks finished past their error threshold or could not run" in capsys.readouterr().out
+
+
 def test_a_partial_build_answers_partial_whatever_its_checks_say(monkeypatch, tmp_path):
     processed = tmp_path / "processed"
     writers = [
@@ -2785,7 +2806,7 @@ def test_a_partial_build_answers_partial_whatever_its_checks_say(monkeypatch, tm
         ],
     )
 
-    code, _ = _main(monkeypatch, tmp_path, _conditions_writers_manifest(tmp_path), recorder=recorder)
+    code, _ = _main(monkeypatch, tmp_path, _conditions_writers_manifest(tmp_path), recorder=recorder, environment="ua")
 
     assert code == build_marts.PARTIAL_EXIT
 
@@ -3205,3 +3226,292 @@ def test_a_freshness_run_that_left_no_sources_json_says_the_file_counts_none(tmp
     assert line.endswith(
         "exit 2, and dbt left no sources.json, so the data-quality file counts no freshness this time; the build goes on"
     )
+
+
+# --- Every test has two thresholds, and the environment decides who stops (decision 204; build_marts.py's docstring,
+# "EVERY TEST HAS TWO THRESHOLDS, AND THE ENVIRONMENT DECIDES WHO STOPS") ---
+
+
+@pytest.mark.parametrize(
+    ("environ", "expected"),
+    [
+        ({}, "dev"),
+        ({"OURHIKE_DATA_ENV": ""}, "dev"),
+        ({"OURHIKE_DATA_ENV": "ua"}, "ua"),
+        ({"OURHIKE_DATA_ENV": "production"}, "production"),
+    ],
+)
+def test_the_data_environment_is_dev_unless_one_of_the_three_is_named(environ, expected):
+    assert build_marts.data_environment(environ) == expected
+    assert build_marts.builds_on(expected) is (expected in ("production", "ua"))
+
+
+@pytest.mark.parametrize("name", ["uat", "UA", " ua", "prod"])
+def test_a_data_environment_spelled_any_other_way_is_refused(name):
+    """dbt_project.yml compares the value as written, so ` ua` would be dev there and UA here."""
+    with pytest.raises(ValueError, match="not one of this project's data environments"):
+        build_marts.data_environment({"OURHIKE_DATA_ENV": name})
+
+
+def test_main_refuses_an_unknown_data_environment_before_anything_runs(monkeypatch, tmp_path):
+    recorder = _Recorder()
+    with pytest.raises(SystemExit):
+        _main(monkeypatch, tmp_path, _manifest(*STEP_TABLES), recorder=recorder, environment="uat")
+    assert recorder.calls == []
+
+
+@pytest.mark.parametrize(
+    ("failures", "threshold", "passed"),
+    [
+        (1, ">0", True),
+        (0, ">0", False),
+        (1, ">1", False),
+        (2, ">1", True),
+        (51, "> 50", True),
+        (50, ">50", False),
+        (3, "!= 0", True),
+        (0, "!=0", False),
+        (1, ">=1", True),
+        (None, ">0", True),
+        (1, "not a threshold", True),
+    ],
+)
+def test_passes_compares_failures_with_a_threshold_as_dbt_does_and_an_unreadable_one_counts_as_passed(
+    failures, threshold, passed
+):
+    assert build_marts.passes(failures, threshold) is passed
+
+
+def _relabel_manifest() -> dict:
+    manifest = _manifest(*STEP_TABLES)
+    manifest["nodes"] = {
+        "test.ourhike.rows_named_half.1": {"config": {"error_if": ">1", "meta": {}}},
+        "test.ourhike.rows_named_some.1": {"config": {"error_if": ">1", "meta": {}}},
+        "test.ourhike.unique_area_cuts_notice_id.1": {
+            "config": {"error_if": ">0", "meta": {build_marts.STAYS_AT_WARN: "decision 197"}}
+        },
+        "test.ourhike.not_null_x_id.1": {"config": {"error_if": ">0", "meta": {}}},
+    }
+    return manifest
+
+
+def _relabel_results() -> list[dict]:
+    return [
+        {"unique_id": "test.ourhike.rows_named_half.1", "status": "warn", "failures": 2, "compiled_code": "select 1"},
+        {"unique_id": "test.ourhike.rows_named_some.1", "status": "warn", "failures": 1, "compiled_code": "select 1"},
+        {"unique_id": "test.ourhike.unique_area_cuts_notice_id.1", "status": "warn", "failures": 3, "compiled_code": "select 1"},
+        {"unique_id": "test.ourhike.not_null_x_id.1", "status": "warn", "failures": 4, "compiled_code": "select 1"},
+    ]
+
+
+def test_relabelled_errors_are_the_warnings_past_their_own_error_if_and_never_a_test_that_stays_at_warn():
+    errors = build_marts.relabelled_errors(_relabel_results(), _relabel_manifest())
+    assert errors == {
+        "test.ourhike.rows_named_half.1": "2 against error_if >1",
+        "test.ourhike.not_null_x_id.1": "4 against error_if >0",
+    }
+
+
+def test_a_marts_row_date_test_is_no_relabelled_error_when_the_history_is_off():
+    """A degraded leg builds with OURHIKE_ROW_HISTORY=off, where both row dates are null by design and DEGRADED_EXIT
+    turns the run red already: the not_null tests on them, whose severity reads that switch, stay warnings there."""
+    row_date = "test.ourhike.not_null_closures_v1__first_seen_at.1"
+    severity = "{{ 'warn' if env_var('OURHIKE_ROW_HISTORY', 'on') == 'off' or env_var('OURHIKE_DATA_ENV', 'dev') in ['production', 'ua'] else 'error' }}"
+    manifest = {"nodes": {row_date: {"config": {"error_if": ">0"}, "unrendered_config": {"severity": severity}}}}
+    results = [{"unique_id": row_date, "status": "warn", "failures": 12}]
+
+    assert build_marts.relabelled_errors(results, manifest, history_off=True) == {}
+    assert build_marts.relabelled_errors(results, manifest) == {row_date: "12 against error_if >0"}
+
+
+def test_in_ua_a_warning_past_its_error_if_is_an_error_and_the_build_publishes_then_goes_red(monkeypatch, tmp_path, capsys):
+    """Decision 204: in production and UA the switch makes a failing test warn, so dbt builds below it; the build names
+    the tests past their own error_if as errors, prints their rows, puts them on the run summary, and answers
+    PARTIAL_EXIT, so the workflow publishes and then turns the run red."""
+    duckdb.connect(str(tmp_path / "warehouse.duckdb")).close()
+    summary = tmp_path / "summary.md"
+    monkeypatch.setenv("GITHUB_STEP_SUMMARY", str(summary))
+    recorder = _DbtRuns(tmp_path / "run_results.json", [(_is_stage_a, 0, _relabel_results(), {})])
+
+    code, _ = _main(monkeypatch, tmp_path, _relabel_manifest(), recorder=recorder, environment="ua")
+
+    out = capsys.readouterr().out
+    assert code == build_marts.PARTIAL_EXIT
+    assert "::error title=A test past its error threshold::rows_named_half warned with 2 against error_if >1" in out
+    assert "::error title=A test past its error threshold::not_null_x_id warned with 4 against error_if >0" in out
+    assert "rows_named_some warned" not in out and "unique_area_cuts_notice_id warned" not in out
+    assert "::group::test.ourhike.rows_named_half.1: 2 row(s), warn" in out
+    assert "`rows_named_half`, 2 against error_if >1" in summary.read_text(encoding="utf-8")
+    assert recorder.calls[-1][0][:3] == (*RESTORE, "save"), "the marts passed their own builds, so the history is saved"
+
+
+def test_in_dev_a_warning_below_its_error_if_and_one_that_stays_at_warn_leave_the_build_green(monkeypatch, tmp_path):
+    duckdb.connect(str(tmp_path / "warehouse.duckdb")).close()
+    results = [result for result in _relabel_results() if result["failures"] in (1, 3)]
+    recorder = _DbtRuns(tmp_path / "run_results.json", [(_is_stage_a, 0, results, {})])
+
+    code, _ = _main(monkeypatch, tmp_path, _relabel_manifest(), recorder=recorder)
+
+    assert code == 0
+
+
+#: A gate test that failed at error in stage A, on int_closures__gate, whose child the closures mart dbt skipped; a step
+#: whose exposure reads the mart; and a model no failure reaches.
+GATE_TEST = "test.ourhike.dbt_utils_expression_is_true_int_closures__gate_held_rows.1"
+
+
+def _held_manifest() -> dict:
+    manifest = _manifest(*STEP_TABLES)
+    manifest["nodes"] = {
+        GATE_TEST: {"depends_on": {"nodes": ["model.ourhike.int_closures__gate"]}, "config": {"severity": "ERROR"}},
+        "model.ourhike.int_closures__gate": {"original_file_path": "models/intermediate/closures/int_closures__gate.sql"},
+        "model.ourhike.closures": {"original_file_path": "models/marts/closures/closures.sql"},
+        "model.ourhike.places": {"original_file_path": "models/marts/places/places.sql"},
+    }
+    manifest["child_map"] = {
+        "model.ourhike.int_closures__gate": [GATE_TEST, "model.ourhike.closures"],
+        "model.ourhike.closures": [],
+        "model.ourhike.places": [],
+    }
+    manifest["exposures"] = {
+        f"exposure.ourhike.{step.name}": {
+            "name": step.name,
+            "depends_on": {"nodes": ["model.ourhike.closures" if step is DEM_SAMPLING else "model.ourhike.places"]},
+        }
+        for step in STEPS
+    }
+    return manifest
+
+
+def _held_results() -> list[dict]:
+    return [
+        {"unique_id": GATE_TEST, "status": "fail", "failures": 2, "compiled_code": "select 1"},
+        {"unique_id": "model.ourhike.closures", "status": "skipped"},
+        {"unique_id": "model.ourhike.places", "status": "success"},
+    ]
+
+
+def test_failure_holds_hold_what_a_failed_test_reads_and_everything_below_it():
+    failed, selectors, reached = build_marts.failure_holds(_held_results(), _held_manifest())
+    assert failed == ["dbt_utils_expression_is_true_int_closures__gate_held_rows (fail)"]
+    assert selectors == ["path:models/intermediate/closures/int_closures__gate.sql+"]
+    assert reached == {"model.ourhike.int_closures__gate", GATE_TEST, "model.ourhike.closures"}
+    assert build_marts.steps_reading(_held_manifest(), STEPS, reached) == [DEM_SAMPLING.name]
+
+
+def test_failure_holds_hold_a_failed_model_itself_and_a_failed_source_tests_source():
+    manifest = _held_manifest()
+    manifest["sources"]["source.ourhike.atc.layer"]["original_file_path"] = "models/staging/atc/_atc__sources.yml"
+    manifest["nodes"]["test.ourhike.not_null_layer_globalid.1"] = {"depends_on": {"nodes": ["source.ourhike.atc.layer"]}}
+    results = [
+        {"unique_id": "model.ourhike.places", "status": "error"},
+        {"unique_id": "test.ourhike.not_null_layer_globalid.1", "status": "error"},
+    ]
+    _, selectors, _ = build_marts.failure_holds(results, manifest)
+    assert selectors == ["path:models/marts/places/places.sql+", "source:atc.layer+"]
+
+
+def test_in_ua_a_failed_test_holds_what_it_reaches_and_the_rest_builds_publishes_and_goes_red(monkeypatch, tmp_path, capsys):
+    """Decision 204, production's half: a failure dbt still raises (a test at `severity: error`, here the gate's) no
+    longer stops the build. Every later dbt build leaves out what it reaches, a step reading any of it is left out with
+    what its table unblocks, so each writer below keeps its last published file, and the rest builds, saves its
+    history and answers PARTIAL_EXIT."""
+    duckdb.connect(str(tmp_path / "warehouse.duckdb")).close()
+    summary = tmp_path / "summary.md"
+    monkeypatch.setenv("GITHUB_STEP_SUMMARY", str(summary))
+    recorder = _DbtRuns(tmp_path / "run_results.json", [(_is_stage_a, 1, _held_results(), {})])
+
+    code, _ = _main(monkeypatch, tmp_path, _held_manifest(), recorder=recorder, environment="ua")
+
+    out = capsys.readouterr().out
+    assert code == build_marts.PARTIAL_EXIT
+    assert "::error title=Part of the build held back for a failure::" in out
+    assert f"the step(s) {DEM_SAMPLING.name} with it" in out
+    calls = [argv for argv, _, _ in recorder.calls]
+    stage_a = calls.index(next(argv for argv in calls if _is_stage_a(argv)))
+    later = calls[stage_a + 1 :]
+    assert not [argv for argv in later if DEM_SAMPLING.command[0] in argv], "a step reading what failed never runs"
+    held = "path:models/intermediate/closures/int_closures__gate.sql+"
+    for argv in later:
+        if argv[:2] in (("dbt", "build"), ("dbt", "test")):
+            assert held in argv[argv.index("--exclude") :], argv
+            assert f"source:derived.{DEM_SAMPLING.table}+" in argv[argv.index("--exclude") :], argv
+    assert any(_is_writers_run(argv) for argv in later), "the writers still run, less what the failure reaches"
+    assert later[-1][:3] == (*RESTORE, "save")
+    assert "held back for a failure in" in summary.read_text(encoding="utf-8")
+
+
+def test_in_dev_the_same_failure_stops_the_build_and_saves_nothing(monkeypatch, tmp_path):
+    duckdb.connect(str(tmp_path / "warehouse.duckdb")).close()
+    recorder = _DbtRuns(tmp_path / "run_results.json", [(_is_stage_a, 1, _held_results(), {})])
+
+    code, _ = _main(monkeypatch, tmp_path, _held_manifest(), recorder=recorder)
+
+    assert code == 1
+    assert _is_stage_a(recorder.calls[-1][0]), "nothing runs after stage A"
+
+
+def test_in_ua_a_failed_python_step_is_held_with_what_its_table_unblocks(monkeypatch, tmp_path, capsys):
+    """A step that fails in production or UA is left out as --without-step leaves one: what its table unblocks is
+    built by no later dbt build, so each writer below keeps its last file, and the rest publishes, then goes red."""
+    duckdb.connect(str(tmp_path / "warehouse.duckdb")).close()
+    first = next(step for step in STEPS if step.lane == "monthly")
+
+    class _Failing(_Recorder):
+        def __call__(self, argv, *, cwd, env, check):
+            self.calls.append((tuple(argv), cwd, env))
+            return subprocess.CompletedProcess(argv, 1 if first.command[0] in argv else 0)
+
+    failing = _Failing()
+    code, _ = _main(monkeypatch, tmp_path, _manifest(*STEP_TABLES), recorder=failing, environment="ua")
+
+    out = capsys.readouterr().out
+    assert code == build_marts.PARTIAL_EXIT
+    assert f"::error title=Part of the build held back for a failure::{first.name} failed" in out
+    calls = [argv for argv, _, _ in failing.calls]
+    at = calls.index(next(argv for argv in calls if first.command[0] in argv))
+    for argv in calls[at + 1 :]:
+        if argv[:2] in (("dbt", "build"), ("dbt", "test")):
+            assert f"source:derived.{first.table}+" in argv[argv.index("--exclude") :], argv
+            assert f"source:derived.{first.table}+" not in argv[: argv.index("--exclude")], "its own build never runs"
+    assert calls[-1][:3] == (*RESTORE, "save")
+
+
+def _failed_check_results() -> list[dict]:
+    return [
+        {"unique_id": "test.ourhike.elementary_volume_anomalies_raw_x.1", "status": "fail", "message": "Got 2 results"},
+        {"unique_id": "test.ourhike.elementary_schema_changes_raw_y.1", "status": "warn", "failures": 1},
+    ]
+
+
+def test_in_dev_a_check_past_its_error_threshold_fails_the_build_at_its_end_after_the_save(monkeypatch, tmp_path, capsys):
+    duckdb.connect(str(tmp_path / "warehouse.duckdb")).close()
+    recorder = _DbtRuns(tmp_path / "run_results.json", [(_is_checks_run, 1, _failed_check_results(), {})])
+
+    code, _ = _main(monkeypatch, tmp_path, _manifest(*STEP_TABLES), recorder=recorder)
+
+    out = capsys.readouterr().out
+    assert code == 1
+    assert recorder.calls[-1][0][:3] == (*RESTORE, "save"), "the history is saved before the build fails"
+    assert "::error title=Elementary's checks past their error threshold::1 check(s) failed" in out
+    assert "exit 1: 1 of Elementary's checks finished past their error threshold" in out
+
+
+def test_in_ua_a_check_past_its_error_threshold_is_an_error_on_the_summary_and_never_the_exit(monkeypatch, tmp_path, capsys):
+    """Decisions 102 and 110: the checks never block a publish, and decision 204 leaves that to production and UA."""
+    duckdb.connect(str(tmp_path / "warehouse.duckdb")).close()
+    recorder = _DbtRuns(tmp_path / "run_results.json", [(_is_checks_run, 1, _failed_check_results(), {})])
+
+    code, _ = _main(monkeypatch, tmp_path, _manifest(*STEP_TABLES), recorder=recorder, environment="ua")
+
+    assert code == 0
+    assert "::error title=Elementary's checks past their error threshold::" in capsys.readouterr().out
+
+
+def test_plan_checks_leaves_out_what_the_builds_failures_held():
+    held = "path:models/marts/closures/closures.sql+"
+    runs = _plan_checks({**RECORD, "held_nodes": [held]})
+
+    checks, quality = _checks(runs).argv, runs[-2].argv
+    assert held in checks[checks.index("--exclude") :]
+    assert held in quality[quality.index("--exclude") :]

@@ -257,7 +257,9 @@ what was written and then turns the run red:
   key test naming a column the source's layer does not serve): that source's
   raw tables are dropped from the warehouse and stage A runs once more, so
   the gate holds the source as "not in this warehouse" and it carries its
-  last good rows. Any other failure in stage A stops the build, as before;
+  last good rows. Any other failure in stage A stops a dev or CI build, as
+  before, and production and UA build on past it (below, "EVERY TEST HAS TWO
+  THRESHOLDS");
 - some pub_ writers failed and every failure in that dbt run is a writer's
   own (its model, or a test or unit test of it): each failed writer's file is
   removed from the processed directory, so a half-written or untested file
@@ -275,6 +277,38 @@ what was written and then turns the run red:
   build; no mart reads either table.
 The row history is still saved: the marts passed their tests, and a source
 held this way carries its rows rather than losing them (Reasoned).
+
+EVERY TEST HAS TWO THRESHOLDS, AND THE ENVIRONMENT DECIDES WHO STOPS
+(decision 204, the maintainer, 2026-10-15: "Every test should have both the
+warning and error thresholds. If an error like freshness would prevent
+building the model, then that should be enabled/disabled based on the
+environment. prod environment should ignore those, dev & ci should not.";
+"Build as proposed", his poll answer the same day). OURHIKE_DATA_ENV is the
+one switch (data_environment(), lib/data_env.py's three names; anything else
+is refused before anything runs), and dbt_project.yml reads the same
+variable for every test's severity:
+- production and UA (BUILDS_ON): a failing test warns, so dbt builds what is
+  below it, and a warning past the test's own `error_if` is reported here as
+  an error (relabelled_errors(): its rows printed, an `::error`, a line on
+  the run summary), then PARTIAL_EXIT, so the workflow publishes and turns
+  the run red. What still fails in dbt, a pub_ writer's test, a test whose
+  own YAML says `severity: error`, a unit test, a contract, a model's SQL or
+  a Python step, no longer stops the build: failure_holds() leaves the
+  failed node and everything it reaches out of every later dbt build, and a
+  step that reads any of it (steps_reading()) is left out as --without-step
+  leaves one, so each writer below keeps its last published file; the rest
+  builds and publishes, and the run goes red (PARTIAL_EXIT). A failed
+  writer's file is removed as decision 81 removes it. Elementary's checks
+  never change the exit (decisions 102 and 110), and their errors are an
+  `::error` on the run summary and a failure on the data-quality page.
+- dev and CI (unset, or `dev`): a failing test is an error and stops the
+  build as before, and a check past its error threshold fails the build at
+  its end, once the history is saved.
+dbt itself was measured on 2.0.6 in a scratch project (2026-10-15): a
+failing test at error skipped every model below its model, at warn the same
+failure built them and kept its count in run_results.json, and under warn
+`error_if` is not evaluated. A test whose meta says STAYS_AT_WARN (decision
+197's four closures key tests) warns everywhere and is never relabelled.
 
 --dbt and --python differ in CI, where dbt is in the job's
 requirements-dbt.txt venv and the steps need requirements.txt's rasterio
@@ -299,14 +333,20 @@ ELEMENTARY'S CHECKS RUN AFTER THE WRITERS, in a pass of their own, before the
 row history's save (decision 102, ELT.md "Data quality (decision 102)"):
 `dbt test -s tag:elementary_check` at one thread, lane-scoped as the writers
 are (the lane's excludes, a held step's and a withdrawn table's). Every check
-is tagged `elementary_check` at warn (make_dbt_staging.py's raw_table_checks()
-on every raw table, the marts' YAML for the rest), and every dbt build before
+is tagged `elementary_check` (make_dbt_staging.py's raw_table_checks() on
+every raw table, the marts' YAML for the rest), and every dbt build before
 the pass leaves that tag out, so no check runs beside its model, where one
-that errored would fail the build. The pass never changes the build's exit
-and never stops a publish. Warnings are the design, and the data-quality file
-reads them; a check that errors, or a pass that ends without results or
-selects none, is named in the log with one `::warning` annotation
-(checks_report()), and the build goes on to save its history. It is never retried: `dbt retry` follows
+that errored would fail the build. Since decision 204 each check has two
+thresholds at severity error (make_dbt_staging.py's elementary_check_config()):
+a warning where Elementary flags a point or a column was added, an error past
+6 deviations and 50% from the usual value, or a column removed or retyped. The
+pass never changes a production or UA build's exit and never stops a
+publish; the data-quality file reads its warnings and failures, and a check
+past its error threshold is one `::error` annotation (checks_report()). In
+dev and CI a check that failed or could not run fails the build at its end
+(below, "EVERY TEST HAS TWO THRESHOLDS"). A check that errors, or a pass that
+ends without results or selects none, is named in the log with one
+`::warning` annotation, and the build goes on to save its history. It is never retried: `dbt retry` follows
 a build that failed, whose nodes a publish needs, and a check is no such node
 (Reasoned; the maintainer's three retries were asked of builds). The checks
 on a raw table the warehouse does not hold are left out (absent_sources()),
@@ -487,6 +527,7 @@ import argparse
 import csv
 import json
 import os
+import re
 import shutil
 import subprocess
 import sys
@@ -497,6 +538,8 @@ from datetime import datetime, timezone
 from pathlib import Path
 
 import tomllib
+
+from lib import data_env
 
 PIPELINE_DIR = Path(__file__).resolve().parent
 DBT_DIR = PIPELINE_DIR / "dbt"
@@ -828,6 +871,14 @@ PROFILE_NULL_SHARE_VARIABLE = "OURHIKE_ELEVATION_PROFILE_MAX_NULL_SHARE"
 FIXTURE_PROFILE_MAX_NULL_SHARE = "0.2"
 #: The `meta` key of a test whose warning means int_closures__gate held a source for the rows it returns.
 HOLDS_A_SOURCE = "holds_a_source"
+#: The `meta` key of a test that warns in every environment and is never reported as an error: decision 197's four
+#: closures key tests, the maintainer's "Keep warn, a recorded exception" (seeds/model_key_exceptions.csv).
+STAYS_AT_WARN = "stays_at_warn"
+#: The module docstring, "EVERY TEST HAS TWO THRESHOLDS, AND THE ENVIRONMENT DECIDES WHO STOPS": the data environments
+#: (lib/data_env.py's names) whose build goes on past a failure, as dbt_project.yml's switch makes a failing test warn.
+BUILDS_ON = (data_env.PRODUCTION, data_env.UA)
+#: A test's `warn_if` or `error_if` as dbt compares it with the test's `failures`: an operator and a number.
+THRESHOLD = re.compile(r"\s*(>=|<=|!=|<>|==|=|>|<)\s*(-?[0-9]+(?:\.[0-9]+)?)\s*")
 #: The readers seed: which raw tables are each club notice source's, and which of them are generated.
 NOTICE_READERS = DBT_DIR / "seeds" / "notice_readers.csv"
 #: THE HAND-STAGED RAW TABLES A CONDITIONS LEG MAY WITHDRAW, each with its dbt source: OurHike's field notes and
@@ -1010,6 +1061,7 @@ def plan(
     checks: bool | None = None,
     absent: tuple[str, ...] = (),
     checks_base: Path | None = None,
+    held_nodes: tuple[str, ...] = (),
 ) -> list[Run]:
     """Every command of the build, in order, for these steps, in `lane` (None: every node), less the steps `without` names,
     between the row history's restore and its save when `history` names a store (the save left out when
@@ -1024,7 +1076,10 @@ def plan(
     given `checks_base`, a build with no lane runs only those state:modified+ reaches from it (the module docstring,
     "A PULL REQUEST RUNS THE CHECKS ITS CHANGE REACHES"). The lane's data-quality writer builds after them, whether
     or not they ran, after the sources' freshness (freshness_selection()), unless the lane's checks run apart, which
-    leaves both to their run (the module docstring, "THE DATA-QUALITY FILE IS WRITTEN LAST")."""
+    leaves both to their run (the module docstring, "THE DATA-QUALITY FILE IS WRITTEN LAST"). Each of `held_nodes`, a
+    selector of what an earlier failure of this build holds back (failure_holds()), is left out of every dbt build as
+    a step that does not run is (the module docstring, "EVERY TEST HAS TWO THRESHOLDS, AND THE ENVIRONMENT DECIDES WHO
+    STOPS")."""
     if lane not in (None, *LANES):
         raise ValueError(f"no lane {lane!r}; lanes are {', '.join(LANES)}")
     if state is not None and lane != HOURLY:
@@ -1043,6 +1098,7 @@ def plan(
     # so a writer below either keeps its last file.
     held = tuple(f"source:{DERIVED_SOURCE}.{step.table}+" for step in steps if step not in running)
     held += tuple(f"source:{WITHDRAWABLE[table]}.{table}+" for table in withdrawn)
+    held += tuple(held_nodes)
     selection: tuple[str, ...] = ()
     lane_exclude: tuple[str, ...] = ()
     after: tuple[str, ...] = ()  # options every dbt build of the lane carries after its --exclude
@@ -1243,6 +1299,8 @@ def plan_checks(
     after = ("--indirect-selection", "cautious")
     held = tuple(f"source:{DERIVED_SOURCE}.{step.table}+" for step in steps if step.lane != lane or step.name in without)
     held += tuple(f"source:{WITHDRAWABLE[table]}.{table}+" for table in withdrawn)
+    # What the build held back for a failure (decision 204's failure_holds()): checked by nothing, as it built nothing.
+    held += tuple(record.get("held_nodes") or ())
     no_snapshots = (SNAPSHOTS,) if record.get("row_history") == "off" else ()
     runs = [
         # With the checks' switch, so Elementary's dbt_tests describes each check the file counts (CHECKS_SWITCH).
@@ -1624,6 +1682,132 @@ def source_holds(results: list[dict], manifest: dict) -> set[str]:
     return held
 
 
+def data_environment(environ: dict[str, str]) -> str:
+    """OURHIKE_DATA_ENV as dbt_project.yml's switch reads it: `dev` when unset or empty, else one of lib/data_env.py's
+    three exactly as written, so that this file and dbt never read one value two ways. Anything else is refused
+    (ValueError), as publish.py refuses it: `uat` is a typo, and read as dev it would stop a production build."""
+    name = environ.get(data_env.ENVIRONMENT_VAR) or ""
+    if not name:
+        return data_env.DEV
+    try:
+        return data_env.validate(name)
+    except data_env.UnknownEnvironment as unknown:
+        raise ValueError(str(unknown)) from None
+
+
+def builds_on(environment: str) -> bool:
+    """Whether a build in `environment` goes on past a failure (BUILDS_ON): production and UA, never dev or CI."""
+    return environment in BUILDS_ON
+
+
+def passes(failures: object, threshold: object) -> bool:
+    """Whether `failures` passes a test's threshold (`>0`, `> 50`, `!= 0`), as dbt compares the two. Unreadable, either
+    one counts as passed: a test this cannot read is an error rather than a warning (round toward caution)."""
+    match = THRESHOLD.fullmatch(str(threshold))
+    if match is None or isinstance(failures, bool) or not isinstance(failures, (int, float)):
+        return True
+    operator, number = match.group(1), float(match.group(2))
+    return {
+        ">": failures > number,
+        ">=": failures >= number,
+        "<": failures < number,
+        "<=": failures <= number,
+        "=": failures == number,
+        "==": failures == number,
+        "!=": failures != number,
+        "<>": failures != number,
+    }[operator]
+
+
+def relabelled_errors(results: list[dict], manifest: dict, *, history_off: bool = False) -> dict[str, str]:
+    """The tests that warned in this dbt run past their own `error_if`, each with its failures and threshold (the module
+    docstring, "EVERY TEST HAS TWO THRESHOLDS, AND THE ENVIRONMENT DECIDES WHO STOPS").
+
+    In production and UA dbt_project.yml's switch makes every failing test a warning, and dbt does not evaluate
+    `error_if` under warn (measured on dbt 2.0.6, 2026-10-15), so this is where an error is told from a warning. A test
+    whose meta says STAYS_AT_WARN is left out, and so is one that HOLDS_A_SOURCE, which source_holds() reports. With
+    `history_off` (OURHIKE_ROW_HISTORY=off, "--history-on-failure degrade"), so is a mart's not_null on its two row
+    dates, whose severity reads that switch: both dates are null by design there, and DEGRADED_EXIT already turns the
+    run red for it. In dev and CI the switch makes dbt itself fail such a test, so a warning past its error_if is only
+    ever one whose own YAML says `severity: warn`."""
+    found: dict[str, str] = {}
+    for result in results:
+        if result.get("status") != "warn":
+            continue
+        unique_id = result.get("unique_id", "")
+        node = _node(manifest, unique_id)
+        meta = {**(node.get("meta") or {}), **((node.get("config") or {}).get("meta") or {})}
+        if meta.get(STAYS_AT_WARN) or meta.get(HOLDS_A_SOURCE):
+            continue
+        if history_off and "OURHIKE_ROW_HISTORY" in str((node.get("unrendered_config") or {}).get("severity", "")):
+            continue
+        error_if = (node.get("config") or {}).get("error_if", "!= 0")
+        if passes(result.get("failures"), error_if):
+            found[unique_id] = f"{result.get('failures')} against error_if {error_if}"
+    return found
+
+
+def _hold_selector(resources: dict[str, dict], unique_id: str) -> str | None:
+    """The dbt selector for `unique_id` and everything below it: `source:<source>.<table>+`, else `path:<its file>+`."""
+    node = resources.get(unique_id) or {}
+    if unique_id.startswith("source."):
+        return f"source:{node.get('source_name')}.{node.get('name')}+"
+    path = node.get("original_file_path")
+    return f"path:{path}+" if path else None
+
+
+def failure_holds(results: list[dict], manifest: dict) -> tuple[list[str], list[str], set[str]]:
+    """What the failures of this dbt run hold back from every later dbt build of a build that goes on (BUILDS_ON): each
+    failure with its status, the selectors every later build excludes, and the nodes they reach.
+
+    A model, seed or snapshot that errored holds itself and everything below it; a data test or a unit test that failed
+    or errored holds everything below each node it reads, which is what dbt itself skipped in the run where it failed
+    (measured on dbt 2.0.6, 2026-10-15: a failing test at error skipped every descendant of its model, a failing unit
+    test its model). Later runs would otherwise build those nodes from a table this build never made, or a writer
+    would write a file from it. Skipped nodes are below a failure and say nothing of their own."""
+    resources = _resources(manifest)
+    failed: list[str] = []
+    roots: set[str] = set()
+    for result in results:
+        unique_id = result.get("unique_id", "")
+        status = result.get("status")
+        if status not in ("error", "fail", "runtime error"):
+            continue
+        failed.append(f"{_name(unique_id)} ({status})")
+        if unique_id.split(".", 1)[0] in ("model", "seed", "snapshot"):
+            roots.add(unique_id)
+        else:
+            roots.update(_depends_on(manifest, unique_id))
+    selectors = sorted({selector for root in roots if (selector := _hold_selector(resources, root))})
+    return failed, selectors, _reached(manifest, sorted(roots))
+
+
+def steps_reading(manifest: dict, steps: list[Step], nodes: set[str]) -> list[str]:
+    """The STEPS entries whose exposure (lane_problems() asks every lane's step for one) reads any of `nodes`."""
+    exposures = {exposure.get("name"): exposure for exposure in (manifest.get("exposures") or {}).values()}
+    return [
+        step.name for step in steps if set(((exposures.get(step.name) or {}).get("depends_on") or {}).get("nodes") or []) & nodes
+    ]
+
+
+def failed_checks(results: list[dict] | None) -> list[str]:
+    """Elementary's checks that finished past their error threshold (`fail`) or could not run, by name."""
+    return sorted(
+        str(result.get("unique_id", "")).removeprefix("test.")
+        for result in results or []
+        if result.get("status") in ("fail", "error", "runtime error")
+    )
+
+
+def write_step_summary(lines: list[str], environ: dict[str, str] | None = None) -> None:
+    """Append `lines` to the run summary page, $GITHUB_STEP_SUMMARY, where a workflow sets one."""
+    path = (environ if environ is not None else os.environ).get("GITHUB_STEP_SUMMARY")
+    if not path or not lines:
+        return
+    with open(path, "a", encoding="utf-8") as page:
+        page.write("\n".join(lines) + "\n\n")
+
+
 #: A dbt result that is a failure: a model or snapshot that errored, a test that failed or errored, and a node dbt
 #: skipped because something it needs failed.
 FAILED_STATUSES = ("error", "fail", "skipped", "runtime error")
@@ -1799,10 +1983,11 @@ def absent_sources(manifest: dict, warehouse: Path, lane: str | None, schema: st
 
 
 def checks_report(results: list[dict] | None, returncode: int, *, none_is_an_answer: bool = False) -> list[str]:
-    """What the log says about Elementary's checks pass, which never changes the build's exit (the module docstring,
-    "ELEMENTARY'S CHECKS RUN AFTER THE WRITERS"): a count of each status, every check that warned or errored by name,
-    each error's first line cut at FAILED_VALUE_WIDTH, and an annotation (`::warning`) when any check errored or the
-    pass ended without results. No check's rows: Elementary keeps none (dbt_project.yml's test_sample_row_count).
+    """What the log says about Elementary's checks pass, which never changes a production or UA build's exit (the module
+    docstring, "ELEMENTARY'S CHECKS RUN AFTER THE WRITERS"): a count of each status, every check that warned, failed or
+    errored by name, each failure's and error's first line cut at FAILED_VALUE_WIDTH, an annotation (`::error`) naming
+    the checks that finished past their error threshold (decision 204), and one (`::warning`) when any check errored or
+    the pass ended without results. No check's rows: Elementary keeps none (dbt_project.yml's test_sample_row_count).
     `none_is_an_answer` for a pass that selects what a change reaches ("A PULL REQUEST RUNS THE CHECKS ITS CHANGE
     REACHES"): a change that reaches no check selects none, which is said without an annotation, and so is a pass
     that exited 0 and left no results, as dbt may answer a selection of nothing."""
@@ -1828,6 +2013,7 @@ def checks_report(results: list[dict] | None, returncode: int, *, none_is_an_ans
             "publish go on."
         )
     errored = []
+    failing = []
     for result in sorted(results, key=lambda each: str(each.get("unique_id"))):
         status = str(result.get("status"))
         if status not in ("warn", "fail", "error", "runtime error"):
@@ -1837,12 +2023,22 @@ def checks_report(results: list[dict] | None, returncode: int, *, none_is_an_ans
         lines.append(f"-- build_marts: {ELEMENTARY_CHECKS}: {status}: {name}" + (f": {first}" if status != "warn" else ""))
         if status in ("error", "runtime error"):
             errored.append(name)
+        if status == "fail":
+            failing.append(name)
+    if failing:
+        shown = ", ".join(failing[:10]) + (f" and {len(failing) - 10} more" if len(failing) > 10 else "")
+        lines.append(
+            f"::error title=Elementary's checks past their error threshold::{len(failing)} check(s) failed: {shown}. "
+            "An anomaly past 6 deviations and 50% from its usual value, or a column removed or retyped (decision 204). "
+            "Production and UA build and publish on, and the page counts it; dev and CI fail the build at its end."
+        )
     if errored or returncode != 0:
         shown = ", ".join(errored[:10]) + (f" and {len(errored) - 10} more" if len(errored) > 10 else "")
         lines.append(
             f"::warning title=Elementary's checks errored::{len(errored)} check(s) errored (exit {returncode})"
             + (f": {shown}" if shown else "")
-            + ". A check that errors stops nothing: the build, its exit and its publish go on, and the page counts it."
+            + ". A check that errors stops nothing in production and UA: the build, its exit and its publish go on, and "
+            "the page counts it. Dev and CI fail the build at its end (decision 204)."
         )
     return lines
 
@@ -2170,6 +2366,8 @@ def main(argv: list[str] | None = None) -> int:
     checks_only = args.checks_only
     record: dict = {}
     try:
+        # Decision 204's switch, read as dbt_project.yml reads it (data_environment()).
+        environment = data_environment(os.environ)
         history, notice = resolve_history(
             args.history_url,
             fixtures=args.fixtures,
@@ -2242,6 +2440,19 @@ def main(argv: list[str] | None = None) -> int:
         env["OURHIKE_ROW_HISTORY"] = "off"  # as the build's dbt commands ran, so the project renders as it did there
     print("-- build_marts: " + " ".join(f"{name}={value}" for name, value in files.items()), flush=True)
     print(f"-- build_marts: OURHIKE_BUILT_BY={env['OURHIKE_BUILT_BY']}", flush=True)
+    # The module docstring, "EVERY TEST HAS TWO THRESHOLDS, AND THE ENVIRONMENT DECIDES WHO STOPS".
+    goes_on = builds_on(environment)
+    print(
+        f"-- build_marts: {data_env.ENVIRONMENT_VAR}={environment}: "
+        + (
+            "a failing test warns, a test past its error threshold is reported as an error, and the build goes on "
+            "past any failure, holding what it reaches, then goes red after the publish (decision 204)"
+            if goes_on
+            else "a failing test is an error, the build stops on it, and an Elementary check past its error threshold "
+            "fails the build at its end (decision 204)"
+        ),
+        flush=True,
+    )
     if checks_only:
         print(
             f"-- build_marts: the checks of the {record.get('lane')} build that started {record.get('started_at')} "
@@ -2293,6 +2504,11 @@ def main(argv: list[str] | None = None) -> int:
     if options["withdrawn"] and not checks_only:
         partial.append(f"{', '.join(options['withdrawn'])} withdrawn by the extract")
     stage_a_rerun = False
+    # Decision 204: the tests reported as errors past their error_if, the checks that failed, and the run summary's lines.
+    relabelled: dict[str, str] = {}
+    checks_failing: list[str] = []
+    summary: list[str] = []
+    step_names = {step.name for step in STEPS}
     position = 0
     while position < len(runs):
         run = runs[position]
@@ -2340,6 +2556,7 @@ def main(argv: list[str] | None = None) -> int:
             results = read_run_results(results_since)
             for line in checks_report(results, completed.returncode, none_is_an_answer=modified_only):
                 print(line, flush=True)
+            checks_failing += failed_checks(results)
             continue
         if run.stage == FRESHNESS:
             # Recorded, never raised (the module docstring, "EACH SOURCE'S FRESHNESS IS MEASURED FOR THE
@@ -2347,7 +2564,8 @@ def main(argv: list[str] | None = None) -> int:
             for line in freshness_report(completed.returncode):
                 print(line, flush=True)
             continue
-        if completed.returncode != 0 and run.argv[1:2] == ("build",) and run.cwd == DBT_DIR:
+        is_build = run.argv[1:2] == ("build",) and run.cwd == DBT_DIR
+        if completed.returncode != 0 and is_build:
             completed = retry_failed_build(run, {**env, **dict(run.env)}, completed)
         # The module docstring, "THE DATA-QUALITY FILE IS WRITTEN LAST".
         if run.stage == WRITERS:
@@ -2393,9 +2611,27 @@ def main(argv: list[str] | None = None) -> int:
                 if writers and not others:
                     partial.append(_report_writers(results, manifest, writers, paths.processed_dir, started))
                     continue
-            return completed.returncode
-        if completed.returncode == 0 and run.argv[1:2] == ("build",) and run.cwd == DBT_DIR:
+            if not goes_on:
+                return completed.returncode
+        if is_build and (completed.returncode == 0 or goes_on):
             results = read_run_results(results_since)
+            # Decision 204: a warning past its own error_if is an error, reported here and red after the publish.
+            history_off = env.get("OURHIKE_ROW_HISTORY") == "off"
+            if results is not None and (errors := relabelled_errors(results, _read_manifest(), history_off=history_off)):
+                errors = {test: why for test, why in errors.items() if test not in relabelled}
+                relabelled.update(errors)
+                for line in failed_test_rows(paths.warehouse, results_since, statuses=("warn",), only=set(errors)):
+                    print(line, flush=True)
+                for test, why in sorted(errors.items()):
+                    print(
+                        f"::error title=A test past its error threshold::{_name(test)} warned with {why}, so it is "
+                        f"an error (decision 204). {data_env.ENVIRONMENT_VAR}={environment} builds on past it, "
+                        "and the run goes red after the publish.",
+                        flush=True,
+                    )
+                    summary.append(f"- error past its threshold: `{_name(test)}`, {why}")
+                if errors:
+                    partial.append(f"{len(errors)} test(s) past their error threshold")
             if results is not None and (holds := source_holds(results, _read_manifest())):
                 for line in failed_test_rows(paths.warehouse, results_since, statuses=("warn",), only=holds):
                     print(line, flush=True)
@@ -2407,6 +2643,40 @@ def main(argv: list[str] | None = None) -> int:
                         flush=True,
                     )
                 partial.append(f"{len(holds)} test(s) holding a source")
+        if completed.returncode != 0 and goes_on and (is_build or run.label in step_names):
+            # The module docstring, "EVERY TEST HAS TWO THRESHOLDS, AND THE ENVIRONMENT DECIDES WHO STOPS": hold what
+            # failed and everything it reaches, a writer's file as decision 81 holds it, and build the rest.
+            manifest = _read_manifest()
+            if is_build:
+                results = read_run_results(results_since)
+                if results is None:
+                    print(f"-- build_marts: {run.label} failed (exit {completed.returncode}) and left no results", flush=True)
+                    return 1 if completed.returncode in PUBLISHABLE_EXITS else completed.returncode
+                if run.stage == WRITERS and (writers := failed_writers(results, manifest)[0]):
+                    partial.append(_report_writers(results, manifest, writers, paths.processed_dir, started))
+                failed, selectors, reached = failure_holds(results, manifest)
+                held_steps = [name for name in steps_reading(manifest, STEPS, reached) if name not in planned["without"]]
+            else:
+                failed, selectors, held_steps = [f"{run.label} (exit {completed.returncode})"], [], [run.label]
+            planned = {
+                **planned,
+                "without": tuple(sorted({*planned["without"], *held_steps})),
+                "held_nodes": tuple(sorted({*planned.get("held_nodes", ()), *selectors})),
+            }
+            what = ", ".join(failed) or f"exit {completed.returncode}"
+            print(
+                f"::error title=Part of the build held back for a failure::{run.label} failed ({what}). "
+                f"{data_env.ENVIRONMENT_VAR}={environment} builds on: what it reaches is held, so each writer below it "
+                "keeps its last published file"
+                + (f", the step(s) {', '.join(held_steps)} with it" if held_steps else "")
+                + ", everything else builds and publishes, and the run goes red afterwards (decision 204).",
+                flush=True,
+            )
+            summary.append(f"- held back for a failure in {run.label}: {what}")
+            partial.append(f"{run.label} failed ({what}), and what it reaches is held")
+            done = {each.label for each in runs[:position]}
+            runs = runs[:position] + [each for each in plan(STEPS, **planned, manifest=manifest) if each.label not in done]
+            continue
         if (
             completed.returncode == ELEMENTARY_DEGRADED_EXIT
             and run.label in (RESTORE_LABEL, SAVE_LABEL)
@@ -2454,6 +2724,19 @@ def main(argv: list[str] | None = None) -> int:
                 flush=True,
             )
             runs = runs[:position] + again
+    write_step_summary(
+        ([f"**build_marts.py ({data_env.ENVIRONMENT_VAR}={environment}), decision 204**", ""] + summary) if summary else []
+    )
+    if checks_failing and not goes_on:
+        # Decision 204: dev and CI stop on an Elementary check past its error threshold, once everything else has run.
+        print(
+            f"-- build_marts: exit 1: {len(checks_failing)} of Elementary's checks finished past their error threshold "
+            f"or could not run, which {data_env.ENVIRONMENT_VAR}={environment} does not build past (decision 204): "
+            + ", ".join(checks_failing[:10])
+            + (f" and {len(checks_failing) - 10} more" if len(checks_failing) > 10 else ""),
+            flush=True,
+        )
+        return 1
     if checks_only:
         # The module docstring, "THE HOURLY LANE'S CHECKS RUN APART": the file is this run's one product.
         if partial:
@@ -2476,8 +2759,10 @@ def main(argv: list[str] | None = None) -> int:
                 "lane": args.lane,
                 "started_at": env["OURHIKE_BUILD_STARTED_AT"],
                 "built_by": env["OURHIKE_BUILT_BY"],
-                "without": sorted(args.without_step),
+                "without": sorted(planned.get("without") or ()),
                 "state": str(options["state"]) if options["state"] else None,
+                # What a failure held back (decision 204), which the checks run then leaves unchecked.
+                "held_nodes": sorted(planned.get("held_nodes") or ()),
                 "history_url": history.url,
                 "row_history": "off" if degraded else "on",
                 "elementary_saved": history_exits.get(RESTORE_LABEL) == 0 and history_exits.get(SAVE_LABEL) == 0,

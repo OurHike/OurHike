@@ -3,12 +3,10 @@ version: 2
 models:
   - name: base_extract__runs
     data_tests:
-      # Says how many rows the dedupe dropped, which for a log written once per run is none.
-      - dbt_utils.equal_rowcount:
+      # Warns if the dedupe drops any row, which for a log written once per run never happens.
+      - equal_rowcount_to_raw:
           arguments:
             compare_model: source('extract', '_extract_runs')
-          config:
-            severity: warn
     description: >
       The extract's run log, one row per resource per run, keyed: what each
       run loaded and the upstream's own count read in it. int_closures__gate
@@ -36,12 +34,10 @@ models:
           platform gives none or the resource did not run.
   - name: base_extract__runs_monthly
     data_tests:
-      # Says how many rows the dedupe dropped, which for a log written once per run is none.
-      - dbt_utils.equal_rowcount:
+      # Warns if the dedupe drops any row, which for a log written once per run never happens.
+      - equal_rowcount_to_raw:
           arguments:
             compare_model: source('extract', '_extract_runs_monthly')
-          config:
-            severity: warn
     description: >
       The extract's run log as the monthly lane's nodes read it, one row per
       resource per run, keyed: base_extract__runs over the lane copy of the

@@ -17,11 +17,12 @@ models:
       - name: message_type
         description: Alert or Update; never Cancel.
         data_tests:
-          - accepted_values:
+          # Names each alert of another type, and is an error when every
+          # alert is one (decision 204, tests/generic/rows_named.sql): NWS
+          # changing its words, rather than one odd alert.
+          - rows_named:
               arguments:
-                values: [Alert, Update]
-              config:
-                severity: warn
+                named: "message_type not in ('Alert', 'Update')"
 
   - name: int_warnings__weather_squares
     description: >
@@ -180,16 +181,17 @@ models:
       source with a row here, so none of its rows reaches a mart and it
       carries its last good rows (decision 81).
     data_tests:
-      # Warn, not error (decision 81): the gate holds the source, so its
-      # paragraphs never reach a mart, and every other source and file still
-      # publishes. `holds_a_source` makes build_marts.py print the rows and
-      # turn the run red after the publish (its PARTIAL_EXIT). At error, one
-      # club's title stopped every hourly file (soak run 530).
+      # The gate holds the source, so its paragraphs never reach a mart, and
+      # every other source and file still publishes (decision 81).
+      # `holds_a_source` makes build_marts.py print the rows and turn the run
+      # red after the publish (its PARTIAL_EXIT). No severity of its own
+      # (decision 204): a warning in production and UA, which build on, and
+      # an error in dev and CI. At error in production, one club's title
+      # stopped every hourly file (soak run 530).
       - dbt_utils.expression_is_true:
           arguments:
             expression: "false"
           config:
-            severity: warn
             meta:
               holds_a_source: true
     columns:

@@ -3,14 +3,12 @@ version: 2
 models:
   - name: base_census__census_tiger_states
     data_tests:
-      # Says how many rows the dedupe dropped, which for a key unique by
-      # construction is none. A raw table that never landed passes
+      # Warns if the dedupe drops any row, which for a key unique by
+      # construction never happens. A raw table that never landed passes
       # (tests/generic/).
       - equal_rowcount_to_raw:
           arguments:
             compare_model: source('census', 'raw_census__census_tiger_states')
-          config:
-            severity: warn
     description: >
       The U.S. Census Bureau's TIGER/Line states, every row, keyed and deduped
       (decision 40), the file's own columns under dlt's names. Read by

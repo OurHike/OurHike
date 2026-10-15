@@ -15,13 +15,12 @@ models:
   # oprhp/.
   - name: stg_dec__lean_tos
     data_tests:
-      # Says how many rows the dedupe dropped. Each is an exact copy
-      # (duplicates_are_exact on the raw table), so this only reports.
-      - dbt_utils.equal_rowcount:
+      # Warns when the dedupe dropped any row, each an exact copy
+      # (duplicates_are_exact on the raw table), and is an error once the
+      # copies are half the raw table (decision 204, the generic test's).
+      - equal_rowcount_to_raw:
           arguments:
             compare_model: source('dec', 'raw_nysdec__dec_lean_tos')
-          config:
-            severity: warn
     description: >
       DEC lean-tos, one row per lean-to, keyed and deduplicated, every column
       kept. Their poi_type, id, name and public flag are sources.json's
@@ -41,13 +40,12 @@ models:
         data_tests: [not_null, unique]
   - name: stg_dec__primitive_campsites
     data_tests:
-      # Says how many rows the dedupe dropped. Each is an exact copy
-      # (duplicates_are_exact on the raw table), so this only reports.
-      - dbt_utils.equal_rowcount:
+      # Warns when the dedupe dropped any row, each an exact copy
+      # (duplicates_are_exact on the raw table), and is an error once the
+      # copies are half the raw table (decision 204, the generic test's).
+      - equal_rowcount_to_raw:
           arguments:
             compare_model: source('dec', 'raw_nysdec__dec_primitive_campsites')
-          config:
-            severity: warn
     description: >
       DEC primitive campsites, in stg_dec__lean_tos' shape. 2,078 rows on
       the live layer (counted 2026-08-27); one row is one backcountry tent
@@ -65,13 +63,12 @@ models:
         data_tests: [not_null, unique]
   - name: stg_dec__scenic_vistas
     data_tests:
-      # Says how many rows the dedupe dropped. Each is an exact copy
-      # (duplicates_are_exact on the raw table), so this only reports.
-      - dbt_utils.equal_rowcount:
+      # Warns when the dedupe dropped any row, each an exact copy
+      # (duplicates_are_exact on the raw table), and is an error once the
+      # copies are half the raw table (decision 204, the generic test's).
+      - equal_rowcount_to_raw:
           arguments:
             compare_model: source('dec', 'raw_nysdec__dec_scenic_vistas')
-          config:
-            severity: warn
     description: >
       DEC scenic vistas, in stg_dec__lean_tos' shape. One of three DEC
       services that publish as `viewpoint`; they stay three sources.
@@ -88,13 +85,12 @@ models:
         data_tests: [not_null, unique]
   - name: stg_dec__firetowers
     data_tests:
-      # Says how many rows the dedupe dropped. Each is an exact copy
-      # (duplicates_are_exact on the raw table), so this only reports.
-      - dbt_utils.equal_rowcount:
+      # Warns when the dedupe dropped any row, each an exact copy
+      # (duplicates_are_exact on the raw table), and is an error once the
+      # copies are half the raw table (decision 204, the generic test's).
+      - equal_rowcount_to_raw:
           arguments:
             compare_model: source('dec', 'raw_nysdec__dec_firetowers')
-          config:
-            severity: warn
     description: >
       DEC firetowers, in stg_dec__lean_tos' shape. sources.json types them
       `viewpoint` with an @unvalidated caveat this model's comment repeats:
@@ -113,13 +109,12 @@ models:
         data_tests: [not_null, unique]
   - name: stg_dec__viewing_areas
     data_tests:
-      # Says how many rows the dedupe dropped. Each is an exact copy
-      # (duplicates_are_exact on the raw table), so this only reports.
-      - dbt_utils.equal_rowcount:
+      # Warns when the dedupe dropped any row, each an exact copy
+      # (duplicates_are_exact on the raw table), and is an error once the
+      # copies are half the raw table (decision 204, the generic test's).
+      - equal_rowcount_to_raw:
           arguments:
             compare_model: source('dec', 'raw_nysdec__dec_viewing_areas')
-          config:
-            severity: warn
     description: >
       DEC viewing areas, in stg_dec__lean_tos' shape.
     columns:
@@ -135,13 +130,12 @@ models:
         data_tests: [not_null, unique]
   - name: stg_dec__parking_areas
     data_tests:
-      # Says how many rows the dedupe dropped. Each is an exact copy
-      # (duplicates_are_exact on the raw table), so this only reports.
-      - dbt_utils.equal_rowcount:
+      # Warns when the dedupe dropped any row, each an exact copy
+      # (duplicates_are_exact on the raw table), and is an error once the
+      # copies are half the raw table (decision 204, the generic test's).
+      - equal_rowcount_to_raw:
           arguments:
             compare_model: source('dec', 'raw_nysdec__dec_parking_areas')
-          config:
-            severity: warn
     description: >
       DEC parking areas, in stg_dec__lean_tos' shape. The layer states no
       seasonal access: seasonality lives in DEC's free-text NOTES, so no
@@ -159,13 +153,12 @@ models:
         data_tests: [not_null, unique]
   - name: stg_dec__hiking_trails
     data_tests:
-      # Says how many rows the dedupe dropped. Each is an exact copy
-      # (duplicates_are_exact on the raw table), so this only reports.
-      - dbt_utils.equal_rowcount:
+      # Warns when the dedupe dropped any row, each an exact copy
+      # (duplicates_are_exact on the raw table), and is an error once the
+      # copies are half the raw table (decision 204, the generic test's).
+      - equal_rowcount_to_raw:
           arguments:
             compare_model: source('dec', 'raw_nysdec__dec_hiking_trails')
-          config:
-            severity: warn
     description: >
       DEC's statewide trail attributes - the non-A.T. twin of
       stg_atc__centerline_segments, geometry left to the Python spatial
@@ -186,13 +179,12 @@ models:
         data_tests: [not_null, unique]
   - name: stg_dec__backcountry_features
     data_tests:
-      # Says how many rows the dedupe dropped. Each is an exact copy
-      # (duplicates_are_exact on the raw table), so this only reports.
-      - dbt_utils.equal_rowcount:
+      # Warns when the dedupe dropped any row, each an exact copy
+      # (duplicates_are_exact on the raw table), and is an error once the
+      # copies are half the raw table (decision 204, the generic test's).
+      - equal_rowcount_to_raw:
           arguments:
             compare_model: source('dec', 'raw_nysdec__dec_backcountry_features')
-          config:
-            severity: warn
     description: >
       DEC's back-country asset inventory, keyed and deduplicated, every
       column kept. The entry declares no poi_type, because 68% of the layer

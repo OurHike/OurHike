@@ -21,6 +21,10 @@
 -- warnings-type one through int_warnings__unioned, which only the warnings
 -- mart takes; and one a feed's window aged out
 -- (int_closures__window_carried) in the mart it was in.
+-- A gate on a mart a hiker's safety reads (decision 204, dbt_project.yml's
+-- `marts:` gates): an error in every environment, so in production a
+-- failure holds the files below at their last good copy.
+{{ config(severity='error') }}
 with passing as (
     select gate.source_key
     from {{ ref('int_closures__gate') }} as gate

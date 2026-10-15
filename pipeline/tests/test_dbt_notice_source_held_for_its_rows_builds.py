@@ -32,6 +32,13 @@ Then, of the second build:
 (e) the tests that hold a source warned, naming both, so the log has the
     rows and build_marts.py turns the run red after the publish.
 
+Both builds run as a conditions leg does, OURHIKE_DATA_ENV=ua (decision 204,
+dbt_project.yml's switch): there a failing test warns and the build goes on,
+which is what decision 81's hold needs; in dev and CI the two tests that hold
+a source are errors and stop the build. So (f) no test of the second build but
+those two is past its own error threshold, as build_marts.py's
+relabelled_errors() reads one, which would otherwise pass here unseen.
+
 It needs dbt 2.0.6 with the packages under pipeline/dbt/dbt_packages/, and
 runs only when OURHIKE_DBT names that dbt, as
 tests/test_dbt_notice_tables_absent_builds.py does.
@@ -49,6 +56,8 @@ from pathlib import Path
 
 import duckdb
 import pytest
+
+import build_marts
 
 PIPELINE_DIR = Path(__file__).resolve().parent.parent
 DBT_DIR = PIPELINE_DIR / "dbt"
@@ -120,6 +129,8 @@ def builds(tmp_path_factory) -> dict:
         "OURHIKE_WAREHOUSE": str(warehouse),
         "OURHIKE_PROCESSED_DIR": str(processed),
         "DBT_ENGINE_SEND_ANONYMOUS_USAGE_STATS": "false",
+        # As a conditions leg builds (decision 204): a failing test warns, so the gate's hold is what is tested.
+        "OURHIKE_DATA_ENV": "ua",
     }
     target = root / "target"
     paths = ["--profiles-dir", ".", "--target-path", str(target), "--log-path", str(root / "logs")]
@@ -145,6 +156,7 @@ def builds(tmp_path_factory) -> dict:
     results = {}
     if (target / "run_results.json").exists():
         results = {r["unique_id"]: r for r in json.loads((target / "run_results.json").read_text())["results"]}
+    manifest = json.loads((target / "manifest.json").read_text()) if (target / "manifest.json").exists() else {}
     notices = processed / "conditions_notices.json"
     return {
         "second": second,
@@ -158,6 +170,7 @@ def builds(tmp_path_factory) -> dict:
         "notices": json.loads(notices.read_text(encoding="utf-8"))["notices"] if notices.exists() else None,
         "notices_text": notices.read_text(encoding="utf-8") if notices.exists() else "",
         "results": results,
+        "manifest": manifest,
         "leaks": _query(warehouse, "select distinct source_key from intermediate.int_warnings__wording_leaks"),
         "outside": _query(warehouse, "select distinct source_key from intermediate.int_closures__rows_outside_region"),
     }
@@ -200,3 +213,10 @@ def test_the_tests_that_hold_a_source_warn_and_name_both(builds):
     assert statuses == {name: "warn" for name in HOLDING_TESTS}
     assert builds["leaks"] == [(LEAKING,)]
     assert builds["outside"] == [(OUTSIDE,)]
+
+
+def test_no_other_test_of_the_second_build_is_past_its_error_threshold(builds):
+    """In UA every failing test warns (decision 204), so a failure this edit caused anywhere else would pass the
+    build: build_marts.py would report it as an error, and so does this, unless it is one of the two holds."""
+    errors = build_marts.relabelled_errors(list(builds["results"].values()), builds["manifest"])
+    assert errors == {}

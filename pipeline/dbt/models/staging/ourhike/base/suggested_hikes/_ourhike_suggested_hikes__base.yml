@@ -3,13 +3,12 @@ version: 2
 models:
   - name: base_ourhike__highlights
     data_tests:
-      # Says how many rows the dedupe dropped. Each is an exact copy
-      # (duplicates_are_exact on the raw table), so this only reports.
-      - dbt_utils.equal_rowcount:
+      # Warns when the dedupe dropped any row, each an exact copy
+      # (duplicates_are_exact on the raw table), and is an error once the
+      # copies are half the raw table (decision 204, the generic test's).
+      - equal_rowcount_to_raw:
           arguments:
             compare_model: source('ourhike', 'raw_ourhike__highlights')
-          config:
-            severity: warn
     description: >
       reference/highlights.json, one row per row of the curated list, each
       the JSON its reviewer wrote. Read by int_suggested_hikes__highlights.

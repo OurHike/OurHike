@@ -3,13 +3,11 @@ version: 2
 models:
   - name: base_ourhike__poi_identity
     data_tests:
-      # Says how many rows the dedupe dropped, which for a key unique by
-      # construction is none.
-      - dbt_utils.equal_rowcount:
+      # Warns if the dedupe drops any row, which for a key unique by
+      # construction never happens.
+      - equal_rowcount_to_raw:
           arguments:
             compare_model: source('ourhike', 'raw_ourhike__poi_identity')
-          config:
-            severity: warn
     description: >
       The POI identity ledger, every POI ever published, retired ones
       included. Read by int_podcasts__checked, which holds a tagged POI to
@@ -37,12 +35,10 @@ models:
           knows one. On no row on 2026-10-01.
   - name: base_ourhike__blaze_mapping
     data_tests:
-      # Says how many rows the dedupe dropped, which for one file is none.
-      - dbt_utils.equal_rowcount:
+      # Warns if the dedupe drops any row, which for one file never happens.
+      - equal_rowcount_to_raw:
           arguments:
             compare_model: source('ourhike', 'raw_ourhike__blaze_mapping')
-          config:
-            severity: warn
     description: >
       pipeline/reference/blaze_mapping.json as its one row, keyed: the per-source blaze tables (#782), read by the trail-line models for TL03.
     columns:
@@ -56,12 +52,10 @@ models:
         data_tests: [not_null]
   - name: base_ourhike__trail_name_aliases
     data_tests:
-      # Says how many rows the dedupe dropped, which for one file is none.
-      - dbt_utils.equal_rowcount:
+      # Warns if the dedupe drops any row, which for one file never happens.
+      - equal_rowcount_to_raw:
           arguments:
             compare_model: source('ourhike', 'raw_ourhike__trail_name_aliases')
-          config:
-            severity: warn
     description: >
       pipeline/reference/trail_name_aliases.json as its one row, keyed: each through route's names by publisher, read by the network overview for TL21.
     columns:
@@ -75,12 +69,10 @@ models:
         data_tests: [not_null]
   - name: base_ourhike__work_projects
     data_tests:
-      # Says how many rows the dedupe dropped, which for one file is none.
-      - dbt_utils.equal_rowcount:
+      # Warns if the dedupe drops any row, which for one file never happens.
+      - equal_rowcount_to_raw:
           arguments:
             compare_model: source('ourhike', 'raw_ourhike__work_projects')
-          config:
-            severity: warn
     description: >
       pipeline/reference/work_projects.json as its one row, keyed: the
       reviewed club workdays (#760), read by int_closures__work_projects_checked

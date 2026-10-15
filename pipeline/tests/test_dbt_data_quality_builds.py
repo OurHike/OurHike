@@ -179,6 +179,14 @@ TESTS = {
     "unique_history_id": ("unique", "snapshot.ourhike.int_trail_lines__history", None, "snapshots/trail_lines/_x.yml"),
     "not_null_writer_document": ("not_null", "model.ourhike.pub_trails_geojson", None, "models/publish/_x.yml"),
 }
+#: Each test's error_if and meta in Elementary's dbt_tests, where one is not dbt_project.yml's `>0` and `{}` (decision
+#: 204): a warning past its error_if is failed on the page, unless it stays at warn, and a level is no count of rows.
+THRESHOLDS = {
+    # Warned 6 at zero tolerance, kept a warning by its meta, as decision 197's four closures key tests are.
+    "assert_lines_match_checks": (">0", {"stays_at_warn": "decision 197"}),
+    # A level (macros/test_levels.sql): warned at 1, an error only at 2, and never a count.
+    "not_null_challenges_id": (">1", {"scores_a_level": True}),
+}
 
 
 def _uid(name: str) -> str:
@@ -640,12 +648,13 @@ def _warehouse(path: Path, *, empty: bool = False) -> None:
             con.execute("insert into elementary.dbt_sources values (?, ?, ?, ?)", [uid, group, table, table])
         con.execute(
             """create table elementary.dbt_tests (unique_id varchar, original_path varchar, depends_on_nodes varchar,
-                parent_model_unique_id varchar, short_name varchar)"""
+                parent_model_unique_id varchar, short_name varchar, error_if varchar, meta varchar)"""
         )
         for name, (short, parent, depends, path_) in TESTS.items():
+            error_if, meta = THRESHOLDS.get(name, (">0", {}))
             con.execute(
-                "insert into elementary.dbt_tests values (?, ?, ?, ?, ?)",
-                [_uid(name), path_, json.dumps(depends or [parent]), parent, short],
+                "insert into elementary.dbt_tests values (?, ?, ?, ?, ?, ?, ?)",
+                [_uid(name), path_, json.dumps(depends or [parent]), parent, short, error_if, json.dumps(meta)],
             )
         # Elementary 0.26.0's columns for it, as they read on dbt 2.0.6 and DuckDB (measured 2026-10-15).
         con.execute(
@@ -742,12 +751,13 @@ def test_this_builds_counted_checks_by_kind_a_held_source_neither_named_nor_coun
     NWS and the freshness half of the closures mart's table_anomalies test count nowhere (decision 203)."""
     document = files["monthly"]
 
-    assert document["totals"] == _counts(28, 11, 13, 2, 2)
+    # The mart's not_null on `name` warned with 5 past its error_if of >0: failed (decision 204).
+    assert document["totals"] == _counts(28, 11, 12, 3, 2)
     assert document["kinds"] == [
         {"kind": "freshness", **_counts(5, 1, 2, 1, 1)},
         {"kind": "volume", **_counts(3, 1, 2, 0, 0)},
         {"kind": "schema", **_counts(2, 1, 1, 0, 0)},
-        {"kind": "dbt_tests", **_counts(12, 7, 3, 1, 1)},
+        {"kind": "dbt_tests", **_counts(12, 7, 2, 2, 1)},
         {"kind": "anomalies", **_counts(6, 1, 5, 0, 0)},
     ]
 
@@ -782,6 +792,8 @@ def test_needs_a_look_is_worst_first_and_each_entry_carries_only_numbers_and_nam
         # Past its error limit: seconds since the extract last read it or confirmed it unchanged, against the error
         # limit, also in seconds. No `since`: the value is how long.
         entry("freshness", "raw_nws__alerts", None, "fail", 11250, None, 7200.0, None, *reversed(source)),
+        # Warned with 5 past its error_if of >0, so failed (decision 204). Passed in the build before: since this build.
+        entry("dbt_tests", "trail_lines_v1", "name", "fail", 5, None, None, now, None, "not_null"),
         entry("dbt_tests", "trail_lines_v1", "status", "fail", 2, None, None, now, None, "accepted_values"),
         # No error limit (reaches_hikers false, decision 100): the warning limit is the one quoted.
         entry("freshness", "raw_atc__challenges_atc", None, "warn", 46800, None, 43200.0, None, *reversed(source)),
@@ -793,10 +805,10 @@ def test_needs_a_look_is_worst_first_and_each_entry_carries_only_numbers_and_nam
         entry("schema", dec, "old_col", "warn", None, None, None, now, None, "schema_changes"),
         entry("schema", dec, "surface", "warn", None, None, None, now, None, "schema_changes"),
         # Elementary named no table for a test of two: the first by name of the two it reads.
+        # Past its error_if, and kept a warning by its meta's stays_at_warn.
         entry("dbt_tests", "int_trail_lines__checked", None, "warn", 6, None, None, now, None, "assert_lines_match_checks"),
-        entry("dbt_tests", "stg_atc__challenges", "id", "warn", 1, None, None, now, None, "not_null"),
-        # Passed in the build before, so since this build.
-        entry("dbt_tests", "trail_lines_v1", "name", "warn", 5, None, None, now, None, "not_null"),
+        # A level of 1, below its error_if of >1, and no count: no value.
+        entry("dbt_tests", "stg_atc__challenges", "id", "warn", None, None, None, now, None, "not_null"),
         # A column's minimum is one row's own value: its numbers are never written.
         entry("anomalies", "trail_lines_v1", "distance_ft", "warn", None, None, None, now, "min", "column_anomalies"),
         entry("anomalies", "trail_lines_v1", "name", "warn", 7, 0.0, 2.5, now, "null_count", "column_anomalies"),
@@ -929,7 +941,7 @@ def test_by_mart_counts_the_marts_own_models_intermediates_and_singular_tests(fi
     and its folder's two singular tests; its union, held, is not among them. closures: its table check's two."""
     assert files["monthly"]["by_mart"] == [
         {"mart": "closures", **_counts(1, 0, 1, 0, 0)},
-        {"mart": "trail_lines", **_counts(14, 5, 7, 1, 1)},
+        {"mart": "trail_lines", **_counts(14, 5, 6, 2, 1)},
     ]
 
 

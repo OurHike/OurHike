@@ -47,7 +47,7 @@ import {
 } from './clubClosureTaps'
 import { CLOSURE_ID_PROPERTY, CLUB_CLOSURE_ID_PROPERTY } from './closureLayers'
 import { ATC_UPDATE_ID_PROPERTY, attachAtcUpdateTaps } from './atcUpdateLayers'
-import { HAZARD_FILL_LAYER_ID } from './hazardAreaLayers'
+import { HAZARD_FILL_LAYER_ID, HAZARD_POINT_LAYER_ID } from './hazardAreaLayers'
 import { attachHazardTaps } from './hazardAreaTaps'
 import { tappedLineAt } from './lineTaps'
 import { POI_DOT_LAYER_ID, POI_ID_PROPERTY, POI_LAYER_ID } from './poiLayers'
@@ -84,6 +84,29 @@ function closures(): Record<
     greyed: read(rows.greyed),
     shade: read(rows.shade),
   }
+}
+
+/** A point closure whose source draws a MultiPoint, two footbridges out
+ *  about 350 m apart, read by the app's own reader: pipeline/dbt writes such
+ *  a closure as shape "point" (pub_conditions_trail_closures). */
+function twoBridges(): TrailClosure {
+  const closure = validTrailClosure({
+    ...trailClosureRows().point,
+    notice_id: 'example_trail_club_alerts:two-footbridges',
+    title: 'Two footbridges out on Example Creek (example)',
+    place: {
+      kind: 'geometry',
+      geometry: {
+        type: 'MultiPoint',
+        coordinates: [
+          [-100.209, 38.75],
+          [-100.205, 38.7495],
+        ],
+      },
+    },
+  })
+  if (closure === null) throw new Error('the MultiPoint closure did not read')
+  return closure
 }
 
 /** The z10 tile holding `[lon, lat]`, as MapLibre's GeoJSON source tiles
@@ -161,6 +184,36 @@ describe('how a club closure is drawn', () => {
       type: 'geojson',
       data: { type: 'FeatureCollection', features: [] },
     })
+  })
+
+  it('draws a point closure placed by a MultiPoint as a cross at each of its points, on the cross layer alone', () => {
+    // The tiler hands a MultiPoint over as ONE feature of type Point holding
+    // every point, which the cross layer's filter takes, and maplibre-gl
+    // 6.7.0 lays out one icon at each point of such a feature
+    // (src/symbol/symbol_layout.ts, its `feature.type === 'Point'` branch).
+    // So the crosses are the points of the features that layer takes.
+    const { point } = closures()
+    const bridges = twoBridges()
+    const [first] = bridges.place.geometry.coordinates as Array<[number, number]>
+    const tile = tileAt(first, [bridges, point])
+    const drawnBy = (filter: unknown) =>
+      (tile?.features ?? []).filter((feature) =>
+        passes(filter, feature.type as 1 | 2 | 3),
+      )
+    const crosses = (filter: unknown) =>
+      drawnBy(filter).flatMap((feature) =>
+        (feature.geometry as unknown[]).map(
+          () => feature.tags?.[CLUB_CLOSURE_ID_PROPERTY],
+        ),
+      )
+
+    expect(crosses(CLUB_CLOSURE_POINT_FILTER)).toEqual([
+      bridges.notice_id,
+      bridges.notice_id,
+      point.notice_id,
+    ])
+    expect(drawnBy(CLUB_CLOSURE_LINE_FILTER)).toEqual([])
+    expect(drawnBy(CLUB_CLOSURE_SHADE_FILTER)).toEqual([])
   })
 
   it('shades an area no trail runs inside on the hatch layer alone, never along the crossed-out mark (decision 191)', () => {
@@ -350,12 +403,13 @@ describe('putting the closures on a live map', () => {
 describe('touching a club closure', () => {
   /** A map holding the clubs' paper and point cross, a trail line, the
    *  hiker-reported tape, an ATC band, a waypoint pin and dot, a warning pin
-   *  and a hazard area - every mark a touch can land on - with nothing
-   *  drawn under the thumb until a test puts it there. */
+   *  and a hazard area and site - every mark a touch can land on - with
+   *  nothing drawn under the thumb until a test puts it there. */
   function tappableMap(): MockMap {
     const map = new MockMap({})
     map.layerIds = [
       HAZARD_FILL_LAYER_ID,
+      HAZARD_POINT_LAYER_ID,
       CLUB_CLOSURE_SHADE_LAYER_ID,
       BLAZE_LAYER_ID,
       POI_LAYER_ID,
@@ -565,6 +619,33 @@ describe('touching a club closure', () => {
     map.renderedFeatures.delete(CLUB_CLOSURE_SHADE_LAYER_ID)
     map.emit('click', touch)
     expect(onHazard.mock.calls).toEqual([['h1']])
+  })
+
+  it('leaves a touch on a shooting site’s dot inside a shaded area to the site’s own card, never both: a dot is a mark, not an area', () => {
+    // F4 of the client review of #1805, 2026-10-15: the shade took this
+    // touch, so a site inside a shaded closure could never open its own
+    // card. The dot sits inside a hunting area here too, the other area it
+    // can be in.
+    const map = tappableMap()
+    map.renderedFeatures.set(HAZARD_FILL_LAYER_ID, [{ properties: { notice_id: 'h1' } }])
+    map.renderedFeatures.set(HAZARD_POINT_LAYER_ID, [
+      { properties: { notice_id: 'example_shooting_sites:7' } },
+    ])
+    map.renderedFeatures.set(CLUB_CLOSURE_SHADE_LAYER_ID, shaded('example:closed-lands'))
+    const onHazard = vi.fn()
+    const onClub = vi.fn()
+
+    attachHazardTaps(map as unknown as MapLibreMap, onHazard)
+    attachClubClosureTaps(map as unknown as MapLibreMap, onClub)
+    map.emit('click', touch)
+
+    expect(onHazard.mock.calls).toEqual([['example_shooting_sites:7']])
+    expect(onClub).not.toHaveBeenCalled()
+    // Off the dot, the shade answers again, as it does over the hunting area.
+    map.renderedFeatures.delete(HAZARD_POINT_LAYER_ID)
+    map.emit('click', touch)
+    expect(onHazard.mock.calls).toEqual([['example_shooting_sites:7']])
+    expect(onClub.mock.calls).toEqual([['example:closed-lands']])
   })
 })
 

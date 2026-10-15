@@ -429,14 +429,19 @@ function everyPart(coordinates: unknown, part: (value: unknown) => boolean): boo
  * Whether a closure's geometry is the one its shape is drawn from, with every
  * coordinate drawable: a LineString or MultiLineString for a `line` (the
  * notice's own line) and an `area` (the trail stretches the pipeline cut
- * inside it), a Point for a `point`, and a Polygon or MultiPolygon for a
- * `shade` (the area itself, decision 191). Checked whole here because every
- * closure shares one GeoJSON source on the map (map/clubClosureLayers.ts),
- * and one row's unreadable coordinates must not cost the others their marks.
+ * inside it), a Point or MultiPoint for a `point`, as pipeline/dbt's
+ * pub_conditions_trail_closures writes one (the map crosses each of its
+ * points), and a Polygon or MultiPolygon for a `shade` (the area itself,
+ * decision 191). Checked whole here because every closure shares one GeoJSON
+ * source on the map (map/clubClosureLayers.ts), and one row's unreadable
+ * coordinates must not cost the others their marks.
  */
 function drawable(shape: ClosureShape, geometry: NoticeGeometryValue): boolean {
   const { type, coordinates } = geometry
-  if (shape === 'point') return type === 'Point' && isLonLat(coordinates)
+  if (shape === 'point') {
+    if (type === 'Point') return isLonLat(coordinates)
+    return type === 'MultiPoint' && everyPart(coordinates, isLonLat)
+  }
   if (shape === 'shade') {
     if (type === 'Polygon') return isPolygon(coordinates)
     return type === 'MultiPolygon' && everyPart(coordinates, isPolygon)

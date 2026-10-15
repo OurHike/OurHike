@@ -326,9 +326,9 @@ export function closureLayerIds(bandId: string): string[] {
   return [bandId, closureTraceId(bandId), closureCrossesId(bandId), closureMarkId(bandId)]
 }
 
-/** The id of the one cross per point closure of `bandId`'s feed
- *  (map/clubClosureLayers.ts's `buildClosurePointLayer`). Only a feed that
- *  carries points has one, so it is not in `closureLayerIds`. */
+/** The id of the layer that draws `bandId`'s point closures, one cross at
+ *  each point (map/clubClosureLayers.ts's `buildClosurePointLayer`). Only a
+ *  feed that carries points has one, so it is not in `closureLayerIds`. */
 export function closurePointId(bandId: string): string {
   return `${bandId}-point`
 }

@@ -5,8 +5,11 @@
 // These hold the reader to the file's contract, row by row, with the
 // hand-made file in preview-shots/fixtures/clubClosures.mjs as the good case:
 // every row the map can draw is kept, and every row it cannot is refused one
-// at a time, never the file.
+// at a time, never the file. And to the writer: every closure pipeline/dbt's
+// own unit tests expect pub_conditions_trail_closures to write is kept.
 
+import { readFileSync } from 'node:fs'
+import { resolve } from 'node:path'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 
 vi.mock('./config', async (importOriginal) => ({
@@ -32,6 +35,53 @@ const CLOSURES_URL = 'https://data.example/conditions/trail_closures.json'
 /** One of the fixture's rows, with `fields` written over it. */
 function rowWith(fields: Record<string, unknown>): Record<string, unknown> {
   return { ...trailClosureRows().line, ...fields }
+}
+
+/** Two footbridges out on one notice, about 350 m apart: a point closure whose
+ *  source draws a MultiPoint, which pipeline/dbt writes as shape "point". */
+const TWO_BRIDGES = {
+  type: 'MultiPoint',
+  coordinates: [
+    [-100.209, 38.75],
+    [-100.205, 38.7495],
+  ],
+}
+
+/** A trail_closures.json row as pipeline/dbt writes one: the fields this
+ *  suite reads off it. */
+interface WrittenClosure {
+  notice_id: string
+  shape: string
+  place: { kind: string; geometry: { type: string } }
+}
+
+/**
+ * Every closure pipeline/dbt's unit tests expect pub_conditions_trail_closures
+ * to write: each `closures` list under the `expect:` of a unit test of that
+ * model in pipeline/dbt/models/publish/_publish__conditions.yml, a JSON list
+ * in a YAML single-quoted string ('' is one quote).
+ *
+ * Read from the writer's own file rather than copied here, for
+ * lib/poiIdentity.contract.test.ts's reason: a copy is a third place to keep
+ * in step, and drift between copies is the bug a contract test exists to
+ * catch. client-tests.yml's scope list carries pipeline/dbt/models/publish/,
+ * so a change to those rows runs this suite too.
+ */
+function writtenClosures(): WrittenClosure[] {
+  const yml = readFileSync(
+    resolve(process.cwd(), '../pipeline/dbt/models/publish/_publish__conditions.yml'),
+    'utf8',
+  )
+  return yml
+    .split('\n  - name: ')
+    .filter((entry) => entry.includes('\n    model: pub_conditions_trail_closures\n'))
+    .flatMap((test) => {
+      const at = test.indexOf('\n    expect:')
+      if (at < 0) return []
+      return [...test.slice(at).matchAll(/closures: '((?:[^']|'')*)'/g)].flatMap(
+        ([, list]) => JSON.parse(list.replaceAll("''", "'")) as WrittenClosure[],
+      )
+    })
 }
 
 afterEach(() => vi.restoreAllMocks())
@@ -176,6 +226,52 @@ describe('a conditions/trail_closures.json row (validTrailClosure)', () => {
     expect(validTrailClosure({ ...rows.line, place: { kind: 'unplaced' } })).toBeNull()
   })
 
+  it('reads a point row placed by a MultiPoint as one closure, every point kept as written', () => {
+    // pipeline/dbt's pub_conditions_trail_closures writes "point" for a
+    // Point or a MultiPoint, and the map draws a cross at each point.
+    const closure = validTrailClosure({
+      ...trailClosureRows().point,
+      place: { kind: 'geometry', geometry: TWO_BRIDGES },
+    })
+
+    expect(closure?.shape).toBe('point')
+    expect(closure?.place.geometry).toEqual(TWO_BRIDGES)
+  })
+
+  it('refuses a MultiPoint with a point the map cannot draw, and a MultiPoint under a line, an area or a shade', () => {
+    // An empty MultiPoint, one point off the globe, one point in text, and a
+    // Point's own coordinates under the MultiPoint type: any of them in the
+    // source could cost every other closure its mark.
+    const { point, line, area, shade } = trailClosureRows()
+    const placed = (row: object, geometry: unknown) =>
+      validTrailClosure({ ...row, place: { kind: 'geometry', geometry } })
+    const multiPoint = (coordinates: unknown) => ({ type: 'MultiPoint', coordinates })
+
+    expect(placed(point, multiPoint([]))).toBeNull()
+    expect(
+      placed(
+        point,
+        multiPoint([
+          [-100.209, 38.75],
+          [-100.205, 98.75],
+        ]),
+      ),
+    ).toBeNull()
+    expect(
+      placed(
+        point,
+        multiPoint([
+          [-100.209, 38.75],
+          ['-100.205', '38.7495'],
+        ]),
+      ),
+    ).toBeNull()
+    expect(placed(point, multiPoint([-100.209, 38.75]))).toBeNull()
+    for (const row of [line, area, shade]) {
+      expect(placed(row, TWO_BRIDGES), row.shape).toBeNull()
+    }
+  })
+
   it('refuses a row whose coordinates the map cannot draw, so one bad row cannot cost the others their marks', () => {
     const line = (coordinates: unknown) =>
       rowWith({
@@ -250,6 +346,32 @@ describe('a conditions/trail_closures.json row (validTrailClosure)', () => {
     expect(validTrailClosure(rowWith({ source_key: undefined }))).toBeNull()
     expect(validTrailClosure(null)).toBeNull()
     expect(validTrailClosure('a closure')).toBeNull()
+  })
+})
+
+describe('the rows pipeline/dbt writes (pub_conditions_trail_closures’ unit tests)', () => {
+  it('keeps every closure the writer’s own unit tests expect it to write, its MultiPoint point among them', () => {
+    // F2 of the client review of #1805, 2026-10-15: the writer wrote
+    // club_point:1, a MultiPoint, as shape "point", and this reader refused
+    // it, so a point closure whose source draws a MultiPoint was in the file
+    // and on no map.
+    const written = writtenClosures()
+    // Found, and holding every shape: without this the comparison below
+    // passes by reading nothing.
+    expect(new Set(written.map((row) => row.shape))).toEqual(
+      new Set(['line', 'area', 'point', 'shade']),
+    )
+    expect(written.map((row) => row.place.geometry.type)).toContain('MultiPoint')
+
+    const read = written.map((row) => validTrailClosure(row))
+
+    expect(read.map((closure) => closure?.notice_id ?? null)).toEqual(
+      written.map((row) => row.notice_id),
+    )
+    expect(read.map((closure) => closure?.shape)).toEqual(written.map((row) => row.shape))
+    expect(read.map((closure) => closure?.place.geometry)).toEqual(
+      written.map((row) => row.place.geometry),
+    )
   })
 })
 

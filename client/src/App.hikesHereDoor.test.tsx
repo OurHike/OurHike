@@ -17,8 +17,12 @@ import { MockMap } from './test/mocks/maplibre-gl'
 import { renderedMap } from './test/liveMap'
 import { appHarness, latOfMile, openMapTab } from './test/appHarness'
 import { DAY_HIKES_KEY } from './lib/dayHikes'
-import { HAZARD_ADVISORIES, HAZARD_ID_PROPERTY } from './lib/hazardAreas'
-import { HAZARD_FILL_LAYER_ID, HAZARD_SOURCE_ID } from './map/hazardAreaLayers'
+import { HAZARD_ADVISORIES } from './lib/hazardAreas'
+import {
+  HAZARD_FILL_LAYER_ID,
+  HAZARD_ID_PROPERTY,
+  HAZARD_SOURCE_ID,
+} from './map/hazardAreaLayers'
 import { CLUB_CLOSURE_ID_PROPERTY } from './map/closureLayers'
 import { CLUB_CLOSURE_SOURCE_ID } from './map/clubClosureLayers'
 import { CLUB_CLOSURE_LAYER_ID } from './map/styleIds'

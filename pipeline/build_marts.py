@@ -2,7 +2,8 @@
 
     python build_marts.py --fixtures [--dbt dbt] [--python <interpreter>]
         [--warehouse data/warehouse.duckdb] [--processed-dir data/processed/dbt]
-        [--raw-dir data/raw] [--threads N] [--checks-base <dir>] [--dry-run]
+        [--raw-dir data/raw] [--threads N] [--checks-base <dir>]
+        [--state-base <dir>] [--dry-run]                     # --state-base: a pull request, from main's build
     python build_marts.py --lane monthly ...                 # build-reference.yml
     python build_marts.py --lane hourly [--state <dir>] ...  # the hourly conditions lane
     python build_marts.py --lane hourly --checks-only ...    # its checks, check-conditions.yml
@@ -409,6 +410,57 @@ is parsed against the build's own warehouse path. A selection that reaches
 no check is an answer, said in the log without an annotation. Only a build
 with no lane takes a base: each lane runs every check it has.
 
+A PULL REQUEST BUILDS ONLY WHAT CHANGED SINCE MAIN'S LAST BUILD (decision 210,
+the maintainer's poll of 2026-10-15: "In this PR anyway"; --state-base). This
+build took 16 min 7 s of CI's dbt job on 2a826f01 (Pipeline tests run
+38773605297, its step "dbt build, the Python steps and the pub_ writers"), on
+every pull request. A push to main now keeps its fixture warehouse and the
+manifest it was built with in the Actions cache, and a pull request whose
+change state_base.py lets through (its docstring has the rules) moves that
+warehouse to --warehouse, loads the fixtures' raw tables into it as every
+build does, and passes the cached manifest's directory as --state-base. Then:
+- right after `dbt seed`, `dbt ls -s state:modified --state <it>` lists what
+  dbt finds changed (STATE_LIST), and main() plans again with that list;
+- stage A selects `state:modified+` and every model or test whose SQL reads
+  the clock, with what they feed (clock_readers()): int_challenges__items and
+  the two closures models that read notice_build_date() answer from the day
+  they were built, so main's copy would publish main's day;
+- each Python step still runs. What its table unblocks is built whole when
+  the step read an input that changed (changed_step_tables(): its
+  step_<name> exposure lists a node below what changed, below what reads the
+  clock, or below an earlier such step's table), and otherwise only where it
+  meets those;
+- the pub_ writers, Elementary's checks (with --checks-base, as before), the
+  sources' freshness and the data-quality file run as in any build, so every
+  phone file is written and the parity step compares each of them;
+- no --defer: every node this build leaves unselected is already in the
+  warehouse, at the relation its ref resolves to, because main built it there
+  in a file of the same name (the file's name is every node's database, as
+  the checks base above found), so a defer would point each ref where it
+  already reads;
+- the row history is neither restored nor saved: a restore replaces every
+  snapshot table, and each mart this build leaves alone would then read a
+  history it never rebuilt. The cached snapshots stay, so a snapshot this
+  build re-runs adds to the history main's build began, as a lane's does to
+  its store's: a column added to int_podcasts__final, built with its
+  snapshot over a state build's warehouse, joined the history and opened a
+  new version of each of its 71 rows, since the hash covers it (measured
+  2026-10-15 on dbt 2.0.6), where a full fixture build starts the history
+  with the column. Only `_changed_at` tells the two apart. Elementary's history
+  alone starts cold (row_history.py restore --elementary-only --cold-start),
+  as every fixture build's does, so no check compares this build with main's:
+  a schema check would otherwise fail a pull request that retypes a column,
+  which a full build passes;
+- the data-quality file counts the tests this build ran, fewer than a full
+  build's; it is page data, and no step of the job compares it.
+plan() refuses --state-base with a lane, with --state, and outside
+--fixtures; main() refuses it with a history store named or --checks-only,
+and stops after `dbt seed` when any macro differs from the cached manifest's
+(state_base.macro_problems(), which the workflow's decision asks first). A
+failure of one notice source in stage A stops a state build rather than
+being held: holding it would mean building again what that source feeds,
+which a state build did not select, and CI goes red on either exit.
+
 THE HOURLY LANE'S CHECKS RUN APART, AFTER ITS BUILD HAS PUBLISHED (decision
 110, the maintainer's poll of 2026-10-08: "All of them, hourly. build a
 different workflow that kicks off after the actual build";
@@ -539,6 +591,7 @@ from pathlib import Path
 
 import tomllib
 
+import state_base
 from lib import data_env
 
 PIPELINE_DIR = Path(__file__).resolve().parent
@@ -642,6 +695,21 @@ DBT_RETRIES = 3
 #: The tag of a model that builds with no other model beside it (the module docstring, "A MODEL TAGGED
 #: `builds_alone`"), set in the model's own config().
 BUILDS_ALONE = "builds_alone"
+#: A state build's selector (the module docstring, "A PULL REQUEST BUILDS ONLY WHAT CHANGED SINCE MAIN'S LAST BUILD"):
+#: what dbt finds changed against --state-base, and everything below it.
+STATE_MODIFIED = "state:modified+"
+#: The run that lists what changed, right after `dbt seed`, and its Run.stage.
+STATE_LIST_LABEL, STATE_LIST = "what changed since main's build (dbt ls state:modified)", "state_list"
+#: A state build's first command: Elementary's history alone, started cold, the cached warehouse's snapshots kept.
+ELEMENTARY_COLD_LABEL = "start Elementary's history cold, the warehouse's snapshots kept"
+#: SQL that reads the clock: DuckDB's date and time functions, and dbt's run_started_at. Matched on a node's code and
+#: each macro's with every comment removed (_code()), since a comment saying "today (" is no read.
+CLOCK = re.compile(
+    r"\b(?:now|today|get_current_time|get_current_timestamp|transaction_timestamp)\("
+    r"|\b(?:current_date|current_time|current_timestamp|localtime|localtimestamp|run_started_at)\b",
+    re.IGNORECASE,
+)
+_COMMENTS = re.compile(r"\{#.*?#\}|/\*.*?\*/|--[^\n]*", re.DOTALL)
 
 
 @dataclass(frozen=True)
@@ -1009,11 +1077,13 @@ def _builds(
     split: bool,
     manifest: dict | None,
     stage: str = "",
+    modified: frozenset[str] | None = None,
 ) -> list[Run]:
     """One `dbt build -s <select> --exclude <exclude>`, or with `split` its three passes (the module docstring, "A MODEL
     TAGGED `builds_alone`"), `alone` being `common` at one thread. Given the manifest, a pass that selects nothing is
-    left out, and a build whose tagged-models pass selects nothing is not split at all. Every run carries `stage`, so
-    each of stage A's passes is answered as stage A (Run.stage)."""
+    left out, and a build whose tagged-models pass selects nothing is not split at all; `modified` is a state build's
+    list for `state:modified` (selects_anything()). Every run carries `stage`, so each of stage A's passes is answered
+    as stage A (Run.stage)."""
 
     def run(name: str, options: tuple[str, ...], chosen: tuple[str, ...], excluded: tuple[str, ...]) -> Run:
         argv = (dbt, "build", *options, *(("-s", *chosen) if chosen else ()), "--exclude", *excluded, *after)
@@ -1036,9 +1106,13 @@ def _builds(
             (*exclude, tagged),
         ),
     ]
-    if not split or (manifest is not None and not selects_anything(manifest, *passes[1][2:])):
+    if modified is not None and manifest is not None and not selects_anything(manifest, select, exclude, modified):
+        # A state build's: most of its builds select nothing, and dbt 2.0.6 read the whole project for 30.9 to 34.2 s
+        # before it said one did (the module docstring, "A MODEL TAGGED `builds_alone`").
+        return []
+    if not split or (manifest is not None and not selects_anything(manifest, *passes[1][2:], modified)):
         return [run(label, common, select, exclude)]
-    return [run(*each) for each in passes if manifest is None or selects_anything(manifest, *each[2:])]
+    return [run(*each) for each in passes if manifest is None or selects_anything(manifest, *each[2:], modified)]
 
 
 def plan(
@@ -1062,6 +1136,8 @@ def plan(
     absent: tuple[str, ...] = (),
     checks_base: Path | None = None,
     held_nodes: tuple[str, ...] = (),
+    state_base: Path | None = None,
+    modified: frozenset[str] | None = None,
 ) -> list[Run]:
     """Every command of the build, in order, for these steps, in `lane` (None: every node), less the steps `without` names,
     between the row history's restore and its save when `history` names a store (the save left out when
@@ -1079,9 +1155,23 @@ def plan(
     leaves both to their run (the module docstring, "THE DATA-QUALITY FILE IS WRITTEN LAST"). Each of `held_nodes`, a
     selector of what an earlier failure of this build holds back (failure_holds()), is left out of every dbt build as
     a step that does not run is (the module docstring, "EVERY TEST HAS TWO THRESHOLDS, AND THE ENVIRONMENT DECIDES WHO
-    STOPS")."""
+    STOPS"). Given `state_base`, the build is a pull request's from main's build (the module docstring, "A PULL REQUEST
+    BUILDS ONLY WHAT CHANGED SINCE MAIN'S LAST BUILD"): Elementary's history alone starts cold, `dbt ls` lists what
+    changed right after the seeds, and every build but the writers' takes only what changed, what reads the clock and
+    what a step rewrote from a changed input, with what each feeds; given `modified`, what that listing found, a build
+    that selects none of it is left out."""
     if lane not in (None, *LANES):
         raise ValueError(f"no lane {lane!r}; lanes are {', '.join(LANES)}")
+    if state_base is not None:
+        if state is not None:
+            raise ValueError(
+                "--state-base and --state are two different bases: --state is the hourly lane's defer to the monthly "
+                "build, --state-base CI's build of what changed in a warehouse main built"
+            )
+        if lane is not None:
+            raise ValueError(f"--state-base is CI's build with no lane: the {lane} lane builds every node it has")
+        if not fixtures:
+            raise ValueError("--state-base is CI's fixture build's: the warehouse main's dbt job left, under --fixtures")
     if state is not None and lane != HOURLY:
         raise ValueError("--state is the hourly lane's: only it defers to another build's nodes")
     if checks_base is not None and lane is not None:
@@ -1090,7 +1180,14 @@ def plan(
         raise ValueError(f"--without-step names no entry of STEPS: {', '.join(unknown)}")
     common = ("--profiles-dir", profiles_dir, *(("--threads", str(threads)) if threads else ()))
     alone = ("--profiles-dir", profiles_dir, "--threads", "1")
-    builds = {"dbt": dbt, "common": common, "alone": alone, "split": lane != HOURLY, "manifest": manifest}
+    builds = {
+        "dbt": dbt,
+        "common": common,
+        "alone": alone,
+        "split": lane != HOURLY,
+        "manifest": manifest,
+        "modified": modified if state_base is not None else None,
+    }
     fields = {"warehouse": str(paths.warehouse), "raw_dir": str(paths.raw_dir)}
     running = [step for step in steps if step.name not in without and (lane is None or step.lane == lane)]
     # What a step that does not run here would have unblocked, and what a
@@ -1107,6 +1204,21 @@ def plan(
     elif lane == HOURLY:
         selection = (*LANE_EXCLUDES, *(LANE_PARENTS if state is None else ()))
         after = ("--defer", "--state", str(state)) if state is not None else ("--indirect-selection", "cautious")
+    # A state build's (the module docstring, "A PULL REQUEST BUILDS ONLY WHAT CHANGED SINCE MAIN'S LAST BUILD"): what
+    # reads the clock, selected by its file, once there is a manifest; the tables a step writes from an input that
+    # changed, once `dbt ls` has listed what did; and the option of a build that selects by state, with no --defer.
+    clock: list[str] = []  # each a `path:<its file>+` selector
+    rewritten: list[str] = []
+    by_state: tuple[str, ...] = ()
+    if state_base is not None:
+        by_state = ("--state", str(state_base))
+        if manifest is not None:
+            readers = clock_readers(manifest)
+            resources = _resources(manifest)
+            clock = sorted({selector for uid in readers if (selector := _hold_selector(resources, uid))})
+            if modified is not None:
+                rewritten = changed_step_tables(manifest, running, modified, readers)
+        selection = (STATE_MODIFIED, *clock)
 
     if checks is None:
         checks = runs_checks(lane)
@@ -1120,6 +1232,9 @@ def plan(
         ),
         Run(SEED, (dbt, "seed", *common), DBT_DIR),
     ]
+    if state_base is not None:
+        listing = ("-s", "state:modified", *by_state, "--output", "json", "--output-keys", "unique_id", "--quiet")
+        runs.append(Run(STATE_LIST_LABEL, (dbt, "ls", "--profiles-dir", profiles_dir, *listing), DBT_DIR, STATE_LIST))
     no_checks = f"tag:{ELEMENTARY_CHECK}"  # every dbt build's: the checks pass runs them, after the writers
     stage_a_exclude = ["package:dbt_project_evaluator", "package:elementary", "path:models/publish", no_checks]
     if running:
@@ -1129,17 +1244,30 @@ def plan(
     label = "stage A: everything no Python step reads back"
     if lane == HOURLY:
         label = "stage A of the hourly lane: every node an hourly or daily source reaches, no step reads back"
-    runs += _builds(label, **builds, select=selection, exclude=tuple(stage_a_exclude), after=after, stage=STAGE_A)
+    runs += _builds(label, **builds, select=selection, exclude=tuple(stage_a_exclude), after=(*after, *by_state), stage=STAGE_A)
     for position, step in enumerate(running):
         arguments = step.command + (step.fixture_args if fixtures else dict(step.lane_args).get(lane, ()))
         runs.append(Run(step.name, (python, *(argument.format(**fields) for argument in arguments)), PIPELINE_DIR))
         later = [f"source:{DERIVED_SOURCE}.{following.table}+" for following in running[position + 1 :]]
+        table = f"source:{DERIVED_SOURCE}.{step.table}+"
+        unblocked, by = (table,), ()
+        if state_base is not None and step.table not in rewritten:
+            # The step wrote the rows main's build did (each step re-run over a fixture build's warehouse wrote the
+            # same rows, every column but _loaded_at the same: measured 2026-10-15), so only where its table meets
+            # what changed, what reads the clock, or an earlier rewritten table is there anything to build again.
+            earlier = [each.table for each in running[:position] if each.table in rewritten]
+            unblocked = (
+                f"{table},{STATE_MODIFIED}",
+                *(f"{table},{selector}" for selector in clock),
+                *(f"{table},source:{DERIVED_SOURCE}.{other}+" for other in earlier),
+            )
+            by = by_state
         runs += _builds(
             f"what {DERIVED_SOURCE}.{step.table} unblocks",
             **builds,
-            select=(f"source:{DERIVED_SOURCE}.{step.table}+",),
+            select=unblocked,
             exclude=("path:models/publish", no_checks, *later, *held, *no_snapshots, *lane_exclude),
-            after=after,
+            after=(*after, *by),
         )
     if lane == HOURLY:
         writers = ("-s", *(f"path:models/publish,{selector}" for selector in LANE_EXCLUDES))
@@ -1160,7 +1288,13 @@ def plan(
     if not checks_apart(lane):
         runs.append(_freshness_run(dbt, common, freshness_selection(lane, fixtures=fixtures)))
         runs.append(_quality_run(dbt, common, lane, (*held, *no_snapshots, *lane_exclude), after))
-    if history is not None:
+    if history is not None and state_base is not None:
+        # The module docstring, "A PULL REQUEST BUILDS ONLY WHAT CHANGED SINCE MAIN'S LAST BUILD": the warehouse keeps
+        # main's snapshots, Elementary's history starts cold as every fixture build's does, and nothing is saved.
+        store = ("--url", history.url, "--warehouse", str(paths.warehouse))
+        cold = (history.python, "row_history.py", "restore", *store, "--elementary-only", "--cold-start")
+        runs.insert(0, Run(ELEMENTARY_COLD_LABEL, cold, PIPELINE_DIR))
+    elif history is not None:
         store = ("--url", history.url, "--warehouse", str(paths.warehouse))
         # --cold-start lets Elementary's history start too (row_history.py's docstring, "THE COLD START").
         cold = ("--cold-start",) if history.cold_start else ("--elementary-cold-start",) if history.elementary_cold_start else ()
@@ -1464,16 +1598,18 @@ def alone_problems(manifest: dict) -> list[str]:
     return problems
 
 
-def _matching(manifest: dict, criterion: str, *, selecting: bool) -> set[str]:
+def _matching(manifest: dict, criterion: str, *, selecting: bool, modified: frozenset[str] | None = None) -> set[str]:
     """What one dbt selector criterion (`method:value`, its graph `+`s, no `,`) can select: exactly for the methods
-    this file's commands use, and for any other, everything when `selecting` and nothing when not, so that
-    selects_anything() errs toward running a pass."""
+    this file's commands use, `state:modified` among them once `modified` holds what dbt listed for it, and for any
+    other, everything when `selecting` and nothing when not, so that selects_anything() errs toward running a pass."""
     resources = _resources(manifest)
     body = criterion.removeprefix("+").removesuffix("+")
     method, colon, value = body.partition(":")
     found: set[str] | None = None
     if not colon or any(character in body for character in "*?@+ "):
         found = None  # a bare name, a wildcard, `@` or a depth such as `2+`: not read here
+    elif method == "state":
+        found = set(modified) if value == "modified" and modified is not None else None
     elif method == "source" and len(parts := value.split(".")) <= 2:
         found = {
             uid
@@ -1502,25 +1638,131 @@ def _matching(manifest: dict, criterion: str, *, selecting: bool) -> set[str]:
     return found | below | above
 
 
-def selects_anything(manifest: dict, select: tuple[str, ...], exclude: tuple[str, ...]) -> bool:
+def selects_anything(
+    manifest: dict, select: tuple[str, ...], exclude: tuple[str, ...], modified: frozenset[str] | None = None
+) -> bool:
     """Whether `dbt build -s <select> --exclude <exclude>` can run anything in this manifest: a model, seed, snapshot or
     test. It over-reads `select` and under-reads `exclude`, so a pass is skipped only when dbt would surely run nothing
     in it. Tests go as dbt's default (eager) indirect selection takes them, which no split build changes: in with any
-    parent selected, out only here with every parent excluded (where eager takes out a test with any)."""
+    parent selected, out only here with every parent excluded (where eager takes out a test with any). `modified` is
+    what `dbt ls -s state:modified` listed in a state build, read for `state:modified` (_matching())."""
     tests = ("test.", "unit_test.")
     if select:
         chosen: set[str] = set()
         for item in select:
-            chosen |= set.intersection(*(_matching(manifest, part, selecting=True) for part in item.split(",")))
+            chosen |= set.intersection(
+                *(_matching(manifest, part, selecting=True, modified=modified) for part in item.split(","))
+            )
     else:
         chosen = set(_resources(manifest)) | set(manifest.get("child_map") or {})
     children, parents = manifest.get("child_map") or {}, manifest.get("parent_map") or {}
     chosen |= {child for uid in chosen for child in children.get(uid) or [] if child.startswith(tests)}
     excluded: set[str] = set()
     for item in exclude:
-        excluded |= set.intersection(*(_matching(manifest, part, selecting=False) for part in item.split(",")))
+        excluded |= set.intersection(*(_matching(manifest, part, selecting=False, modified=modified) for part in item.split(",")))
     excluded |= {uid for uid in chosen if uid.startswith(tests) and parents.get(uid) and set(parents[uid]) <= excluded}
     return any(uid.split(".")[0] in ("model", "seed", "snapshot", "test", "unit_test") for uid in chosen - excluded)
+
+
+def _code(text: str | None) -> str:
+    """SQL or Jinja with its comments removed, for CLOCK."""
+    return _COMMENTS.sub(" ", text or "")
+
+
+def clock_readers(manifest: dict) -> list[str]:
+    """The unique id of every model, snapshot and test of this project, a pub_ writer aside, whose code reads the clock
+    (CLOCK), itself or through a macro it calls at any depth: what a state build always selects, by its file
+    (_hold_selector()), since main's copy holds main's day (the module docstring, "A PULL REQUEST BUILDS ONLY WHAT
+    CHANGED SINCE MAIN'S LAST BUILD"). The writers build whole in every build already."""
+    macros = manifest.get("macros") or {}
+    callers: dict[str, set[str]] = {}
+    for uid, macro in macros.items():
+        for called in (macro.get("depends_on") or {}).get("macros") or []:
+            callers.setdefault(called, set()).add(uid)
+    reading = _reached(
+        {"child_map": callers}, [uid for uid, macro in macros.items() if CLOCK.search(_code(macro.get("macro_sql")))]
+    )
+    project = manifest.get("metadata", {}).get("project_name") or "ourhike"
+    found = set()
+    for uid, node in (manifest.get("nodes") or {}).items():
+        if node.get("package_name") != project or node.get("resource_type") not in ("model", "snapshot", "test"):
+            continue
+        if _is_writer(uid):
+            continue
+        if CLOCK.search(_code(node.get("raw_code"))) or reading & set((node.get("depends_on") or {}).get("macros") or []):
+            found.add(uid)
+    return sorted(found)
+
+
+def _derived_source(manifest: dict, table: str) -> str | None:
+    for uid, source in (manifest.get("sources") or {}).items():
+        if source.get("source_name") == DERIVED_SOURCE and source.get("name") == table:
+            return uid
+    return None
+
+
+def changed_step_tables(manifest: dict, steps: list[Step], modified: frozenset[str], clock: list[str]) -> list[str]:
+    """The derived table of each of `steps`, in order, whose step reads an input that changed: its step_<name> exposure
+    lists a node below what dbt's state:modified listed (`modified`), below what reads the clock (`clock`,
+    clock_readers()), or below the table of an earlier step this answers for. A state build builds what each of those
+    tables unblocks whole, since the step wrote it again from inputs main's build did not have (the module docstring,
+    "A PULL REQUEST BUILDS ONLY WHAT CHANGED SINCE MAIN'S LAST BUILD")."""
+    changed = _reached(manifest, sorted({*modified, *clock}))
+    tables = []
+    for step in steps:
+        if step.reads_no_model or not steps_reading(manifest, [step], changed):
+            continue
+        tables.append(step.table)
+        if source := _derived_source(manifest, step.table):
+            changed |= _reached(manifest, [source])
+    return tables
+
+
+def state_report(manifest: dict, modified: frozenset[str], runs: list[Run], steps: list[Step]) -> list[str]:
+    """What a state build found and planned, for the log: what dbt listed by kind, what reads the clock, which steps'
+    tables build whole, and the dbt builds left (the module docstring, "A PULL REQUEST BUILDS ONLY WHAT CHANGED SINCE
+    MAIN'S LAST BUILD")."""
+    kinds: dict[str, int] = {}
+    for uid in modified:
+        kinds[uid.split(".", 1)[0]] = kinds.get(uid.split(".", 1)[0], 0) + 1
+    clock = clock_readers(manifest)
+    rewritten = changed_step_tables(manifest, steps, modified, clock)
+    builds = [run.label for run in runs if run.argv[1:2] == ("build",)]
+    return [
+        f"-- build_marts: dbt lists {len(modified)} node(s) changed since main's build"
+        + (f" ({', '.join(f'{count} {kind}' for kind, count in sorted(kinds.items()))})" if kinds else ""),
+        f"-- build_marts: {len(clock)} node(s) read the clock and build again in every state build: "
+        f"{', '.join(map(_name, clock)) or 'none'}",
+        f"-- build_marts: steps that read a changed input, so what their table unblocks builds whole: "
+        f"{', '.join(step.name for step in steps if step.table in rewritten) or 'none'}",
+        f"-- build_marts: {len(builds)} dbt build(s) left to run: {'; '.join(builds) or 'none'}",
+    ]
+
+
+def listed_ids(stdout: str) -> frozenset[str]:
+    """The unique ids `dbt ls --output json --output-keys unique_id` printed, one JSON object a line; other lines are
+    dbt's own and are skipped."""
+    found = set()
+    for line in stdout.splitlines():
+        line = line.strip()
+        if not line.startswith("{"):
+            continue
+        try:
+            found.add(json.loads(line)["unique_id"])
+        except (ValueError, KeyError, TypeError):
+            continue
+    return frozenset(found)
+
+
+def state_base_problems(head_manifest: dict, base: Path) -> list[str]:
+    """Why a state build cannot trust `base` (--state-base, the directory holding main's manifest.json): its manifest
+    cannot be read, or a macro differs from this build's (state_base.macro_problems())."""
+    path = base / "manifest.json"
+    try:
+        base_manifest = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, ValueError) as unread:
+        return [f"main's manifest, {path}, could not be read ({unread})"]
+    return state_base.macro_problems(head_manifest, base_manifest)
 
 
 #: How much of a failed test's answer the log shows: rows, and characters a value. Enough to name the source and the
@@ -2355,6 +2597,12 @@ def main(argv: list[str] | None = None) -> int:
         type=Path,
         help="no lane: a base commit's dbt project, parsed with Elementary's switches on; only the checks its change reaches run",
     )
+    parser.add_argument(
+        "--state-base",
+        type=Path,
+        help="no lane, --fixtures: the directory holding the manifest.json of main's build, whose warehouse is --warehouse; "
+        "only what changed since, and what it reaches, is built again (decision 210)",
+    )
     parser.add_argument("--dry-run", action="store_true", help="print the commands and run none")
     args = parser.parse_args(argv)
 
@@ -2390,12 +2638,21 @@ def main(argv: list[str] | None = None) -> int:
             # Read before anything runs: the extract and the served copy have written the warehouse already.
             "withdrawn": withdrawn_tables(paths.warehouse),
             "checks_base": args.checks_base.resolve() if args.checks_base else None,
+            "state_base": args.state_base.resolve() if args.state_base else None,
         }
+        if args.state_base and args.history_url:
+            # The module docstring, "A PULL REQUEST BUILDS ONLY WHAT CHANGED SINCE MAIN'S LAST BUILD".
+            raise ValueError(
+                "--state-base keeps the snapshots main's build left in the warehouse and saves no row history, so it "
+                "takes no history store (--history-url, OURHIKE_HISTORY_URL)"
+            )
         planned = {**options, "history": history, "save_history": not args.no_history_save}
         if checks_only:
             # The module docstring, "THE HOURLY LANE'S CHECKS RUN APART": what the run needs of the build is its record.
-            if args.without_step or args.state or args.checks_base:
-                raise ValueError("--checks-only takes the build's held steps from its record, and no --state or --checks-base")
+            if args.without_step or args.state or args.checks_base or args.state_base:
+                raise ValueError(
+                    "--checks-only takes the build's held steps from its record, and no --state, --checks-base or --state-base"
+                )
             record = read_build_record(paths.warehouse)
             if record.get("elementary_saved") and record.get("history_url") != history.url:
                 raise ValueError(
@@ -2467,6 +2724,14 @@ def main(argv: list[str] | None = None) -> int:
     if notice and not checks_only:
         # A workflow command is one only at the start of its line, so a warning is printed as it is.
         print(notice if notice.startswith("::") else f"-- build_marts: {notice}", flush=True)
+    if options["state_base"] is not None:
+        print(
+            f"-- build_marts: a state build from main's build, whose manifest is in {options['state_base']} and whose "
+            f"warehouse is {paths.warehouse}: only what dbt lists as changed, what reads the clock and what a step "
+            "wrote from a changed input are built again, with what each reaches; main's snapshots are kept, and "
+            "Elementary's history starts cold (decision 210)",
+            flush=True,
+        )
     if args.no_history_save:
         print(
             "::warning title=Row history not saved::--no-history-save: this build restores the row history and saves "
@@ -2547,7 +2812,34 @@ def main(argv: list[str] | None = None) -> int:
             SOURCES_RESULTS_PATH.unlink(missing_ok=True)
         started = time.time()
         results_since = float("-inf") if run.cwd == DBT_DIR else started
-        completed = subprocess.run(run.argv, cwd=run.cwd, env={**env, **dict(run.env)}, check=False)
+        if run.stage == STATE_LIST:
+            # Its answer is its output, one JSON object a line (listed_ids()).
+            completed = subprocess.run(
+                run.argv, cwd=run.cwd, env={**env, **dict(run.env)}, check=False, capture_output=True, text=True
+            )
+        else:
+            completed = subprocess.run(run.argv, cwd=run.cwd, env={**env, **dict(run.env)}, check=False)
+        if run.stage == STATE_LIST:
+            # The module docstring, "A PULL REQUEST BUILDS ONLY WHAT CHANGED SINCE MAIN'S LAST BUILD": what dbt lists,
+            # checked against main's macros, and the rest of the build planned again from it.
+            manifest = _read_manifest()
+            problems = state_base_problems(manifest, options["state_base"]) if completed.returncode == 0 else []
+            if completed.returncode != 0 or problems:
+                print(f"-- build_marts: {run.label} failed (exit {completed.returncode}): {' '.join(run.argv)}", flush=True)
+                for line in [*(completed.stdout or "").splitlines()[-20:], *(completed.stderr or "").splitlines()[-20:]]:
+                    print(line, flush=True)
+                for problem in problems:
+                    print(f"-- build_marts: no state build from {options['state_base']}: {problem}", flush=True)
+                return 1 if problems or completed.returncode in PUBLISHABLE_EXITS else completed.returncode
+            planned = {**planned, "modified": listed_ids(completed.stdout)}
+            again = plan(STEPS, **planned, manifest=manifest)
+            again = again[[each.label for each in again].index(STATE_LIST_LABEL) + 1 :]
+            for line in state_report(
+                manifest, planned["modified"], again, [step for step in STEPS if step.name not in planned["without"]]
+            ):
+                print(line, flush=True)
+            runs = runs[:position] + again
+            continue
         if run.label in (RESTORE_LABEL, SAVE_LABEL):
             history_exits[run.label] = completed.returncode
         if run.stage == CHECKS:
@@ -2590,7 +2882,9 @@ def main(argv: list[str] | None = None) -> int:
             for line in failed_test_rows(paths.warehouse, results_since):
                 print(line, flush=True)
             results, manifest = read_run_results(results_since), _read_manifest()
-            if results is not None and run.stage == STAGE_A and not stage_a_rerun:
+            # Not in a state build, whose stage A selected only what changed: the module docstring, "A PULL REQUEST
+            # BUILDS ONLY WHAT CHANGED SINCE MAIN'S LAST BUILD".
+            if results is not None and run.stage == STAGE_A and not stage_a_rerun and options["state_base"] is None:
                 if held := one_sources_failures(results, manifest, notice_readers()):
                     for key, tables in sorted(held.items()):
                         dropped = drop_raw_tables(paths.warehouse, tables)

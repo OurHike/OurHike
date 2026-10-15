@@ -3515,3 +3515,351 @@ def test_plan_checks_leaves_out_what_the_builds_failures_held():
     checks, quality = _checks(runs).argv, runs[-2].argv
     assert held in checks[checks.index("--exclude") :]
     assert held in quality[quality.index("--exclude") :]
+
+
+# --- decision 210: a pull request builds only what changed since main's last build -----------------------------------
+# build_marts.py's docstring, "A PULL REQUEST BUILDS ONLY WHAT CHANGED SINCE MAIN'S LAST BUILD"; the workflow's half,
+# and state_base.py's rules, are .github/tests/test_dbt_state_build.py's.
+
+STATE_BASE = Path("/c/target")
+#: The steps of PAIR, in their order, read as the two a state build has to tell apart.
+ROUTE = STEPS_BY_NAME["step_form_route"]
+STATE_OPTIONS = ("--state", "/c/target")
+CHANGED = "model.ourhike.stg_a"
+CLOCK_FILE = "path:models/intermediate/int_clock.sql+"
+
+
+def _builds_of(runs: list[build_marts.Run]) -> list[tuple[str, ...]]:
+    return [run.argv for run in runs if run.argv[1:2] == ("build",)]
+
+
+def _selected(argv: tuple[str, ...]) -> tuple[str, ...]:
+    return argv[argv.index("-s") + 1 : argv.index("--exclude")]
+
+
+def _state_manifest(clock: bool = True) -> dict:
+    """A small project for PAIR: stg_a, what a pull request changes, feeds int_points, which step_dem_sampling reads;
+    int_clock reads the clock through a macro that calls another (when `clock`); dem_samples and formed_routes each
+    feed a staging model, and both feed int_both; step_form_route reads int_routes_input, which nothing changes."""
+    manifest = _alone_manifest(
+        {
+            "source.ourhike.atc.raw_a": ["model.ourhike.stg_a"],
+            "model.ourhike.stg_a": ["model.ourhike.int_points", "test.ourhike.unique_stg_a_key"],
+            "model.ourhike.int_clock": ["model.ourhike.int_after_clock"],
+            "model.ourhike.int_routes_input": [],
+            "source.ourhike.derived.dem_samples": ["model.ourhike.stg_derived__dem_samples"],
+            "model.ourhike.stg_derived__dem_samples": ["model.ourhike.int_both"],
+            "source.ourhike.derived.formed_routes": ["model.ourhike.stg_derived__formed_routes"],
+            "model.ourhike.stg_derived__formed_routes": ["model.ourhike.int_both", "model.ourhike.int_routes_only"],
+        }
+    )
+    for uid, node in manifest["nodes"].items():
+        node["name"] = uid.split(".")[2]
+        # A comment that says now() is no read of the clock (build_marts._code() leaves comments out).
+        node["raw_code"] = "select 1 -- the day this ran: now() would say"
+    manifest["macros"] = {
+        "macro.ourhike.build_day": {
+            "macro_sql": "{% macro build_day() %}{{ utc_today() }}{% endmacro %}",
+            "depends_on": {"macros": ["macro.ourhike.utc_today"]},
+        },
+        "macro.ourhike.utc_today": {
+            "macro_sql": "{% macro utc_today() %}cast(timezone('UTC', now()) as date){% endmacro %}"
+            if clock
+            else "{% macro utc_today() %}cast('2026-10-15' as date){% endmacro %}"
+        },
+    }
+    manifest["nodes"]["model.ourhike.int_clock"]["depends_on"] = {"macros": ["macro.ourhike.build_day"]}
+    manifest["exposures"] = {
+        "exposure.ourhike.step_dem_sampling": {
+            "name": "step_dem_sampling",
+            "depends_on": {"nodes": ["model.ourhike.int_points"]},
+        },
+        "exposure.ourhike.step_form_route": {
+            "name": "step_form_route",
+            "depends_on": {"nodes": ["model.ourhike.int_routes_input"]},
+        },
+    }
+    return manifest
+
+
+def test_a_state_build_starts_elementarys_history_cold_lists_what_changed_after_the_seeds_and_saves_nothing(tmp_path):
+    history = History(str(tmp_path / "history"), True, "python", True)
+
+    runs = plan(PAIR, dbt="dbt", python="python", paths=PATHS, fixtures=True, history=history, state_base=STATE_BASE)
+
+    store = ("--url", history.url, "--warehouse", "/w/warehouse.duckdb")
+    assert runs[0] == build_marts.Run(
+        build_marts.ELEMENTARY_COLD_LABEL,
+        ("python", "row_history.py", "restore", *store, "--elementary-only", "--cold-start"),
+        PIPELINE_DIR,
+    )
+    assert [run.label for run in runs[1:4]] == [build_marts.ELEMENTARY_TABLES, build_marts.SEED, build_marts.STATE_LIST_LABEL]
+    assert runs[3].stage == build_marts.STATE_LIST and runs[3].argv == (
+        "dbt",
+        "ls",
+        "--profiles-dir",
+        ".",
+        "-s",
+        "state:modified",
+        *STATE_OPTIONS,
+        "--output",
+        "json",
+        "--output-keys",
+        "unique_id",
+        "--quiet",
+    )
+    labels = [run.label for run in runs]
+    assert build_marts.RESTORE_LABEL not in labels and build_marts.SAVE_LABEL not in labels, (
+        "a restore would replace every snapshot main's build left, and nothing reads a fixture build's store"
+    )
+
+
+def test_a_state_build_selects_by_state_with_no_defer_and_runs_every_step_and_writer_as_a_full_build_does():
+    runs = plan(PAIR, dbt="dbt", python="python", paths=PATHS, fixtures=True, manifest=NONE_ALONE, state_base=STATE_BASE)
+    full = plan(PAIR, dbt="dbt", python="python", paths=PATHS, fixtures=True, manifest=NONE_ALONE)
+
+    stage_a, dem_samples, formed_routes = _builds_of(runs)[:3]
+    assert _selected(stage_a) == ("state:modified+",) and stage_a[-2:] == STATE_OPTIONS
+    assert _selected(dem_samples) == ("source:derived.dem_samples+,state:modified+",) and dem_samples[-2:] == STATE_OPTIONS
+    assert _selected(formed_routes) == ("source:derived.formed_routes+,state:modified+",)
+    assert not [argv for argv in _builds_of(runs) if "--defer" in argv], "every unselected node is in the warehouse"
+    after_builds = (build_marts.WRITERS, build_marts.CHECKS, build_marts.FRESHNESS, build_marts.DATA_QUALITY)
+    rest = [run.argv for run in runs if run.argv[0] == "python" or run.stage in after_builds]
+    assert rest == [run.argv for run in full if run.argv[0] == "python" or run.stage in after_builds]
+
+
+def test_given_what_dbt_listed_a_state_build_adds_what_reads_the_clock_and_builds_a_rewritten_table_whole():
+    """step_dem_sampling reads int_points, below the change, so it writes its table from an input main's build did not
+    have, and what that table unblocks builds whole; step_form_route's input is unchanged, so its build takes only
+    where its table meets the change, the clock or dem_samples' table, which here is int_both."""
+    runs = plan(
+        PAIR,
+        dbt="dbt",
+        python="python",
+        paths=PATHS,
+        fixtures=True,
+        manifest=_state_manifest(),
+        state_base=STATE_BASE,
+        modified=frozenset({CHANGED}),
+    )
+
+    stage_a, dem_samples, formed_routes = _builds_of(runs)[:3]
+    assert _selected(stage_a) == ("state:modified+", CLOCK_FILE) and stage_a[-2:] == STATE_OPTIONS
+    assert _selected(dem_samples) == ("source:derived.dem_samples+",) and "--state" not in dem_samples
+    assert _selected(formed_routes) == (
+        "source:derived.formed_routes+,state:modified+",
+        f"source:derived.formed_routes+,{CLOCK_FILE}",
+        "source:derived.formed_routes+,source:derived.dem_samples+",
+    )
+    assert formed_routes[-2:] == STATE_OPTIONS
+    assert [run.label for run in runs if run.argv[0] == "python"] == ["step_dem_sampling", "step_form_route"]
+
+
+def test_given_nothing_listed_and_no_clock_read_a_state_build_leaves_out_every_build_that_selects_nothing():
+    runs = plan(
+        PAIR,
+        dbt="dbt",
+        python="python",
+        paths=PATHS,
+        fixtures=True,
+        manifest=_state_manifest(clock=False),
+        state_base=STATE_BASE,
+        modified=frozenset(),
+    )
+
+    assert [run.label for run in runs] == [
+        build_marts.ELEMENTARY_TABLES,
+        build_marts.SEED,
+        build_marts.STATE_LIST_LABEL,
+        "step_dem_sampling",
+        "step_form_route",
+        "the pub_ writers",
+        build_marts.ELEMENTARY_CHECKS,
+        build_marts.FRESHNESS_LABEL,
+        build_marts.DATA_QUALITY_LABEL,
+    ]
+
+
+def test_a_build_without_a_state_base_leaves_in_a_build_that_selects_nothing_as_before():
+    """Only a state build prunes a whole build: the others keep the split's rule alone (`_builds()`)."""
+    runs = plan(PAIR, dbt="dbt", python="python", paths=PATHS, fixtures=True, manifest=_state_manifest(clock=False))
+
+    assert [run.label for run in runs if run.argv[1:2] == ("build",)][:3] == [
+        "stage A: everything no Python step reads back",
+        "what derived.dem_samples unblocks",
+        "what derived.formed_routes unblocks",
+    ]
+
+
+def test_clock_readers_finds_sql_or_a_macro_at_any_depth_that_reads_the_clock_and_never_a_comment_or_a_writer():
+    manifest = _state_manifest()
+    manifest["nodes"]["model.ourhike.pub_day"] = {"name": "pub_day", "package_name": "ourhike", "resource_type": "model"}
+    manifest["nodes"]["model.ourhike.pub_day"]["raw_code"] = "select current_date as day"
+    manifest["nodes"]["model.ourhike.int_direct"] = {
+        "name": "int_direct",
+        "package_name": "ourhike",
+        "resource_type": "model",
+        "raw_code": "select * from x where ends_on < current_date",
+    }
+    manifest["nodes"]["model.elementary.some_model"] = {
+        "name": "some_model",
+        "package_name": "elementary",
+        "resource_type": "model",
+        "raw_code": "select now()",
+    }
+
+    assert build_marts.clock_readers(manifest) == ["model.ourhike.int_clock", "model.ourhike.int_direct"]
+    assert build_marts.clock_readers(_state_manifest(clock=False)) == []
+
+
+def test_a_step_reading_below_an_earlier_rewritten_table_is_rewritten_too():
+    manifest = _state_manifest(clock=False)
+    manifest["exposures"]["exposure.ourhike.step_form_route"]["depends_on"]["nodes"] = ["model.ourhike.int_both"]
+
+    assert build_marts.changed_step_tables(manifest, PAIR, frozenset({CHANGED}), []) == ["dem_samples", "formed_routes"]
+    assert build_marts.changed_step_tables(manifest, PAIR, frozenset(), []) == []
+    assert build_marts.changed_step_tables(_state_manifest(), PAIR, frozenset(), ["model.ourhike.int_clock"]) == []
+
+
+def test_what_dbt_ls_printed_is_read_one_json_object_a_line():
+    printed = '{"unique_id":"model.ourhike.stg_a"}\nWarning: dbt1092 nothing\n{"unique_id":"test.ourhike.t.1"}\n{"oops":1}\n'
+
+    assert build_marts.listed_ids(printed) == frozenset({"model.ourhike.stg_a", "test.ourhike.t.1"})
+
+
+def test_selects_anything_reads_state_modified_as_dbt_listed_it_and_as_unknown_before_the_listing():
+    manifest = _state_manifest()
+
+    assert build_marts.selects_anything(manifest, ("state:modified+",), (), modified=frozenset({CHANGED}))
+    assert not build_marts.selects_anything(manifest, ("state:modified+",), (), modified=frozenset())
+    assert build_marts.selects_anything(manifest, ("state:modified+",), ()), "not yet listed: everything, so it runs"
+
+
+@pytest.mark.parametrize(
+    ("options", "why"),
+    [
+        ({"lane": "monthly"}, "the monthly lane builds every node it has"),
+        ({"lane": "hourly"}, "the hourly lane builds every node it has"),
+        ({"lane": "hourly", "state": Path("/m/target")}, "two different bases"),
+        ({"fixtures": False}, "CI's fixture build's"),
+    ],
+)
+def test_a_state_base_is_refused_a_lane_the_hourly_lanes_state_and_a_build_outside_the_fixtures(options, why):
+    with pytest.raises(ValueError, match=why):
+        plan([], dbt="dbt", python="python", paths=PATHS, **{"fixtures": True, **options}, state_base=STATE_BASE)
+
+
+def test_the_hourly_lanes_plan_carries_nothing_of_a_state_build():
+    """The hourly lane is byte for byte what it was before decision 210: no listing, no state selector, no --state but
+    its own defer's (the dry-run plans of 2a826f01 and of this change compared equal, 2026-10-15)."""
+    for state in (None, Path("/m/target")):
+        runs = plan(STEPS, dbt="dbt", python="python", paths=PATHS, fixtures=False, lane="hourly", state=state)
+        flat = [part for run in runs for part in run.argv]
+        assert build_marts.STATE_LIST_LABEL not in [run.label for run in runs]
+        assert not [part for part in flat if "state:modified" in part]
+        assert flat.count("--state") == (0 if state is None else len(_builds_of(runs)))
+
+
+class _StateRuns(_Recorder):
+    """_Recorder whose `dbt ls` prints `listed` as dbt does, one JSON object a line among its own lines, and exits
+    `ls_code`; every other command is answered as _Recorder answers it."""
+
+    def __init__(self, listed: list[str], ls_code: int = 0, codes: dict[int, int] | None = None, results: tuple = ()):
+        super().__init__(codes)
+        self.listed, self.ls_code = listed, ls_code
+        self.captured: list[tuple[str, ...]] = []
+        #: (the call, by its count, after which dbt leaves run results; the results path; the results).
+        self.results = results
+
+    def __call__(self, argv, *, cwd, env, check, capture_output=False, text=False):
+        if tuple(argv[1:2]) != ("ls",):
+            completed = super().__call__(argv, cwd=cwd, env=env, check=check)
+            if self.results and len(self.calls) == self.results[0]:
+                _results(self.results[1], *self.results[2])
+            return completed
+        self.calls.append((tuple(argv), cwd, env))
+        self.captured.append(tuple(argv)) if capture_output and text else None
+        printed = "\n".join(["dbt 2.0.6", *(json.dumps({"unique_id": uid}) for uid in self.listed)])
+        return subprocess.CompletedProcess(argv, self.ls_code, stdout=printed, stderr="")
+
+
+def _state_main(monkeypatch, tmp_path, recorder: _StateRuns, base_macros: dict | None = None, extra=()):
+    """main() as CI's dbt job runs a state build: --fixtures, no history store, main's manifest in `base`."""
+    manifest = _state_manifest()
+    base = tmp_path / "base"
+    base.mkdir()
+    (base / "manifest.json").write_text(json.dumps({"macros": manifest["macros"] if base_macros is None else base_macros}))
+    (tmp_path / "manifest.json").write_text(json.dumps(manifest))
+    monkeypatch.setattr(build_marts, "MANIFEST_PATH", tmp_path / "manifest.json")
+    monkeypatch.setattr(build_marts, "RUN_RESULTS_PATH", tmp_path / "run_results.json")
+    monkeypatch.setattr(build_marts, "SOURCES_RESULTS_PATH", tmp_path / "sources.json")
+    monkeypatch.setattr(build_marts.subprocess, "run", recorder)
+    monkeypatch.setattr(tempfile, "tempdir", str(tmp_path))
+    monkeypatch.setenv("OURHIKE_BUILT_BY", "abc123 run 7.1")
+    for variable in ("OURHIKE_DATA_ENV", "OURHIKE_HISTORY_URL"):
+        monkeypatch.delenv(variable, raising=False)
+    options = ["--dbt", "dbt", "--python", "python", "--history-python", "python", "--state-base", str(base)]
+    paths = ["--warehouse", str(tmp_path / "warehouse.duckdb"), "--processed-dir", str(tmp_path / "processed")]
+    return build_marts.main(["--fixtures", *options, *paths, "--raw-dir", str(tmp_path / "raw"), *extra]), base
+
+
+def test_main_plans_the_rest_of_a_state_build_from_what_dbt_listed_and_says_what_it_found(monkeypatch, tmp_path, capsys):
+    recorder = _StateRuns([CHANGED, "test.ourhike.unique_stg_a_key"])
+
+    code, base = _state_main(monkeypatch, tmp_path, recorder)
+
+    out = capsys.readouterr().out
+    argvs_run = [argv for argv, _, _ in recorder.calls]
+    assert code == 0
+    assert argvs_run[0][1:3] == ("row_history.py", "restore") and argvs_run[0][-2:] == ("--elementary-only", "--cold-start")
+    assert recorder.captured == [argvs_run[3]], "the listing's output is captured, and nothing else's"
+    stage_a = argvs_run[4]
+    assert _selected(stage_a) == ("state:modified+", CLOCK_FILE) and stage_a[-2:] == ("--state", str(base.resolve()))
+    assert not [argv for argv in argvs_run if argv[1:3] == ("row_history.py", "save")]
+    assert "-- build_marts: dbt lists 2 node(s) changed since main's build (1 model, 1 test)" in out
+    assert "-- build_marts: 1 node(s) read the clock and build again in every state build: int_clock" in out
+    assert "so what their table unblocks builds whole: step_dem_sampling" in out
+
+
+def test_main_stops_a_state_build_whose_macros_differ_from_main_s_before_any_build(monkeypatch, tmp_path, capsys):
+    recorder = _StateRuns([CHANGED])
+
+    code, _ = _state_main(monkeypatch, tmp_path, recorder, base_macros={"macro.ourhike.utc_today": {"macro_sql": "old"}})
+
+    assert code == 1
+    assert [argv[1] for argv, _, _ in recorder.calls][1:] == ["run", "seed", "ls"]
+    assert "2 macro(s) differ from the cached build's" in capsys.readouterr().out
+
+
+def test_main_stops_a_state_build_whose_listing_failed_with_its_exit(monkeypatch, tmp_path):
+    recorder = _StateRuns([], ls_code=2)
+
+    code, _ = _state_main(monkeypatch, tmp_path, recorder)
+
+    assert code == 2 and [argv[1] for argv, _, _ in recorder.calls][-1] == "ls"
+
+
+@pytest.mark.parametrize(
+    ("extra", "why"),
+    [
+        (("--history-url", "/h/store"), "takes no history store"),
+        (("--lane", "hourly", "--checks-only"), "no --state, --checks-base or --state-base"),
+    ],
+)
+def test_main_refuses_a_state_base_with_a_history_store_or_in_a_checks_run(monkeypatch, tmp_path, capsys, extra, why):
+    with pytest.raises(SystemExit):
+        _state_main(monkeypatch, tmp_path, _StateRuns([]), extra=extra)
+
+    assert why in capsys.readouterr().err
+
+
+def test_a_state_build_never_holds_one_notice_source_by_running_stage_a_again(monkeypatch, tmp_path):
+    """Its stage A selected only what changed, so a held source's rows would not be built again: it stops instead."""
+    failed = {"unique_id": "model.ourhike.stg_a", "status": "error"}
+    recorder = _StateRuns([CHANGED], codes={5: 1}, results=(5, tmp_path / "run_results.json", [failed]))
+    monkeypatch.setattr(build_marts, "one_sources_failures", lambda *_: pytest.fail("a state build holds no source"))
+    monkeypatch.setattr(build_marts, "retry_failed_build", lambda run, env, completed: completed)
+
+    code, _ = _state_main(monkeypatch, tmp_path, recorder)
+
+    assert code == 1 and recorder.calls[-1][0][1] == "build"

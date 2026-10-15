@@ -152,6 +152,9 @@ def build(tmp_path_factory) -> dict:
         "DBT_ENGINE_SEND_ANONYMOUS_USAGE_STATS": "false",
         # A conditions leg whose restore failed (decision 58): the marts build from their finals, no snapshot.
         "OURHIKE_ROW_HISTORY": "off",
+        # As a conditions leg builds (decision 204): a failing test warns, and build_marts.py reports one past its
+        # error threshold, which tests the gate's hold of every absent source rather than stopping on it.
+        "OURHIKE_DATA_ENV": "ua",
     }
     paths = ["--profiles-dir", ".", "--target-path", str(root / "target"), "--log-path", str(root / "logs")]
     _run([DBT, "seed", *paths], DBT_DIR, dbt_env)

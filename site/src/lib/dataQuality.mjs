@@ -1177,12 +1177,26 @@ function sideOf(value, min, max) {
  * holding the entry's value and the range Elementary scored it against
  * (flaggedPoints says why that point is the entry's). An entry without all
  * three numbers, or whose numbers are no point's, cannot be placed.
+ *
+ * COMPARED AT THE FILE'S PRECISION, 3 decimal places (data_quality.sql
+ * writes a rate so), never exactly. A file written before 2026-10-15 wrote a
+ * series point from Elementary's 4-byte FLOAT as 99.76000213623047 where its
+ * entry read 99.76, so no point matched and every null-rate row said "No
+ * earlier range to compare it with" (UA's hourly file, closures_v1's atc_id;
+ * the review of 2026-10-15, thread 4279329354). The pipeline writes both the
+ * same way since, and this reads the files written before it.
  */
 function pointOf(item, series) {
   if (item.value === null || item.min === null || item.max === null) return -1;
   return series.points.findLastIndex(
-    (point) => point.value === item.value && point.min === item.min && point.max === item.max,
+    (point) => sameAtFilePrecision(point.value, item.value) && sameAtFilePrecision(point.min, item.min) && sameAtFilePrecision(point.max, item.max),
   );
+}
+
+/** Whether two of the file's numbers are one, to the 3 places it writes a rate to. Null matches only null. */
+function sameAtFilePrecision(a, b) {
+  if (a === null || b === null) return a === b;
+  return Math.round(a * 1000) === Math.round(b * 1000);
 }
 
 /**

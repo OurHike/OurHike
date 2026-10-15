@@ -972,3 +972,53 @@ describe("each source's freshness (decision 203)", () => {
     expect(row.sentence).toBe("Measured 20,648,336 in this build.");
   });
 });
+
+describe("a row's point, at the file's precision (the review of 2026-10-15, thread 4279329354)", () => {
+  /** An hourly file whose null-rate series holds Elementary's 4-byte floats as they were written before 2026-10-15. */
+  const floatFile = () => {
+    const file = examples.hourlyWithWarning();
+    const at = (h) => new Date(Date.parse(examples.HOURLY_BUILT_AT) - h * 3600_000).toISOString().replace(".000Z", "Z");
+    file.series = [
+      {
+        table: "closures_v1",
+        column: "atc_id",
+        metric: "null_percent",
+        mart: "closures",
+        in_needs_a_look: true,
+        points: [
+          { at: at(2), value: 99.70600128173828, expected_min: 99.6, expected_max: 99.75 },
+          { at: at(1), value: 99.71099853515625, expected_min: 99.633, expected_max: 99.746 },
+          { at: at(0), value: 99.76000213623047, expected_min: 99.633, expected_max: 99.76 },
+        ],
+      },
+    ];
+    file.needs_a_look = [
+      {
+        kind: "anomalies",
+        table: "closures_v1",
+        column: "atc_id",
+        status: "warn",
+        value: 99.76,
+        expected_min: 99.633,
+        expected_max: 99.76,
+        since: examples.HOURLY_BUILT_AT,
+        metric: "null_percent",
+      },
+    ];
+    return file;
+  };
+
+  it("quotes the band before a point the file wrote as a raw float, beside an entry rounded to 3 places", () => {
+    const [row] = page(MISSING, read(floatFile(), "hourly")).sections.items;
+    // The page prints a rate of 10 or more to one place (formatNumber); what matters is that it quotes a range.
+    expect(row.sentence).toBe("Null rate: 99.8% in this build, above the usual 99.6% to 99.7%.");
+    expect(row.sentence).not.toContain("No earlier range");
+  });
+
+  it("still tells two values apart that differ at the third place", () => {
+    const file = floatFile();
+    file.needs_a_look[0].value = 99.761;
+    const [row] = page(MISSING, read(file, "hourly")).sections.items;
+    expect(row.sentence).toContain("No earlier range to compare it with.");
+  });
+});

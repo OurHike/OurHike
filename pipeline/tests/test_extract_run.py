@@ -687,6 +687,180 @@ def test_a_monthly_table_the_run_check_refuses_keeps_its_rows_while_the_others_l
     assert monthly_counts(store) == {"raw_testclub__trails": 6, "raw_otherclub__closures_layer": 2}
 
 
+# --- The layer's own data edit date, logged in _extract_runs (RUNS_COLUMNS' comment) ---------------------------
+
+#: Two days a year apart, as ATC's trail_club_sections stated them on 2026-10-02: its data last edited 2024-08-15,
+#: its layer (a schema edit) 2025-10-09. Midnight UTC each, in epoch milliseconds as ArcGIS states them.
+DATA_EDITED_MS = 1723680000000
+SCHEMA_EDITED_MS = 1759968000000
+#: A later data edit, 2026-09-22.
+NEWER_DATA_EDITED_MS = 1790035200000
+
+
+class DatedLayer(FakeLayer):
+    """A FakeLayer whose metadata states `editingInfo` as ArcGIS Online's does, while `editing` is set."""
+
+    editing: dict | None = None
+
+    def metadata(self, request, context):
+        answer = super().metadata(request, context)
+        if answer is not None and self.editing is not None:
+            answer["editingInfo"] = dict(self.editing)
+        return answer
+
+
+def editing(data_ms):
+    """An `editingInfo` whose layer was last edited after its data, as trail_club_sections' was."""
+    return {"lastEditDate": SCHEMA_EDITED_MS, "dataLastEditDate": data_ms, "schemaLastEditDate": SCHEMA_EDITED_MS}
+
+
+def logged_dates(store, lane_name="monthly"):
+    """Every run log row's (table, outcome, data_last_edit_date), in run order, as the warehouse holds them."""
+    con = duckdb.connect()
+    load_warehouse(con, make_pipeline(lane_name, store["bucket_url"], store["pipelines_dir"]))
+    return con.execute(
+        "select table_name, outcome, data_last_edit_date from raw._extract_runs order by run_id, table_name"
+    ).fetchall()
+
+
+def metadata_reads(requests_mock, url) -> int:
+    """How many times the layer's metadata was asked for whole, with no validator to answer 304 against."""
+    return sum(
+        1
+        for request in requests_mock.request_history
+        if request.url.split("?")[0] == url and "If-None-Match" not in request.headers
+    )
+
+
+def test_data_last_edit_date_reads_only_the_data_edit_date_the_metadata_states():
+    """Never lastEditDate in its place, never a guess; a value that is no number logs nothing."""
+    assert _kinds.data_last_edit_date({"editingInfo": editing(DATA_EDITED_MS)}) == DATA_EDITED_MS
+    assert _kinds.data_last_edit_date({"editingInfo": {"dataLastEditDate": 1723680000000.75}}) == DATA_EDITED_MS
+    assert _kinds.data_last_edit_date({"editingInfo": {"dataLastEditDate": 0}}) == 0, "logged as stated; dbt prints no day"
+    for metadata in (
+        {},
+        {"editingInfo": None},
+        {"editingInfo": {"lastEditDate": SCHEMA_EDITED_MS}},
+        {"editingInfo": {"dataLastEditDate": None}},
+        {"editingInfo": {"dataLastEditDate": "2024-08-15"}},
+        {"editingInfo": {"dataLastEditDate": True}},
+        {"editingInfo": {"dataLastEditDate": float("nan")}},
+        {"editingInfo": {"dataLastEditDate": 2**63}},
+    ):
+        assert _kinds.data_last_edit_date(metadata) is None, metadata
+
+
+def test_the_run_that_loads_a_layer_logs_the_data_edit_date_its_metadata_states_and_a_layer_stating_none_logs_none(
+    registry, store, requests_mock
+):
+    """dbt's int_sources__data_edited dates club_sections.json's layers from this column, in place of fetch_all.py's
+    manifest. The plain lane reads each layer inside dlt's extract (to_dlt())."""
+    trails = DatedLayer(requests_mock, LINES_URL, [feature(1), feature(2)])
+    trails.editing = editing(DATA_EDITED_MS)
+    FakeLayer(requests_mock, CLOSURES_URL, [feature(10)])
+
+    report = lane(store, lines(), closures())
+
+    assert report.proofs.edited == {"raw_testclub__trails": DATA_EDITED_MS}
+    assert logged_dates(store, "hourly") == [
+        ("raw_testclub__closures_layer", "loaded", None),
+        ("raw_testclub__trails", "loaded", DATA_EDITED_MS),
+    ]
+
+
+def test_a_monthly_read_logs_its_layers_data_edit_date_from_the_folders_own_thread(registry, store, requests_mock):
+    """The monthly lane reads each upstream before dlt (read_each()), one Proofs per read."""
+    trails = DatedLayer(requests_mock, LINES_URL, [feature(1), feature(2)])
+    trails.editing = editing(DATA_EDITED_MS)
+    FakeLayer(requests_mock, CLOSURES_URL, [feature(10)])
+
+    month(store, monthly_lines(), monthly_points())
+
+    assert logged_dates(store) == [
+        ("raw_otherclub__closures_layer", "loaded", None),
+        ("raw_testclub__trails", "loaded", DATA_EDITED_MS),
+    ]
+
+
+def test_a_monthly_read_the_run_check_refuses_logs_no_date_so_the_rows_still_served_keep_theirs(registry, store, requests_mock):
+    """Its metadata stated a newer edit, but its rows never landed: logged there, the newer date would date the
+    last month's rows, which the warehouse still serves."""
+    trails = DatedLayer(requests_mock, LINES_URL, [feature(i) for i in range(1, 7)])
+    trails.editing = editing(DATA_EDITED_MS)
+    month(store, monthly_lines())
+    trails.features, trails.etag, trails.editing = [feature(1), feature(2)], "v2", editing(NEWER_DATA_EDITED_MS)
+
+    report = month(store, monthly_lines())
+
+    assert "below the 50% floor" in report.isolated["raw_testclub__trails"]
+    assert logged_dates(store) == [
+        ("raw_testclub__trails", "loaded", DATA_EDITED_MS),
+        ("raw_testclub__trails", "refused", None),
+    ]
+    assert _run.dated_tables(_run.run_log_rows(make_pipeline("monthly", store["bucket_url"], store["pipelines_dir"]))) == {
+        "raw_testclub__trails"
+    }
+
+
+def test_a_fresh_monthly_layer_with_no_date_logged_since_its_load_is_asked_for_it_once_and_then_left_alone(
+    registry, store, requests_mock
+):
+    """A FRESH skip reads no metadata body (a 304), so a layer last loaded before its date was logged would go undated
+    until its publisher next edited it, years for trail_club_sections (fresh_edit_date()). The monthly lane asks once,
+    and logs the date on the skipped row, where int_sources__data_edited reads it as the served rows' date."""
+    trails = DatedLayer(requests_mock, LINES_URL, [feature(1), feature(2)])
+    month(store, monthly_lines())  # a load whose layer stated no date: a load from before the date was logged
+    trails.editing = editing(DATA_EDITED_MS)  # its ETag unchanged, so the next checks answer 304
+
+    before = metadata_reads(requests_mock, LINES_URL)
+    second = month(store, monthly_lines())
+    asked_second = metadata_reads(requests_mock, LINES_URL) - before
+    before = metadata_reads(requests_mock, LINES_URL)
+    third = month(store, monthly_lines())
+    asked_third = metadata_reads(requests_mock, LINES_URL) - before
+
+    assert second.verdicts == third.verdicts == {"raw_testclub__trails": "fresh"}
+    assert (asked_second, asked_third) == (1, 0), "asked once, then the logged date stands for the unchanged layer"
+    assert logged_dates(store) == [
+        ("raw_testclub__trails", "loaded", None),
+        ("raw_testclub__trails", "skipped", DATA_EDITED_MS),
+        ("raw_testclub__trails", "skipped", None),
+    ]
+
+
+def test_a_fresh_layer_whose_date_cannot_be_read_stays_fresh_and_logs_none(registry, store, requests_mock):
+    """A date not read is a date not logged: the check's verdict stands, and nothing else of the month is held back."""
+    DatedLayer(requests_mock, LINES_URL, [feature(1), feature(2)])
+    month(store, monthly_lines())
+
+    def refuses_whole_reads(request, context):
+        if "If-None-Match" in request.headers:
+            context.status_code = 304
+            return None
+        context.status_code = 404
+        return {"error": {"code": 404, "message": "Not found"}}
+
+    requests_mock.get(LINES_URL, json=refuses_whole_reads)
+    report = month(store, monthly_lines())
+
+    assert report.verdicts == {"raw_testclub__trails": "fresh"} and report.outcome == "loaded"
+    assert logged_dates(store)[-1] == ("raw_testclub__trails", "skipped", None)
+
+
+def test_a_fresh_layer_on_the_hourly_lane_is_never_asked_for_its_date(registry, store, requests_mock):
+    """Only the monthly lane's nodes print the date (EDIT_DATE_LANES), and a leg checks every hour inside seconds."""
+    trails = DatedLayer(requests_mock, LINES_URL, [feature(1)])
+    lane(store, lines())
+    trails.editing = editing(DATA_EDITED_MS)
+
+    before = metadata_reads(requests_mock, LINES_URL)
+    report = lane(store, lines())
+
+    assert report.verdicts == {"raw_testclub__trails": "fresh"}
+    assert metadata_reads(requests_mock, LINES_URL) == before
+    assert logged_dates(store, "hourly")[-1] == ("raw_testclub__trails", "skipped", None)
+
+
 def normalize_on_a_worker(monkeypatch, fails=None) -> list[list[str]]:
     """dlt's normalize, its failure carried back as a ProcessPoolExecutor worker's is: pickled, its cause left behind.
 

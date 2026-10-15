@@ -112,6 +112,7 @@ from extract._contract import (  # noqa: E402
     CADENCES,
     Carried,
     Incomplete,
+    Proofs,
     Resource,
     Unavailable,
     all_resources,
@@ -124,6 +125,7 @@ from extract._kinds import (  # noqa: E402
     ConditionsQuery,
     OpentrailFeed,
     SocrataDataset,
+    data_last_edit_date,
     registry_entry,
 )
 from lib.freshness_state import Freshness  # noqa: E402
@@ -412,7 +414,8 @@ class RunReport:
     outcome: str
     load_id: str | None = None
     rows: dict[str, int] = field(default_factory=dict)
-    proofs: dict[str, int] = field(default_factory=dict)
+    # The upstream's own counts by table, and in `edited` its own data edit dates (extract/_contract.py's Proofs).
+    proofs: Proofs = field(default_factory=Proofs)
     verdicts: dict[str, str] = field(default_factory=dict)
     problems: list[str] = field(default_factory=list)
     # Each table's column hints, as read_each() or to_dlt read them. Kept in the
@@ -720,7 +723,7 @@ def read_each(
 
     def read(items: list[Planned]) -> None:
         for item in items:
-            proofs: dict[str, int] = {}
+            proofs = Proofs()
             try:
                 hints[item.resource.table] = item.resource.column_hints()
                 if item.resource.carries:
@@ -777,6 +780,7 @@ def read_each(
         else:
             rows, proofs = outcome
             report.proofs.update(proofs)
+            report.proofs.edited.update(proofs.edited)
             read_rows[name] = rows
             kept.append(item)
             continue
@@ -1482,6 +1486,65 @@ def fresh_but_unserved(
     return None
 
 
+#: The lanes whose change checks read a FRESH ArcGIS layer's data edit date when the run log holds none since the load
+#: a build reads (fresh_edit_date()). The monthly lane alone: its nodes are the only ones that print the date (dbt's
+#: pub_club_sections, through int_sources__data_edited), its checks run with no budget, and it asks once a month. A
+#: leg asks every hour inside a budget of seconds (LEG_CHECK_SECONDS), for a date none of its nodes reads.
+EDIT_DATE_LANES = frozenset({"monthly"})
+
+
+def dated_tables(log: list[dict]) -> set[str]:
+    """The tables whose newest `loaded` row, or a `skipped` row after it, logged a data edit date.
+
+    The rows that date what a build reads of a table, by the rule dbt's
+    int_sources__data_edited applies (RUNS_COLUMNS' comment): the newest
+    load's rows are the ones the warehouse serves (extract/_warehouse.py's
+    committed_tables()), and a skip after it confirmed them unchanged.
+    """
+    served: dict[str, str] = {}
+    for row in log:
+        if row.get("outcome") == "loaded":
+            served[row["table_name"]] = max(served.get(row["table_name"], ""), row["run_id"])
+    return {
+        row["table_name"]
+        for row in log
+        if row.get("outcome") in ("loaded", "skipped")
+        and row.get("data_last_edit_date") is not None
+        and row["run_id"] >= served.get(row["table_name"], "")
+    }
+
+
+def fresh_edit_date(resource: Resource) -> int | None:
+    """A FRESH ArcGIS layer's data edit date, read from one more request for its metadata; None for any other kind.
+
+    WHY A FRESH SKIP READS THE METADATA AT ALL. ArcGIS Online answers an
+    unchanged layer's check with a 304 and no body (ArcgisLayer's
+    _agol_check()), so a skipped layer logs no date, and a layer whose last
+    load came before `data_last_edit_date` was logged would have none until
+    its publisher next edited it: ATC's trail_club_sections, last edited
+    2024-08-15 (club_sections.json of UA release 2026-10-03-2), could go years
+    with no date on the club sheet. So, on EDIT_DATE_LANES, a FRESH layer with
+    no date logged since its served load (dated_tables()) is asked once more,
+    whole: the date it states stands for the rows that load landed, since a
+    304 says its validators have not moved, and on ArcGIS Online
+    `Last-Modified` equals `editingInfo.lastEditDate` (measured 2026-10-01,
+    pipeline/ELT.md), which moves on any edit the data edit date does
+    (Reasoned). Once one is logged the layer is not asked again until a load
+    logs none; a layer that states no date at all is asked every month.
+
+    Never fails the check: a request that fails, or an answer that is not a
+    layer document, logs no date this run, and the verdict stands.
+    """
+    if not isinstance(resource, ArcgisLayer):
+        return None
+    try:
+        metadata = resource.metadata()
+    except Exception as failure:  # noqa: BLE001 - a date not read is a date not logged, never a failed check
+        print(f"  {resource.name}: fresh, and its data edit date could not be read ({type(failure).__name__}); none logged")
+        return None
+    return data_last_edit_date(metadata) if isinstance(metadata, dict) else None
+
+
 def proven_zero(row: dict) -> bool:
     """Whether a run log row is a load of 0 rows beside the upstream's own 0, with the hints to create the table empty."""
     return row.get("rows") == 0 and row.get("count_proof") == 0 and row.get("column_hints") is not None
@@ -1576,6 +1639,24 @@ def last_loaded_counts(log: list[dict]) -> dict[str, int]:
 
 # Typed up front, so a column that is null on every row of one run (no marker
 # recorded yet, no count readable) still exists and keeps one type across runs.
+#
+# `data_last_edit_date` IS THE UPSTREAM'S OWN DATA EDIT DATE, and it lives
+# here because it is a fact of one resource's read in one run, like
+# `count_proof` beside it: ArcGIS's `editingInfo.dataLastEditDate`, in epoch
+# milliseconds as the layer stated it, from the metadata ArcgisLayer.rows()
+# reads before its pages (extract/_contract.py's Proofs, extract/_kinds.py's
+# data_last_edit_date()). Null where the layer states none, and never
+# `lastEditDate`, which moves on a schema edit too. Not on the raw table's
+# rows, which a FRESH skip leaves as they were and whose every column the row
+# history hashes, and not in the change marker, where a new value would turn a
+# verdict. Logged only on a `loaded` row, which dates the rows it landed, and
+# on a `skipped` one whose check read it (fresh_edit_date()), never on a
+# refused read, whose newer date would date rows no build reads. A FRESH skip
+# otherwise reads no metadata body, so dbt's int_sources__data_edited dates a
+# table by the newest value logged since the load a build reads. Last in the
+# list, as dlt appends it to a store whose log predates it, so a fresh store
+# and an old one order their columns alike; rows written before it read it as
+# null (extract/_warehouse.py's run_log_arrow()).
 RUNS_COLUMNS = {
     "run_id": {"data_type": "text", "nullable": False},
     "pipeline": {"data_type": "text", "nullable": False},
@@ -1593,6 +1674,7 @@ RUNS_COLUMNS = {
     "outcome": {"data_type": "text", "nullable": False},
     "checked_at": {"data_type": "timestamp"},
     "column_hints": {"data_type": "text"},
+    "data_last_edit_date": {"data_type": "bigint"},
 }
 
 
@@ -1642,6 +1724,7 @@ def write_run_log(
             "outcome": UNAVAILABLE,
             "checked_at": checked_at,
             "column_hints": None,
+            "data_last_edit_date": None,
         }
         for resource in unavailable
     ]
@@ -1689,6 +1772,8 @@ def write_run_log(
                 "outcome": outcome,
                 "checked_at": checked_at,
                 "column_hints": None if hints is None else json.dumps(hints, sort_keys=True),
+                # Beside the rows it dates, and only there (RUNS_COLUMNS' comment).
+                "data_last_edit_date": report.proofs.edited.get(resource.table) if outcome in ("loaded", "skipped") else None,
             }
         )
 
@@ -1838,6 +1923,8 @@ def _run(
         log = leg_run_log_rows(pipeline, complete, run_log_cache) if lane in LEGS else run_log_rows(pipeline, run_log_cache)
         current = readable_tables(pipeline, log, complete)
         served = {(row["table_name"], row.get("load_id")): row for row in log}
+        # Each table whose served load, or a skip since it, logged a data edit date (fresh_edit_date()).
+        dated = dated_tables(log) if lane in EDIT_DATE_LANES else set()
         indexes: dict[str, dict] = {}
 
         def landed(load_id: str) -> dict[str, str]:
@@ -1880,8 +1967,12 @@ def _run(
                 if stops_the_leg(resource):
                     raise
                 print(f"::warning title={resource.name} change check failed::{type(error).__name__}: {error}; reading it")
-                return stored, Freshness.UNKNOWN, None
-            return stored, verdict, {**marker, DEFINITION_KEY: definition} if marker else None
+                return stored, Freshness.UNKNOWN, None, None
+            # A FRESH skip reads no metadata body, so a layer with no date logged since its served load has it read
+            # here, on the folder's own thread (fresh_edit_date()).
+            undated = verdict is Freshness.FRESH and lane in EDIT_DATE_LANES and resource.table not in dated
+            edited = fresh_edit_date(resource) if undated else None
+            return stored, verdict, {**marker, DEFINITION_KEY: definition} if marker else None, edited
 
         # The upstreams are asked one folder per thread (by_folder()), and
         # everything that touches the store or the report happens here, in order.
@@ -1909,7 +2000,7 @@ def _run(
                 continue
             if isinstance(outcome, BaseException):
                 raise outcome
-            stored, verdict, marker = outcome
+            stored, verdict, marker, edited = outcome
             if reset and verdict is Freshness.FRESH:
                 # A reset reads the table it names whatever its check says: left out as FRESH, it would drop nothing.
                 verdict = Freshness.UNKNOWN
@@ -1921,6 +2012,8 @@ def _run(
                 if gap := fresh_but_unserved(pipeline, resource, load_id, row, landed if as_landed else None, files=files):
                     print(f"  {resource.name}: fresh, but {gap}; reading it again")
                     verdict = Freshness.UNKNOWN
+            if verdict is Freshness.FRESH and edited is not None:
+                report.proofs.edited[resource.table] = edited  # logged on its `skipped` row (write_run_log())
             planned.append(Planned(resource, verdict, stored, marker))
             report.verdicts[resource.name] = verdict.value
     to_run = [item for item in planned if item.verdict is not Freshness.FRESH and item.resource.name not in report.isolated]

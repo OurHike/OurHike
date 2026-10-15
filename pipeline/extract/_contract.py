@@ -316,6 +316,25 @@ class Carried:
     seconds: float | None = None
 
 
+class Proofs(dict):
+    """What a read records of its upstream's own word, by table: the count, as the mapping itself, and `edited`.
+
+    The mapping is what rows() has always filled: `proofs[self.table]`, the
+    upstream's own count read in the same run, which extract/_run.py's
+    run_check() holds a zero and a shrink to. `edited` holds, by table, the
+    time the upstream states its data was last edited, as it states it:
+    ArcGIS's `editingInfo.dataLastEditDate`, in epoch milliseconds, which
+    ArcgisLayer.rows() reads from the layer metadata it reads anyway.
+    extract/_run.py's write_run_log() logs both on the run's `_extract_runs`
+    row. A dict, so a kind that records only a count, and a test that passes
+    `{}`, read and write it as before: a plain dict simply records no date.
+    """
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.edited: dict[str, int] = {}
+
+
 class Incomplete(Exception):
     """A carrying resource's read that ran out of budget before it had every row its table must hold.
 
@@ -452,7 +471,11 @@ class Resource:
         return None
 
     def rows(self, proofs: dict[str, int]):
-        """Yield the upstream's rows, recording the upstream's own count in `proofs[self.table]` where it has one."""
+        """Yield the upstream's rows, recording the upstream's own count in `proofs[self.table]` where it has one.
+
+        A run passes a Proofs, whose `edited` takes the upstream's own data
+        edit time where the kind reads one (ArcgisLayer's).
+        """
         raise NotImplementedError
 
     def rows_carried(self, proofs: dict[str, int], carried: Carried):

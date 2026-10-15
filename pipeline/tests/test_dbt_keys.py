@@ -166,15 +166,24 @@ def test_the_geometry_free_step_tables_are_the_derived_tables_that_declare_no_ge
     assert {name for name, columns in declared.items() if "geometry" not in columns} == GEOMETRY_FREE_STEP_TABLES
 
 
-#: The extract's own run log (extract/_run.py's RUNS_TABLE), one row per resource per run, which holds no geometry.
-RUN_LOG_TABLES = {"_extract_runs"}
+#: The extract's own run log (extract/_run.py's RUNS_TABLE), one row per resource per run, which holds no geometry,
+#: as its two source tables name it: one per lane (_extract__sources.yml's _extract_runs_monthly says why).
+RUN_LOG_TABLES = {"_extract_runs", "_extract_runs_monthly"}
 
 
 def test_the_run_log_table_is_the_one_extract_run_writes():
     from extract._run import RUNS_TABLE
 
-    assert RUN_LOG_TABLES == {RUNS_TABLE}
-    assert {path.stem for path in MODELS if SOURCE.search(path.read_text()).group(2) in RUN_LOG_TABLES} == {"base_extract__runs"}
+    tables = {
+        table["name"]: table
+        for table in yaml.safe_load((STAGING / "extract" / "_extract__sources.yml").read_text())["sources"][0]["tables"]
+    }
+    assert {table.get("identifier", name) for name, table in tables.items()} == {RUNS_TABLE}
+    assert set(tables) == RUN_LOG_TABLES
+    assert {path.stem for path in MODELS if SOURCE.search(path.read_text()).group(2) in RUN_LOG_TABLES} == {
+        "base_extract__runs",
+        "base_extract__runs_monthly",
+    }
 
 
 #: The closures and warnings marts' own snapshots, read back as sources (staging/row_history/, decision 53's

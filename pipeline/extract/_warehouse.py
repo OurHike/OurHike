@@ -77,6 +77,7 @@ from extract._run import (
     LANES,
     LEGS,
     PARTIAL_EXIT,
+    RUNS_COLUMNS,
     RUNS_TABLE,
     UNAVAILABLE,
     _client,
@@ -135,6 +136,37 @@ DUCKDB_TYPES = {
     "timestamp": "TIMESTAMP",
     "date": "DATE",
 }
+
+
+#: Arrow's type for each dlt type RUNS_COLUMNS declares, for a column a run log's rows were written without.
+ARROW_TYPES = {"text": pa.string(), "bigint": pa.int64(), "timestamp": pa.timestamp("us")}
+
+
+def run_log_arrow(log: list[dict]) -> pa.Table:
+    """The run log's rows as one Arrow table, with every column any row holds and every column RUNS_COLUMNS declares.
+
+    pa.Table.from_pylist() takes its columns from the first row alone
+    (pyarrow 25.0.1, measured 2026-10-15), and a log's first rows come from
+    its oldest files: a column RUNS_COLUMNS gained after a store had a log,
+    `data_last_edit_date` the first, would have been dropped from every row,
+    the newest included, in the warehouse and in a pin alike. A row written
+    before a column existed reads it as null.
+    """
+    names = list(dict.fromkeys([*(name for row in log for name in row), *RUNS_COLUMNS]))
+    return with_run_log_columns(pa.Table.from_pylist([{name: row.get(name) for name in names} for row in log]))
+
+
+def with_run_log_columns(arrow: pa.Table) -> pa.Table:
+    """`arrow`, with each RUNS_COLUMNS column it lacks added as nulls of the declared type.
+
+    A pin taken before a column existed holds a run log without it, and a
+    build from that pin (load_pinned()) still reads a model that names it,
+    such as dbt's base_extract__runs_monthly: the column is there, and null.
+    """
+    for name, hint in RUNS_COLUMNS.items():
+        if name not in arrow.column_names:
+            arrow = arrow.append_column(name, pa.nulls(arrow.num_rows, ARROW_TYPES[hint["data_type"]]))
+    return arrow
 
 
 def _naming(pipeline):
@@ -309,7 +341,7 @@ def load_warehouse(
         _create_proven_empty(con, schema, table, hints, pipeline)
         loaded[table] = 0
     if log:
-        con.register("_runs", pa.Table.from_pylist(log))
+        con.register("_runs", run_log_arrow(log))
         con.execute(f"CREATE OR REPLACE TABLE {quote_identifier(schema)}.{quote_identifier(RUNS_TABLE)} AS SELECT * FROM _runs")
         con.unregister("_runs")
     return loaded
@@ -982,7 +1014,7 @@ def pin_raw_inputs(
 
     fs.makedirs(root, exist_ok=True)  # a pin of proven zeros alone has written no table file to make it
     with fs.open(f"{root}/{RUNS_TABLE}.parquet", "wb") as handle:
-        pq.write_table(pa.Table.from_pylist(log), handle, compression="zstd")
+        pq.write_table(run_log_arrow(log), handle, compression="zstd")
     manifest = {
         "raw_run": raw_run,
         "lane": this_run[0].get("pipeline"),
@@ -1032,7 +1064,7 @@ def load_pinned(con: duckdb.DuckDBPyConnection, pipeline, steps_url: str, raw_ru
         con.execute(f"CREATE OR REPLACE TABLE {quote_identifier(schema)}.{quote_identifier(table)} AS SELECT * FROM _pinned")
         con.unregister("_pinned")
         loaded[table] = arrow.num_rows
-    arrow = pq.read_table(fs.open(_verified(fs, f"{root}/{runs['file']}", runs["sha256"])))
+    arrow = with_run_log_columns(pq.read_table(fs.open(_verified(fs, f"{root}/{runs['file']}", runs["sha256"]))))
     if arrow.num_rows:
         con.register("_runs", arrow)
         con.execute(f"CREATE OR REPLACE TABLE {quote_identifier(schema)}.{quote_identifier(RUNS_TABLE)} AS SELECT * FROM _runs")

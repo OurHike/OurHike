@@ -1223,13 +1223,63 @@ def _spurs_old() -> dict:
     return _spurs_records(json.loads(json.dumps(records, sort_keys=True)), None)
 
 
+#: The extract's run log in the warehouse's `raw` schema (extract/_run.py's RUNS_TABLE), where each ArcGIS layer's
+#: editingInfo.dataLastEditDate is logged (its RUNS_COLUMNS comment). Spelled here for HIKE_FINDER_TABLE's reason;
+#: tests/test_dbt_trail_lines_parity.py holds it to the dbt source.
+RUN_LOG_TABLE = "raw._extract_runs"
+
+
+def _landed_edit_dates(warehouse: Path) -> dict[str, dict]:
+    """fetch_all.py's manifest.json, as the extract's run log stands in for it: {key: {"data_last_edit_date": epoch
+    ms}} for each table whose newest `loaded` run, or a `skipped` one after it, logged a date, the newest of those,
+    keyed by the `<key>` of its `raw_<club>__<key>` name. The rule dbt's int_sources__data_edited dates a table by,
+    written again here so the old side reads the same input and export_club_sections.py's own edited_day() prints its
+    day. {} where the warehouse holds no run log, or one without the column: a build from a pin taken before the
+    extract logged the date."""
+    import duckdb
+
+    if not warehouse.exists():
+        return {}
+    with duckdb.connect(str(warehouse), read_only=True) as con:
+        try:
+            columns = {name for name, *_ in con.execute(f"describe {RUN_LOG_TABLE}").fetchall()}
+        except duckdb.CatalogException:
+            return {}
+        if "data_last_edit_date" not in columns:
+            return {}
+        rows = con.execute(
+            f"select club, table_name, run_id, outcome, data_last_edit_date from {RUN_LOG_TABLE} "
+            "where outcome in ('loaded', 'skipped')"
+        ).fetchall()
+    served: dict[str, str] = {}
+    for _, table, run_id, outcome, _ in rows:
+        if outcome == "loaded":
+            served[table] = max(served.get(table, ""), run_id)
+    newest: dict[str, tuple[str, str, int]] = {}
+    for club, table, run_id, _, edited in rows:
+        if edited is None or table not in served or run_id < served[table]:
+            continue
+        if table not in newest or run_id > newest[table][0]:
+            newest[table] = (run_id, club, edited)
+    return {table.removeprefix(f"raw_{club}__"): {"data_last_edit_date": edited} for table, (_, club, edited) in newest.items()}
+
+
 def _club_sections_old() -> dict:
-    """export_club_sections.build_output() over the same raw files. Its `source_edited` reads fetch_all.py's
-    data/raw/manifest.json, which the CI fixture has none of, so there it is {} on both sides; on a live fetch the
-    Python dates each layer and the dbt file cannot yet (pub_club_sections' header says why)."""
+    """export_club_sections.build_output() over the same raw files, its `source_edited` from the exporter's own
+    source_edit_dates() over the manifest the extract's run log stands in for (_landed_edit_dates()), as the dbt side
+    dates each layer from that log. Until 2026-10-15 it read data/raw/manifest.json, which neither CI's fixtures nor
+    the parity job's pin holds (nothing writes one there), so both sides were {} and the field was compared with
+    nothing in it; with the dbt side dating each layer, the old side reading none would differ on every live run."""
+    import tempfile
+
     import export_club_sections
 
-    return json.loads(json.dumps(export_club_sections.build_output()))
+    document = export_club_sections.build_output()
+    with tempfile.TemporaryDirectory() as manifest_dir:
+        manifest = Path(manifest_dir) / export_club_sections.RAW_MANIFEST_PATH.name
+        manifest.write_text(json.dumps(_landed_edit_dates(_warehouse())))
+        document["source_edited"] = export_club_sections.source_edit_dates(Path(manifest_dir))
+    return json.loads(json.dumps(document))
 
 
 # The suggested_hikes family: export_suggested_hikes.py's shelf (the

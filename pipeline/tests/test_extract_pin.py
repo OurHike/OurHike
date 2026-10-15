@@ -16,8 +16,10 @@ as-landed copy appears only for a load that committed.
 
 import json
 from pathlib import Path
+from urllib.parse import urlparse
 
 import duckdb
+import pyarrow.parquet as pq
 import pytest
 
 from extract import _kinds, _run, _warehouse
@@ -27,9 +29,12 @@ from extract._warehouse import BuildRefused, load_pinned, load_warehouse, pin_ra
 from lib import http_retry
 from tests.test_extract_run import (
     CLOSURES_URL,
+    DATA_EDITED_MS,
     LINES_URL,
+    DatedLayer,
     FakeLayer,
     closures,
+    editing,
     feature,
     lines,
     month,
@@ -505,6 +510,40 @@ def test_a_fresh_working_directory_reads_a_pin_with_no_dlt_state_of_its_own(regi
     assert counts == {"raw_testclub__closures_layer": 0}, (
         "a build job starts with no dlt directory, and a proven zero still builds"
     )
+
+
+def test_a_log_begun_before_its_date_column_keeps_the_column_in_the_warehouse_and_in_every_pin(
+    registry, store, steps, requests_mock, monkeypatch
+):
+    """RUNS_COLUMNS gained data_last_edit_date after the stores had logs. pa.Table.from_pylist() takes its columns
+    from a log's first, oldest row, so the newest rows' dates would have been dropped from the warehouse and from
+    every pin (extract/_warehouse.py's run_log_arrow()); and a pin taken before the column still builds a warehouse
+    whose dbt model names it (with_run_log_columns())."""
+    trails = DatedLayer(requests_mock, LINES_URL, [feature(1), feature(2)])
+    without = {name: hint for name, hint in _run.RUNS_COLUMNS.items() if name != "data_last_edit_date"}
+    with monkeypatch.context() as older:  # the log and the pin as a build before the column wrote them
+        older.setattr(_run, "RUNS_COLUMNS", without)
+        older.setattr(_warehouse, "RUNS_COLUMNS", without)
+        first = run(store, lines())
+        old_pin, _ = pin_raw_inputs(pipeline_of(store), store["bucket_url"], steps, first.run_id)
+    (first_file,) = _run.table_files(pipeline_of(store), _run.RUNS_TABLE)
+    assert "data_last_edit_date" not in pq.read_schema(_run._client(pipeline_of(store)).fs_client.open(first_file)).names
+    pinned_log = Path(urlparse(steps).path) / "raw_inputs" / first.run_id / old_pin["extract_runs"]["file"]
+    assert "data_last_edit_date" not in pq.read_schema(pinned_log).names, "the store and the pin this test exists for"
+
+    trails.features, trails.etag, trails.editing = [feature(1), feature(2), feature(3)], "v2", editing(DATA_EDITED_MS)
+    second = run(store, lines())
+    pin_raw_inputs(pipeline_of(store), store["bucket_url"], steps, second.run_id)
+
+    current, pinned, pinned_before = duckdb.connect(), duckdb.connect(), duckdb.connect()
+    load_warehouse(current, pipeline_of(store))
+    load_pinned(pinned, pipeline_of(store), steps, second.run_id)
+    load_pinned(pinned_before, pipeline_of(store), steps, first.run_id)
+    query = f'select run_id, data_last_edit_date from raw."{_run.RUNS_TABLE}" order by run_id'
+    both = [(first.run_id, None), (second.run_id, DATA_EDITED_MS)]
+    assert current.execute(query).fetchall() == both
+    assert pinned.execute(query).fetchall() == both
+    assert pinned_before.execute(query).fetchall() == [(first.run_id, None)]
 
 
 def test_the_step_cache_keeps_a_first_store_refuses_a_torn_one_and_fetches_by_name(

@@ -49,6 +49,7 @@ from __future__ import annotations
 import hashlib
 import io
 import json
+import math
 import re
 import tempfile
 import time
@@ -72,6 +73,7 @@ from extract._contract import (
     TRAIL_ORGS_PATH,
     Carried,
     Incomplete,
+    Proofs,
     Resource,
     Unavailable,
     read_club_file,
@@ -640,6 +642,36 @@ def metadata_object_id_field(metadata: dict) -> str | None:
     return None
 
 
+def data_last_edit_date(metadata: dict) -> int | None:
+    """The layer's own `editingInfo.dataLastEditDate`, in epoch milliseconds as it states it, or None where it states none.
+
+    None when the metadata has no `editingInfo` (some services expose none:
+    lib/arcgis.py's get_layer_edit_date() says so), or no `dataLastEditDate`
+    in it, or a value that is not a number. Never `editingInfo.lastEditDate`
+    in its place: that one moves on a schema edit too, and ATC's
+    trail_club_sections read 2025-10-09 there against a data edit of
+    2024-08-15 (the live metadata, read 2026-10-02), so a club sheet dated
+    from it would call two-year-old names fourteen months fresher than they
+    are. A positive fractional millisecond is cut to the whole one, which
+    names the same UTC day. Whether a value is a usable day is decided where
+    the day is printed (dbt's int_sources__data_edited, as
+    export_club_sections.py's edited_day() decides it), so a zero or a
+    far-future value is logged as the layer stated it and published nowhere.
+    """
+    editing = metadata.get("editingInfo")
+    if not isinstance(editing, dict):
+        return None
+    value = editing.get("dataLastEditDate")
+    if isinstance(value, bool) or not isinstance(value, (int, float)):
+        return None
+    if isinstance(value, float):
+        if not math.isfinite(value):
+            return None
+        value = int(value)
+    # The run log's column is a bigint; a value past it is no epoch any day could be printed from.
+    return value if -(2**63) <= value < 2**63 else None
+
+
 def object_id_field(metadata: dict) -> str:
     """A layer's object id field: its metadata's `objectIdField`, else the field typed esriFieldTypeOID, else OBJECTID.
 
@@ -916,6 +948,10 @@ class ArcgisLayer(PersonRuled, Resource):
             # person field this layer has (review finding EXD-2). Refused, so the last committed table stands.
             said = metadata.get("error") or "no `fields` key"
             raise RuntimeError(f"{self.key}: the layer's metadata answered no field list ({said}), so nothing could be left out")
+        # When the layer says its data was last edited, from this same metadata, read before the pages:
+        # extract/_run.py logs it on this read's run log row, beside the rows it dates (data_last_edit_date()).
+        if isinstance(proofs, Proofs) and (edited := data_last_edit_date(metadata)) is not None:
+            proofs.edited[self.table] = edited
         dropped = self.dropped_fields(metadata)
         kept = [name for name in fields if name.lower() not in dropped]
         listed = {name.lower() for name in fields}

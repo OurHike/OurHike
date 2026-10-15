@@ -161,9 +161,11 @@ models:
     description: >
       Writes club_sections.json, which club maintains which stretch of the
       A.T., from int_trail_lines__club_sections, in
-      export_club_sections.build_output()'s shape. `source_edited` is empty:
-      the extract lands no layer edit date (the writer's header says what
-      fills it). parity.py compares it with export_club_sections.py's file.
+      export_club_sections.build_output()'s shape. `source_edited` dates
+      each layer `sources` names from int_sources__data_edited, the layer's
+      own editingInfo.dataLastEditDate as the extract logged it (the
+      writer's header says which). parity.py compares it with
+      export_club_sections.py's file.
     config:
       access: public
       contract:
@@ -174,8 +176,12 @@ models:
         data_type: struct(attribution varchar, names varchar, miles varchar)
         data_tests: [not_null, unique]
       - name: source_edited
-        description: Each layer's last edit day, where one is known; empty today.
+        description: >
+          Each layer's last data edit day, YYYY-MM-DD in UTC, keyed by its
+          sources.json key in `sources`' order; a layer with no usable day is
+          absent, never null.
         data_type: json
+        data_tests: [not_null]
       - name: clubs
         description: The clubs, south to north.
         data_type: json[]
@@ -340,3 +346,41 @@ exposures:
         r2_keys: [club_sections.json]
         format: json
         cadence: monthly
+
+unit_tests:
+  - name: pub_club_sections_dates_each_layer_sources_names_and_leaves_an_undated_one_out
+    model: pub_club_sections
+    description: >
+      export_club_sections.py's source_edit_dates(), as
+      tests/test_export_club_sections.py holds it: each layer `sources`
+      names is dated by its own key (centerline, trail_club_sections), in
+      `sources`' order (attribution, names, miles); a layer with no day,
+      half_mile_points_from_springer here, is absent rather than null
+      (test_a_layer_with_no_recorded_date_is_absent_rather_than_null); and a
+      layer `sources` does not name is not dated, though it has a day.
+    given:
+      - input: ref('int_trail_lines__club_sections')
+        rows: []
+      - input: ref('int_sources__data_edited')
+        rows:
+          - {source_key: trail_club_sections, data_last_edit_date: 1723680000000, data_edited_on: '2024-08-15'}
+          - {source_key: side_trails, data_last_edit_date: 1790035200000, data_edited_on: '2026-09-22'}
+          - {source_key: centerline, data_last_edit_date: 1790035200000, data_edited_on: '2026-09-22'}
+    expect:
+      rows:
+        - {source_edited: '{"centerline":"2026-09-22","trail_club_sections":"2024-08-15"}'}
+  - name: pub_club_sections_dates_nothing_where_no_layer_has_a_day
+    model: pub_club_sections
+    description: >
+      An empty object, never null, where no layer `sources` names has a
+      day: the shape a release with no dates carries, which the sheet reads
+      as "no edit day" (test_no_manifest_at_all_dates_nothing_rather_than_failing).
+    given:
+      - input: ref('int_trail_lines__club_sections')
+        rows: []
+      - input: ref('int_sources__data_edited')
+        rows:
+          - {source_key: side_trails, data_last_edit_date: 1790035200000, data_edited_on: '2026-09-22'}
+    expect:
+      rows:
+        - {source_edited: '{}'}

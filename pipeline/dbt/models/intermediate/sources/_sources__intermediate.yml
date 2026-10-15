@@ -118,6 +118,29 @@ models:
           says, so a row the registry holds back still shows what rule 5
           would hold it for once `reaches_hikers` flips. Null where every
           restriction is answered.
+  - name: int_sources__data_edited
+    description: >
+      Each source's data edit day, as the UTC day YYYY-MM-DD, one row per
+      source key that has a usable one: the date the extract logged from
+      the layer's own metadata (ArcGIS's editingInfo.dataLastEditDate) on
+      the load a build reads, or on a skip after it. pub_club_sections
+      reads it for club_sections.json's `source_edited`. The header says
+      which row dates a table and which days are usable.
+    columns:
+      - name: source_key
+        description: >
+          The registry key: the `<key>` of the table's `raw_<club>__<key>`
+          name, which is the sources.json key for every key without a `-`.
+        data_tests: [not_null, unique]
+      - name: data_last_edit_date
+        description: The date as the layer stated it, in epoch milliseconds, which the day is printed from.
+        data_tests: [not_null]
+      - name: data_edited_on
+        description: >
+          The UTC day of data_last_edit_date, YYYY-MM-DD, as
+          export_club_sections.py's edited_day() prints it. A key whose
+          date gives no usable day has no row.
+        data_tests: [not_null]
   - name: int_sources__final
     description: >
       The sources mart's rows before their row dates (decision 57):
@@ -130,6 +153,69 @@ models:
         data_tests: [not_null, unique]
 
 unit_tests:
+  - name: int_sources__data_edited_dates_each_table_by_its_newest_load_or_a_skip_after_it
+    model: int_sources__data_edited
+    description: >
+      Which logged date dates a table (the model's header). centerline: a
+      load's date stands through two FRESH skips that read none.
+      trail_club_sections: a load from before the date was logged, then a
+      skip whose check read it (extract/_run.py's fresh_edit_date()).
+      half_mile_points_from_springer: a newer load replaces an older load's
+      date. side_trails: a refused read's newer date is not the served
+      rows' date. at_treadway: a newer load whose layer stated no date
+      leaves the table undated, never dated by the load it replaced.
+      communities: a date with no load to date is not served. pa_trails: a
+      club whose folder name holds `_`, so the key is read past `raw_<club>__`.
+    given:
+      - input: ref('base_extract__runs_monthly')
+        rows:
+          - {club: atc, table_name: raw_atc__centerline, run_id: '20261003T051500.000000Z', outcome: loaded, data_last_edit_date: 1790035200000}
+          - {club: atc, table_name: raw_atc__centerline, run_id: '20261103T051500.000000Z', outcome: skipped, data_last_edit_date: null}
+          - {club: atc, table_name: raw_atc__centerline, run_id: '20261203T051500.000000Z', outcome: skipped, data_last_edit_date: null}
+          - {club: atc, table_name: raw_atc__trail_club_sections, run_id: '20261003T051500.000000Z', outcome: loaded, data_last_edit_date: null}
+          - {club: atc, table_name: raw_atc__trail_club_sections, run_id: '20261103T051500.000000Z', outcome: skipped, data_last_edit_date: 1723680000000}
+          - {club: atc, table_name: raw_atc__trail_club_sections, run_id: '20261203T051500.000000Z', outcome: skipped, data_last_edit_date: null}
+          - {club: atc, table_name: raw_atc__half_mile_points_from_springer, run_id: '20261003T051500.000000Z', outcome: loaded, data_last_edit_date: 1723680000000}
+          - {club: atc, table_name: raw_atc__half_mile_points_from_springer, run_id: '20261103T051500.000000Z', outcome: loaded, data_last_edit_date: 1775520000000}
+          - {club: atc, table_name: raw_atc__side_trails, run_id: '20261003T051500.000000Z', outcome: loaded, data_last_edit_date: 1723680000000}
+          - {club: atc, table_name: raw_atc__side_trails, run_id: '20261103T051500.000000Z', outcome: refused, data_last_edit_date: 1790035200000}
+          - {club: atc, table_name: raw_atc__at_treadway, run_id: '20261003T051500.000000Z', outcome: loaded, data_last_edit_date: 1723680000000}
+          - {club: atc, table_name: raw_atc__at_treadway, run_id: '20261103T051500.000000Z', outcome: loaded, data_last_edit_date: null}
+          - {club: atc, table_name: raw_atc__communities, run_id: '20261103T051500.000000Z', outcome: skipped, data_last_edit_date: 1723680000000}
+          - {club: potomac_appalachian, table_name: raw_potomac_appalachian__pa_trails, run_id: '20261003T051500.000000Z', outcome: loaded, data_last_edit_date: 1790035200000}
+    expect:
+      rows:
+        - {source_key: centerline, data_last_edit_date: 1790035200000, data_edited_on: '2026-09-22'}
+        - {source_key: trail_club_sections, data_last_edit_date: 1723680000000, data_edited_on: '2024-08-15'}
+        - {source_key: half_mile_points_from_springer, data_last_edit_date: 1775520000000, data_edited_on: '2026-04-07'}
+        - {source_key: side_trails, data_last_edit_date: 1723680000000, data_edited_on: '2024-08-15'}
+        - {source_key: pa_trails, data_last_edit_date: 1790035200000, data_edited_on: '2026-09-22'}
+  - name: int_sources__data_edited_prints_the_days_edited_day_prints_and_no_other
+    model: int_sources__data_edited
+    description: >
+      export_club_sections.py's edited_day(), held to these rows by
+      tests/test_dbt_trail_lines_parity.py: a zero and a negative are
+      sentinels and print no day, never 1969-12-31
+      (test_export_club_sections.py's
+      test_a_sentinel_epoch_publishes_no_date_rather_than_1969); the day is
+      UTC's, so the last millisecond of 2026-08-04 stays 2026-08-04; the
+      first and the last millisecond Python's datetime prints are days, and
+      the year 10000 and the largest bigint are none, without an error.
+    given:
+      - input: ref('base_extract__runs_monthly')
+        rows:
+          - {club: x, table_name: raw_x__zero, run_id: '20261003T051500.000000Z', outcome: loaded, data_last_edit_date: 0}
+          - {club: x, table_name: raw_x__negative, run_id: '20261003T051500.000000Z', outcome: loaded, data_last_edit_date: -1}
+          - {club: x, table_name: raw_x__first_millisecond, run_id: '20261003T051500.000000Z', outcome: loaded, data_last_edit_date: 1}
+          - {club: x, table_name: raw_x__late_evening, run_id: '20261003T051500.000000Z', outcome: loaded, data_last_edit_date: 1785830399999}
+          - {club: x, table_name: raw_x__last_printable, run_id: '20261003T051500.000000Z', outcome: loaded, data_last_edit_date: 253402300799999}
+          - {club: x, table_name: raw_x__year_10000, run_id: '20261003T051500.000000Z', outcome: loaded, data_last_edit_date: 253402300800000}
+          - {club: x, table_name: raw_x__largest_bigint, run_id: '20261003T051500.000000Z', outcome: loaded, data_last_edit_date: 9223372036854775807}
+    expect:
+      rows:
+        - {source_key: first_millisecond, data_last_edit_date: 1, data_edited_on: '1970-01-01'}
+        - {source_key: late_evening, data_last_edit_date: 1785830399999, data_edited_on: '2026-08-04'}
+        - {source_key: last_printable, data_last_edit_date: 253402300799999, data_edited_on: '9999-12-31'}
   - name: int_sources__paper_maps_refuses_what_paper_maps_refuses
     description: >
       One table per branch of export_sources.py's `_paper_maps`, and two

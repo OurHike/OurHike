@@ -115,8 +115,9 @@ export function buildClubClosureShadeLayer(
 
 /**
  * Which shaded area a touch landed inside, by notice id, or null: the point
- * itself, as map/hazardAreaTaps.ts's `hazardIdAt` asks of an area, since an
- * area is all the target a thumb needs.
+ * itself, since an area is all the target a thumb needs. A hazard area is
+ * asked in the 22 px box its sites' dots need instead (map/hazardAreaTaps.ts's
+ * `hazardIdAt`), so a touch that close outside its edge still opens it.
  *
  * Here rather than in map/clubClosureTaps.ts because the hazard areas' tap
  * asks it too, to yield (a closure outranks an advisory on the same

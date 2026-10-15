@@ -242,9 +242,10 @@ a `source()` (today's `stg_`, the target's `base_`):
   with the same key expressions (`geometry_key('geom')` written out as
   `md5(st_astext(geom))`). It fails the build when rows sharing a key differ,
   so a dedupe only ever removes exact copies.
-- **The model's YAML** tests the key `unique` and `not_null`, and carries a
-  `dbt_utils.equal_rowcount` against its source at `severity: warn`, which says
-  how many copies the dedupe removed.
+- **The model's YAML** tests the key `unique` and `not_null`, and carries an
+  `equal_rowcount_to_raw` against its raw table (`tests/generic/`), with no
+  config of its own: it warns when the dedupe removed any copy and is an error
+  once the copies are half the raw table (decision 204).
 - `pipeline/tests/test_dbt_keys.py` checks all of that without a warehouse,
   and holds the model's key list equal to its source test's.
 - **Nothing else happens in that model**: renames and casts, the key, the
@@ -271,7 +272,7 @@ measurements; `macros/row_history.sql` has the macros. This is what to do.
   - The contract declares both dates `timestamptz`, with
     `description: "{{ doc('row_first_seen_at') }}"` (and `row_changed_at`)
     and a not_null test whose severity is exactly
-    `"{{ 'warn' if env_var('OURHIKE_ROW_HISTORY', 'on') == 'off' else 'error' }}"`.
+    `"{{ 'warn' if env_var('OURHIKE_ROW_HISTORY', 'on') == 'off' or env_var('OURHIKE_DATA_ENV', 'dev') in ['production', 'ua'] else 'error' }}"`.
   - Copy `closures`. `pipeline/tests/test_dbt_row_dates.py` fails until
     every piece is there.
 - **A later version** (`<mart>_v2`) selects v1's two dates. It gets no
@@ -608,10 +609,46 @@ In the target, the suite gains the breaking-change check, the extract layout
 pytest, dlt fixture mode and `build_marts.py` (`pipeline/ELT.md`, "Running
 it").
 
+## Every test's two thresholds (decision 204)
+
+The maintainer, 2026-10-15: *"Every test should have both the warning and
+error thresholds. If an error like freshness would prevent building the model,
+then that should be enabled/disabled based on the environment. prod environment
+should ignore those, dev & ci should not."* `dbt_project.yml`'s comment above
+`data_tests:` is the design; this is what to do.
+
+- **Write no `severity`.** `OURHIKE_DATA_ENV` is the switch: production and UA
+  warn and build on, and `build_marts.py` reports a warning past its own
+  `error_if` as an error, red after the publish; dev and CI (unset) stop.
+  `severity: error` is for a gate that must hold what it reaches in every
+  environment (a pub_ writer's test gets it from the `publish` folder);
+  `severity: warn` only with `meta: {stays_at_warn: <whose decision>}`.
+- **The six marts a hiker's safety reads are gates** (`marts:` in
+  `dbt_project.yml`: closures, warnings, points_of_interest, elevation,
+  trail_lines, trail_network): their YAML tests are errors everywhere, so in
+  production a failure holds their files at their last copy. A singular test
+  reading one of them writes `{{ config(severity='error') }}` itself; a hold
+  of decision 81's in one of their folders writes the switch's own expression.
+- **Zero tolerance needs nothing**: the project's `warn_if: ">0"` and
+  `error_if: ">0"` apply. A tolerance is a pair in the `>N` form, never dbt's
+  `!= 0`.
+- **A review aid that names rows is `rows_named`** (`tests/generic/`): a
+  warning when any row is named, an error when every row is (`error_share`
+  for another share). A singular one returns `total_rows` beside its rows and
+  calls `named_rows_level()` in its `config()`, with `meta:
+  {scores_a_level: true}` so the data-quality page shows no count for it.
+- `pipeline/tests/test_dbt_test_thresholds.py` fails any test without both
+  thresholds, and parses the project as dev and as production to hold the
+  switch; `tests/test_dbt_thresholds_builds.py` builds one failing test both
+  ways.
+
 ## Elementary's checks, by hand
 
-**Every Elementary check is tagged `elementary_check`, at warn, and runs in
-`build_marts.py`'s checks pass, after the pub_ writers**: `dbt test -s
+**Every Elementary check is tagged `elementary_check`, carries
+`make_dbt_staging.py`'s `elementary_check_config()` for its kind (an error by
+severity, an anomaly or a schema change scored as a level with `warn_if: ">0"`
+and `error_if: ">1"`, decision 204), and runs in `build_marts.py`'s checks
+pass, after the pub_ writers**: `dbt test -s
 tag:elementary_check` at one thread, lane-scoped as the writers are, the
 monthly lane's with `--vars '{"days_back": 400}'` (`ELEMENTARY_CHECKS` and its
 docstring, "ELEMENTARY'S CHECKS RUN AFTER THE WRITERS"); the hourly lane runs

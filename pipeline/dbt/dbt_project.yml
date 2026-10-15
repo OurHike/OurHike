@@ -137,13 +137,13 @@ seeds:
 #   writer is built before its tests run, and a failure removes that one
 #   phone file, which keeps the bucket's last copy (decision 81), where the
 #   switch would publish it.
-# - So do the 43 tests outside publish/ that set `severity: error` in their
-#   own YAML (counted 2026-10-15 on this project's parsed manifest), most of
-#   them the invariants a hiker's safety turns on in the points_of_interest,
+# - So do the tests outside publish/ whose own YAML or config() sets
+#   `severity: error`: 30 YAML entries and 14 singular tests (counted
+#   2026-10-15), most of them the invariants a hiker's safety turns on in the points_of_interest,
 #   places, trail_lines and elevation marts (a mile only on the A.T., a
 #   capacity absent or at least 1, a water distance never without its
 #   source), and Elementary's checks (make_dbt_staging.py's
-#   ELEMENTARY_ANOMALY_LEVEL). Each of the 43 holds what it reaches until
+#   ELEMENTARY_ANOMALY_LEVEL). Each such test holds what it reaches until
 #   somebody looks: in production build_marts.py builds on past it and every
 #   writer below keeps its last published file. The checks run in a `dbt
 #   test` of their own after the writers, which skips nothing, and their

@@ -323,9 +323,11 @@ export function niceTicks(lo, hi, count = 5, { duration = false } = {}) {
 }
 
 const CHAR_PX = 6.8; // Public Sans at 12 px, digits and lower case, measured by eye from a render
-// The flagged point's label, Public Sans at 12.5 px and weight 600 (site.css's .dq-chart__label): CHAR_PX scaled to
-// the size and widened a little for the weight. Reasoned, not measured; the 390 px frame of 2026-10-15 shows it.
-const LABEL_CHAR_PX = 7.4;
+// The flagged point's label, Public Sans at 12.5 px and weight 600 (site.css's .dq-chart__label), per character.
+// Measured 2026-10-15 in headless Chromium, the font served from site/dist, as getBBox() of each example file's
+// flagged labels: 5.84 to 6.28 px a character over 24 labels, the widest "48,977 rows, flagged as high". 6.8 leaves
+// 8% over that for another font, and a label is shortened only where even that does not fit (flaggedLabel).
+const LABEL_CHAR_PX = 6.8;
 const TOP = 14;
 const BOTTOM = 30;
 const RIGHT = 16;

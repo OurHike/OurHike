@@ -17,7 +17,8 @@
 // The dash is what separates it from the drought wash under it, which has no
 // edge at all.
 //
-// Only the style half lives here, because the style is built at launch. The
+// Only the style half lives here, because the style is built at launch, and
+// the one tap question a club closure's tap asks too (`hazardPointIdAt`). The
 // data and the taps are map/hazardAreaTaps.ts, loaded the first time there is
 // an area to draw: a phone with no hazard area on its trails never parses
 // them (features/LAUNCH_BUDGET.md §3).
@@ -26,11 +27,16 @@ import type {
   GeoJSONSourceSpecification,
   LayerSpecification,
 } from '@maplibre/maplibre-gl-style-spec'
+import type { Map as MapLibreMap, PointLike } from 'maplibre-gl'
 
 export const HAZARD_SOURCE_ID = 'hazard-areas'
 export const HAZARD_FILL_LAYER_ID = 'hazard-area-fill'
 export const HAZARD_EDGE_LAYER_ID = 'hazard-area-edge'
 export const HAZARD_POINT_LAYER_ID = 'hazard-area-point'
+
+/** The property a drawn area or site carries its notice id in, for taps
+ *  (lib/hazardAreas.ts's hazardFeatureCollection writes it). */
+export const HAZARD_ID_PROPERTY = 'notice_id'
 
 /** The mock's blaze orange (`--blaze-orange`, #c1611a), a step lighter on a
  *  dark sheet so the dashed edge reads against it. */
@@ -80,4 +86,45 @@ export function buildHazardLayers(sourceId: string, dark: boolean): LayerSpecifi
       },
     },
   ]
+}
+
+/** The touch-target floor every map mark meets (atcUpdateLayers.ts). */
+const HAZARD_TAP_SLOP_PX = 22
+
+/** The touch, as the box a hazard is asked for in. */
+export function hazardTapBox(point: { x: number; y: number }): [PointLike, PointLike] {
+  return [
+    [point.x - HAZARD_TAP_SLOP_PX, point.y - HAZARD_TAP_SLOP_PX],
+    [point.x + HAZARD_TAP_SLOP_PX, point.y + HAZARD_TAP_SLOP_PX],
+  ]
+}
+
+/**
+ * Which shooting site's dot a touch landed on, by notice id, or null: the
+ * point layer alone, in the touch-target box.
+ *
+ * A DOT IS A MARK, NOT AN AREA, so it wins the touch over every area it sits
+ * in - a hazard area, and a club's shaded closure (decision 191), which
+ * yields to marks (map/clubClosureTaps.ts). map/hazardAreaTaps.ts asks this
+ * before it yields to the shade, and map/clubClosureTaps.ts asks it before
+ * the shade answers. Before both did, a site inside a shaded closure could
+ * never open its own card (F4 of the client review of #1805, 2026-10-15).
+ *
+ * HERE AND NOT IN map/hazardAreaTaps.ts, for map/clubClosureLayers.ts's
+ * `clubClosureShadeIdAt` reason the other way round: the club closures' tap
+ * asks it, and should not load the hazard areas' chunk to ask. One probe
+ * for both, so the yield and the card cannot disagree (map/poiPinProbe.ts
+ * says what that cost once). Silent before the style holds the layer, for
+ * map/closureLayers.ts's `closureIdAt` reason.
+ */
+export function hazardPointIdAt(
+  map: MapLibreMap,
+  point: { x: number; y: number },
+): string | null {
+  if (map.getLayer(HAZARD_POINT_LAYER_ID) === undefined) return null
+  const [feature] = map.queryRenderedFeatures(hazardTapBox(point), {
+    layers: [HAZARD_POINT_LAYER_ID],
+  })
+  const id = feature?.properties?.[HAZARD_ID_PROPERTY]
+  return typeof id === 'string' && id !== '' ? id : null
 }

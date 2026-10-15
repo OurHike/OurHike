@@ -10,6 +10,7 @@ import { atcBandIdAt } from './atcUpdateLayers'
 import { addClosureShadeImages } from './closureShade'
 import { CLUB_CLOSURE_SOURCE_ID, clubClosureShadeIdAt } from './clubClosureLayers'
 import { closureIdAt, clubClosureIdAt, CLUB_CLOSURE_ID_PROPERTY } from './closureLayers'
+import { hazardPointIdAt } from './hazardAreaLayers'
 import { tappedLineAt } from './lineTaps'
 import { poiPinAt } from './poiPinProbe'
 import { poiIdAt } from './poiTaps'
@@ -80,12 +81,14 @@ export function attachClubClosureData(
  *
  * A SHADED AREA IS LAST IN LINE (decision 191), as a hazard area is
  * (map/hazardAreaTaps.ts) and for its reason: an area is the largest thing
- * on the map and the least specific, so every mark drawn on it wins first,
- * the ATC band, a waypoint dot and a trail line included. Only a touch on
- * the hatch and nothing else opens the closure's sheet, the same sheet its
- * list row opens. Between the two areas the shade wins, and the hazard
- * area's handler yields to it: a closure outranks an advisory on the same
- * ground.
+ * on the map and the least specific, so every mark inside it wins first,
+ * the ATC band, a waypoint dot, a trail line and a shooting site's dot
+ * included. Only a touch on the hatch and nothing else opens the closure's
+ * sheet, the same sheet its list row opens. Between the two areas the shade
+ * wins, and the hazard area's handler yields to it: a closure outranks an
+ * advisory on the same ground. A shooting site is not an area but a mark on
+ * the ground, so its dot keeps its own card (map/hazardAreaLayers.ts's
+ * `hazardPointIdAt`; F4 of the client review of #1805, 2026-10-15).
  */
 export function attachClubClosureTaps(
   map: MapLibreMap,
@@ -103,6 +106,7 @@ export function attachClubClosureTaps(
     if (atcBandIdAt(map, event.point) !== null) return
     if (poiIdAt(map, event.point) !== null) return
     if (tappedLineAt(map, event.point) !== null) return
+    if (hazardPointIdAt(map, event.point) !== null) return
     const shaded = clubClosureShadeIdAt(map, event.point)
     if (shaded !== null) onSelect(shaded)
   }

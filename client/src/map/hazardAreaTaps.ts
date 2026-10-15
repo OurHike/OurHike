@@ -10,18 +10,17 @@ import type {
   MapMouseEvent,
   PointLike,
 } from 'maplibre-gl'
-import {
-  hazardFeatureCollection,
-  HAZARD_ID_PROPERTY,
-  type HazardArea,
-} from '../lib/hazardAreas'
+import { hazardFeatureCollection, type HazardArea } from '../lib/hazardAreas'
 import { atcBandIdAt } from './atcUpdateLayers'
 import { closureIdAt, clubClosureIdAt } from './closureLayers'
 import { clubClosureShadeIdAt } from './clubClosureLayers'
 import {
   HAZARD_FILL_LAYER_ID,
+  HAZARD_ID_PROPERTY,
   HAZARD_POINT_LAYER_ID,
   HAZARD_SOURCE_ID,
+  hazardPointIdAt,
+  hazardTapBox,
 } from './hazardAreaLayers'
 import { tappedLineAt } from './lineTaps'
 import { poiPinAt } from './poiPinProbe'
@@ -43,16 +42,6 @@ export function attachHazardData(
     },
     'hazard areas',
   )
-}
-
-/** The touch-target floor every map mark meets (atcUpdateLayers.ts). */
-const HAZARD_TAP_SLOP_PX = 22
-
-function hazardTapBox(point: { x: number; y: number }): [PointLike, PointLike] {
-  return [
-    [point.x - HAZARD_TAP_SLOP_PX, point.y - HAZARD_TAP_SLOP_PX],
-    [point.x + HAZARD_TAP_SLOP_PX, point.y + HAZARD_TAP_SLOP_PX],
-  ]
 }
 
 /** The hazard area under a point on the canvas, by notice id, or null. */
@@ -85,6 +74,12 @@ export function hazardIdAt(
  * (decision 191), the other area last in line, which wins where the two
  * overlap: a closure outranks an advisory on the same ground
  * (map/clubClosureTaps.ts).
+ *
+ * A SHOOTING SITE'S DOT IS A MARK, NOT AN AREA: it waits for the same marks
+ * above it - the two pins, the tape, a club's closure, an ATC band and the
+ * trail line - and then wins over both kinds of area it can sit in, the
+ * shaded closure included (map/hazardAreaLayers.ts's `hazardPointIdAt`,
+ * which the shade's tap asks too).
  */
 export function attachHazardTaps(
   map: MapLibreMap,
@@ -97,6 +92,11 @@ export function attachHazardTaps(
     if (clubClosureIdAt(map, event.point) !== null) return
     if (atcBandIdAt(map, event.point) !== null) return
     if (tappedLineAt(map, event.point) !== null) return
+    const site = hazardPointIdAt(map, event.point)
+    if (site !== null) {
+      onSelect(site)
+      return
+    }
     if (clubClosureShadeIdAt(map, event.point) !== null) return
     const id = hazardIdAt(map, event.point)
     if (id !== null) onSelect(id)

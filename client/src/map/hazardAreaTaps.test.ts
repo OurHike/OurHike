@@ -13,6 +13,8 @@ import {
   hazardColor,
 } from './hazardAreaLayers'
 import { attachHazardData, attachHazardTaps } from './hazardAreaTaps'
+import { CLUB_CLOSURE_ID_PROPERTY } from './closureLayers'
+import { CLUB_CLOSURE_SHADE_LAYER_ID } from './clubClosureLayers'
 import { BLAZE_LAYER_ID } from './style'
 import { WARNING_ID_PROPERTY, WARNING_LAYER_ID } from './warningLayers'
 
@@ -153,6 +155,26 @@ describe('touching an area', () => {
     map.emit('click', { point: { x: 120, y: 240 } })
 
     expect(onSelect).not.toHaveBeenCalled()
+  })
+
+  it('opens a shooting site’s card from a touch on its dot inside a club’s shaded closure: the dot is a mark, and the shade an area', () => {
+    // F4 of the client review of #1805, 2026-10-15: the tap yielded to the
+    // shade before it asked about the dot, so a site inside a shaded closure
+    // could never open its own card.
+    const map = tappableMap()
+    map.layerIds.push(CLUB_CLOSURE_SHADE_LAYER_ID)
+    map.renderedFeatures.set(HAZARD_POINT_LAYER_ID, [
+      areaFeature('example_shooting_sites:7'),
+    ])
+    map.renderedFeatures.set(CLUB_CLOSURE_SHADE_LAYER_ID, [
+      { properties: { [CLUB_CLOSURE_ID_PROPERTY]: 'example_open_space_access:closed' } },
+    ])
+    const onSelect = vi.fn()
+
+    attachHazardTaps(map as unknown as MapLibreMap, onSelect)
+    map.emit('click', { point: { x: 120, y: 240 } })
+
+    expect(onSelect.mock.calls).toEqual([['example_shooting_sites:7']])
   })
 
   it('stops listening once detached', () => {

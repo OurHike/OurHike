@@ -198,9 +198,11 @@ export function hazardsAt(areas: readonly HazardArea[], at: Position): HazardAre
   return areas.filter((area) => positionMeetsParts(at, area.parts, NOTICE_REACH_FEET))
 }
 
-/** The property a drawn area carries its notice id in, for taps. */
-export const HAZARD_ID_PROPERTY = 'notice_id'
-/** The property it carries its kind in, for the paint. */
+// The property a drawn area carries its notice id in, for taps, is
+// map/hazardAreaLayers.ts's HAZARD_ID_PROPERTY: the club closures' tap reads
+// it too, and should not load this module to.
+
+/** The property a drawn area carries its kind in, for the paint. */
 export const HAZARD_KIND_PROPERTY = 'hazard'
 
 export interface HazardFeatureCollection {

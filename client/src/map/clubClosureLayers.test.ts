@@ -47,7 +47,7 @@ import {
 } from './clubClosureTaps'
 import { CLOSURE_ID_PROPERTY, CLUB_CLOSURE_ID_PROPERTY } from './closureLayers'
 import { ATC_UPDATE_ID_PROPERTY, attachAtcUpdateTaps } from './atcUpdateLayers'
-import { HAZARD_FILL_LAYER_ID } from './hazardAreaLayers'
+import { HAZARD_FILL_LAYER_ID, HAZARD_POINT_LAYER_ID } from './hazardAreaLayers'
 import { attachHazardTaps } from './hazardAreaTaps'
 import { tappedLineAt } from './lineTaps'
 import { POI_DOT_LAYER_ID, POI_ID_PROPERTY, POI_LAYER_ID } from './poiLayers'
@@ -403,12 +403,13 @@ describe('putting the closures on a live map', () => {
 describe('touching a club closure', () => {
   /** A map holding the clubs' paper and point cross, a trail line, the
    *  hiker-reported tape, an ATC band, a waypoint pin and dot, a warning pin
-   *  and a hazard area - every mark a touch can land on - with nothing
-   *  drawn under the thumb until a test puts it there. */
+   *  and a hazard area and site - every mark a touch can land on - with
+   *  nothing drawn under the thumb until a test puts it there. */
   function tappableMap(): MockMap {
     const map = new MockMap({})
     map.layerIds = [
       HAZARD_FILL_LAYER_ID,
+      HAZARD_POINT_LAYER_ID,
       CLUB_CLOSURE_SHADE_LAYER_ID,
       BLAZE_LAYER_ID,
       POI_LAYER_ID,
@@ -618,6 +619,33 @@ describe('touching a club closure', () => {
     map.renderedFeatures.delete(CLUB_CLOSURE_SHADE_LAYER_ID)
     map.emit('click', touch)
     expect(onHazard.mock.calls).toEqual([['h1']])
+  })
+
+  it('leaves a touch on a shooting site’s dot inside a shaded area to the site’s own card, never both: a dot is a mark, not an area', () => {
+    // F4 of the client review of #1805, 2026-10-15: the shade took this
+    // touch, so a site inside a shaded closure could never open its own
+    // card. The dot sits inside a hunting area here too, the other area it
+    // can be in.
+    const map = tappableMap()
+    map.renderedFeatures.set(HAZARD_FILL_LAYER_ID, [{ properties: { notice_id: 'h1' } }])
+    map.renderedFeatures.set(HAZARD_POINT_LAYER_ID, [
+      { properties: { notice_id: 'example_shooting_sites:7' } },
+    ])
+    map.renderedFeatures.set(CLUB_CLOSURE_SHADE_LAYER_ID, shaded('example:closed-lands'))
+    const onHazard = vi.fn()
+    const onClub = vi.fn()
+
+    attachHazardTaps(map as unknown as MapLibreMap, onHazard)
+    attachClubClosureTaps(map as unknown as MapLibreMap, onClub)
+    map.emit('click', touch)
+
+    expect(onHazard.mock.calls).toEqual([['example_shooting_sites:7']])
+    expect(onClub).not.toHaveBeenCalled()
+    // Off the dot, the shade answers again, as it does over the hunting area.
+    map.renderedFeatures.delete(HAZARD_POINT_LAYER_ID)
+    map.emit('click', touch)
+    expect(onHazard.mock.calls).toEqual([['example_shooting_sites:7']])
+    expect(onClub.mock.calls).toEqual([['example:closed-lands']])
   })
 })
 

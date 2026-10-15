@@ -566,9 +566,10 @@ jobs:
       # hand_off.py's take-bundle finds nothing for another run's or another
       # commit's (exit 4), as after a push since the build or on the
       # exporters path, and says which. Any failure here, a store that
-      # cannot be read included, costs this hour its comparison and nothing
-      # else: the compare step then says every family was not compared, and
-      # goes red only for a difference.
+      # cannot be read or this step's cap included, costs this hour its
+      # comparison and nothing else: the compare step, which runs after a
+      # failed take too, then says every family was not compared, and goes
+      # red only for a difference.
       - name: Take the comparison bundle this leg's build handed off
         id: take
         if: steps.wanted.outputs.run == 'true'
@@ -600,9 +601,21 @@ jobs:
       # minutes, @unvalidated: on the fixtures the six took 3.4 s together,
       # 0.1 to 0.9 s each, most of it Python starting (Measured 2026-10-10 in
       # a shared sandbox); the summary's seconds column gives a runner's.
+      #
+      # EVERY HOUR THAT GETS HERE LEAVES A run.json, so the gate can tell an
+      # hour whose comparison started from one that never ran (the 2026-10-15
+      # adversarial review, finding S2-3). `!cancelled()`: a bare `if:`
+      # carries an implicit success(), so a take its cap stopped skipped
+      # this step and the hour left nothing, which gate_report.py read as a
+      # run that never came and decision 158's 2.5 hours absorbed; now this
+      # step runs, finds TAKEN empty, and says every family was not compared.
+      # And hourly_parity.py writes run.json before its first family and
+      # after each, so this step's own cap or a crash leaves the family it
+      # was comparing `failed` and the rest not compared, which the upload
+      # below keeps on a failure as on a success.
       - name: Compare the six conditions files with today's exporters
         id: compare
-        if: steps.wanted.outputs.run == 'true'
+        if: ${{ !cancelled() && steps.wanted.outputs.run == 'true' }}
         timeout-minutes: 3
         env:
           LEG: ${{ matrix.data_environment }}

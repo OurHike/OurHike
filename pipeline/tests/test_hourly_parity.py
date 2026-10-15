@@ -10,8 +10,10 @@ lanes", says what it measured). parity.py itself is run as a subprocess, as the 
 from __future__ import annotations
 
 import json
+import signal
+import subprocess
 import sys
-from datetime import datetime
+from datetime import datetime, timedelta
 from pathlib import Path
 
 import duckdb
@@ -328,6 +330,119 @@ def test_no_bundle_reads_as_every_family_not_compared_and_the_run_stays_green(tm
     assert code == 0
     assert {answer["verdict"] for answer in run["families"].values()} == {"not_compared"}
     assert run["bundle"] == "missing: nothing was handed on"
+
+
+def _stopped_at(monkeypatch, name: str, stop: type[BaseException] = KeyboardInterrupt) -> None:
+    """run_family() stops when it reaches family `name`, as the runner's SIGINT does at the compare step's 3-minute
+    cap; every other family answers equal at once, with no subprocess."""
+
+    def run_family(family, bundle_dir, out, python):
+        if family.name == name:
+            raise stop
+        return hourly_parity.FamilyAnswer(family.key, "equal", family.compared_on, outcome="no_differences")
+
+    monkeypatch.setattr(hourly_parity, "run_family", run_family)
+
+
+def test_a_comparison_stopped_part_way_leaves_run_json_naming_where_it_stopped(tmp_path, monkeypatch):
+    """The 2026-10-15 review's finding S2-3: compare() wrote run.json once, after the last family, so a step killed at
+    its cap or a compare() that raised left no run.json, and the gate read the hour as one that never came, which
+    decision 158's gap rule absorbs. run.json is written before the first family and after each, so the family being
+    compared reads `failed` (a crash, which makes the key differ) and the families after it `not_compared`."""
+    bundle_dir = tmp_path / "bundle"
+    hourly_parity.bundle(
+        _answers(tmp_path / "answers"), _warehouse(tmp_path / "w.duckdb"), _processed(tmp_path / "p"), bundle_dir
+    )
+    _stopped_at(monkeypatch, "reports")
+
+    with pytest.raises(KeyboardInterrupt):
+        hourly_parity.compare(bundle_dir, tmp_path / "result", identity={"run": "38075292380", "leg": "ua"})
+
+    run = json.loads((tmp_path / "result" / hourly_parity.RUN_FILE).read_text())
+    assert run["finished"] is False and run["run"] == "38075292380" and run["built_at"] == "2026-10-10 18:21:42"
+    assert {name: answer["verdict"] for name, answer in run["families"].items()} == {
+        "closures": "equal",
+        "reports": "failed",
+        "weather_alerts": "not_compared",
+        "atc_updates": "not_compared",
+        "nynjtc_alerts": "not_compared",
+        "work_projects": "not_compared",
+    }
+    assert "stopped while it compared this family" in run["families"]["reports"]["why"]
+    assert "stopped before it reached this family" in run["families"]["work_projects"]["why"]
+    assert [path.name for path in (tmp_path / "result").iterdir() if path.name.startswith("run")] == [hourly_parity.RUN_FILE]
+
+
+KILLING_PARITY = """
+import os, signal, sys
+if sys.argv[1] == "reports":
+    os.kill(os.getppid(), signal.SIGKILL)  # the runner's last word to a step past its cap: nothing of compare() runs after it
+print(f"{sys.argv[1]}: no answer")
+sys.exit(2)
+"""
+
+
+def test_a_comparison_killed_outright_still_leaves_run_json(tmp_path):
+    """SIGKILL, the runner's last step after SIGINT and SIGTERM, runs no handler: what is on disk is what was written
+    before the family began."""
+    bundle_dir = tmp_path / "bundle"
+    hourly_parity.bundle(
+        _answers(tmp_path / "answers"), _warehouse(tmp_path / "w.duckdb"), _processed(tmp_path / "p"), bundle_dir
+    )
+    fake = tmp_path / "pipeline"
+    fake.mkdir()
+    (fake / "parity.py").write_text(KILLING_PARITY)
+    driver = (
+        "import sys; from pathlib import Path; sys.path.insert(0, sys.argv[1]); import hourly_parity; "
+        "hourly_parity.PIPELINE_DIR = Path(sys.argv[2]); sys.exit(hourly_parity.main(sys.argv[3:]))"
+    )
+    argv = ["compare", "--bundle", str(bundle_dir), "--out", str(tmp_path / "result"), "--run", "38075292380"]
+
+    finished = subprocess.run(
+        [sys.executable, "-c", driver, str(Path(hourly_parity.__file__).parent), str(fake), *argv],
+        capture_output=True,
+        text=True,
+        timeout=120,
+        check=False,
+    )
+
+    assert finished.returncode == -signal.SIGKILL, finished.stderr
+    run = json.loads((tmp_path / "result" / hourly_parity.RUN_FILE).read_text())
+    assert run["finished"] is False
+    assert run["families"]["closures"]["verdict"] == "failed", "parity.py answered nothing for it, as when it crashes"
+    assert (run["families"]["reports"]["verdict"], run["families"]["weather_alerts"]["verdict"]) == ("failed", "not_compared")
+    assert run["families"]["reports"]["why"] == hourly_parity.STOPPED_IN
+
+
+def test_the_gate_reads_an_hour_whose_comparison_stopped_as_a_crash_and_a_hole_never_as_absent(tmp_path, monkeypatch):
+    """End to end, the review's case: 73 hourly builds, the comparison of hour 30 stopped while it compared reports.
+    At ad932107 that hour had no run.json, so all three keys below read clear across a 2-hour gap."""
+    import gate_report
+
+    bundle_dir = tmp_path / "bundle"
+    hourly_parity.bundle(
+        _answers(tmp_path / "answers"), _warehouse(tmp_path / "w.duckdb"), _processed(tmp_path / "p"), bundle_dir
+    )
+    document = json.loads((bundle_dir / hourly_parity.BUNDLE_FILE).read_text())
+    start = datetime(2026, 10, 12, 0, 18)
+    for hour in range(73):
+        document["build"]["started_at"] = (start + timedelta(hours=hour)).strftime("%Y-%m-%d %H:%M:%S")
+        (bundle_dir / hourly_parity.BUNDLE_FILE).write_text(json.dumps(document))
+        _stopped_at(monkeypatch, "reports" if hour == 30 else "no family")
+        identity = {"run": str(38600000000 + hour), "attempt": "1", "commit": "e49ca601" + "0" * 32, "leg": "ua"}
+        try:
+            hourly_parity.compare(bundle_dir, tmp_path / "soak" / str(hour), identity=identity)
+        except KeyboardInterrupt:
+            assert hour == 30
+
+    runs = gate_report.load_hourly(tmp_path / "soak")
+
+    assert len(runs) == 73
+    assert gate_report.soak_coverage(runs, "closures").state == "clear", "its comparison finished before the stop"
+    reports = gate_report.soak_coverage(runs, "reports")
+    assert reports.state == "differs" and "run 38600000030.1" in reports.detail and "stopped while it compared" in reports.detail
+    nws = gate_report.soak_coverage(runs, "weather_alerts")
+    assert nws.state == "short" and "stopped before it reached this family" in nws.detail
 
 
 def test_parity_answers_dir_moves_raw_dir_for_one_comparison_and_puts_it_back(tmp_path):

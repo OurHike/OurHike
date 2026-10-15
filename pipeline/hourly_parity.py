@@ -63,6 +63,28 @@ reached the job. Only a difference nothing explains, or a comparison that
 crashed, turns the run red; gate_report.py counts every hour that compared
 nothing as a hole in the soak.
 
+A COMPARISON THAT STOPS PART WAY IS RECORDED, NEVER ABSENT. `compare` writes
+run.json before the first family, and again before and after each, renamed
+into place whole so a kill mid-write leaves the last whole copy, with
+`finished` false until the last answer is in. A step its cap stops ends as a
+failure, and the runner signals its shell, SIGINT, then SIGTERM 7.5 s later,
+then kills the process tree 2.5 s after that, which runs no handler
+(actions/runner's StepsRunner.cs and ProcessInvoker.cs, read 2026-10-15).
+Whatever of that reaches this process, or a compare() that raised, the
+run.json on disk is a whole one in which the family being compared reads
+`failed` (STOPPED_IN: a crash, which gate_report.py reads as `differs`) and
+those after it `not_compared` (NOT_REACHED: a hole), and the parity job
+uploads it, as it uploads a failed step's results. Until the 2026-10-15
+adversarial review (finding S2-3) run.json was written once, after the last
+family, so such an hour left none, and gate_report.py read it as a run that
+never came, which decision 158's 2.5-hour rule absorbs. That is how the gate
+tells the two apart: an hour whose parity job reached its compare step has a
+run.json, a take that failed or timed out included (check-conditions.yml
+runs the compare step after it, and every family reads not compared); an
+hour with none is one whose build was never dispatched, or whose parity job
+was cancelled or lost its runner before that step, and only those fall under
+decision 158.
+
 NO RECORD AND NO PERSON FIELD IS PRINTED OR UPLOADED. parity.py runs with
 --keys-only, so its console and its result files carry each difference's key
 and changed field paths, never either side's record; this file prints counts,
@@ -74,6 +96,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import os
 import shutil
 import subprocess
 import sys
@@ -375,6 +398,23 @@ class FamilyAnswer:
 #: defect in the comparison until somebody reads why.
 RED = ("differs", "failed")
 
+#: What run.json says of a family compare() has not reached, and of the one it is comparing, until each answer is in:
+#: what a run.json left by a step killed at its cap, or by a compare() that raised, then says (the module docstring,
+#: "A COMPARISON THAT STOPS PART WAY").
+NOT_REACHED = "the comparison stopped before it reached this family (its step was killed or timed out, or compare() raised)"
+STOPPED_IN = (
+    "the comparison stopped while it compared this family (its step was killed or timed out, or compare() raised) "
+    "before parity.py's answer was recorded"
+)
+
+
+def _write_run(out: Path, run: dict) -> None:
+    """`out/run.json`, replaced whole: written beside it, then renamed over it, so a kill mid-write leaves the last
+    whole one."""
+    partial = out / f".{RUN_FILE}.partial"
+    partial.write_text(json.dumps(run, indent=1, sort_keys=True) + "\n", encoding="utf-8")
+    os.replace(partial, out / RUN_FILE)
+
 
 def why_not(family: HourlyFamily, document: dict, bundle_dir: Path) -> str | None:
     """Why `family` cannot be compared on this bundle this hour, or None when it can."""
@@ -491,7 +531,9 @@ def compare(
 ) -> dict:
     """Every family's answer on `bundle_dir`, written as `out/run.json` (HOURLY_FORMAT); returns that document.
 
-    `missing` says why there is no bundle to compare, and every family then reads not compared."""
+    `missing` says why there is no bundle to compare, and every family then reads not compared. run.json is written
+    before the first family and again before and after each, with `finished` false until the last answer is in (the
+    module docstring, "A COMPARISON THAT STOPS PART WAY")."""
     out.mkdir(parents=True, exist_ok=True)
     document = {}
     if missing is None:
@@ -502,30 +544,43 @@ def compare(
         except (OSError, ValueError) as unreadable:
             missing = f"{bundle_dir / BUNDLE_FILE} could not be read ({type(unreadable).__name__})"
     started = time.monotonic()
-    answers: dict[str, FamilyAnswer] = {}
-    for family in FAMILIES.values():
-        if missing is not None:
-            answers[family.name] = FamilyAnswer(family.key, "not_compared", family.compared_on, why=f"no bundle: {missing}")
-            continue
-        if reason := why_not(family, document, bundle_dir):
-            answers[family.name] = FamilyAnswer(family.key, "not_compared", family.compared_on, why=reason)
-            continue
-        chosen = (extract_python or python) if family.extract_venv else python
-        answers[family.name] = run_family(family, bundle_dir, out, chosen)
     build = document.get("build") or {}
     run = {
         "format": HOURLY_FORMAT,
         **(identity or {}),
         "built_at": build.get("started_at"),
         "build_exit": build.get("exit"),
-        "compared_at": _now(),
-        "seconds": round(time.monotonic() - started, 1),
         "bundle": "taken" if missing is None else f"missing: {missing}",
         "inputs": document.get("inputs") or {},
-        "families": {name: asdict(answer) for name, answer in answers.items()},
     }
-    (out / RUN_FILE).write_text(json.dumps(run, indent=1, sort_keys=True) + "\n", encoding="utf-8")
-    return run
+    answers = {
+        family.name: FamilyAnswer(family.key, "not_compared", family.compared_on, why=NOT_REACHED) for family in FAMILIES.values()
+    }
+
+    def record(finished: bool) -> dict:
+        run.update(
+            compared_at=_now(),
+            seconds=round(time.monotonic() - started, 1),
+            finished=finished,
+            families={name: asdict(answer) for name, answer in answers.items()},
+        )
+        _write_run(out, run)
+        return run
+
+    record(False)
+    for family in FAMILIES.values():
+        if missing is not None:
+            answers[family.name] = FamilyAnswer(family.key, "not_compared", family.compared_on, why=f"no bundle: {missing}")
+            continue
+        answers[family.name] = FamilyAnswer(family.key, "failed", family.compared_on, why=STOPPED_IN)
+        record(False)
+        if reason := why_not(family, document, bundle_dir):
+            answers[family.name] = FamilyAnswer(family.key, "not_compared", family.compared_on, why=reason)
+        else:
+            chosen = (extract_python or python) if family.extract_venv else python
+            answers[family.name] = run_family(family, bundle_dir, out, chosen)
+        record(False)
+    return record(True)
 
 
 def run_label(run: dict) -> str:

@@ -96,7 +96,14 @@ precisely what "clean across the soak" means here:
   `differs`, and the detail names each such run's commit: a difference an
   older commit's hour found may be a defect the newer code still has, on data
   its own hours never met, so it stands until somebody reads it and takes
-  that run out of --hourly-dir;
+  that run out of --hourly-dir. A comparison stopped part way, by its step's
+  cap or a crash, is a crash for the family it was comparing and a hole for
+  those after it: hourly_parity.py writes run.json before the first family
+  and after each (its docstring, "A COMPARISON THAT STOPS PART WAY"), and
+  check-conditions.yml runs the compare step after a take that failed, so
+  every hour whose parity job reached that step has a run.json. An hour with
+  none is a build never dispatched, or a parity job cancelled or lost before
+  that step, and only such an hour is a gap SOAK_MAX_GAP_HOURS can absorb;
 - otherwise the key passes only when EVERY run of the UA leg (SOAK_LEG,
   decision 46) BUILT ON A COMMIT JUDGED, in the soak's last SOAK_HOURS
   (counted back from the newest such run, and reaching back to one at or

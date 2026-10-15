@@ -133,7 +133,13 @@ vars:
   # those tables first in every build, and their own post-hooks load them, so
   # here the hook skips it: one `dbt seed` against the fixture warehouse spent
   # 17.07 s in the hook with it and 0.22 s without (measured 2026-10-08), and
-  # a fixture build runs 16 dbt commands, Elementary's checks pass among them.
+  # a fixture build runs 16 dbt commands, Elementary's checks pass among them
+  # (18 at 3133c11a and 19 since decision 203's freshness run, counted
+  # 2026-10-15 in two fixture builds' logs). The hook still writes a `dbt source freshness` run's results with
+  # this set, a row a source into dbt_source_freshness_results, with
+  # max_loaded_at_time_ago_in_s left null (measured 2026-10-15 on dbt 2.0.6
+  # and Elementary 0.26.0): macros/data_quality.sql counts those rows as each
+  # source's freshness (decision 203) and works the age out itself.
   disable_dbt_artifacts_autoupload: true
   # ELEMENTARY'S TRAINING AND DETECTION, which every check's warning rests on
   # (decision 102): 0.26.0's own defaults (get_config_var.sql), written here

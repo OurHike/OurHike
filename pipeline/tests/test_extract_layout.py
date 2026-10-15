@@ -72,6 +72,24 @@ NOT_YET_EXTRACTED = frozenset(
         # path the Drought Monitor's robots.txt disallows for every user agent. The
         # extract does not rebuild a fetch robots.txt refuses.
         "usdm_drought",
+        # Registered on 2026-10-15 for their terms (decision 213, Q25: a layer a trail_orgs.json row names gets its
+        # own registry row, with its terms read), held, and waiting on a resource that reads each. Whether a
+        # steward's own line joins or replaces the line its host carries is #1709's reconciliation.
+        "fl_state_parks_trails",
+        "fta_fnst_line",
+        "iata_official_trail_sections",
+        "idpr_centennial_trail_route",
+        "idpr_idaho_routes",
+        "maricopa_parks_trail_segments",
+        "mi_dnr_iron_belle_trail",
+        "mo_state_parks_trail_routes",
+        "montour_trail_route",
+        "nett_trail_segments",
+        "nys_canal_canalway_trail",
+        "oprd_rec_trails",
+        "rctc_rachel_carson_trail_geojson",
+        "vtrans_lvrt_centerline",
+        "wsprc_long_distance_trails",
     }
 )
 

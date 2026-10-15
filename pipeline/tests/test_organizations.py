@@ -492,10 +492,16 @@ def test_most_of_this_registry_ships_on_the_maintainers_own_word():
     # massgis_long_distance_trails, wi_ice_age_trail) and the 3 the same decision recorded as
     # `maintainer_authorisation` (ncta_trail, alaska_trails, cdtc_centerline), so 207 -> 196, 253 -> 250 and
     # 277 -> 291.
+    # The same poll registers the 15 layers trail_orgs.json rows name that had no row, each with its terms read and
+    # held: 13 `public_gis` (IATA's official sections, FTA's whole FNST line, the Montour Trail's route, the Rachel
+    # Carson Trail's GeoJSON, and the trail layers of Missouri State Parks, IDPR's Centennial Trail, Michigan DNR's
+    # Iron Belle Trail, VTrans' LVRT, Florida State Parks, OPRD, the Canal Corporation, Maricopa County and
+    # Washington State Parks) and 2 `stated_by_org` (NETT's segments, 'Public Domain', and IDPR's Idaho Routes, whose
+    # item states terms), so 291 -> 304 and 196 -> 198.
     assert counts == {
         "maintainer_authorisation": 250,
-        "public_gis": 291,
-        "stated_by_org": 196,
+        "public_gis": 304,
+        "stated_by_org": 198,
         "unresolved": 32,
         "maintainer_clearinghouse": 13,
     }

@@ -5624,7 +5624,7 @@ where = [
     "https://services1.arcgis.com/nRHtyn3uE1kyzoYc/arcgis/rest/services",
     "https://floridastateparks.org/",
 ]
-reason = "published and not landed: no sources.json row registers it, and a builder takes a registered key"
+reason = "published and not landed: registered on 2026-10-15 as `fl_state_parks_trails`, held, for its terms (decision 213, Q25), and no resource reads it yet"
 
 [fl_state_parks.warnings]
 shares = "closures"
@@ -6173,7 +6173,7 @@ where = [
     "https://www.google.com/maps/d/kml?mid=1UoHhnZjbHgQd9k4fCf50c-cyqkY&forcekml=1",
     "https://weiserrivertrail.org/",
 ]
-reason = "published and not landed: IDPR's Idaho Routes layer (Idaho_Recreation_Trails/FeatureServer/128), which carries the trail and which this row's `via` names, has no sources.json row, and a builder takes a registered key"
+reason = "published and not landed: IDPR's Idaho Routes layer (Idaho_Recreation_Trails/FeatureServer/128), which carries the trail and which this row's `via` names, is registered on 2026-10-15 as `idpr_idaho_routes`, held, for its terms (decision 213, Q25), and no resource reads it yet"
 
 [fwrt.warnings]
 confirmed = 2026-10-01
@@ -7246,7 +7246,7 @@ where = [
     "https://services1.arcgis.com/CNPdEkvnGl65jCX8/arcgis/rest/services",
     "https://parksandrecreation.idaho.gov/",
 ]
-reason = "published and not landed: no sources.json row registers it, and a builder takes a registered key"
+reason = "published and not landed: registered on 2026-10-15 as `idpr_centennial_trail_route`, held, for its terms (decision 213, Q25), and no resource reads it yet"
 
 [idpr.warnings]
 shares = "closures"
@@ -8475,7 +8475,7 @@ where = [
     "https://gis.maricopa.gov/arcgis/rest/services/PNR/ParkAndTrail/MapServer",
     "https://maricopacountyparks.net/",
 ]
-reason = "published and not landed: no sources.json row registers it, and a builder takes a registered key"
+reason = "published and not landed: registered on 2026-10-15 as `maricopa_parks_trail_segments`, held, for its terms (decision 213, Q25), and no resource reads it yet"
 
 [maricopa_parks.warnings]
 shares = "closures"
@@ -9199,7 +9199,7 @@ where = [
     "https://gisp.mcgi.state.mi.us/arcgis/rest/services",
     "https://michigan.gov/dnr",
 ]
-reason = "published and not landed: no sources.json row registers it, and a builder takes a registered key"
+reason = "published and not landed: registered on 2026-10-15 as `mi_dnr_iron_belle_trail`, held, for its terms (decision 213, Q25), and no resource reads it yet"
 
 [mo_state_parks.challenges]
 confirmed = 2026-10-01
@@ -9301,7 +9301,7 @@ where = [
     "https://gis.dnr.mo.gov/server/rest/services",
     "https://mostateparks.com/",
 ]
-reason = "published and not landed: no sources.json row registers it, and a builder takes a registered key"
+reason = "published and not landed: registered on 2026-10-15 as `mo_state_parks_trail_routes`, held, for its terms (decision 213, Q25), and no resource reads it yet"
 
 [mo_state_parks.warnings]
 shares = "closures"
@@ -10996,7 +10996,7 @@ where = [
     "https://services2.arcgis.com/YXGc5lG6eRCB6XBL/arcgis/rest/services",
     "https://netexastrail.org/",
 ]
-reason = "published and not landed: no sources.json row registers it, and a builder takes a registered key"
+reason = "published and not landed: registered on 2026-10-15 as `nett_trail_segments`, held, for its terms (decision 213, Q25), and no resource reads it yet"
 
 [nett.warnings]
 shares = "closures"
@@ -12295,7 +12295,7 @@ where = [
     "https://services6.arcgis.com/DmQy2NS38tchd4fs/arcgis/rest/services",
     "https://canals.ny.gov/",
 ]
-reason = "published and not landed: no sources.json row registers it, and a builder takes a registered key"
+reason = "published and not landed: registered on 2026-10-15 as `nys_canal_canalway_trail`, held, for its terms (decision 213, Q25), and no resource reads it yet"
 
 [nysdec.challenges]
 confirmed = 2026-10-01
@@ -13308,7 +13308,7 @@ where = [
     "https://gis.prd.state.or.us/arcgis/rest/services",
     "https://stateparks.oregon.gov/",
 ]
-reason = "published and not landed: no sources.json row registers it, and a builder takes a registered key"
+reason = "published and not landed: registered on 2026-10-15 as `oprd_rec_trails`, held, for its terms (decision 213, Q25), and no resource reads it yet"
 
 [osta.challenges]
 confirmed = 2026-10-04
@@ -15307,7 +15307,7 @@ checked = [
     "The loaded copy is stale. `pasda_dcnr_trails` has 37.13 mi from 2017. RCTC's own GeoJSON: `https://www.rachelcarsontrails.org/gis/rct-geojson` redirects to `/gis/10/10-20260608-geojson` (124,093 B, `application/vnd.geo+json`): 21 `route` and 2 `connector` LineStrings, 46.2 mi. Baker: `/gis/bt-geojson` redirects to `/gis/20/20-20260814-geojson` (259,229 B): 47 route and 24 spur. Skeptic re-ran the RCT URL: same redirect, 124,093 B, 21 route + 21 parking + 2 connector. Skeptic, new: the Harmony Trail page carries `data-geojsonurl=\"/gis/ht-geojson\"`, which redirects to …",
 ]
 where = ["https://www.rachelcarsontrails.org/gis/rct-geojson", "https://rachelcarsontrails.org/"]
-reason = "published and not landed as lines: the Rachel Carson Trail's and the Harmony Trail's files have no sources.json row, and the Baker Trail's lines arrive in points_of_interest.py's file, which no trail_lines model reads"
+reason = "published and not landed as lines: the Rachel Carson Trail's file is registered on 2026-10-15 as `rctc_rachel_carson_trail_geojson`, held, for its terms (decision 213, Q25), and no resource reads it yet, the Harmony Trail's has no sources.json row, and the Baker Trail's lines arrive in points_of_interest.py's file, which no trail_lines model reads"
 
 [rctc.warnings]
 shares = "closures"
@@ -19157,7 +19157,7 @@ where = [
     "https://services1.arcgis.com/NXmBVyW5TaiCXqFs/arcgis/rest/services",
     "https://railtrails.vermont.gov/",
 ]
-reason = "published and not landed: no sources.json row registers it, and a builder takes a registered key"
+reason = "published and not landed: registered on 2026-10-15 as `vtrans_lvrt_centerline`, held, for its terms (decision 213, Q25), and no resource reads it yet"
 
 [w3r.challenges]
 confirmed = 2026-10-04

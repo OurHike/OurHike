@@ -426,7 +426,8 @@ def test_a_title_names_each_thing_it_lists_and_a_trail_among_them_is_the_trail()
 
 def test_a_start_a_title_states_with_a_day_closes_from_that_day():
     """The review of 2026-10-15, S1-4: IATA's 'Hunting Closure beginning 9/1' and 'beginning 10/15' close from their
-    day (macros/notice_title_start_day.sql), where a start stated with no day ('Beginning Fall 2027') still keeps the
+    day (macros/notice_title_start_day.sql), their narrative saying the trail section is closed (an activity's
+    closure alone closes no trail, decision 213), where a start stated with no day ('Beginning Fall 2027') still keeps the
     title a notice. A park's water systems are a site, so Wisconsin's 'Water Systems Closed (Beginning Oct. 13,
     2026)' stays a notice once its start no longer does it."""
     words = {(row["word"], row["matches"]): row for row in seed("notice_words")}
@@ -621,3 +622,34 @@ def test_a_hazard_category_names_its_hazard_by_its_code_its_label_or_its_words_a
         "usace_garrison_hunting_restrictions:no_hunting_allowed",
     ):
         assert expected[key]["held_because"].endswith("is not one notice_hazard_areas reads as hunting"), key
+
+
+DECISION_213 = "int_closures__club_notices_reads_decision_213s_rules_for_every_source"
+
+
+def test_an_activitys_closure_closes_the_trail_only_where_the_rows_narrative_closes_it_too():
+    """The maintainer's poll of 2026-10-15, "Activity closures don't close": a closing word right after an activity
+    word closes the activity, so USFS R04's 'Butterfly Collection Closure Area' is a notice, where IATA's 'Hunting
+    Closure beginning 9/1' still closes beside its narrative's 'The Trail section … is closed' (rule 15). 'fire' is
+    no activity: 806 titles name the fire a closure is for. 'camping' is read as a site already."""
+    words = {(row["word"], row["matches"]): row for row in seed("notice_words")}
+    for word in ("collection", "collecting", "fires", "hunting", "shooting"):
+        assert words[(word, "words")]["reads_as"] == "names_an_activity", word
+    assert ("fire", "words") not in words
+    assert words[("camping", "words")]["reads_as"] == "a_site_not_the_trail"
+    for word in ("closed", "closure"):
+        assert "narrative" in words[(word, "words")]["read_in"].split(), word
+    expected = _expected(DECISION_213)
+    assert expected["fixture_orders:activity_order"]["reads_as"] == "notice"
+    assert expected["fixture_trail_conditions:activity_trail_closed"]["obstructs_trail"] is True
+    assert expected["fixture_trail_conditions:activity_unsaid"]["reads_as"] == "notice"
+
+
+def test_a_warnings_filed_row_that_names_only_a_road_stays_a_notice():
+    """The poll of 2026-10-15, "Roads stay notices": decision 213's rule 8 never crosses out a road event. NPS's road
+    lines say 'all-lanes-closed' in their status, read as a road; a closures-filed road line still closes."""
+    assert "names_a_road" in reads_as("status", "all-lanes-closed")
+    expected = _expected(DECISION_213)
+    for key in ("warning_road", "warning_lanes"):
+        assert expected[f"fixture_road_events:{key}"]["read_from"].endswith("a road and not the trail"), key
+    assert expected["fixture_route_orders:worded_issuer"]["obstructs_trail"] is True

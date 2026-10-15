@@ -208,6 +208,7 @@ def test_a_narrative_is_staged_to_be_read_and_never_counted_as_a_fact(files):
     fields = {row["source_key"]: row for row in _seed("notice_source_fields")}
     named = {key for key, row in fields.items() if row["narrative"]}
     assert named == {
+        "iata_trail_conditions",
         "idpr_emergency_route_closures",
         "idpr_area_restrictions",
         "mi_dnr_trail_temporary_closures",

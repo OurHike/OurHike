@@ -261,7 +261,7 @@ seeds:
           not_current, stands, unspecified, not_a_hikers_use, bars_every_use,
           a_hikers_use, closes_trail, partly, a_way_around, not_a_closure,
           states_a_start, not_a_qualifier, a_site_not_the_trail,
-          names_a_trail, names_a_road or names_an_area;
+          names_a_trail, names_a_road, names_an_area or names_an_activity;
           int_closures__club_notices' header says what each does.
         data_tests:
           - not_null
@@ -284,6 +284,7 @@ seeds:
                   - names_a_trail
                   - names_a_road
                   - names_an_area
+                  - names_an_activity
       - name: outranks_status
         description: >
           True on a closing word whose reading holds however the row's own

@@ -44,7 +44,7 @@ portland_parks_closed_assets,Name,,,,,,,,Website,,,,,Closed Assets,"No edit date
 ctsst_public_hazards_closures,Hazard,,,H_C,,,,,,Location,,,,Public_Hazards_Closures,"H_C 'C' (closure) 2, 'H' (hazard) 2 (the row's notes)"
 alaska_trails_obstacles,Name,Type,status,,,,,,,,,,,AKLT_Trail_Obstacles,"Planning records: Type BridgeNeeded(Impassable), BridgeNeeded(Passable), RiverFord"
 alaska_trails_seward_obstacles,Name,Type,status,,,,,,,,,,,Seward to Eagle River Obstacles,"As alaska_trails_obstacles"
-iata_trail_conditions,heading,,,posted,date_posted,,,date_updated,hyperlink,segment_name,,,,surveyPoint,"posted yes 21, no 57, pending 2 (the row's notes): the club's own flag"
+iata_trail_conditions,heading,,,posted,date_posted,,,date_updated,hyperlink,segment_name,description,,,surveyPoint,"posted yes 21, no 57, pending 2 (the row's notes): the club's own flag. description is the club's own paragraph, read and never published: it says whether a 'Hunting Closure' title closes the trail ('The Trail section … is closed Sept. 1 - Jan. 5 for private hunting', read live 2026-10-15; decision 213's activity closures)"
 iata_hunting_closures,Segment,,,GunDeer,,,,,,,,,,HuntingClosures,"A season closure with no season dates in the layer (the row's notes)"
 iata_lands_hunting_regs,Display_Name,Hunting_Reg,status,,,,,,,County,,,,IATA Lands Hunting Regulations,"Standing rules with no season dates"
 fltc_temporary_notices,Notice,,,Status,,,,EditDate_1,Link,Map,,,,Temporary_Notices,"Status's values were not read (the row's notes)"

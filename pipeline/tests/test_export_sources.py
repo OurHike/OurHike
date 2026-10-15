@@ -100,6 +100,18 @@ class TestTermsTravelWithTheData:
         assert njdep[0]["attribution"] == real["njdep_licence"]["attribution_required"]
         assert njdep[0]["terms"] == real["njdep_licence"]["terms_verbatim"]
 
+    def test_florida_state_parks_ships_with_the_one_credit_its_three_rows_give(self):
+        """The real registry, as it stands on 2026-10-15. A steward's credit prints only where every shipping row
+        gives the same one (_unanimous()). FDEP's park boundaries, added for decision 185, credited the Division of
+        Recreation and Parks' Office of Park Planning where the two status rows credit the Division, so the sources
+        screen named Florida State Parks with no credit at all, though the boundaries' own terms ask for
+        "Acknowledgement of the Originator" (review finding S3-1 of 2026-10-15)."""
+        real = json.loads((ROOT / "sources.json").read_text())
+        out = export_sources.build_output(real)
+
+        (florida,) = [s for s in out["stewards"] if s["provider"] == "Florida State Parks"]
+        assert florida["attribution"] == "Florida Department of Environmental Protection, Division of Recreation and Parks"
+
 
 class TestWhoGetsNamed:
     def test_names_a_steward_whose_data_reaches_hikers(self):

@@ -53,9 +53,10 @@
 {#- Whether a notice's own end day is more than one day behind the build's
     UTC date: true or false, never null. The same margin the end date had as
     a hold before 2026-10-10, for the reason int_closures__club_notices' rule
-    1 gives: a day stated in a club's own zone has ended everywhere in the
-    United States by 10:00 UTC the day after, so a closure reads as closing
-    the trail a day too long rather than a day too short. -#}
+    3 gives: a day stated in a club's own zone has ended everywhere in the
+    United States by 11:00 UTC the day after (American Samoa, UTC-11, is the
+    last zone to finish it), so a closure reads as closing the trail a day
+    too long rather than a day too short. -#}
 {% macro notice_has_ended(ends_on, build_date) -%}
     coalesce({{ ends_on }} < {{ build_date }} - 1, false)
 {%- endmacro %}

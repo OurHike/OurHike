@@ -24,7 +24,9 @@ word reads lets the title speak (S1-1), a flag's coded unknown leaves it a flag 
 lists (S1-2), a start a title states with a day closes from that day (S1-4), a phrase naming both uses or everyone
 bars every use (S2-2), a qualifying word inside a `not_a_qualifier` phrase qualifies nothing (S2-3), a closures
 layer's detours and reopenings are not its closures (S2-4), a season a row states in words is read in the season
-that has not ended (S1-3), and dates that contradict each other close no trail (S2-5).
+that has not ended (S1-3), and dates that contradict each other close no trail (S2-5). Its second pass found
+facilities no site word named still crossed out (thread 4279221884): a dump station, a campground written 'CG', a
+district office and ten more now read as sites, and the site words say they are a deny-list.
 """
 
 import csv
@@ -45,12 +47,14 @@ TEST_SEASON = (
     "int_closures__club_notices_reads_a_stated_season_in_the_season_that_has_not_ended_and_dates_that_contradict_as_"
     "closing_nothing"
 )
+TEST_FACILITIES = "int_closures__club_notices_reads_a_facility_its_title_names_as_a_site_and_a_trail_named_after_one_as_the_trail"
 #: The reading tests, which mock the whole vocabulary, and the tests that mock only the words they need.
 WHOLE_VOCABULARY = (TEST, TEST_190, TEST_REVIEW)
 SOME_WORDS = (
     "int_closures__club_notices_keeps_a_notice_for_a_days_margin_either_side_of_its_own_dates",
     "int_closures__club_notices_places_a_point_inside_exactly_one_of_its_stewards_own_areas_by_that_area",
     TEST_SEASON,
+    TEST_FACILITIES,
 )
 
 
@@ -489,3 +493,44 @@ def test_a_season_is_read_in_the_season_that_has_not_ended_and_contradicting_dat
         assert expected[f"cotrex_seasonal_closures:{key}"]["obstructs_trail"] is None, key
     for notice_id in ("idpr_area_restrictions:end_before_start", "nps_yell_bear_management_areas:start_before_1900"):
         assert expected[notice_id]["obstructs_trail"] is None, notice_id
+
+
+def test_a_facility_the_review_named_is_a_site_and_the_site_words_say_they_are_a_deny_list():
+    """The review of 2026-10-15, thread 4279221884: Grand Canyon's 'RV Dump Station', 'Gas Station' and 'North Rim
+    Administrative Area', King County's playground, Wisconsin's 'Wildlife Exhibit Area', Region 4's 'Pine Valley CG'
+    and USFS's district office, put-in, wayside, hunt camp and resort were crossed out as trails because no site word
+    named them. Each word reads as a site in a title; 'administrative' alone does not, so an area closed for
+    administrative reasons still closes; and the site rule's own `why` says the words are a deny-list,
+    @unvalidated for a facility none of them names."""
+    for word in (
+        "dump station",
+        "gas station",
+        "playground",
+        "pullout",
+        "administrative area",
+        "administrative site",
+        "housing",
+        "exhibit",
+        "district office",
+        "resort",
+        "put in",
+        "wayside",
+        "hunt camp",
+        "cg",
+    ):
+        assert "a_site_not_the_trail" in reads_as("title", word), word
+    assert "a_site_not_the_trail" in reads_as("title", "Cherry Creek Put-in")
+    assert "a_site_not_the_trail" not in reads_as("title", "Bright Angel Point Administrative Closure")
+    (campground,) = [row for row in seed("notice_words") if row["word"] == "campground"]
+    assert "deny-list" in campground["why"] and "@unvalidated" in campground["why"]
+    expected = _expected(TEST_FACILITIES)
+    for key in (
+        "nps_grca_closures:dump_station",
+        "nps_grca_closures:administrative_area",
+        "usfs_r04_forest_orders:cg_order",
+        "usfs_rec_opportunities_status:district_office",
+    ):
+        assert expected[key]["read_from"].endswith("a site and not the trail"), key
+        assert expected[key]["obstructs_trail"] is None, key
+    for key in ("nps_grca_closures:administrative_closure", "usfs_rec_opportunities_status:hunt_camp_trail"):
+        assert expected[key]["obstructs_trail"] is True, key

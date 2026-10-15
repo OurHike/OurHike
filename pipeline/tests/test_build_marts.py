@@ -84,6 +84,13 @@ WRITERS_RUN = (
     DBT_DIR,
 )
 QUALITY_RUN = (("dbt", "build", "--profiles-dir", ".", "-s", *QUALITY_WRITERS, "--exclude", NO_CHECKS), DBT_DIR)
+#: The sources' freshness, right before the data-quality pass (build_marts.py's docstring, "EACH SOURCE'S FRESHNESS IS
+#: MEASURED FOR THE DATA-QUALITY FILE"), as a fixture build with no lane plans it: every source but the Python steps'
+#: own tables and the PDF notices fixture mode never lands.
+FRESHNESS_RUN = (
+    ("dbt", "source", "freshness", "--profiles-dir", ".", "--exclude", "source:derived", "tag:pdf_notice"),
+    DBT_DIR,
+)
 
 
 def test_with_no_steps_the_build_is_the_seeds_then_one_build_then_the_writers_then_elementarys_checks():
@@ -108,6 +115,7 @@ def test_with_no_steps_the_build_is_the_seeds_then_one_build_then_the_writers_th
         ),
         WRITERS_RUN,
         CHECKS_RUN,
+        FRESHNESS_RUN,
         QUALITY_RUN,
     ]
 
@@ -160,6 +168,7 @@ def test_one_step_runs_between_stage_a_and_the_build_of_what_its_table_unblocks(
         ),
         WRITERS_RUN,
         CHECKS_RUN,
+        FRESHNESS_RUN,
         QUALITY_RUN,
     ]
 
@@ -177,6 +186,7 @@ def test_with_two_steps_the_first_steps_build_leaves_the_second_tables_descendan
         ("dbt", "build"),
         ("dbt", "build"),
         ("dbt", "test"),
+        ("dbt", "source"),
         ("dbt", "build"),
     ]
     after_first, after_second = runs[4].argv, runs[6].argv
@@ -196,8 +206,9 @@ def test_with_two_steps_the_first_steps_build_leaves_the_second_tables_descendan
         NO_CHECKS,
     )
     assert runs[5].argv == ("python", "step_second.py", "--warehouse", "/w/warehouse.duckdb")
-    assert (runs[-3].argv, runs[-3].cwd) == WRITERS_RUN
-    assert (runs[-2].argv, runs[-2].cwd) == CHECKS_RUN and (runs[-1].argv, runs[-1].cwd) == QUALITY_RUN
+    assert (runs[-4].argv, runs[-4].cwd) == WRITERS_RUN
+    assert (runs[-3].argv, runs[-3].cwd) == CHECKS_RUN and (runs[-2].argv, runs[-2].cwd) == FRESHNESS_RUN
+    assert (runs[-1].argv, runs[-1].cwd) == QUALITY_RUN
 
 
 def test_elementary_s_own_tables_build_before_the_seeds_and_stage_a_leaves_the_package_out():
@@ -374,6 +385,7 @@ def _main(
     monkeypatch.setattr(build_marts, "MANIFEST_PATH", tmp_path / "manifest.json")
     # So no dbt run's results but a test's own are ever read (the repository's target/ may hold a real build's).
     monkeypatch.setattr(build_marts, "RUN_RESULTS_PATH", tmp_path / "run_results.json")
+    monkeypatch.setattr(build_marts, "SOURCES_RESULTS_PATH", tmp_path / "sources.json")
     monkeypatch.setattr(build_marts.subprocess, "run", _answer_retries(recorder))
     # So built_by() asks git nothing: the recorder stands in for every subprocess.run.
     monkeypatch.setenv("OURHIKE_BUILT_BY", "abc123 run 7.1")
@@ -686,6 +698,22 @@ def test_the_monthly_lane_is_the_whole_plan_with_every_hourly_or_daily_node_excl
                 *build_marts.LANE_EXCLUDES,
             )
             assert lane_run.argv == expected, "its lane's writer alone"
+        elif full_run.stage == build_marts.FRESHNESS:
+            # Every source of the monthly lane: neither hourly job's, nor a faster cadence's, nor a step's own table.
+            assert full_run.argv == ("dbt", "source", "freshness", "--profiles-dir", ".", "--exclude", "source:derived")
+            assert lane_run.argv == (
+                "dbt",
+                "source",
+                "freshness",
+                "--profiles-dir",
+                ".",
+                "--exclude",
+                "source:derived",
+                "config.meta.cadence:hourly",
+                "config.meta.cadence:daily",
+                "tag:conditions_job",
+                "tag:notices_job",
+            )
         elif full_run.argv[:2] != ("dbt", "build"):
             assert lane_run.argv == full_run.argv, "the seeds and the Python steps are the same in every lane"
         else:
@@ -1182,6 +1210,7 @@ def test_given_the_manifest_a_build_with_no_tagged_model_in_its_selection_is_not
         "what derived.dem_samples unblocks: what the models that build alone feed",
         "the pub_ writers",
         build_marts.ELEMENTARY_CHECKS,
+        build_marts.FRESHNESS_LABEL,
         build_marts.DATA_QUALITY_LABEL,
     ]
     assert runs[2] == whole[2]
@@ -1331,8 +1360,10 @@ def test_plan_with_a_history_store_restores_before_the_seeds_and_saves_after_the
     assert runs[0].argv == ("/venv/extract/bin/python", "row_history.py", "restore", *store)
     assert (runs[1].argv, runs[1].cwd) == ELEMENTARY_RUN and runs[2].argv[:2] == ("dbt", "seed")
     assert runs[-1].argv == ("/venv/extract/bin/python", "row_history.py", "save", *store, "--keep-days", "430")
-    stages = [run.stage for run in runs[-4:-1]]
-    assert stages == [build_marts.WRITERS, build_marts.CHECKS, build_marts.DATA_QUALITY], "the save waits for all three"
+    stages = [run.stage for run in runs[-5:-1]]
+    assert stages == [build_marts.WRITERS, build_marts.CHECKS, build_marts.FRESHNESS, build_marts.DATA_QUALITY], (
+        "the save waits for all four"
+    )
 
 
 def test_no_history_save_restores_and_builds_with_the_history_and_saves_nothing(monkeypatch, tmp_path, capsys):
@@ -1751,6 +1782,7 @@ def test_a_lane_build_never_hands_dbt_a_loosened_profile_null_share(monkeypatch,
     (tmp_path / "manifest.json").write_text(json.dumps(_manifest(*STEP_TABLES)))
     monkeypatch.setattr(build_marts, "MANIFEST_PATH", tmp_path / "manifest.json")
     monkeypatch.setattr(build_marts, "RUN_RESULTS_PATH", tmp_path / "run_results.json")
+    monkeypatch.setattr(build_marts, "SOURCES_RESULTS_PATH", tmp_path / "sources.json")
     monkeypatch.setattr(build_marts.subprocess, "run", _answer_retries(recorder))
     monkeypatch.setenv("OURHIKE_BUILT_BY", "abc123 run 7.1")
 
@@ -2227,8 +2259,9 @@ def test_the_checks_run_after_the_writers_and_before_the_save_at_one_thread_what
     stages = [run.stage for run in runs]
     at = stages.index(build_marts.CHECKS)
     assert stages.count(build_marts.CHECKS) == 1
-    assert runs[at - 1].stage == build_marts.WRITERS and runs[at + 2].label == build_marts.SAVE_LABEL
-    assert runs[at + 1].stage == build_marts.DATA_QUALITY, "the data-quality file reads what the checks recorded"
+    assert runs[at - 1].stage == build_marts.WRITERS and runs[at + 3].label == build_marts.SAVE_LABEL
+    assert runs[at + 1].stage == build_marts.FRESHNESS, "each source's freshness, which the file counts too"
+    assert runs[at + 2].stage == build_marts.DATA_QUALITY, "the data-quality file reads what the checks recorded"
     assert (runs[at].label, runs[at].argv, runs[at].cwd) == (build_marts.ELEMENTARY_CHECKS, *CHECKS_RUN)
 
 
@@ -2262,7 +2295,7 @@ def test_hourly_lane_checks_run_apart_so_its_build_runs_none_and_writes_no_data_
     assert [build_marts.checks_apart(lane) for lane in (None, "monthly", "hourly")] == [False, False, True]
     runs = plan(PAIR, dbt="dbt", python="python", paths=PATHS, fixtures=False, lane="hourly", state=state)
 
-    assert not {build_marts.CHECKS, build_marts.DATA_QUALITY} & {run.stage for run in runs}
+    assert not {build_marts.CHECKS, build_marts.FRESHNESS, build_marts.DATA_QUALITY} & {run.stage for run in runs}
     assert not [run.label for run in runs if run.env], "nor the checks' switch on Elementary's tables"
 
 
@@ -2278,6 +2311,8 @@ RECORD = {
     "history_url": HOURLY_STORE,
     "row_history": "on",
     "elementary_saved": True,
+    # A green hour read the notices legs' served copy (publish-conditions.yml's step 2b), whose run began here.
+    "notices_read_at": "2026-10-08T18:22:41.123456Z",
     "exit": 0,
 }
 #: The hourly lane's checks pass over PAIR, whose two steps are the monthly lane's and so are held.
@@ -2318,6 +2353,7 @@ def test_plan_checks_restores_elementarys_history_alone_then_runs_its_tables_the
         build_marts.ELEMENTARY_RESTORE_LABEL,
         build_marts.ELEMENTARY_TABLES,
         build_marts.ELEMENTARY_CHECKS,
+        build_marts.FRESHNESS_LABEL,
         build_marts.DATA_QUALITY_LABEL,
         build_marts.ELEMENTARY_SAVE_LABEL,
     ]
@@ -2327,7 +2363,12 @@ def test_plan_checks_restores_elementarys_history_alone_then_runs_its_tables_the
     assert runs[-1].argv == ("python", "row_history.py", "save", *store, "--keep-days", "21", *policy)
     assert (runs[1].argv, runs[1].env) == (ELEMENTARY_RUN[0], build_marts.CHECKS_SWITCH), "dbt_tests describes each check"
     assert (runs[2].argv, runs[2].env, runs[2].stage) == (HOURLY_CHECKS_ARGV, build_marts.CHECKS_SWITCH, build_marts.CHECKS)
-    assert runs[3].argv == (
+    assert (runs[3].argv, runs[3].env, runs[3].stage) == (
+        ("dbt", "source", "freshness", "--profiles-dir", ".", "-s", "tag:conditions_job", "tag:notices_job"),
+        (),
+        build_marts.FRESHNESS,
+    ), "publish-conditions.yml's freshness step's own selection, after a build that read a notices copy"
+    assert runs[4].argv == (
         "dbt",
         "build",
         "--profiles-dir",
@@ -2341,7 +2382,7 @@ def test_plan_checks_restores_elementarys_history_alone_then_runs_its_tables_the
         "--indirect-selection",
         "cautious",
     )
-    assert runs[3].stage == build_marts.DATA_QUALITY and not runs[3].env
+    assert runs[4].stage == build_marts.DATA_QUALITY and not runs[4].env
 
 
 def test_plan_checks_of_a_build_that_saved_no_elementary_history_neither_restores_nor_saves_it():
@@ -2352,6 +2393,7 @@ def test_plan_checks_of_a_build_that_saved_no_elementary_history_neither_restore
     assert [run.label for run in runs] == [
         build_marts.ELEMENTARY_TABLES,
         build_marts.ELEMENTARY_CHECKS,
+        build_marts.FRESHNESS_LABEL,
         build_marts.DATA_QUALITY_LABEL,
     ]
 
@@ -2433,6 +2475,7 @@ def test_an_hourly_build_writes_its_record_last_saying_when_it_started_and_that_
         "history_url": str(tmp_path / "history"),
         "row_history": "on",
         "elementary_saved": True,
+        "notices_read_at": None,
         "exit": 0,
     }
     assert f"{build_marts.BUILD_RECORD} written for the checks after this build" in capsys.readouterr().out
@@ -2711,7 +2754,8 @@ def test_a_check_that_errors_is_annotated_and_changes_neither_the_builds_exit_no
     out = capsys.readouterr().out
     assert code == 0
     commands = [argv for argv, _, _ in recorder.calls]
-    assert commands[-3][:2] == ("dbt", "test") and commands[-1][:3] == (*RESTORE, "save")
+    assert commands[-4][:2] == ("dbt", "test") and commands[-1][:3] == (*RESTORE, "save")
+    assert commands[-3][:3] == ("dbt", "source", "freshness"), "then each source's freshness"
     assert _is_quality_run(commands[-2]), "and the data-quality file is written from what they recorded"
     assert recorder.retries == [], "a `dbt test` is never retried"
     assert "-- build_marts: Elementary's checks: 3 check(s), 1 error, 1 pass, 1 warn; exit 1" in out
@@ -2951,7 +2995,7 @@ def test_the_lanes_data_quality_writer_builds_after_the_writers_and_before_the_s
     assert (quality.stage, quality.label, quality.cwd) == (build_marts.DATA_QUALITY, build_marts.DATA_QUALITY_LABEL, DBT_DIR)
     assert quality.argv[: quality.argv.index("-s")] == ("dbt", "build", "--profiles-dir", ".")
     assert quality.argv[quality.argv.index("-s") + 1 :][: len(writers)] == writers
-    assert [run.stage for run in runs[-4:-2]] == [build_marts.WRITERS, build_marts.CHECKS]
+    assert [run.stage for run in runs[-5:-2]] == [build_marts.WRITERS, build_marts.CHECKS, build_marts.FRESHNESS]
     assert runs[-1].label == build_marts.SAVE_LABEL
     writers_run = _writers(runs).argv
     assert set(QUALITY_WRITERS) <= set(writers_run[writers_run.index("--exclude") + 1 :])
@@ -3041,3 +3085,118 @@ def test_with_no_writers_results_kept_the_data_quality_pass_leaves_no_run_result
     build_marts.data_quality_written(subprocess.CompletedProcess([], 0), {}, tmp_path, results_path=results)
 
     assert not results.exists()
+
+
+# --- Each source's freshness (build_marts.py's docstring, "EACH SOURCE'S FRESHNESS IS MEASURED FOR THE DATA-QUALITY
+# FILE") ---
+
+
+def _publish_conditions_freshness_step() -> dict:
+    workflow = yaml.safe_load((REPO_DIR / ".github" / "workflows" / "publish-conditions.yml").read_text())
+    steps = [step for job in workflow["jobs"].values() for step in job.get("steps") or []]
+    (step,) = [step for step in steps if 'dbt/bin/dbt" source freshness' in str(step.get("run", ""))]
+    return step
+
+
+def test_the_hourly_lanes_freshness_is_publish_conditions_freshness_steps_own_selection():
+    """Decision 203: the page's hourly freshness is the run that turns an hour red, read again (decision 100). That
+    step measures `tag:conditions_job` every run and adds `tag:notices_job` when step 2b read a notices copy (`latest`
+    or `older`); add-served writes OURHIKE_NOTICES_READ_AT exactly then, so the build record's notices_read_at decides
+    the same."""
+    import generate_notice_models
+    from extract import _warehouse
+
+    run = _publish_conditions_freshness_step()["run"]
+    assert "selection=(tag:conditions_job)" in run
+    assert re.search(r"latest \| older\)\s+selection\+=\(tag:notices_job\)", run), "the notices job's, with a copy"
+    assert "--exclude" not in run[run.index("source freshness") :].split("\n")[0], "and nothing left out"
+    assert build_marts.freshness_selection("hourly", notices_read=True) == ("-s", "tag:conditions_job", "tag:notices_job")
+    assert build_marts.freshness_selection("hourly") == ("-s", "tag:conditions_job")
+    assert build_marts.NOTICES_JOB_TAG == generate_notice_models.NOTICES_JOB_TAG
+    assert build_marts.PDF_NOTICE_TAG == generate_notice_models.PDF_NOTICE_TAG
+    assert build_marts.NOTICES_READ_AT_ENV == _warehouse.NOTICES_READ_AT_ENV
+
+
+@pytest.mark.parametrize(
+    ("lane", "fixtures", "expected"),
+    [
+        (
+            "monthly",
+            False,
+            (
+                "--exclude",
+                "source:derived",
+                "config.meta.cadence:hourly",
+                "config.meta.cadence:daily",
+                "tag:conditions_job",
+                "tag:notices_job",
+            ),
+        ),
+        (None, True, ("--exclude", "source:derived", "tag:pdf_notice")),
+        (None, False, ("--exclude", "source:derived")),
+    ],
+    ids=["monthly", "fixtures", "no lane"],
+)
+def test_the_other_freshness_selections_leave_out_the_steps_tables_and_the_hourly_lanes_sources(lane, fixtures, expected):
+    """The monthly lane measures every source its warehouse holds a run log for, 472 on 3133c11a's project with this
+    change (Measured: `dbt ls --resource-type source` with this selection, 2026-10-15); a fixture build every source but
+    the PDF notices fixture mode never lands, as CI's own freshness command leaves them out."""
+    assert build_marts.freshness_selection(lane, fixtures=fixtures) == expected
+
+
+def test_a_checks_run_after_a_build_that_read_no_notices_copy_measures_the_conditions_jobs_sources_alone():
+    runs = _plan_checks({**RECORD, "notices_read_at": None})
+
+    (freshness,) = [run for run in runs if run.stage == build_marts.FRESHNESS]
+    assert freshness.argv == ("dbt", "source", "freshness", "--profiles-dir", ".", "-s", "tag:conditions_job")
+
+
+def test_an_hourly_build_records_when_the_notices_copy_it_read_began_its_run(monkeypatch, tmp_path):
+    monkeypatch.setenv(build_marts.NOTICES_READ_AT_ENV, "2026-10-15T02:22:10.000000Z")
+
+    code, _ = _hourly_main(monkeypatch, tmp_path)
+
+    record = build_marts.read_build_record(tmp_path / "warehouse.duckdb")
+    assert (code, record["notices_read_at"]) == (0, "2026-10-15T02:22:10.000000Z")
+
+
+def _is_freshness_run(argv: tuple[str, ...]) -> bool:
+    return argv[1:3] == ("source", "freshness")
+
+
+def test_a_source_past_its_error_limit_is_logged_and_changes_neither_the_builds_exit_nor_what_follows(
+    monkeypatch, tmp_path, capsys
+):
+    """dbt exits 1 for a source past its error limit (measured on 2.0.6). The run is never retried and never stops the
+    build: the data-quality file is written after it and counts it, the history is saved, and nothing is annotated,
+    because publish-conditions.yml's own freshness step is the one that turns an hour red (decision 100)."""
+    sources = {
+        "results": [
+            {"unique_id": "source.ourhike.nws.raw_nws__alerts", "status": "Error", "max_loaded_at_time_ago_in_s": 11250.0},
+            {"unique_id": "source.ourhike.atc.raw_atc__atc_updates", "status": "Pass", "max_loaded_at_time_ago_in_s": 4050.0},
+            {"unique_id": "source.ourhike.nynjtc.raw_nynjtc__nynjtc_trail_alerts", "status": "Warn"},
+        ]
+    }
+    recorder = _DbtRuns(
+        tmp_path / "run_results.json", [(_is_freshness_run, 1, [], {tmp_path / "sources.json": json.dumps(sources)})]
+    )
+
+    code, _ = _main(monkeypatch, tmp_path, _manifest(*STEP_TABLES), recorder=recorder)
+
+    out = capsys.readouterr().out
+    commands = [argv for argv, _, _ in recorder.calls]
+    at = next(index for index, argv in enumerate(commands) if _is_freshness_run(argv))
+    assert code == 0 and recorder.retries == []
+    assert _is_quality_run(commands[at + 1]) and commands[-1][:3] == (*RESTORE, "save")
+    assert (
+        "-- build_marts: the sources' freshness: 3 source(s) measured, 1 passed, 1 warned, 1 past their error limit, "
+        "0 not measured; exit 1, recorded in the data-quality file and never this build's exit" in out
+    )
+    assert "::error" not in out and "::warning title=Elementary" not in out
+
+
+def test_a_freshness_run_that_left_no_sources_json_says_the_file_counts_none(tmp_path):
+    (line,) = build_marts.freshness_report(2, tmp_path / "sources.json")
+    assert line.endswith(
+        "exit 2, and dbt left no sources.json, so the data-quality file counts no freshness this time; the build goes on"
+    )

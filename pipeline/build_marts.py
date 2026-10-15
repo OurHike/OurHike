@@ -30,7 +30,11 @@ written its table, and fail. So:
 5. Elementary's checks (`dbt test -s tag:elementary_check`), which every
    build before leaves out: below, "ELEMENTARY'S CHECKS RUN AFTER THE
    WRITERS", and in the hourly lane a run of their own after the build has
-   published, "THE HOURLY LANE'S CHECKS RUN APART".
+   published, "THE HOURLY LANE'S CHECKS RUN APART";
+6. each source's freshness (`dbt source freshness`), then the lane's
+   data-quality file, which counts both: below, "EACH SOURCE'S FRESHNESS IS
+   MEASURED FOR THE DATA-QUALITY FILE" and "THE DATA-QUALITY FILE IS WRITTEN
+   LAST".
 
 Contracts stay enforced in every invocation. `dbt deps` is not here: CI and
 scripts/test.sh run it first, and a sandbox whose proxy cannot fetch the
@@ -388,14 +392,19 @@ run plans only these (plan_checks()):
 2. Elementary's own tables, with the checks' switch, so dbt_tests describes
    each check the file counts;
 3. every check the lane has, as an in-build pass would select them;
-4. the lane's data-quality writer, counting the build's own results and the
-   checks', since OURHIKE_BUILD_STARTED_AT is the build's;
-5. Elementary's history alone, saved back.
+4. each source's freshness, on publish-conditions.yml's freshness step's own
+   selection (below, "EACH SOURCE'S FRESHNESS IS MEASURED FOR THE
+   DATA-QUALITY FILE");
+5. the lane's data-quality writer, counting the build's own results, the
+   checks' and the freshness run's, since OURHIKE_BUILD_STARTED_AT is the
+   build's;
+6. Elementary's history alone, saved back.
 What it needs of the build it reads from the build's record, the table
 BUILD_RECORD that every build of a lane whose checks run apart writes into
 its warehouse last (write_build_record()): when the build started, the
 store it restored from, the steps it held, whether its row history was on,
-and whether it saved Elementary's history. A build that saved none of it
+whether it saved Elementary's history, and when the notices copy it read
+began its run, if it read one (NOTICES_READ_AT_ENV). A build that saved none of it
 (--no-history-save, a restore that failed, or a save of Elementary's part
 that failed) leaves its warehouse's own Elementary tables, the history it
 restored with its own results added, to the checks, which then restore and
@@ -412,6 +421,39 @@ raw tables the fixtures lack), the data-quality file in 23.2 s, counting
 1,801 checks, the build's own tests with them, and Elementary's history
 saved in 0.6 s, 418,698 bytes, its pointer naming the build's save as the
 one before.
+
+EACH SOURCE'S FRESHNESS IS MEASURED FOR THE DATA-QUALITY FILE (decision 203,
+the maintainer, 2026-10-15: freshness is OurHike's own last successful read of
+a source, in every lane). `dbt source freshness` runs right before the
+data-quality writer, in the build of a lane that writes its file there and in
+the hourly lane's checks run, and Elementary's end-of-run hook writes each
+source's result into its dbt_source_freshness_results, which
+macros/data_quality.sql counts as the file's freshness. Each source is measured
+by its own `loaded_at_query`, when the extract last read it or confirmed it
+unchanged (macros/last_read_or_confirmed_at.sql), against its own warn_after
+and error_after. What each run measures (freshness_selection()):
+- the hourly lane: publish-conditions.yml's freshness step's own selection,
+  `tag:conditions_job`, with `tag:notices_job` when the build read a notices
+  copy, which the build record says (its notices_read_at); without one the
+  warehouse holds none of the notices legs' run log, as that step says;
+- the monthly lane: every other source, less the Python steps' own tables
+  (FRESHNESS_LEFT_OUT);
+- a build with no lane, CI's fixtures: every source but those, and under
+  --fixtures the PDF notices, which fixture mode never lands, as CI's own
+  freshness command leaves them out.
+NEVER THE BUILD'S EXIT, AND NEVER RETRIED. A source past its error limit is a
+`failed` freshness check on the page and a line in the log, never an
+annotation: in the hourly lane publish-conditions.yml's own freshness step is
+the one that turns a run red (decision 100, "Red in the data source freshness
+feature of dbt. Not blocking a datasource pipeline"), and the monthly lane's
+measure is page data. A run that measured nothing leaves the file's freshness
+at none, and says so (freshness_report()). Measured 2026-10-15 on dbt 2.0.6,
+Elementary 0.26.0 and DuckDB, against a warehouse holding Elementary's tables
+and a run log, with this project's vars (disable_dbt_artifacts_autoupload
+true): the hook wrote one row per source measured, its status and the two
+instants, and left max_loaded_at_time_ago_in_s null on every row, where dbt's
+own target/sources.json gave the age, so macros/data_quality.sql works the
+age out from the two instants.
 
 THE DATA-QUALITY FILE IS WRITTEN LAST (decision 102, step 4): the lane's
 DATA_QUALITY_WRITERS entry, pub_data_quality or pub_conditions_data_quality,
@@ -506,6 +548,28 @@ LANES = (MONTHLY, HOURLY)
 #: writes both.
 DATA_QUALITY_WRITERS = {MONTHLY: "pub_data_quality", HOURLY: "pub_conditions_data_quality"}
 DATA_QUALITY_LABEL = "the data-quality file"
+#: The run that measures each source's freshness for the data-quality file (the module docstring, "EACH SOURCE'S
+#: FRESHNESS IS MEASURED FOR THE DATA-QUALITY FILE").
+FRESHNESS_LABEL = "the sources' freshness"
+#: The tags publish-conditions.yml's freshness step selects the hourly lane's sources by: the conditions job's own
+#: upstreams every run, and the notices job's (generate_notice_models.py's NOTICES_JOB_TAG) when the build read a
+#: notices copy. Spelled out because this file imports only the standard library; tests/test_build_marts.py holds them
+#: to generate_notice_models.py's and to that step.
+CONDITIONS_JOB_TAG, NOTICES_JOB_TAG = "conditions_job", "notices_job"
+#: generate_notice_models.py's PDF_NOTICE_TAG, which CI's freshness commands leave out: fixture mode lands no PDF.
+PDF_NOTICE_TAG = "pdf_notice"
+#: What every freshness run but the hourly lane's leaves out (that lane's tags select none of it): the Python steps'
+#: own tables, which a step writes in the build that reads them and no run log row names, so none is an upstream
+#: OurHike reads (their sources block says why they keep `_loaded_at`). Two of them are the hourly steps' and absent
+#: from the monthly warehouse.
+FRESHNESS_LEFT_OUT = (f"source:{DERIVED_SOURCE}",)
+#: extract/_warehouse.py's NOTICES_READ_AT_ENV: when the run of the notices copy the hourly build read began, which
+#: add-served puts in publish-conditions.yml's $GITHUB_ENV only when the build read a copy (its exits 0, 5 and 7, the
+#: step's `latest` and `older`), so the build step inherits it. The build record keeps it, and the checks run's
+#: freshness selects the notices job's sources by it, as that workflow's freshness step selects them by `read`.
+NOTICES_READ_AT_ENV = "OURHIKE_NOTICES_READ_AT"
+#: What a freshness run leaves, dbt's own record of each source it measured.
+SOURCES_RESULTS_PATH = DBT_DIR / "target" / "sources.json"
 #: Where the writers' run results wait while later dbt commands run, beside run_results.json.
 WRITERS_RESULTS_NAME = "writers_run_results.json"
 #: The cadences faster than monthly. Daily rides the hourly lane when due
@@ -877,8 +941,9 @@ class Run:
     env: tuple[tuple[str, str], ...] = ()
 
 
-#: Run.stage of stage A, of the pub_ writers' dbt run, of Elementary's checks, and of the data-quality file's.
-STAGE_A, WRITERS, CHECKS, DATA_QUALITY = "stage_a", "writers", "checks", "data_quality"
+#: Run.stage of stage A, of the pub_ writers' dbt run, of Elementary's checks, of the sources' freshness, and of the
+#: data-quality file's.
+STAGE_A, WRITERS, CHECKS, FRESHNESS, DATA_QUALITY = "stage_a", "writers", "checks", "freshness", "data_quality"
 
 
 def _builds(
@@ -958,8 +1023,8 @@ def plan(
     (absent_sources()), in their own pass (the module docstring, "ELEMENTARY'S CHECKS RUN AFTER THE WRITERS"), and
     given `checks_base`, a build with no lane runs only those state:modified+ reaches from it (the module docstring,
     "A PULL REQUEST RUNS THE CHECKS ITS CHANGE REACHES"). The lane's data-quality writer builds after them, whether
-    or not they ran, unless the lane's checks run apart, which leaves the file to their run (the module docstring,
-    "THE DATA-QUALITY FILE IS WRITTEN LAST")."""
+    or not they ran, after the sources' freshness (freshness_selection()), unless the lane's checks run apart, which
+    leaves both to their run (the module docstring, "THE DATA-QUALITY FILE IS WRITTEN LAST")."""
     if lane not in (None, *LANES):
         raise ValueError(f"no lane {lane!r}; lanes are {', '.join(LANES)}")
     if state is not None and lane != HOURLY:
@@ -1037,6 +1102,7 @@ def plan(
     if checks:
         runs.append(_checks_run(dbt, alone, lane, (*lane_exclude, *held, *absent), after, checks_base))
     if not checks_apart(lane):
+        runs.append(_freshness_run(dbt, common, freshness_selection(lane, fixtures=fixtures)))
         runs.append(_quality_run(dbt, common, lane, (*held, *no_snapshots, *lane_exclude), after))
     if history is not None:
         store = ("--url", history.url, "--warehouse", str(paths.warehouse))
@@ -1085,6 +1151,48 @@ def _checks_run(
     return Run(ELEMENTARY_CHECKS, argv, DBT_DIR, CHECKS, CHECKS_SWITCH)
 
 
+def freshness_selection(lane: str | None, *, notices_read: bool = False, fixtures: bool = False) -> tuple[str, ...]:
+    """The selection of a lane's freshness run (the module docstring, "EACH SOURCE'S FRESHNESS IS MEASURED FOR THE
+    DATA-QUALITY FILE"): the hourly lane's is publish-conditions.yml's freshness step's own, the notices job's sources
+    only when `notices_read`; the monthly lane's every other source; and a build with no lane's every source, the PDF
+    notices left out under `fixtures`. Every one but the hourly lane's leaves out FRESHNESS_LEFT_OUT."""
+    if lane == HOURLY:
+        return ("-s", f"tag:{CONDITIONS_JOB_TAG}", *((f"tag:{NOTICES_JOB_TAG}",) if notices_read else ()))
+    left_out = [*FRESHNESS_LEFT_OUT]
+    if lane == MONTHLY:
+        left_out += [f"config.meta.cadence:{cadence}" for cadence in FASTER_THAN_MONTHLY]
+        left_out += [f"tag:{CONDITIONS_JOB_TAG}", f"tag:{NOTICES_JOB_TAG}"]
+    elif fixtures:
+        left_out.append(f"tag:{PDF_NOTICE_TAG}")
+    return ("--exclude", *left_out)
+
+
+def _freshness_run(dbt: str, common: tuple[str, ...], selection: tuple[str, ...]) -> Run:
+    """`dbt source freshness` on `selection`, Elementary's hook recording each source (FRESHNESS, never a stop)."""
+    return Run(FRESHNESS_LABEL, (dbt, "source", "freshness", *common, *selection), DBT_DIR, FRESHNESS)
+
+
+def freshness_report(returncode: int, results_path: Path | None = None) -> list[str]:
+    """What a freshness run measured, for the log, from dbt's sources.json: never an annotation and never the build's
+    exit (the module docstring, "EACH SOURCE'S FRESHNESS IS MEASURED FOR THE DATA-QUALITY FILE"). dbt exits 1 when a
+    source is past its error limit and 0 when the worst is a warning (measured on 2.0.6, 2026-10-07)."""
+    try:
+        results = json.loads((results_path or SOURCES_RESULTS_PATH).read_text(encoding="utf-8"))["results"]
+    except (OSError, ValueError, KeyError, TypeError):
+        return [
+            f"-- build_marts: {FRESHNESS_LABEL}: exit {returncode}, and dbt left no sources.json, so the data-quality "
+            "file counts no freshness this time; the build goes on"
+        ]
+    statuses = [str(result.get("status", "")).lower() for result in results]
+    counts = {status: statuses.count(status) for status in ("pass", "warn", "error")}
+    other = len(statuses) - sum(counts.values())
+    return [
+        f"-- build_marts: {FRESHNESS_LABEL}: {len(results)} source(s) measured, {counts['pass']} passed, "
+        f"{counts['warn']} warned, {counts['error']} past their error limit, {other} not measured; exit {returncode}, "
+        "recorded in the data-quality file and never this build's exit"
+    ]
+
+
 def _quality_run(dbt: str, common: tuple[str, ...], lane: str | None, left_out: tuple[str, ...], after: tuple[str, ...]) -> Run:
     """The lane's data-quality writer (the module docstring, "THE DATA-QUALITY FILE IS WRITTEN LAST"), both with no lane.
     It leaves out what every other build does, which neither writer reads, so each dbt build of a lane leaves out the
@@ -1116,8 +1224,9 @@ def plan_checks(
     """The checks run of `lane`, whose checks run apart, over the warehouse the build that wrote `record` left
     (read_build_record(); the module docstring, "THE HOURLY LANE'S CHECKS RUN APART"): Elementary's history alone
     restored from `history`, Elementary's own tables with the checks' switch, every check the lane has but those on
-    a step the build held, a `withdrawn` table or an `absent` source, the lane's data-quality writer, and Elementary's
-    history alone saved back (the save left out when `save_history` is false). The restore and the save are left out
+    a step the build held, a `withdrawn` table or an `absent` source, the sources' freshness on the lane's selection
+    (the notices job's sources only when the record says the build read their copy), the lane's data-quality writer,
+    and Elementary's history alone saved back (the save left out when `save_history` is false). The restore and the save are left out
     when the record says the build saved no Elementary history, so the checks keep the history it restored."""
     if not checks_apart(lane):
         raise ValueError(f"--checks-only is a lane's whose checks run apart ({HOURLY}); the {lane} lane runs its own")
@@ -1139,6 +1248,7 @@ def plan_checks(
         # With the checks' switch, so Elementary's dbt_tests describes each check the file counts (CHECKS_SWITCH).
         Run(ELEMENTARY_TABLES, (dbt, "run", *common, "--select", "package:elementary"), DBT_DIR, env=CHECKS_SWITCH),
         _checks_run(dbt, alone, lane, (*held, *absent), after),
+        _freshness_run(dbt, common, freshness_selection(lane, notices_read=bool(record.get("notices_read_at")))),
         _quality_run(dbt, common, lane, (*held, *no_snapshots), after),
     ]
     if history is not None and record.get("elementary_saved"):
@@ -2217,6 +2327,8 @@ def main(argv: list[str] | None = None) -> int:
         # lost a stage A hold that way). A Python step leaves none, so the mtime still turns the last dbt run's away.
         if run.cwd == DBT_DIR:
             RUN_RESULTS_PATH.unlink(missing_ok=True)
+        if run.stage == FRESHNESS:
+            SOURCES_RESULTS_PATH.unlink(missing_ok=True)
         started = time.time()
         results_since = float("-inf") if run.cwd == DBT_DIR else started
         completed = subprocess.run(run.argv, cwd=run.cwd, env={**env, **dict(run.env)}, check=False)
@@ -2227,6 +2339,12 @@ def main(argv: list[str] | None = None) -> int:
             # AFTER THE WRITERS"): reported, and the build goes on to save its history.
             results = read_run_results(results_since)
             for line in checks_report(results, completed.returncode, none_is_an_answer=modified_only):
+                print(line, flush=True)
+            continue
+        if run.stage == FRESHNESS:
+            # Recorded, never raised (the module docstring, "EACH SOURCE'S FRESHNESS IS MEASURED FOR THE
+            # DATA-QUALITY FILE"): the data-quality file counts it, and the build goes on.
+            for line in freshness_report(completed.returncode):
                 print(line, flush=True)
             continue
         if completed.returncode != 0 and run.argv[1:2] == ("build",) and run.cwd == DBT_DIR:
@@ -2363,6 +2481,8 @@ def main(argv: list[str] | None = None) -> int:
                 "history_url": history.url,
                 "row_history": "off" if degraded else "on",
                 "elementary_saved": history_exits.get(RESTORE_LABEL) == 0 and history_exits.get(SAVE_LABEL) == 0,
+                # The checks run measures the notices job's sources only when the build read their copy.
+                "notices_read_at": os.environ.get(NOTICES_READ_AT_ENV) or None,
                 "exit": code,
             },
         )

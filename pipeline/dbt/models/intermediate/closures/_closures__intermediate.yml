@@ -643,7 +643,9 @@ models:
       hour with trail lines to cut against, one row per area of
       int_closures__trail_closure_areas, holding either the stretches of the
       mapped trails inside it, or, where none runs inside, the area itself,
-      which the phone shades. The lines are the release's
+      which the phone shades, and on every row the area's own outline, which
+      pub_conditions_trail_closures compares to draw once a closure two
+      sources post. The lines are the release's
       (stg_derived__closure_trail_lines: its nearby trail lines and, since
       decision 192, the A.T.'s own), cut by
       int_trail_lines__network_area_closures' rule and shaped for a phone at
@@ -688,6 +690,17 @@ models:
           10 m and cut to 5 decimal places, a GeoJSON Polygon or MultiPolygon
           in lon/lat with its holes: what the phone hatches, with no mark on
           its edge (decision 191). Null where a trail runs inside.
+      - name: area_geojson
+        description: >
+          The area as its source drew it, exactly as
+          int_closures__trail_closure_areas gives it: a GeoJSON Polygon or
+          MultiPolygon in lon/lat, neither simplified nor the 100 m grown
+          outline conditions/notices.json carries. Carried through so that
+          pub_conditions_trail_closures measures each area it draws against
+          other sources' from this model alone (its header, "THE SAME
+          CLOSURE FROM TWO SOURCES IS DRAWN ONCE"); reading the areas model
+          beside this one is the rejoin dbt_project_evaluator's
+          fct_rejoining_of_upstream_concepts fails.
 
 unit_tests:
   - name: int_closures__notice_state_shapes_simplifies_only_the_states_the_seed_names
@@ -4341,7 +4354,9 @@ unit_tests:
       outline clockwise from its north-west corner and each hole the other
       way, as every area of conditions/notices.json does; MapLibre's tiler
       rewinds every ring it draws (geojson-vt's rewind()), so the phone
-      shades either.
+      shades either. Its `area_geojson` is the area exactly as given, that
+      vertex and the rings' own order kept: the outline
+      pub_conditions_trail_closures measures, never the shade.
     given:
       - input: ref('int_closures__trail_closure_areas')
         rows:
@@ -4353,7 +4368,7 @@ unit_tests:
           select 'far_away' as line_id, st_geomfromtext('LINESTRING (-120 45, -120 45.01)') as geom
     expect:
       rows:
-        - {notice_id: 'club_area:holed', stretches: 0, stretches_geojson: null, shade_geojson: '{"type":"Polygon","coordinates":[[[-112.1,40.6],[-112.0,40.6],[-112.0,40.5],[-112.1,40.5],[-112.1,40.6]],[[-112.04,40.54],[-112.04,40.56],[-112.06,40.56],[-112.06,40.54],[-112.04,40.54]]]}'}
+        - {notice_id: 'club_area:holed', stretches: 0, stretches_geojson: null, shade_geojson: '{"type":"Polygon","coordinates":[[[-112.1,40.6],[-112.0,40.6],[-112.0,40.5],[-112.1,40.5],[-112.1,40.6]],[[-112.04,40.54],[-112.04,40.56],[-112.06,40.56],[-112.06,40.54],[-112.04,40.54]]]}', area_geojson: '{"type":"Polygon","coordinates":[[[-112.1,40.5],[-112.05,40.50001],[-112.0,40.5],[-112.0,40.6],[-112.1,40.6],[-112.1,40.5]],[[-112.06,40.54],[-112.04,40.54],[-112.04,40.56],[-112.06,40.56],[-112.06,40.54]]]}'}
 
 exposures:
   - name: step_closure_trail_lines

@@ -43,17 +43,15 @@ def test_the_exposure_names_the_phones_key_on_the_hourly_clock():
 
 def test_the_writer_keeps_its_last_file_and_takes_its_rows_from_the_notices_writer_alone():
     """ONE HOME FOR EVERY RULE: which rows obstruct, the row shape and the dates are pub_conditions_notices'; the only
-    other things the writer reads are the cut and each area's own outline, which the same-closure rule measures (the
-    review of 2026-10-15, thread 4279223668), and it reads no mart or source of its own."""
+    other thing the writer reads is the cut, which also carries each drawn area's own outline for the same-closure rule
+    (the review of 2026-10-15, thread 4279223668), and it reads no mart or source of its own. Reading
+    int_closures__trail_closure_areas beside the cut, which already reads it, is the rejoin dbt_project_evaluator's
+    fct_rejoining_of_upstream_concepts fails."""
     sql = WRITER.read_text(encoding="utf-8")
 
     assert "location='conditions_trail_closures.json'" in sql
     assert "meta={'when_empty': 'keep_last_file'}" in sql
-    assert set(REF.findall(sql)) == {
-        "pub_conditions_notices",
-        "int_closures__area_trail_cuts",
-        "int_closures__trail_closure_areas",
-    }
+    assert set(REF.findall(sql)) == {"pub_conditions_notices", "int_closures__area_trail_cuts"}
     assert "source(" not in sql
 
 

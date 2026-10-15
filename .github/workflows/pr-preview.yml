@@ -661,6 +661,11 @@ jobs:
           # reads in pages.yml too, so /data/quality/ here reads the data this
           # preview's app reads.
           DATA_URL: ${{ steps.data.outputs.url }}
+          # The commit /data/quality/'s link to pipeline/ELT.md names: the pull
+          # request's head, the commit "Say where the preview is" names as the
+          # one this preview is built from, so the link resolves before the
+          # merge (.github/scripts/configure_quality_page.py says why not main).
+          SOURCE_COMMIT: ${{ github.event.pull_request.head.sha || github.sha }}
         run: |
           mkdir -p _site/app
           # The BUILT site, not the source tree - site/src would be shipped raw

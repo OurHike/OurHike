@@ -614,6 +614,10 @@ jobs:
       - name: Assemble the site
         env:
           DATA_URL: ${{ steps.data.outputs.url }}
+          # The commit /data/quality/'s link to pipeline/ELT.md names, so the
+          # link reaches the notes as this build had them
+          # (.github/scripts/configure_quality_page.py says why not main).
+          SOURCE_COMMIT: ${{ github.sha }}
           DOCS_DIR: ${{ runner.temp }}/data-docs
           DOCS_LIVE_ORIGIN: ${{ steps.docs_host.outputs.origin }}
           DOCS_HOST_DIR: ${{ runner.temp }}/docs-host

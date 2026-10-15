@@ -4,13 +4,14 @@
 // `before`, after serveMarketingSite (fixtures/marketingSite.mjs), whose
 // catch-all route these two override.
 //
-// THE PAGE AS A DEPLOY WOULD SERVE IT. site/dist holds the page with its two
+// THE PAGE AS A DEPLOY WOULD SERVE IT. site/dist holds the page with its three
 // placeholders; .github/scripts/configure_quality_page.py replaces them when
 // pages.yml or pr-preview.yml assembles the site, which is after the camera
-// runs. So this answers /data/quality/ with the same two replacements made:
-// the client's own DATA_RELEASE, and a data base on `.invalid`, a name that
-// can never resolve, so nothing the page asks for here can leave the runner
-// or read the real bucket.
+// runs. So this answers /data/quality/ with the same three replacements made:
+// the client's own DATA_RELEASE, a data base on `.invalid`, a name that can
+// never resolve, so nothing the page asks for here can leave the runner or
+// read the real bucket, and `main` for the commit the notes link names, which
+// the script writes when it is given none and the camera never follows.
 //
 // NOBODY'S DATA, and nothing measured. The files are
 // site/src/lib/dataQualityExamples.mjs's, the same ones the site's tests read;
@@ -57,6 +58,7 @@ export async function serveDataQuality(
   const served = html
     .replace('__DATA_BASE_URL__', EXAMPLE_BASE)
     .replace('__DATA_RELEASE__', release)
+    .replace('__SOURCE_COMMIT__', 'main')
 
   await page.route('**/data/quality/', (route) =>
     route.fulfill({ status: 200, contentType: 'text/html; charset=utf-8', body: served }),

@@ -300,6 +300,55 @@ def test_a_source_both_junior_and_senior_is_flagged_where_the_python_would_chain
     assert {row["source_key"] for row in test["expect"]["rows"] if row["chains_duplicates"]} == chained == {"junior_and_senior"}
 
 
+# --- the two fields lib/feature_id.py reads, as sources.json declares them (TL05) ---
+
+#: The names ArcGIS gives a layer's object id field on the registered line layers (pipeline/ELT.md's TL05: OBJECTID
+#: on 20 of the 24 network layers read 2026-10-08, FID on 3, OBJECTID_1 on pasda_dcnr_trails).
+OBJECT_ID_FIELDS = {"OBJECTID", "FID", "OBJECTID_1"}
+
+
+def _line_sources() -> list[dict]:
+    """Every sources.json entry export_trails.py or export_nearby_trails.py reads lines from: those carrying blaze
+    metadata, the selector both load_line_sources() and network_line_sources() use."""
+    registry = json.loads((Path(__file__).parent.parent / "sources.json").read_text(encoding="utf-8"))
+    return [entry for entry in registry["sources"] if "blaze_field" in entry or "blaze_default" in entry]
+
+
+def test_every_line_source_declares_the_fields_resolve_feature_id_reads():
+    """resolve_feature_id() reads a property named exactly `GlobalID`, then the feature's GeoJSON id, which ArcGIS sets
+    to the layer's object id and Socrata to its row id. The warehouse holds neither fact: dlt lands every column
+    lower-cased (sql_ci_v1), so `GlobalID`, `GLOBALID` and `globalid` land as one `globalid`, and it lands no GeoJSON
+    id. So each line source names both, and the published id is built from them (macros/resolve_feature_id.sql)."""
+    sources = _line_sources()
+    assert len(sources) == 31
+    for entry in sources:
+        assert "global_id_field" in entry, f"{entry['key']} names no global_id_field (null where the layer has none)"
+        spelling = entry["global_id_field"]
+        assert spelling is None or spelling.lower() == "globalid", entry["key"]
+        if entry.get("kind") == "socrata_geojson_layer":
+            assert "object_id_field" not in entry, f"{entry['key']}: a Socrata row's GeoJSON id is its row id, `:id`"
+        else:
+            assert entry.get("object_id_field") in OBJECT_ID_FIELDS, entry["key"]
+
+
+def test_the_fixtures_spell_each_line_layers_globalid_as_its_registry_row_does(tmp_path):
+    """make_dbt_fixtures.py's network layers carry a GlobalID only as their sources.json row spells it, and an ArcGIS
+    layer's GeoJSON id is the value of the object id field the row names, as ArcGIS writes it."""
+    import make_dbt_fixtures
+
+    make_dbt_fixtures.write_fixtures(tmp_path)
+    for entry in _line_sources():
+        path = tmp_path / "external" / f"{entry['key']}.geojson"
+        if not path.exists():
+            continue  # centerline and side_trails, written under raw/ itself by _atc_layer(), which spells GlobalID
+        for feature in json.loads(path.read_text(encoding="utf-8"))["features"]:
+            properties = feature["properties"]
+            spellings = {name for name in properties if name.lower() == "globalid"}
+            assert spellings <= {entry["global_id_field"]}, (entry["key"], spellings)
+            if entry.get("kind") != "socrata_geojson_layer":
+                assert feature["id"] == properties[entry["object_id_field"]], entry["key"]
+
+
 # --- int_trail_lines__network_judged (TL04-TL07, TL10, TL11, TL13, placeholders) ---
 
 JUDGED = "int_trail_lines__network_judged_answers_what_keep_reason_answers"

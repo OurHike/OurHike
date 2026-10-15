@@ -121,8 +121,15 @@ def test_every_source_records_what_its_licence_rests_on():
     admits for GIS kinds. It is not `stated_by_org`, because the organization
     stated nothing, and not `maintainer_authorisation`, because the
     presumption is a rule over every such layer rather than one ruling.
+
+    `maintainer_clearinghouse` joined on 2026-10-15: decisions 20 and 22, that a
+    NYS DEC or OPRHP dataset the NYS GIS Clearinghouse lists publishes, against
+    the clearinghouse item's own words (pipeline/ELT.md, "Who may publish", rule
+    4). Like `public_gis` it is the maintainer's reading and not a grant, and
+    it is one ruling over two organizations' datasets, so the test below holds
+    it to their rows.
     """
-    vocabulary = {"stated_by_org", "maintainer_authorisation", "unresolved", "public_gis"}
+    vocabulary = {"stated_by_org", "maintainer_authorisation", "unresolved", "public_gis", "maintainer_clearinghouse"}
     unclassified = [s["key"] for s in REGISTRY["sources"] if s.get("licence_basis") not in vocabulary]
 
     assert unclassified == [], (
@@ -473,7 +480,30 @@ def test_most_of_this_registry_ships_on_the_maintainers_own_word():
     # Decision 193 (the maintainer's poll, 2026-10-14) moves 1 row from `public_gis` to `stated_by_org`: Oregon
     # Metro's RLIS trails (oregon_metro_trails), whose item names the RLIS Open Database End User License Agreement,
     # read in full that day: Metro's own licence, granting reuse on conditions, so 282 -> 281 and 208 -> 209.
-    assert counts == {"maintainer_authorisation": 260, "public_gis": 281, "stated_by_org": 209, "unresolved": 32}
+    # Decisions 20 and 22, recorded row by row on 2026-10-15 (pipeline/ELT.md, "Who may publish", rule 4), move the 13
+    # rows whose datasets the NYS GIS Clearinghouse lists to `maintainer_clearinghouse`: 7 DEC layers from
+    # `maintainer_authorisation` (the hiking trails and six land-asset layers), 4 DEC layers from `public_gis` (lands,
+    # easements, wildlife management areas, the Catskill Park boundary) and 2 OPRHP layers from `stated_by_org` (the
+    # trails and the parks' property), so 260 -> 253, 281 -> 277 and 209 -> 207.
+    assert counts == {
+        "maintainer_authorisation": 253,
+        "public_gis": 277,
+        "stated_by_org": 207,
+        "unresolved": 32,
+        "maintainer_clearinghouse": 13,
+    }
+
+
+def test_a_clearinghouse_basis_is_on_a_nys_dec_or_oprhp_row_alone():
+    """Decisions 20 and 22 ruled on NYS DEC's and OPRHP's clearinghouse datasets, nobody else's.
+
+    int_sources__publication refuses `maintainer_clearinghouse` on any other organization's row
+    (`clearinghouse_basis_outside_new_york`), which would take that layer off a phone at the next build; this
+    says so at the registration instead. tests/test_trail_orgs.py holds the catalogue's two rows the same way.
+    """
+    ruled = {source["provider"] for source in REGISTRY["sources"] if source["licence_basis"] == "maintainer_clearinghouse"}
+    assert ruled == {"NYS DEC", "NYS OPRHP"}
+    assert {ORGS[steward_id]["provider"] for steward_id in ("org:nysdec", "org:nysoprhp")} == {"NYS DEC", "NYS OPRHP"}
 
 
 #: Decision 69's kinds: a club's own page, PDF or map route of points, which int_sources__publication's rule 6

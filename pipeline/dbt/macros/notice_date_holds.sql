@@ -59,3 +59,20 @@
 {% macro notice_has_ended(ends_on, build_date) -%}
     coalesce({{ ends_on }} < {{ build_date }} - 1, false)
 {%- endmacro %}
+
+{#- Whether a notice's own dates contradict each other: an end before its
+    own start, or a start or an end before 1900 (Yellowstone's GALLATIN
+    states an end of 0023-11-10). True or false, never null. Status rule 1
+    (pipeline/ELT.md, "Status, water and expiry rules") for that shape, which
+    the review of 2026-10-15 found unread (S2-5): such a notice never closes
+    the trail, so decision 7 lands it in warnings as not reviewed, both
+    dates kept. Read on int_closures__club_notices' dates after a season has
+    moved them, so a season that wraps the year is no contradiction. -#}
+{% macro notice_dates_contradict(starts_on, ends_on) -%}
+    coalesce(
+        {{ ends_on }} < {{ starts_on }}
+        or year({{ starts_on }}) < 1900
+        or year({{ ends_on }}) < 1900,
+        false
+    )
+{%- endmacro %}

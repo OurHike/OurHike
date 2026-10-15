@@ -46,6 +46,7 @@ seeds:
         locality: varchar
         narrative: varchar
         site_type: varchar
+        season: varchar
         layer_title: varchar
         why: varchar
     columns:
@@ -95,6 +96,19 @@ seeds:
           recreation sites alone, whose markeractivity reads 'Campground
           Camping' 1,651, 'Trailhead' 156 and 'Day Hiking' 42 of the 2,999
           closed or temporarily closed sites (read live 2026-10-15).
+      - name: season
+        description: >
+          The field holding the source's own words for a period that recurs
+          every year ('December 1 - April 30'), which
+          int_closures__club_notices' rule 1 reads once the row's own end
+          has passed (pipeline/ELT.md, "Status, water and expiry rules",
+          rule 4: an expiry "neither infinite nor last year's date"). Named
+          for COTREX's seasonal closures alone, whose Closure_Period states
+          such a range beside last season's Start_Date and End_Date on 108
+          of its 128 rows (read live 2026-10-15); its other values,
+          'Year-round' (16), 'Wintering wildlife' (2), one list of dated
+          nights and one misspelt month ('Februrary 1 - August 15'), are
+          read as no season (macros/notice_season.sql).
       - name: layer_title
         description: >
           The layer's own name as its service publishes it, the `name` of
@@ -120,9 +134,12 @@ seeds:
       nothing for a hiker: motorized, OHV, snowmobile, decision 165 made
       general) unless a `bars_every_use` word (any use, public entry) or an
       `a_hikers_use` word (foot, stock) stands beside it, `closes_trail`
-      (closed, closure, impassable) unless a `partly` (partial, detour) or
-      `not_a_closure` (alert, notice, restriction, only, beginning) word in
-      the same field qualifies it, a `category_needs_title` word ('closure',
+      (closed, closure, impassable) unless a `partly` (partial), an
+      `a_way_around` (detour, reroute), a `not_a_closure` (alert, notice,
+      restriction, only, reopened) or a `states_a_start` (beginning) word
+      in the same field qualifies it, outside a `not_a_qualifier` phrase
+      (until further notice, no detour) and, for a start, unless the title
+      states the day it starts, a `category_needs_title` word ('closure',
       a kind of notice in a category) finds no closing word in the title,
       or an `a_site_not_the_trail` word (campground, yurt, sno park) says
       what closed is a site, unless a `names_a_trail` word (trail, path)
@@ -144,11 +161,16 @@ seeds:
       Reasoned from the words' plain meaning, @unvalidated as a reading of
       every row a word may meet, which no reviewer read row by row.
     data_tests:
-      # One reading per word: a word that read two ways would be decided by
-      # the order the seed loads.
+      # One reading per word and way of matching it: a word that read two
+      # ways in one field would be decided by the order the seed loads. A
+      # word may have two rows only where it matches two ways ('reopened',
+      # a whole status read as not current and a word of a title that
+      # qualifies its closing word), and
+      # tests/test_dbt_closures_club_notices.py holds that no field reads
+      # such a word twice.
       - dbt_utils.unique_combination_of_columns:
           arguments:
-            combination_of_columns: [word]
+            combination_of_columns: [word, matches]
       # The fields rule 2 reads, separated by one space.
       - dbt_utils.expression_is_true:
           arguments:
@@ -205,8 +227,9 @@ seeds:
       - name: reads_as
         description: >
           not_current, stands, unspecified, not_a_hikers_use, bars_every_use,
-          a_hikers_use, closes_trail, partly, not_a_closure,
-          a_site_not_the_trail, names_a_trail, names_a_road or names_an_area;
+          a_hikers_use, closes_trail, partly, a_way_around, not_a_closure,
+          states_a_start, not_a_qualifier, a_site_not_the_trail,
+          names_a_trail, names_a_road or names_an_area;
           int_closures__club_notices' header says what each does.
         data_tests:
           - not_null
@@ -221,7 +244,10 @@ seeds:
                   - a_hikers_use
                   - closes_trail
                   - partly
+                  - a_way_around
                   - not_a_closure
+                  - states_a_start
+                  - not_a_qualifier
                   - a_site_not_the_trail
                   - names_a_trail
                   - names_a_road

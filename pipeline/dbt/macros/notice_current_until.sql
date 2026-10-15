@@ -14,7 +14,9 @@
     first that applies:
 
     1. `ends_on`, the row's own end date: current through that day, whatever
-       its edit date says.
+       its edit date says. For a row whose own words state a season, the
+       season's end, once its own end has passed (int_closures__club_notices'
+       rule 1, macros/notice_season.sql): never last season's date.
     2. Rule 4's middle clause: the long end of a duration the row's own title
        states, counted from the row's own `starts_on`. "Lower loop closed for
        3 to 6 months" from 2025-01-06 is current through 2025-07-06. Only when

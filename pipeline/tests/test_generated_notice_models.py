@@ -219,6 +219,26 @@ def test_a_narrative_is_staged_to_be_read_and_never_counted_as_a_fact(files):
     assert "    cast(null as varchar) as narrative,\n" in model
 
 
+def test_a_season_is_staged_to_be_read_and_never_counted_as_a_fact(files):
+    """Rule 1 of int_closures__club_notices reads a period a source states recurs every year (pipeline/ELT.md, status
+    rule 4; the review of 2026-10-15, S1-3), and COTREX states it only in its Closure_Period, beside last season's
+    dates: 'December 1 - April 30', or a sentence ('December 1 - April 15. May be extended to April 30'). So the seed
+    names that field as COTREX's `season`, the generator stages it as prose (PROSE_ROLES), which the wording union
+    still collects, and every other source stages a null season."""
+    assert "season" in generator.PROSE_ROLES and "season" in generator.ROLES
+    fields = {row["source_key"]: row for row in _seed("notice_source_fields")}
+    named = {key for key, row in fields.items() if row["season"]}
+    assert named == {"cotrex_seasonal_closures"}
+    sources = {source.key: source for source in generator.notice_sources()}
+    cotrex = sources["cotrex_seasonal_closures"]
+    assert "closure_period" not in generator._fact_columns(cotrex, fields)
+    model = files[DBT / "models" / "staging" / cotrex.club / "notices" / f"{cotrex.stg_model}.sql"]
+    assert "    {{ notice_field('closure_period') }} as season,\n" in model
+    idpr = sources["idpr_emergency_route_closures"]
+    model = files[DBT / "models" / "staging" / idpr.club / "notices" / f"{idpr.stg_model}.sql"]
+    assert "    cast(null as varchar) as season,\n" in model
+
+
 def test_every_override_belongs_to_a_source_that_stages_the_field_it_names():
     """seeds/notice_word_overrides.csv reads a value in one field of one source; a field the source does not stage
     would read nothing, and the row would only look like a reading."""

@@ -326,11 +326,39 @@
 -- base model counts them); int_closures__gate holds a source with any over
 -- one.
 --
+-- WHAT A ROW SHOWS (the review of PR #1805 of 2026-10-15, threads
+-- 4279218690 and 4279219442). Its `category` is its layer's own label for
+-- the code the category holds, where the layer's coded-value domain gives
+-- one that differs (seeds/notice_category_labels.csv): Utah FFSL's
+-- 'Prevention Order' shows as 'Fire Prevention Order', Wisconsin's
+-- 'storm damage' as 'Storm damage'. The rules above read the code, which
+-- the vocabulary's words were written against. A title that is only an
+-- identifier, one word holding a digit ('UT914-25-001', 23 of FFSL's 24
+-- rows on a phone, read live 2026-10-15), is named by that label wherever
+-- the label holds a letter and the category is not the row's status again:
+-- 'Fire Prevention Order UT914-25-001'. A status staged as the category
+-- (decision 78, where nothing else says what a row is) names a state, not a
+-- kind, so Region 8's burn block 'HS84-1', whose category is its
+-- BURN_STATUS, keeps its identifier, as one with no category ('M08HBP01',
+-- FLTC's hunting bypasses) or a category of no letters ('1.0') does: nothing
+-- else on the row says what it is, and a layer's own name often says less
+-- ('Locations').
+--
 -- `updated_at` is the source's own edit stamp, in ISO 8601 UTC, and null
 -- where it gives none: never the load time. `notice_id` is
 -- `<source key>:<the source's own id>` (features/ORG_NOTICES.md section 2).
 with unioned as (
     select * from {{ ref('int_closures__club_notices_unioned') }}
+),
+
+-- The label a layer's own coded-value domain gives a code its category
+-- holds, where the two differ.
+category_labels as (
+    select
+        source_key,
+        code,
+        label
+    from {{ ref('notice_category_labels') }}
 ),
 
 -- Rule 4's areas, each parsed once, its outline as drawn.
@@ -1104,6 +1132,18 @@ judged as (
         {{ notice_dates_contradict('starts_on', 'ends_on') }}
             as dates_contradict
     from started
+),
+
+-- What a row shows as its category: its layer's own label for the code.
+shown as (
+    select
+        judged.*,
+        coalesce(category_labels.label, judged.category) as category_label
+    from judged
+    left join category_labels
+        on
+            judged.source_key = category_labels.source_key
+            and judged.category = category_labels.code
 )
 
 select
@@ -1133,8 +1173,15 @@ select
             then 'org_published'
         else 'not_reviewed'
     end as review_state,
-    {{ python_html_unescape('title') }} as title,
-    category,
+    case
+        when
+            regexp_full_match(trim(title), '\S*[0-9]\S*')
+            and regexp_matches(category_label, '[A-Za-z]')
+            and (status is null or category != status)
+            then category_label || ' ' || trim(title)
+        else {{ python_html_unescape('title') }}
+    end as title,
+    category_label as category,
     status,
     reads_as,
     read_from,
@@ -1152,4 +1199,4 @@ select
     held_because,
     key_versions,
     _loaded_at
-from judged
+from shown

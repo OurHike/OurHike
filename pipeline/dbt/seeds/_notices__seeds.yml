@@ -4,7 +4,8 @@ version: 2
 # by hand row by row (notice_source_fields, decision 190's notice_words and
 # notice_word_overrides, decision 67's notice_hazard_areas, decision 76's
 # notice_states and Q3's notice_steward_areas), one is a
-# person's mark on a notice (notice_marks), and one is written by
+# person's mark on a notice (notice_marks), one is copied from the layers'
+# own coded-value domains (notice_category_labels), and one is written by
 # pipeline/generate_notice_models.py from the extract's own declarations
 # (notice_readers), which tests/test_generated_notice_models.py holds to what
 # the generator writes.
@@ -342,6 +343,57 @@ seeds:
                 values: [not_current, closes_trail]
       - name: why
         description: Why no word of notice_words can read it, and the evidence for what it means.
+        data_tests: [not_null]
+  - name: notice_category_labels
+    description: >
+      The label an ArcGIS layer's own coded-value domain gives each code of
+      the field notice_source_fields stages as its category, where the label
+      differs from the code: what int_closures__club_notices shows as the
+      category, and names a title that is only an identifier by (the review
+      of PR #1805 of 2026-10-15, threads 4279218690 and 4279219442). Read
+      from each category field's `domain.codedValues` in its layer document
+      on 2026-10-15, through the extract's own request (lib/user_agent.py's
+      USER_AGENT): 35 codes of 10 layers, Utah FFSL's 'Prevention Order'
+      ('Fire Prevention Order') among them. A code with no row shows as
+      itself. @unvalidated AS A COPY, as int_trail_lines__coded_domains'
+      var is: nothing re-reads it, so a code a layer adds shows as the code.
+      What settles it is the extract landing each layer's field metadata,
+      which would replace this seed. The rules read the code, never the
+      label.
+    config:
+      column_types:
+        source_key: varchar
+        field: varchar
+        code: varchar
+        label: varchar
+        why: varchar
+    data_tests:
+      - dbt_utils.unique_combination_of_columns:
+          arguments:
+            combination_of_columns: [source_key, code]
+    columns:
+      - name: source_key
+        description: The layer's sources.json key.
+        data_tests:
+          - not_null
+          - relationships:
+              arguments:
+                to: ref('notice_source_fields')
+                field: source_key
+      - name: field
+        description: >
+          The layer's field the domain is on, as the layer publishes it:
+          the source's category in notice_source_fields, which
+          tests/test_generated_notice_models.py holds it to.
+        data_tests: [not_null]
+      - name: code
+        description: The code as the layer stores it and the staged category holds it.
+        data_tests: [not_null]
+      - name: label
+        description: The domain's own name for the code.
+        data_tests: [not_null]
+      - name: why
+        description: Where the label was read.
         data_tests: [not_null]
   - name: notice_hazard_areas
     description: >

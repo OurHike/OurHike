@@ -327,6 +327,18 @@ def test_a_category_holds_a_status_or_a_reason_and_never_a_class_code():
         assert fields[key]["narrative"] == "TrailUseCategory", key
 
 
+def test_every_category_label_is_for_the_field_its_source_stages_as_its_category():
+    """seeds/notice_category_labels.csv copies each label from the domain of the field a source stages as its
+    category; a label for any other field would name a code of the wrong field, so it is held to
+    seeds/notice_source_fields.csv's `category`, and to a layer whose field this generator reads (an ArcGIS row)."""
+    fields = {row["source_key"]: row for row in _seed("notice_source_fields")}
+    labels = _seed("notice_category_labels")
+    assert labels
+    for row in labels:
+        assert fields[row["source_key"]]["category"] == row["field"], row
+        assert row["label"] != row["code"], row
+
+
 def test_a_conflicting_key_holds_its_source_and_never_stops_the_build(files):
     """Every club notice source's exactness test warns, and the gate holds the source instead.
 

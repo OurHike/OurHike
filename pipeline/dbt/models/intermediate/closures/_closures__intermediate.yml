@@ -2385,6 +2385,8 @@ unit_tests:
       - input: ref('notice_word_overrides')
         rows:
           - {source_key: 'ctsst_public_hazards_closures', read_in: 'status', value: 'C', reads_as: 'closes_trail', why: 'H_C is a one-letter code, ''C'' a closure and ''H'' a hazard (the row''s notes; 2 of each in the live read of 2026-10-14, the source held by the registry): no shared word reads a single letter, which means closed only in this layer''s own legend. Its notice_status_values row'}
+      - input: ref('notice_category_labels')
+        rows: []
       - input: ref('int_closures__steward_areas')
         format: sql
         rows: |
@@ -2481,6 +2483,8 @@ unit_tests:
         rows: []
       - input: ref('notice_hazard_areas')
         rows: []
+      - input: ref('notice_category_labels')
+        rows: []
       - input: ref('int_closures__steward_areas')
         format: sql
         rows: |
@@ -2527,6 +2531,8 @@ unit_tests:
           - {notice_key: 'p4', source_key: 'fl_state_parks_day_use_status', club: 'fl_state_parks', notice_type: 'closures', reader: 'arcgis_layer', listing: 'full', category: null, starts_at: null, ends_at: null, rescinded_at: null, source_edited_at: null, source_url: null, locality: 'Fixture', geom_geojson: '{"type":"LineString","coordinates":[[-82.55,28.05],[-82.35,28.05]]}', _loaded_at: '2026-10-11 00:00:00+00', source_id: 'a_line', title: 'Fixture Line', status: 'Closed-Hurricane/Tropical Storm'}
           - {notice_key: 'p5', source_key: 'fl_state_parks_campground_status', club: 'fl_state_parks', notice_type: 'closures', reader: 'arcgis_layer', listing: 'full', category: null, starts_at: null, ends_at: null, rescinded_at: null, source_edited_at: null, source_url: null, locality: 'Fixture', geom_geojson: '{"type":"Point","coordinates":[-82.45,28.05]}', _loaded_at: '2026-10-11 00:00:00+00', source_id: 'a_campground', title: 'Fixture Park A', status: 'Closed-Hurricane/Tropical Storm'}
           - {notice_key: 'p6', source_key: 'fl_state_parks_day_use_status', club: 'fl_state_parks', notice_type: 'closures', reader: 'arcgis_layer', listing: 'full', category: null, starts_at: null, ends_at: null, rescinded_at: null, source_edited_at: null, source_url: null, locality: 'Fixture', geom_geojson: '{"type":"Point","coordinates":[-82.35,28.05]}', _loaded_at: '2026-10-11 00:00:00+00', source_id: 'inside_b', title: 'Fixture Park B', status: 'Closed-Hurricane/Tropical Storm'}
+      - input: ref('notice_category_labels')
+        rows: []
       - input: ref('int_closures__steward_areas')
         rows:
           - {steward_area_key: 'sa', source_key: 'fl_state_parks_day_use_status', areas_source_key: 'fl_state_parks_park_boundaries', area_key: 'a', area_id: 'Fixture Park A', geom_geojson: '{"type":"Polygon","coordinates":[[[-82.5,28.0],[-82.4,28.0],[-82.4,28.1],[-82.5,28.1],[-82.5,28.0]]]}'}
@@ -2841,6 +2847,8 @@ unit_tests:
         rows:
           - {source_key: 'ctsst_public_hazards_closures', read_in: 'status', value: 'C', reads_as: 'closes_trail', why: 'H_C is a one-letter code, ''C'' a closure and ''H'' a hazard (the row''s notes; 2 of each in the live read of 2026-10-14, the source held by the registry): no shared word reads a single letter, which means closed only in this layer''s own legend. Its notice_status_values row'}
       - input: ref('notice_hazard_areas')
+        rows: []
+      - input: ref('notice_category_labels')
         rows: []
       - input: ref('int_closures__steward_areas')
         format: sql
@@ -3170,6 +3178,8 @@ unit_tests:
           - {source_key: 'ctsst_public_hazards_closures', read_in: 'status', value: 'C', reads_as: 'closes_trail', why: 'H_C is a one-letter code, ''C'' a closure and ''H'' a hazard (the row''s notes; 2 of each in the live read of 2026-10-14, the source held by the registry): no shared word reads a single letter, which means closed only in this layer''s own legend. Its notice_status_values row'}
       - input: ref('notice_hazard_areas')
         rows: []
+      - input: ref('notice_category_labels')
+        rows: []
       - input: ref('int_closures__steward_areas')
         format: sql
         rows: |
@@ -3257,6 +3267,8 @@ unit_tests:
         rows: []
       - input: ref('notice_hazard_areas')
         rows: []
+      - input: ref('notice_category_labels')
+        rows: []
       - input: ref('int_closures__steward_areas')
         format: sql
         rows: |
@@ -3321,6 +3333,8 @@ unit_tests:
         rows: []
       - input: ref('notice_hazard_areas')
         rows: []
+      - input: ref('notice_category_labels')
+        rows: []
       - input: ref('int_closures__steward_areas')
         format: sql
         rows: |
@@ -3340,6 +3354,67 @@ unit_tests:
         - {notice_id: 'usfs_r04_forest_orders:cg_order', reads_as: 'notice', read_from: 'title ''cg'', a site and not the trail', obstructs_trail: null, held_because: null}
         - {notice_id: 'usfs_rec_opportunities_status:district_office', reads_as: 'notice', read_from: 'title ''district office'', a site and not the trail', obstructs_trail: null, held_because: null}
         - {notice_id: 'usfs_rec_opportunities_status:hunt_camp_trail', reads_as: 'closes_trail', read_from: 'status ''closed''', obstructs_trail: true, held_because: null}
+
+  - name: int_closures__club_notices_shows_a_category_by_its_layers_own_label_and_names_a_bare_identifier_by_it
+    description: >
+      What a row shows (the review of 2026-10-15, threads 4279218690 and
+      4279219442), on rows modelled on the live read of that day: a category
+      whose code the layer's own domain labels otherwise shows the label
+      (Utah FFSL's 'Prevention Order' is 'Fire Prevention Order', IATA's
+      'Open' is 'Open for public hunting'), and one with no label row shows
+      as it is. A title that is only an identifier, one word holding a
+      digit, is named by the category's label ('Fire Prevention Order
+      UT914-25-001', 'Special Order 04-19-48'); one with no category
+      ('M08HBP01'), a category of no letters ('1.0') or a category that is
+      the row's status again (Region 8's 'HS84-1', 'Planned for 1-10 days')
+      keeps its identifier, and a title of words that holds a number ('NFSR
+      220 Road Closure') is its own. The labels are mocked as the seed holds
+      them (tests/test_dbt_closures_club_notices.py).
+    model: int_closures__club_notices
+    overrides:
+      vars:
+        notices_build_date: "2026-10-15"
+    given:
+      - input: ref('int_closures__club_notices_unioned')
+        rows:
+          - {notice_key: 'prevention_order', source_key: 'utah_ffsl_fire_restrictions', club: 'utah_ffsl', notice_type: 'warnings', reader: 'arcgis_layer', listing: 'full', category: 'Prevention Order', starts_at: null, ends_at: null, rescinded_at: null, source_edited_at: null, source_url: null, locality: null, geom_geojson: '{"type":"Polygon","coordinates":[[[-111.9,40.4],[-111.8,40.4],[-111.8,40.5],[-111.9,40.5],[-111.9,40.4]]]}', _loaded_at: '2026-10-15 00:00:00+00', source_id: 'prevention_order', title: 'UT914-25-001', status: 'Active', narrative: null, site_type: null, season: null, layer_title: 'Fire_Restrictions'}
+          - {notice_key: 'special_order', source_key: 'utah_ffsl_fire_restrictions', club: 'utah_ffsl', notice_type: 'warnings', reader: 'arcgis_layer', listing: 'full', category: 'Special Order', starts_at: null, ends_at: null, rescinded_at: null, source_edited_at: null, source_url: null, locality: null, geom_geojson: '{"type":"Polygon","coordinates":[[[-111.9,40.4],[-111.8,40.4],[-111.8,40.5],[-111.9,40.5],[-111.9,40.4]]]}', _loaded_at: '2026-10-15 00:00:00+00', source_id: 'special_order', title: '04-19-48', status: 'Standing', narrative: null, site_type: null, season: null, layer_title: 'Fire_Restrictions'}
+          - {notice_key: 'open_hunting', source_key: 'iata_lands_hunting_regs', club: 'iata', notice_type: 'warnings', reader: 'arcgis_layer', listing: 'full', category: 'Open', starts_at: null, ends_at: null, rescinded_at: null, source_edited_at: null, source_url: null, locality: null, geom_geojson: '{"type":"Polygon","coordinates":[[[-111.9,40.4],[-111.8,40.4],[-111.8,40.5],[-111.9,40.5],[-111.9,40.4]]]}', _loaded_at: '2026-10-15 00:00:00+00', source_id: 'open_hunting', title: 'Fixture Property', status: null, narrative: null, site_type: null, season: null, layer_title: 'IATA Properties'}
+          - {notice_key: 'bypass', source_key: 'fltc_hunting_bypasses', club: 'fltc', notice_type: 'warnings', reader: 'arcgis_layer', listing: 'full', category: null, starts_at: null, ends_at: null, rescinded_at: null, source_edited_at: null, source_url: null, locality: null, geom_geojson: '{"type":"LineString","coordinates":[[-76.5,42.4],[-76.49,42.41]]}', _loaded_at: '2026-10-15 00:00:00+00', source_id: 'bypass', title: 'M08HBP01', status: null, narrative: null, site_type: null, season: null, layer_title: 'Hunting_Bypasses_'}
+          - {notice_key: 'precaution_zone', source_key: 'wa_dnr_ifpl', club: 'wa_dnr', notice_type: 'warnings', reader: 'arcgis_layer', listing: 'full', category: '1.0', starts_at: null, ends_at: null, rescinded_at: null, source_edited_at: null, source_url: null, locality: null, geom_geojson: '{"type":"Polygon","coordinates":[[[-111.9,40.4],[-111.8,40.4],[-111.8,40.5],[-111.9,40.5],[-111.9,40.4]]]}', _loaded_at: '2026-10-15 00:00:00+00', source_id: 'precaution_zone', title: '685', status: null, narrative: null, site_type: null, season: null, layer_title: 'Current Industrial Fire Precaution Levels'}
+          - {notice_key: 'road_order', source_key: 'usfs_r04_forest_orders', club: 'usfs', notice_type: 'closures', reader: 'arcgis_layer', listing: 'full', category: 'Safety Closure', starts_at: null, ends_at: null, rescinded_at: null, source_edited_at: null, source_url: null, locality: null, geom_geojson: '{"type":"Polygon","coordinates":[[[-111.9,40.4],[-111.8,40.4],[-111.8,40.5],[-111.9,40.5],[-111.9,40.4]]]}', _loaded_at: '2026-10-15 00:00:00+00', source_id: 'road_order', title: 'NFSR 220 Road Closure', status: null, narrative: null, site_type: null, season: null, layer_title: 'ForestOrder'}
+          - {notice_key: 'burn_block', source_key: 'usfs_r08_prescribed_burns', club: 'usfs', notice_type: 'warnings', reader: 'arcgis_layer', listing: 'full', category: 'Planned for 1-10 days', starts_at: null, ends_at: null, rescinded_at: null, source_edited_at: null, source_url: null, locality: null, geom_geojson: '{"type":"Polygon","coordinates":[[[-111.9,40.4],[-111.8,40.4],[-111.8,40.5],[-111.9,40.5],[-111.9,40.4]]]}', _loaded_at: '2026-10-15 00:00:00+00', source_id: 'burn_block', title: 'HS84-1', status: 'Planned for 1-10 days', narrative: null, site_type: null, season: null, layer_title: 'Prescribed Burn Block'}
+      - input: ref('notice_words')
+        rows: []
+      - input: ref('notice_word_overrides')
+        rows: []
+      - input: ref('notice_hazard_areas')
+        rows: []
+      - input: ref('notice_category_labels')
+        rows:
+          - {source_key: 'utah_ffsl_fire_restrictions', field: 'RestrictionType', code: 'Prevention Order', label: 'Fire Prevention Order', why: 'The label the layer''s own coded-value domain on RestrictionType gives the code (its layer document, read 2026-10-15)'}
+          - {source_key: 'iata_lands_hunting_regs', field: 'Hunting_Reg', code: 'Open', label: 'Open for public hunting', why: 'The label the layer''s own coded-value domain on Hunting_Reg gives the code (its layer document, read 2026-10-15)'}
+          - {source_key: 'usfs_r08_prescribed_burns', field: 'BURN_STATUS', code: 'Planned for 1-10 days', label: 'Planned For Next 1 To 10 Days', why: 'The label the layer''s own coded-value domain on BURN_STATUS gives the code (its layer document, read 2026-10-15)'}
+      - input: ref('int_closures__steward_areas')
+        format: sql
+        rows: |
+          select
+              cast(null as varchar) as steward_area_key,
+              cast(null as varchar) as source_key,
+              cast(null as varchar) as areas_source_key,
+              cast(null as varchar) as area_key,
+              cast(null as varchar) as area_id,
+              cast(null as varchar) as geom_geojson
+          where false
+    expect:
+      rows:
+        - {notice_id: 'utah_ffsl_fire_restrictions:prevention_order', title: 'Fire Prevention Order UT914-25-001', category: 'Fire Prevention Order'}
+        - {notice_id: 'utah_ffsl_fire_restrictions:special_order', title: 'Special Order 04-19-48', category: 'Special Order'}
+        - {notice_id: 'iata_lands_hunting_regs:open_hunting', title: 'Fixture Property', category: 'Open for public hunting'}
+        - {notice_id: 'fltc_hunting_bypasses:bypass', title: 'M08HBP01', category: null}
+        - {notice_id: 'wa_dnr_ifpl:precaution_zone', title: '685', category: '1.0'}
+        - {notice_id: 'usfs_r04_forest_orders:road_order', title: 'NFSR 220 Road Closure', category: 'Safety Closure'}
+        - {notice_id: 'usfs_r08_prescribed_burns:burn_block', title: 'HS84-1', category: 'Planned For Next 1 To 10 Days'}
 
   - name: int_closures__steward_areas_lets_only_a_publishable_one_version_polygon_of_a_linked_layer_place_a_point
     description: >

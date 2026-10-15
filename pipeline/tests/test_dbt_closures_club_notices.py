@@ -48,6 +48,7 @@ TEST_SEASON = (
     "closing_nothing"
 )
 TEST_FACILITIES = "int_closures__club_notices_reads_a_facility_its_title_names_as_a_site_and_a_trail_named_after_one_as_the_trail"
+TEST_SHOWN = "int_closures__club_notices_shows_a_category_by_its_layers_own_label_and_names_a_bare_identifier_by_it"
 #: The reading tests, which mock the whole vocabulary, and the tests that mock only the words they need.
 WHOLE_VOCABULARY = (TEST, TEST_190, TEST_REVIEW)
 SOME_WORDS = (
@@ -55,6 +56,7 @@ SOME_WORDS = (
     "int_closures__club_notices_places_a_point_inside_exactly_one_of_its_stewards_own_areas_by_that_area",
     TEST_SEASON,
     TEST_FACILITIES,
+    TEST_SHOWN,
 )
 
 
@@ -537,3 +539,34 @@ def test_a_facility_the_review_named_is_a_site_and_the_site_words_say_they_are_a
         assert expected[key]["obstructs_trail"] is None, key
     for key in ("nps_grca_closures:administrative_closure", "usfs_rec_opportunities_status:hunt_camp_trail"):
         assert expected[key]["obstructs_trail"] is True, key
+
+
+def test_every_mock_of_the_category_labels_is_rows_of_the_seed_file():
+    """Every reading test mocks seeds/notice_category_labels.csv, empty or with rows exactly as the seed holds them."""
+    labels = seed("notice_category_labels")
+    for name, test in _unit_tests().items():
+        if test["model"] != "int_closures__club_notices":
+            continue
+        for row in _given(test, "notice_category_labels"):
+            assert row in labels, (name, row)
+
+
+def test_a_category_shows_its_layers_own_label_and_a_bare_identifier_is_named_by_it():
+    """The review of 2026-10-15, threads 4279218690 and 4279219442: a category shows as its layer's own label for its
+    code (Utah FFSL's 'Prevention Order' is 'Fire Prevention Order'), and a title that is only an identifier is named by
+    that label, 'Fire Prevention Order UT914-25-001'. One with no category, a category of no letters, or a category
+    that is its status again (Region 8's burn block 'HS84-1'), keeps its identifier; a title of words holding a number
+    is its own."""
+    labels = {(row["source_key"], row["code"]): row["label"] for row in seed("notice_category_labels")}
+    assert labels[("utah_ffsl_fire_restrictions", "Prevention Order")] == "Fire Prevention Order"
+    assert labels[("wi_dnr_park_closures", "storm damage")] == "Storm damage"
+    expected = _expected(TEST_SHOWN)
+    assert expected["utah_ffsl_fire_restrictions:prevention_order"]["title"] == "Fire Prevention Order UT914-25-001"
+    assert expected["iata_lands_hunting_regs:open_hunting"]["category"] == "Open for public hunting"
+    for key, title in (
+        ("fltc_hunting_bypasses:bypass", "M08HBP01"),
+        ("wa_dnr_ifpl:precaution_zone", "685"),
+        ("usfs_r04_forest_orders:road_order", "NFSR 220 Road Closure"),
+        ("usfs_r08_prescribed_burns:burn_block", "HS84-1"),
+    ):
+        assert expected[key]["title"] == title, key

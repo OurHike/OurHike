@@ -2232,10 +2232,18 @@ a:hover {
     appearance: base-select;
   }
 
+  /* Its height follows its text here. A styled select shows the chosen
+   * option's whole name, which wraps on a phone: at a fixed 44px, with the
+   * phone rule's overflow clip, a 390px frame cut three wrapped lines at top
+   * and bottom (the review of 2026-10-15, thread 4279330043). */
   .dq-show__select {
     display: inline-flex;
     align-items: center;
     gap: 12px;
+    height: auto;
+    min-height: 44px;
+    padding-block: 9px;
+    line-height: 1.3;
   }
 
   .dq-show__select::picker(select) {

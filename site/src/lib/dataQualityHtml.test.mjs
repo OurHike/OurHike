@@ -14,6 +14,7 @@ import { buildPage, configFrom, formatCount, settleLane } from "./dataQuality.mj
 import {
   axisLabels,
   chartLayout,
+  flaggedLabel,
   icon,
   name,
   nearestPoint,
@@ -380,5 +381,31 @@ describe("classes the page uses", () => {
       [...markup.matchAll(/class="([^"{]*)"/g)].flatMap((m) => m[1].split(/\s+/)).filter((c) => c.startsWith("dq-")),
     );
     expect([...used].filter((c) => !defined.has(c) && !(c in HOOKS))).toEqual([]);
+  });
+});
+
+describe("the flagged point's label (the review of 2026-10-15, thread 4279330043)", () => {
+  it("stays inside the plot, clear of the y-axis's labels, at every width from a small phone to a laptop", () => {
+    const charts = [manyView(), lookingView()].flatMap((page) => [...page.sections.charts.values()]);
+    let checked = 0;
+    for (const chart of charts) {
+      const flagged = chart.points.findLastIndex((point) => point.outside);
+      if (flagged === -1) continue;
+      for (let width = 300; width <= 1300; width += 10) {
+        const layout = chartLayout(chart, width);
+        const label = flaggedLabel(chart, layout, flagged);
+        expect(label.start, `${chart.key} at ${width}`).toBeGreaterThanOrEqual(layout.plot.left);
+        expect(label.end, `${chart.key} at ${width}`).toBeLessThanOrEqual(layout.plot.left + layout.plot.width);
+        checked += 1;
+      }
+    }
+    expect(checked).toBeGreaterThan(1000);
+  });
+
+  it("keeps the value in the label where it fits, and says only which side where it does not", () => {
+    const chart = manyView().sections.chart;
+    const flagged = chart.points.findLastIndex((point) => point.outside);
+    expect(flaggedLabel(chart, chartLayout(chart, 900), flagged).text).toBe("Null rate: 31%, flagged as high");
+    expect(flaggedLabel(chart, chartLayout(chart, 200), flagged).text).toBe("Flagged as high");
   });
 });

@@ -323,6 +323,9 @@ export function niceTicks(lo, hi, count = 5, { duration = false } = {}) {
 }
 
 const CHAR_PX = 6.8; // Public Sans at 12 px, digits and lower case, measured by eye from a render
+// The flagged point's label, Public Sans at 12.5 px and weight 600 (site.css's .dq-chart__label): CHAR_PX scaled to
+// the size and widened a little for the weight. Reasoned, not measured; the 390 px frame of 2026-10-15 shows it.
+const LABEL_CHAR_PX = 7.4;
 const TOP = 14;
 const BOTTOM = 30;
 const RIGHT = 16;
@@ -426,6 +429,41 @@ export function axisLabels(chart, xs, width, room) {
 
 const r1 = (v) => Math.round(v * 10) / 10;
 
+/**
+ * WHERE THE FLAGGED POINT'S LABEL GOES, kept inside the plot: clear of the
+ * y-axis's labels on its left and of the frame on its right. On a 390 px
+ * phone the label ran left over the y-axis's labels (the review of
+ * 2026-10-15, thread 4279330043). Beside its point on the side with more
+ * room - the left of a point in the plot's right half - or on the other side
+ * where only that one fits the whole label; and where neither does, the
+ * shorter "Flagged as high" on the side with more room, the value being in
+ * the point's readout and the table under the chart. `start` and `end` are
+ * the label's estimated edges (LABEL_CHAR_PX), which the tests hold inside
+ * the plot.
+ */
+export function flaggedLabel(chart, layout, i) {
+  const { plot, xs } = layout;
+  const point = chart.points[i];
+  const full = `${chart.format.value(point.value)}, flagged as ${FLAGGED_AS[point.outside]}`;
+  const short = `Flagged as ${FLAGGED_AS[point.outside]}`;
+  const sides = [
+    { anchor: "end", x: xs[i] - 14, room: xs[i] - 14 - (plot.left + 4) },
+    { anchor: "start", x: xs[i] + 14, room: plot.left + plot.width - (xs[i] + 14) },
+  ];
+  if (xs[i] <= plot.left + plot.width / 2) sides.reverse();
+  const fits = sides.find((side) => full.length * LABEL_CHAR_PX <= side.room);
+  const side = fits ?? sides.reduce((best, candidate) => (candidate.room > best.room ? candidate : best));
+  const text = fits ? full : short;
+  const w = text.length * LABEL_CHAR_PX;
+  return {
+    text,
+    anchor: side.anchor,
+    x: side.x,
+    start: side.anchor === "end" ? side.x - w : side.x,
+    end: side.anchor === "end" ? side.x : side.x + w,
+  };
+}
+
 /** The chart's SVG at `width` CSS pixels, and the layout it was drawn from. */
 export function renderChart(chart, width) {
   const layout = chartLayout(chart, width);
@@ -480,12 +518,10 @@ export function renderChart(chart, width) {
   // where the point sits against the band drawn here.
   const flagged = chart.points.findLastIndex((point, i) => point.outside && ys[i] !== null);
   if (flagged !== -1) {
-    const point = chart.points[flagged];
-    const text = `${chart.format.value(point.value)}, flagged as ${FLAGGED_AS[point.outside]}`;
-    const rightHalf = xs[flagged] > plot.left + plot.width / 2;
+    const label = flaggedLabel(chart, layout, flagged);
     const ty = Math.min(plot.top + plot.height - 4, Math.max(plot.top + 12, ys[flagged] + 4));
     parts.push(
-      html`<text class="dq-chart__label" x="${r1(xs[flagged] + (rightHalf ? -14 : 14))}" y="${r1(ty)}" text-anchor="${rightHalf ? "end" : "start"}">${text}</text>`,
+      html`<text class="dq-chart__label" x="${r1(label.x)}" y="${r1(ty)}" text-anchor="${label.anchor}">${label.text}</text>`,
     );
   }
 

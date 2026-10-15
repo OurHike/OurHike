@@ -2,7 +2,8 @@
     data_quality.json, one lane's file for the public page at
     ourhike.org/data/quality/ (decision 102; pipeline/ELT.md, "Data quality
     (decision 102)"): every check this build ran, from the tables Elementary
-    keeps them in, as counts and names. pub_data_quality writes the monthly
+    keeps them in, as counts and names, each source's freshness among them
+    (decision 203, below, "FRESHNESS"). pub_data_quality writes the monthly
     lane's file and pub_conditions_data_quality the hourly lane's; each is
     `select` of this macro with its lane, and build_marts.py builds them in a
     pass of their own after Elementary's checks.
@@ -11,11 +12,15 @@
     sample, a coordinate or a check's own message. From Elementary's tables
     it reads names (table, column, test, metric), statuses, counts
     (`failures`, the rows a dbt test returned), timestamps, and the numbers an
-    anomaly check measured and expected. It never reads
+    anomaly check measured and expected; and of a source's freshness, its
+    status, its two limits and two instants of OurHike's own, when the
+    extract last read it and when dbt measured, written only as the seconds
+    between them. It never reads
     test_results_description, `other` (an anomaly's anomalous_value, which
     for a freshness check is a row's own timestamp), result_rows, an anomaly
-    row's anomaly_description or dimension_value, or a test's params beyond
-    `days_back`. A measured number is carried only for the count_metrics
+    row's anomaly_description or dimension_value, a test's params beyond
+    `days_back`, or a freshness result's `error`, dbt's own message. A
+    measured number is carried only for the count_metrics
     below: a column's min or max is one row's own value, and an average or a
     length is a property of row values, so those checks carry their status
     and names, with every number null.
@@ -59,6 +64,43 @@
     holds its rows too, and its row counts and failing-row counts would
     describe them.
 
+    FRESHNESS IS dbt's SOURCE FRESHNESS, one check per source (decision 203,
+    the maintainer, 2026-10-15: freshness is OurHike's own last successful
+    read of a source, never the source's own dates). build_marts.py runs
+    `dbt source freshness` right before this file, on the lane's sources
+    (its freshness_selection()), and Elementary's end-of-run hook writes a
+    row per source into dbt_source_freshness_results: its status, when the
+    extract last read it or confirmed it unchanged (`max_loaded_at`, from
+    macros/last_read_or_confirmed_at.sql) and when dbt measured
+    (`snapshotted_at`), both ISO text, and its warn_after and error_after as
+    JSON. A source's status maps to the page's words: pass is passed, warn
+    is warned, error (past its error limit) is failed, and anything else, a
+    runtime error, could not run. Its entry's `value` is the seconds since
+    that read, `snapshotted_at` less `max_loaded_at`, because the hook leaves
+    max_loaded_at_time_ago_in_s null on dbt 2.0.6 (measured 2026-10-15: null
+    on all three rows of a run whose target/sources.json gave 4,050, 11,250
+    and 47,250, which this subtraction gives to the second, truncated as dbt
+    does). Its `expected_max` is the source's error limit in seconds, the
+    limit the page quotes; for a source with no error limit, one whose
+    sources.json row says reaches_hikers false, until decision 204 revisits
+    that rule (decision 100), it is the warning limit. `expected_min` is null:
+    an age has no lower edge. `since` is null too, because the value already
+    is how long. `metric` is last_read_age and `test` source_freshness, names
+    this file gives, as dbt gives the measurement none. A source counts, and
+    is named by its raw table, under the rules above for a raw table; one
+    Elementary's dbt_sources does not describe is held. Of a source measured
+    twice in this build, the last result counts.
+    ELEMENTARY'S LEARNED FRESHNESS IS READ NOWHERE: a result of
+    freshness_anomalies or event_freshness_anomalies, or a table anomaly
+    test's freshness or event_freshness metric, is left out of every count,
+    entry and series, as if it never ran. Each learned how long a source
+    usually goes unchanged or a club unedited, which a pause in OurHike's own
+    runs moves for every quiet source at once: on UA's hourly file of
+    2026-10-15 04:38 UTC all 97 freshness warnings were
+    event_freshness_anomalies, each first flagged by the first build after a
+    70.8-hour pause. tests/test_elementary_checks.py holds that the project
+    declares none.
+
     WHICH CHECKS ARE THIS BUILD'S. elementary_test_results holds the lane's
     history (restored before the build, decision 102 step 3, and kept 430
     days for the monthly lane and 21 for the hourly, build_marts.py's
@@ -92,10 +134,9 @@
       last dbt command of the build, UTC to the second.
     - `totals` and `kinds`: checks, passed, warned, failed, errored; kinds
       always all five, in the page's order: freshness, volume, schema,
-      dbt_tests, anomalies. A kind is the test's own name first, then
-      Elementary's type and metric: freshness_anomalies and
-      event_freshness_anomalies, and a table_anomalies metric of freshness or
-      event_freshness, are `freshness`; volume_anomalies and a row_count
+      dbt_tests, anomalies. `freshness` is each source's freshness (above,
+      "FRESHNESS"). Every other kind is the test's own name first, then
+      Elementary's type and metric: volume_anomalies and a row_count
       metric `volume`; schema_changes, schema_changes_from_baseline,
       exposure_schema_validity and json_schema `schema` (Elementary types
       exposure_schema_validity a dbt test; ELT.md's table of checks puts it
@@ -118,10 +159,8 @@
       3.02 at 11. Not Elementary's min_training_set_size (7), which 0.26.0
       takes as an argument of every anomaly test and reads nowhere
       (get_anomalies_test_configuration.sql). A check with no timestamp
-      column, every check the monthly lane runs, adds one point a build, so
-      `needed` counts builds; a freshness_anomalies check on an hourly or
-      daily source adds one a day (its bucket), which no lane runs while
-      build_marts.py's HOURLY_LANE_CHECKS is off. The number assumes every
+      column, every check the project declares, adds one point a build, so
+      `needed` counts builds. The number assumes every
       check takes the project's vars: tests/test_elementary_checks.py holds
       that no check sets its own sensitivity, fail_on_zero or
       exclude_detection_period_from_training, any of which would change it.
@@ -137,13 +176,12 @@
       of a fixture build named no table, every one a singular test (measured
       2026-10-08; all 36 passed, so none reached needs_a_look that time).
       `metric` is Elementary's own name for what an anomaly check measured
-      (row_count, freshness, event_freshness, null_count, null_percent, min,
-      max, dimension, ...), null where its result names none, and null for a
-      dbt test and for a schema change (the contract as the lead amended it,
-      2026-10-08). Every number is in
-      Elementary's own units, which this file never converts: freshness and
-      event_freshness in seconds (0.26.0's table_monitoring_query.sql takes
-      each as timediff("second", ...)), each *_percent from 0 to 100
+      (row_count, null_count, null_percent, min, max, dimension, ...), null
+      where its result names none, and null for a dbt test and for a schema
+      change (the contract as the lead amended it, 2026-10-08); a source's
+      freshness is last_read_age (above, "FRESHNESS"). Every number is in
+      Elementary's own units, which this file never converts: a source's
+      freshness in seconds, each *_percent from 0 to 100
       (percent_query.sql: value / total * 100.0, to 3 places), and counts as
       counts. `test`, an addition to the contract, is the test's short name
       (not_null, volume_anomalies, schema_changes, a singular test's own
@@ -164,8 +202,9 @@
       checks measured (a table under models/marts/ whose volume check
       counted), whether or not it needs a look; and the history behind each
       needs_a_look entry whose metric is one of the count_metrics below, a
-      table's (row_count, freshness, event_freshness) or a column's (a null,
-      zero or missing count or rate, a true or false count). A column's min,
+      table's row_count or a column's (a null, zero or missing count or
+      rate, a true or false count). A source's freshness has none: dbt keeps
+      no history of it. A column's min,
       max, average or length is row values, and a dimension's history is per
       dimension value, so neither is charted. One series per table, column
       and metric, so one named both ways appears once, each {table, column,
@@ -184,7 +223,13 @@
       Elementary's 14 days by default), the newest row of each metric id as
       Elementary's own readers keep it, the newest series_points of them,
       each {at, value, expected_min, expected_max}, values whole for the
-      whole_metrics below and rates to 3 places, as needs_a_look's are. A
+      whole_metrics below and rates to 3 places, as needs_a_look's are, so
+      the page finds an entry's point by its value: Elementary stores a
+      metric as a 4-byte FLOAT, which written as it is reads 99.76000213623047
+      where the entry's 99.76 came from its scored row's double (UA's hourly
+      file of 2026-10-15, closures_v1's atc_id), so a point is widened to a
+      double before it is rounded (the review of 2026-10-15, thread
+      4279329354). A
       point's band is the one the newest run of the series' check gave that
       bucket in test_result_rows, this build's run or a kept one, and null
       where none is held. A run stores a band for every bucket of its window
@@ -255,20 +300,25 @@
     {#- The metrics whose value is a count, a rate or an age, never a row's
         own value (the header, "COUNTS ONLY"). -#}
     {%- set count_metrics = [
-        'row_count', 'freshness', 'event_freshness',
+        'row_count',
         'null_count', 'null_percent', 'not_null_percent',
         'zero_count', 'zero_percent', 'not_zero_percent',
         'missing_count', 'missing_percent', 'not_missing_percent',
         'count_true', 'count_false'
     ] -%}
-    {#- Of those, the ones Elementary measures in whole numbers, rows or
-        seconds (its freshness is a timediff in seconds), which it stores as a
-        4-byte FLOAT: written as integers, which round() gives back exactly up
-        to 2^24, 16,777,216, past which the FLOAT itself had already rounded. -#}
+    {#- Of those, the ones Elementary measures in whole numbers, which it
+        stores as a 4-byte FLOAT: written as integers, which round() gives
+        back exactly up to 2^24, 16,777,216, past which the FLOAT itself had
+        already rounded. -#}
     {%- set whole_metrics = [
-        'row_count', 'freshness', 'event_freshness',
+        'row_count',
         'null_count', 'zero_count', 'missing_count', 'count_true', 'count_false'
     ] -%}
+    {#- Elementary's learned freshness, read nowhere (the header,
+        "FRESHNESS"): its two tests, and the two metrics a table anomaly test
+        can learn the same from. -#}
+    {%- set learned_freshness_tests = ['freshness_anomalies', 'event_freshness_anomalies'] -%}
+    {%- set learned_freshness_metrics = ['freshness', 'event_freshness'] -%}
     {#- The newest points of each series kept (the header, "series", where
         the cap is @unvalidated). -#}
     {%- set series_points = 168 -%}
@@ -304,7 +354,11 @@ results as (
                 then lower(test_sub_type)
         end as metric
     from {{ ref('elementary', 'elementary_test_results') }}
-    where test_unique_id is not null and lower(status) != 'skipped'
+    where
+        test_unique_id is not null
+        and lower(status) != 'skipped'
+        and coalesce(lower(test_short_name), '') not in ('{{ learned_freshness_tests | join("', '") }}')
+        and coalesce(lower(test_sub_type), '') not in ('{{ learned_freshness_metrics | join("', '") }}')
 ),
 
 this_build as (
@@ -327,17 +381,12 @@ classified as (
     select
         this_build.*,
         case
-            when this_build.test_short_name in ('freshness_anomalies', 'event_freshness_anomalies') then 'freshness'
             when this_build.test_short_name = 'volume_anomalies' then 'volume'
             when
                 this_build.test_short_name in (
                     'schema_changes', 'schema_changes_from_baseline', 'exposure_schema_validity', 'json_schema'
                 )
                 then 'schema'
-            when
-                this_build.test_type = 'anomaly_detection'
-                and this_build.metric in ('freshness', 'event_freshness')
-                then 'freshness'
             when this_build.test_type = 'anomaly_detection' and this_build.metric = 'row_count' then 'volume'
             when this_build.test_type = 'schema_change' then 'schema'
             when this_build.test_type = 'anomaly_detection' then 'anomalies'
@@ -470,6 +519,70 @@ held_sources as (
     where not is_ourhikes and not coalesce(may_publish, false)
 ),
 
+-- Each source's freshness this build measured, its last result when it was
+-- measured twice (the header, "FRESHNESS").
+freshness_results as (
+    select
+        unique_id,
+        lower(status) as status,
+        try_cast(max_loaded_at as timestamptz) as read_at,
+        try_cast(snapshotted_at as timestamptz) as measured_at,
+        warn_after,
+        error_after,
+        row_number() over (partition by unique_id order by created_at desc) as newest
+    from {{ ref('elementary', 'dbt_source_freshness_results') }}
+    where
+        unique_id is not null
+        {%- if started %}
+        and created_at >= cast('{{ started | replace("'", "''") }}' as timestamp)
+        {%- endif %}
+),
+
+-- Its two limits in seconds, from their JSON ({"count": 24, "period":
+-- "hour"}); null where the source sets none.
+freshness_limits as (
+    select
+        unique_id,
+        status,
+        read_at,
+        measured_at,
+        try_cast(json_extract_string(warn_after, '$.count') as bigint)
+        * case json_extract_string(warn_after, '$.period')
+            when 'minute' then 60 when 'hour' then 3600 when 'day' then 86400
+        end as warn_seconds,
+        try_cast(json_extract_string(error_after, '$.count') as bigint)
+        * case json_extract_string(error_after, '$.period')
+            when 'minute' then 60 when 'hour' then 3600 when 'day' then 86400
+        end as error_seconds
+    from freshness_results
+    where newest = 1
+),
+
+-- The freshness checks that count: a source Elementary's dbt_sources
+-- describes, and no held one's.
+freshness as (
+    select
+        freshness_limits.unique_id,
+        lower(raw_tables.raw_table) as table_name,
+        case freshness_limits.status
+            when 'pass' then 0
+            when 'warn' then 1
+            when 'error' then 2
+            else 3
+        end as status_rank,
+        case
+            when freshness_limits.status in ('pass', 'warn', 'error')
+                then cast(floor(epoch(freshness_limits.measured_at) - epoch(freshness_limits.read_at)) as bigint)
+        end as age_seconds,
+        -- The error limit, the one the page quotes; the warning limit for a
+        -- source with none (the header, "FRESHNESS").
+        coalesce(freshness_limits.error_seconds, freshness_limits.warn_seconds) as limit_seconds
+    from freshness_limits
+    inner join raw_tables on freshness_limits.unique_id = raw_tables.unique_id
+    left join held_sources on freshness_limits.unique_id = held_sources.unique_id
+    where held_sources.unique_id is null
+),
+
 -- Every node a held source reaches, down to the first mart or writer.
 held_nodes (node) as (
     select unique_id from held_sources
@@ -562,6 +675,13 @@ checks as (
         test_unique_id,
         case when kind = 'schema' then '' else coalesce(column_name, '') end,
         case when kind = 'schema' then '' else coalesce(metric, '') end
+    union all
+    -- One check per source measured, belonging to no mart.
+    select
+        'freshness' as kind,
+        cast(null as varchar) as mart,
+        status_rank
+    from freshness
 ),
 
 kind_order as (
@@ -853,7 +973,9 @@ series as (
                 'value': case
                     when charted.metric in ('{{ whole_metrics | join("', '") }}')
                         then to_json(cast(round(ranked_points.metric_value) as bigint))
-                    else to_json(round(ranked_points.metric_value, 3))
+                    -- Widened first, so a rate reads as its entry's (the
+                    -- header, "series").
+                    else to_json(round(cast(ranked_points.metric_value as double), 3))
                 end,
                 'expected_min': round(bands.expected_min, 3),
                 'expected_max': round(bands.expected_max, 3)
@@ -880,6 +1002,55 @@ series as (
         charted.metric,
         charted.mart,
         charted.in_needs_a_look
+),
+
+-- Every needs_a_look entry: Elementary's and dbt's checks that did not
+-- pass, with `since`, and each source past a freshness limit or not
+-- measured (the header, "FRESHNESS"). `order_metric` is the metric the
+-- entries are ordered by, a schema change's kind of change included.
+entries as (
+    select
+        issues.kind,
+        issues.entry_table,
+        issues.column_name,
+        issues.status_rank,
+        issues.value,
+        issues.expected_min,
+        issues.expected_max,
+        -- This file's own stamp for a run that began in this build (the
+        -- header, "needs_a_look").
+        case
+            when sinces.since is null then null
+            {%- if started %}
+            when sinces.since < cast('{{ started | replace("'", "''") }}' as timestamp)
+                then strftime(sinces.since, '%Y-%m-%dT%H:%M:%SZ')
+            {%- endif %}
+            else '{{ built_at }}'
+        end as since,
+        -- An anomaly check's metric alone; a schema change's kind of change
+        -- stays out (the header, "needs_a_look").
+        case when issues.test_type = 'anomaly_detection' then issues.metric end as metric,
+        issues.metric as order_metric,
+        issues.test_short_name,
+        issues.test_unique_id
+    from issues
+    left join sinces on issues.result_id = sinces.result_id
+    union all
+    select
+        'freshness' as kind,
+        table_name as entry_table,
+        cast(null as varchar) as column_name,
+        status_rank,
+        to_json(age_seconds) as value,
+        cast(null as double) as expected_min,
+        case when status_rank < 3 then cast(limit_seconds as double) end as expected_max,
+        cast(null as varchar) as since,
+        'last_read_age' as metric,
+        'last_read_age' as order_metric,
+        'source_freshness' as test_short_name,
+        unique_id as test_unique_id
+    from freshness
+    where status_rank > 0
 ),
 
 marts_tally as (
@@ -935,40 +1106,28 @@ select
         select
             coalesce(
                 to_json(list({
-                    'kind': issues.kind,
-                    'table': issues.entry_table,
-                    'column': issues.column_name,
-                    'status': case issues.status_rank when 1 then 'warn' when 2 then 'fail' else 'error' end,
-                    'value': issues.value,
-                    'expected_min': issues.expected_min,
-                    'expected_max': issues.expected_max,
-                    -- This file's own stamp for a run that began in this build
-                    -- (the header, "needs_a_look").
-                    'since': case
-                        when sinces.since is null then null
-                        {%- if started %}
-                        when sinces.since < cast('{{ started | replace("'", "''") }}' as timestamp)
-                            then strftime(sinces.since, '%Y-%m-%dT%H:%M:%SZ')
-                        {%- endif %}
-                        else '{{ built_at }}'
-                    end,
-                    -- An anomaly check's metric alone; a schema change's kind
-                    -- of change stays out (the header, "needs_a_look").
-                    'metric': case when issues.test_type = 'anomaly_detection' then issues.metric end,
-                    'test': issues.test_short_name
+                    'kind': entries.kind,
+                    'table': entries.entry_table,
+                    'column': entries.column_name,
+                    'status': case entries.status_rank when 1 then 'warn' when 2 then 'fail' else 'error' end,
+                    'value': entries.value,
+                    'expected_min': entries.expected_min,
+                    'expected_max': entries.expected_max,
+                    'since': entries.since,
+                    'metric': entries.metric,
+                    'test': entries.test_short_name
                 } order by
-                    issues.status_rank desc,
+                    entries.status_rank desc,
                     kind_order.kind_position,
-                    issues.entry_table,
-                    issues.column_name nulls last,
-                    issues.test_short_name,
-                    issues.metric nulls last,
-                    issues.test_unique_id)),
+                    entries.entry_table,
+                    entries.column_name nulls last,
+                    entries.test_short_name,
+                    entries.order_metric nulls last,
+                    entries.test_unique_id)),
                 cast('[]' as json)
             )
-        from issues
-        inner join kind_order on issues.kind = kind_order.kind
-        left join sinces on issues.result_id = sinces.result_id
+        from entries
+        inner join kind_order on entries.kind = kind_order.kind
     ) as needs_a_look,
     (
         select

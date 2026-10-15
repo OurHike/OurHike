@@ -6,7 +6,9 @@ read, in the shapes Elementary 0.26.0 writes them on dbt 2.0.6 and DuckDB
 header): three builds of one lane's history, each check of the third (this
 build) chosen to reach one rule of the file, and a project graph in which two
 raw tables publish, three are held, one is OurHike's own registry, and one is
-a step's derived table. Then the two writers are built, with Elementary on,
+a step's derived table; and this build's `dbt source freshness` results, as
+Elementary's end-of-run hook writes them (decision 203). Then the two writers
+are built, with Elementary on,
 and each file is read field by field: what counts, what is named, the order of
 what needs a look, since when, which series are charted, their window and
 their cap, the bands an earlier build's kept run gives them (row_history.py's
@@ -75,6 +77,7 @@ MYSTERY = "source.ourhike.mystery.raw_mystery__mystery_layer"
 REGISTRY = "source.ourhike.registry.raw_registry__sources"
 NWS = "source.ourhike.nws.raw_nws__alerts"
 ATC_CHALLENGES = "source.ourhike.atc.raw_atc__challenges_atc"
+OPRHP = "source.ourhike.oprhp.raw_nysparks__oprhp_trail_closures"
 CLUB = "source.ourhike.club.raw_club__club_news"
 DERIVED = "source.ourhike.derived.osm_water"
 SOURCES = {
@@ -84,6 +87,7 @@ SOURCES = {
     REGISTRY: ("registry", "raw_registry__sources"),
     NWS: ("nws", "raw_nws__alerts"),
     ATC_CHALLENGES: ("atc", "raw_atc__challenges_atc"),
+    OPRHP: ("oprhp", "raw_nysparks__oprhp_trail_closures"),
     CLUB: ("club", "raw_club__club_news"),
     DERIVED: ("derived", "osm_water"),
 }
@@ -95,6 +99,7 @@ PUBLICATION = [
     ("secret_layer", False),
     ("nws_alerts", True),
     ("reference/challenges/atc", True),
+    ("oprhp_trail_closures", True),
     ("club_news", True),
     ("club_notices", False),
     ("osm_water", True),
@@ -290,6 +295,56 @@ def _kept_band(result_id: str, bucket: str, low: float, high: float, at: str) ->
     }
 
 
+#: When this build's freshness run measured, a minute after its checks, as build_marts.py runs it.
+MEASURED = "2026-10-08 07:06:00"
+#: A source's limits as Elementary stores them, JSON, and a monthly source's (make_dbt_staging.MONTHLY_FRESHNESS_DAYS).
+NO_LIMIT = json.dumps({"count": None, "period": None})
+MONTHLY_LIMITS = (json.dumps({"count": 35, "period": "day"}), json.dumps({"count": 62, "period": "day"}))
+HOURLY_LIMITS = (json.dumps({"count": 12, "period": "hour"}), json.dumps({"count": 24, "period": "hour"}))
+
+
+def _freshness(uid: str, status: str, seconds: int | None, limits: tuple[str, str], at: str = MEASURED) -> dict:
+    """A row of dbt_source_freshness_results as Elementary 0.26.0's hook writes it on dbt 2.0.6 (measured 2026-10-15,
+    build_marts.py's docstring, "EACH SOURCE'S FRESHNESS IS MEASURED FOR THE DATA-QUALITY FILE"): dbt's status
+    capitalised, the read and the measure as ISO text, the limits as JSON, and max_loaded_at_time_ago_in_s null,
+    which the hook leaves so. `seconds` is how long before the measure the extract last read the source; None for a
+    runtime error, which carries no instant and no limit."""
+    measured = datetime.fromisoformat(at)
+    read = None if seconds is None else (measured - timedelta(seconds=seconds)).strftime("%Y-%m-%dT%H:%M:%SZ")
+    return {
+        "source_freshness_execution_id": f"{at}.{uid}",
+        "unique_id": uid,
+        "max_loaded_at": read,
+        "snapshotted_at": None if seconds is None else measured.strftime("%Y-%m-%dT%H:%M:%S.123456Z"),
+        "generated_at": at,
+        "created_at": at,
+        "max_loaded_at_time_ago_in_s": None,
+        "status": status,
+        "error": "SECRET-DESCRIPTION" if seconds is None else None,
+        "invocation_id": f"freshness-{at}",
+        "warn_after": None if seconds is None else limits[0],
+        "error_after": None if seconds is None else limits[1],
+    }
+
+
+#: This build's freshness run and what came before it. Counted: dec's last result (it was measured twice in this
+#: build), NWS's error (2 hours to error, decision 101), the registry's warning (OurHike's own source, cleared), ATC's
+#: challenges' warning with no error limit, as a reaches_hikers false source has (decision 100), and OPRHP's runtime
+#: error. Not counted: the build before's result, the held secret layer's, and a source Elementary's dbt_sources does
+#: not describe.
+FRESHNESS = [
+    _freshness(DEC, "Warn", 40 * 86400, MONTHLY_LIMITS, at="2026-10-08 07:05:30"),
+    _freshness(DEC, "Pass", 3 * 3600, MONTHLY_LIMITS),
+    _freshness(DEC, "Error", 70 * 86400, MONTHLY_LIMITS, at=B2),
+    _freshness(NWS, "Error", 11250, (json.dumps({"count": 1, "period": "hour"}), json.dumps({"count": 2, "period": "hour"}))),
+    _freshness(REGISTRY, "Warn", 40 * 86400, MONTHLY_LIMITS),
+    _freshness(ATC_CHALLENGES, "Warn", 13 * 3600, (HOURLY_LIMITS[0], NO_LIMIT)),
+    _freshness(OPRHP, "runtime error", None, HOURLY_LIMITS),
+    _freshness(SECRET, "Error", 90 * 86400, MONTHLY_LIMITS),
+    _freshness("source.ourhike.ghost.raw_ghost__layer", "Warn", 50 * 86400, MONTHLY_LIMITS),
+]
+
+
 def _history() -> tuple[list[dict], list[dict], list[dict]]:
     """Every result, scored bucket and metric the lane's history holds: builds 1 and 2, then this one."""
     results, rows, metrics = [], [], []
@@ -372,7 +427,8 @@ def _history() -> tuple[list[dict], list[dict], list[dict]]:
     mart_volume = _result(
         "volume_mart", invocation=checks, at=B3, status="pass", test_type="anomaly_detection", sub_type="row_count"
     )
-    # The closures mart's table check warns on both its metrics: one test, two series.
+    # The closures mart's table check warns on both its metrics: its row count counts, and its freshness, a metric
+    # Elementary learns, counts nowhere (decision 203, macros/data_quality.sql's header, "FRESHNESS").
     closures_rows, closures_fresh = (
         _result(
             "table_closures", invocation=checks, at=B3, status="warn", test_type="anomaly_detection", sub_type=metric, failures=1
@@ -479,7 +535,7 @@ def _history() -> tuple[list[dict], list[dict], list[dict]]:
         _anomaly_row(null_count["id"], B3, 7.0, 0.0, 2.5, True, metric="null_count", column="name"),
         _anomaly_row(smallest["id"], B3, 0.1234, 10.0, 20.0, True, metric="min", column="distance_ft"),
         _anomaly_row(status_nulls["id"], B3, 4.0, 0.0, 1.0, True, metric="null_count", column="status"),
-        _anomaly_row(status_rate["id"], B3, 12.5, 0.0, 5.0, True, metric="null_percent", column="status"),
+        _anomaly_row(status_rate["id"], B3, 99.76, 99.633, 99.746, True, metric="null_percent", column="status"),
         _anomaly_row(
             dimension["id"], B3, 2.0, 30.0, 40.0, True, metric="dimension", dimension="club", dimension_value="SECRET-CLUB"
         ),
@@ -510,7 +566,8 @@ def _history() -> tuple[list[dict], list[dict], list[dict]]:
     for column, metric, values in (
         ("NAME", "null_count", (1.0, 2.0, 7.0)),
         ("STATUS", "null_count", (0.0, 1.0, 4.0)),
-        ("STATUS", "null_percent", (0.0, 2.5, 12.5)),
+        # A 4-byte FLOAT, as Elementary stores a metric: 99.76 reads back as 99.76000213623047 unless widened first.
+        ("STATUS", "null_percent", (99.706, 99.711, 99.76)),
         ("DISTANCE_FT", "min", (0.5, 0.25, 0.1234)),
     ):
         metrics += [(mart_table, at, value, at, metric, column) for at, value in zip((B1, B2, B3), values, strict=True)]
@@ -519,6 +576,7 @@ def _history() -> tuple[list[dict], list[dict], list[dict]]:
 
 def _warehouse(path: Path, *, empty: bool = False) -> None:
     results, rows, metrics = ([], [], []) if empty else _history()
+    freshness = [] if empty else FRESHNESS
     with duckdb.connect(str(path)) as con:
         for schema in ("elementary", "intermediate", "seeds"):
             con.execute(f"create schema {schema}")
@@ -588,6 +646,18 @@ def _warehouse(path: Path, *, empty: bool = False) -> None:
             con.execute(
                 "insert into elementary.dbt_tests values (?, ?, ?, ?, ?)",
                 [_uid(name), path_, json.dumps(depends or [parent]), parent, short],
+            )
+        # Elementary 0.26.0's columns for it, as they read on dbt 2.0.6 and DuckDB (measured 2026-10-15).
+        con.execute(
+            """create table elementary.dbt_source_freshness_results (source_freshness_execution_id varchar,
+                unique_id varchar, max_loaded_at varchar, snapshotted_at varchar, generated_at varchar,
+                created_at timestamp, max_loaded_at_time_ago_in_s float, status varchar, error varchar,
+                invocation_id varchar, warn_after varchar, error_after varchar)"""
+        )
+        for row in freshness:
+            con.execute(
+                f"insert into elementary.dbt_source_freshness_results ({', '.join(row)}) values ({', '.join('?' * len(row))})",
+                list(row.values()),
             )
         con.execute("create table intermediate.int_sources__publication (source_key varchar, may_publish boolean)")
         con.executemany("insert into intermediate.int_sources__publication values (?, ?)", PUBLICATION)
@@ -663,17 +733,18 @@ def test_each_lanes_file_names_its_format_lane_and_when_it_was_built(files):
 
 
 def test_this_builds_counted_checks_by_kind_a_held_source_neither_named_nor_counted(files):
-    """25 checks count. Left out: every check a held source reaches (secret_layer's raw table, its staging, the
+    """28 checks count. Left out: every check a held source reaches (secret_layer's raw table, its staging, the
     union of it with dec's, the snapshot of that union, a singular test reading it), the mystery table the registry
     has no row for, the club whose notice_readers row names a held key though its own name publishes, a step's
     derived table that shares a registry key's name, a test Elementary's dbt_tests does not hold, and a skipped test.
-    The retried test counts once, as its retry passed. Earlier builds' results are history, not this build's. The
-    closures mart's one table_anomalies test is two checks, its freshness and its row count."""
+    The retried test counts once, as its retry passed. Earlier builds' results are history, not this build's.
+    Freshness is the five sources' dbt freshness this build measured (FRESHNESS); Elementary's freshness_anomalies on
+    NWS and the freshness half of the closures mart's table_anomalies test count nowhere (decision 203)."""
     document = files["monthly"]
 
-    assert document["totals"] == _counts(25, 11, 12, 1, 1)
+    assert document["totals"] == _counts(28, 11, 13, 2, 2)
     assert document["kinds"] == [
-        {"kind": "freshness", **_counts(2, 1, 1, 0, 0)},
+        {"kind": "freshness", **_counts(5, 1, 2, 1, 1)},
         {"kind": "volume", **_counts(3, 1, 2, 0, 0)},
         {"kind": "schema", **_counts(2, 1, 1, 0, 0)},
         {"kind": "dbt_tests", **_counts(12, 7, 3, 1, 1)},
@@ -687,6 +758,7 @@ def test_needs_a_look_is_worst_first_and_each_entry_carries_only_numbers_and_nam
     anomaly check's alone: a dbt test's and a schema change's are null (the contract as amended 2026-10-08)."""
     document = files["monthly"]
     look, now, last_build = document["needs_a_look"], document["built_at"], "2026-10-07T07:05:00Z"
+    source = "source_freshness", "last_read_age"
 
     def entry(kind, table, column, status, value, low, high, since, metric, test):
         return {
@@ -704,11 +776,16 @@ def test_needs_a_look_is_worst_first_and_each_entry_carries_only_numbers_and_nam
 
     dec = "raw_nysdec__dec_hiking_trails"
     assert look == [
-        # An error measured nothing.
+        # An error measured nothing: a source's runtime error, then a test's.
+        entry("freshness", "raw_nysparks__oprhp_trail_closures", None, "error", None, None, None, None, *reversed(source)),
         entry("dbt_tests", "int_trail_lines__after_the_mart", "id", "error", None, None, None, now, None, "relationships"),
+        # Past its error limit: seconds since the extract last read it or confirmed it unchanged, against the error
+        # limit, also in seconds. No `since`: the value is how long.
+        entry("freshness", "raw_nws__alerts", None, "fail", 11250, None, 7200.0, None, *reversed(source)),
         entry("dbt_tests", "trail_lines_v1", "status", "fail", 2, None, None, now, None, "accepted_values"),
-        # Freshness in Elementary's seconds, a whole number.
-        entry("freshness", "closures_v1", None, "warn", 90000, 0.0, 86400.0, now, "freshness", "table_anomalies"),
+        # No error limit (reaches_hikers false, decision 100): the warning limit is the one quoted.
+        entry("freshness", "raw_atc__challenges_atc", None, "warn", 46800, None, 43200.0, None, *reversed(source)),
+        entry("freshness", "raw_registry__sources", None, "warn", 3456000, None, 5356800.0, None, *reversed(source)),
         entry("volume", "closures_v1", None, "warn", 40, 50.0, 60.0, now, "row_count", "table_anomalies"),
         # Warned in build 2 too, after passing in build 1: since build 2. A row count is a whole number.
         entry("volume", dec, None, "warn", 4118, 5231.3, 5292.7, last_build, "row_count", "volume_anomalies"),
@@ -725,28 +802,16 @@ def test_needs_a_look_is_worst_first_and_each_entry_carries_only_numbers_and_nam
         entry("anomalies", "trail_lines_v1", "name", "warn", 7, 0.0, 2.5, now, "null_count", "column_anomalies"),
         # A rate in Elementary's percent, to 3 places.
         entry("anomalies", "trail_lines_v1", "status", "warn", 4, 0.0, 1.0, now, "null_count", "column_anomalies"),
-        entry("anomalies", "trail_lines_v1", "status", "warn", 12.5, 0.0, 5.0, now, "null_percent", "column_anomalies"),
+        entry("anomalies", "trail_lines_v1", "status", "warn", 99.76, 99.633, 99.746, now, "null_percent", "column_anomalies"),
         # How many dimension values are out of band, never which.
         entry("anomalies", "trail_lines_v1", None, "warn", 3, None, None, now, "dimension", "dimension_anomalies"),
     ]
 
 
 #: Each series as the file writes it, each band where that series' check scored the bucket and null where no kept
-#: run did. The closures mart's two come from one test, each from its own metric's scored rows. A mart's table is
-#: named by version, and `mart` names its folder, as by_mart does.
+#: run did. The closures mart's table check's row count, its freshness metric charted nowhere (decision 203). A mart's
+#: table is named by version, and `mart` names its folder, as by_mart does.
 CLOSURES_SERIES = [
-    {
-        "table": "closures_v1",
-        "column": None,
-        "metric": "freshness",
-        "mart": "closures",
-        "in_needs_a_look": True,
-        "points": [
-            {"at": "2026-10-06T07:05:00Z", "value": 3000, "expected_min": None, "expected_max": None},
-            {"at": "2026-10-07T07:05:00Z", "value": 3600, "expected_min": 0.0, "expected_max": 86400.0},
-            {"at": "2026-10-08T07:05:00Z", "value": 90000, "expected_min": 0.0, "expected_max": 86400.0},
-        ],
-    },
     {
         "table": "closures_v1",
         "column": None,
@@ -795,7 +860,7 @@ def _column_series(column: str, metric: str, values: tuple, band: tuple[float, f
 COLUMN_SERIES = [
     _column_series("name", "null_count", (1, 2, 7), (0.0, 2.5)),
     _column_series("status", "null_count", (0, 1, 4), (0.0, 1.0)),
-    _column_series("status", "null_percent", (0.0, 2.5, 12.5), (0.0, 5.0)),
+    _column_series("status", "null_percent", (99.706, 99.711, 99.76), (99.633, 99.746)),
 ]
 
 
@@ -826,13 +891,15 @@ def test_the_series_are_every_marts_row_count_and_each_entrys_metric_the_newest_
     """The scope the maintainer chose by poll (2026-10-08): every mart's row count this build measured, needing a
     look or not, and the history behind each needs_a_look entry whose metric is a count, a rate or an age, a table's
     or a column's, needs-a-look series first. One series per table, column and metric: the closures mart's row
-    count, named both ways, appears once, and trail_lines' two null counts are two series. The point outside the dec
+    count, named both ways, appears once, and trail_lines' two null counts are two series. A null rate is written to
+    3 places from its 4-byte FLOAT, 99.76 and not 99.76000213623047, so the page finds its entry's point by value
+    (the review of 2026-10-15, thread 4279329354). The point outside the dec
     check's 14 days is left out, the rewritten bucket's newer row wins, the held source's metric has no series, nor
     has the column minimum or the dimension, and the trail_lines mart's 200 hourly points are cut to the newest 168."""
     series = files["monthly"]["series"]
 
     assert series == [*CLOSURES_SERIES, DEC_SERIES, *COLUMN_SERIES, _trail_lines_series()]
-    assert [len(entry["points"]) for entry in series] == [3, 3, 3, 3, 3, 3, 168]
+    assert [len(entry["points"]) for entry in series] == [3, 3, 3, 3, 3, 168]
 
 
 def test_a_point_this_builds_run_did_not_score_takes_the_band_row_history_kept_and_a_rescored_one_the_newest(files):
@@ -861,7 +928,7 @@ def test_by_mart_counts_the_marts_own_models_intermediates_and_singular_tests(fi
     """trail_lines: its mart's tests and checks, the intermediate after the mart and the one reading the registry,
     and its folder's two singular tests; its union, held, is not among them. closures: its table check's two."""
     assert files["monthly"]["by_mart"] == [
-        {"mart": "closures", **_counts(2, 0, 2, 0, 0)},
+        {"mart": "closures", **_counts(1, 0, 1, 0, 0)},
         {"mart": "trail_lines", **_counts(14, 5, 7, 1, 1)},
     ]
 
@@ -883,6 +950,12 @@ def test_nothing_but_counts_and_names_leaves_the_warehouse(files):
         "fail",
         "error",
         "raw_nysdec__dec_hiking_trails",
+        "raw_nws__alerts",
+        "raw_nysparks__oprhp_trail_closures",
+        "raw_registry__sources",
+        "raw_atc__challenges_atc",
+        "source_freshness",
+        "last_read_age",
         "int_trail_lines__after_the_mart",
         "int_trail_lines__checked",
         "stg_atc__challenges",
@@ -937,3 +1010,34 @@ def test_a_lane_whose_history_holds_no_result_writes_zeros_and_empty_lists(empty
     assert [kind["checks"] for kind in document["kinds"]] == [0, 0, 0, 0, 0]
     assert document["learning"] == {"builds": 0, "needed": 11}
     assert (document["needs_a_look"], document["series"], document["by_mart"]) == ([], [], [])
+
+
+def test_a_null_rates_last_point_is_its_entrys_own_value(files):
+    """The page finds the point an entry is about by its value (site/src/lib/dataQuality.mjs, pointOf()). On UA's
+    hourly file of 2026-10-15 every null-rate row said "No earlier range to compare it with", because the entry read
+    99.76 off its scored row's double while the series wrote Elementary's FLOAT as 99.76000213623047."""
+    document = files["monthly"]
+    (entry,) = [item for item in document["needs_a_look"] if (item["column"], item["metric"]) == ("status", "null_percent")]
+    (series,) = [item for item in document["series"] if (item["column"], item["metric"]) == ("status", "null_percent")]
+    assert entry["value"] == series["points"][-1]["value"] == 99.76
+    assert [point["value"] for point in series["points"]] == [99.706, 99.711, 99.76]
+
+
+def test_each_sources_freshness_is_its_last_result_in_this_build_and_elementarys_learned_freshness_counts_nowhere(files):
+    """Decision 203 (the maintainer, 2026-10-15): freshness is OurHike's own last successful read of a source. dec,
+    measured twice, counts once, by its pass; the build before's result, the held secret layer's and a source
+    Elementary does not describe count nowhere and are named nowhere. Elementary's freshness_anomalies result and the
+    closures table check's freshness metric are neither counted, nor an entry, nor a series."""
+    document = files["monthly"]
+    freshness = [item for item in document["needs_a_look"] if item["kind"] == "freshness"]
+    assert {item["table"] for item in freshness} == {
+        "raw_nysparks__oprhp_trail_closures",
+        "raw_nws__alerts",
+        "raw_atc__challenges_atc",
+        "raw_registry__sources",
+    }
+    assert all((item["test"], item["metric"], item["since"]) == ("source_freshness", "last_read_age", None) for item in freshness)
+    learned = ("freshness", "event_freshness", "freshness_anomalies", "event_freshness_anomalies")
+    assert not [item for item in document["needs_a_look"] if item["metric"] in learned or item["test"] in learned]
+    assert not [item for item in document["series"] if item["metric"] in learned]
+    assert "raw_ghost__layer" not in files["raw"] and "raw_secret__secret_layer" not in files["raw"]

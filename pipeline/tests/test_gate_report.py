@@ -448,16 +448,43 @@ def test_two_files_with_no_records_are_not_compared_unless_the_family_may_be_emp
     assert "ALLOWED_EMPTY_POI_TYPES" in next(item.reason for item in trailhead.listed if item.what == "records")
 
 
-def test_only_the_poi_types_export_poi_may_publish_empty_and_work_projects_may_compare_no_records():
+def test_only_the_poi_types_export_poi_may_publish_empty_and_three_conditions_families_may_compare_no_records():
     """One home for the POI types: lib/poi_schema.ALLOWED_EMPTY_POI_TYPES. Work projects is the maintainer's own
-    (decision 162); highlights is not on it."""
+    (decision 162), and so are closures and reports (decision 199); highlights is not on it."""
     from lib.poi_schema import ALLOWED_EMPTY_POI_TYPES
 
     expected = {f"poi_{kind}{version}" for kind in ALLOWED_EMPTY_POI_TYPES for version in ("", "_v2")}
     assert expected == {"poi_trailhead", "poi_trailhead_v2"}
-    assert set(gate_report.MAY_COMPARE_NO_RECORDS) == expected | {"work_projects"}
+    assert set(gate_report.MAY_COMPARE_NO_RECORDS) == expected | {"work_projects", "closures", "reports"}
     assert set(gate_report.MAY_COMPARE_NO_RECORDS) <= set(parity.FAMILIES)
     assert all(reason.strip() for reason in gate_report.MAY_COMPARE_NO_RECORDS.values())
+
+
+def test_closures_and_reports_compare_no_records_only_while_ci_compares_their_writers_on_rows():
+    """Decision 199: an hour of the soak that compared two empty conditions/closures.json or conditions/reports.json
+    files counts, because CI's fixture families compare both writers on rows each time pipeline-tests.yml's dbt job
+    runs ('no differences across 3 closures' and '... across 3 reports' in run 38610267739, 2026-10-14). So the fixture
+    keeps a row each public query reads, and the parity step keeps both lines: without either, nothing would compare
+    the writer on a row while the empty soak still counted."""
+    import yaml
+
+    import make_dbt_fixtures
+
+    answers = make_dbt_fixtures._ourhike_postgres()
+    assert [row for row in answers["closures"]["rows"] if row["moderation_status"] == "verified"]
+    assert [
+        row for row in answers["reports"]["rows"] if row["status"] in ("verified", "resolved") and row["visibility"] == "public"
+    ]
+    workflow = Path(__file__).resolve().parents[2] / ".github" / "workflows" / "pipeline-tests.yml"
+    (step,) = [
+        step
+        for job in yaml.safe_load(workflow.read_text(encoding="utf-8"))["jobs"].values()
+        for step in job.get("steps") or []
+        if step.get("name") == "Parity with today's exporters"
+    ]
+    for family in ("closures", "reports"):
+        line = f"parity.py --json-dir data/processed/parity {family} --new data/processed/dbt/conditions_{family}.json"
+        assert line in step["run"], family
 
 
 def test_a_key_pattern_matches_whichever_placeholder_each_side_writes():

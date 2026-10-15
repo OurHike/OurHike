@@ -216,7 +216,12 @@ LOCATION_FIELDS = frozenset(
 #: file equal to an empty file says nothing about the writer's records.
 #: The POI types are lib/poi_schema.ALLOWED_EMPTY_POI_TYPES, the list
 #: export_poi.py's own completeness gate reads, so the two cannot drift.
-#: work_projects is the maintainer's: decision 162 (poll, 2026-10-11).
+#: work_projects is the maintainer's: decision 162 (poll, 2026-10-11). So are
+#: closures and reports: decision 199 (poll, 2026-10-15). Each of those two is
+#: listed only while CI's fixture family compares its writer on rows, which
+#: tests/test_gate_report.py's
+#: test_closures_and_reports_compare_no_records_only_while_ci_compares_their_writers_on_rows
+#: holds.
 MAY_COMPARE_NO_RECORDS: dict[str, str] = {
     f"poi_{poi_type}{version}": (
         f"`{poi_type}` is in lib/poi_schema.ALLOWED_EMPTY_POI_TYPES: ATC publishes no trailhead layer "
@@ -234,6 +239,25 @@ MAY_COMPARE_NO_RECORDS: dict[str, str] = {
         "files hold no record on real data (0 rows, read 2026-10-11). Decision 162 (poll, 2026-10-11) counts it as "
         "covered: CI's fixture family compares the writer on rows on every push, and the soak shows both real files "
         "empty"
+    ),
+    "closures": (
+        "OurHike's own database on UA holds no verified public closure: conditions/closures.json carries OurHike's "
+        "rows alone (pub_conditions_closures keeps source_key 'ourhike_closures', and export_conditions.py's "
+        "PUBLIC_CLOSURES_SQL reads moderation_status 'verified'), and both files held no record in the first and the "
+        "last hourly comparisons that had a bundle (check-conditions.yml runs 31 and 48, 2026-10-11 02:28 and 19:28 "
+        "UTC). Decision 199 (poll, 2026-10-15) counts it as covered: CI's fixture family compares the writer on rows "
+        "each time pipeline-tests.yml's dbt job runs, 3 verified closures (make_dbt_fixtures._ourhike_postgres(); "
+        "'no differences across 3 closures' in run 38610267739, 2026-10-14), and the soak shows both real files empty"
+    ),
+    "reports": (
+        "OurHike's own database on UA holds no verified or resolved public report: conditions/reports.json carries "
+        "OurHike's rows alone (pub_conditions_reports keeps source_key 'ourhike_reports', and export_conditions.py's "
+        "PUBLIC_REPORTS_SQL reads status 'verified' or 'resolved' with visibility 'public'), and both files held no "
+        "record in the first and the last hourly comparisons that had a bundle (check-conditions.yml runs 31 and 48, "
+        "2026-10-11 02:28 and 19:28 UTC). Decision 199 (poll, 2026-10-15) counts it as covered: CI's fixture family "
+        "compares the writer on rows each time pipeline-tests.yml's dbt job runs, 3 public reports "
+        "(make_dbt_fixtures._ourhike_postgres(); 'no differences across 3 reports' in run 38610267739, 2026-10-14), "
+        "and the soak shows both real files empty"
     ),
 }
 

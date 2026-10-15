@@ -328,6 +328,31 @@ def test_comparisons_of_two_empty_files_count_only_for_a_family_the_monthly_rule
     assert not _row(rows, "conditions/work_projects.json").blocks_go
 
 
+def test_a_soak_whose_closures_and_reports_hold_no_record_on_either_side_covers_both_and_says_why(tmp_path):
+    """Decision 199: UA's own database holds no verified public closure or report, so each hour compares two empty
+    files (check-conditions.yml runs 31 and 48, 2026-10-11), and the soak counts those hours as it counts work_projects'
+    (decision 162). Each key still lists that only the files' top-level fields were compared, and why."""
+    reports = DbtKey(
+        "conditions/reports.json", "conditions_reports_json", "model.ourhike.pub_conditions_reports", "conditions_reports.json"
+    )
+    root = tmp_path / "empty"
+    for hour in range(73):
+        _run(root, hour, {"closures": "no_records", "reports": "no_records", "work_projects": "no_records"})
+    today = [*TODAY, TodayKey(reports.key, "live", "publish.collect_artifacts(), from conditions_manifest.json")]
+
+    rows, _, _ = key_rows(today, [CLOSURES, reports, WORK], {}, load_hourly(root))
+
+    for key in ("conditions/closures.json", "conditions/reports.json", "conditions/work_projects.json"):
+        row = _row(rows, key)
+        assert (row.verdict, row.blocks_go) == ("equal_apart_from_listed", False), (key, row.detail)
+        assert "only the file's top-level fields were compared" in next(
+            item.reason for item in row.listed if item.what == "records"
+        )
+    assert "3 verified closures" in next(
+        item.reason for item in _row(rows, "conditions/closures.json").listed if item.what == "records"
+    )
+
+
 def test_a_monthly_result_judges_its_key_unless_an_hourly_comparison_differs(tmp_path):
     monthly = {"closures": _result("closures")}
     clean = load_hourly(_soak(tmp_path / "clean", hours=10))

@@ -18,6 +18,13 @@ nothing for a hiker. A category's 'closure' is the kind of notice, and closes on
 closure too: USFS's forest orders are typed 'Safety Closure' whatever they bar, 'Forest Wide - Alcohol' among them.
 And the maintainer's three fixes (poll of 2026-10-15, "Add the 3 fixes"): a layer closes by its own name only where
 that name says closures, a closed site is not a closed trail, and an area that names only roads closes no trail.
+
+And the closures the review of 2026-10-15 found read as notices, each fixed as a reading for every source: a status no
+word reads lets the title speak (S1-1), a flag's coded unknown leaves it a flag (S2-1), a title names each thing it
+lists (S1-2), a start a title states with a day closes from that day (S1-4), a phrase naming both uses or everyone
+bars every use (S2-2), a qualifying word inside a `not_a_qualifier` phrase qualifies nothing (S2-3), a closures
+layer's detours and reopenings are not its closures (S2-4), a season a row states in words is read in the season
+that has not ended (S1-3), and dates that contradict each other close no trail (S2-5).
 """
 
 import csv
@@ -33,11 +40,17 @@ CLOSURES = DBT / "models" / "intermediate" / "closures" / "_closures__intermedia
 MODEL = DBT / "models" / "intermediate" / "closures" / "int_closures__club_notices.sql"
 TEST = "int_closures__club_notices_keeps_an_ended_notice_without_closing_and_holds_back_what_its_status_says_is_not_current"
 TEST_190 = "int_closures__club_notices_reads_a_notice_by_its_own_words_against_one_vocabulary_for_every_source"
-TESTS = (
-    TEST,
-    TEST_190,
+TEST_REVIEW = "int_closures__club_notices_closes_by_a_status_no_word_reads_a_listed_trail_and_a_title_s_stated_start"
+TEST_SEASON = (
+    "int_closures__club_notices_reads_a_stated_season_in_the_season_that_has_not_ended_and_dates_that_contradict_as_"
+    "closing_nothing"
+)
+#: The reading tests, which mock the whole vocabulary, and the tests that mock only the words they need.
+WHOLE_VOCABULARY = (TEST, TEST_190, TEST_REVIEW)
+SOME_WORDS = (
     "int_closures__club_notices_keeps_a_notice_for_a_days_margin_either_side_of_its_own_dates",
     "int_closures__club_notices_places_a_point_inside_exactly_one_of_its_stewards_own_areas_by_that_area",
+    TEST_SEASON,
 )
 
 
@@ -54,21 +67,33 @@ def _expected(name: str) -> dict[str, dict]:
     return {row["notice_id"]: row for row in _unit_tests()[name]["expect"]["rows"]}
 
 
-def test_the_two_reading_tests_mock_the_whole_vocabulary_as_the_seed_files_hold_it():
+def test_every_reading_test_mocks_the_whole_vocabulary_as_the_seed_files_hold_it():
     tests = _unit_tests()
-    for name in (TEST, TEST_190):
+    for name in WHOLE_VOCABULARY:
         assert _given(tests[name], "notice_words") == seed("notice_words"), name
         assert _given(tests[name], "notice_word_overrides") == seed("notice_word_overrides"), name
 
 
 def test_every_other_mock_of_the_vocabulary_is_rows_of_the_seed_files():
-    """The margin and placement tests mock only the words they need, each exactly as the seed holds it."""
+    """The margin, placement and season tests mock only the words they need, each exactly as the seed holds it."""
     tests = _unit_tests()
-    words = {row["word"]: row for row in seed("notice_words")}
-    for name in TESTS[2:]:
+    words = seed("notice_words")
+    for name in SOME_WORDS:
         for row in _given(tests[name], "notice_words"):
-            assert row == words[row["word"]], (name, row)
+            assert row in words, (name, row)
         assert _given(tests[name], "notice_word_overrides") == [], name
+
+
+def test_no_field_reads_a_word_twice():
+    """A word may have two rows only where it matches two ways ('reopened': a whole status not current, a word of a
+    title that qualifies its closing word); in any one field it has one reading, or the seed's load order would
+    decide which."""
+    fields = {}
+    for row in seed("notice_words"):
+        for field in row["read_in"].split():
+            key = (row["word"], field)
+            assert key not in fields, (key, fields.get(key), row["reads_as"])
+            fields[key] = row["reads_as"]
 
 
 def test_the_unit_tests_mocked_hazard_seed_is_the_seed_file():
@@ -339,3 +364,128 @@ def test_idprs_named_orders_read_as_the_brief_and_decision_190_say():
         assert expected[f"{areas}:{key}"]["reads_as"] == "nothing_for_a_hiker", key
     for key in ("foot_only", "seasonal"):
         assert expected[f"{areas}:{key}"]["reads_as"] == "notice", key
+
+
+def test_a_status_no_word_reads_says_nothing_and_a_flags_coded_unknown_leaves_it_a_flag():
+    """The review of 2026-10-15, S1-1 and S2-1: King County's AlertType 'Hazard' and FLTC's workflow 'Final' hold no
+    word of the vocabulary, so the row's own title speaks, as decision 190's "else a placed row's title" reads, and an
+    empty status beside a stated one says nothing either; a status that holds a word still speaks. A flag's coded
+    unknown (-1) is read as no status, so it never turns its source's 0 and 1 into a scale."""
+    assert reads_as("status", "Hazard") == reads_as("status", "Final") == set()
+    assert reads_as("status", "-1") == {"unspecified"}
+    expected = _expected(TEST_REVIEW)
+    for notice_id in (
+        "king_county_parks_alerts_lines:hazard_closed",
+        "king_county_parks_alerts_lines:hazard_closure",
+        "fltc_temporary_notices:blank_status",
+        "fltc_temporary_notices:workflow_status",
+        "vtrans_rail_trail_closures:flag_yes",
+    ):
+        assert expected[notice_id]["obstructs_trail"] is True, notice_id
+    assert expected["king_county_parks_alerts_lines:detour_status"]["reads_as"] == "notice"
+    assert expected["vtrans_rail_trail_closures:flag_no"]["reads_as"] == "not_current"
+    for notice_id in ("fltc_temporary_notices:previous_closure", "fltc_temporary_notices:hiker_notice"):
+        assert expected[notice_id]["reads_as"] == "notice", notice_id
+
+
+def test_a_title_names_each_thing_it_lists_and_a_trail_among_them_is_the_trail():
+    """The review of 2026-10-15, S1-2: IATA's 'Trail & Parking Area Closure' lists a trail and a parking area, so it
+    closes the trail; 'Trail Parking Lot Closed' and 'Luzerne Horse Trail Campground and Trailhead' name only sites.
+    'trl' names a trail, so a USFS 'Nature Trl' typed 'Viewing Scenery' is the trail."""
+    words = {(row["word"], row["matches"]): row for row in seed("notice_words")}
+    assert words[("trl", "words")]["reads_as"] == "names_a_trail"
+    expected = _expected(TEST_REVIEW)
+    for key in ("iata_trail_conditions:listed_trail", "usfs_rec_opportunities_status:trl"):
+        assert expected[key]["obstructs_trail"] is True, key
+    for key in ("iata_trail_conditions:one_site", "usfs_rec_opportunities_status:listed_sites"):
+        assert expected[key]["read_from"].endswith("a site and not the trail"), key
+
+
+def test_a_start_a_title_states_with_a_day_closes_from_that_day():
+    """The review of 2026-10-15, S1-4: IATA's 'Hunting Closure beginning 9/1' and 'beginning 10/15' close from their
+    day (macros/notice_title_start_day.sql), where a start stated with no day ('Beginning Fall 2027') still keeps the
+    title a notice. A park's water systems are a site, so Wisconsin's 'Water Systems Closed (Beginning Oct. 13,
+    2026)' stays a notice once its start no longer does it."""
+    words = {(row["word"], row["matches"]): row for row in seed("notice_words")}
+    for word in ("beginning", "starting", "starts"):
+        assert words[(word, "words")]["reads_as"] == "states_a_start", word
+    assert words[("water systems", "words")]["reads_as"] == "a_site_not_the_trail"
+    expected = _expected(TEST_REVIEW)
+    assert expected["iata_trail_conditions:begun"]["starts_on"] == "2026-09-01"
+    assert expected["iata_trail_conditions:upcoming"]["starts_on"] == "2026-11-02"
+    for key in ("iata_trail_conditions:begun", "iata_trail_conditions:upcoming"):
+        assert expected[key]["obstructs_trail"] is True, key
+    assert expected["wi_dnr_park_closures:no_day"]["reads_as"] == "notice"
+    assert expected["wi_dnr_park_closures:water_systems"]["read_from"].startswith("title 'water systems'")
+
+
+def test_a_phrase_naming_both_uses_or_everyone_bars_every_use_and_nonmotorized_alone_does_not():
+    """The review of 2026-10-15, S2-2: 'motorized and non-motorized use', 'closed to all users' and 'closed to the
+    public' bar every use beside a motor vehicle. The bare 'non-motorized' is no hiker's use: IDPR's Lightning Creek
+    419 order says 'non-motorized use no longer prohibited' (read live 2026-10-15), which must stay nothing for a
+    hiker."""
+    for value in (
+        "This order closes the trail to motorized and non-motorized use.",
+        "The trail is closed to all users due to a washout.",
+        "Trail closed to the public. Snowmobile route remains groomed for permit holders.",
+    ):
+        assert "bars_every_use" in reads_as("narrative", value), value
+    no_longer = "Replaced an earlier order: non-motorized use no longer prohibited."
+    assert reads_as("narrative", no_longer) & {"bars_every_use", "a_hikers_use"} == set()
+    expected = _expected(TEST_REVIEW)
+    for key in ("both_uses", "all_users", "the_public"):
+        assert expected[f"idpr_emergency_route_closures:{key}"]["obstructs_trail"] is True, key
+    assert expected["idpr_emergency_route_closures:no_longer_prohibited"]["reads_as"] == "nothing_for_a_hiker"
+
+
+def test_a_qualifying_word_inside_a_not_a_qualifier_phrase_qualifies_nothing():
+    """The review of 2026-10-15, S2-3: 'closed until further notice', 'no detour available' and 'emergency access
+    only' close, where 'notice', 'detour' and 'only' elsewhere still qualify a closing word beside them."""
+    assert reads_as("title", "Mist Trail closed until further notice") == {"closes_trail", "names_a_trail"}
+    assert "a_way_around" not in reads_as("title", "Bridge out, trail closed, no detour available")
+    assert "not_a_closure" not in reads_as("title", "Snow Creek Trail closed, emergency access only")
+    assert "not_a_closure" in reads_as("title", "Hiker Notice: Bardeen Rd vehicular closure")
+    assert "a_way_around" in reads_as("title", "Trail closed, detour in place")
+    expected = _expected(TEST_REVIEW)
+    for key in (
+        "nps_yose_trail_closures:further_notice",
+        "nps_yose_trail_closures:emergency_only",
+        "iata_trail_conditions:no_detour",
+    ):
+        assert expected[key]["obstructs_trail"] is True, key
+    assert expected["iata_trail_conditions:detour"]["reads_as"] == "notice"
+
+
+def test_a_closures_layer_does_not_close_its_detours_or_its_reopenings():
+    """The review of 2026-10-15, S2-4: a title naming a way around is the way around, and one that says reopened
+    names no current closure, so PCTA's 'Closure Line' layer stops crossing out 'Rattlesnake Flats detour' and 'PCT
+    Reopened' and still closes 'Lionshead Fire'."""
+    words = {(row["word"], row["matches"]): row for row in seed("notice_words")}
+    assert {words[(word, "words")]["reads_as"] for word in ("detour", "reroute")} == {"a_way_around"}
+    assert words[("reopened", "words")]["reads_as"] == "not_a_closure"
+    assert words[("reopened", "exact")]["reads_as"] == "not_current"
+    expected = _expected(TEST_REVIEW)
+    for key in ("pcta_closure_lines:detour_line", "pcta_closure_lines:reopened_line", "nps_yose_trail_closures:reopened_title"):
+        assert expected[key]["reads_as"] == "notice", key
+    assert expected["pcta_closure_lines:closed_line"]["read_from"] == "layer 'closure'"
+
+
+def test_a_season_is_read_in_the_season_that_has_not_ended_and_contradicting_dates_close_nothing():
+    """The review of 2026-10-15, S1-3 and S2-5: a row whose season field states a range of days with no year is read,
+    once its own end has passed, in the season that has not ended (pipeline/ELT.md, status rule 4: "neither infinite
+    nor last year's date"); COTREX is the one source that names such a field (seeds/notice_source_fields.csv). An end
+    before its own start, or a date before 1900, closes no trail."""
+    named = {row["source_key"] for row in seed("notice_source_fields") if row["season"]}
+    assert named == {"cotrex_seasonal_closures"}
+    expected = _expected(TEST_SEASON)
+    assert (
+        expected["cotrex_seasonal_closures:in_season"]["starts_on"],
+        expected["cotrex_seasonal_closures:in_season"]["ends_on"],
+    ) == ("2026-10-01", "2027-06-30")
+    assert expected["cotrex_seasonal_closures:wraps_the_year"]["ends_on"] == "2027-03-14"
+    for key in ("in_season", "next_season", "wraps_the_year", "after_a_label"):
+        assert expected[f"cotrex_seasonal_closures:{key}"]["obstructs_trail"] is True, key
+    for key in ("misspelt_month", "range_with_years"):
+        assert expected[f"cotrex_seasonal_closures:{key}"]["obstructs_trail"] is None, key
+    for notice_id in ("idpr_area_restrictions:end_before_start", "nps_yell_bear_management_areas:start_before_1900"):
+        assert expected[notice_id]["obstructs_trail"] is None, notice_id

@@ -618,6 +618,32 @@ unit_tests:
       rows:
         - {generated_at: '2026-10-11T16:23:24Z', closures: '[]'}
 
+  - name: pub_conditions_trail_closures_writes_a_multipoint_closure_as_a_point_with_every_member_kept
+    model: pub_conditions_trail_closures
+    description: >
+      The writer's half of the contract a MultiPoint closure keeps with the
+      phone (the review of 2026-10-15, S2-6, and the client review's F2):
+      a closure whose own geometry is a MultiPoint is written with `shape`
+      "point" and its `place` exactly as notices.json carries it, both
+      members kept, never cut to its first point and never left out.
+      client/src/lib/publishedNotices.ts's validTrailClosure() takes a
+      "point" only as a Point today, so the phone drops such a row; the
+      phone's reader is what changes to meet this, not this file. No live
+      row is a MultiPoint (the review counted none in UA's notices.json of
+      2026-10-14, 9,234 rows, or in the live build of 2026-10-15).
+    given:
+      - input: ref('pub_conditions_notices')
+        format: sql
+        rows: |
+          select
+              '2026-10-15T00:30:00Z' as generated_at,
+              cast('[{"notice_id":"club_points:1","source_key":"club_points","place":{"kind":"geometry","geometry":{"type":"MultiPoint","coordinates":[[-109.44,34.0],[-109.45,33.98]]}},"hazard":null,"obstructs_trail":true,"starts_on":"2025-09-30","current_until":"2027-09-30"}]' as json) as notices
+      - input: ref('int_closures__area_trail_cuts')
+        rows: []
+    expect:
+      rows:
+        - {generated_at: '2026-10-15T00:30:00Z', closures: '[{"notice_id":"club_points:1","source_key":"club_points","place":{"kind":"geometry","geometry":{"type":"MultiPoint","coordinates":[[-109.44,34.0],[-109.45,33.98]]}},"hazard":null,"obstructs_trail":true,"starts_on":"2025-09-30","current_until":"2027-09-30","shape":"point"}]'}
+
   - name: pub_conditions_trail_closures_writes_nothing_while_the_notices_writer_writes_nothing
     model: pub_conditions_trail_closures
     description: >

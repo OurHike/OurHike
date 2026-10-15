@@ -31,7 +31,9 @@ THE BOUNDARIES RIDE THE NOTICES JOB, DAILY. The build that places the status poi
 warehouse holds a conditions leg's tables and a notices leg's served copy, never the monthly store
 (publish-conditions.yml), so a monthly `places.py` resource would never reach it: tests/test_generated_notice_models.py
 holds that, for every steward's areas layer as for every notice source. As a resource of this file its type is
-closures, whose lane is the hourly one, and extract/_run.py's job_of() gives it to the notices job.
+closures, whose lane is the hourly one, and extract/_run.py's job_of() gives it to the notices job. Its rows are places
+all the same (`holds`, extract/_contract.py): the run check refuses it empty, and below half its last count, as it
+refuses any other place layer, where a closures table may land empty beside the server's own zero and has no floor.
 """
 
 from datetime import date
@@ -45,6 +47,13 @@ CLAIMS = (*STATUS, BOUNDARIES)
 RESOURCES = [arcgis_layer(key) for key in STATUS] + [
     arcgis_layer(
         BOUNDARIES,
+        holds="places",
+        holds_reason=(
+            "A park's own outline, the place a closed park's status point takes (decision 185), not a notice: 179 "
+            "polygons on 2026-10-11, and none of them a closure lifted when a read comes back empty or short. Landed "
+            "that way it would un-place every closed Florida park until the next daily read (review finding S1-2 of "
+            "2026-10-15), so it is held to a place layer's run check: never empty, never below the shrink floor"
+        ),
         cadence_override="daily",
         cadence_reason=(
             "Daily, not every notices run: the layer has no editor tracking and no date field, so its change check "

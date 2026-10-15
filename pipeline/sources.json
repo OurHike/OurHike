@@ -2508,9 +2508,9 @@
       "person_fields_comment": "`author` is a WordPress user id, which resolves to a person; extract/_kinds.py's WP_DROPPED leaves it out with the API's plumbing, so it never reaches the raw store (pipeline/ELT.md, 'Who may publish', rule 8; decision 59).",
       "reader": "WordpressPosts",
       "freshness": {
-        "kind": "wp_id_modified_set",
+        "kind": "read_and_hash",
         "url": "https://www.landbetweenthelakes.us/alerts/",
-        "notes": "extract/_kinds.py's WordpressPosts check: a sha256 of the (id, modified_gmt) set and X-WP-Total, one small request; a WordPress feed's validators are site-wide and never decide FRESH (the dlt skill, rule 4)."
+        "notes": "extract/_kinds.py's WordpressPosts check reads the posts in scope whole every run, the request its read sends, and the read lands that answer: FRESH only when X-WP-Total and the posts as they would land, person fields left out, hash as the last committed load's did. Until 2026-10-15 it hashed the (id, modified_gmt) set, which a write to a post's meta, such as an ACF field, does not move (review finding S1-1). A WordPress feed's validators are site-wide and never decide FRESH (the dlt skill, rule 4)."
       },
       "discovered_via": "bcc70dd0:pipeline/reference/org_coverage.json's lbl closures and warnings rows (AVAILABLE_NOT_LOADED in the coverage audit, 2026-10-01; a candidate steward the audit folds into usfs), read again live for decision 54's wave 6 on 2026-10-08 under lib/user_agent.py's USER_AGENT, robots.txt first. Registered by hand.",
       "discovered_date": "2026-10-08",
@@ -8183,9 +8183,9 @@
       ],
       "key_comment": "`id`, the WordPress post id: unique on all 60 rows read 2026-10-04, with X-WP-Total 60 in the same answer. The site's own primary key, never minted again by a reload (decision 40).",
       "freshness": {
-        "kind": "wp_id_modified_set",
+        "kind": "read_and_hash",
         "url": "https://cdtcoalition.org/wp-json/wp/v2/hike_suggestion",
-        "notes": "WordpressPosts' check: X-WP-Total and a sha256 of the (id, modified_gmt) set, one small request (`_fields=id,modified_gmt,slug`). A WordPress feed's validators are site-wide and never decide FRESH (the dlt skill, rule 4)."
+        "notes": "extract/_kinds.py's WordpressPosts check reads the posts in scope whole every run, the request its read sends, and the read lands that answer: FRESH only when X-WP-Total and the posts as they would land, person fields left out, hash as the last committed load's did. Until 2026-10-15 it hashed the (id, modified_gmt) set, which a write to a post's meta, such as an ACF field, does not move (review finding S1-1). A WordPress feed's validators are site-wide and never decide FRESH (the dlt skill, rule 4)."
       },
       "discovered_via": "bcc70dd0:pipeline/reference/org_coverage.json's AVAILABLE_NOT_LOADED suggested_hikes row for this club (coverage audit 2026-10-01), re-read live on 2026-10-04 for decision 54's waves 4 and 5 (section K) under lib/user_agent.py's USER_AGENT, the host's robots.txt first.",
       "discovered_date": "2026-10-04",
@@ -8395,9 +8395,9 @@
       "attribution": "Tennessee Eastman Hiking & Canoeing Club",
       "terms": "None found: no terms page found (inventory, batch 3).",
       "freshness": {
-        "kind": "wp_total_and_modified",
+        "kind": "read_and_hash",
         "url": "https://tehcc.org/wp-json/wp/v2/posts",
-        "notes": "WordpressPosts' change check: X-WP-Total and a sha256 over the category's (id, modified_gmt) pairs, one small request (`_fields=id,modified_gmt,slug`). The site's feed validators are site-wide and never decide FRESH (the dlt skill, rule 4)."
+        "notes": "extract/_kinds.py's WordpressPosts check reads the posts in scope whole every run, the request its read sends, and the read lands that answer: FRESH only when X-WP-Total and the posts as they would land, person fields left out, hash as the last committed load's did. Until 2026-10-15 it hashed the (id, modified_gmt) set, which a write to a post's meta, such as an ACF field, does not move (review finding S1-1). A WordPress feed's validators are site-wide and never decide FRESH (the dlt skill, rule 4)."
       },
       "discovered_via": "pipeline/ELT.md decision 53's phase A inventory (batch 3), re-read live under our agent in phase B, 2026-10-03.",
       "discovered_date": "2026-10-03",
@@ -11542,9 +11542,9 @@
       ],
       "key_comment": "`id`, the WordPress post id: unique on all 28 rows read 2026-10-04, with X-WP-Total 28 in the same answer. The site's own primary key, never minted again by a reload (decision 40).",
       "freshness": {
-        "kind": "wp_id_modified_set",
+        "kind": "read_and_hash",
         "url": "https://mtsgreenway.org/wp-json/wp/v2/itinerary",
-        "notes": "WordpressPosts' check: X-WP-Total and a sha256 of the scoped (id, modified_gmt) set, one small request (`_fields=id,modified_gmt,slug`). A WordPress feed's validators are site-wide and never decide FRESH (the dlt skill, rule 4)."
+        "notes": "extract/_kinds.py's WordpressPosts check reads the posts in scope whole every run, the request its read sends, and the read lands that answer: FRESH only when X-WP-Total and the posts as they would land, person fields left out, hash as the last committed load's did. Until 2026-10-15 it hashed the (id, modified_gmt) set, which a write to a post's meta, such as an ACF field, does not move (review finding S1-1). A WordPress feed's validators are site-wide and never decide FRESH (the dlt skill, rule 4)."
       },
       "discovered_via": "bcc70dd0:pipeline/reference/org_coverage.json's AVAILABLE_NOT_LOADED suggested_hikes row for this club (coverage audit 2026-10-01), re-read live on 2026-10-04 for decision 54's wave 3 (section C) under lib/user_agent.py's USER_AGENT, the host's robots.txt first.",
       "discovered_date": "2026-10-04",
@@ -13302,9 +13302,9 @@
       ],
       "key_comment": "`id`, the WordPress post id: unique on all 86 rows read 2026-10-04, with X-WP-Total 86 in the same answer. The site's own primary key, never minted again by a reload (decision 40).",
       "freshness": {
-        "kind": "wp_id_modified_set",
+        "kind": "read_and_hash",
         "url": "https://ridgetrail.org/wp-json/wp/v2/trail-section",
-        "notes": "WordpressPosts' check: X-WP-Total and a sha256 of the scoped (id, modified_gmt) set, one small request (`_fields=id,modified_gmt,slug`). A WordPress feed's validators are site-wide and never decide FRESH (the dlt skill, rule 4)."
+        "notes": "extract/_kinds.py's WordpressPosts check reads the posts in scope whole every run, the request its read sends, and the read lands that answer: FRESH only when X-WP-Total and the posts as they would land, person fields left out, hash as the last committed load's did. Until 2026-10-15 it hashed the (id, modified_gmt) set, which a write to a post's meta, such as an ACF field, does not move (review finding S1-1). A WordPress feed's validators are site-wide and never decide FRESH (the dlt skill, rule 4)."
       },
       "discovered_via": "bcc70dd0:pipeline/reference/org_coverage.json's AVAILABLE_NOT_LOADED suggested_hikes row for this club (coverage audit 2026-10-01), re-read live on 2026-10-04 for decision 54's wave 3 (section C) under lib/user_agent.py's USER_AGENT, the host's robots.txt first.",
       "discovered_date": "2026-10-04",
@@ -13334,9 +13334,9 @@
       ],
       "key_comment": "`id`, the WordPress post id: unique on all 33 rows read 2026-10-04, with X-WP-Total 33 in the same answer. The site's own primary key, never minted again by a reload (decision 40).",
       "freshness": {
-        "kind": "wp_id_modified_set",
+        "kind": "read_and_hash",
         "url": "https://ridgetrail.org/wp-json/wp/v2/posts?categories=21",
-        "notes": "WordpressPosts' check: X-WP-Total and a sha256 of the scoped (id, modified_gmt) set, one small request (`_fields=id,modified_gmt,slug`). A WordPress feed's validators are site-wide and never decide FRESH (the dlt skill, rule 4)."
+        "notes": "extract/_kinds.py's WordpressPosts check reads the posts in scope whole every run, the request its read sends, and the read lands that answer: FRESH only when X-WP-Total and the posts as they would land, person fields left out, hash as the last committed load's did. Until 2026-10-15 it hashed the (id, modified_gmt) set, which a write to a post's meta, such as an ACF field, does not move (review finding S1-1). A WordPress feed's validators are site-wide and never decide FRESH (the dlt skill, rule 4)."
       },
       "discovered_via": "bcc70dd0:pipeline/reference/org_coverage.json's AVAILABLE_NOT_LOADED suggested_hikes row for this club (coverage audit 2026-10-01), re-read live on 2026-10-04 for decision 54's wave 3 (section C) under lib/user_agent.py's USER_AGENT, the host's robots.txt first.",
       "discovered_date": "2026-10-04",
@@ -13653,9 +13653,9 @@
       "attribution": "Ozark Highlands Trail Association",
       "terms": "None found: as ohta_trail_alerts.",
       "freshness": {
-        "kind": "wp_total_and_modified",
+        "kind": "read_and_hash",
         "url": "https://ozarkhighlandstrail.com/wp-json/wp/v2/posts",
-        "notes": "WordpressPosts' change check: X-WP-Total and a sha256 over the category's (id, modified_gmt) pairs, one small request (`_fields=id,modified_gmt,slug`). The site's feed validators are site-wide and never decide FRESH (the dlt skill, rule 4)."
+        "notes": "extract/_kinds.py's WordpressPosts check reads the posts in scope whole every run, the request its read sends, and the read lands that answer: FRESH only when X-WP-Total and the posts as they would land, person fields left out, hash as the last committed load's did. Until 2026-10-15 it hashed the (id, modified_gmt) set, which a write to a post's meta, such as an ACF field, does not move (review finding S1-1). A WordPress feed's validators are site-wide and never decide FRESH (the dlt skill, rule 4)."
       },
       "discovered_via": "pipeline/ELT.md decision 53's phase A inventory (batch 2), re-read live under our agent in phase B, 2026-10-03.",
       "discovered_date": "2026-10-03",
@@ -13882,9 +13882,9 @@
       "attribution": "Pacific Northwest Trail Association",
       "terms": "None found: as pnta_trail_alerts.",
       "freshness": {
-        "kind": "wp_total_and_modified",
+        "kind": "read_and_hash",
         "url": "https://www.pnt.org/wp-json/wp/v2/posts",
-        "notes": "WordpressPosts' change check: X-WP-Total and a sha256 over the category's (id, modified_gmt) pairs, one small request (`_fields=id,modified_gmt,slug`). The site's feed validators are site-wide and never decide FRESH (the dlt skill, rule 4)."
+        "notes": "extract/_kinds.py's WordpressPosts check reads the posts in scope whole every run, the request its read sends, and the read lands that answer: FRESH only when X-WP-Total and the posts as they would land, person fields left out, hash as the last committed load's did. Until 2026-10-15 it hashed the (id, modified_gmt) set, which a write to a post's meta, such as an ACF field, does not move (review finding S1-1). A WordPress feed's validators are site-wide and never decide FRESH (the dlt skill, rule 4)."
       },
       "discovered_via": "pipeline/ELT.md decision 53's phase A inventory (batch 4), re-read live under our agent in phase B, 2026-10-03.",
       "discovered_date": "2026-10-03",
@@ -13916,9 +13916,9 @@
       ],
       "key_comment": "`id`, the WordPress post id: unique on all 1 rows read 2026-10-04, with X-WP-Total 1 in the same answer. The site's own primary key, never minted again by a reload (decision 40).",
       "freshness": {
-        "kind": "wp_id_modified_set",
+        "kind": "read_and_hash",
         "url": "https://www.pnt.org/wp-json/wp/v2/posts?categories=117",
-        "notes": "WordpressPosts' check: X-WP-Total and a sha256 of the scoped (id, modified_gmt) set, one small request (`_fields=id,modified_gmt,slug`). A WordPress feed's validators are site-wide and never decide FRESH (the dlt skill, rule 4)."
+        "notes": "extract/_kinds.py's WordpressPosts check reads the posts in scope whole every run, the request its read sends, and the read lands that answer: FRESH only when X-WP-Total and the posts as they would land, person fields left out, hash as the last committed load's did. Until 2026-10-15 it hashed the (id, modified_gmt) set, which a write to a post's meta, such as an ACF field, does not move (review finding S1-1). A WordPress feed's validators are site-wide and never decide FRESH (the dlt skill, rule 4)."
       },
       "discovered_via": "bcc70dd0:pipeline/reference/org_coverage.json's AVAILABLE_NOT_LOADED suggested_hikes row for this club (coverage audit 2026-10-01), re-read live on 2026-10-04 for decision 54's wave 3 (section C) under lib/user_agent.py's USER_AGENT, the host's robots.txt first.",
       "discovered_date": "2026-10-04",
@@ -14166,9 +14166,9 @@
       "attribution": "Trailkeepers of Oregon",
       "terms": "None found: no terms page is linked (inventory, batch 4).",
       "freshness": {
-        "kind": "wp_total_and_modified",
+        "kind": "read_and_hash",
         "url": "https://trailkeepersoforegon.org/wp-json/wp/v2/posts",
-        "notes": "WordpressPosts' change check: X-WP-Total and a sha256 over the category's (id, modified_gmt) pairs, one small request (`_fields=id,modified_gmt,slug`). The site's feed validators are site-wide and never decide FRESH (the dlt skill, rule 4)."
+        "notes": "extract/_kinds.py's WordpressPosts check reads the posts in scope whole every run, the request its read sends, and the read lands that answer: FRESH only when X-WP-Total and the posts as they would land, person fields left out, hash as the last committed load's did. Until 2026-10-15 it hashed the (id, modified_gmt) set, which a write to a post's meta, such as an ACF field, does not move (review finding S1-1). A WordPress feed's validators are site-wide and never decide FRESH (the dlt skill, rule 4)."
       },
       "discovered_via": "pipeline/ELT.md decision 53's phase A inventory (batch 4), re-read live under our agent in phase B, 2026-10-03.",
       "discovered_date": "2026-10-03",
@@ -14203,9 +14203,9 @@
       ],
       "key_comment": "`id`, the WordPress post id: unique on all 12 rows read 2026-10-04, with X-WP-Total 12 in the same answer. The site's own primary key, never minted again by a reload (decision 40).",
       "freshness": {
-        "kind": "wp_id_modified_set",
+        "kind": "read_and_hash",
         "url": "https://trailkeepersoforegon.org/wp-json/wp/v2/posts?categories=40",
-        "notes": "WordpressPosts' check: X-WP-Total and a sha256 of the scoped (id, modified_gmt) set, one small request (`_fields=id,modified_gmt,slug`). A WordPress feed's validators are site-wide and never decide FRESH (the dlt skill, rule 4)."
+        "notes": "extract/_kinds.py's WordpressPosts check reads the posts in scope whole every run, the request its read sends, and the read lands that answer: FRESH only when X-WP-Total and the posts as they would land, person fields left out, hash as the last committed load's did. Until 2026-10-15 it hashed the (id, modified_gmt) set, which a write to a post's meta, such as an ACF field, does not move (review finding S1-1). A WordPress feed's validators are site-wide and never decide FRESH (the dlt skill, rule 4)."
       },
       "discovered_via": "bcc70dd0:pipeline/reference/org_coverage.json's AVAILABLE_NOT_LOADED suggested_hikes row for this club (coverage audit 2026-10-01), re-read live on 2026-10-04 for decision 54's wave 3 (section C) under lib/user_agent.py's USER_AGENT, the host's robots.txt first.",
       "discovered_date": "2026-10-04",
@@ -15598,9 +15598,9 @@
       "person_fields_comment": "What the source carries that names or reaches a person, none of which lands: the reader keeps only the fields it names (extract/_notices.py's FEED_COLUMNS and PAGE_COLUMNS, extract/_kinds.py's WP_DROPPED), so these never reach the raw store (pipeline/ELT.md, 'Who may publish', rule 8; decision 59).",
       "reader": "WordpressPosts",
       "freshness": {
-        "kind": "wp_id_modified_set",
+        "kind": "read_and_hash",
         "url": "https://aztrail.org/category/closures-reroutes/",
-        "notes": "extract/_kinds.py's WordpressPosts check: a sha256 of the scoped (id, modified_gmt) set and X-WP-Total, one small request; a WordPress feed's validators are site-wide and never decide FRESH (the dlt skill, rule 4)."
+        "notes": "extract/_kinds.py's WordpressPosts check reads the posts in scope whole every run, the request its read sends, and the read lands that answer: FRESH only when X-WP-Total and the posts as they would land, person fields left out, hash as the last committed load's did. Until 2026-10-15 it hashed the (id, modified_gmt) set, which a write to a post's meta, such as an ACF field, does not move (review finding S1-1). A WordPress feed's validators are site-wide and never decide FRESH (the dlt skill, rule 4)."
       },
       "discovered_via": "pipeline/ELT.md decision 53 phase A inventory, batch 4, measured 2026-10-03; registered in phase B (pages, feeds and WordPress).",
       "discovered_date": "2026-10-03",
@@ -16396,9 +16396,9 @@
       "person_fields_comment": "What the source carries that names or reaches a person, none of which lands: the reader keeps only the fields it names (extract/_notices.py's FEED_COLUMNS and PAGE_COLUMNS, extract/_kinds.py's WP_DROPPED), so these never reach the raw store (pipeline/ELT.md, 'Who may publish', rule 8; decision 59).",
       "reader": "WordpressPosts",
       "freshness": {
-        "kind": "wp_id_modified_set",
+        "kind": "read_and_hash",
         "url": "https://greenmountainclub.org/hike/plan-and-prepare/trail-updates/",
-        "notes": "extract/_kinds.py's WordpressPosts check: a sha256 of the scoped (id, modified_gmt) set and X-WP-Total, one small request; a WordPress feed's validators are site-wide and never decide FRESH (the dlt skill, rule 4)."
+        "notes": "extract/_kinds.py's WordpressPosts check reads the posts in scope whole every run, the request its read sends, and the read lands that answer: FRESH only when X-WP-Total and the posts as they would land, person fields left out, hash as the last committed load's did. Until 2026-10-15 it hashed the (id, modified_gmt) set, which a write to a post's meta, such as an ACF field, does not move (review finding S1-1). A WordPress feed's validators are site-wide and never decide FRESH (the dlt skill, rule 4)."
       },
       "discovered_via": "pipeline/ELT.md decision 53 phase A inventory, batch 5, measured 2026-10-03; registered in phase B (pages, feeds and WordPress).",
       "discovered_date": "2026-10-03",
@@ -16425,9 +16425,9 @@
       ],
       "key_comment": "`id`, the WordPress post id: unique on all 57 rows read 2026-10-04, with X-WP-Total 57 in the same answer. The site's own primary key, never minted again by a reload (decision 40).",
       "freshness": {
-        "kind": "wp_id_modified_set",
+        "kind": "read_and_hash",
         "url": "https://greenmountainclub.org/wp-json/wp/v2/hikes",
-        "notes": "WordpressPosts' check: X-WP-Total and a sha256 of the scoped (id, modified_gmt) set, one small request (`_fields=id,modified_gmt,slug`). A WordPress feed's validators are site-wide and never decide FRESH (the dlt skill, rule 4)."
+        "notes": "extract/_kinds.py's WordpressPosts check reads the posts in scope whole every run, the request its read sends, and the read lands that answer: FRESH only when X-WP-Total and the posts as they would land, person fields left out, hash as the last committed load's did. Until 2026-10-15 it hashed the (id, modified_gmt) set, which a write to a post's meta, such as an ACF field, does not move (review finding S1-1). A WordPress feed's validators are site-wide and never decide FRESH (the dlt skill, rule 4)."
       },
       "discovered_via": "bcc70dd0:pipeline/reference/org_coverage.json's AVAILABLE_NOT_LOADED suggested_hikes row for this club (coverage audit 2026-10-01), re-read live on 2026-10-04 for decision 54's wave 3 (section C) under lib/user_agent.py's USER_AGENT, the host's robots.txt first.",
       "discovered_date": "2026-10-04",
@@ -16532,9 +16532,9 @@
       "person_fields_comment": "What the source carries that names or reaches a person, none of which lands: the reader keeps only the fields it names (extract/_notices.py's FEED_COLUMNS and PAGE_COLUMNS, extract/_kinds.py's WP_DROPPED), so these never reach the raw store (pipeline/ELT.md, 'Who may publish', rule 8; decision 59).",
       "reader": "WordpressPosts",
       "freshness": {
-        "kind": "wp_id_modified_set",
+        "kind": "read_and_hash",
         "url": "https://www.matc.org/category/hazard/",
-        "notes": "extract/_kinds.py's WordpressPosts check: a sha256 of the scoped (id, modified_gmt) set and X-WP-Total, one small request; a WordPress feed's validators are site-wide and never decide FRESH (the dlt skill, rule 4)."
+        "notes": "extract/_kinds.py's WordpressPosts check reads the posts in scope whole every run, the request its read sends, and the read lands that answer: FRESH only when X-WP-Total and the posts as they would land, person fields left out, hash as the last committed load's did. Until 2026-10-15 it hashed the (id, modified_gmt) set, which a write to a post's meta, such as an ACF field, does not move (review finding S1-1). A WordPress feed's validators are site-wide and never decide FRESH (the dlt skill, rule 4)."
       },
       "discovered_via": "pipeline/ELT.md decision 53 phase A inventory, batch 5, measured 2026-10-03; registered in phase B (pages, feeds and WordPress).",
       "discovered_date": "2026-10-03",
@@ -17456,9 +17456,9 @@
       ],
       "key_comment": "`id`, the WordPress post id: unique on all 38 rows read 2026-10-04, with X-WP-Total 38 in the same answer. The site's own primary key, never minted again by a reload (decision 40).",
       "freshness": {
-        "kind": "wp_id_modified_set",
+        "kind": "read_and_hash",
         "url": "https://nmvfo.org/wp-json/wp/v2/pages?parent=2040",
-        "notes": "WordpressPosts' check: X-WP-Total and a sha256 of the scoped (id, modified_gmt) set, one small request (`_fields=id,modified_gmt,slug`). A WordPress feed's validators are site-wide and never decide FRESH (the dlt skill, rule 4)."
+        "notes": "extract/_kinds.py's WordpressPosts check reads the posts in scope whole every run, the request its read sends, and the read lands that answer: FRESH only when X-WP-Total and the posts as they would land, person fields left out, hash as the last committed load's did. Until 2026-10-15 it hashed the (id, modified_gmt) set, which a write to a post's meta, such as an ACF field, does not move (review finding S1-1). A WordPress feed's validators are site-wide and never decide FRESH (the dlt skill, rule 4)."
       },
       "discovered_via": "bcc70dd0:pipeline/reference/org_coverage.json's AVAILABLE_NOT_LOADED suggested_hikes row for this club (coverage audit 2026-10-01), re-read live on 2026-10-04 for decision 54's wave 3 (section C) under lib/user_agent.py's USER_AGENT, the host's robots.txt first.",
       "discovered_date": "2026-10-04",
@@ -17997,9 +17997,9 @@
       ],
       "person_fields_comment": "Decision 59 leaves a free-text field that carries personal data out whole: on 2026-10-10 the category's 3 posts carried 3 telephone-number-shaped strings in their bodies and 1 in an excerpt (counted, not read). WordpressPosts drops the row's person_fields before dlt sees the post, so the body never reaches the raw store; the title, dates, categories and link are what a notice publishes anyway (decisions 55 and 107).",
       "freshness": {
-        "kind": "wp_total_and_modified",
+        "kind": "read_and_hash",
         "url": "https://www.ratc.org/wp-json/wp/v2/posts",
-        "notes": "WordpressPosts' change check: X-WP-Total and a sha256 over the category's (id, modified_gmt) pairs, one small request (`_fields=id,modified_gmt,slug`). The site's feed validators are site-wide and never decide FRESH (the dlt skill, rule 4; decision 53's inventory read the category feed's ETag and Last-Modified as the site's)."
+        "notes": "extract/_kinds.py's WordpressPosts check reads the posts in scope whole every run, the request its read sends, and the read lands that answer: FRESH only when X-WP-Total and the posts as they would land, person fields left out, hash as the last committed load's did. Until 2026-10-15 it hashed the (id, modified_gmt) set, which a write to a post's meta, such as an ACF field, does not move (review finding S1-1). A WordPress feed's validators are site-wide and never decide FRESH (the dlt skill, rule 4; decision 53's inventory read the category feed's ETag and Last-Modified as the site's)."
       },
       "discovered_via": "pipeline/ELT.md decision 53 phase A inventory, batch 2, measured 2026-10-03: its drafted row, registered on 2026-10-10 once www.ratc.org's robots.txt answered 200 (it answered 502 to phase B on 2026-10-03, which RFC 9309 reads as a full disallow).",
       "discovered_date": "2026-10-03",
@@ -18026,9 +18026,9 @@
       ],
       "person_fields_comment": "Decision 59 leaves a free-text field that carries personal data out whole: on 2026-10-10 the category's 25 posts carried 8 e-mail-address-shaped and 5 telephone-number-shaped strings in their bodies and 1 telephone-number-shaped string in an excerpt (counted, not read). WordpressPosts drops the row's person_fields before dlt sees the post, so the body never reaches the raw store; the title, dates, categories and link are what a notice publishes anyway (decisions 55 and 107).",
       "freshness": {
-        "kind": "wp_total_and_modified",
+        "kind": "read_and_hash",
         "url": "https://www.ratc.org/wp-json/wp/v2/posts",
-        "notes": "WordpressPosts' change check: X-WP-Total and a sha256 over the category's (id, modified_gmt) pairs, one small request (`_fields=id,modified_gmt,slug`). The site's feed validators are site-wide and never decide FRESH (the dlt skill, rule 4; decision 53's inventory read the category feed's ETag and Last-Modified as the site's)."
+        "notes": "extract/_kinds.py's WordpressPosts check reads the posts in scope whole every run, the request its read sends, and the read lands that answer: FRESH only when X-WP-Total and the posts as they would land, person fields left out, hash as the last committed load's did. Until 2026-10-15 it hashed the (id, modified_gmt) set, which a write to a post's meta, such as an ACF field, does not move (review finding S1-1). A WordPress feed's validators are site-wide and never decide FRESH (the dlt skill, rule 4; decision 53's inventory read the category feed's ETag and Last-Modified as the site's)."
       },
       "discovered_via": "pipeline/ELT.md decision 53 phase A inventory, batch 2, measured 2026-10-03: its drafted row, registered on 2026-10-10 once www.ratc.org's robots.txt answered 200 (it answered 502 to phase B on 2026-10-03, which RFC 9309 reads as a full disallow).",
       "discovered_date": "2026-10-03",
@@ -18350,7 +18350,7 @@
       "trust": "authoritative",
       "steward": "Idaho Department of Parks and Recreation",
       "steward_contact": "https://parksandrecreation.idaho.gov/",
-      "licence": "STATED BY THE ORGANIZATION: the item behind this layer, 5a08280a853b41b69115a3fc0abbd2bc ('Idaho Recreation Trails', public, on IDPR's ArcGIS Online organisation), states terms, quoted verbatim in `terms` (read 2026-10-09). They bar commercial use, which decision 36 answers (OurHike is non-commercial in these terms' sense, the maintainer, 2026-10-01), and ask for source attribution, which `attribution` carries in the item's own accessInformation words. Their 'may not be used in 3rd party apps without source attribution' reads as a condition of crediting; rule 5's backstop holds the row on its 'may not' until a phrase in seeds/licence_restriction_phrases.csv reads it, which the steward's review settles.",
+      "licence": "STATED BY THE ORGANIZATION: the item behind this layer, 5a08280a853b41b69115a3fc0abbd2bc ('Idaho Recreation Trails', public, on IDPR's ArcGIS Online organisation), states terms, quoted verbatim in `terms` (read 2026-10-09). They bar commercial use, which decision 36 answers (OurHike is non-commercial in these terms' sense, the maintainer, 2026-10-01), and ask for source attribution, which `attribution` carries in the item's own accessInformation words. Their 'may not be used in 3rd party apps without source attribution' reads as a condition of crediting, and rule 5 reads it so: the credit phrase in seeds/licence_restriction_phrases.csv (decision 169's reading, by class since decision 193) cuts those words alone, so they hold nothing, and the row's commercial bar is the only restriction rule 5 finds.",
       "licence_basis": "stated_by_org",
       "attribution": "Idaho Parks and Recreation Department, United States Forest Service, Bureau of Land Management",
       "terms": "Not for commercial use and may not be used in 3rd party apps without source attribution. Contact IDPR for Schema information. The Idaho Department of Parks and Recreation assumes no liability for any loss that may result from the use of this data. The Idaho Department of Parks and Recreation, as a general rule, may modify or delete any of the information that is included in this data without advance notice. The Idaho Department of Parks and Recreation may also interrupt or halt access to this data when deemed necessary. The Idaho Department of Parks and Recreation shall assume no liability for any damages resulting from modification or deletion of this dataset or interruption or halting access to this data. Inquire to [an e-mail address, not copied here]",
@@ -18376,7 +18376,7 @@
       "trust": "authoritative",
       "steward": "Idaho Department of Parks and Recreation",
       "steward_contact": "https://parksandrecreation.idaho.gov/",
-      "licence": "STATED BY THE ORGANIZATION: the item behind this layer, 5a08280a853b41b69115a3fc0abbd2bc ('Idaho Recreation Trails', public, on IDPR's ArcGIS Online organisation), states terms, quoted verbatim in `terms` (read 2026-10-09). They bar commercial use, which decision 36 answers (OurHike is non-commercial in these terms' sense, the maintainer, 2026-10-01), and ask for source attribution, which `attribution` carries in the item's own accessInformation words. Their 'may not be used in 3rd party apps without source attribution' reads as a condition of crediting; rule 5's backstop holds the row on its 'may not' until a phrase in seeds/licence_restriction_phrases.csv reads it, which the steward's review settles.",
+      "licence": "STATED BY THE ORGANIZATION: the item behind this layer, 5a08280a853b41b69115a3fc0abbd2bc ('Idaho Recreation Trails', public, on IDPR's ArcGIS Online organisation), states terms, quoted verbatim in `terms` (read 2026-10-09). They bar commercial use, which decision 36 answers (OurHike is non-commercial in these terms' sense, the maintainer, 2026-10-01), and ask for source attribution, which `attribution` carries in the item's own accessInformation words. Their 'may not be used in 3rd party apps without source attribution' reads as a condition of crediting, and rule 5 reads it so: the credit phrase in seeds/licence_restriction_phrases.csv (decision 169's reading, by class since decision 193) cuts those words alone, so they hold nothing, and the row's commercial bar is the only restriction rule 5 finds.",
       "licence_basis": "stated_by_org",
       "attribution": "Idaho Parks and Recreation Department, United States Forest Service, Bureau of Land Management",
       "terms": "Not for commercial use and may not be used in 3rd party apps without source attribution. Contact IDPR for Schema information. The Idaho Department of Parks and Recreation assumes no liability for any loss that may result from the use of this data. The Idaho Department of Parks and Recreation, as a general rule, may modify or delete any of the information that is included in this data without advance notice. The Idaho Department of Parks and Recreation may also interrupt or halt access to this data when deemed necessary. The Idaho Department of Parks and Recreation shall assume no liability for any damages resulting from modification or deletion of this dataset or interruption or halting access to this data. Inquire to [an e-mail address, not copied here]",
@@ -18588,7 +18588,8 @@
       "steward_contact": "https://www.floridastateparks.org/",
       "licence": "PUBLIC GIS (decision 21a, 2026-10-01): a layer the organization publishes itself, anonymously, on a public ArcGIS endpoint, presumed reusable for rendering into OurHike's maps with attribution. The ArcGIS Online item that registers this layer's URL, bd190cf3d3934fbd9529dfe1c8c8772c ('Florida State Parks Boundaries', public, in the ArcGIS Online organisation that serves the Operational Status layers), carries as its licenseInfo the words quoted verbatim in `terms`: the outlines are for relative location reference and are no survey, and the originator is to be acknowledged. S7 (decision 188, the maintainer's poll of 2026-10-11) reads a reliance disclaimer as a scope note, as decisions 80 and 106 read one publisher's sentence each, so the layer publishes with FDEP's credit; seeds/licence_restriction_phrases.csv carries that reading of these words. The layer's own FGDC metadata reads accconst 'None' and useconst 'None', and its copyrightText 'Florida Department of Environmental Protection, Division of Recreation and Parks, Office of Park Planning' (read 2026-10-11). floridastateparks.org answers our agent 403, so the website's terms are UNKNOWN (the triage, 2026-10-08). This is the maintainer's presumption, NOT A LICENCE FROM THEM, and must never be rendered as one; dbt's int_sources__publication decides publication.",
       "licence_basis": "public_gis",
-      "attribution": "Florida Department of Environmental Protection, Division of Recreation and Parks, Office of Park Planning",
+      "attribution": "Florida Department of Environmental Protection, Division of Recreation and Parks",
+      "attribution_comment": "The Division's credit, word for word as the two status rows give it and as this layer's own copyrightText opens ('Florida Department of Environmental Protection, Division of Recreation and Parks, Office of Park Planning', read 2026-10-11, which this row credited whole until 2026-10-15). The Office of Park Planning is that division's, so the credit names the originator its terms ask to be acknowledged, at the division (Reasoned from the copyrightText's own order). One credit for Florida State Parks' three rows, as decision 196 gave CPW's eight one: the sources screen prints a steward's credit only where every shipping row gives the same (export_sources.py's _unanimous(), int_sources__stewards), and with this row's longer one it printed none (review finding S3-1 of 2026-10-15).",
       "terms": "The dataset is intended to be used for relative location reference only. The dataset is NOT a survey document and should not be utilized as such. Acknowledgement of the Originator when using the data set as a source.",
       "terms_source": "The item's licenseInfo, https://www.arcgis.com/home/item.html?id=bd190cf3d3934fbd9529dfe1c8c8772c, read 2026-10-11 through ArcGIS Online's search API, its HTML tags left out; the layer's FGDC metadata, https://ca.dep.state.fl.us/arcgis/rest/services/OpenData/PARKS_BOUNDARIES/MapServer/0/metadata, the same day.",
       "person_fields_comment": "Read off the layer's live field list on 2026-10-11: none of its 16 fields names or reaches a person, and the PERSON_SHAPED backstop reads none of them. ADDRESS is each park's own street address (filled on 179 of 179; its values not printed), the park's and not a person's. The layer has no editor tracking (no editFieldsInfo), so no creator or editor field.",
@@ -18784,9 +18785,9 @@
       "person_fields_comment": "Post bodies carried 2 phone-shaped strings in 2 of the 65 posts on 2026-10-09 (counted, never kept), so `content` and `excerpt` are left out, and `author` with WordPress's plumbing by WP_DROPPED (decision 59). The ACF fields a post carries (status, status_message, resolution_message, short_title) held no e-mail- or phone-shaped string on 65 of 65.",
       "reader": "WordpressPosts",
       "freshness": {
-        "kind": "wp_id_modified_set",
+        "kind": "read_and_hash",
         "url": "https://gaptrail.org/wp-json/wp/v2/trail-alerts",
-        "notes": "extract/_kinds.py's WordpressPosts check: a sha256 of the (id, modified_gmt) set and X-WP-Total, one small request; a WordPress feed's validators are site-wide and never decide FRESH (the dlt skill, rule 4)."
+        "notes": "extract/_kinds.py's WordpressPosts check reads the posts in scope whole every run, the request its read sends, and the read lands that answer: FRESH only when X-WP-Total and the posts as they would land, person fields left out, hash as the last committed load's did. Until 2026-10-15 it hashed the (id, modified_gmt) set, which a write to a post's meta, such as an ACF field, does not move (review finding S1-1). A WordPress feed's validators are site-wide and never decide FRESH (the dlt skill, rule 4)."
       },
       "discovered_via": "bcc70dd0:pipeline/reference/org_coverage.json's gap closures and warnings rows (AVAILABLE_NOT_LOADED in the coverage audit, 2026-10-01; a candidate steward with no trail_orgs.json row), read again live for decision 54's wave 6 on 2026-10-09 under lib/user_agent.py's USER_AGENT: gaptrail.org's robots.txt answered 200 with 1 Disallow line and no Crawl-delay, and allows the REST route; robots.txt first, then the REST route's list with X-WP-Total, the post bodies read once to count e-mail- and phone-shaped strings (counted, never kept), two seconds or more between requests. Registered by hand.",
       "discovered_date": "2026-10-09",
@@ -18814,9 +18815,9 @@
       "person_fields_comment": "Post bodies carried 9 e-mail-shaped strings in 6 of the 36 posts and 1 phone-shaped string on 2026-10-09 (counted, never kept), so `content` and `excerpt` are left out, and `author` with WordPress's plumbing by WP_DROPPED (decision 59).",
       "reader": "WordpressPosts",
       "freshness": {
-        "kind": "wp_id_modified_set",
+        "kind": "read_and_hash",
         "url": "https://rivertorivertrail.net/category/trail-conditions/",
-        "notes": "extract/_kinds.py's WordpressPosts check: a sha256 of the category's (id, modified_gmt) set and X-WP-Total, after the category's id is looked up by its slug; a WordPress feed's validators are site-wide and never decide FRESH (the dlt skill, rule 4)."
+        "notes": "extract/_kinds.py's WordpressPosts check reads the posts in scope whole every run, the request its read sends, and the read lands that answer: FRESH only when X-WP-Total and the posts as they would land, person fields left out, hash as the last committed load's did. Until 2026-10-15 it hashed the (id, modified_gmt) set, which a write to a post's meta, such as an ACF field, does not move (review finding S1-1). A WordPress feed's validators are site-wide and never decide FRESH (the dlt skill, rule 4)."
       },
       "discovered_via": "bcc70dd0:pipeline/reference/org_coverage.json's r2r closures and warnings rows (AVAILABLE_NOT_LOADED in the coverage audit, 2026-10-01; a candidate steward with no trail_orgs.json row), read again live for decision 54's wave 6 on 2026-10-09 under lib/user_agent.py's USER_AGENT: rivertorivertrail.net's robots.txt answered 200 with 1 Disallow line and no Crawl-delay, and allows the REST route; robots.txt first, then the REST route's list with X-WP-Total, the post bodies read once to count e-mail- and phone-shaped strings (counted, never kept), two seconds or more between requests. Registered by hand.",
       "discovered_date": "2026-10-09",

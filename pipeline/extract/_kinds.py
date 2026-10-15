@@ -85,6 +85,9 @@ from extract._notices import (  # noqa: F401
     DEFAULT_HOST_GAP_SECONDS,
     FeedNotices,
     PageNotice,
+    _forget,
+    _recall,
+    _remember,
     feed_notices,
     page_notice,
     polite,
@@ -484,11 +487,31 @@ class PersonRuled:
         return self.person_rule.field_rules
 
     def without_people(self, rows: list[dict]) -> list[dict]:
-        """`rows` with every field the rule leaves out removed, the person-shaped names printed once for the read."""
-        names = {name for row in rows for name in row}
-        dropped = self.person_rule.left_out(names)
+        """`rows` with every field the rule leaves out removed, at any depth, the person-shaped names printed once.
+
+        A name inside an object, or inside an object in a list, is judged as a
+        top-level one is, and nothing inside a field left out is read at all:
+        the Great Allegheny Passage's alerts carry their status in an `acf`
+        object models read whole, so a person field a site adds there was
+        landing (review finding S2-2 of 2026-10-15). Nested values land as
+        JSON in their one column (extract/_run.py's max_table_nesting=0), so
+        this changes what a column holds, never which columns a table has.
+        """
+        rule, names, dropped = self.person_rule, set(), {}
+
+        def kept(value):
+            if isinstance(value, list):
+                return [kept(item) for item in value]
+            if not isinstance(value, dict):
+                return value
+            for name in value.keys() - names:
+                names.add(name)
+                dropped.update(rule.left_out([name]))
+            return {name: kept(inner) for name, inner in value.items() if name.lower() not in dropped}
+
+        landed = [kept(row) for row in rows]
         report_shaped(self.key, dropped, names)
-        return [{name: value for name, value in row.items() if name.lower() not in dropped} for row in rows]
+        return landed
 
 
 def left_out_of_row(name: str, listed: set[str], dropped: dict[str, str], rule: PersonRule) -> bool:
@@ -1246,7 +1269,9 @@ class WordpressPosts(PersonRuled, Resource):
     a post's columns but its prose in `properties` (GMC's six hike
     taxonomies among them), the notices' wording union reads every text
     column of the base model, and each site's own taxonomy and plugin
-    fields would need listing per row. What the name rule cannot see is a
+    fields would need listing per row. The rule reads a name at any depth
+    (PersonRuled.without_people), so a `contact_email` inside GAP's `acf`
+    object is left out as one at the top is. What it cannot see is a
     person under a name it does not know, nested or not; such a field is
     the row's `person_fields`, as `content` is where a post carries a
     telephone number.
@@ -1307,25 +1332,45 @@ class WordpressPosts(PersonRuled, Resource):
             return {}
         return {"categories": ",".join(str(term) for term in self.category_ids(http))}
 
-    def change_check(self, recorded: dict | None) -> tuple[Freshness, dict | None]:
-        """A hash of the category's (id, modified) set, and its `X-WP-Total`.
+    def _landed(self) -> tuple[list[dict], int | None]:
+        """The posts in scope as they land, PersonRule applied, and the site's `X-WP-Total`; a read short of it raises."""
+        http = self._session()
+        posts, total = wp_list(self.api, self.route, self.scope(http), http)
+        if total is not None and len(posts) < total:
+            raise RuntimeError(f"{self.key}: the site counts {total} posts and {len(posts)} were read")
+        return self.without_people(posts), total
 
-        One small request: `_fields=id,modified_gmt,slug`. An unpublished post
-        leaves the set, so a lifted closure moves the marker. The site's feed
-        ETag and `Last-Modified` are site-wide (GATC's alerts and events feeds
-        returned the same validator, measured 2026-10-01), so no feed validator
-        ever decides FRESH here.
+    def change_check(self, recorded: dict | None) -> tuple[Freshness, dict | None]:
+        """The read itself: `X-WP-Total` and a hash of the posts as they would land.
+
+        The posts are asked for whole, as rows() asks, and rows() lands this
+        answer (extract/_notices.py's _remember), so a run still sends one
+        list, and FRESH means every field that would land, ACF fields
+        included, is what the last committed load landed. Until 2026-10-15
+        this asked `_fields=id,modified_gmt,slug` and hashed the (id,
+        modified) set, which a write to a post's meta leaves standing:
+        WordPress stamps `modified_gmt` only when a post is saved through
+        wp_update_post(), so an ACF field set by update_field(), where the
+        Great Allegheny Passage keeps each alert's status and visibility
+        (seeds/notice_source_fields.csv), moved no pair, and the check could
+        answer FRESH while the closure changed (review finding S1-1 of
+        2026-10-15; Reasoned from WordPress's own API, not seen on GAP's site).
+        An unpublished post leaves the rows, so a lifted closure moves the
+        hash. The site's feed ETag and `Last-Modified` are site-wide (GATC's
+        alerts and events feeds returned the same validator, measured
+        2026-10-01), so no feed validator ever decides FRESH here.
         """
+        _forget(self.table)
         try:
-            http = self._session()
-            posts, total = wp_list(self.api, self.route, {**self.scope(http), "_fields": "id,modified_gmt,slug"}, http)
+            landed, total = self._landed()
         except (requests.RequestException, ValueError, KeyError, RuntimeError) as error:
             print(f"  {self.key}: change check failed ({error}); fetching")
             return Freshness.UNKNOWN, None
+        _remember(self.table, (landed, total))
         if total is None:
             return Freshness.UNKNOWN, None
-        pairs = sorted((post.get("id"), post.get("modified_gmt")) for post in posts)
-        marker = {"total": str(total), "set_sha256": hashlib.sha256(json.dumps(pairs).encode()).hexdigest()}
+        rows = sorted(json.dumps(row, sort_keys=True) for row in landed)
+        marker = {"total": str(total), "rows_sha256": hashlib.sha256(json.dumps(rows).encode()).hexdigest()}
         if recorded is None:
             return Freshness.STALE, marker
         return compare_marker(_canonical(recorded), _canonical(marker)), marker
@@ -1345,13 +1390,11 @@ class WordpressPosts(PersonRuled, Resource):
         return WP_DROPPED
 
     def rows(self, proofs: dict[str, int]):
-        http = self._session()
-        posts, total = wp_list(self.api, self.route, self.scope(http), http)
+        kept = _recall(self.table)
+        landed, total = kept if kept is not None else self._landed()
         if total is not None:
-            if len(posts) < total:
-                raise RuntimeError(f"{self.key}: the site counts {total} posts and {len(posts)} were read")
             proofs[self.table] = total
-        yield from self.without_people(posts)
+        yield from landed
 
 
 # Fields a post carries that are WordPress plumbing or name a person. `author`

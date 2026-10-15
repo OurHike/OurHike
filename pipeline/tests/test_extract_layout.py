@@ -37,6 +37,7 @@ from extract._contract import (
     CADENCES,
     EXTRACT_DIR,
     FILE_TYPES,
+    MAY_BE_EMPTY,
     NOT_AVAILABLE_FILE,
     NOT_CLUB_TYPES,
     PIPELINE_DIR,
@@ -412,6 +413,20 @@ def test_every_resource_is_on_a_lane_and_an_override_says_why():
         assert resource.cadence in carried, f"{resource.table}: no lane runs {resource.cadence!r} resources yet"
         if resource.cadence_override is not None:
             assert resource.cadence_reason, f"{resource.table}: a cadence override needs cadence_reason"
+
+
+def test_a_resource_whose_rows_are_another_types_names_one_that_may_not_empty_and_says_why():
+    """Resource.holds judges a table as another type's in the run check, emptiness and the shrink floor, while its
+    lane stays its file's: FDEP's park boundaries, a places layer on the closures lane (review finding S1-2 of
+    2026-10-15). It may only take that allowance away. Emptiness is granted by a notice file's own type, so a
+    `holds` naming closures or warnings would let a layer of any other kind land empty."""
+    holding = [resource for resource in all_resources(EVERY_FILE) if resource.holds is not None]
+    assert "fl_state_parks_park_boundaries" in {resource.key for resource in holding}
+    for resource in holding:
+        assert resource.holds in FILE_TYPES and resource.holds != resource.type, resource.table
+        assert resource.holds not in MAY_BE_EMPTY, f"{resource.table}: holds may only refuse emptiness"
+        assert resource.holds_reason, f"{resource.table}: holds needs holds_reason"
+        assert not resource.may_be_empty, f"{resource.table}: its rows are {resource.holds}, which may not empty"
 
 
 #: Decision 61's conditions job, by raw table: the upstreams the conditions bake published before decision 53,

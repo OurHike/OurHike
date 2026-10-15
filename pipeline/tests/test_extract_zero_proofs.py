@@ -41,7 +41,7 @@ import pytest
 import extract
 import fetch_club_pdfs
 from extract import _geofabrik, _json_apis, _kinds, _notices, _pages_points, _pdf_points
-from extract._contract import Resource
+from extract._contract import Resource, discover
 from extract._geofabrik import CURRENT_PREFIX, INDEX_NAME, GeofabrikExtracts, bind_store, unbind_store
 from extract._gis_files import GisFile
 from extract._json_apis import MediawikiAnnouncements, UsgsElevatedVolcanoes
@@ -275,6 +275,27 @@ def test_the_catalogue_row_is_held_to_one_row_per_club_whatever_any_count_says(r
     assert resource.table == ORGS_TABLE
     (problem,) = run_check_of(resource, [], {ORGS_TABLE: 0})
     assert "0 rows for 1 managing clubs; each club's catalogue row is exactly one" in problem
+
+
+def test_fdeps_park_boundaries_may_not_land_empty_or_shrunk_though_they_ride_the_closures_lane():
+    """FDEP's park boundaries are a resource of fl_state_parks/closures.py, so that the notices job reads them and the
+    hourly build that places each closed park's status point by its own boundary holds them (decision 185). That made
+    their table a closures table, which may land empty beside the server's own zero and has no shrink floor, because
+    every closure lifted looks like that. A boundary layer is not a list of closures: landed empty, or 20 of its 179,
+    it would un-place every closed Florida park until the next daily read, the trails inside no longer crossed out
+    (review finding S1-2 of 2026-10-15). The status layers beside it are notices, and may still empty."""
+    resources = {resource.key: resource for found in discover() for resource in found.resources}
+    boundaries = resources["fl_state_parks_park_boundaries"]
+    table = boundaries.table
+
+    empty = run_check_of(boundaries, [], {table: 0}, {table: 179})
+    short = run_check_of(boundaries, [{}] * 20, {table: 20}, {table: 179})
+
+    assert empty == [f"{table}: 0 rows, and a places table may not be empty"]
+    assert short == [f"{table}: 20 rows against 179 last time, below the 50% floor"]
+    status = resources["fl_state_parks_day_use_status"]
+    assert run_check_of(status, [], {status.table: 0}, {status.table: 176}) == [], "every park reopened is a zero"
+    assert run_check_of(status, [{}] * 2, {status.table: 2}, {status.table: 176}) == [], "and needs no floor"
 
 
 # --- 3. The reads: each kind whose own zero had no test ------------------------------------------------------------

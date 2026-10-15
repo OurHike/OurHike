@@ -1879,6 +1879,41 @@ def test_a_wordpress_marker_moves_when_a_post_is_edited_or_unpublished(registry,
     assert alerts().change_check(marker)[0] is Freshness.STALE
 
 
+def test_a_wordpress_status_kept_only_in_acf_fields_moves_the_marker_though_no_modified_date_moves(registry, requests_mock):
+    """The Great Allegheny Passage keeps each alert's status and visibility in ACF fields, which
+    seeds/notice_source_fields.csv reads (`acf.$.status`, `acf.$.visibility`), and WordPress stamps `modified_gmt`
+    only when a post is saved through wp_update_post(): an ACF update_field() moves no (id, modified) pair. The check
+    hashed only those pairs, so an alert escalated to 'Fully Obstructed' that way answered FRESH every run and the
+    last committed 'Partially Obstructed' row kept serving (review finding S1-1 of 2026-10-15)."""
+    post = {**wp_post(1), "acf": {"status": "Partially Obstructed", "visibility": "Visible"}}
+    site = FakeWordpress(requests_mock, [post, wp_post(2)])
+    verdict, marker = alerts().change_check(None)
+    assert verdict is Freshness.STALE
+    assert alerts().change_check(marker) == (Freshness.FRESH, marker), "nothing moved, so the check still skips"
+
+    site.posts = [{**post, "acf": {"status": "Fully Obstructed", "visibility": "Visible"}}, wp_post(2)]
+
+    assert site.posts[0]["modified_gmt"] == post["modified_gmt"], "a meta-only write: the post's own date stands"
+    assert alerts().change_check(marker)[0] is Freshness.STALE
+
+
+def test_a_wordpress_read_lands_what_its_check_read_so_a_run_asks_the_site_for_the_posts_once(registry, requests_mock):
+    """The check reads the posts whole to hash what would land, and the read lands that same answer: no second list,
+    and no marker describing rows other than the ones that loaded."""
+    site = FakeWordpress(requests_mock, [wp_post(1), wp_post(2)])
+    resource = alerts()
+    verdict, marker = resource.change_check(None)
+    asked = len(requests_mock.request_history)
+    site.posts = [wp_post(1)]  # moved after the check: the run lands what its check hashed
+
+    proofs = {}
+    rows = list(resource.rows(proofs))
+
+    assert len(requests_mock.request_history) == asked, "the read sent nothing of its own"
+    assert [row["slug"] for row in rows] == ["alert-1", "alert-2"] and proofs["raw_testclub__alerts"] == 2
+    assert not {"author", "yoast_head_json"} & set(rows[0]), "what the check kept is what lands: no person field"
+
+
 def add_to_rows_person_fields(registry, key: str, name: str) -> None:
     """A privacy fix made where it is made: one more name in the sources.json row's `person_fields`."""
     entries = json.loads(registry.read_text())

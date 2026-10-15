@@ -20,9 +20,9 @@ table the build read whenever that table loaded this run:
   because its change check is never FRESH.
 The other conditions inputs are not this run's answers, and nothing here
 keeps them: ATC's reviewed file and the work projects are files in git, the
-same bytes on both sides; ATC's pages and NYNJTC's posts are read only when
-they move (NYNJTC's terms once a day), so the table a build reads is usually
-an earlier run's. hourly_parity.py says what each of those compares on.
+same bytes on both sides; ATC's pages are read and NYNJTC's posts landed
+only when they move (NYNJTC's terms once a day), so the table a build reads
+is usually an earlier run's. hourly_parity.py says what each of those compares on.
 
 ONLY THE TRANSPORT IS WRAPPED, as fixture mode swaps only the transport
 (extract/_fixtures.py): every session _kinds.session() makes has each of its
@@ -50,9 +50,13 @@ query, and what this run did with each table (table_states()).
 PEOPLE. The two queries select no person column: export_conditions.py's text
 leaves them in the database, and ConditionsQuery.rows() refuses a row set
 naming WITHHELD_COLUMNS before anything is returned, so before anything is
-kept. NWS's property names match none of _kinds.py's person rules (Reasoned:
-NWS_TEXT_PROPERTIES and NWS_JSON_PROPERTIES against PERSON_FIELDS and
-PERSON_SHAPED, 2026-10-10). The recording stays on the runner, and reaches the
+kept. The properties NwsAlerts lands match none of _kinds.py's person rules
+(Reasoned: NWS_TEXT_PROPERTIES and NWS_JSON_PROPERTIES against PERSON_FIELDS
+and PERSON_SHAPED, 2026-10-10); `sender` among them is the issuing office's
+mailbox. The body kept here is NWS's whole answer, byte for byte, so it also
+holds what NwsAlerts does not land, among them `replacedBy`, the address of
+the alert that replaced one, which PERSON_SHAPED's `by` rule would read as a
+person's. The recording stays on the runner, and reaches the
 comparison only through the leg's private history store (hand_off.py
 put-bundle), never as an Actions artifact, which anyone could download from a
 public repository.

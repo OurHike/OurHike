@@ -12,8 +12,9 @@ DuckDB-WASM beside it, and this rewrites that one file:
 - A BAR ACROSS THE TOP, the site's two data tabs as DataNav.astro draws them on /data/quality/,
   after the site's name: OurHike, to the site's front page by its full address (site/CNAME, the
   one copy of the hostname), because docs.ourhike.org has none of the site's pages (pipeline/ELT.md
-  decision 144); "How the data is built", this page; "Data quality", /data/quality/, root-relative
-  as DataNav's tabs are, since every host serving the docs serves both at /data/. Its colours are
+  decision 144); "How the data is built", /data/how/, the site's plain page in front of this one
+  (Q24 of #1805), marked current here since this page is that tab's tables; "Data quality",
+  /data/quality/; both root-relative as DataNav's tabs are, since every host serving the docs serves both at /data/. Its colours are
   read from client/src/design-system/tokens/colors.css, light and dark, never copied here. The app
   sizes itself to the window (`.app` at 100vh, its `.shell` at 100vh less its 64 px header, in dbt
   2.0.6's stylesheet), which would push its own bottom, the theme switch, under the window's edge
@@ -64,7 +65,7 @@ TOKENS = {
     "current-fg": "--brand-primary-hover",
 }
 #: The tabs, as site/src/components/DataNav.astro names them.
-TABS = (("/data/", "How the data is built"), ("/data/quality/", "Data quality"))
+TABS = (("/data/how/", "How the data is built"), ("/data/quality/", "Data quality"))
 #: What this relies on in dbt 2.0.6's own app (the docstring), by the file that holds it.
 APP_SCRIPT_HOLDS = ("locate-pane__connect-hook", f'"{THEME_KEY}"')
 APP_STYLESHEET_HOLDS = (

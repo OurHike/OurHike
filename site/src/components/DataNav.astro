@@ -1,7 +1,10 @@
 ---
-// The two data pages, as tabs across the top of the one this site builds:
-// the dbt docs at /data/ and the data-quality page at /data/quality/ (mock B,
-// chosen by the maintainer on 2026-10-07; pipeline/ELT.md decision 102).
+// The two data pages, as tabs across the top of the ones this site builds:
+// "How the data is built" at /data/how/, the plain page that leads into the
+// dbt docs at /data/ (Q24 of #1805 — dlt → dbt re-platform as one go/no-go
+// change, the maintainer's "All three as drawn", 2026-10-15), and the
+// data-quality page at /data/quality/ (mock B, chosen by the maintainer on
+// 2026-10-07; pipeline/ELT.md decision 102).
 //
 // UNDER THE SITE'S OWN NAV, NOT IN PLACE OF IT. Mock B drew a header holding
 // the mark and these two tabs and nothing else. On ourhike.org the page is
@@ -25,7 +28,7 @@
 const here = Astro.url.pathname
 
 const tabs = [
-  { href: '/data/', label: 'How the data is built' },
+  { href: '/data/how/', label: 'How the data is built' },
   { href: '/data/quality/', label: 'Data quality' },
 ]
 ---

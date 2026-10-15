@@ -59,12 +59,13 @@ const { site = '', docs = '' } = Astro.props
         <a href={`${site}/for-orgs/demo/`}>See a published club</a>
       </div>
       {
-        /* THE DATA, LAST: the dbt docs at /data/ and the data-quality page at
-           /data/quality/ (pipeline/ELT.md decisions 10 and 102), which the
-           maintainer chose on 2026-10-08 as how a visitor finds them. /data/
-           is not in site/dist - pages.yml and pr-preview.yml copy the docs
-           there when they assemble the site - so it answers wherever the site
-           is deployed, and not where a bare site build is served. In
+        /* THE DATA, LAST: "How the data is built" at /data/how/, the site's
+           plain page in front of the dbt docs at /data/ (Q24 of #1805), and
+           the data-quality page at /data/quality/ (pipeline/ELT.md decisions
+           10 and 102), which the maintainer chose on 2026-10-08 as how a
+           visitor finds them. Both are in site/dist; the dbt docs they link
+           to are not - pages.yml and pr-preview.yml copy the docs to /data/
+           when they assemble the site. In
            production it is docs.ourhike.org's /data/ once that host serves
            the docs (decision 144), and `docs` carries the link there. */
       }
@@ -73,7 +74,7 @@ const { site = '', docs = '' } = Astro.props
         <a href="https://github.com/OurHike/OurHike">Source on GitHub — AGPL-3.0</a>
         <a href="https://github.com/OurHike/OurHike/issues">Tell us what broke</a>
         <a href={`${site}/app/`}>Open the app</a>
-        <a href={`${docs}/data/`}>How the data is built</a>
+        <a href={`${docs}/data/how/`}>How the data is built</a>
         <a href={`${docs}/data/quality/`}>Data quality</a>
       </div>
     </div>

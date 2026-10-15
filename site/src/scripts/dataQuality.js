@@ -33,7 +33,18 @@ import {
   renderChartFigure,
   renderChartTitle,
   renderCharted,
+  renderSummary,
 } from "../lib/dataQualityHtml.mjs";
+import { buildSummary } from "../lib/dataQualitySummary.mjs";
+
+/** pipeline/sources.json's providers, which the page embeds when it is built. */
+function providersIn(root) {
+  try {
+    return JSON.parse(root.querySelector("#dq-providers")?.textContent ?? "{}");
+  } catch {
+    return {};
+  }
+}
 
 /** One lane's fetch: `read` with its JSON, `missing` on a 404, `failed` otherwise. */
 async function fetchLane(url) {
@@ -238,6 +249,12 @@ function draw(root, config, lanes) {
   for (const card of view.cards) {
     const slot = root.querySelector(`[data-card="${card.lane}"]`);
     if (slot) slot.innerHTML = renderCard(card);
+  }
+  const summarySlot = root.querySelector('[data-slot="summary"]');
+  if (summarySlot) {
+    const summary = buildSummary({ lanes, providers: providersIn(root), release: config.release });
+    summarySlot.innerHTML = renderSummary(summary);
+    summarySlot.hidden = summary === null;
   }
   const body = root.querySelector('[data-slot="body"]');
   body.innerHTML = renderBody(view);

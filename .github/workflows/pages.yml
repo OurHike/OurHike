@@ -646,11 +646,13 @@ jobs:
           cp client/public/favicon.svg _site/favicon.svg
           # The dbt docs at /data/, beside the app and never under it: /app/
           # is the PWA's scope, and an installed app would claim the docs.
-          # ONE PATH UNDER IT IS THE SITE'S: data/quality/, the data-quality
-          # page (pipeline/ELT.md decision 102), which site/dist brings. So the
-          # site may hold that and nothing else under data/, and the docs may
-          # not bring a quality/ of their own; either is refused, so the two
-          # can never be silently merged. Then checked as copied, because this
+          # TWO PATHS UNDER IT ARE THE SITE'S: data/quality/, the data-quality
+          # page (pipeline/ELT.md decision 102), and data/how/, the plain "How
+          # the data is built" page in front of the docs (Q24 of #1805), which
+          # site/dist brings. So the site may hold those and nothing else
+          # under data/, and the docs may not bring a quality/ or how/ of
+          # their own; either is refused, so the two can never be silently
+          # merged. Then checked as copied, because this
           # copy is what ships: check_docs_site.py fails a missing index.html,
           # assets/ or Parquet, a recorded --vars, and coordinate-shaped text
           # (it says what it searches for, and the one place it allows it),
@@ -658,9 +660,9 @@ jobs:
           # origin (decision 93: the page runs on the app's origin). It reads
           # data/quality/ too, which holds none of those.
           if [ -e _site/data ]; then
-            strays=$(find _site/data -mindepth 1 -maxdepth 1 ! -name quality -printf '%f ')
+            strays=$(find _site/data -mindepth 1 -maxdepth 1 ! -name quality ! -name how -printf '%f ')
             if [ -n "$strays" ]; then
-              echo "::error::site/dist holds data/${strays% } beside data/quality/, and data/ is the dbt docs' path. Move one of them."
+              echo "::error::site/dist holds data/${strays% } beside data/quality/ and data/how/, and data/ is the dbt docs' path. Move one of them."
               exit 1
             fi
           fi
@@ -669,6 +671,10 @@ jobs:
           : "${DOCS_DIR:?the docs step named no directory}"
           if [ -e "$DOCS_DIR/quality" ]; then
             echo "::error::The dbt docs hold a quality/ of their own, which is the data-quality page's path. Move one of them."
+            exit 1
+          fi
+          if [ -e "$DOCS_DIR/how" ]; then
+            echo "::error::The dbt docs hold a how/ of their own, which is the How the data is built page's path. Move one of them."
             exit 1
           fi
           cp -r "$DOCS_DIR"/. _site/data/

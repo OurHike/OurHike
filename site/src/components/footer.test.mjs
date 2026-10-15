@@ -38,7 +38,7 @@ function pages(dir = "src/pages") {
 describe("the footer's data links", () => {
   it('end "The project" with How the data is built and then Data quality', () => {
     expect(column("THE PROJECT").slice(-2)).toEqual([
-      ["${docs}/data/", "How the data is built"],
+      ["${docs}/data/how/", "How the data is built"],
       ["${docs}/data/quality/", "Data quality"],
     ]);
   });
@@ -94,7 +94,7 @@ describe("the site's links on two hosts", () => {
 
   it("keep the data pages' own tabs root-relative, because every host serving them serves /data/", () => {
     const nav = read("src/components/DataNav.astro");
-    expect(nav).toContain("{ href: '/data/', label: 'How the data is built' }");
+    expect(nav).toContain("{ href: '/data/how/', label: 'How the data is built' }");
     expect(nav).toContain("{ href: '/data/quality/', label: 'Data quality' }");
   });
 });

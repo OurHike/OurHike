@@ -55,6 +55,33 @@
 -- a GeometryCollection) is left out too: there is nothing to draw, and a
 -- guess would draw a closure where its source drew none.
 --
+-- THE SAME CLOSURE FROM TWO SOURCES IS DRAWN ONCE (the review of PR #1805
+-- of 2026-10-15, thread 4279223668). Two closing areas of different
+-- sources that each cover at least `same_closure_share` of the other are one
+-- closure posted twice, and drawing both stacks one hatch on another, with
+-- a tap opening whichever sheet it finds. IDPR's area restrictions relay
+-- other land managers' orders (all 20 rows read live 2026-10-15 name one
+-- in JURISDICTION), and four were Region 4's own forest orders, drawn
+-- twice until then: Calf Pen, Grimes Creek, Crooked Fire and Deer Point.
+-- Each area is measured as its source drew it
+-- (int_closures__trail_closure_areas), in EPSG:5070 as the cuts are, never
+-- notices.json's outline grown 100 m, which would make two neighbours look
+-- alike. Of such a pair the file draws the row its source edited first
+-- (`updated_at`; one with none counts as edited last), then the lower
+-- notice_id: a copy is made after the order it copies, so the first edit is
+-- the likelier original (Reasoned; on those four it keeps Region 4's row
+-- three times, and IDPR's Crooked Fire, which IDPR posted two days before
+-- Region 4's layer did). Which publisher's row to keep is the maintainer's
+-- call, asked with the four pairs, so the rule names no source. The other
+-- row is not drawn, and stays in notices.json's list under its own credit.
+-- @unvalidated: `same_closure_share`, 0.9, is the review's number. On the
+-- live read of 2026-10-15 it matched exactly those four pairs (each covering
+-- 0.993 to 1.000 of the other), and no other pair of areas of two sources
+-- reached 0.5. What would settle it is a pair of different closures that
+-- cover each other that much, which nobody has seen, or a copy redrawn
+-- coarsely enough to fall below it. A cut that raises compares nothing, so
+-- both rows stay drawn: a duplicate hatch is the safer failure.
+--
 -- ORDER: by source_key, then notice_id, that writer's order.
 --
 -- SIZE. UA's first published file, of 2026-10-14 18:15 UTC, built before
@@ -78,6 +105,7 @@
 -- map. An hour with no trail lines to cut against
 -- (pipeline/step_closure_trail_lines.py) writes every line and point closure
 -- and no area, and its run summary says so.
+{%- set same_closure_share = 0.9 %}
 with document as (
     select
         generated_at,
@@ -119,6 +147,74 @@ cuts as (
     from {{ ref('int_closures__area_trail_cuts') }}
 ),
 
+-- Each closing area's own outline, as its source drew it, in EPSG:5070.
+outlines as (
+    select
+        notice_id,
+        try(
+            st_transform(
+                st_geomfromgeojson(area_geojson),
+                'EPSG:4326',
+                'EPSG:5070',
+                always_xy := true
+            )
+        ) as outline
+    from {{ ref('int_closures__trail_closure_areas') }}
+),
+
+areas as (
+    select
+        closing.notice_id,
+        closing.source_key,
+        coalesce(
+            json_extract_string(closing.notice, '$.updated_at'), '9999'
+        ) as edited,
+        outlines.outline
+    from closing
+    inner join outlines on closing.notice_id = outlines.notice_id
+    where
+        closing.shape = 'area'
+        and outlines.outline is not null
+        and not st_isempty(outlines.outline)
+),
+
+-- Each pair of areas of two sources whose outlines meet, with what they
+-- share.
+meeting as (
+    select
+        first_area.notice_id as first_id,
+        first_area.edited as first_edited,
+        second_area.notice_id as second_id,
+        second_area.edited as second_edited,
+        st_area(first_area.outline) as first_area,
+        st_area(second_area.outline) as second_area,
+        try(
+            st_area(st_intersection(first_area.outline, second_area.outline))
+        ) as shared
+    from areas as first_area
+    inner join areas as second_area
+        on
+            first_area.source_key < second_area.source_key
+            and st_intersects(first_area.outline, second_area.outline)
+),
+
+-- The row of each same-closure pair that is not drawn: the later edit, then
+-- the higher notice_id.
+not_drawn as (
+    select distinct
+        case
+            when
+                first_edited < second_edited
+                or (first_edited = second_edited and first_id < second_id)
+                then second_id
+            else first_id
+        end as notice_id
+    from meeting
+    where
+        shared >= {{ same_closure_share }} * first_area
+        and shared >= {{ same_closure_share }} * second_area
+),
+
 -- What each kept row is drawn as, and an area's new geometry.
 placed as (
     select
@@ -136,9 +232,13 @@ placed as (
         end as area_geojson
     from closing
     left join cuts on closing.notice_id = cuts.notice_id
+    left join not_drawn on closing.notice_id = not_drawn.notice_id
     where
-        closing.shape in ('line', 'point')
-        or (closing.shape = 'area' and cuts.notice_id is not null)
+        not_drawn.notice_id is null
+        and (
+            closing.shape in ('line', 'point')
+            or (closing.shape = 'area' and cuts.notice_id is not null)
+        )
 ),
 
 -- json_merge_patch is RFC 7386's merge patch, and a null in the patch removes

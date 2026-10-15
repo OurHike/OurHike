@@ -14,8 +14,13 @@
 // against the 245,760-byte budget, and this chunk is 898 bytes. (One tree's
 // figure moves by about 10 bytes between builds, as the chunk hashes in it
 // change.)
+//
+// Decision 211's check (manifestAnswers404 and forget, below) went in here for
+// the same reason. Measured 2026-10-15 the same way: the eager closure was
+// 244,748-244,759 bytes over three builds before it and 244,745-244,755 over
+// four after, inside that drift, and this chunk went from 898 bytes to 1,035.
 
-import { get, set } from 'idb-keyval'
+import { del, get, set } from 'idb-keyval'
 
 import {
   asRecord,
@@ -75,7 +80,9 @@ export async function recallChannel(): Promise<ChannelRecord | null> {
 export const CHANNEL_READ_TIMEOUT_MS = 20_000
 
 /** What one pointer read did. Every outcome but `recorded` leaves the record
- *  as it was, which is the last good release or none. */
+ *  as it stood when the pointer was read: the last good release, or none -
+ *  none, too, when the answer's `forgotten` names a release decision 211's
+ *  check deleted first. */
 export type ChannelOutcome =
   /** No data base is configured, so there is no pointer to read. */
   | 'unconfigured'
@@ -99,23 +106,31 @@ export interface ChannelAnswer {
   outcome: ChannelOutcome
   /** The release the record holds after this read, or null for none. */
   recorded: string | null
+  /** The release this read forgot (decision 211): the record named it and its
+   *  own manifest answered 404, so the mirror was removed and the record
+   *  deleted - or, where IndexedDB refused the delete, left for the next
+   *  launch's check to forget again (forget says how). Absent when nothing
+   *  was forgotten. `recorded` is null after a forgetting either way, because
+   *  the pointer is then read as on a phone with no record. */
+  forgotten?: string
 }
 
 /**
- * The body at `url` as text, or null for an answer that is not 200-299; it
- * throws once CHANNEL_READ_TIMEOUT_MS passes or the caller aborts.
+ * Fetch `url` and return `read(response)`, both under one deadline: it throws
+ * once CHANNEL_READ_TIMEOUT_MS passes or the caller aborts.
  *
  * THE BODY IS INSIDE THE DEADLINE, not only the headers. A server that sends
  * its headers and then stalls would otherwise outlive both the timeout and
- * the caller's abort, and the read would never settle. So the body read races
- * the same abort the request does, which also covers a fetch whose stream
- * does not honour the signal.
+ * the caller's abort, and the read would never settle. So `read` races the
+ * same abort the request does, which also covers a fetch whose stream does
+ * not honour the signal.
  */
-async function textWithin(
+async function within<T>(
   url: string,
   signal: AbortSignal | undefined,
-  init: RequestInit = {},
-): Promise<string | null> {
+  init: RequestInit,
+  read: (response: Response) => Promise<T>,
+): Promise<T> {
   // An abort that landed before this read began, as fetch itself treats one.
   if (signal?.aborted) throw new DOMException('Aborted', 'AbortError')
   const controller = new AbortController()
@@ -134,12 +149,23 @@ async function textWithin(
       fetch(url, { ...init, signal: controller.signal }),
       abandoned,
     ])
-    if (!response.ok) return null
-    return await Promise.race([response.text(), abandoned])
+    return await Promise.race([read(response), abandoned])
   } finally {
     clearTimeout(deadline)
     signal?.removeEventListener('abort', abort)
   }
+}
+
+/** The body at `url` as text, or null for an answer that is not 200-299,
+ *  under {@link within}'s deadline. */
+function textWithin(
+  url: string,
+  signal: AbortSignal | undefined,
+  init: RequestInit = {},
+): Promise<string | null> {
+  return within(url, signal, init, async (response) =>
+    response.ok ? response.text() : null,
+  )
 }
 
 /** The release id `channels.json`'s text names for this build, or null. */
@@ -180,6 +206,75 @@ async function resolves(
 }
 
 /**
+ * Whether `release`'s own manifest at `base` answers exactly 404: the one
+ * answer that makes readDataChannel forget a recorded release (decision 211).
+ *
+ * Every other result is false: a 200, a 5xx or any other status, no answer,
+ * the deadline passing, the caller aborting. Each of those is also what a
+ * good release looks like from a phone on one bar of signal, and forgetting
+ * on any of them would send that phone back to the compiled DATA_RELEASE,
+ * which can be older than the release it recorded. Over HTTPS a captive
+ * portal cannot present the data host's certificate, so a portal arrives
+ * here as no answer, not as a 404.
+ *
+ * A HEAD, because the status is the whole question and the manifest is not
+ * small. Measured 2026-10-15 with curl sending `Origin: https://ourhike.org`:
+ * UA's releases/2026-10-10-2/manifest.json is 851,076 bytes, 213,769 on the
+ * wire as brotli, which a GET would spend on every launch that holds a
+ * record; the bucket answers a HEAD for it 200, and for UA's gone 2026-09-24-2
+ * 404, each with Access-Control-Allow-Origin, so a browser can read either
+ * status (.github/expected-origins.yml allows HEAD beside GET). Nothing in the
+ * app answers it first: the service worker vite.config.ts generates routes
+ * only precached same-origin GETs and navigations (read from the built
+ * dist/sw.js the same day).
+ *
+ * `no-store`, because that manifest carries no Cache-Control (measured the
+ * same day), so a browser may keep a 200 for it on heuristic freshness after
+ * the folder has gone (Reasoned, from RFC 9111 §4.2.2).
+ */
+async function manifestAnswers404(
+  base: string,
+  release: string,
+  signal?: AbortSignal,
+): Promise<boolean> {
+  try {
+    const status = await within(
+      `${base}/releases/${release}/manifest.json`,
+      signal,
+      { method: 'HEAD', cache: 'no-store' },
+      async (response) => response.status,
+    )
+    return status === 404
+  } catch {
+    return false
+  }
+}
+
+/**
+ * Delete the record and its mirror (decision 211), so that the next launch
+ * reads the compiled DATA_RELEASE and then reads `channels.json` again.
+ *
+ * The mirror goes first, and whether or not IndexedDB deletes the record,
+ * because the mirror is what the next launch's SESSION_RELEASE is read from
+ * (lib/dataRelease.ts). A record IndexedDB will not delete is read again by
+ * the next launch's recallChannel, which writes the mirror back from it, and
+ * that launch's own check forgets it again if it hears the 404 again: only a
+ * launch that hears no answer leaves the mirror for the one after it.
+ */
+async function forget(): Promise<void> {
+  try {
+    mirrorStore()?.removeItem(CHANNEL_RECORD_KEY)
+  } catch {
+    // The next launch reads the mirror as it stands, and its check asks again.
+  }
+  try {
+    await del(CHANNEL_RECORD_KEY)
+  } catch {
+    // Left for the next launch's check, as above.
+  }
+}
+
+/**
  * Read `channels.json` at `base` and record the release it names for this
  * build's environment and schema version, once that release resolves.
  *
@@ -192,6 +287,23 @@ async function resolves(
  * this phone verified, and with no record the compiled fallback stands. An
  * entry naming a release whose manifest does not resolve is never recorded.
  * Never rejects; a caller may drop the promise.
+ *
+ * FIRST, A RECORDED RELEASE WHOSE FOLDER IS GONE IS FORGOTTEN (decision 211,
+ * #1833 — A phone that recorded a data release keeps reading it after the
+ * folder is gone, and no app update moves it off). Before the pointer is
+ * read, and whatever it says, a phone with a record asks for that release's
+ * own manifest; exactly 404 deletes the record and its mirror
+ * (manifestAnswers404 says why nothing else counts). This session keeps the
+ * release it started on. The next launch reads the compiled DATA_RELEASE and
+ * then the pointer, as a phone with no record does, and a pointer naming the
+ * same gone release is `unresolved` like any other. The check does not wait
+ * on the pointer because a bucket move like decision 43's of 2026-10-02,
+ * which copied nothing, takes `channels.json` with the folder, and then the
+ * pointer can never move the phone. Before this nothing deleted the record,
+ * so a recorded release outranked every DATA_RELEASE an app update shipped.
+ * The promise above still holds: a release whose own manifest answers 404 is
+ * already one the phone cannot download from. Silent, by the maintainer's
+ * choice: nothing for the hiker to tap.
  */
 export async function readDataChannel(
   base: string,
@@ -204,10 +316,19 @@ export async function readDataChannel(
   } catch {
     recorded = null
   }
-  const kept = (outcome: ChannelOutcome): ChannelAnswer => ({
-    outcome,
-    recorded: recorded?.release ?? null,
-  })
+
+  let forgotten: string | undefined
+  if (recorded !== null && (await manifestAnswers404(base, recorded.release, signal))) {
+    forgotten = recorded.release
+    recorded = null
+    await forget()
+  }
+  const answer = (outcome: ChannelOutcome, release: string | null): ChannelAnswer =>
+    forgotten === undefined
+      ? { outcome, recorded: release }
+      : { outcome, recorded: release, forgotten }
+  const kept = (outcome: ChannelOutcome): ChannelAnswer =>
+    answer(outcome, recorded?.release ?? null)
 
   let text: string | null
   try {
@@ -239,5 +360,5 @@ export async function readDataChannel(
     return kept('unstorable')
   }
   writeMirror(record)
-  return { outcome: 'recorded', recorded: entry }
+  return answer('recorded', entry)
 }

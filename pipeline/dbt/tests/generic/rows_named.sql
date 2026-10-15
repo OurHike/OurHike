@@ -13,6 +13,12 @@
     row out. Given `to` and `field`, `column_name` names the rows whose value
     is not one of `to`'s, a relationships test's orphans, nulls left out as
     that test leaves them.
+
+    `model` is read once, in a CTE: given a `where`, dbt hands the test an
+    aliased subquery, `(select ... where ...) dbt_subquery`, which takes no
+    alias of its own (the CI fixture build of thresholds204b, 2026-10-15:
+    "Parser Error: syntax error at or near "as"" on
+    closures_other_miles_are_inside_the_trail_and_in_order).
 -#}
 {% test rows_named(
     model, named=none, column_name=none, to=none, field=none, error_share=1
@@ -20,14 +26,18 @@
 {{ config(
     fail_calc=named_rows_level(error_share), warn_if=">0", error_if=">1"
 ) }}
-with totals as (
-    select count(*) as total_rows from {{ model }}
+with checked as (
+    select * from {{ model }}
+),
+
+totals as (
+    select count(*) as total_rows from checked
 )
 
 select
     checked.*,
     totals.total_rows
-from {{ model }} as checked
+from checked
 cross join totals
 {%- if to is not none %}
 where

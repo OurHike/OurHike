@@ -193,6 +193,20 @@ def test_every_sql_test_that_sets_a_threshold_or_a_level_sets_both_thresholds_in
     assert problems == []
 
 
+def test_no_generic_test_gives_its_model_an_alias():
+    """Given a `where`, dbt hands a generic test `{{ model }}` as an aliased subquery, `(select ... where ...)
+    dbt_subquery`, which takes no second alias. rows_named.sql once wrote `from {{ model }} as checked`, and every test
+    of it with a `where` could not run: "Parser Error: syntax error at or near "as"" on
+    closures_other_miles_are_inside_the_trail_and_in_order, in the CI-mode fixture build of thresholds204b
+    (2026-10-15), which stopped stage A."""
+    aliased = [
+        str(path.relative_to(DBT_DIR))
+        for path in sorted((DBT_DIR / "tests" / "generic").glob("*.sql"))
+        if re.search(r"\{\{\s*model\s*\}\}\s+as\b", path.read_text(encoding="utf-8"), re.I)
+    ]
+    assert aliased == []
+
+
 def test_the_level_tests_warn_at_one_and_are_errors_at_two():
     """rows_named, equal_rowcount_to_raw and the review aids score 0, 1 or 2 (macros/test_levels.sql)."""
     levels = {

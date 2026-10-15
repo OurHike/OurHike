@@ -9,9 +9,10 @@
 // client/src/lib/publishedNotices.ts's validNotice reads, `obstructs_trail`
 // true and `hazard` null on every one - plus `shape`: "line" (the notice's
 // own LineString or MultiLineString), "area" (a MultiLineString of the trail
-// stretches the pipeline cut inside the area), "point" (a Point), or "shade"
-// (decision 191, 2026-10-14: the Polygon of an area no mapped trail runs
-// inside, which the map hatches).
+// stretches the pipeline cut inside the area), "point" (a Point, or a
+// MultiPoint, which pipeline/dbt writes as "point" too and the map crosses at
+// each of its points), or "shade" (decision 191, 2026-10-14: the Polygon of
+// an area no mapped trail runs inside, which the map hatches).
 //
 // FIVE CLOSURES, ONE OF EACH KIND THE STANDARD DRAWS: a line, an area's cut
 // stretches, a point, a line the list greys because its source gives no

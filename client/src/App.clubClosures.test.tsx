@@ -22,6 +22,7 @@ import {
   SHADE_INKS,
 } from './map/clubClosureLayers'
 import { CLUB_CLOSURE_LAYER_ID } from './map/styleIds'
+import { closurePointId } from './lib/closureStyle'
 import {
   trailClosureRows,
   trailClosuresDocument,
@@ -80,12 +81,19 @@ async function renderApp(): Promise<MockMap> {
   return map
 }
 
-function drawnIds(map: MockMap): string[] {
+interface DrawnFeature {
+  geometry: { type: string; coordinates: unknown }
+  properties: Record<string, string>
+}
+
+function drawn(map: MockMap): DrawnFeature[] {
   const data = map.sourceData.get(CLUB_CLOSURE_SOURCE_ID) as
-    { features: Array<{ properties: Record<string, string> }> } | undefined
-  return (data?.features ?? []).map(
-    (feature) => feature.properties[CLUB_CLOSURE_ID_PROPERTY],
-  )
+    { features: DrawnFeature[] } | undefined
+  return data?.features ?? []
+}
+
+function drawnIds(map: MockMap): string[] {
+  return drawn(map).map((feature) => feature.properties[CLUB_CLOSURE_ID_PROPERTY])
 }
 
 describe('every club closure on the map, from conditions/trail_closures.json', () => {
@@ -169,6 +177,70 @@ describe('every club closure on the map, from conditions/trail_closures.json', (
       )
       expect(
         within(sheet).getByText('Example Hills Preserve closed lands (example)'),
+      ).toBeInTheDocument()
+    },
+    COLD_START_BUDGET_MS,
+  )
+
+  it(
+    'crosses out a closure its source places by a MultiPoint at each point, and opens its row from a tap on the second',
+    async () => {
+      // pipeline/dbt writes such a closure as shape "point"
+      // (pub_conditions_trail_closures), and until this build the reader
+      // refused it: no cross, and nothing for a tap to open (F2 of the
+      // client review of #1805, 2026-10-15).
+      const bridges = {
+        ...trailClosureRows().point,
+        notice_id: 'example_trail_club_alerts:two-footbridges',
+        title: 'Two footbridges out on Example Creek (example)',
+        place: {
+          kind: 'geometry',
+          geometry: {
+            type: 'MultiPoint',
+            coordinates: [
+              [-100.209, 38.75],
+              [-100.205, 38.7495],
+            ],
+          },
+        },
+      }
+      const file = trailClosuresDocument()
+      vi.mocked(globalThis.fetch).mockImplementation(async (input) =>
+        String(input) === CLOSURES_URL
+          ? new Response(
+              JSON.stringify({ ...file, closures: [...file.closures, bridges] }),
+              { status: 200 },
+            )
+          : new Response('', { status: 404 }),
+      )
+      const map = await renderApp()
+
+      // LATE, NEVER GONE, as above.
+      await waitFor(() => expect(drawnIds(map)).toContain(bridges.notice_id), {
+        timeout: 10_000,
+      })
+      // One feature on the whole MultiPoint, which the cross layer draws as a
+      // cross at each point (map/clubClosureLayers.test.ts holds that through
+      // MapLibre's own tiler).
+      const feature = drawn(map).find(
+        (each) => each.properties[CLUB_CLOSURE_ID_PROPERTY] === bridges.notice_id,
+      )
+      expect(feature?.geometry).toEqual(bridges.place.geometry)
+
+      // A touch on the second footbridge's cross. MapLibre answers a touch on
+      // any cross a feature draws with that feature; this mock answers by
+      // layer, not by pixel, so the feature is what it holds there.
+      const [, second] = bridges.place.geometry.coordinates as Array<[number, number]>
+      map.renderedFeatures.set(closurePointId(CLUB_CLOSURE_LAYER_ID), [feature])
+      map.emit('click', { point: map.project(second) })
+
+      const sheet = await screen.findByRole(
+        'dialog',
+        { name: 'Closure notice' },
+        { timeout: 5_000 },
+      )
+      expect(
+        within(sheet).getByText('Two footbridges out on Example Creek (example)'),
       ).toBeInTheDocument()
     },
     COLD_START_BUDGET_MS,

@@ -86,6 +86,29 @@ function closures(): Record<
   }
 }
 
+/** A point closure whose source draws a MultiPoint, two footbridges out
+ *  about 350 m apart, read by the app's own reader: pipeline/dbt writes such
+ *  a closure as shape "point" (pub_conditions_trail_closures). */
+function twoBridges(): TrailClosure {
+  const closure = validTrailClosure({
+    ...trailClosureRows().point,
+    notice_id: 'example_trail_club_alerts:two-footbridges',
+    title: 'Two footbridges out on Example Creek (example)',
+    place: {
+      kind: 'geometry',
+      geometry: {
+        type: 'MultiPoint',
+        coordinates: [
+          [-100.209, 38.75],
+          [-100.205, 38.7495],
+        ],
+      },
+    },
+  })
+  if (closure === null) throw new Error('the MultiPoint closure did not read')
+  return closure
+}
+
 /** The z10 tile holding `[lon, lat]`, as MapLibre's GeoJSON source tiles
  *  `closures` (@maplibre/geojson-vt): at z0 the tiler drops a line shorter
  *  than its tolerance, about 29 km there, and every closure here is
@@ -161,6 +184,36 @@ describe('how a club closure is drawn', () => {
       type: 'geojson',
       data: { type: 'FeatureCollection', features: [] },
     })
+  })
+
+  it('draws a point closure placed by a MultiPoint as a cross at each of its points, on the cross layer alone', () => {
+    // The tiler hands a MultiPoint over as ONE feature of type Point holding
+    // every point, which the cross layer's filter takes, and maplibre-gl
+    // 6.7.0 lays out one icon at each point of such a feature
+    // (src/symbol/symbol_layout.ts, its `feature.type === 'Point'` branch).
+    // So the crosses are the points of the features that layer takes.
+    const { point } = closures()
+    const bridges = twoBridges()
+    const [first] = bridges.place.geometry.coordinates as Array<[number, number]>
+    const tile = tileAt(first, [bridges, point])
+    const drawnBy = (filter: unknown) =>
+      (tile?.features ?? []).filter((feature) =>
+        passes(filter, feature.type as 1 | 2 | 3),
+      )
+    const crosses = (filter: unknown) =>
+      drawnBy(filter).flatMap((feature) =>
+        (feature.geometry as unknown[]).map(
+          () => feature.tags?.[CLUB_CLOSURE_ID_PROPERTY],
+        ),
+      )
+
+    expect(crosses(CLUB_CLOSURE_POINT_FILTER)).toEqual([
+      bridges.notice_id,
+      bridges.notice_id,
+      point.notice_id,
+    ])
+    expect(drawnBy(CLUB_CLOSURE_LINE_FILTER)).toEqual([])
+    expect(drawnBy(CLUB_CLOSURE_SHADE_FILTER)).toEqual([])
   })
 
   it('shades an area no trail runs inside on the hatch layer alone, never along the crossed-out mark (decision 191)', () => {

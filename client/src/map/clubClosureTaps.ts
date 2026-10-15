@@ -31,7 +31,8 @@ export interface ClubClosureFeatureCollection {
  * map/closureLayers.ts's CLOSURE_ID_PROPERTY reason: MapLibre runs a string
  * feature id through `parseInt`. Which layer draws a feature is its geometry's
  * (map/clubClosureLayers.ts): a line or an area's cut stretches along the
- * crossed-out mark, a point as one cross, a shade's polygon as the hatch.
+ * crossed-out mark, a point as one cross (a MultiPoint as one at each of its
+ * points), a shade's polygon as the hatch.
  */
 export function clubClosureFeatureCollection(
   closures: readonly TrailClosure[],

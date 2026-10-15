@@ -10,11 +10,12 @@
 // line closure is crossed out along its own line; an area closure's trails
 // are crossed out where they run inside it, which the pipeline cuts into
 // lines hourly, so here an area is lines like any other; a point closure is
-// one cross. ATC's closures are not in the file: ATC's own band draws them
-// (map/atcUpdateLayers.ts). The A.T. is crossed out like any trail where it
-// runs inside a club's area (decision 192, the poll of 2026-10-14, "Yes,
-// like any trail"): the pipeline cuts its lines with the rest, and these
-// layers sit above the A.T.'s own line in map/style.ts.
+// one cross, or one at each point of a MultiPoint. ATC's closures are not in
+// the file: ATC's own band draws them (map/atcUpdateLayers.ts). The A.T. is
+// crossed out like any trail where it runs inside a club's area (decision
+// 192, the poll of 2026-10-14, "Yes, like any trail"): the pipeline cuts its
+// lines with the rest, and these layers sit above the A.T.'s own line in
+// map/style.ts.
 //
 // AN AREA NO MAPPED TRAIL RUNS INSIDE IS SHADED (decision 191, the poll of
 // 2026-10-14, "Shade them, no edge", from open-questions-1014.html's frame
@@ -141,7 +142,10 @@ export function clubClosureShadeIdAt(
  *  the tile's numeric type), so one test takes both. */
 export const CLUB_CLOSURE_LINE_FILTER: unknown[] = ['==', ['geometry-type'], 'LineString']
 
-/** The points, each drawn as one cross. */
+/** The points, each drawn as one cross: a tile feature of type Point, a
+ *  MultiPoint included, as the line filter takes a MultiLineString, and
+ *  maplibre-gl 6.7.0's symbol layout places an icon at each point of it
+ *  (src/symbol/symbol_layout.ts, read 2026-10-15). */
 export const CLUB_CLOSURE_POINT_FILTER: unknown[] = ['==', ['geometry-type'], 'Point']
 
 /** An empty source, filled once the closures land - `buildHazardSource`'s
@@ -154,9 +158,10 @@ export function buildClubClosureSource(): GeoJSONSourceSpecification {
 }
 
 /**
- * One cross at each point closure (the maintainer's S6: "a point one ✕"):
- * lib/closureStyle.ts's far mark - its image, size, ink and paper halo -
- * placed at the point, with the id `closurePointId` gives.
+ * One cross at each point closure (the maintainer's S6: "a point one ✕"),
+ * and one at each point of a MultiPoint: lib/closureStyle.ts's far mark -
+ * its image, size, ink and paper halo - placed at the point, with the id
+ * `closurePointId` gives.
  *
  * FROM CLOSURE_MARK_MIN_ZOOM, LIKE THE FAR MARK, so below the pin seam a
  * point closure draws nothing: the maintainer's call of 2026-09-08 (#1292)
@@ -166,10 +171,10 @@ export function buildClubClosureSource(): GeoJSONSourceSpecification {
  *
  * ALWAYS DRAWN, where the far mark collides (lib/closureStyle.ts's
  * CLOSURE_MARK_PADDING): the far mark drops the extra candidates of one
- * closed network, while this cross is a closure's only mark, so dropping it
- * for a label would draw a closed bridge as open. It still holds its place
- * (`icon-ignore-placement` is left false), so a waypoint pin under it falls
- * back to its dot, the standing the far mark already has.
+ * closed network, while this cross is a closure's only mark at its point, so
+ * dropping it for a label would draw a closed bridge as open. It still holds
+ * its place (`icon-ignore-placement` is left false), so a waypoint pin under
+ * it falls back to its dot, the standing the far mark already has.
  */
 export function buildClosurePointLayer(
   sourceId: string,

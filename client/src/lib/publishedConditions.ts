@@ -498,11 +498,12 @@ export interface OrgNotice {
 /**
  * How a club closure is drawn on the map (the maintainer's standard S6, poll
  * of 2026-10-11): crossed out along its own line, crossed out along the trail
- * stretches the pipeline cut inside its area, or one cross at its point. And
- * `shade` (decision 191, the maintainer's poll of 2026-10-14, "Shade them, no
- * edge"): an area no mapped trail runs inside, its own Polygon or
- * MultiPolygon drawn as a light hatch with no mark on its edge, so an open
- * trail along the edge never reads as closed.
+ * stretches the pipeline cut inside its area, or one cross at its point, and
+ * one at each point of a MultiPoint. And `shade` (decision 191, the
+ * maintainer's poll of 2026-10-14, "Shade them, no edge"): an area no mapped
+ * trail runs inside, its own Polygon or MultiPolygon drawn as a light hatch
+ * with no mark on its edge, so an open trail along the edge never reads as
+ * closed.
  */
 export type ClosureShape = 'line' | 'area' | 'point' | 'shade'
 

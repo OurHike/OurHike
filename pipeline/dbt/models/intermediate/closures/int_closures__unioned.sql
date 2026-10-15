@@ -3,8 +3,9 @@
 -- reviewed Trail Updates and the ones ATC posted since that review which
 -- publish without a person, NYNJTC's Trail Alerts, NYS Parks' temporary
 -- closed areas, OurHike's own verified closures, and every other club's
--- notice its club files under closures (int_closures__club_notices, decision
--- 53's phase C; a club's warnings.py notices are int_warnings__unioned's).
+-- notice its club files under closures or whose own words close the trail
+-- (int_closures__club_notices, decision 53's phase C and decision 213's rule
+-- 8; a club's other warnings.py notices are int_warnings__unioned's).
 -- Nothing is filtered here but ATC's refused automatic rows (their branch
 -- says why). Each branch keeps
 -- its source's own words and adds what the split needs:
@@ -59,9 +60,13 @@ ourhike as (
     select * from {{ ref('int_closures__ourhike_checked') }}
 ),
 
+-- A club notice whose own words close the trail is a closure whatever file
+-- its source is registered under (decision 213, rule 8, the maintainer's poll
+-- of 2026-10-15: "a row's own words decide whether it closes"); every other
+-- notice its source files under warnings is int_warnings__unioned's.
 club_notices as (
     select * from {{ ref('int_closures__club_notices') }}
-    where notice_type = 'closures'
+    where notice_type = 'closures' or obstructs_trail
 )
 
 -- `union all by name` matches the branches' columns by name, and a branch
@@ -158,11 +163,17 @@ select
     'oprhp_closure_area' as notice_kind,
     'nysparks' as club,
     'oprhp_trail_closures' as source_key,
-    true as obstructs_trail,
+    -- An area its own reason says has ended closes nothing, as rule 3 of
+    -- int_closures__club_notices reads every club notice's end.
+    case
+        when not {{ notice_has_ended('ends_on', notice_build_date()) }}
+            then true
+    end as obstructs_trail,
     'org_published' as review_state,
     'area' as closure_kind,
     closure_reason,
     closure_place,
+    ends_on,
     geom_geojson,
     cast([] as varchar[]) as problems,
     _loaded_at
@@ -223,6 +234,8 @@ select
     source_url,
     geom_geojson,
     held_because as notice_held_because,
+    stands_until_lifted,
+    issuer,
     cast([] as varchar[]) as problems,
     _loaded_at
 from club_notices

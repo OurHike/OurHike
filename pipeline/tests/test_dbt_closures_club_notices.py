@@ -66,6 +66,7 @@ SOME_WORDS = (
     TEST_FACILITIES,
     TEST_SHOWN,
     TEST_HAZARD,
+    "int_closures__club_notices_reads_decision_213s_rules_for_every_source",
 )
 
 
@@ -349,18 +350,21 @@ def test_ngpcs_impassable_sections_close_however_road_status_reads():
 
 def test_a_categorys_closure_is_a_kind_of_notice_that_closes_only_beside_its_title():
     """'closure' in a category is the kind of notice the source files the row as: USFS's forest orders are typed
-    'Safety Closure' whatever they bar, 'Forest Wide - Alcohol' among them (read live 2026-10-14). It is the one word
-    that needs its title, the plural 'closures' agrees with it in a title (and names a layer's closures, never a
-    category's topic), and a state ('closed', 'impassable',
-    an exclusion) still closes from a category by itself."""
+    'Safety Closure' whatever they bar, 'Forest Wide - Alcohol' among them (read live 2026-10-14). It is the one
+    closing word that needs its title, the plural 'closures' agrees with it in a title (and names a layer's closures,
+    never a category's topic), and a state ('closed', 'impassable', an exclusion) still closes from a category by
+    itself. So does 'Closure' as a placed row's whole category (decision 213, rule 1): CDTC's alerts so typed and
+    titled by place. 'restriction' is the other kind (decision 213, rule 2), which keeps no title from speaking."""
     words = {row["word"]: row for row in seed("notice_words")}
-    assert [word for word, row in words.items() if row["category_needs_title"] == "true"] == ["closure"]
+    kinds = [word for word, row in words.items() if row["category_needs_title"] == "true"]
+    assert kinds == ["closure", "restriction", "restrictions"]
+    assert [word for word in kinds if words[word]["reads_as"] == "closes_trail"] == ["closure"]
     assert (words["closures"]["read_in"].split(), words["closures"]["reads_as"]) == (["title", "layer"], "closes_trail")
     assert reads_as("category", "Closures and NTH North") == set()
     expected = _expected(TEST_190)
     assert expected["fixture_orders:order_act"]["reads_as"] == "notice"
     assert expected["fixture_orders:order_restriction"]["reads_as"] == "notice"
-    assert expected["fixture_club_alerts:club_kind"]["reads_as"] == "notice"
+    assert expected["fixture_club_alerts:club_kind"]["obstructs_trail"] is True
     assert expected["fixture_orders:order_trail_closures"]["obstructs_trail"] is True
     for notice_id in ("idpr_area_restrictions:public_use", "fixture_layer_b:impassable_open"):
         assert expected[notice_id]["obstructs_trail"] is True, notice_id

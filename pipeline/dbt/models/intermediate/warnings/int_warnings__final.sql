@@ -93,6 +93,7 @@ org_notices as (
         notices.end_lat,
         notices.end_lon,
         notices.source_row_key,
+        notices.issuer,
         cast(null as timestamptz) as carried_since
     from notices
     inner join gate on notices.source_key = gate.source_key
@@ -159,6 +160,7 @@ held_carried as (
         held_carried.list_position,
         held_carried.geom_geojson,
         held_carried.source_row_key,
+        held_carried.issuer,
         held_carried.carried_since
     from {{ ref('int_closures__held_carried') }} as held_carried
     where held_carried.mart = 'warnings'
@@ -186,7 +188,8 @@ club_warnings as (
         others.updated_at,
         others.source_url,
         others.geom_geojson,
-        others.source_row_key
+        others.source_row_key,
+        others.issuer
     from others
     inner join gate on others.source_key = gate.source_key
     inner join publication on others.source_key = publication.source_key

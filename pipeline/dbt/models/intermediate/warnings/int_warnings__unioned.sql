@@ -15,7 +15,7 @@ reports as (
 
 club_notices as (
     select * from {{ ref('int_closures__club_notices') }}
-    where notice_type = 'warnings'
+    where notice_type = 'warnings' and obstructs_trail is null
 )
 
 select * from nws
@@ -26,10 +26,11 @@ select * from reports
 
 union all by name
 
--- A club's warnings.py notice never closes a trail (its club filed it as a
--- warning), so `obstructs_trail` is null on every one, and the warnings mart
--- reads it as not reviewed. `notice_held_because` is set where it may not
--- publish as current; int_warnings__final leaves such a row out.
+-- A club's warnings.py notice whose own words close the trail is a closure
+-- (decision 213, rule 8) and int_closures__unioned's, so `obstructs_trail` is
+-- null on every one here, and the warnings mart reads it as not reviewed.
+-- `notice_held_because` is set where it may not publish as current;
+-- int_warnings__final leaves such a row out.
 select
     notice_id,
     source_row_key,
@@ -48,5 +49,6 @@ select
     source_url,
     geom_geojson,
     held_because as notice_held_because,
+    issuer,
     _loaded_at
 from club_notices

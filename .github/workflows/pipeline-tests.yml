@@ -266,6 +266,8 @@ jobs:
             pipeline/tests/test_dbt_data_quality_builds.py
             pipeline/tests/test_dbt_evaluator_exceptions.py
             pipeline/tests/test_dbt_every_model_keyed.py
+            pipeline/tests/test_dbt_test_thresholds.py
+            pipeline/tests/test_dbt_thresholds_builds.py
             pipeline/tests/conftest.py
             pipeline/pyproject.toml
             pipeline/requirements-dev.txt
@@ -755,6 +757,27 @@ jobs:
       - name: Every model keyed (tests/test_dbt_every_model_keyed.py)
         if: steps.scope.outputs.run == 'true'
         run: OURHIKE_DBT="$(command -v dbt)" "$RUNNER_TEMP/pipeline/bin/python" -m pytest -o addopts="" -q -p no:cacheprovider tests/test_dbt_every_model_keyed.py
+
+      # Decision 204 (the maintainer, 2026-10-15: "Every test should have both
+      # the warning and error thresholds"): every test this project and the
+      # evaluator declare carries `warn_if` and `error_if` in the `>N` form,
+      # and OURHIKE_DATA_ENV decides who stops on an error. The test reads the
+      # YAML and SQL, then parses the project twice into directories of its
+      # own, unset and as production, with Elementary's checks on, and reads
+      # every test node of both. Measured 2026-10-15 in a sandbox: 10 passed
+      # in 48 s, the two parses most of it.
+      - name: Every test's two thresholds (tests/test_dbt_test_thresholds.py)
+        if: steps.scope.outputs.run == 'true'
+        run: OURHIKE_DBT="$(command -v dbt)" "$RUNNER_TEMP/pipeline/bin/python" -m pytest -o addopts="" -q -p no:cacheprovider tests/test_dbt_test_thresholds.py
+
+      # Decision 204 on a real build: the podcasts mart from raw rows that tell
+      # one key twice, built as CI builds it (the duplicates test is an error
+      # and the mart is skipped) and as production does (it warns, the mart
+      # builds, and build_marts.py's relabelled_errors() reports it as an
+      # error). Each build has a warehouse and a target path of its own.
+      - name: A failing test in CI and in production (tests/test_dbt_thresholds_builds.py)
+        if: steps.scope.outputs.run == 'true'
+        run: OURHIKE_DBT="$(command -v dbt)" "$RUNNER_TEMP/pipeline/bin/python" -m pytest -o addopts="" -q -p no:cacheprovider tests/test_dbt_thresholds_builds.py
 
       # Shadow-run parity (ELT.md, "How a rule moves"): each family the dbt
       # path writes, against today's exporter on the same input, record by

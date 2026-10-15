@@ -12,6 +12,10 @@
 -- services for one, and its index (CSI) says how far water is, never where.
 -- So a GATC source is checked against the shelter, campsite or road gap's
 -- parking area it is named for.
+--
+-- THE KEY, namesake_key, is dbt_utils.generate_surrogate_key over the seed
+-- row (gatc_mile, entry_starts, atc_layer) and the ATC point's GlobalID
+-- (decision 197: every model has one column that is unique and not null).
 with names as (
     select * from {{ ref('gatc_water_atc_names') }}
 ),
@@ -40,6 +44,12 @@ atc as (
 )
 
 select
+    {{ dbt_utils.generate_surrogate_key([
+        'names.gatc_mile',
+        'names.entry_starts',
+        'names.atc_layer',
+        'atc.globalid',
+    ]) }} as namesake_key,
     names.gatc_mile,
     names.entry_starts,
     names.atc_layer,

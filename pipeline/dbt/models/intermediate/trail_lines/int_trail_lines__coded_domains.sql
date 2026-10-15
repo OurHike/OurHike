@@ -16,7 +16,16 @@
 -- esriFieldTypeString fields and their values are; export_trails.py's `in`
 -- compares types, and on these two fields both sides are text, so a text
 -- join answers the same (an integer-coded field landed as text would not).
+--
+-- THE KEY, coded_value_key, is dbt_utils.generate_surrogate_key over
+-- (source_key, field_name, code), one of a field's coded values (decision
+-- 197: every model has one column that is unique and not null).
 select
+    {{ dbt_utils.generate_surrogate_key([
+        'domains.source_key',
+        'domains.field_name',
+        'domains.code',
+    ]) }} as coded_value_key,
     domains.source_key,
     domains.field_name,
     domains.code,

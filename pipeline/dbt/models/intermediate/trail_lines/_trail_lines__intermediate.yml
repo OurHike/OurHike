@@ -254,16 +254,22 @@ models:
       extract lands the layers' field metadata, which replaces the var in
       this one model and leaves these columns alone.
     data_tests:
-      - dbt_utils.unique_combination_of_columns:
-          arguments:
-            combination_of_columns: [source_key, field_name, code]
-      # lib/spurs.decode_type reads a label back to its code, ignoring case,
-      # and takes the first match: with one label per code that is the match.
+      # A rule, not the key: lib/spurs.decode_type reads a label back to its
+      # code, ignoring case, and takes the first match: with one label per
+      # code that is the match.
       - dbt_utils.unique_combination_of_columns:
           name: int_trail_lines__coded_domains_labels_name_one_code
           arguments:
             combination_of_columns: [source_key, field_name, lower(label)]
     columns:
+      - name: coded_value_key
+        description: >
+          The row's key (decision 197): dbt_utils.generate_surrogate_key over
+          source_key, field_name and code, one coded value of one field. Its
+          unique test fails on any two rows sharing the three, the
+          combination test it replaced; never null by construction, so the
+          three inputs' own not_null tests hold the values.
+        data_tests: [unique, not_null]
       - name: source_key
         description: The registry key of the layer whose field this is.
         data_tests:

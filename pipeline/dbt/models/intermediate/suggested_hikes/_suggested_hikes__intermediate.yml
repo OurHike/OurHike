@@ -131,11 +131,14 @@ models:
       Every maintaining club's stretches of the A.T. as club_sections.json's
       `clubs` carries them (int_trail_lines__club_sections), in the file's
       order, which a highlight's club is read from.
-    data_tests:
-      - dbt_utils.unique_combination_of_columns:
-          arguments:
-            combination_of_columns: [club_order, stretch_order]
     columns:
+      - name: club_stretch_key
+        description: >
+          The row's key (decision 197): dbt_utils.generate_surrogate_key over
+          club_order and stretch_order. Its unique test fails on any two rows
+          sharing them, the combination test it replaced; never null by
+          construction, so the two inputs' own not_null tests hold the values.
+        data_tests: [unique, not_null]
       - name: club_order
         description: The club's place in club_sections.json's `clubs`, from 0.
         data_tests: [not_null]

@@ -593,13 +593,16 @@ models:
       reference/trail_name_aliases.json's reviewed spellings (TL21): one row
       per (source, published spelling) and the long trail it is, as
       export_nearby_trails.py's _alias_index() reads the file.
-    data_tests:
-      # Two entries claiming one spelling would be decided silently by the
-      # later one in the Python; here it stops the build.
-      - dbt_utils.unique_combination_of_columns:
-          arguments:
-            combination_of_columns: [source_key, published_spelling]
     columns:
+      # Two entries claiming one spelling would be decided silently by the
+      # later one in the Python; here the key's unique test stops the build.
+      - name: spelling_key
+        description: >
+          The row's key (decision 197): dbt_utils.generate_surrogate_key over
+          source_key and published_spelling. Its unique test fails on any two
+          rows sharing them, the combination test it replaced; never null by
+          construction, so the two inputs' own not_null tests hold the values.
+        data_tests: [unique, not_null]
       - name: alias_key
         description: The entry's key in the file's `trails`, e.g. `at`.
         data_tests: [not_null]

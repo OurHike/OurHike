@@ -4,7 +4,9 @@
 -- fetch_trail_water.py reads them through build_water_distance.py's
 -- fetch_atc_features() today, which keeps a feature only where it carries a
 -- geometry. One row per site. The step orders them as fetch_atc_features
--- does (by name, then GlobalID) and reads nothing else.
+-- does (by name, then GlobalID) and reads nothing else, so the key,
+-- water_site_key (dbt_utils.generate_surrogate_key over layer and GlobalID,
+-- decision 197), stays in the warehouse.
 with sites as (
     select
         'shelters' as layer,
@@ -22,6 +24,8 @@ with sites as (
 )
 
 select
+    {{ dbt_utils.generate_surrogate_key(['sites.layer', 'sites.global_id']) }}
+        as water_site_key,
     sites.layer,
     sites.global_id,
     sites.name,

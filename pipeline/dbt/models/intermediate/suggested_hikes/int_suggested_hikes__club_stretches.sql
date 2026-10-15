@@ -6,6 +6,10 @@
 -- club's place in that list and `stretch_order` the stretch's place in its
 -- club's `stretches`, each from 0. The unattributed runs are not a club, and
 -- club_for_mile() never reads them, so a mile in one has no club.
+--
+-- THE KEY, club_stretch_key, is dbt_utils.generate_surrogate_key over
+-- (club_order, stretch_order) (decision 197: every model has one column that
+-- is unique and not null).
 with clubs as (
     select
         acronym,
@@ -25,6 +29,8 @@ stretches as (
 )
 
 select
+    {{ dbt_utils.generate_surrogate_key(['club_order', 'stretch_order']) }}
+        as club_stretch_key,
     acronym,
     cast(json_extract(stretch, '$.start_mile') as double) as start_mile,
     cast(json_extract(stretch, '$.end_mile') as double) as end_mile,

@@ -7,9 +7,11 @@
 --
 -- Exact on the publisher's spelling, never a prefix: a road named after a
 -- trail is not the trail, and that refusal is the file's, not this model's.
--- The test on (source_key, published_spelling) stops the build where two
--- entries claim one spelling, which _alias_index() would answer with the
--- later entry, silently.
+-- The key, spelling_key, is dbt_utils.generate_surrogate_key over
+-- (source_key, published_spelling) (decision 197; alias_key is the trail's
+-- entry, which several spellings share). Its unique test stops the build
+-- where two entries claim one spelling, which _alias_index() would answer
+-- with the later entry, silently.
 with aliases_document as (
     select document_json from {{ ref('base_ourhike__trail_name_aliases') }}
 ),
@@ -47,11 +49,22 @@ source_spellings as (
             map_entries(cast(published_as as map (varchar, varchar[])))
         ) as source_entry
     from trails
+),
+
+spellings as (
+    select
+        alias_key,
+        struct_extract(source_entry, 'key') as source_key,
+        unnest(struct_extract(source_entry, 'value')) as published_spelling,
+        trail_name
+    from source_spellings
 )
 
 select
+    {{ dbt_utils.generate_surrogate_key(['source_key', 'published_spelling']) }}
+        as spelling_key,
     alias_key,
-    struct_extract(source_entry, 'key') as source_key,
-    unnest(struct_extract(source_entry, 'value')) as published_spelling,
+    source_key,
+    published_spelling,
     trail_name
-from source_spellings
+from spellings

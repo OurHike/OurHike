@@ -533,13 +533,17 @@ models:
       fetch_atc_features(), which keeps a feature only where it carries a
       geometry. The step orders them as fetch_atc_features() does, by name
       and then GlobalID, and reads nothing else.
-    data_tests:
+    columns:
       # One row per site: each staging model keys and dedupes its layer on
       # GlobalID (decision 40), so a site is its layer and its GlobalID.
-      - dbt_utils.unique_combination_of_columns:
-          arguments:
-            combination_of_columns: [layer, global_id]
-    columns:
+      - name: water_site_key
+        description: >
+          The row's key (decision 197): dbt_utils.generate_surrogate_key over
+          layer and global_id. Its unique test fails on any two rows sharing
+          them, the combination test it replaced; never null by construction,
+          so the two inputs' own not_null tests hold the values.
+          step_site_water.py does not read it.
+        data_tests: [unique, not_null]
       - name: layer
         description: shelters or campsites, fetch_trail_water.py's two layers.
         data_tests:

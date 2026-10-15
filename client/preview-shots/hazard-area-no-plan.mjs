@@ -26,14 +26,17 @@
 //     Historic Preservation", where it said "...Preservation's layer" (the
 //     preview of 6fca5e91) until the word-choice review of #1805
 //     (2026-10-09) took "layer", a GIS word, off the card; its dates line
-//     says that publisher gives no season dates. UA's stewards.json
-//     still names none of the hazard sources' keys (release 2026-10-03-2,
-//     read 2026-10-07: not oprhp_hunting_areas, iata_lands_hunting_regs,
+//     says that publisher gives no season dates. UA's stewards.json named
+//     none of the hazard sources' keys in release 2026-10-03-2 (read
+//     2026-10-07: not oprhp_hunting_areas, iata_lands_hunting_regs,
 //     usace_garrison_hunting_restrictions, blm_shooting_points or
-//     usfs_baer_assessments), so the name is the steward it lists for the
+//     usfs_baer_assessments), so the name was the steward it lists for the
 //     row's provider, "NYS OPRHP" - lib/notices.ts's noticeOrgLabel, since
 //     09c4da87. Before that commit the sheet printed the raw key,
-//     "oprhp_hunting_areas", which is what this line used to say.
+//     "oprhp_hunting_areas", which is what this line used to say. Release
+//     2026-10-10-2, pinned since 2026-10-15, names all five and lists
+//     oprhp_hunting_areas under that same steward (read 2026-10-15), so the
+//     sheet prints the same name, found by the key.
 //
 // THE AREA IS INVENTED, and its title says "(example)": a box around Bear
 // Mountain's summit, which the A.T. crosses (long-term-closures.mjs, at the
@@ -65,13 +68,16 @@ const CAMERA = { center: [-74.0075, 41.306], zoom: 13 }
  * warning pin, a waypoint pin, closure tape, an ATC band or a trail line
  * within a thumb of the tap takes it first, and the area's sheet never opens.
  *
- * Measured 2026-10-07 against UA's release 2026-10-03-2, the one
- * lib/dataRelease.ts pins: at z13 this point is 71 px from the nearest trail
+ * Measured 2026-10-07 against UA's release 2026-10-03-2, then the one
+ * lib/dataRelease.ts pinned: at z13 this point is 71 px from the nearest trail
  * line (the A.T. and its side trails in trails.geojson, and every line in
  * nearby_trails.pmtiles's z13 tiles over the park) and 70 px from the
  * nearest waypoint (nearby_poi.geojson and the poi_*.geojson files). A line
  * takes a tap within map/lineTaps.ts's LINE_TAP_SLOP_PX (19.75 px) of it,
- * plus half its width.
+ * plus half its width. Against 2026-10-10-2, pinned since 2026-10-15, it is
+ * 74 px from trails.geojson's nearest line (the A.T.) and 70 px from the
+ * nearest waypoint, a viewpoint in nearby_poi.geojson (Measured 2026-10-15);
+ * that release's nearby_trails.pmtiles tiles were not read.
  *
  * WHY THE FIRST VERSION PHOTOGRAPHED ON ONE PREVIEW IN THREE. It tapped
  * (-74.0, 41.309), which the same measurement puts 8.5 px from the A.T.'s

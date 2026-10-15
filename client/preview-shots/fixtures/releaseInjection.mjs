@@ -1,11 +1,14 @@
 // One invented record added to a file of the release this build pins, for a
-// recipe whose screen no published release reaches yet (decisions 64 and 65:
-// a club line in the sketch, a seasonal tap's card).
+// recipe whose screen no published release reached when it was written
+// (decisions 64 and 65: a club line in the sketch, a seasonal tap's card).
 //
-// WHY A RECIPE HAS TO DO THIS. The pipeline writes `line_kind` and
-// `water_caution` from the dbt path, and the release a build pins was
-// published before either existed, so the camera finds neither in the
+// WHY A RECIPE HAD TO DO THIS. The pipeline writes `line_kind` and
+// `water_caution` from the dbt path, and the release a build pinned was
+// published before either existed, so the camera found neither in the
 // bucket (UA's 2026-10-03-2, read 2026-10-04: no feature carries either).
+// The release pinned since 2026-10-15, 2026-10-10-2, carries both (read
+// 2026-10-15: 12 club groups in its sketch, 420 taps with a caution), so the
+// two recipes could now frame real records instead.
 // Both files are verified against the release's manifest before anything
 // draws or stores them (lib/trailData.ts's readChecked, and
 // lib/nearbyTrailData.ts's own sha256Of check), so the edit is made
@@ -37,9 +40,10 @@ function escaped(key) {
  * then the release as it stands, which its caption names.
  *
  * Each file is fetched and edited ONCE per page, however many times the app
- * asks for the manifest: network_overview.geojson is 41,216,145 bytes raw in
- * UA's 2026-10-03-2 manifest, and fetching it again on every manifest read is
- * a second wait for nothing. A request the page drops while one is in flight
+ * asks for the manifest: nearby_poi.geojson is 22,675,517 bytes raw in UA's
+ * 2026-10-10-2 manifest (and network_overview.geojson was 41,216,145 in
+ * 2026-10-03-2's), and fetching it again on every manifest read is a second
+ * wait for nothing. A request the page drops while one is in flight
  * is let go rather than thrown, because a throw inside a route handler ends
  * the whole capture rather than the one request.
  */

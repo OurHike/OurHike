@@ -10,8 +10,8 @@ dataRelease.ts's SESSION_RELEASE reads that record. So a build whose two values
 disagree ships a phone that reads one release on its first launch and switches
 to the other on the launch after it reads the pointer. That is overnight
 offline review 1, finding 7, on the branch of PR #1805 — dlt → dbt re-platform
-as one go/no-go change, where DATA_RELEASE is 2026-10-03-2 and production's
-entry 2026-09-24-2.
+as one go/no-go change, where DATA_RELEASE was 2026-10-03-2 and production's
+entry 2026-09-24-2 when the review read them (2026-10-09).
 
 THE ENVIRONMENT is read off DATA_URL the way lib/dataRelease.ts's
 environmentOf reads it off the build's VITE_DATA_BASE_URL: a base ending

@@ -151,6 +151,12 @@ def _run_the_hand_off(
 EVERY_CALL = ["hourly_parity.py bundle", "hand_off.py put-bundle", "hand_off.py put"]
 
 
+def _spent_leaving(seconds: int) -> int:
+    """The seconds of the job gone when the step starts that leave it `seconds` after RESERVE_SECONDS, by its own env."""
+    env = _step(BAKE, "publish", HAND_OFF)["env"]
+    return int(env["JOB_SECONDS"]) - int(env["RESERVE_SECONDS"]) - seconds
+
+
 @pytest.mark.parametrize(
     ("codes", "status", "calls"),
     [
@@ -179,9 +185,10 @@ def test_a_bundle_that_outruns_its_ceiling_is_stopped_and_the_warehouse_still_go
 
 
 def test_the_warehouse_gets_only_what_the_job_has_left_after_the_steps_that_follow_it(tmp_path):
-    """900 - 75 - 815 = 10 s left, or a few fewer once the bundle has gone on a loaded machine: the put sleeps past it,
-    `timeout` stops it, and the step says so with the put's own exit, so the steps after it keep the 75 s they need."""
-    code, calls, out = _run_the_hand_off(tmp_path, {}, spent=815, sleeps={"hand_off.py put": 30})
+    """10 s left of the job's JOB_SECONDS after its RESERVE_SECONDS, or a few fewer once the bundle has gone on a loaded
+    machine: the put sleeps past it, `timeout` stops it, and the step says so with the put's own exit, so the steps
+    after it keep the reserve they need."""
+    code, calls, out = _run_the_hand_off(tmp_path, {}, spent=_spent_leaving(10), sleeps={"hand_off.py put": 30})
 
     assert calls == EVERY_CALL
     assert code == 124
@@ -191,11 +198,12 @@ def test_the_warehouse_gets_only_what_the_job_has_left_after_the_steps_that_foll
 
 def test_a_job_with_too_little_left_moves_neither_half_and_says_so(tmp_path):
     """3 s left before the steps after this one: nothing is started that `timeout` would only have to stop."""
-    code, calls, out = _run_the_hand_off(tmp_path, {}, spent=822)
+    code, calls, out = _run_the_hand_off(tmp_path, {}, spent=_spent_leaving(3))
+    reserve = _step(BAKE, "publish", HAND_OFF)["env"]["RESERVE_SECONDS"]
 
     assert (code, calls) == (1, [])
-    assert re.search(r"::warning title=Comparison bundle not moved::this job had [0-3] s left before the 75 s", out), out
-    assert re.search(r"::warning title=Warehouse not handed off::this job had [0-3] s left before the 75 s", out), out
+    assert re.search(rf"::warning title=Comparison bundle not moved::this job had [0-3] s left before the {reserve} s", out)
+    assert re.search(rf"::warning title=Warehouse not handed off::this job had [0-3] s left before the {reserve} s", out)
 
 
 def test_the_hand_off_will_not_guess_at_a_job_clock_it_was_not_given(tmp_path):
@@ -253,18 +261,36 @@ def _run_a_step(tmp_path: Path, step: dict, env: dict[str, str], program: str, c
     return finished.returncode, calls, output.read_text()
 
 
-@pytest.mark.parametrize(("code", "taken"), [(0, "true"), (4, "false"), (1, "false")])
-def test_a_bundle_that_cannot_be_taken_is_an_hour_not_compared_never_a_red_step(tmp_path, code, taken):
+@pytest.mark.parametrize(
+    ("code", "output"),
+    [(0, "taken=true\n"), (4, "taken=false\n"), (1, "taken=false\n"), (5, "taken=false\nstale=true\n")],
+)
+def test_a_bundle_that_cannot_be_taken_is_an_hour_not_compared_never_a_red_step(tmp_path, code, output):
     """take-bundle's exit 4 is another run's bundle, or another commit's, or none; 1 is a store that could not be
-    read or a torn upload. Either costs this hour its comparison, which the compare step then says, and nothing else."""
+    read or a torn upload. Either costs this hour its comparison, which the compare step then says, and nothing else.
+    5 is the store with no bundle for MAX_AGE_HOURS (decision 200): the same here, and `stale` for the last step."""
     env = {"ENVIRONMENT": "ua", "BUILD_RUN": BUILD_RUN, "COMMIT": "e49ca601", "R2_RAW_BUCKET": "raw"}
-    status, calls, output = _run_a_step(tmp_path, _step(CHECKS, "parity", TAKE), env, "python", code)
+    env["MAX_AGE_HOURS"] = _workflow(CHECKS)["env"]["MAX_AGE_HOURS"]
+    status, calls, written = _run_a_step(tmp_path, _step(CHECKS, "parity", TAKE), env, "python", code)
 
-    assert status == 0 and output == f"taken={taken}\n"
+    assert status == 0 and written == output
     assert calls == [
         ["hand_off.py", "take-bundle", "--url", "s3://raw/history/conditions_ua", "--out", "data/hourly_parity/bundle"]
-        + ["--run", BUILD_RUN, "--commit", "e49ca601"]
+        + ["--run", BUILD_RUN, "--commit", "e49ca601", "--max-age-hours", "2.5"]
     ]
+
+
+def test_a_store_with_no_bundle_for_max_age_hours_turns_the_comparison_red_last(tmp_path):
+    """Decision 200 (the maintainer's poll of 2026-10-15, "Red if none in 2.5 h"): after the hour's result, every file
+    not compared, has been written and uploaded, so gate_report.py still reads the hour, and whatever went before."""
+    steps = _job(CHECKS, "parity")["steps"]
+    names = [step.get("name") for step in steps]
+    (fail,) = [step for step in steps if "steps.take.outputs.stale == 'true'" in str(step.get("if"))]
+
+    assert names.index(fail["name"]) == len(steps) - 1 and names.index(UPLOAD) < names.index(fail["name"])
+    assert "!cancelled()" in fail["if"] and "steps.wanted.outputs.run == 'true'" in fail["if"]
+    status, calls, _ = _run_a_step(tmp_path, fail, {"LEG": "ua", "MAX_AGE_HOURS": "2.5"}, "python")
+    assert status == 1 and calls == []
 
 
 @pytest.mark.parametrize("taken", ["true", "false", ""])

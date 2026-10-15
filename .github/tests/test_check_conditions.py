@@ -17,6 +17,7 @@ from __future__ import annotations
 
 import json
 import os
+import re
 import shlex
 import subprocess
 from itertools import product
@@ -356,3 +357,64 @@ def test_a_build_and_its_checks_each_at_their_caps_still_end_inside_the_hour():
     (run,) = [step for step in checks["check"]["steps"] if step.get("id") == "checks"]
     take = _step(CHECKS, "check", "Take the warehouse this leg's build handed off")
     assert run["timeout-minutes"] + take["timeout-minutes"] < checks["check"]["timeout-minutes"], "the job's cap holds both"
+
+
+# --- none in 2.5 h is red (decision 200, the maintainer's poll of 2026-10-15, "Red if none in 2.5 h") ---------------
+
+#: gate_report.py's SOAK_MAX_GAP_HOURS, read from its text: this suite does not import pipeline/.
+SOAK_MAX_GAP_HOURS = float(
+    re.search(
+        r"^SOAK_MAX_GAP_HOURS = ([0-9.]+)$",
+        (WORKFLOWS.parents[1] / "pipeline" / "gate_report.py").read_text(encoding="utf-8"),
+        re.MULTILINE,
+    ).group(1)
+)
+
+
+def test_the_age_past_which_a_missing_hand_off_is_red_is_the_soaks_own_gap():
+    """Decision 158's gap, which gate_report.py already holds the soak to, and nowhere else in this workflow."""
+    assert float(_load(CHECKS)["env"]["MAX_AGE_HOURS"]) == SOAK_MAX_GAP_HOURS
+    jobs = _load(CHECKS)["jobs"].values()
+    envs = [job.get("env") or {} for job in jobs] + [step.get("env") or {} for job in jobs for step in job["steps"]]
+    assert not [env for env in envs if "MAX_AGE_HOURS" in env], "one home: the workflow's env"
+
+
+@pytest.mark.parametrize(
+    ("code", "status", "output", "says"),
+    [
+        (0, 0, "taken=true\n", None),
+        (4, 0, "taken=false\n", "::warning title=Nothing to check::"),
+        (5, 5, "", None),
+        (1, 1, "", None),
+    ],
+)
+def test_the_warehouse_take_is_a_warning_for_one_missing_hour_and_red_once_the_store_is_stale(
+    tmp_path, code, status, output, says
+):
+    """hand_off.py take exits 4 when nothing at the store is this run's, and 5 in its place when the store's newest
+    warehouse is older than MAX_AGE_HOURS or there is none: the leg ends green with nothing checked for 4, and red for
+    5, as for a store that cannot be read."""
+    step = _step(CHECKS, "check", "Take the warehouse this leg's build handed off")
+    python, log, output_file = tmp_path / "extract" / "bin" / "python", tmp_path / "argv.jsonl", tmp_path / "out"
+    python.parent.mkdir(parents=True)
+    python.write_text(
+        f"#!/usr/bin/env python3\nimport json, os, sys\nopen(os.environ['ARGV_LOG'], 'a').write(json.dumps(sys.argv[1:]))\nsys.exit({code})\n"
+    )
+    python.chmod(0o755)
+    output_file.write_text("")
+    env = {"ENVIRONMENT": "ua", "BUILD_RUN": BUILD_RUN, "COMMIT": "e49ca601", "R2_RAW_BUCKET": "raw"}
+    finished = subprocess.run(
+        ["bash", "-e", "-c", step["run"]],
+        env={**os.environ, "RUNNER_TEMP": str(tmp_path), "ARGV_LOG": str(log), "GITHUB_OUTPUT": str(output_file)}
+        | env
+        | {"MAX_AGE_HOURS": _load(CHECKS)["env"]["MAX_AGE_HOURS"]},
+        capture_output=True,
+        text=True,
+        timeout=60,
+    )
+
+    assert finished.returncode == status
+    assert output_file.read_text() == output
+    assert (says in finished.stdout) if says else "::warning" not in finished.stdout
+    argv = json.loads(log.read_text())
+    assert argv[argv.index("--max-age-hours") + 1] == "2.5"

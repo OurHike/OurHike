@@ -339,7 +339,8 @@ def test_no_bundle_reads_as_every_family_not_compared_and_the_run_stays_green(tm
     assert run["bundle"] == "missing: nothing was handed on"
     page = summary.read_text()
     first = page.split("\n\n")[1]
-    assert first.startswith("**Nothing was compared this hour: none of the 6 files.** The run stays green")
+    assert first.startswith("**Nothing was compared this hour: none of the 6 files.** On its own an hour like this is")
+    assert "goes red only once the leg's store has had no bundle for 2.5 hours (decision 200)" in first
     assert first.endswith("Why: no bundle: nothing was handed on")
     assert "**0 file(s) turn this run red**: none; **6 not compared**." in page
     out = capsys.readouterr().out.splitlines()
@@ -348,11 +349,13 @@ def test_no_bundle_reads_as_every_family_not_compared_and_the_run_stays_green(tm
 
 
 def test_the_summary_names_the_soak_the_gate_counts():
-    """The not-compared line says how long a missed hour holds a key back: gate_report.py's SOAK_HOURS, written out
-    because gate_report.py imports this file."""
+    """The not-compared line says how long a missed hour holds a key back, gate_report.py's SOAK_HOURS, and after how
+    long without a bundle the job goes red, its SOAK_MAX_GAP_HOURS: both written out because gate_report.py imports
+    this file."""
     import gate_report
 
     assert hourly_parity.GATE_SOAK_HOURS == gate_report.SOAK_HOURS
+    assert hourly_parity.GATE_SOAK_MAX_GAP_HOURS == gate_report.SOAK_MAX_GAP_HOURS
 
 
 def test_parity_answers_dir_moves_raw_dir_for_one_comparison_and_puts_it_back(tmp_path):

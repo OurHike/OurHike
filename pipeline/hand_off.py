@@ -64,9 +64,24 @@ EXITS. 0 when the warehouse moved and both sha256s matched; NOT_HANDED_OFF (4)
 from `take` when nothing at the store is the asked run's, or it is but
 from another commit, which check-conditions.yml reads as "this leg's build
 left nothing to check" (an exporters-path leg, a build that failed before
-its put, or a push since the build); 1 for anything
-else, a store that cannot be read, a torn upload, a warehouse still holding
-a write-ahead log.
+its put, or a push since the build); STALE (5) in place of 4 when
+--max-age-hours is given and the store's newest put is older than that, or
+there is none; 1 for anything else, a store that cannot be read, a torn
+upload, a warehouse still holding a write-ahead log.
+
+ONE HOUR WITHOUT ONE IS A WARNING, NONE IN 2.5 HOURS IS RED (decision 200,
+the maintainer's poll of 2026-10-15, "Red if none in 2.5 h"). Every hour
+that takes nothing reads green on its own, and the soak's routine reads only
+red or green, so eight hours of soak runs 666 to 676 compared nothing and
+looked clean (review finding S2-1 of PR #1805 — dlt → dbt re-platform as one
+go/no-go change). So check-conditions.yml passes gate_report.py's
+SOAK_MAX_GAP_HOURS, decision 158's gap, as --max-age-hours to both takes, and
+an hour whose store's newest warehouse or bundle is older than that, or that
+holds none, goes red. With the soak's hourly runs, 55.6 to 63.0 minutes
+apart (gate_report.py's measurement), the newest put is about an hour old
+after one hour without one and about two after two, so it is the third such
+hour in a row that goes red, or the second when the hours drift half an
+hour apart (Reasoned).
 
 THE HOUR'S COMPARISON TAKES A BUNDLE, NOT THE WAREHOUSE (open question 17, the
 maintainer's poll of 2026-10-10: "Compare every soak hour"):
@@ -124,6 +139,9 @@ GZIP_LEVEL = 1
 CHUNK = 1 << 20
 #: `take`'s exit when no warehouse at the store is the asked run's: something to say, not a failure of this file's.
 NOT_HANDED_OFF = 4
+#: In place of NOT_HANDED_OFF, under --max-age-hours, when the store's newest put is older than that or there is none:
+#: the module docstring, "ONE HOUR WITHOUT ONE IS A WARNING, NONE IN 2.5 HOURS IS RED".
+STALE = 5
 #: The module docstring, "THE HOUR'S COMPARISON TAKES A BUNDLE".
 BUNDLE = f"{FOLDER}/parity_inputs.json.gz"
 BUNDLE_POINTER = f"{FOLDER}/parity_inputs.json"
@@ -136,7 +154,12 @@ BUNDLE_PATH = re.compile(r"[A-Za-z0-9_.-]+(/[A-Za-z0-9_.-]+)*")
 
 
 class NotHandedOff(Exception):
-    """No warehouse at the store is the asked run's."""
+    """No warehouse at the store is the asked run's. `put_at` is when the store's newest one was put, None when it holds
+    none (the module docstring, "ONE HOUR WITHOUT ONE IS A WARNING")."""
+
+    def __init__(self, message: str, put_at: str | None = None):
+        super().__init__(message)
+        self.put_at = put_at
 
 
 def put(url: str, warehouse: Path, run: str, attempt: str = "1", commit: str | None = None) -> str:
@@ -197,7 +220,8 @@ def _refuse_if_replaced(store: Store, url: str, run: str, pointer: dict) -> None
     if str(now.get("run")) != str(run) or now.get("gzip_sha256") != pointer.get("gzip_sha256"):
         raise NotHandedOff(
             f"{url}/{FOLDER}/ now holds run {now.get('run')}'s warehouse, put at {now.get('put_at')}: a later build "
-            f"replaced run {run}'s while this take was downloading it, so nothing is checked this hour"
+            f"replaced run {run}'s while this take was downloading it, so nothing is checked this hour",
+            now.get("put_at"),
         )
 
 
@@ -216,12 +240,14 @@ def take(url: str, warehouse: Path, run: str, commit: str | None = None) -> str:
         raise Refused(f"{url}/{POINTER} is format {pointer.get('format')!r}; this file reads format {FORMAT}")
     if str(pointer.get("run")) != str(run):
         raise NotHandedOff(
-            f"{url}/{FOLDER}/ holds run {pointer.get('run')}'s warehouse, put at {pointer.get('put_at')}, not run {run}'s"
+            f"{url}/{FOLDER}/ holds run {pointer.get('run')}'s warehouse, put at {pointer.get('put_at')}, not run {run}'s",
+            pointer.get("put_at"),
         )
     if commit and pointer.get("commit") and pointer["commit"] != commit:
         raise NotHandedOff(
             f"run {run}'s build ran on {pointer['commit'][:12]} and this checkout is {commit[:12]}, so its checks would "
-            "parse a project the warehouse was not built from: nothing is checked this hour"
+            "parse a project the warehouse was not built from: nothing is checked this hour",
+            pointer.get("put_at"),
         )
     warehouse.parent.mkdir(parents=True, exist_ok=True)
     with tempfile.TemporaryDirectory(dir=warehouse.parent) as scratch:
@@ -308,17 +334,20 @@ def take_bundle(url: str, out: Path, run: str, commit: str | None = None) -> str
         raise Refused(f"{url}/{BUNDLE_POINTER} is format {pointer.get('format')!r}; this file reads format {BUNDLE_FORMAT}")
     if str(pointer.get("run")) != str(run):
         raise NotHandedOff(
-            f"{url}/{FOLDER}/ holds run {pointer.get('run')}'s comparison bundle, put at {pointer.get('put_at')}, not run {run}'s"
+            f"{url}/{FOLDER}/ holds run {pointer.get('run')}'s comparison bundle, put at {pointer.get('put_at')}, not run {run}'s",
+            pointer.get("put_at"),
         )
     if commit and pointer.get("commit") and pointer["commit"] != commit:
-        raise NotHandedOff(f"run {run}'s bundle was built on {pointer['commit'][:12]}, not this checkout's {commit[:12]}")
+        raise NotHandedOff(
+            f"run {run}'s bundle was built on {pointer['commit'][:12]}, not this checkout's {commit[:12]}", pointer.get("put_at")
+        )
     with tempfile.TemporaryDirectory() as scratch:
         packed = Path(scratch) / "parity_inputs.json.gz"
         store.get(BUNDLE, packed, BUNDLE_POINTER)
         if (size := packed.stat().st_size) != pointer["gzip_bytes"] or _sha256(packed) != pointer["gzip_sha256"]:
             now = json.loads(store.read_text(BUNDLE_POINTER) or "{}")
             if str(now.get("run")) != str(run) or now.get("gzip_sha256") != pointer.get("gzip_sha256"):
-                raise NotHandedOff(f"a later build replaced run {run}'s bundle while it was being taken")
+                raise NotHandedOff(f"a later build replaced run {run}'s bundle while it was being taken", now.get("put_at"))
             raise Refused(f"{url}/{BUNDLE} is {size} bytes, and {BUNDLE_POINTER} says {pointer['gzip_bytes']}: it tore")
         with gzip.open(packed, "rb") as raw:
             document = json.loads(raw.read().decode("utf-8"))
@@ -339,6 +368,42 @@ def take_bundle(url: str, out: Path, run: str, commit: str | None = None) -> str
     )
 
 
+MAX_AGE_HELP = (
+    "with nothing of --run's to take: exit STALE, not NOT_HANDED_OFF, when the store's newest put is older than this "
+    "many hours or there is none (check-conditions.yml passes gate_report.py's SOAK_MAX_GAP_HOURS)"
+)
+
+
+def nothing_or_stale(nothing: NotHandedOff, max_age_hours: float | None, what: str, now: datetime | None = None) -> int:
+    """NOT_HANDED_OFF, or STALE when `max_age_hours` is given and the store's newest `what` is older than that, or the
+    store holds none or one it cannot date (the module docstring, "ONE HOUR WITHOUT ONE IS A WARNING")."""
+    if max_age_hours is None:
+        return NOT_HANDED_OFF
+    try:
+        put_at = datetime.fromisoformat(str(nothing.put_at).replace("Z", "+00:00")) if nothing.put_at else None
+    except ValueError:
+        put_at = None
+    if put_at is not None and put_at.tzinfo is not None:
+        hours = ((now or datetime.now(UTC)) - put_at).total_seconds() / 3600
+        if hours <= max_age_hours:
+            print(
+                f"hand_off: the store's newest {what} was put {hours:.1f} h ago, inside {max_age_hours:g} h, so this "
+                "hour is a warning and not red",
+                flush=True,
+            )
+            return NOT_HANDED_OFF
+        said = f"its newest was put {hours:.1f} h ago, at {nothing.put_at}"
+    else:
+        said = "it holds none" if not nothing.put_at else f"its newest one's put_at, {nothing.put_at!r}, cannot be read"
+    print(
+        f"::error title=No {what} handed off for over {max_age_hours:g} h::the leg's history store has had no {what} "
+        f"put in the last {max_age_hours:g} hours: {said}. Each hour without one alone is a warning; this many in a "
+        "row is a soak that compares or checks nothing, so this run goes red (decision 200).",
+        flush=True,
+    )
+    return STALE
+
+
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__.split("\n", 1)[0])
     commands = parser.add_subparsers(dest="command", required=True)
@@ -350,6 +415,8 @@ def main(argv: list[str] | None = None) -> int:
         command.add_argument("--commit", help="put: the commit the build ran on; take: the checkout's, which must match")
         if name == "put":
             command.add_argument("--attempt", default="1", help="that run's attempt, for the log")
+        else:
+            command.add_argument("--max-age-hours", type=float, help=MAX_AGE_HELP)
     for name, help_ in (
         ("put-bundle", "hand this build's comparison bundle on (hourly_parity.py bundle)"),
         ("take-bundle", "take the comparison bundle a build handed on"),
@@ -363,6 +430,7 @@ def main(argv: list[str] | None = None) -> int:
             command.add_argument("--attempt", default="1", help="that run's attempt, for the log")
         else:
             command.add_argument("--out", required=True, type=Path, help="where the bundle's files are written")
+            command.add_argument("--max-age-hours", type=float, help=MAX_AGE_HELP)
     args = parser.parse_args(argv)
     if args.command in ("put-bundle", "take-bundle"):
         # A bundle that does not move costs this hour its comparison and nothing else: a warning, and the job that
@@ -374,7 +442,7 @@ def main(argv: list[str] | None = None) -> int:
                 message = take_bundle(args.url, args.out, args.run, args.commit)
         except NotHandedOff as nothing:
             print(f"hand_off: {nothing}", flush=True)
-            return NOT_HANDED_OFF
+            return nothing_or_stale(nothing, args.max_age_hours if args.command == "take-bundle" else None, "comparison bundle")
         except Exception as failed:  # noqa: BLE001 - any failure here is this hour's comparison's, said by name
             print(f"::warning title=Comparison bundle not moved::{type(failed).__name__}: {failed}", flush=True)
             return 1
@@ -387,7 +455,7 @@ def main(argv: list[str] | None = None) -> int:
             message = take(args.url, args.warehouse, args.run, args.commit)
     except NotHandedOff as nothing:
         print(f"hand_off: {nothing}", flush=True)
-        return NOT_HANDED_OFF
+        return nothing_or_stale(nothing, args.max_age_hours if args.command == "take" else None, "warehouse")
     except Refused as refused:
         print(f"::error title=Warehouse not handed off::{refused}", flush=True)
         return 1

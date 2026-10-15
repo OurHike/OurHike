@@ -56,31 +56,43 @@
 -- guess would draw a closure where its source drew none.
 --
 -- THE SAME CLOSURE FROM TWO SOURCES IS DRAWN ONCE (the review of PR #1805
--- of 2026-10-15, thread 4279223668). Two closing areas of different
--- sources that each cover at least `same_closure_share` of the other are one
+-- of 2026-10-15, thread 4279223668). Two drawn areas of different sources
+-- that each cover at least `same_closure_share` of the other are one
 -- closure posted twice, and drawing both stacks one hatch on another, with
 -- a tap opening whichever sheet it finds. IDPR's area restrictions relay
 -- other land managers' orders (all 20 rows read live 2026-10-15 name one
 -- in JURISDICTION), and four were Region 4's own forest orders, drawn
 -- twice until then: Calf Pen, Grimes Creek, Crooked Fire and Deer Point.
--- Each area is measured as its source drew it
--- (int_closures__trail_closure_areas), in EPSG:5070 as the cuts are, never
--- notices.json's outline grown 100 m, which would make two neighbours look
--- alike. Of such a pair the file draws the row its source edited first
--- (`updated_at`; one with none counts as edited last), then the lower
--- notice_id: a copy is made after the order it copies, so the first edit is
--- the likelier original (Reasoned; on those four it keeps Region 4's row
--- three times, and IDPR's Crooked Fire, which IDPR posted two days before
--- Region 4's layer did). Which publisher's row to keep is the maintainer's
--- call, asked with the four pairs, so the rule names no source. The other
--- row is not drawn, and stays in notices.json's list under its own credit.
+-- Each area is measured as its source drew it, the outline
+-- int_closures__area_trail_cuts carries through from
+-- int_closures__trail_closure_areas (`area_geojson`), in EPSG:5070 as the
+-- cuts are, never notices.json's outline grown 100 m, which would make two
+-- neighbours look alike. Of such a pair the file draws the row its source
+-- edited first (`updated_at`; one with none counts as edited last), then the
+-- lower notice_id: a copy is made after the order it copies, so the first
+-- edit is the likelier original (Reasoned; on those four it keeps Region 4's
+-- row three times, and IDPR's Crooked Fire, which IDPR posted two days
+-- before Region 4's layer did). Which publisher's row to keep is the
+-- maintainer's call, asked with the four pairs, so the rule names no source.
+-- The other row is not drawn, and stays in notices.json's list under its
+-- own credit.
+-- ONLY AN AREA THE MAP DRAWS COMPETES: a row of the cut, which this file
+-- crosses out or shades. An area the cut has no row for (its cut or its
+-- shape raised, or it is under about a metre across) is drawn nowhere, so
+-- it must not take a drawn copy's place. When the rule measured every area
+-- of int_closures__trail_closure_areas instead, as it was first written,
+-- such an area edited first hid the copy the cut had drawn, and neither was
+-- drawn (this writer's unit test that
+-- never_lets_an_undrawn_copy_edited_first_hide_the_drawn_one). In an hour
+-- with no lines the cut has no row, so nothing competes and, as before, no
+-- area is drawn.
 -- @unvalidated: `same_closure_share`, 0.9, is the review's number. On the
 -- live read of 2026-10-15 it matched exactly those four pairs (each covering
 -- 0.993 to 1.000 of the other), and no other pair of areas of two sources
 -- reached 0.5. What would settle it is a pair of different closures that
 -- cover each other that much, which nobody has seen, or a copy redrawn
--- coarsely enough to fall below it. A cut that raises compares nothing, so
--- both rows stay drawn: a duplicate hatch is the safer failure.
+-- coarsely enough to fall below it. An intersection that raises compares
+-- nothing, so both rows stay drawn: a duplicate hatch is the safer failure.
 --
 -- ORDER: by source_key, then notice_id, that writer's order.
 --
@@ -143,11 +155,13 @@ cuts as (
         notice_id,
         stretches,
         stretches_geojson,
-        shade_geojson
+        shade_geojson,
+        area_geojson
     from {{ ref('int_closures__area_trail_cuts') }}
 ),
 
--- Each closing area's own outline, as its source drew it, in EPSG:5070.
+-- Each drawn area's own outline, as its source drew it, in EPSG:5070: the
+-- cut's rows are the areas this file draws, and only they compete.
 outlines as (
     select
         notice_id,
@@ -159,7 +173,7 @@ outlines as (
                 always_xy := true
             )
         ) as outline
-    from {{ ref('int_closures__trail_closure_areas') }}
+    from cuts
 ),
 
 areas as (

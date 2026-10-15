@@ -12,6 +12,15 @@
 -- pub_conditions_trail_closures puts one or the other in the closure's
 -- `place`.
 --
+-- EVERY ROW CARRIES ITS AREA'S OWN OUTLINE, `area_geojson`, exactly as
+-- int_closures__trail_closure_areas gives it, for
+-- pub_conditions_trail_closures' same-closure rule (its header, "THE SAME
+-- CLOSURE FROM TWO SOURCES IS DRAWN ONCE"): that writer compares only the
+-- areas it draws, which are this model's rows, so it reads their outlines
+-- here. Reading them from the areas model as well, which this model already
+-- reads, is the rejoin dbt_project_evaluator's
+-- fct_rejoining_of_upstream_concepts fails.
+--
 -- AN HOUR WITH NO LINES HAS NO ROW AT ALL. With nothing to cut against,
 -- nothing says which areas have a trail inside, so none is shaded either:
 -- the maintainer chose to shade only the areas with no trail inside, over
@@ -78,6 +87,7 @@
 with areas as (
     select
         notice_id,
+        area_geojson,
         st_geomfromgeojson(area_geojson) as geom
     from {{ ref('int_closures__trail_closure_areas') }}
 ),
@@ -209,6 +219,7 @@ cuts as (
 verdicts as (
     select
         areas.notice_id,
+        areas.area_geojson,
         coalesce(cuts.stretches, 0) as stretches,
         cuts.stretches_geojson,
         case
@@ -229,7 +240,8 @@ select
     stretches_geojson,
     case
         when stretches = 0 then cast(st_asgeojson(shade) as varchar)
-    end as shade_geojson
+    end as shade_geojson,
+    area_geojson
 from verdicts
 where
     stretches > 0

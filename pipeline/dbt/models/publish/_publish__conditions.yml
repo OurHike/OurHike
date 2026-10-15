@@ -184,10 +184,12 @@ models:
       hatches with no mark on its edge (decision 191). In an hour with no
       trail lines to cut against every area closure is left out, and so is a
       row with no geometry to draw; both stay in notices.json's list. Of two
-      closing areas of different sources that each cover at least 90% of the
+      drawn areas of different sources that each cover at least 90% of the
       other (@unvalidated, the review of 2026-10-15's number), one closure
       posted twice, only the row edited first is drawn; the other stays in
-      the list too. The phone reads it at launch, whatever is planned. Writes nothing while
+      the list too. Only areas the cut has a row for compete, measured by
+      the outline the cut carries, so an area drawn nowhere never hides a
+      drawn copy. The phone reads it at launch, whatever is planned. Writes nothing while
       that writer writes nothing, so the phone keeps its last copy; an empty
       list when no club closes a trail. No parity line: no exporter writes
       this file.
@@ -568,11 +570,9 @@ unit_tests:
               cast('[{"notice_id":"club_line:9","source_key":"club_line","place":{"kind":"geometry","geometry":{"type":"LineString","coordinates":[[-73.97,41.03],[-73.97,41.035]]}},"hazard":null,"obstructs_trail":true,"starts_on":null,"current_until":"2026-12-01"},{"notice_id":"atc_trail_updates:bridge","source_key":"atc_trail_updates","place":{"kind":"geometry","geometry":{"type":"LineString","coordinates":[[-74.0,41.0],[-74.0,41.01]]}},"hazard":null,"obstructs_trail":true},{"notice_id":"blm_shooting_points:1","source_key":"blm_shooting_points","place":{"kind":"geometry","geometry":{"type":"Point","coordinates":[-112.0,40.5]}},"hazard":"shooting","obstructs_trail":false},{"notice_id":"club_line:1","source_key":"club_line","place":{"kind":"geometry","geometry":{"type":"LineString","coordinates":[[-73.9,41.0],[-73.9,41.01]]}},"hazard":null,"obstructs_trail":false},{"notice_id":"club_point:2","source_key":"club_point","place":{"kind":"geometry","geometry":{"type":"Point","coordinates":[-74.1,41.2]}},"hazard":null,"obstructs_trail":true,"starts_on":null,"current_until":null},{"notice_id":"club_area:1","source_key":"club_area","place":{"kind":"geometry","geometry":{"type":"Polygon","coordinates":[[[-73.976,41.031],[-73.964,41.031],[-73.964,41.041],[-73.976,41.041],[-73.976,41.031]]]}},"hazard":null,"obstructs_trail":true,"starts_on":null,"current_until":null,"states":["NY"]},{"notice_id":"club_area:2","source_key":"club_area","place":{"kind":"geometry","geometry":{"type":"MultiPolygon","coordinates":[[[[-71.3,44.199],[-71.296,44.199],[-71.296,44.206],[-71.3,44.199]]]]}},"hazard":null,"obstructs_trail":true},{"notice_id":"club_area:3","source_key":"club_area","place":{"kind":"geometry","geometry":{"type":"Polygon","coordinates":[[[-74.26,41.19],[-74.24,41.19],[-74.24,41.22],[-74.26,41.19]]]}},"hazard":null,"obstructs_trail":true},{"notice_id":"club_line:3","source_key":"club_line","place":{"kind":"geometry","geometry":{"type":"MultiLineString","coordinates":[[[-74.2,41.2],[-74.2,41.25]]]}},"hazard":null,"obstructs_trail":true,"starts_on":"2027-01-15","current_until":null},{"notice_id":"club_point:1","source_key":"club_point","place":{"kind":"geometry","geometry":{"type":"MultiPoint","coordinates":[[-74.3,41.3]]}},"hazard":null,"obstructs_trail":true,"starts_on":"2025-05-01","current_until":"2026-01-01"},{"notice_id":"club_page:1","source_key":"club_page","place":{"kind":"unplaced"},"hazard":null,"obstructs_trail":true}]' as json) as notices
       - input: ref('int_closures__area_trail_cuts')
         rows:
-          - {notice_id: 'club_area:1', stretches: 1, stretches_geojson: '{"type":"MultiLineString","coordinates":[[[-73.97,41.032],[-73.97,41.035]]]}', shade_geojson: null}
-          - {notice_id: 'club_area:2', stretches: 0, stretches_geojson: null, shade_geojson: '{"type":"MultiPolygon","coordinates":[[[[-71.299,44.2],[-71.297,44.2],[-71.297,44.205],[-71.299,44.2]]]]}'}
-          - {notice_id: 'club_area:9', stretches: 1, stretches_geojson: '{"type":"MultiLineString","coordinates":[[[-74.0,41.0],[-74.0,41.01]]]}', shade_geojson: null}
-      - input: ref('int_closures__trail_closure_areas')
-        rows: []
+          - {notice_id: 'club_area:1', stretches: 1, stretches_geojson: '{"type":"MultiLineString","coordinates":[[[-73.97,41.032],[-73.97,41.035]]]}', shade_geojson: null, area_geojson: '{"type":"Polygon","coordinates":[[[-73.975,41.032],[-73.965,41.032],[-73.965,41.04],[-73.975,41.04],[-73.975,41.032]]]}'}
+          - {notice_id: 'club_area:2', stretches: 0, stretches_geojson: null, shade_geojson: '{"type":"MultiPolygon","coordinates":[[[[-71.299,44.2],[-71.297,44.2],[-71.297,44.205],[-71.299,44.2]]]]}', area_geojson: '{"type":"MultiPolygon","coordinates":[[[[-71.299,44.2],[-71.297,44.2],[-71.297,44.205],[-71.299,44.2]]]]}'}
+          - {notice_id: 'club_area:9', stretches: 1, stretches_geojson: '{"type":"MultiLineString","coordinates":[[[-74.0,41.0],[-74.0,41.01]]]}', shade_geojson: null, area_geojson: '{"type":"Polygon","coordinates":[[[-74.005,40.995],[-73.995,40.995],[-73.995,41.015],[-74.005,41.015],[-74.005,40.995]]]}'}
     expect:
       rows:
         - {generated_at: '2026-10-11T16:23:24Z', closures: '[{"notice_id":"club_area:1","source_key":"club_area","hazard":null,"obstructs_trail":true,"starts_on":null,"current_until":null,"states":["NY"],"place":{"kind":"geometry","geometry":{"type":"MultiLineString","coordinates":[[[-73.97,41.032],[-73.97,41.035]]]}},"shape":"area"},{"notice_id":"club_area:2","source_key":"club_area","hazard":null,"obstructs_trail":true,"place":{"kind":"geometry","geometry":{"type":"MultiPolygon","coordinates":[[[[-71.299,44.2],[-71.297,44.2],[-71.297,44.205],[-71.299,44.2]]]]}},"shape":"shade"},{"notice_id":"club_line:3","source_key":"club_line","place":{"kind":"geometry","geometry":{"type":"MultiLineString","coordinates":[[[-74.2,41.2],[-74.2,41.25]]]}},"hazard":null,"obstructs_trail":true,"starts_on":"2027-01-15","current_until":null,"shape":"line"},{"notice_id":"club_line:9","source_key":"club_line","place":{"kind":"geometry","geometry":{"type":"LineString","coordinates":[[-73.97,41.03],[-73.97,41.035]]}},"hazard":null,"obstructs_trail":true,"starts_on":null,"current_until":"2026-12-01","shape":"line"},{"notice_id":"club_point:1","source_key":"club_point","place":{"kind":"geometry","geometry":{"type":"MultiPoint","coordinates":[[-74.3,41.3]]}},"hazard":null,"obstructs_trail":true,"starts_on":"2025-05-01","current_until":"2026-01-01","shape":"point"},{"notice_id":"club_point:2","source_key":"club_point","place":{"kind":"geometry","geometry":{"type":"Point","coordinates":[-74.1,41.2]}},"hazard":null,"obstructs_trail":true,"starts_on":null,"current_until":null,"shape":"point"}]'}
@@ -598,10 +598,9 @@ unit_tests:
               cast(null as varchar) as notice_id,
               cast(null as bigint) as stretches,
               cast(null as varchar) as stretches_geojson,
-              cast(null as varchar) as shade_geojson
+              cast(null as varchar) as shade_geojson,
+              cast(null as varchar) as area_geojson
           where false
-      - input: ref('int_closures__trail_closure_areas')
-        rows: []
     expect:
       rows:
         - {generated_at: '2026-10-14T18:15:19Z', closures: '[{"notice_id":"club_line:1","source_key":"club_line","place":{"kind":"geometry","geometry":{"type":"LineString","coordinates":[[-73.97,41.03],[-73.97,41.035]]}},"hazard":null,"obstructs_trail":true,"shape":"line"}]'}
@@ -620,8 +619,6 @@ unit_tests:
               '2026-10-11T16:23:24Z' as generated_at,
               cast('[{"notice_id":"club_page:1","source_key":"club_page","place":{"kind":"unplaced"},"hazard":null,"obstructs_trail":false}]' as json) as notices
       - input: ref('int_closures__area_trail_cuts')
-        rows: []
-      - input: ref('int_closures__trail_closure_areas')
         rows: []
     expect:
       rows:
@@ -649,8 +646,6 @@ unit_tests:
               cast('[{"notice_id":"club_points:1","source_key":"club_points","place":{"kind":"geometry","geometry":{"type":"MultiPoint","coordinates":[[-109.44,34.0],[-109.45,33.98]]}},"hazard":null,"obstructs_trail":true,"starts_on":"2025-09-30","current_until":"2027-09-30"}]' as json) as notices
       - input: ref('int_closures__area_trail_cuts')
         rows: []
-      - input: ref('int_closures__trail_closure_areas')
-        rows: []
     expect:
       rows:
         - {generated_at: '2026-10-15T00:30:00Z', closures: '[{"notice_id":"club_points:1","source_key":"club_points","place":{"kind":"geometry","geometry":{"type":"MultiPoint","coordinates":[[-109.44,34.0],[-109.45,33.98]]}},"hazard":null,"obstructs_trail":true,"starts_on":"2025-09-30","current_until":"2027-09-30","shape":"point"}]'}
@@ -666,9 +661,8 @@ unit_tests:
       restrictions, last edited 2026-05-29: Region 4's row is drawn. An area
       of a third source covering half of it is another closure and is
       drawn, and two rows of one source are never this rule's to merge.
-      Each area is measured as its source drew it
-      (int_closures__trail_closure_areas), never notices.json's grown
-      outline.
+      Each area is measured as its source drew it (the cut's
+      `area_geojson`), never notices.json's grown outline.
     given:
       - input: ref('pub_conditions_notices')
         format: sql
@@ -678,21 +672,39 @@ unit_tests:
               cast('[{"notice_id":"club_relay:calf_pen","source_key":"club_relay","place":{"kind":"geometry","geometry":{"type":"Polygon","coordinates":[[[-116.0,45.0],[-115.9,45.0],[-115.9,45.1],[-116.0,45.1],[-116.0,45.0]]]}},"hazard":null,"obstructs_trail":true,"updated_at":"2026-05-29T20:30:17Z"},{"notice_id":"club_issuer:26565","source_key":"club_issuer","place":{"kind":"geometry","geometry":{"type":"Polygon","coordinates":[[[-116.0,45.0],[-115.9,45.0],[-115.9,45.1],[-116.0,45.1],[-116.0,45.0]]]}},"hazard":null,"obstructs_trail":true,"updated_at":"2025-04-29T18:10:00Z"},{"notice_id":"club_neighbour:half","source_key":"club_neighbour","place":{"kind":"geometry","geometry":{"type":"Polygon","coordinates":[[[-115.95,45.0],[-115.85,45.0],[-115.85,45.1],[-115.95,45.1],[-115.95,45.0]]]}},"hazard":null,"obstructs_trail":true,"updated_at":"2024-01-01T00:00:00Z"},{"notice_id":"club_same:one","source_key":"club_same","place":{"kind":"geometry","geometry":{"type":"Polygon","coordinates":[[[-114.0,44.0],[-113.9,44.0],[-113.9,44.1],[-114.0,44.1],[-114.0,44.0]]]}},"hazard":null,"obstructs_trail":true,"updated_at":"2026-01-01T00:00:00Z"},{"notice_id":"club_same:two","source_key":"club_same","place":{"kind":"geometry","geometry":{"type":"Polygon","coordinates":[[[-114.0,44.0],[-113.9,44.0],[-113.9,44.1],[-114.0,44.1],[-114.0,44.0]]]}},"hazard":null,"obstructs_trail":true,"updated_at":"2026-01-02T00:00:00Z"}]' as json) as notices
       - input: ref('int_closures__area_trail_cuts')
         rows:
-          - {notice_id: 'club_relay:calf_pen', stretches: 0, stretches_geojson: null, shade_geojson: '{"type":"MultiPolygon","coordinates":[[[[-116.0,45.0],[-115.9,45.0],[-115.9,45.1],[-116.0,45.1],[-116.0,45.0]]]]}'}
-          - {notice_id: 'club_issuer:26565', stretches: 0, stretches_geojson: null, shade_geojson: '{"type":"MultiPolygon","coordinates":[[[[-116.0,45.0],[-115.9,45.0],[-115.9,45.1],[-116.0,45.1],[-116.0,45.0]]]]}'}
-          - {notice_id: 'club_neighbour:half', stretches: 0, stretches_geojson: null, shade_geojson: '{"type":"MultiPolygon","coordinates":[[[[-115.95,45.0],[-115.85,45.0],[-115.85,45.1],[-115.95,45.1],[-115.95,45.0]]]]}'}
-          - {notice_id: 'club_same:one', stretches: 0, stretches_geojson: null, shade_geojson: '{"type":"MultiPolygon","coordinates":[[[[-114.0,44.0],[-113.9,44.0],[-113.9,44.1],[-114.0,44.1],[-114.0,44.0]]]]}'}
-          - {notice_id: 'club_same:two', stretches: 0, stretches_geojson: null, shade_geojson: '{"type":"MultiPolygon","coordinates":[[[[-114.0,44.0],[-113.9,44.0],[-113.9,44.1],[-114.0,44.1],[-114.0,44.0]]]]}'}
-      - input: ref('int_closures__trail_closure_areas')
-        rows:
-          - {notice_id: 'club_relay:calf_pen', source_key: 'club_relay', area_geojson: '{"type":"Polygon","coordinates":[[[-116.0,45.0],[-115.9,45.0],[-115.9,45.1],[-116.0,45.1],[-116.0,45.0]]]}'}
-          - {notice_id: 'club_issuer:26565', source_key: 'club_issuer', area_geojson: '{"type":"Polygon","coordinates":[[[-116.0,45.0],[-115.9,45.0],[-115.9,45.1],[-116.0,45.1],[-116.0,45.0]]]}'}
-          - {notice_id: 'club_neighbour:half', source_key: 'club_neighbour', area_geojson: '{"type":"Polygon","coordinates":[[[-115.95,45.0],[-115.85,45.0],[-115.85,45.1],[-115.95,45.1],[-115.95,45.0]]]}'}
-          - {notice_id: 'club_same:one', source_key: 'club_same', area_geojson: '{"type":"Polygon","coordinates":[[[-114.0,44.0],[-113.9,44.0],[-113.9,44.1],[-114.0,44.1],[-114.0,44.0]]]}'}
-          - {notice_id: 'club_same:two', source_key: 'club_same', area_geojson: '{"type":"Polygon","coordinates":[[[-114.0,44.0],[-113.9,44.0],[-113.9,44.1],[-114.0,44.1],[-114.0,44.0]]]}'}
+          - {notice_id: 'club_relay:calf_pen', stretches: 0, stretches_geojson: null, shade_geojson: '{"type":"MultiPolygon","coordinates":[[[[-116.0,45.0],[-115.9,45.0],[-115.9,45.1],[-116.0,45.1],[-116.0,45.0]]]]}', area_geojson: '{"type":"Polygon","coordinates":[[[-116.0,45.0],[-115.9,45.0],[-115.9,45.1],[-116.0,45.1],[-116.0,45.0]]]}'}
+          - {notice_id: 'club_issuer:26565', stretches: 0, stretches_geojson: null, shade_geojson: '{"type":"MultiPolygon","coordinates":[[[[-116.0,45.0],[-115.9,45.0],[-115.9,45.1],[-116.0,45.1],[-116.0,45.0]]]]}', area_geojson: '{"type":"Polygon","coordinates":[[[-116.0,45.0],[-115.9,45.0],[-115.9,45.1],[-116.0,45.1],[-116.0,45.0]]]}'}
+          - {notice_id: 'club_neighbour:half', stretches: 0, stretches_geojson: null, shade_geojson: '{"type":"MultiPolygon","coordinates":[[[[-115.95,45.0],[-115.85,45.0],[-115.85,45.1],[-115.95,45.1],[-115.95,45.0]]]]}', area_geojson: '{"type":"Polygon","coordinates":[[[-115.95,45.0],[-115.85,45.0],[-115.85,45.1],[-115.95,45.1],[-115.95,45.0]]]}'}
+          - {notice_id: 'club_same:one', stretches: 0, stretches_geojson: null, shade_geojson: '{"type":"MultiPolygon","coordinates":[[[[-114.0,44.0],[-113.9,44.0],[-113.9,44.1],[-114.0,44.1],[-114.0,44.0]]]]}', area_geojson: '{"type":"Polygon","coordinates":[[[-114.0,44.0],[-113.9,44.0],[-113.9,44.1],[-114.0,44.1],[-114.0,44.0]]]}'}
+          - {notice_id: 'club_same:two', stretches: 0, stretches_geojson: null, shade_geojson: '{"type":"MultiPolygon","coordinates":[[[[-114.0,44.0],[-113.9,44.0],[-113.9,44.1],[-114.0,44.1],[-114.0,44.0]]]]}', area_geojson: '{"type":"Polygon","coordinates":[[[-114.0,44.0],[-113.9,44.0],[-113.9,44.1],[-114.0,44.1],[-114.0,44.0]]]}'}
     expect:
       rows:
         - {generated_at: '2026-10-15T00:30:00Z', closures: '[{"notice_id":"club_issuer:26565","source_key":"club_issuer","hazard":null,"obstructs_trail":true,"updated_at":"2025-04-29T18:10:00Z","place":{"kind":"geometry","geometry":{"type":"MultiPolygon","coordinates":[[[[-116.0,45.0],[-115.9,45.0],[-115.9,45.1],[-116.0,45.1],[-116.0,45.0]]]]}},"shape":"shade"},{"notice_id":"club_neighbour:half","source_key":"club_neighbour","hazard":null,"obstructs_trail":true,"updated_at":"2024-01-01T00:00:00Z","place":{"kind":"geometry","geometry":{"type":"MultiPolygon","coordinates":[[[[-115.95,45.0],[-115.85,45.0],[-115.85,45.1],[-115.95,45.1],[-115.95,45.0]]]]}},"shape":"shade"},{"notice_id":"club_same:one","source_key":"club_same","hazard":null,"obstructs_trail":true,"updated_at":"2026-01-01T00:00:00Z","place":{"kind":"geometry","geometry":{"type":"MultiPolygon","coordinates":[[[[-114.0,44.0],[-113.9,44.0],[-113.9,44.1],[-114.0,44.1],[-114.0,44.0]]]]}},"shape":"shade"},{"notice_id":"club_same:two","source_key":"club_same","hazard":null,"obstructs_trail":true,"updated_at":"2026-01-02T00:00:00Z","place":{"kind":"geometry","geometry":{"type":"MultiPolygon","coordinates":[[[[-114.0,44.0],[-113.9,44.0],[-113.9,44.1],[-114.0,44.1],[-114.0,44.0]]]]}},"shape":"shade"}]'}
+
+  - name: pub_conditions_trail_closures_never_lets_an_undrawn_copy_edited_first_hide_the_drawn_one
+    model: pub_conditions_trail_closures
+    description: >
+      Only an area the map draws, a row of int_closures__area_trail_cuts,
+      competes as one closure posted twice. Two sources post the same area;
+      the copy its source edited first has no row of the cut (its cut
+      raised), so it is drawn nowhere, and the copy edited later, which the
+      cut shades, is drawn once. While every area of
+      int_closures__trail_closure_areas competed, the first copy hid the
+      second and neither was drawn (this test, run against that writer,
+      gave an empty list).
+    given:
+      - input: ref('pub_conditions_notices')
+        format: sql
+        rows: |
+          select
+              '2026-10-15T00:30:00Z' as generated_at,
+              cast('[{"notice_id":"club_undrawn:1","source_key":"club_undrawn","place":{"kind":"geometry","geometry":{"type":"Polygon","coordinates":[[[-115.0,44.0],[-114.9,44.0],[-114.9,44.1],[-115.0,44.1],[-115.0,44.0]]]}},"hazard":null,"obstructs_trail":true,"updated_at":"2025-04-29T18:10:00Z"},{"notice_id":"club_drawn:1","source_key":"club_drawn","place":{"kind":"geometry","geometry":{"type":"Polygon","coordinates":[[[-115.0,44.0],[-114.9,44.0],[-114.9,44.1],[-115.0,44.1],[-115.0,44.0]]]}},"hazard":null,"obstructs_trail":true,"updated_at":"2026-05-29T20:30:17Z"}]' as json) as notices
+      - input: ref('int_closures__area_trail_cuts')
+        rows:
+          - {notice_id: 'club_drawn:1', stretches: 0, stretches_geojson: null, shade_geojson: '{"type":"MultiPolygon","coordinates":[[[[-115.0,44.0],[-114.9,44.0],[-114.9,44.1],[-115.0,44.1],[-115.0,44.0]]]]}', area_geojson: '{"type":"Polygon","coordinates":[[[-115.0,44.0],[-114.9,44.0],[-114.9,44.1],[-115.0,44.1],[-115.0,44.0]]]}'}
+    expect:
+      rows:
+        - {generated_at: '2026-10-15T00:30:00Z', closures: '[{"notice_id":"club_drawn:1","source_key":"club_drawn","hazard":null,"obstructs_trail":true,"updated_at":"2026-05-29T20:30:17Z","place":{"kind":"geometry","geometry":{"type":"MultiPolygon","coordinates":[[[[-115.0,44.0],[-114.9,44.0],[-114.9,44.1],[-115.0,44.1],[-115.0,44.0]]]]}},"shape":"shade"}]'}
 
   - name: pub_conditions_trail_closures_writes_nothing_while_the_notices_writer_writes_nothing
     model: pub_conditions_trail_closures
@@ -710,8 +722,6 @@ unit_tests:
               cast(null as json) as notices
           where false
       - input: ref('int_closures__area_trail_cuts')
-        rows: []
-      - input: ref('int_closures__trail_closure_areas')
         rows: []
     expect:
       rows: []

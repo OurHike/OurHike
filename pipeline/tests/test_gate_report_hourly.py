@@ -260,6 +260,15 @@ def test_the_commit_judged_can_be_named_and_a_commit_whose_hourly_lane_is_the_sa
     assert "set aside" not in both.detail
 
 
+def test_a_short_commit_a_run_json_names_still_matches_itself_and_nothing_shorter_than_git_s_seven(tmp_path):
+    """CI writes github.sha in full; a run.json written by hand may name `c0ffee`, as the review's own script did. The
+    newest run's commit is judged by default, so its runs count, and a prefix under 7 characters matches no other."""
+    root = _soak(tmp_path, commit="c0ffee")
+
+    assert soak_coverage(load_hourly(root), "closures").state == "clear"
+    assert soak_coverage(load_hourly(_soak(tmp_path / "full")), "closures", commits=[COMMIT[:6]]).state == "short"
+
+
 def test_a_run_naming_no_commit_is_set_aside_and_said(tmp_path):
     root = _soak(tmp_path)
     _run(root, 30.5, {"closures": "equal"}, commit=None)

@@ -661,10 +661,15 @@ def judged_commits(runs: list[HourlyRun], commits: list[str] | None = None) -> l
 
 
 def _built_on(commit: str | None, judged: list[str]) -> bool:
-    """Whether a run.json's `commit` (github.sha, in full) is one of `judged`, each a sha or its first 7 or more."""
-    if not commit or len(commit) < 7:
+    """Whether a run.json's `commit` (github.sha, in full) is one of `judged`: the same text, or one the other's
+    prefix where the shorter has git's 7 characters at least."""
+    if not commit:
         return False
-    return any(commit.lower().startswith(sha.lower()) or sha.lower().startswith(commit.lower()) for sha in judged)
+    commit = commit.lower()
+    for sha in (sha.lower() for sha in judged):
+        if commit == sha or (min(len(commit), len(sha)) >= 7 and (commit.startswith(sha) or sha.startswith(commit))):
+            return True
+    return False
 
 
 def _which(run: HourlyRun, judged: list[str]) -> str:

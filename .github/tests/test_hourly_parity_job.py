@@ -2,8 +2,10 @@
 
 pipeline/ELT.md's open question 17, answered by the maintainer's poll of 2026-10-10: "Compare every soak hour". What is
 held here is what keeps that comparison out of a hiker's way and honest about what it compared:
-- the extract keeps the hour's answers, and publish-conditions.yml's hand-off step puts them, after the warehouse and
-  without touching its status, in the leg's private history store;
+- the extract keeps the hour's answers, and publish-conditions.yml's hand-off step puts them in the leg's private
+  history store first, under a ceiling of their own and without touching the step's status, and the warehouse after
+  them with what the job has left, so neither can starve the other (review finding S2-1 of PR #1805 — dlt → dbt
+  re-platform as one go/no-go change: while it came second, none of the eight soak runs 666 to 676 put one);
 - the comparison runs in check-conditions.yml, beside the checks and on exactly their legs, and in no job of
   publish-conditions.yml, every one of which holds publish-data until its run ends (#1513 - A queued publish is
   silently cancelled when another one joins publish-data, and it looks like a green build);
@@ -19,6 +21,7 @@ import json
 import os
 import re
 import subprocess
+import time
 from pathlib import Path
 
 import pytest
@@ -105,11 +108,17 @@ def test_the_extract_keeps_the_hours_answers_where_the_hand_off_bundles_them_fro
 
 
 def _run_the_hand_off(
-    tmp_path: Path, codes: dict[str, int], *, spent: int = 0, sleeps: dict[str, float] | None = None
+    tmp_path: Path,
+    codes: dict[str, int],
+    *,
+    spent: int = 0,
+    sleeps: dict[str, float] | None = None,
+    env: dict[str, str] | None = None,
 ) -> tuple[int, list[str], str]:
-    """The hand-off step's script with a stand-in for the extract venv's python that logs its first two arguments,
-    sleeps and exits as `sleeps` and `codes` say for them; `spent` seconds of the step's minute already gone when the
-    warehouse's put starts. Returns the exit, the calls and the output."""
+    """The hand-off step's script, with its own JOB_SECONDS, RESERVE_SECONDS and ceilings unless `env` overrides one,
+    and a stand-in for the extract venv's python that logs its first two arguments, sleeps and exits as `sleeps` and
+    `codes` say for them; `spent` seconds of the job gone when the step starts, by the job's clock. Returns the exit,
+    the calls and the output."""
     python = tmp_path / "extract" / "bin" / "python"
     python.parent.mkdir(parents=True)
     log = tmp_path / "calls"
@@ -122,19 +131,24 @@ def _run_the_hand_off(
         f"sys.exit(json.loads({json.dumps(json.dumps(codes))}).get(name, 0))\n"
     )
     python.chmod(0o755)
-    script = _step(BAKE, "publish", HAND_OFF)["run"]
-    assert "started=$SECONDS" in script, "the bundle's share of the minute is counted from the step's start"
+    step = _step(BAKE, "publish", HAND_OFF)
+    budget = {name: step["env"][name] for name in ("JOB_SECONDS", "RESERVE_SECONDS", "BUNDLE_SECONDS", "WAREHOUSE_SECONDS")}
+    clock = {"PUBLISH_JOB_STARTED_AT": str(int(time.time()) - spent)}
     finished = subprocess.run(
-        ["bash", "-e", "-c", script.replace("started=$SECONDS", f"started=$((SECONDS - {spent}))")],
+        ["bash", "-e", "-c", step["run"]],
         env={**os.environ, "RUNNER_TEMP": str(tmp_path), "CALLS": str(log), "R2_RAW_BUCKET": "raw", "ENVIRONMENT": "ua"}
-        | {"RUN": BUILD_RUN, "ATTEMPT": "1", "COMMIT": "e49ca601"},
+        | {"RUN": BUILD_RUN, "ATTEMPT": "1", "COMMIT": "e49ca601"}
+        | budget
+        | clock
+        | (env or {}),
         capture_output=True,
         text=True,
+        timeout=120,
     )
-    return finished.returncode, log.read_text().splitlines(), finished.stdout
+    return finished.returncode, log.read_text().splitlines(), finished.stdout + finished.stderr
 
 
-EVERY_CALL = ["hand_off.py put", "hourly_parity.py bundle", "hand_off.py put-bundle"]
+EVERY_CALL = ["hourly_parity.py bundle", "hand_off.py put-bundle", "hand_off.py put"]
 
 
 @pytest.mark.parametrize(
@@ -143,35 +157,52 @@ EVERY_CALL = ["hand_off.py put", "hourly_parity.py bundle", "hand_off.py put-bun
         ({}, 0, EVERY_CALL),
         ({"hand_off.py put": 1}, 1, EVERY_CALL),
         ({"hand_off.py put-bundle": 1}, 0, EVERY_CALL),
-        ({"hourly_parity.py bundle": 1}, 0, EVERY_CALL[:2]),
+        ({"hourly_parity.py bundle": 1}, 0, ["hourly_parity.py bundle", "hand_off.py put"]),
         ({"hand_off.py put": 1, "hand_off.py put-bundle": 1}, 1, EVERY_CALL),
     ],
 )
-def test_the_hand_off_puts_the_warehouse_first_and_its_status_alone_decides_the_step(tmp_path, codes, status, calls):
-    """The checks' hand-off keeps every second it had, and a bundle that fails never turns the step red, nor one that
-    succeeds hide a warehouse that did not move. A bundle that could not be gathered is not put, so the store keeps
-    the last run's, which take-bundle refuses as another run's."""
+def test_the_hand_off_puts_the_bundle_first_and_the_warehouses_status_alone_decides_the_step(tmp_path, codes, status, calls):
+    """The bundle, about 2 s, can no longer be starved by the warehouse, 27 to 72 s; a bundle that fails never turns the
+    step red, nor one that succeeds hide a warehouse that did not move. A bundle that could not be gathered is not put,
+    so the store keeps the last run's, which take-bundle refuses as another run's."""
     code, called, _ = _run_the_hand_off(tmp_path, codes)
 
     assert called == calls
     assert code == status
 
 
-def test_a_warehouse_hand_off_that_leaves_the_bundle_too_little_of_the_minute_puts_no_bundle_and_says_so(tmp_path):
-    code, calls, out = _run_the_hand_off(tmp_path, {}, spent=47)
+def test_a_bundle_that_outruns_its_ceiling_is_stopped_and_the_warehouse_still_goes(tmp_path):
+    code, calls, out = _run_the_hand_off(tmp_path, {}, sleeps={"hourly_parity.py bundle": 30}, env={"BUNDLE_SECONDS": "5"})
 
-    assert (code, calls) == (0, ["hand_off.py put"])
-    # 47 s or a little more: the stand-in's own start counts too, on a loaded machine.
-    assert re.search(r"::warning title=Comparison bundle not moved::the warehouse's hand-off took (4[7-9]|50) s", out), out
+    assert (code, calls) == (0, ["hourly_parity.py bundle", "hand_off.py put"])
+    assert "::warning title=Comparison bundle not moved::the bundle did not move in the 5 s it had" in out, out
 
 
-def test_a_bundle_that_outruns_what_the_minute_left_is_stopped_and_the_warehouses_status_still_decides(tmp_path):
-    """50 - 42 = 8 s left, or a few fewer on a loaded machine: the bundle sleeps past it, `timeout` stops it,
-    put-bundle never runs, and the step keeps the warehouse's exit rather than running into its cap."""
-    code, calls, out = _run_the_hand_off(tmp_path, {}, spent=42, sleeps={"hourly_parity.py bundle": 30})
+def test_the_warehouse_gets_only_what_the_job_has_left_after_the_steps_that_follow_it(tmp_path):
+    """900 - 75 - 815 = 10 s left, or a few fewer once the bundle has gone on a loaded machine: the put sleeps past it,
+    `timeout` stops it, and the step says so with the put's own exit, so the steps after it keep the 75 s they need."""
+    code, calls, out = _run_the_hand_off(tmp_path, {}, spent=815, sleeps={"hand_off.py put": 30})
 
-    assert (code, calls) == (0, EVERY_CALL[:2])
-    assert re.search(r"::warning title=Comparison bundle not moved::the bundle did not move in the [5-8] s", out), out
+    assert calls == EVERY_CALL
+    assert code == 124
+    seconds = re.search(r"::warning title=Warehouse not handed off::its put did not finish in the (\d+) s", out)
+    assert seconds and 5 <= int(seconds[1]) <= 10, out
+
+
+def test_a_job_with_too_little_left_moves_neither_half_and_says_so(tmp_path):
+    """3 s left before the steps after this one: nothing is started that `timeout` would only have to stop."""
+    code, calls, out = _run_the_hand_off(tmp_path, {}, spent=822)
+
+    assert (code, calls) == (1, [])
+    assert re.search(r"::warning title=Comparison bundle not moved::this job had [0-3] s left before the 75 s", out), out
+    assert re.search(r"::warning title=Warehouse not handed off::this job had [0-3] s left before the 75 s", out), out
+
+
+def test_the_hand_off_will_not_guess_at_a_job_clock_it_was_not_given(tmp_path):
+    code, calls, out = _run_the_hand_off(tmp_path, {}, env={"PUBLISH_JOB_STARTED_AT": ""})
+
+    assert code != 0 and calls == []
+    assert "PUBLISH_JOB_STARTED_AT: is set by the step Note when this job started" in out, out
 
 
 # --- the take and the comparison ------------------------------------------------------------------------------------

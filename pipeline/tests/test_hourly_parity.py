@@ -315,19 +315,44 @@ def test_compare_runs_parity_keys_only_per_family_and_turns_red_only_for_a_diffe
     assert "::warning title=conditions/weather_alerts.json not compared this hour::" in out
     page = summary.read_text()
     assert "| `conditions/closures.json` | **differs** | 2 / 2 | 1 / 0 |" in page
+    # The one file not compared leads the summary, above the table, and is counted again in the closing line.
+    assert page.index("**1 of the 6 files were not compared this hour.**") < page.index("| File | Answer |")
+    assert "turn this run red**: `conditions/closures.json`, `conditions/reports.json`; **1 not compared**." in page
+    assert "Nothing compared this hour" not in out, "the hour's own annotation is for an hour that compared nothing"
     assert "Build run 38075292380 on `e49ca6010000`" in page and "`hourly-parity-ua` artifact in run 38075301234" in page
     assert run["compared_in"] == "38075301234" and run["attempt"] is None
 
 
-def test_no_bundle_reads_as_every_family_not_compared_and_the_run_stays_green(tmp_path, fake_parity):
+def test_no_bundle_reads_as_every_family_not_compared_and_the_run_stays_green(tmp_path, fake_parity, capsys):
+    """Green, and impossible to miss: the summary opens on it and one annotation says it for the hour, ahead of the six
+    (review finding S2-1 of PR #1805 — dlt → dbt re-platform as one go/no-go change: eight soak runs compared nothing
+    and every one read clean)."""
+    summary = tmp_path / "summary.md"
     code = hourly_parity.main(
         ["compare", "--bundle", str(tmp_path / "none"), "--out", str(tmp_path / "result"), "--missing", "nothing was handed on"]
+        + ["--summary", str(summary)]
     )
 
     run = json.loads((tmp_path / "result" / hourly_parity.RUN_FILE).read_text())
     assert code == 0
     assert {answer["verdict"] for answer in run["families"].values()} == {"not_compared"}
     assert run["bundle"] == "missing: nothing was handed on"
+    page = summary.read_text()
+    first = page.split("\n\n")[1]
+    assert first.startswith("**Nothing was compared this hour: none of the 6 files.** The run stays green")
+    assert first.endswith("Why: no bundle: nothing was handed on")
+    assert "**0 file(s) turn this run red**: none; **6 not compared**." in page
+    out = capsys.readouterr().out.splitlines()
+    assert out[0].startswith("::warning title=Nothing compared this hour::Nothing was compared this hour: none of the 6")
+    assert sum(line.startswith("::warning title=conditions/") for line in out) == 6
+
+
+def test_the_summary_names_the_soak_the_gate_counts():
+    """The not-compared line says how long a missed hour holds a key back: gate_report.py's SOAK_HOURS, written out
+    because gate_report.py imports this file."""
+    import gate_report
+
+    assert hourly_parity.GATE_SOAK_HOURS == gate_report.SOAK_HOURS
 
 
 def test_parity_answers_dir_moves_raw_dir_for_one_comparison_and_puts_it_back(tmp_path):

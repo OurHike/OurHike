@@ -208,3 +208,120 @@ def test_the_fixture_build_prepares_the_ats_own_lines_beside_the_nearby_ones(tmp
 def test_the_ats_file_is_refused_without_the_nearby_one(tmp_path):
     with pytest.raises(SystemExit):
         step.main(["--warehouse", str(_warehouse(tmp_path)), "--at-geojson", str(tmp_path / "at.geojson")])
+
+
+# --- the lines' release against the leg's current one (review finding S2-4 of PR #1805 — dlt → dbt re-platform as one
+# go/no-go change): publish-conditions.yml restores the newest entry its branch can see, which need not be the leg's
+# current release, so the step says when it is not, and never refuses the lines for it.
+
+BASE = "https://data.example.org"
+LATEST = f"{BASE}/environments/ua/latest.json"
+
+
+def _latest(release):
+    return {"release": release, "artifacts": {key: {"sha256": "0" * 64} for key in prepare.SOURCE_KEYS}}
+
+
+def _across(tmp_path):
+    return _lines(tmp_path, ("across", [[-73.97, 41.03], [-73.97, 41.035]]))
+
+
+def test_lines_of_the_legs_current_release_say_so_and_warn_of_nothing(tmp_path, monkeypatch, capsys, requests_mock):
+    summary = tmp_path / "summary.md"
+    monkeypatch.setenv("GITHUB_STEP_SUMMARY", str(summary))
+    requests_mock.get(LATEST, json=_latest("2026-10-10-2"))
+    argv = ["--warehouse", str(_warehouse(tmp_path)), "--lines", str(_across(tmp_path)), "--leg", "ua", "--base", BASE]
+
+    assert step.main(argv) == 0
+
+    out = capsys.readouterr().out
+    assert "::warning" not in out
+    assert "area closures, the ua leg's current release" in summary.read_text()
+    assert requests_mock.call_count == 1, "one read, never retried"
+    assert requests_mock.last_request.headers["User-Agent"] == step.USER_AGENT
+
+
+def test_lines_of_another_release_are_still_cut_against_and_warned_of_with_both_ids(tmp_path, monkeypatch, capsys, requests_mock):
+    """An older release's lines differ from the current one's only where a release moved a trail, while refusing them
+    would leave every area closure out of conditions/trail_closures.json for the hour: so they land, and it is said."""
+    summary = tmp_path / "summary.md"
+    monkeypatch.setenv("GITHUB_STEP_SUMMARY", str(summary))
+    requests_mock.get(LATEST, json=_latest("2026-10-16"))
+    warehouse = _warehouse(tmp_path)
+    argv = ["--warehouse", str(warehouse), "--lines", str(_across(tmp_path)), "--leg", "ua", "--base", BASE]
+
+    assert step.main(argv) == 0
+
+    assert [(release, line_id) for release, line_id, _ in _landed(warehouse)] == [("2026-10-10-2", "across")]
+    out = capsys.readouterr().out
+    assert f"::warning title={step.OTHER_RELEASE_TITLE}::" in out
+    assert f"holds release 2026-10-10-2's trail lines, and {LATEST} names release 2026-10-16" in out
+    assert "Every closure still publishes" in out
+    page = summary.read_text()
+    assert f"**{step.OTHER_RELEASE_TITLE}.**" in page
+    assert "area closures, not the ua leg's current release, 2026-10-16" in page
+
+
+@pytest.mark.parametrize(
+    ("answer", "says"),
+    [
+        ({"status_code": 503}, "could not be read (HTTPError)"),
+        ({"exc": __import__("requests").exceptions.ConnectTimeout}, "could not be read (ConnectTimeout)"),
+        ({"text": "not json"}, "could not be read (JSONDecodeError)"),
+        ({"json": {"release": None, "artifacts": {}}}, "names no release carrying nearby_trails.geojson and trails.geojson"),
+        ({"json": _latest("../../etc")}, "could not be read (SystemExit)"),
+    ],
+)
+def test_a_current_release_that_cannot_be_known_is_said_as_not_checked_and_never_fails_the_build(
+    tmp_path, monkeypatch, capsys, requests_mock, answer, says
+):
+    summary = tmp_path / "summary.md"
+    monkeypatch.setenv("GITHUB_STEP_SUMMARY", str(summary))
+    requests_mock.get(LATEST, **answer)
+    warehouse = _warehouse(tmp_path)
+    argv = ["--warehouse", str(warehouse), "--lines", str(_across(tmp_path)), "--leg", "ua", "--base", BASE]
+
+    assert step.main(argv) == 0
+
+    assert [line_id for _, line_id, _ in _landed(warehouse)] == ["across"]
+    assert "::warning" not in capsys.readouterr().out
+    assert "whether it is the ua leg's current release was not checked: " in summary.read_text()
+    assert says in summary.read_text()
+
+
+def test_the_leg_and_the_base_come_from_the_build_steps_environment(tmp_path, monkeypatch, capsys, requests_mock):
+    """publish-conditions.yml sets CLOSURE_LINES_LEG and DATA_BASE_URL on the build step, which build_marts.py's steps
+    inherit."""
+    monkeypatch.delenv("GITHUB_STEP_SUMMARY", raising=False)
+    monkeypatch.setenv(step.LEG_VARIABLE, "ua")
+    monkeypatch.setenv("DATA_BASE_URL", BASE)
+    requests_mock.get(LATEST, json=_latest("2026-10-16"))
+
+    assert step.main(["--warehouse", str(_warehouse(tmp_path)), "--lines", str(_across(tmp_path))]) == 0
+
+    assert f"::warning title={step.OTHER_RELEASE_TITLE}::" in capsys.readouterr().out
+
+
+def test_nothing_is_asked_without_a_leg_nor_for_the_fixture_build(tmp_path, monkeypatch, requests_mock):
+    """Every other test in this file, and build_marts.py --fixtures, which names release `fixture`."""
+    monkeypatch.delenv("GITHUB_STEP_SUMMARY", raising=False)
+    monkeypatch.delenv(step.LEG_VARIABLE, raising=False)
+    monkeypatch.setenv("DATA_BASE_URL", BASE)
+    step.main(["--warehouse", str(_warehouse(tmp_path)), "--lines", str(_across(tmp_path))])
+    source = _geojson(tmp_path / "fixture.geojson", ("across", [[-73.97, 41.03], [-73.97, 41.035]]))
+    (tmp_path / "fixtures").mkdir()
+    fixture = ["--warehouse", str(_warehouse(tmp_path / "fixtures")), "--geojson", str(source), "--release", "fixture"]
+    step.main([*fixture, "--leg", "ua", "--base", BASE])
+
+    assert requests_mock.call_count == 0
+
+
+def test_a_leg_with_no_base_url_is_said_as_not_checked(tmp_path, monkeypatch, requests_mock):
+    summary = tmp_path / "summary.md"
+    monkeypatch.setenv("GITHUB_STEP_SUMMARY", str(summary))
+    monkeypatch.delenv("DATA_BASE_URL", raising=False)
+
+    assert step.main(["--warehouse", str(_warehouse(tmp_path)), "--lines", str(_across(tmp_path)), "--leg", "ua"]) == 0
+
+    assert requests_mock.call_count == 0
+    assert "was not checked, as no DATA_BASE_URL was given" in summary.read_text()

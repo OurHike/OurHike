@@ -15,20 +15,21 @@ results (HOURLY_FORMAT), and stops counting a key as blocking once they are
 clean across the soak (gate_report.soak_coverage()).
 
 TWO HALVES, on two runners. `bundle` runs in publish-conditions.yml's
-hand-off step, after the build's warehouse has been handed to its checks,
-and gathers, from that runner, everything today's exporters need into one
+hand-off step, before the build's warehouse is handed to its checks, and
+gathers, from that runner, everything today's exporters need into one
 directory, in fixture mode's layout under `raw/` so parity.py's old sides
 read it as they read the fixtures (parity.py --answers-dir), and the six
 files the writers wrote under `new/`. hand_off.py put-bundle sends it to the
 leg's private history store, and check-conditions.yml's `parity` job, which
 the same dispatch starts beside the checks, takes it back and runs
-`compare`. The publish job has no second left for this
-(.github/tests/test_conditions_build_budget.py: its caps add to 899 of its
-900 seconds), no job of publish-conditions.yml may run long without keeping
-publish-data held (check-conditions.yml's header says why), and the build's
-warehouse, 2,626,433,024 bytes on soak run 624 (960,100,794 gzipped, handed
-off in 38.21 s; its log, 2026-10-10), is far more than a comparison of six
-files needs, so only what they read crosses.
+`compare`. Not in the publish job: what it has left after its publish goes
+to the warehouse's hand-off and the freshness step
+(.github/tests/test_conditions_build_budget.py), no job of
+publish-conditions.yml may run long without keeping publish-data held
+(check-conditions.yml's header says why), and the build's warehouse,
+3,055,300,608 bytes on soak run 676 (1,112,305,570 gzipped, handed off in
+71.90 s; its log, 2026-10-15), is far more than a comparison of six files
+needs, so only what they read crosses.
 
 WHAT EACH FAMILY COMPARES ON (FAMILIES' `compared_on`). Each upstream is asked
 once, by the extract. Three answers are read whole every hour and recorded as
@@ -109,6 +110,10 @@ HELD_BACK_EXITS = (5, 6)
 #: sandbox) and inside the compare step's 3 minutes for one slow family. The summary's seconds column on the first
 #: real runs settles it.
 FAMILY_SECONDS = 120
+
+#: gate_report.py's SOAK_HOURS, which the summary's not-compared line names: written out, because gate_report.py
+#: imports this file, and held equal by tests/test_hourly_parity.py.
+GATE_SOAK_HOURS = 72
 
 #: A table's state (extract/_answers.table_states()) that leaves the committed table equal to this checkout's file:
 #: read from it this hour, or kept because its sha256 had not moved since the load that read it.
@@ -542,12 +547,41 @@ VERDICT_WORDS = {
 }
 
 
+def not_compared_headline(run: dict) -> str | None:
+    """The line that leads the summary when any file was not compared, or None when every one was.
+
+    A file not compared leaves the run green by design (the docstring's "A FAMILY NOT COMPARED THIS HOUR SAYS WHY"),
+    and gate_report.py's soak_coverage() then counts that key clean only once a whole SOAK_HOURS of runs after it have
+    compared it clean. All eight soak runs from 666 (2026-10-14 18:07 UTC) to 676 put no bundle, nor did 5 of the 18
+    runs of 2026-10-11 that had the step to put one, so none of their hours compared anything; and the summary said so
+    only in its reasons and a closing "0 file(s) turn this run red" (review finding S2-1 of PR #1805 — dlt → dbt
+    re-platform as one go/no-go change), so this line comes first."""
+    families = run["families"]
+    missing = [answer for answer in families.values() if answer["verdict"] == "not_compared"]
+    if not missing:
+        return None
+    reasons = sorted({str(answer["why"]) for answer in missing})
+    why = f" Why: {reasons[0]}" if len(reasons) == 1 else " Each one's reason is listed below the table."
+    if len(missing) == len(families):
+        said = f"**Nothing was compared this hour: none of the {len(families)} files.**"
+    else:
+        said = f"**{len(missing)} of the {len(families)} files were not compared this hour.**"
+    return (
+        f"{said} The run stays green, but gate_report.py clears a key only when every run of the soak's last "
+        f"{GATE_SOAK_HOURS} hours compared it clean, so this hour holds each of these keys back for "
+        f"{GATE_SOAK_HOURS} hours.{why}"
+    )
+
+
 def summary_markdown(run: dict) -> str:
     """The run's answer, family by family with counts, for $GITHUB_STEP_SUMMARY: counts, keys and reasons, no record."""
     families = run["families"]
+    headline = not_compared_headline(run)
+    unseen = sum(answer["verdict"] == "not_compared" for answer in families.values())
     lines = [
         f"### The six conditions files against today's exporters, {run.get('leg') or 'this'} leg (hourly_parity.py)",
         "",
+        *([headline, ""] if headline else []),
         f"Build run {run_label(run)} on `{str(run.get('commit') or '')[:12]}`, build started {run.get('built_at') or 'unknown'}, "
         f"compared in {run.get('seconds')} s. Each file that build published from its dbt writer, against today's exporter "
         "on the same answers, by parity.py with --keys-only.",
@@ -570,6 +604,7 @@ def summary_markdown(run: dict) -> str:
         "",
         f"**{len(red)} file(s) turn this run red**: "
         + (", ".join(f"`{key}`" for key in red) if red else "none")
+        + (f"; **{unseen} not compared**" if unseen else "")
         + ". The per-family results, keys and changed fields only, are this job's "
         + f"`hourly-parity-{run.get('leg') or '<leg>'}` artifact"
         + (f" in run {run['compared_in']}" if run.get("compared_in") else "")
@@ -618,6 +653,10 @@ def main(argv: list[str] | None = None) -> int:
     if args.summary is not None:
         with args.summary.open("a", encoding="utf-8") as page:
             page.write(text)
+    headline = not_compared_headline(run)
+    if headline and all(answer["verdict"] == "not_compared" for answer in run["families"].values()):
+        # One annotation for the whole hour, ahead of the six, so the run's annotations open on it.
+        print(f"::warning title=Nothing compared this hour::{headline.replace('**', '')}")
     for answer in run["families"].values():
         line = f"{answer['key']}: {answer['verdict']}" + (f" ({answer['why']})" if answer["why"] else "")
         if answer["verdict"] in RED:

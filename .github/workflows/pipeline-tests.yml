@@ -609,6 +609,64 @@ jobs:
         if: steps.scope.outputs.run == 'true'
         run: python make_dbt_fixtures.py
 
+      # A PULL REQUEST STARTS FROM MAIN'S LAST BUILD WHEN IT CAN (decision 210,
+      # the maintainer's poll of 2026-10-15: "In this PR anyway"). The build
+      # step below took 16 min 7 s on 2a826f01 (Pipeline tests run
+      # 38773605297), and every pull request paid all of it. A push to main
+      # keeps its warehouse and manifest (the two steps after the build); here
+      # a pull request restores the one built from its base commit, else the
+      # newest (restore-keys), into the runner's temporary directory, where
+      # nothing reads it until the next step says it may be used.
+      - name: Restore main's last build, for a state build (pull requests)
+        id: state-cache
+        if: steps.scope.outputs.run == 'true' && github.event_name == 'pull_request'
+        uses: actions/cache/restore@v6
+        with:
+          path: ${{ runner.temp }}/dbt-ci-base
+          key: dbt-ci-base-${{ github.event.pull_request.base.sha }}
+          restore-keys: dbt-ci-base-
+
+      # STATE OR FULL, decided before the load (pipeline/state_base.py, whose
+      # docstring has the rules): a state build only when the cache matched,
+      # its commit (the key's) fetches, every path that differs between that
+      # commit and this merge commit is one dbt's state:modified sees or no
+      # build reads (`git diff` compares the two trees, so a depth-1 fetch is
+      # enough), and no macro differs from the cached manifest's. Measured
+      # 2026-10-15 on dbt 2.0.6: a comment in a staging model, a character in
+      # a seed and a comment inside a macro a mart calls each made
+      # state:modified select what they touched; but dispatched overrides were
+      # measured unseen (decision 111), so macros are compared by content.
+      # Anything else, the fixture generator, the extract, sources.json,
+      # reference/, a Python step, build_marts.py, dbt_project.yml or a
+      # requirements file among it, builds everything as before, and the
+      # notice says which path decided it. The step never fails the job: what
+      # it cannot answer is a full build. On a state build it moves the cached
+      # warehouse to data/warehouse.duckdb, the name every node's database is
+      # read from, and names the cached target/ for --state-base.
+      - name: A state build or the full build (pull requests)
+        id: state
+        if: steps.scope.outputs.run == 'true' && github.event_name == 'pull_request'
+        env:
+          MATCHED_KEY: ${{ steps.state-cache.outputs.cache-matched-key }}
+        run: >-
+          python state_base.py --matched-key "$MATCHED_KEY" --base-dir "$RUNNER_TEMP/dbt-ci-base"
+          --head-manifest dbt/target/manifest.json --warehouse data/warehouse.duckdb
+          --github-output "$GITHUB_OUTPUT"
+
+      # On a state build the warehouse is main's, and the load writes every
+      # raw table over main's own (extract/_warehouse.py's load_warehouse()
+      # replaces each table it loads and leaves the other schemas alone), so
+      # the run log is this run's. Never skipped: every source's freshness
+      # reads that log (macros/last_read_or_confirmed_at.sql), the NWS alerts
+      # erroring after 2 hours and the club notices after 24, so main's log
+      # from hours before would fail the freshness step below. The rows are
+      # the same load's but for when it ran: two fixture loads of 2a826f01,
+      # into two directories, differed in 4 of 788 raw tables beyond dlt's
+      # three load columns, and only in the run log, the fetch times of ATC's
+      # update pages and of the Hike Finder, and the work projects' file
+      # path, which is data/raw's in every run here (Measured 2026-10-15).
+      # The rules above build everything when the generator or the extract
+      # changed.
       - name: Load the warehouse through the extract (fixture mode)
         if: steps.scope.outputs.run == 'true'
         env:
@@ -635,10 +693,20 @@ jobs:
       # sums, which is what a pull request no longer pays for checks it
       # cannot have changed: with one mart's SQL changed, the pass ran that
       # mart's 6 checks in 27.5 s (Measured 2026-10-09 in the same sandbox).
+      #
+      # A STATE BUILD, when the decision above named main's target/ (decision
+      # 210): only what changed since main's build, what reads the clock and
+      # what a Python step rewrote from a changed input, with what each feeds;
+      # every step and every pub_ writer still runs, so the parity step below
+      # compares every file. build_marts.py's docstring, "A PULL REQUEST
+      # BUILDS ONLY WHAT CHANGED SINCE MAIN'S LAST BUILD", says why there is no
+      # --defer. A push to main and a merge-queue entry build everything.
       - name: dbt build, the Python steps and the pub_ writers (build_marts.py)
+        id: build
         if: steps.scope.outputs.run == 'true'
         env:
           CHECKS_BASE: ${{ steps.checks-base.outputs.dir }}
+          STATE_BASE: ${{ steps.state.outputs.dir }}
           EVENT: ${{ github.event_name }}
         run: |
           base=()
@@ -650,7 +718,46 @@ jobs:
           else
             echo "::notice title=Every Elementary check::A $EVENT runs every check: only a pull request compares with its base (decision 111)."
           fi
-          python build_marts.py --fixtures --python "$RUNNER_TEMP/pipeline/bin/python" "${base[@]}"
+          state=()
+          if [ -n "$STATE_BASE" ]; then
+            state=(--state-base "$STATE_BASE")
+          elif [ "$EVENT" != "pull_request" ]; then
+            echo "::notice title=Full fixture build::A $EVENT builds every node: only a pull request starts from main's last build (decision 210)."
+          fi
+          python build_marts.py --fixtures --python "$RUNNER_TEMP/pipeline/bin/python" "${base[@]}" "${state[@]}"
+
+      # MAIN KEEPS THIS BUILD FOR PULL REQUESTS TO START FROM (decision 210):
+      # on a push to main whose build passed, the warehouse and the manifest it
+      # was built with, copied before any later step writes to either (the
+      # evaluator builds into the warehouse, and every dbt command below
+      # rewrites target/manifest.json), and saved under the commit, which the
+      # decision step diffs against. Never from a pull request or a merge
+      # queue entry: what a pull request starts from is main's. The warehouse
+      # holds make_dbt_fixtures.py's invented rows and the reviewed files in
+      # git, as the parity upload below says of its records, so the cache
+      # publishes nothing the repository does not. The fixture build at
+      # 2a826f01 (in a sandbox, 2026-10-15) left a 387,461,120-byte warehouse
+      # and a 49,768,705-byte manifest, 19,491,506 bytes as a gzipped tar
+      # (level 6; the sandbox has no zstd, which the cache uses, so its size
+      # is Reasoned to be close): one such entry a push, in a 10 GB cache that
+      # evicts the least recently used. A re-run of the same commit finds its
+      # key taken, which continue-on-error lets pass.
+      - name: Keep this build for pull requests (push to main)
+        id: state-keep
+        if: steps.scope.outputs.run == 'true' && github.event_name == 'push' && github.ref == 'refs/heads/main' && steps.build.outcome == 'success'
+        run: |
+          kept="$RUNNER_TEMP/dbt-ci-base"
+          mkdir -p "$kept/target"
+          cp data/warehouse.duckdb "$kept/warehouse.duckdb"
+          cp dbt/target/manifest.json "$kept/target/manifest.json"
+
+      - name: Save this build for pull requests (push to main)
+        if: always() && steps.state-keep.outcome == 'success'
+        continue-on-error: true
+        uses: actions/cache/save@v6
+        with:
+          path: ${{ runner.temp }}/dbt-ci-base
+          key: dbt-ci-base-${{ github.sha }}
 
       # ROW DATES ACROSS BUILDS (decision 57): the podcasts mart built three
       # times in fresh warehouses, with row_history.py's store restored

@@ -154,7 +154,12 @@ def test_the_build_takes_a_base_only_when_the_step_named_one_and_says_which_chec
     seen = tmp_path / "python-saw.txt"
     _stand_in(bin_, "python", f'printf "%s\\n" "$@" > "{seen}"\n')
     step = _step(name=BUILD_STEP)
-    assert step["env"] == {"CHECKS_BASE": "${{ steps.checks-base.outputs.dir }}", "EVENT": "${{ github.event_name }}"}
+    # STATE_BASE is decision 210's, which tests/test_dbt_state_build.py holds; unset here, it passes nothing.
+    assert step["env"] == {
+        "CHECKS_BASE": "${{ steps.checks-base.outputs.dir }}",
+        "STATE_BASE": "${{ steps.state.outputs.dir }}",
+        "EVENT": "${{ github.event_name }}",
+    }
     env = {"PATH": f"{bin_}:{os.environ['PATH']}", "RUNNER_TEMP": "/runner", "CHECKS_BASE": checks_base, "EVENT": event}
 
     done = _run(step["run"], env, tmp_path)

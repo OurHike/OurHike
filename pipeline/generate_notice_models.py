@@ -64,6 +64,8 @@ WHAT IT WRITES, per notice source (club folder C, raw table raw_C__K):
   confirmed it unchanged, never `_loaded_at`, which a FRESH check leaves at
   the last load) and errors after FRESHNESS_HOURS for its cadence, 24 hours
   for an hourly source (decision 100); one that reaches no hiker only warns.
+  The one monthly notice source warns and errors after make_dbt_staging.py's
+  MONTHLY_FRESHNESS_DAYS, as every monthly source does (decision 203).
   Each the notices legs read is tagged NOTICES_JOB_TAG, which
   publish-conditions.yml's freshness step selects after it has published, and
   a PDF notice is tagged PDF_NOTICE_TAG as well, which CI's two freshness
@@ -73,8 +75,10 @@ WHAT IT WRITES, per notice source (club folder C, raw table raw_C__K):
   fixture build (on a pull request, only those its change reaches, decision
   111) and, for the hourly lane, in a run of their own after its build has
   published (HOURLY_LANE_CHECKS, decision 110; check-conditions.yml):
-  every raw table's from make_dbt_staging.py's raw_table_checks(), and on each
-  staging model whose source dates its notices, event_freshness_check().
+  every raw table's from make_dbt_staging.py's raw_table_checks(). No staging
+  model carries Elementary's event freshness any more: how long since a club
+  last edited a notice is no measure of whether OurHike read it (decision
+  203; make_dbt_staging.py's raw_table_checks() says what it flagged).
 And once: dbt/seeds/notice_readers.csv (every closures and warnings resource,
 hand-staged ones included: its key, club, type, reader, listing and raw
 table), and the two unions, int_closures__club_notices_unioned and
@@ -117,8 +121,9 @@ import yaml
 # quoted into a model's comment or description is published there.
 from check_docs_site import SHAPES as DOCS_SITE_SHAPES
 
-# Elementary's checks on a raw table, and their tag and severity: one home for both generators (decision 102).
-from make_dbt_staging import elementary_check_config, raw_table_checks
+# Elementary's checks on a raw table (decision 102), and the freshness every source reads from the run log (decision
+# 203): one home for both generators.
+from make_dbt_staging import LOADED_AT_QUERY, MONTHLY_FRESHNESS_DAYS, raw_table_checks
 
 PIPELINE_DIR = Path(__file__).resolve().parent
 DBT_DIR = PIPELINE_DIR / "dbt"
@@ -240,11 +245,6 @@ FRESHNESS_HOURS = {"hourly": (12, 24), "daily": (36, 48)}
 #: unread, the maintainer's poll of 2026-10-07 (decision 101, "Both, NWS red after 2 h"), and a warning at half that,
 #: as FRESHNESS_HOURS grades its own. A severe thunderstorm warning mostly lasts under 4 hours (Reasoned).
 NWS_FRESHNESS_HOURS = (1, 2)
-#: The one notice source on the monthly lane, USFWS's hunt units, which reaches_hikers false keeps off every phone
-#: (tests/test_generated_notice_models.py's ARC-1 test holds it the only one): a warning at 7 days, as before decision
-#: 100 and @unvalidated as then, the threshold _atc__sources.yml's comment says nobody derived. No run on live data
-#: measures it: the monthly lane runs no `dbt source freshness`.
-MONTHLY_WARN_DAYS = 7
 #: The tag publish-conditions.yml's freshness step selects the notices job's sources by: every generated source the
 #: notices legs read (extract/_run.py's job_of()), whose run log reaches the hourly warehouse only with a served copy.
 NOTICES_JOB_TAG = "notices_job"
@@ -257,8 +257,6 @@ NOTICES_JOB_TAG = "notices_job"
 #: selection measured 295 sources and none of the four PDFs, tests/test_dbt_notice_source_freshness_runs.py), so a
 #: PDF the extract stopped reading kept publishing its last table and nothing turned red.
 PDF_NOTICE_TAG = "pdf_notice"
-#: Every generated source's `loaded_at_query`, as dbt renders it.
-LOADED_AT_QUERY = "{{ last_read_or_confirmed_at(this) }}"
 
 
 @dataclass(frozen=True)
@@ -1030,9 +1028,14 @@ def is_pdf_notice(source: NoticeSource) -> bool:
 
 
 def notice_freshness(source: NoticeSource) -> dict:
-    """A notice source's dbt freshness by its cadence (FRESHNESS_HOURS, MONTHLY_WARN_DAYS), a PDF notice's included."""
+    """A notice source's dbt freshness by its cadence, a PDF notice's included: FRESHNESS_HOURS for the hourly and
+    daily ones, a reaches_hikers false one warning only (decision 100), and make_dbt_staging.py's
+    MONTHLY_FRESHNESS_DAYS for the one monthly source, USFWS's hunt units (tests/test_generated_notice_models.py's ARC-1
+    test holds it the only one), as for every monthly source (decision 203). Its reaches_hikers false leaves it its
+    error: decision 100 made only the notices legs' sources warn-only, and decision 204 revisits that rule."""
     if source.cadence == "monthly":
-        return {"warn_after": {"count": MONTHLY_WARN_DAYS, "period": "day"}}
+        warn, error = MONTHLY_FRESHNESS_DAYS
+        return {"warn_after": {"count": warn, "period": "day"}, "error_after": {"count": error, "period": "day"}}
     warn, error = FRESHNESS_HOURS[source.cadence]
     freshness = {"warn_after": {"count": warn, "period": "hour"}}
     if (source.entry or {}).get("reaches_hikers") is not False:
@@ -1077,7 +1080,7 @@ def render_sources_yml(club: str, sources: list[NoticeSource], areas: frozenset[
                     }
                 },
                 # Elementary's checks on every raw table (decision 102), from their one home.
-                *raw_table_checks(source.cadence),
+                *raw_table_checks(),
             ],
         }
         tables.append(table)
@@ -1145,28 +1148,7 @@ def render_area_models_yml(areas: list[NoticeSource]) -> list[dict]:
     ]
 
 
-def dates_its_notices(source: NoticeSource, fields: dict[str, dict]) -> bool:
-    """Whether the source states when it last edited each notice: its `edited` role names a field of its own (a
-    literal is refused there, LITERAL_ROLES), which render_stg() stages as `source_edited_at`."""
-    return "edited" in _roles(source, fields)
-
-
-def event_freshness_check() -> dict:
-    """Elementary's event freshness on a staged notice source (decision 102, pipeline/ELT.md, "The checks, and where
-    each goes": "the gap between a notice's own date and our load"): at each build, how long since the newest notice's
-    own `source_edited_at`, which Elementary learns per source. No `update_timestamp_column`: with `_loaded_at` there,
-    Elementary would bucket the rows by the day they loaded, and every raw table is replaced at each load
-    (extract/_run.py's write_disposition), so each day before the last load would read as holding no notice
-    (Reasoned from Elementary 0.26.0's event_freshness_metric_query, which gives such a day the bucket's length)."""
-    return {
-        "elementary.event_freshness_anomalies": {
-            "arguments": {"event_timestamp_column": "source_edited_at"},
-            "config": elementary_check_config(),
-        }
-    }
-
-
-def render_models_yml(club: str, sources: list[NoticeSource], fields: dict[str, dict], areas: list[NoticeSource] = ()) -> str:
+def render_models_yml(club: str, sources: list[NoticeSource], areas: list[NoticeSource] = ()) -> str:
     models = [
         {
             "name": source.stg_model,
@@ -1174,7 +1156,6 @@ def render_models_yml(club: str, sources: list[NoticeSource], fields: dict[str, 
                 f"{_title(source)} (sources.json `{source.key}`) in the shared club-notice shape: facts and a "
                 "link, never the source's paragraphs (decision 55)."
             ),
-            **({"data_tests": [event_freshness_check()]} if dates_its_notices(source, fields) else {}),
             "columns": [
                 {"name": "notice_key", "description": "The base model's key.", "data_tests": ["unique", "not_null"]},
             ],
@@ -1642,7 +1623,7 @@ def render_all() -> dict[Path, str]:
         folder = STAGING_DIR / club / "notices"
         files[folder / f"_{club}_notices__sources.yml"] = render_sources_yml(club, club_sources + club_areas, area_keys)
         files[folder / "base" / f"_{club}_notices__base.yml"] = render_base_yml(club, club_sources + club_areas, area_keys)
-        files[folder / f"_{club}_notices__models.yml"] = render_models_yml(club, club_sources, fields, club_areas)
+        files[folder / f"_{club}_notices__models.yml"] = render_models_yml(club, club_sources, club_areas)
     files[READERS_SEED] = render_readers_seed(sources)
     files[UNION_MODEL] = render_union(sources)
     files[UNION_YML] = render_union_yml(sources)

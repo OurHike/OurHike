@@ -6,8 +6,8 @@ it), so nothing here runs dbt:
 - every Elementary check warns, carries the `elementary_check` tag and is enabled with the checks' own switch alone,
   and no other test carries the tag, because build_marts.py leaves it out of every dbt build and runs it in a pass of
   its own after the writers;
-- every raw table, generated or hand-written, carries exactly make_dbt_staging.py's raw_table_checks() for its
-  cadence, the one home of them;
+- every raw table, generated or hand-written, carries exactly make_dbt_staging.py's raw_table_checks(), the one home
+  of them, and no Elementary freshness check runs anywhere (decision 203);
 - no pub_ writer carries one (ELT.md: each is one row holding a whole phone file);
 - every mart carries its own, the safety columns theirs, and exposure_schema_validity sits exactly where
   Elementary 0.26.0 can check something on dbt 2.0.6: a mart one phone file reads, whose exposure names the columns
@@ -87,13 +87,28 @@ def test_there_are_checks_of_every_kind_elt_md_names():
     assert kinds == {
         "volume_anomalies",
         "schema_changes",
-        "freshness_anomalies",
-        "event_freshness_anomalies",
         "dimension_anomalies",
         "column_anomalies",
         "all_columns_anomalies",
         "exposure_schema_validity",
     }, "schema_changes_from_baseline is the one kind with nothing to check: every mart's contract is enforced"
+
+
+def test_no_elementary_freshness_check_is_declared_anywhere():
+    """Decision 203 (the maintainer, 2026-10-15): freshness is measured from OurHike's own last read of a source, by
+    dbt's `source freshness` on the run log, never by Elementary's learned checks. freshness_anomalies on `_loaded_at`
+    learned how long a source usually goes unchanged, and event_freshness_anomalies how long since a club last
+    edited a notice; a table_anomalies or a table monitor of either metric learns the same, so none is declared."""
+    learned = [
+        f"{where}: {name}"
+        for where, name, body in EVERY_TEST
+        if name in ("elementary.freshness_anomalies", "elementary.event_freshness_anomalies")
+        or (
+            name.startswith("elementary.")
+            and {"freshness", "event_freshness"} & set((body.get("arguments") or body).get("table_anomalies") or [])
+        )
+    ]
+    assert learned == []
 
 
 def test_every_elementary_check_warns_and_carries_the_tag_and_no_other_test_carries_it():
@@ -119,22 +134,6 @@ def test_every_elementary_check_warns_and_carries_the_tag_and_no_other_test_carr
     assert TAG not in project, "a project-wide config would tag or untag tests no YAML file shows"
 
 
-def _cadence(source: dict, table: dict) -> str | None:
-    for holder in (table, source):
-        found = ((holder.get("config") or {}).get("meta") or {}).get("cadence") or (holder.get("meta") or {}).get("cadence")
-        if found:
-            return found
-    return None
-
-
-def _loaded_at(source: dict, table: dict) -> str:
-    for holder in (table, source):
-        found = (holder.get("config") or {}).get("loaded_at_field") or holder.get("loaded_at_field")
-        if found:
-            return found
-    return "_loaded_at"
-
-
 def _raw_tables() -> list[tuple[str, dict, dict]]:
     return [
         (str(path.relative_to(MODELS)), source, table)
@@ -145,14 +144,14 @@ def _raw_tables() -> list[tuple[str, dict, dict]]:
     ]
 
 
-def test_every_raw_table_generated_or_hand_written_carries_exactly_the_raw_table_checks_for_its_cadence():
+def test_every_raw_table_generated_or_hand_written_carries_exactly_the_raw_table_checks():
     """make_dbt_staging.py's raw_table_checks() is the one home: both generators write it, and a hand-written source's
-    table carries the same list, freshness by its loaded_at_field on an hourly or daily source."""
+    table carries the same list, whatever its cadence."""
     tables = _raw_tables()
     assert len(tables) >= 715, "every raw table at d5e97f8c: 631 generated, 84 hand-written"
     wrong = []
     for where, source, table in tables:
-        expected = make_dbt_staging.raw_table_checks(_cadence(source, table), _loaded_at(source, table))
+        expected = make_dbt_staging.raw_table_checks()
         found = [{name: body} for name, body in _tests(table.get("data_tests")) if name.startswith("elementary.")]
         if sorted(map(repr, found)) != sorted(map(repr, expected)):
             wrong.append(f"{where}: {table['name']}")

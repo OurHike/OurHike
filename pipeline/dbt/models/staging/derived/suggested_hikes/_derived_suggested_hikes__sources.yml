@@ -13,15 +13,21 @@ sources:
       step_form_route's.
     schema: derived
     config:
+      # The step's own write in this build, never a source's date: a step
+      # writes its table between the invocation that builds its input and
+      # the one that reads it, so `_loaded_at` is OurHike's clock, and no
+      # run log row names a derived table for last_read_or_confirmed_at to
+      # read. A stale one is a build reading a table an earlier build left.
+      # The thresholds are every monthly source's (decision 203,
+      # make_dbt_staging.py's MONTHLY_FRESHNESS_DAYS), both @unvalidated;
+      # build_marts.py's freshness runs leave this source out (its
+      # FRESHNESS_LEFT_OUT), since it is no upstream read.
       loaded_at_field: _loaded_at
-      freshness:
-        # The step runs inside every build, so a stale `_loaded_at` is a
-        # build reading a table an earlier build left behind. @unvalidated:
-        # 7 days is the derived source's picked number (_derived__sources.yml
-        # says why), not one measured for this step.
-        warn_after: {count: 7, period: day}
       meta:
         cadence: monthly
+      freshness:
+        warn_after: {count: 35, period: day}
+        error_after: {count: 62, period: day}
     tables:
       - name: formed_routes
         data_tests:

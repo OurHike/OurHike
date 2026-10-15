@@ -13,15 +13,14 @@ sources:
       notes, not authored here.
     schema: raw
     config:
-      loaded_at_field: _loaded_at
+      # When the extract last read each table or confirmed it unchanged, from
+      # its run log, never `_loaded_at` (decision 203): make_dbt_staging.py's
+      # LOADED_AT_QUERY and MONTHLY_FRESHNESS_DAYS say why, and
+      # tests/test_source_freshness.py holds every monthly source to them.
+      loaded_at_query: "{{ last_read_or_confirmed_at(this) }}"
       freshness:
-        # Measures "how recently did the extract read this layer", NOT upstream
-        # NYNJTC staleness - the extract owns real upstream change-detection via
-        # editingInfo.dataLastEditDate. @unvalidated: 7 days is inherited from
-        # the atc source's threshold and nobody has measured what load cadence
-        # actually makes a warehouse stale here. What would settle it is one
-        # bake cadence being decided; see _atc__sources.yml for the same tag.
-        warn_after: {count: 7, period: day}
+        warn_after: {count: 35, period: day}
+        error_after: {count: 62, period: day}
     tables:
       - name: raw_nynjtc__nynjtc_long_path
         data_tests:

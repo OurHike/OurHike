@@ -11,10 +11,16 @@ sources:
       the extract's _shared/ourhike/highlights.py.
     schema: raw
     config:
+      # When the extract last read each table or confirmed it unchanged, from
+      # its run log, never `_loaded_at` (decision 203): make_dbt_staging.py's
+      # LOADED_AT_QUERY and MONTHLY_FRESHNESS_DAYS say why, and
+      # tests/test_source_freshness.py holds every monthly source to them.
+      loaded_at_query: "{{ last_read_or_confirmed_at(this) }}"
       meta:
         cadence: monthly
-      # No freshness, as for OurHike's other reviewed files: a reviewed file's
-      # `_loaded_at` moves only when its bytes do.
+      freshness:
+        warn_after: {count: 35, period: day}
+        error_after: {count: 62, period: day}
     tables:
       - name: raw_ourhike__highlights
         data_tests:

@@ -60,7 +60,8 @@ Column names are the registry's field names as dlt names them on landing (the `s
 
 WHAT IT WRITES, for each club folder <f> with such layers, under dbt/models/staging/<f>/:
 - `_<f>__generated__sources.yml`: each raw table, with its duplicates_are_exact test on the model's own key and
-  Elementary's checks (raw_table_checks(), decision 102), which generate_notice_models.py writes on its raw tables too.
+  Elementary's checks (raw_table_checks(), decision 102), which generate_notice_models.py writes on its raw tables too,
+  and its freshness, read from the run log and held to MONTHLY_FRESHNESS_DAYS (LOADED_AT_QUERY, decision 203).
 - `base/base_<f>__<key>.sql` and `base/_<f>__generated__base.yml`: one base model per raw table.
 - `stg_<f>__<type>.sql` and `_<f>__generated__models.yml`: one staging model per type, every layer of that
   type in the folder conformed to its union's columns, the layer's own columns kept whole as `properties`.
@@ -120,8 +121,8 @@ JINJA_MARK = f"{{#- {GENERATED} from sources.json\n    and the extract's club fo
 #: JsonFeatures (lib/source_registry.py's GIS_FILE, OGC_FEATURES and JSON_FEATURES), then waves 4 and 5's
 #: PdfPoints and PagePoints (PDF_POINTS and PAGE_POINTS). Fixture mode cannot read a PDF, because the dbt job installs
 #: no pypdf (requirements.in's note), so CI's warehouse never holds a pdf_points table: its base model reads the
-#: absent table as no rows (macros/raw_or_empty.sql), the build reads its rows only where the extract landed them, and
-#: its source table carries `freshness: null` (Table.read_from_pdf).
+#: absent table as no rows (macros/raw_or_empty.sql), and the build reads its rows only where the extract landed them
+#: (Table.read_from_pdf).
 PDF_POINTS_KIND = "pdf_points"
 KINDS = (
     "club_arcgis_layer",
@@ -181,14 +182,34 @@ NOTICE_TYPES = frozenset({"closures", "warnings"})
 
 LINE = 76  # SQL comment width: SQLFluff's LT05 holds every line to 80
 
+# --- Freshness, from the run log (decisions 100 and 203) --------------------------------------------------------
+
+#: Every extracted source's `loaded_at_query`, as dbt renders it: when OurHike's extract last read the table or
+#: confirmed it unchanged, from the run log (macros/last_read_or_confirmed_at.sql), never a date of the source's own
+#: and never `_loaded_at`, which a change check that finds the source unchanged leaves at the last load. Decision 100
+#: put the notice sources on it; decision 203 (the maintainer, 2026-10-15: "Maybe we should use the date of the last
+#: successful data uppdate? Having that many warnings seems like a false positive.") puts every source in every lane
+#: on it. generate_notice_models.py writes it from here, and tests/test_source_freshness.py holds the hand-written
+#: sources blocks to it.
+LOADED_AT_QUERY = "{{ last_read_or_confirmed_at(this) }}"
+#: HOW MANY DAYS A MONTHLY SOURCE MAY GO UNREAD before dbt's source freshness warns, and then errors (decision 203:
+#: every freshness check carries both). Both @unvalidated: the lead's pick of two missed monthly refreshes against
+#: refresh-reference.yml's cron, `15 5 3 * *`, settled by how often a healthy monthly source passes 35 days over the
+#: first season. What they do, Reasoned from that cron and from where the monthly lane measures them, once, in
+#: build_marts.py's freshness run right after the build of the extract it pins: a source the month's extract read is
+#: hours old there; one it missed once is 28 to 31 days old, and passes; missed twice, 59 to 62 days, and warns (it
+#: errors only across two 31-day months); missed three times, 89 to 92 days, and errors. A rebuild from an older pin
+#: (pipeline/ELT.md, "Rebuilding from a pin") reads older by the pin's age. generate_notice_models.py's
+#: MONTHLY_WARN_DAYS, 7 and warn only, gave its one monthly notice source a number nobody derived, which measured more
+#: than a week after a read would warn about three weeks of every month.
+MONTHLY_FRESHNESS_DAYS = (35, 62)
+
 # --- Elementary's checks on raw tables (decision 102) -----------------------------------------------------------
 
 #: The tag every Elementary check carries, and no other test does: build_marts.py leaves the tagged tests out of
 #: every dbt build and runs them in a pass of their own after the writers (its docstring, "ELEMENTARY'S CHECKS RUN
 #: AFTER THE WRITERS"). tests/test_elementary_checks.py holds the tag and the severity on every check.
 ELEMENTARY_CHECK = "elementary_check"
-#: The cadences whose raw tables also get a freshness check: the hourly lane's (build_marts.py's FASTER_THAN_MONTHLY).
-FRESHNESS_CADENCES = ("hourly", "daily")
 #: Every check exists only with a switch of its own on, OURHIKE_ELEMENTARY_CHECKS, which only build_marts.py sets: in a
 #: build that runs the checks, for the two dbt commands that need them in the graph, Elementary's own tables (whose
 #: dbt_tests table is where the data-quality file reads each check's lineage) and the checks pass (its CHECKS_SWITCH).
@@ -210,9 +231,9 @@ def elementary_check_config() -> dict:
     return {"severity": "warn", "tags": [ELEMENTARY_CHECK], "enabled": ELEMENTARY_ENABLED}
 
 
-def raw_table_checks(cadence: str | None, timestamp_column: str = "_loaded_at") -> list[dict]:
-    """The Elementary checks one raw table carries, as items of its source table's `data_tests` (pipeline/ELT.md,
-    "The checks, and where each goes"). The one home of them: both generators write these, and
+def raw_table_checks() -> list[dict]:
+    """The Elementary checks one raw table carries, whatever its cadence, as items of its source table's `data_tests`
+    (pipeline/ELT.md, "The checks, and where each goes"). The one home of them: both generators write these, and
     tests/test_elementary_checks.py holds every hand-written raw table to the same list.
 
     - volume_anomalies with no timestamp column: the table's rows at each build. Not rows per day by `_loaded_at`,
@@ -221,32 +242,25 @@ def raw_table_checks(cadence: str | None, timestamp_column: str = "_loaded_at") 
       days' buckets from the table as it stands (0.26.0's get_metric_buckets_min_and_max treats a source as
       incremental), which would record 0 for each day before a reload. Reasoned from those two, not run.
     - schema_changes: a column added, dropped or retyped upstream, against the columns the last build recorded.
-    - freshness_anomalies on `timestamp_column` (the table's loaded_at_field, else `_loaded_at`), on an hourly or
-      daily source: the gap since its last load, which Elementary learns per source. A source the change check
-      finds unchanged keeps its last load's stamp (ELT.md, "dlt configuration requirements"), so what it learns is
-      how long the source usually goes unchanged, and a source reloaded every run gives it no point at all (one
-      stamp, later than every bucket it scores). dbt's own `source freshness` keeps decisions 100 and 101.
+
+    NO FRESHNESS CHECK OF ELEMENTARY'S (decision 203, the maintainer, 2026-10-15). freshness_anomalies on
+    `_loaded_at` learned how long a source usually goes unchanged, since a change check that finds a source unchanged
+    leaves its last load's stamp (ELT.md, "dlt configuration requirements"), and event_freshness_anomalies how long
+    since a club last edited a notice: neither is how long since OurHike last read the source. On UA's hourly page of
+    2026-10-15 04:38 UTC all 97 freshness warnings were event_freshness_anomalies, each first flagged by the first
+    build after a 70.8-hour pause in OurHike's own hourly runs. Freshness is dbt's `source freshness` on each source's
+    `loaded_at_query` (LOADED_AT_QUERY) alone, which build_marts.py runs before the data-quality file.
     """
-    checks: list[dict] = [
+    return [
         {"elementary.volume_anomalies": {"config": elementary_check_config()}},
         {"elementary.schema_changes": {"config": elementary_check_config()}},
     ]
-    if cadence in FRESHNESS_CADENCES:
-        checks.append(
-            {
-                "elementary.freshness_anomalies": {
-                    "arguments": {"timestamp_column": timestamp_column},
-                    "config": elementary_check_config(),
-                }
-            }
-        )
-    return checks
 
 
-def raw_table_checks_yaml(cadence: str | None, indent: int) -> list[str]:
+def raw_table_checks_yaml(indent: int) -> list[str]:
     """raw_table_checks() as `data_tests` list items at `indent`, the way sources_yaml() writes its YAML."""
     pad, lines = " " * indent, []
-    for check in raw_table_checks(cadence):
+    for check in raw_table_checks():
         ((name, body),) = check.items()
         lines.append(f"{pad}- {name}:")
         for key in ("arguments", "config"):
@@ -583,12 +597,10 @@ class Table:
         """A table its reader takes off a PDF through pypdf: extract/_pdf_points.py's PdfPoints (a `pdf_points` row)
         or extract/_pdf_content.py's ContentPdf; or a workbook, extract/_sheet_content.py's ContentSheet. Fixture mode's
         Python need not have pypdf, and fixture mode serves no binary file, so the fixture warehouse never holds the
-        table, and `dbt source freshness` would fail on it (CI's dbt job did, 2026-10-04, on
-        ata_water_cache_boxes, bmta_access_points and rmc_recommended_hikes). So its source table carries
-        `freshness: null`. All seven such tables on 2026-10-09 were on the monthly lane, which no production job
-        measures for freshness (generate_notice_models.py's MONTHLY_WARN_DAYS). A PDF notice is hourly and
-        production measures it, so it keeps its freshness and is tagged generate_notice_models.py's PDF_NOTICE_TAG
-        instead."""
+        table. Its freshness is every monthly table's all the same: LOADED_AT_QUERY reads the run log and never the
+        table, so a table the warehouse does not hold is measured as any other (decision 203). Until then it carried
+        `freshness: null`, because `dbt source freshness` on `_loaded_at` failed on the missing table (CI's dbt job,
+        2026-10-04, on ata_water_cache_boxes, bmta_access_points and rmc_recommended_hikes)."""
         return self.entry.get("kind") == PDF_POINTS_KIND or self.reader in ("ContentPdf", "ContentSheet")
 
     def key_inputs(self) -> list[str]:
@@ -897,13 +909,12 @@ def sources_yaml(folder: str, folder_tables: list[Table]) -> str:
         ),
         "    schema: raw",
         "    config:",
-        "      loaded_at_field: _loaded_at",
+        "      # When the extract last read each table or confirmed it unchanged (decision 203):",
+        "      # make_dbt_staging.py's LOADED_AT_QUERY and MONTHLY_FRESHNESS_DAYS say why.",
+        f'      loaded_at_query: "{LOADED_AT_QUERY}"',
         "      meta:",
         f"        cadence: {cadence}",
-        "      freshness:",
-        "        # The extract's cadence, not the steward's. @unvalidated, the same",
-        "        # threshold and open question as _atc__sources.yml.",
-        "        warn_after: {count: 7, period: day}",
+        *_freshness_lines(folder, cadence),
         "    tables:",
     ]
     for table in folder_tables:
@@ -918,16 +929,6 @@ def sources_yaml(folder: str, folder_tables: list[Table]) -> str:
                 if table.lane_copy
                 else []
             ),
-            *(
-                [
-                    "        config:",
-                    "          # Read off a PDF or a workbook, which the fixture warehouse never holds (Table.read_from_pdf):",
-                    "          # its fct_sources_without_freshness row in dbt_project_evaluator_exceptions.csv says why.",
-                    "          freshness: null",
-                ]
-                if table.read_from_pdf
-                else []
-            ),
             "        data_tests:",
             f"          # Rows sharing {table.base}'s key must be exact copies (decision 40).",
             "          - duplicates_are_exact:",
@@ -935,7 +936,7 @@ def sources_yaml(folder: str, folder_tables: list[Table]) -> str:
             f"                key_columns: {_yaml_list(_raw_key_columns(table.key_inputs()))}",
             *([f"                row_id_columns: {_yaml_list(FILE_ROW_IDS)}"] if table.entry.get("kind") in FILE_KINDS else []),
             "          # Elementary's checks (raw_table_checks()), each at warn and run after the writers.",
-            *raw_table_checks_yaml(cadence, 10),
+            *raw_table_checks_yaml(10),
             "        description: >",
             _folded(
                 f"{table.title} (sources.json `{table.key}`). "
@@ -945,6 +946,21 @@ def sources_yaml(folder: str, folder_tables: list[Table]) -> str:
             ),
         ]
     return "\n".join(lines) + "\n"
+
+
+def _freshness_lines(folder: str, cadence: str) -> list[str]:
+    """A generated sources block's `freshness`, by its cadence: MONTHLY_FRESHNESS_DAYS, every table this writes being
+    on the monthly lane (decision 1: the types it stages are monthly). Any other cadence stops the run, naming the
+    folder, rather than guessing a threshold: an hourly or daily source's numbers are decisions 100's and 101's
+    (generate_notice_models.py's FRESHNESS_HOURS), for the notice sources that generator stages."""
+    if cadence != "monthly":
+        raise ValueError(f"{folder}: a generated sources block is monthly, and this one is {cadence}; give it its thresholds")
+    warn, error = MONTHLY_FRESHNESS_DAYS
+    return [
+        "      freshness:",
+        f"        warn_after: {{count: {warn}, period: day}}",
+        f"        error_after: {{count: {error}, period: day}}",
+    ]
 
 
 def _cadence(folder_tables: list[Table]) -> str:

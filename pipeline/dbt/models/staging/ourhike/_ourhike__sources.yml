@@ -7,10 +7,16 @@ sources:
       extract's _shared/ourhike/ folder (pipeline/extract/_shared/ourhike/).
     schema: raw
     config:
+      # When the extract last read each table or confirmed it unchanged, from
+      # its run log, never `_loaded_at` (decision 203): make_dbt_staging.py's
+      # LOADED_AT_QUERY and MONTHLY_FRESHNESS_DAYS say why, and
+      # tests/test_source_freshness.py holds every monthly source to them.
+      loaded_at_query: "{{ last_read_or_confirmed_at(this) }}"
       meta:
         cadence: monthly
-      # No freshness, as for the podcasts source: a reviewed file's
-      # `_loaded_at` moves only when its bytes do.
+      freshness:
+        warn_after: {count: 35, period: day}
+        error_after: {count: 62, period: day}
     tables:
       - name: raw_ourhike__poi_identity
         data_tests:
@@ -90,13 +96,6 @@ sources:
                 tags: [elementary_check]
                 enabled: "{{ env_var('OURHIKE_ELEMENTARY_CHECKS', 'false') == 'true' }}"
           - elementary.schema_changes:
-              config:
-                severity: warn
-                tags: [elementary_check]
-                enabled: "{{ env_var('OURHIKE_ELEMENTARY_CHECKS', 'false') == 'true' }}"
-          - elementary.freshness_anomalies:
-              arguments:
-                timestamp_column: _loaded_at
               config:
                 severity: warn
                 tags: [elementary_check]

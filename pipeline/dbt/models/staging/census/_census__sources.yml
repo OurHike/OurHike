@@ -10,17 +10,18 @@ sources:
       validators and the terms.
     schema: raw
     config:
-      loaded_at_field: _loaded_at
+      # When the extract last read each table or confirmed it unchanged, from
+      # its run log, never `_loaded_at` (decision 203): make_dbt_staging.py's
+      # LOADED_AT_QUERY and MONTHLY_FRESHNESS_DAYS say why, and
+      # tests/test_source_freshness.py holds every monthly source to them.
+      loaded_at_query: "{{ last_read_or_confirmed_at(this) }}"
       meta:
         cadence: monthly
+      freshness:
+        warn_after: {count: 35, period: day}
+        error_after: {count: 62, period: day}
     tables:
       - name: raw_census__census_tiger_states
-        config:
-          # A zipped shapefile, which the fixture warehouse never holds:
-          # fixture mode serves an answer as text and a .shp is binary. Its
-          # fct_sources_without_freshness row in
-          # dbt_project_evaluator_exceptions.csv says why.
-          freshness: null
         data_tests:
           # Rows sharing base_census__census_tiger_states's key must be exact copies (decision 40).
           - duplicates_are_exact:

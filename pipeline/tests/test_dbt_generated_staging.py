@@ -140,36 +140,55 @@ def test_every_staged_types_arcgis_layer_has_a_model_reading_its_raw_table():
     assert unstaged == []
 
 
-def test_a_table_read_off_a_pdf_has_no_freshness_and_its_evaluator_exception_and_every_other_keeps_its_sources():
-    """CI's `dbt source freshness` failed on the PDF tables the fixture warehouse never holds (run 37218932289,
-    2026-10-04: ata_water_cache_boxes, bmta_access_points, rmc_recommended_hikes), since fixture mode lands no PDF.
-
-    So exactly the generated tables read off a PDF carry `freshness: null`, and each has its
-    fct_sources_without_freshness row in seeds/dbt_project_evaluator_exceptions.csv, so the evaluator's rule
-    still holds for every other table. generate_notice_models.py's PDF notices are not: production measures them,
-    so they keep their freshness and CI's freshness commands leave them out by a tag
-    (tests/test_generated_notice_models.py).
-    """
+def test_a_table_read_off_a_pdf_is_measured_from_the_run_log_as_every_other_and_keeps_no_evaluator_exception():
+    """CI's `dbt source freshness` once failed on the PDF tables the fixture warehouse never holds (run 37218932289,
+    2026-10-04: ata_water_cache_boxes, bmta_access_points, rmc_recommended_hikes), when it read `_loaded_at` off the
+    missing table, so they carried `freshness: null` and an evaluator exception each. Since decision 203 every
+    generated table reads make_dbt_staging.py's LOADED_AT_QUERY, which queries the run log and never the table (a PDF
+    with no raw table was measured so in tests/test_dbt_notice_source_freshness_runs.py), so a PDF's table carries its
+    block's freshness like any other, and no generated table keeps a fct_sources_without_freshness row."""
     import csv
 
     import yaml
 
-    without = set()
+    overridden = []
     for path in MODELS.glob("staging/*/_*__generated__sources.yml"):
         for source in yaml.safe_load(path.read_text())["sources"]:
-            for table in source["tables"]:
-                if "freshness" in (table.get("config") or {}):
-                    assert table["config"]["freshness"] is None, table["name"]
-                    without.add(f"{source['name']}.{table['name']}")
+            assert source["config"]["loaded_at_query"] == make_dbt_staging.LOADED_AT_QUERY, source["name"]
+            overridden += [table["name"] for table in source["tables"] if "freshness" in (table.get("config") or {})]
+    assert overridden == []
     pdfs = {f"{table.folder}.{table.table}" for table in make_dbt_staging.tables() if table.read_from_pdf}
     assert pdfs >= {"ata.raw_ata__ata_water_cache_boxes", "bmta.raw_bmta__bmta_access_points"}
-    assert without == pdfs
     with (MODELS.parent / "seeds" / "dbt_project_evaluator_exceptions.csv").open(newline="") as handle:
         excepted = {row["id_to_exclude"] for row in csv.DictReader(handle) if row["fct_name"] == "fct_sources_without_freshness"}
-    assert pdfs <= excepted, sorted(pdfs - excepted)
+    assert pdfs & excepted == set()
 
 
-def test_every_generated_raw_table_carries_elementarys_checks_for_its_folders_cadence(written):
+def test_every_generated_sources_block_warns_after_35_days_unread_and_errors_after_62():
+    """Decision 203: every monthly source carries both thresholds, make_dbt_staging.py's MONTHLY_FRESHNESS_DAYS, and
+    every table the generator stages is monthly."""
+    import yaml
+
+    blocks = 0
+    for path in MODELS.glob("staging/*/_*__generated__sources.yml"):
+        for source in yaml.safe_load(path.read_text())["sources"]:
+            blocks += 1
+            assert source["config"]["meta"]["cadence"] == "monthly", source["name"]
+            assert "loaded_at_field" not in source["config"], source["name"]
+            assert source["config"]["freshness"] == {
+                "warn_after": {"count": make_dbt_staging.MONTHLY_FRESHNESS_DAYS[0], "period": "day"},
+                "error_after": {"count": make_dbt_staging.MONTHLY_FRESHNESS_DAYS[1], "period": "day"},
+            }, source["name"]
+    assert blocks >= 100
+    assert make_dbt_staging.MONTHLY_FRESHNESS_DAYS == (35, 62)
+
+
+def test_a_generated_block_of_another_cadence_stops_the_run_rather_than_guessing_its_thresholds():
+    with pytest.raises(ValueError, match="hourly"):
+        make_dbt_staging._freshness_lines("somefolder", "hourly")
+
+
+def test_every_generated_raw_table_carries_elementarys_checks(written):
     """Decision 102: the generator writes raw_table_checks() on every raw table it declares, so one edit of that list
     reaches every generated layer, a PDF's included (build_marts.py leaves a check out where the warehouse lacks the
     table). tests/test_elementary_checks.py holds the hand-written raw tables to the same list."""
@@ -180,7 +199,7 @@ def test_every_generated_raw_table_carries_elementarys_checks_for_its_folders_ca
         if not path.name.endswith("__generated__sources.yml"):
             continue
         for source in yaml.safe_load(text)["sources"]:
-            expected = make_dbt_staging.raw_table_checks(source["config"]["meta"]["cadence"])
+            expected = make_dbt_staging.raw_table_checks()
             for table in source["tables"]:
                 tables += 1
                 checks = [test for test in table["data_tests"] if next(iter(test)).startswith("elementary.")]
@@ -188,15 +207,15 @@ def test_every_generated_raw_table_carries_elementarys_checks_for_its_folders_ca
     assert tables == len(make_dbt_staging.tables()) - sum(1 for table in make_dbt_staging.tables() if table.shared_from)
 
 
-@pytest.mark.parametrize("cadence", ["monthly", "daily", "hourly", None])
-def test_the_checks_the_generator_writes_as_text_are_the_list_it_names(cadence):
-    """sources_yaml() writes its YAML line by line, so raw_table_checks_yaml() is held to raw_table_checks()."""
+def test_the_checks_the_generator_writes_as_text_are_the_list_it_names_and_no_freshness_of_elementarys():
+    """sources_yaml() writes its YAML line by line, so raw_table_checks_yaml() is held to raw_table_checks(), which
+    holds no Elementary freshness check whatever the cadence (decision 203)."""
     import yaml
 
-    lines = make_dbt_staging.raw_table_checks_yaml(cadence, 2)
+    lines = make_dbt_staging.raw_table_checks_yaml(2)
 
-    assert yaml.safe_load("checks:\n" + "\n".join(lines))["checks"] == make_dbt_staging.raw_table_checks(cadence)
-    assert ("elementary.freshness_anomalies:" in "\n".join(lines)) == (cadence in ("hourly", "daily"))
+    assert yaml.safe_load("checks:\n" + "\n".join(lines))["checks"] == make_dbt_staging.raw_table_checks()
+    assert "freshness" not in "\n".join(lines)
 
 
 def test_there_are_layers_to_stage():

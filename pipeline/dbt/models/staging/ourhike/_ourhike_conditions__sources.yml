@@ -44,13 +44,6 @@ sources:
                 severity: warn
                 tags: [elementary_check]
                 enabled: "{{ env_var('OURHIKE_ELEMENTARY_CHECKS', 'false') == 'true' }}"
-          - elementary.freshness_anomalies:
-              arguments:
-                timestamp_column: _loaded_at
-              config:
-                severity: warn
-                tags: [elementary_check]
-                enabled: "{{ env_var('OURHIKE_ELEMENTARY_CHECKS', 'false') == 'true' }}"
         description: >
           OurHike's moderator-verified closures, PUBLIC_CLOSURES_SQL's rows:
           `moderation_status = 'verified'`, every status, ordered by mile and
@@ -72,13 +65,6 @@ sources:
                 tags: [elementary_check]
                 enabled: "{{ env_var('OURHIKE_ELEMENTARY_CHECKS', 'false') == 'true' }}"
           - elementary.schema_changes:
-              config:
-                severity: warn
-                tags: [elementary_check]
-                enabled: "{{ env_var('OURHIKE_ELEMENTARY_CHECKS', 'false') == 'true' }}"
-          - elementary.freshness_anomalies:
-              arguments:
-                timestamp_column: _loaded_at
               config:
                 severity: warn
                 tags: [elementary_check]
@@ -109,13 +95,6 @@ sources:
                 severity: warn
                 tags: [elementary_check]
                 enabled: "{{ env_var('OURHIKE_ELEMENTARY_CHECKS', 'false') == 'true' }}"
-          - elementary.freshness_anomalies:
-              arguments:
-                timestamp_column: _loaded_at
-              config:
-                severity: warn
-                tags: [elementary_check]
-                enabled: "{{ env_var('OURHIKE_ELEMENTARY_CHECKS', 'false') == 'true' }}"
         description: >
           OurHike's visible field notes, PUBLIC_NOTES_SQL's rows: each place's
           five most recent inside 90 days. No mart reads them;
@@ -137,13 +116,6 @@ sources:
                 tags: [elementary_check]
                 enabled: "{{ env_var('OURHIKE_ELEMENTARY_CHECKS', 'false') == 'true' }}"
           - elementary.schema_changes:
-              config:
-                severity: warn
-                tags: [elementary_check]
-                enabled: "{{ env_var('OURHIKE_ELEMENTARY_CHECKS', 'false') == 'true' }}"
-          - elementary.freshness_anomalies:
-              arguments:
-                timestamp_column: _loaded_at
               config:
                 severity: warn
                 tags: [elementary_check]

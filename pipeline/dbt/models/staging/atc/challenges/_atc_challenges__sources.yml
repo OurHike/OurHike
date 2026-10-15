@@ -13,12 +13,16 @@ sources:
       pipeline/reference/challenges/atc/, landed by atc/challenges.py.
     schema: raw
     config:
+      # When the extract last read each table or confirmed it unchanged, from
+      # its run log, never `_loaded_at` (decision 203): make_dbt_staging.py's
+      # LOADED_AT_QUERY and MONTHLY_FRESHNESS_DAYS say why, and
+      # tests/test_source_freshness.py holds every monthly source to them.
+      loaded_at_query: "{{ last_read_or_confirmed_at(this) }}"
       meta:
         cadence: monthly
-      # No freshness, as for every reviewed file: ReviewedDir's change marker
-      # hashes the folder's names and bytes, so `_loaded_at` moves only when
-      # somebody edits a challenge, and a threshold would warn about a list
-      # nobody needed to change.
+      freshness:
+        warn_after: {count: 35, period: day}
+        error_after: {count: 62, period: day}
     tables:
       - name: raw_atc__challenges_atc
         data_tests:

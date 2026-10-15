@@ -382,18 +382,17 @@ def test_every_pdf_notice_keeps_its_freshness_and_only_cis_two_freshness_command
     assert "tag:notices_job" in production and "--exclude" not in production
 
 
-def test_every_notice_raw_table_carries_elementarys_checks_and_each_dated_source_its_event_freshness(files):
+def test_every_notice_raw_table_carries_elementarys_checks_and_no_staging_model_carries_event_freshness(files):
     """Decision 102, through the generator so one edit reaches every source: each raw table carries
-    make_dbt_staging.py's raw_table_checks() for its own cadence (freshness on the hourly and daily ones), and each
-    staging model whose source states when it edited a notice carries event_freshness_check() on that date, the gap
-    from the newest notice's own date to the build. A source with no such field gets none: its metric would be the
-    same empty answer at every build."""
+    make_dbt_staging.py's raw_table_checks(), the same two whatever its cadence. No staging model carries Elementary's
+    event_freshness_anomalies any more (decision 203, the maintainer, 2026-10-15): it scored how long since a club last
+    edited a notice, a ramp that a pause in OurHike's own runs moves for every quiet source at once, and on UA's page of
+    2026-10-15 04:38 UTC it was all 97 freshness warnings. A notice source's freshness is dbt's, from the run log
+    (tests/test_notice_source_freshness.py)."""
     notices = {s.table: s for s in generator.notice_sources() if not s.hand_staged}
     # A steward's areas layer sits in its club's notice files too (generate_notice_models.py's render_all()), with the
-    # same raw-table checks, and dates no notice.
+    # same raw-table checks.
     sources = {**notices, **{s.table: s for s in generator.area_sources()}}
-    fields = generator._fields_seed()
-    dated = {s.stg_model for s in notices.values() if generator.dates_its_notices(s, fields)}
     tables = models = 0
     for path, text in files.items():
         if path.name.endswith("_notices__sources.yml"):
@@ -401,14 +400,14 @@ def test_every_notice_raw_table_carries_elementarys_checks_and_each_dated_source
                 for table in source["tables"]:
                     tables += 1
                     checks = [test for test in table["data_tests"] if next(iter(test)).startswith("elementary.")]
-                    assert checks == make_dbt_staging.raw_table_checks(sources[table["name"]].cadence), table["name"]
+                    assert checks == make_dbt_staging.raw_table_checks(), table["name"]
         if path.name.endswith("_notices__models.yml"):
             for model in yaml.safe_load(text)["models"]:
                 models += 1
-                expected = [generator.event_freshness_check()] if model["name"] in dated else []
-                assert [test for test in model.get("data_tests") or []] == expected, model["name"]
+                assert "data_tests" not in model, model["name"]
     assert tables == models == len(sources)
-    assert len(dated) >= 219, "157 hourly and 62 daily sources at d5e97f8c"
+    assert tables >= 219, "157 hourly and 62 daily sources dated their notices at d5e97f8c"
+    assert "event_freshness" not in "".join(files[path] for path in files if path.suffix == ".yml")
 
 
 @pytest.mark.parametrize(("reader_class", "columns"), [("FeedNotices", "FEED_COLUMNS"), ("PageNotice", "PAGE_COLUMNS")])

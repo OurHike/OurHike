@@ -9,13 +9,25 @@
 // client/src/lib/publishedNotices.ts's validNotice reads, `obstructs_trail`
 // true and `hazard` null on every one - plus `shape`: "line" (the notice's
 // own LineString or MultiLineString), "area" (a MultiLineString of the trail
-// stretches the pipeline cut inside the area) or "point" (a Point).
+// stretches the pipeline cut inside the area), "point" (a Point), or "shade"
+// (decision 191, 2026-10-14: the Polygon of an area no mapped trail runs
+// inside, which the map hatches).
 //
-// FOUR CLOSURES, ONE OF EACH KIND THE STANDARD DRAWS: a line, an area's cut
-// stretches, a point, and a line the list greys because its source gives no
+// FIVE CLOSURES, ONE OF EACH KIND THE STANDARD DRAWS: a line, an area's cut
+// stretches, a point, a line the list greys because its source gives no
 // date (lib/noticeCurrency.ts's "Its source gives no date. It may no longer
 // apply."), which the map draws with the same full mark - the maintainer's
-// "B: same mark".
+// "B: same mark" - and an area with no trail inside, shaded.
+//
+// NO A.T. UNDER ANY OF THEM. Decision 192 crosses out the A.T. like any trail
+// inside a club's area, and the pipeline cuts its stretch into the area's
+// MultiLineString beside the others, so in this file it would be one more
+// stretch, drawn the same. What would show the decision is the mark lying
+// over the A.T.'s own red line, and the phone draws that line from the
+// release's trails.geojson, which is held to its published hash
+// (lib/trailData.ts), so a recipe cannot invent one; over farmland there is
+// no real one. map/style.test.ts holds the order instead: every crossed-out
+// layer above the A.T.'s.
 //
 // NOBODY'S DATA, NO ORGANIZATION'S NOTICE, AND NO REAL ORGANIZATION, as in
 // fixtures/notCurrentNotices.mjs: every organization, source key and title is
@@ -34,14 +46,16 @@
 // Not a recipe: shared fixtures live one directory down, where the runner's
 // recipe glob does not reach (fixtures/suggestedHikes.mjs explains).
 
-/** The camera the recipe opens on: the middle of the four closures at z13,
+/** The camera the recipe opens on: the middle of the closures at z13,
  *  the zoom the chain of crosses is drawn at full size from
  *  (lib/closureStyle.ts's CLOSURE_FULL_WIDTH_ZOOM). At z13 a degree of
  *  longitude is 11,651 px (512 * 2^13 / 360), so the 390 px phone canvas
- *  spans 0.033 degrees across; every closure below sits within 0.01 east or
- *  west of the centre and 0.014 north or south of it. A local frame of
- *  2026-10-14 put all four clear of the header plate and the map's buttons,
- *  once the northern line moved 0.004 south off the buttons' row. */
+ *  spans 0.033 degrees across; every closure below sits within 0.0125 east
+ *  or west of the centre and 0.014 north or south of it. A local frame of
+ *  2026-10-14 put the first four clear of the header plate and the map's
+ *  buttons, once the northern line moved 0.004 south off the buttons' row;
+ *  the shaded area sits in the empty ground CI's frame of that day showed
+ *  between the area's stretches and the greyed line. */
 export const TRAIL_CLOSURES_CAMERA = { center: [-100.203, 38.756], zoom: 13 }
 
 /** The browser's local ISO day `offset` days from now. */
@@ -83,7 +97,7 @@ function geometry(value) {
   return { kind: 'geometry', geometry: value }
 }
 
-/** The four closures, keyed by the kind each stands for, so a test can name
+/** The five closures, keyed by the kind each stands for, so a test can name
  *  the one it means. */
 export function trailClosureRows() {
   return {
@@ -172,8 +186,39 @@ export function trailClosureRows() {
       }),
       shape: 'line',
     }),
+    // An area closure no mapped trail runs inside (decision 191, "Shade
+    // them, no edge"): a preserve's closed lands, drawn as the area itself,
+    // hatched, with nothing on its edge, below the park's stretches.
+    shade: row({
+      notice_id: 'example_open_space_access:closed-lands',
+      source_key: 'example_open_space_access',
+      provider: 'EOS',
+      title: 'Example Hills Preserve closed lands (example)',
+      category: 'Closed',
+      current_until: localDay(60),
+      updated_at: stamp(-30),
+      locality: 'Example Hills Preserve',
+      place: geometry({
+        type: 'Polygon',
+        coordinates: [
+          [
+            [-100.1985, 38.7505],
+            [-100.1935, 38.7508],
+            [-100.1905, 38.7488],
+            [-100.1912, 38.7462],
+            [-100.1958, 38.7455],
+            [-100.199, 38.7478],
+            [-100.1985, 38.7505],
+          ],
+        ],
+      }),
+      shape: 'shade',
+    }),
   }
 }
+
+/** A point well inside the shaded area, where a tap opens its sheet. */
+export const SHADE_TAP_AT = [-100.1948, 38.7484]
 
 /** conditions/trail_closures.json, in the file's contract. */
 export function trailClosuresDocument() {
@@ -199,7 +244,7 @@ export async function routeTrailClosures(page) {
   )
 }
 
-/** The four invented organizations, in the shape stewards.json has on the
+/** The five invented organizations, in the shape stewards.json has on the
  *  wire (fixtures/stewards.mjs's seedStewards takes it), so a sheet names
  *  each closure's publisher rather than its provider code. */
 export function clubClosureStewards() {
@@ -223,6 +268,7 @@ export function clubClosureStewards() {
       steward('ESP', 'Example State Parks', 'example_state_parks_status'),
       steward('ETC', 'Example Trail Club', 'example_trail_club_alerts'),
       steward('ECP', 'Example County Parks', 'example_county_parks_closures'),
+      steward('EOS', 'Example Open Space District', 'example_open_space_access'),
     ],
   }
 }
@@ -267,6 +313,19 @@ export async function openClosureSheet(page, lonLat, title) {
   await page.reload({ waitUntil: 'load' })
 
   await page.getByRole('tab', { name: 'Map' }).click()
+  return tapUntilClosureSheet(page, lonLat, title)
+}
+
+/**
+ * On the map openClosureSheet opened, tap `lonLat` until a closure's sheet
+ * opens, then wait for `title` in it; returns the sheet. For a second
+ * closure after the first sheet is closed, with no reload.
+ *
+ * @param {import('@playwright/test').Page} page
+ * @param {[number, number]} lonLat
+ * @param {string} title
+ */
+export async function tapUntilClosureSheet(page, lonLat, title) {
   const canvas = page.locator('canvas.maplibregl-canvas').first()
   await canvas.waitFor()
   const box = await canvas.boundingBox()

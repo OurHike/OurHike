@@ -251,10 +251,12 @@ models:
       - name: gain_ft
         description: >
           Confirmed ascent along the edge in feet, over each unbroken run of
-          samples, rounded to the nearest whole foot as Python's round()
-          rounds. Null where nobody measured the edge.
+          samples, rounded UP to the whole foot, toward caution (decision
+          194): never under the unrounded figure, where today's
+          export_network_elevation.py rounds to the nearest foot. Null where
+          nobody measured the edge.
       - name: loss_ft
-        description: Confirmed descent along the edge in feet, as a positive number, rounded the same way. Null where gain_ft is.
+        description: Confirmed descent along the edge in feet, as a positive number, rounded up the same way. Null where gain_ft is.
       - name: measured
         description: True where the DEM answered at least one of the edge's samples (the manifest's `measured`).
         data_tests: [not_null]

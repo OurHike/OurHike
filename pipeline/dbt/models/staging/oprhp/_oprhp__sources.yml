@@ -128,10 +128,13 @@ sources:
               coded integer whose domain the service does not publish.
           - name: ParksApp
             description: >
-              5,822 Y / 3,000 N (measured 2026-08-27). Records what OPRHP's
-              own visitor app SHOWS, not what exists on the ground - which is
+              5,822 Y / 3,000 N (measured 2026-08-27; the same, and one row
+              with neither, read live 2026-10-14). Records what OPRHP's own
+              visitor app SHOWS, not what exists on the ground - which is
               why export_nearby_poi.py reads the N side as low confidence
-              rather than dropping it.
+              rather than dropping it. The dbt path does the same for every
+              type but water, which decision 195 holds where it reads N
+              (int_points_of_interest__publishable).
       - name: raw_nysparks__oprhp_park_polygons
         data_tests:
           # Rows sharing base_oprhp__park_polygons's key must be exact copies (decision 40).

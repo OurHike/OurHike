@@ -66,8 +66,21 @@
 
     A LINE OR A POINT is not grown: Douglas-Peucker at 10 m with the topology
     preserved, in EPSG:5070 as before decision 77, then 5 decimal places.
+
+    AN AREA THE MAP SHADES (`grown=false`, decision 191, the maintainer's
+    poll of 2026-10-14, "Shade them, no edge"; int_closures__area_trail_cuts)
+    is not grown either: the 10 m step alone, in the same frame, then 5
+    decimal places. The 100 m growth is for showing a planned route a notice
+    rather than missing it; on the map it would hatch 100 m of open ground
+    past the closure's edge, where the decision's whole point is that an open
+    trail along the edge never reads as closed. 10 m is under a pixel at zoom
+    14 (pub_conditions_notices' header). On the 156 areas UA shaded first
+    (their own outlines, read live 2026-10-14), the shaded edge lay at most
+    13.49 m from the source's, 9.10 m at the 99th percentile, over both
+    outlines' 23,653 vertices in EPSG:5070 (Measured): a little past the
+    tolerance, as the join above explains GEOS's simplifier goes.
 -#}
-{% macro notice_phone_geometry(geom) -%}
+{% macro notice_phone_geometry(geom, grown=true) -%}
     {%- set kx -%}
         (111319.49 * greatest(cos(radians(greatest(abs(st_ymin({{ geom }})), abs(st_ymax({{ geom }}))))), 0.01))
     {%- endset -%}
@@ -78,6 +91,7 @@
         when st_dimension({{ geom }}) = 2
             then st_reduceprecision(
                 st_affine(
+                    {%- if grown %}
                     list_transform(
                         [
                             st_simplifypreservetopology(
@@ -98,6 +112,9 @@
                             )
                         end
                     )[1],
+                    {%- else %}
+                    st_simplifypreservetopology({{ framed }}, 10),
+                    {%- endif %}
                     1 / {{ kx }}, 0, 0, 1 / {{ ky }}, 0, 0
                 ),
                 0.00001

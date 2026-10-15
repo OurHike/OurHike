@@ -15,7 +15,12 @@ import { MockMap } from './test/mocks/maplibre-gl'
 import { renderedMap } from './test/liveMap'
 import { appHarness, openMapTab } from './test/appHarness'
 import { CLUB_CLOSURE_ID_PROPERTY } from './map/closureLayers'
-import { CLUB_CLOSURE_SOURCE_ID } from './map/clubClosureLayers'
+import {
+  CLUB_CLOSURE_SHADE_LAYER_ID,
+  CLUB_CLOSURE_SOURCE_ID,
+  clubClosureShadeImageId,
+  SHADE_INKS,
+} from './map/clubClosureLayers'
 import { CLUB_CLOSURE_LAYER_ID } from './map/styleIds'
 import {
   trailClosureRows,
@@ -110,6 +115,7 @@ describe('every club closure on the map, from conditions/trail_closures.json', (
             rows.area.notice_id,
             rows.point.notice_id,
             rows.greyed.notice_id,
+            rows.shade.notice_id,
           ]),
         { timeout: 10_000 },
       )
@@ -133,6 +139,37 @@ describe('every club closure on the map, from conditions/trail_closures.json', (
       expect(within(sheet).getByRole('note')).toHaveTextContent(
         /does not work out detours/,
       )
+    },
+    COLD_START_BUDGET_MS,
+  )
+
+  it(
+    'shades the area no trail runs inside, with its hatch on the map before it lands, and opens its row from a tap inside it (decision 191)',
+    async () => {
+      const rows = trailClosureRows()
+      const map = await renderApp()
+
+      // LATE, NEVER GONE, as above: the shade's feature stays once it lands.
+      await waitFor(() => expect(drawnIds(map)).toContain(rows.shade.notice_id), {
+        timeout: 10_000,
+      })
+      for (const ink of SHADE_INKS) {
+        expect(map.images.has(clubClosureShadeImageId(ink)), ink).toBe(true)
+      }
+
+      map.renderedFeatures.set(CLUB_CLOSURE_SHADE_LAYER_ID, [
+        { properties: { [CLUB_CLOSURE_ID_PROPERTY]: rows.shade.notice_id } },
+      ])
+      map.emit('click', { point: { x: 100, y: 100 } })
+
+      const sheet = await screen.findByRole(
+        'dialog',
+        { name: 'Closure notice' },
+        { timeout: 5_000 },
+      )
+      expect(
+        within(sheet).getByText('Example Hills Preserve closed lands (example)'),
+      ).toBeInTheDocument()
     },
     COLD_START_BUDGET_MS,
   )

@@ -997,8 +997,9 @@ unit_tests:
   - name: int_points_of_interest__publishable_keeps_and_rates_like_public_verdict
     description: >
       PO27, PO28 and PO29: DEC's PUBLICUSE keeps a row only where it reads Y
-      once stripped and upper-cased, OPRHP's ParksApp keeps every row and
-      lowers the unflagged ones, NYC's fountains ship low by their layer's
+      once stripped and upper-cased, OPRHP's ParksApp keeps every campsite and
+      lowers the unflagged ones (a water point it does not show is held,
+      decision 195's test below), NYC's fountains ship low by their layer's
       confidence_floor, a layer with no public field ships high, and an
       A.T.-family row ships at the confidence classification gave it. Then
       may_publish: a source int_sources__publication holds back, or has no
@@ -1014,9 +1015,9 @@ unit_tests:
           - {poi_key: 'p-04', source_key: 'dec_backcountry_features', phone_files: 'nearby_poi', family_confidence: null, properties: '{"objectid": 4, "publicuse": " y "}', registry_entry: '{"key": "dec_backcountry_features", "provider": "NYS DEC", "id_field": "OBJECTID", "name_field": "NAME", "asset_field": "ASSET", "facility_field": "FACILITY", "public_field": "PUBLICUSE", "public_value": "Y"}', drop_reason: null}
           - {poi_key: 'p-05', source_key: 'dec_backcountry_features', phone_files: 'nearby_poi', family_confidence: null, properties: '{"objectid": 5, "publicuse": "N"}', registry_entry: '{"key": "dec_backcountry_features", "provider": "NYS DEC", "id_field": "OBJECTID", "name_field": "NAME", "asset_field": "ASSET", "facility_field": "FACILITY", "public_field": "PUBLICUSE", "public_value": "Y"}', drop_reason: null}
           - {poi_key: 'p-06', source_key: 'dec_backcountry_features', phone_files: 'nearby_poi', family_confidence: null, properties: '{"objectid": 6, "publicuse": null}', registry_entry: '{"key": "dec_backcountry_features", "provider": "NYS DEC", "id_field": "OBJECTID", "name_field": "NAME", "asset_field": "ASSET", "facility_field": "FACILITY", "public_field": "PUBLICUSE", "public_value": "Y"}', drop_reason: null}
-          - {poi_key: 'p-07', source_key: 'oprhp_facilities', phone_files: 'nearby_poi', family_confidence: null, properties: '{"objectid": 7, "parksapp": "Y"}', registry_entry: '{"key": "oprhp_facilities", "provider": "NYS OPRHP", "id_field": "OBJECTID", "name_field": "Name", "asset_field": "Sub_Asset", "facility_field": "Facility", "public_field": "ParksApp", "public_value": "Y", "public_flag_sets_confidence": true}', drop_reason: null}
-          - {poi_key: 'p-08', source_key: 'oprhp_facilities', phone_files: 'nearby_poi', family_confidence: null, properties: '{"objectid": 8, "parksapp": "N"}', registry_entry: '{"key": "oprhp_facilities", "provider": "NYS OPRHP", "id_field": "OBJECTID", "name_field": "Name", "asset_field": "Sub_Asset", "facility_field": "Facility", "public_field": "ParksApp", "public_value": "Y", "public_flag_sets_confidence": true}', drop_reason: null}
-          - {poi_key: 'p-09', source_key: 'oprhp_facilities', phone_files: 'nearby_poi', family_confidence: null, properties: '{"objectid": 9}', registry_entry: '{"key": "oprhp_facilities", "provider": "NYS OPRHP", "id_field": "OBJECTID", "name_field": "Name", "asset_field": "Sub_Asset", "facility_field": "Facility", "public_field": "ParksApp", "public_value": "Y", "public_flag_sets_confidence": true}', drop_reason: null}
+          - {poi_key: 'p-07', source_key: 'oprhp_facilities', phone_files: 'nearby_poi', poi_type: 'campsite', family_confidence: null, properties: '{"objectid": 7, "parksapp": "Y"}', registry_entry: '{"key": "oprhp_facilities", "provider": "NYS OPRHP", "id_field": "OBJECTID", "name_field": "Name", "asset_field": "Sub_Asset", "facility_field": "Facility", "public_field": "ParksApp", "public_value": "Y", "public_flag_sets_confidence": true}', drop_reason: null}
+          - {poi_key: 'p-08', source_key: 'oprhp_facilities', phone_files: 'nearby_poi', poi_type: 'campsite', family_confidence: null, properties: '{"objectid": 8, "parksapp": "N"}', registry_entry: '{"key": "oprhp_facilities", "provider": "NYS OPRHP", "id_field": "OBJECTID", "name_field": "Name", "asset_field": "Sub_Asset", "facility_field": "Facility", "public_field": "ParksApp", "public_value": "Y", "public_flag_sets_confidence": true}', drop_reason: null}
+          - {poi_key: 'p-09', source_key: 'oprhp_facilities', phone_files: 'nearby_poi', poi_type: 'campsite', family_confidence: null, properties: '{"objectid": 9}', registry_entry: '{"key": "oprhp_facilities", "provider": "NYS OPRHP", "id_field": "OBJECTID", "name_field": "Name", "asset_field": "Sub_Asset", "facility_field": "Facility", "public_field": "ParksApp", "public_value": "Y", "public_flag_sets_confidence": true}', drop_reason: null}
           - {poi_key: 'p-10', source_key: 'nyc_drinking_fountains', phone_files: 'nearby_poi', family_confidence: null, properties: '{"_socrata_id": "row-10"}', registry_entry: '{"key": "nyc_drinking_fountains", "provider": "NYC Parks", "poi_type": "water", "id_field": ":id", "name_field": "propertyna", "confidence_floor": "low", "boundary_source": "nyc_park_polygons"}', drop_reason: null}
           - {poi_key: 'p-11', source_key: 'dec_lean_tos', phone_files: 'nearby_poi', family_confidence: null, properties: '{"objectid": 11, "publicuse": "Y"}', registry_entry: '{"key": "dec_lean_tos", "provider": "NYS DEC", "poi_type": "shelter", "id_field": "OBJECTID", "name_field": "NAME", "asset_field": "ASSET", "facility_field": "FACILITY", "public_field": "PUBLICUSE", "public_value": "Y"}', drop_reason: null}
           - {poi_key: 'p-12', source_key: 'usfs_rec_sites', phone_files: 'nearby_poi', family_confidence: null, properties: '{"objectid": 12}', registry_entry: '{"key": "usfs_rec_sites", "provider": "USFS", "id_field": "objectid", "name_field": "site_name", "asset_field": "site_type", "facility_field": "recarea_name"}', drop_reason: null}
@@ -1044,6 +1045,83 @@ unit_tests:
         - {poi_key: 'p-10', confidence: 'low'}
         - {poi_key: 'p-11', confidence: 'high'}
         - {poi_key: 'p-12', confidence: 'high'}
+
+  - name: int_points_of_interest__publishable_holds_a_water_point_its_steward_does_not_show
+    description: >
+      Decision 195, a pin claims no more than its steward, for water alone by
+      its follow-up poll ("Taps only"): a water point whose steward's own
+      public flag does not show it is held, where the layer's flag otherwise
+      only lowers a row (OPRHP's ParksApp 'N' on a spigot, or no ParksApp at
+      all); the same flag keeps a lean-to and a campsite at low whether it
+      reads 'N' or nothing, a shown tap ships, DEC's shown lean-to ships, and
+      a layer with no public flag has nothing for the rule to read.
+      tests/test_dbt_points_of_interest_parity.py names the two taps
+      public_verdict() keeps at low and the SQL holds.
+    model: int_points_of_interest__publishable
+    given:
+      - input: ref('int_points_of_interest__classified')
+        rows:
+          - {poi_key: 's-01', source_key: 'oprhp_facilities', phone_files: 'nearby_poi', poi_type: 'water', family_confidence: null, properties: '{"objectid": 1, "parksapp": "N"}', registry_entry: '{"key": "oprhp_facilities", "provider": "NYS OPRHP", "id_field": "OBJECTID", "name_field": "Name", "asset_field": "Sub_Asset", "facility_field": "Facility", "public_field": "ParksApp", "public_value": "Y", "public_flag_sets_confidence": true}', drop_reason: null}
+          - {poi_key: 's-02', source_key: 'oprhp_facilities', phone_files: 'nearby_poi', poi_type: 'shelter', family_confidence: null, properties: '{"objectid": 2, "parksapp": "N"}', registry_entry: '{"key": "oprhp_facilities", "provider": "NYS OPRHP", "id_field": "OBJECTID", "name_field": "Name", "asset_field": "Sub_Asset", "facility_field": "Facility", "public_field": "ParksApp", "public_value": "Y", "public_flag_sets_confidence": true}', drop_reason: null}
+          - {poi_key: 's-03', source_key: 'oprhp_facilities', phone_files: 'nearby_poi', poi_type: 'water', family_confidence: null, properties: '{"objectid": 3, "parksapp": " y "}', registry_entry: '{"key": "oprhp_facilities", "provider": "NYS OPRHP", "id_field": "OBJECTID", "name_field": "Name", "asset_field": "Sub_Asset", "facility_field": "Facility", "public_field": "ParksApp", "public_value": "Y", "public_flag_sets_confidence": true}', drop_reason: null}
+          - {poi_key: 's-04', source_key: 'oprhp_facilities', phone_files: 'nearby_poi', poi_type: 'campsite', family_confidence: null, properties: '{"objectid": 4, "parksapp": "N"}', registry_entry: '{"key": "oprhp_facilities", "provider": "NYS OPRHP", "id_field": "OBJECTID", "name_field": "Name", "asset_field": "Sub_Asset", "facility_field": "Facility", "public_field": "ParksApp", "public_value": "Y", "public_flag_sets_confidence": true}', drop_reason: null}
+          - {poi_key: 's-05', source_key: 'oprhp_facilities', phone_files: 'nearby_poi', poi_type: 'shelter', family_confidence: null, properties: '{"objectid": 5}', registry_entry: '{"key": "oprhp_facilities", "provider": "NYS OPRHP", "id_field": "OBJECTID", "name_field": "Name", "asset_field": "Sub_Asset", "facility_field": "Facility", "public_field": "ParksApp", "public_value": "Y", "public_flag_sets_confidence": true}', drop_reason: null}
+          - {poi_key: 's-06', source_key: 'dec_lean_tos', phone_files: 'nearby_poi', poi_type: 'shelter', family_confidence: null, properties: '{"objectid": 6, "publicuse": "Y"}', registry_entry: '{"key": "dec_lean_tos", "provider": "NYS DEC", "poi_type": "shelter", "id_field": "OBJECTID", "name_field": "NAME", "asset_field": "ASSET", "facility_field": "FACILITY", "public_field": "PUBLICUSE", "public_value": "Y"}', drop_reason: null}
+          - {poi_key: 's-07', source_key: 'usfs_rec_sites', phone_files: 'nearby_poi', poi_type: 'water', family_confidence: null, properties: '{"objectid": 7}', registry_entry: '{"key": "usfs_rec_sites", "provider": "USFS", "id_field": "objectid", "name_field": "site_name", "asset_field": "site_type", "facility_field": "recarea_name"}', drop_reason: null}
+          - {poi_key: 's-08', source_key: 'oprhp_facilities', phone_files: 'nearby_poi', poi_type: 'water', family_confidence: null, properties: '{"objectid": 8}', registry_entry: '{"key": "oprhp_facilities", "provider": "NYS OPRHP", "id_field": "OBJECTID", "name_field": "Name", "asset_field": "Sub_Asset", "facility_field": "Facility", "public_field": "ParksApp", "public_value": "Y", "public_flag_sets_confidence": true}', drop_reason: null}
+      - input: ref('int_sources__publication')
+        rows:
+          - {source_key: 'oprhp_facilities', may_publish: true, publication_rule: 'unit test: may publish'}
+          - {source_key: 'dec_lean_tos', may_publish: true, publication_rule: 'unit test: may publish'}
+          - {source_key: 'usfs_rec_sites', may_publish: true, publication_rule: 'unit test: may publish'}
+    expect:
+      rows:
+        - {poi_key: 's-02', confidence: 'low'}
+        - {poi_key: 's-03', confidence: 'high'}
+        - {poi_key: 's-04', confidence: 'low'}
+        - {poi_key: 's-05', confidence: 'low'}
+        - {poi_key: 's-06', confidence: 'high'}
+        - {poi_key: 's-07', confidence: 'high'}
+
+  - name: int_points_of_interest__dropped_says_why_a_point_its_steward_does_not_show_is_held
+    description: >
+      Decision 195's held water row names the flag and the decision, beside
+      the two reasons int_points_of_interest__publishable gave before it:
+      DEC's flag says internal, and the source may not publish. The lean-to
+      and the campsite the same flag only lowers ship, so neither is here.
+    model: int_points_of_interest__dropped
+    given:
+      - input: ref('int_points_of_interest__classified')
+        rows:
+          - {poi_key: 'd-01', source_key: 'oprhp_facilities', phone_files: 'nearby_poi', poi_type: 'water', registry_entry: '{"key": "oprhp_facilities", "public_field": "ParksApp", "public_value": "Y", "public_flag_sets_confidence": true}', drop_reason: null}
+          - {poi_key: 'd-02', source_key: 'oprhp_facilities', phone_files: 'nearby_poi', poi_type: 'shelter', registry_entry: '{"key": "oprhp_facilities", "public_field": "ParksApp", "public_value": "Y", "public_flag_sets_confidence": true}', drop_reason: null}
+          - {poi_key: 'd-03', source_key: 'oprhp_facilities', phone_files: 'nearby_poi', poi_type: 'campsite', registry_entry: '{"key": "oprhp_facilities", "public_field": "ParksApp", "public_value": "Y", "public_flag_sets_confidence": true}', drop_reason: null}
+          - {poi_key: 'd-04', source_key: 'dec_lean_tos', phone_files: 'nearby_poi', poi_type: 'shelter', registry_entry: '{"key": "dec_lean_tos", "public_field": "PUBLICUSE", "public_value": "Y"}', drop_reason: null}
+          - {poi_key: 'd-05', source_key: 'nyc_public_restrooms', phone_files: 'nearby_poi', poi_type: 'privy', registry_entry: '{"key": "nyc_public_restrooms"}', drop_reason: null}
+      - input: ref('int_points_of_interest__publishable')
+        rows:
+          - {poi_key: 'd-02', phone_files: 'nearby_poi'}
+          - {poi_key: 'd-03', phone_files: 'nearby_poi'}
+      - input: ref('int_points_of_interest__in_corridor')
+        rows:
+          - {poi_key: 'd-02'}
+          - {poi_key: 'd-03'}
+      - input: ref('int_points_of_interest__osm_water_verdicts')
+        rows: []
+      - input: ref('int_points_of_interest__deduplicated')
+        rows:
+          - {poi_key: 'd-02'}
+          - {poi_key: 'd-03'}
+      - input: ref('int_sources__publication')
+        rows:
+          - {source_key: 'oprhp_facilities', may_publish: true, publication_rule: 'unit test: may publish'}
+          - {source_key: 'dec_lean_tos', may_publish: true, publication_rule: 'unit test: may publish'}
+          - {source_key: 'nyc_public_restrooms', may_publish: false, publication_rule: 'unit test: held back'}
+    expect:
+      rows:
+        - {poi_key: 'd-01', drop_reason: 'held: ParksApp is not Y, so its steward does not show this water point, and a pin claims no more than its steward (decision 195)'}
+        - {poi_key: 'd-04', drop_reason: 'not public: PUBLICUSE is not Y'}
+        - {poi_key: 'd-05', drop_reason: 'the source may not publish (unit test: held back)'}
 
   - name: int_points_of_interest__in_corridor_keeps_what_the_corridor_and_the_ring_keep
     description: >

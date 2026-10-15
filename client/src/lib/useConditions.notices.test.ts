@@ -369,6 +369,8 @@ describe('conditions/hazard_areas.json, read at launch whatever is planned (deci
 
 describe('conditions/trail_closures.json, read at launch whatever is planned (the maintainer’s S6, 2026-10-11)', () => {
   const CLOSURES_URL = 'https://data.example/conditions/trail_closures.json'
+  /** Every row of the hand-made file reads: one of each shape it draws. */
+  const CLOSURE_ROWS = trailClosuresDocument().closures.length
 
   /** A bucket serving the club closures (the hand-made file) and
    *  notices.json, or neither (404, as production's does). */
@@ -394,12 +396,15 @@ describe('conditions/trail_closures.json, read at launch whatever is planned (th
   it('downloads every club closure with no hike planned, and still no byte of notices.json', async () => {
     const spy = bucketWithClosures({ serves: true })
     const { result } = renderHook(() => useConditions(true, true, false))
-    await waitFor(() => expect(result.current.closureFile?.items).toHaveLength(4))
+    await waitFor(() =>
+      expect(result.current.closureFile?.items).toHaveLength(CLOSURE_ROWS),
+    )
     expect(result.current.closureFile?.items.map((closure) => closure.shape)).toEqual([
       'line',
       'area',
       'point',
       'line',
+      'shade',
     ])
     expect(noticeRequests(spy)).toEqual(['HEAD'])
     expect(result.current.clubNotices).toBeNull()
@@ -412,7 +417,9 @@ describe('conditions/trail_closures.json, read at launch whatever is planned (th
       ({ planned }) => useConditions(true, true, planned),
       { initialProps: { planned: false } },
     )
-    await waitFor(() => expect(result.current.closureFile?.items).toHaveLength(4))
+    await waitFor(() =>
+      expect(result.current.closureFile?.items).toHaveLength(CLOSURE_ROWS),
+    )
 
     // The next read answers nothing for the file: a 404 with no kept copy,
     // or a dead spot. Planning a hike is what runs the read again here.
@@ -420,7 +427,7 @@ describe('conditions/trail_closures.json, read at launch whatever is planned (th
     rerender({ planned: true })
     await waitFor(() => expect(read).toHaveBeenCalledTimes(2))
     await read.mock.results[1].value
-    expect(result.current.closureFile?.items).toHaveLength(4)
+    expect(result.current.closureFile?.items).toHaveLength(CLOSURE_ROWS)
   })
 
   it('holds no closure file on a bucket that serves none, as production’s does today', async () => {

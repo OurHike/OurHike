@@ -148,8 +148,12 @@ import { buildAtcUpdateSource, ATC_UPDATE_SOURCE_ID } from './atcUpdateLayers'
 import { buildClosureSource, CLOSURE_SOURCE_ID } from './closureLayers'
 import {
   buildClubClosureLayers,
+  buildClubClosureShadeLayer,
   buildClubClosureSource,
+  CLUB_CLOSURE_SHADE_LAYER_ID,
   CLUB_CLOSURE_SOURCE_ID,
+  clubClosureShadeImageId,
+  shadeInkFor,
 } from './clubClosureLayers'
 import {
   buildCorridorLayers,
@@ -685,6 +689,16 @@ export function attachMapAppearance(
           map.setPaintProperty(symbolId, 'icon-color', ink as never)
           map.setPaintProperty(symbolId, 'icon-halo-color', tapeGround as never)
         }
+      }
+      // The shade's hatch (decision 191) is a coloured pattern, one image
+      // per ink family (map/closureShade.ts), so a sheet change names the
+      // sheet's image rather than repainting a colour.
+      if (map.getLayer(CLUB_CLOSURE_SHADE_LAYER_ID) !== undefined) {
+        map.setPaintProperty(
+          CLUB_CLOSURE_SHADE_LAYER_ID,
+          'fill-pattern',
+          clubClosureShadeImageId(shadeInkFor(appearance)) as never,
+        )
       }
 
       // The through-route badge (#1283): its plate is an image per sheet
@@ -2513,6 +2527,14 @@ export function buildMapStyle({
       // the trail inside a hunting area is drawn over it whole and open
       // (map/hazardAreaLayers.ts). Always in the style; empty is no area.
       ...buildHazardLayers(HAZARD_SOURCE_ID, sheetIsDark(appearance)),
+      // A club's area closure with no mapped trail inside (decision 191,
+      // "Shade them, no edge"), hatched, in the hazard areas' place and for
+      // their reason: OVER the ground, UNDER every trail line, closure and
+      // pin, so a trail along its edge, or the few metres of one the 10 m
+      // simplification can put inside it, is drawn over it whole and open
+      // (map/clubClosureLayers.ts). Over the hazard wash, which is the
+      // weaker claim. Empty until a shade lands.
+      buildClubClosureShadeLayer(appearance),
       // The edge of what is downloaded (#557), and its place in the stack is
       // features/OFFLINE_COVERAGE.md §8 in paint: OVER the ground it is an
       // edge of, UNDER every trail line, closure and pin. A seam takes away

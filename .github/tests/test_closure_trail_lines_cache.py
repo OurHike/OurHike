@@ -11,22 +11,35 @@ breaks: actions/cache finds an entry by its paths as well as its key, so a
 path changed on one side alone leaves the restore green and empty every
 hour, and the area closures quietly stop being drawn. This holds the two
 sides to one another.
+
+And to the script's SCHEMA. The conditions job restores the newest entry
+whose key starts with its restore-keys prefix, so a prefix that does not name
+the schema restores an entry written to an older rule until a new one is
+saved: under SCHEMA 1 the lines held no A.T. line, and an hour cut against
+one would leave the A.T. open where decision 192 crosses it out. Naming the
+schema in both keys makes a schema bump a new prefix, which the old entries
+cannot match.
 """
 
 from __future__ import annotations
 
+import re
 from pathlib import Path
 
 import yaml
 
-WORKFLOWS = Path(__file__).resolve().parents[1] / "workflows"
+REPO = Path(__file__).resolve().parents[2]
+WORKFLOWS = REPO / ".github" / "workflows"
 WEATHER = WORKFLOWS / "publish-weather.yml"
 CONDITIONS = WORKFLOWS / "publish-conditions.yml"
+SCRIPT = REPO / "pipeline" / "prepare_closure_trail_lines.py"
 PATHS = [
     "pipeline/data/raw/closure_trail_lines/lines.parquet",
     "pipeline/data/raw/closure_trail_lines/release.json",
 ]
-PREFIX = "closure-trail-lines-"
+#: prepare_closure_trail_lines.py's SCHEMA, read from its text: this suite does not import pipeline/.
+SCHEMA = int(re.search(r"^SCHEMA = (\d+)$", SCRIPT.read_text(encoding="utf-8"), re.MULTILINE).group(1))
+PREFIX = f"closure-trail-lines-v{SCHEMA}-"
 
 
 def _steps(workflow: Path, job: str) -> list[dict]:
@@ -57,6 +70,17 @@ def test_the_weather_job_looks_up_and_saves_one_key_over_the_paths_the_condition
     assert restore["with"]["restore-keys"] == PREFIX + "${{ matrix.data_environment }}-", (
         "each conditions leg restores its own environment's newest entry, never another environment's lines"
     )
+
+
+def test_every_key_on_either_side_names_the_scripts_schema():
+    """No step of either workflow keys the lines without the schema, so none can restore or save an older one's."""
+    for workflow, job in ((WEATHER, "build"), (CONDITIONS, "publish")):
+        for step in _steps(workflow, job):
+            settings = step.get("with") or {}
+            for field in ("key", "restore-keys"):
+                value = str(settings.get(field, ""))
+                if "closure-trail-lines" in value:
+                    assert value.startswith(PREFIX), f"{workflow.name}: {step['name']}'s {field} {value!r}"
 
 
 def test_the_conditions_job_restores_the_lines_on_the_dbt_path_before_the_build_and_never_saves_them():

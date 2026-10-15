@@ -18,6 +18,24 @@
 -- all ship low. A floor that is not 'low' fails the build at this model's
 -- test, as confidence_for() raises, rather than shipping the layer high.
 --
+-- A PIN CLAIMS NO MORE THAN ITS STEWARD (decision 195, the maintainer's poll
+-- of 2026-10-14, and its follow-up the same day, "Taps only"): a water point
+-- whose steward's own public flag does not show it is held, whatever the
+-- layer's flag otherwise does, so `public_flag_sets_confidence` lowers only
+-- the other types. One rule for every source: the types are var
+-- `poi_types_held_when_steward_hides` (dbt_project.yml says why water
+-- alone), and a source's part is only its schema, the registry's
+-- `public_field` and the `public_value` that means shown (any other value,
+-- or none, is hidden). Today that is NY Parks' 136 'Water Spigot' rows, every
+-- one ParksApp 'N' (90 on UA's nearby_poi.geojson of release 2026-10-10-2),
+-- while its 15 'Drinking Fountain' rows, all 'Y', ship (read live
+-- 2026-10-14). Its 37 lean-tos, also all 'N', ship at low confidence, as
+-- export_nearby_poi.py ships them. DEC's flag already held every hidden row of
+-- every type. Today's exporter holds every NY Parks tap by its water holdback,
+-- so no record of its file differs by this rule (parity.POI_REASONS
+-- ["steward_hides"] says so). A held row's reason is in
+-- int_points_of_interest__dropped.
+--
 -- The A.T. family's confidence is the poi_type_mapping seed's, set in
 -- int_points_of_interest__classified; export_poi.py reads no public flag.
 --
@@ -66,8 +84,17 @@ verdict as (
     select
         judged.*,
         judged.public_field is null
-        or judged.public_flag_sets_confidence
-        or judged.flagged_public as kept,
+        or judged.flagged_public
+        or (
+            judged.public_flag_sets_confidence
+            and not coalesce(
+                list_contains(
+                    {{ var('poi_types_held_when_steward_hides') }},
+                    judged.poi_type
+                ),
+                false
+            )
+        ) as kept,
         case
             when
                 judged.phone_files = 'poi_by_type'

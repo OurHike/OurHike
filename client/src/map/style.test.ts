@@ -123,6 +123,8 @@ import { POI_LAYER_ID, POI_PIN_MIN_ZOOM, POI_SOURCE_ID } from './poiLayers'
 // and the trails stayed at the zoom their archive is cut from.
 import { CORRIDOR_MAX_ZOOM } from './corridorLayers'
 import { CLOSURE_SOURCE_ID } from './closureLayers'
+import { CLUB_CLOSURE_SHADE_LAYER_ID } from './clubClosureLayers'
+import { HAZARD_EDGE_LAYER_ID, HAZARD_POINT_LAYER_ID } from './hazardAreaLayers'
 // The real opening camera, not a copy of it: the case below is only a guard
 // if it fails when somebody reframes the app.
 import { UNITED_STATES_BOUNDS } from '../App'
@@ -534,6 +536,44 @@ describe('buildMapStyle', () => {
     expect(ids[ids.indexOf(closureMarkId(CLUB_CLOSURE_LAYER_ID)) + 1]).toBe(
       CLUB_CLOSURE_POINT_LAYER_ID,
     )
+  })
+
+  it('crosses a club\u2019s closure out over the A.T.\u2019s own line, which a club\u2019s area now closes like any trail (decision 192)', () => {
+    // The pipeline cuts the A.T.'s stretch inside a club's area with the
+    // rest (prepare_closure_trail_lines.py), and the mark has to be drawn
+    // over the line it closes, or the A.T. would read open through it.
+    const ids = style().layers.map((l) => l.id)
+    const trails = [...trailLayerIds(), ...TAPPABLE_BLAZE_LAYER_IDS].filter((id) =>
+      ids.includes(id),
+    )
+    expect(trails).toContain(BLAZE_LAYER_ID)
+    for (const id of [
+      ...closureLayerIds(CLUB_CLOSURE_LAYER_ID),
+      CLUB_CLOSURE_POINT_LAYER_ID,
+    ]) {
+      for (const trail of trails) {
+        expect(ids.indexOf(id), `${id} over ${trail}`).toBeGreaterThan(ids.indexOf(trail))
+      }
+    }
+  })
+
+  it('shades a club\u2019s area with no trail inside under every trail line, mark and pin, over the hazard areas (decision 191)', () => {
+    // "Shade them, no edge": a trail along or just inside the area is drawn
+    // over the hatch whole, and nothing that says closed or warns is ever
+    // under it. Over the hazard areas' three layers, the weaker claim.
+    const ids = style().layers.map((l) => l.id)
+    const shade = ids.indexOf(CLUB_CLOSURE_SHADE_LAYER_ID)
+    expect(shade).toBeGreaterThan(-1)
+    expect(shade).toBeGreaterThan(ids.indexOf(HAZARD_EDGE_LAYER_ID))
+    expect(shade).toBeGreaterThan(ids.indexOf(HAZARD_POINT_LAYER_ID))
+    const above = [
+      ...trailLayerIds(),
+      ...TAPPABLE_BLAZE_LAYER_IDS,
+      ...CLOSURE_BAND_IDS.flatMap(closureLayerIds),
+      POI_LAYER_ID,
+      WARNING_LAYER_ID,
+    ].filter((id) => ids.includes(id))
+    for (const id of above) expect(shade, id).toBeLessThan(ids.indexOf(id))
   })
 
   it('lets nothing but the ATC\u2019s notices draw over a closure or a warning', () => {

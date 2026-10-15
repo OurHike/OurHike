@@ -5115,7 +5115,7 @@ def _north(lon: float, lat: float, degrees: float) -> dict:
 #: - the lon -71.3 USFS line on the last area's west edge, which the GEOS intersection keeps;
 #: - a line nowhere near any area, which the step's box filter never lands.
 #: The other fixture club areas (King County's, Midpen's, the Grand Canyon's, Region 6's fire areas) hold
-#: none of these, so each stays out of conditions/trail_closures.json.
+#: none of these, nor of CLOSURE_AT_LINES, so each is shaded (decision 191).
 CLOSURE_TRAIL_LINES = [
     ("fixture-nearby:across", "Fixture Across Trail", _north(-73.97, 41.03, 0.005)),
     ("fixture-nearby:rockfall", "Fixture Rockfall Trail", _north(-73.98, 41.02, 0.005)),
@@ -5125,10 +5125,22 @@ CLOSURE_TRAIL_LINES = [
     ("fixture-nearby:far", "Fixture Far Trail", _north(-120.0, 45.0, 0.01)),
 ]
 
+#: The release's own A.T. lines as step_closure_trail_lines reads them under --fixtures
+#: (closure_trail_lines/trails.geojson, in trails.geojson's own shape), for decision 192: a club's area closure
+#: crosses out the A.T. where it runs inside, like any trail. As (id, name, source, geometry):
+#: - a centerline chain running north through the first area ("bridge washed out", lon -73.975 to -73.965), east of
+#:   the lon -73.97 line, so that area's cut gains a second stretch, along the A.T.;
+#: - a side trail nowhere near any area, which the step's box filter never lands.
+CLOSURE_AT_LINES = [
+    ("centerline:chain:fixture", "Fixture A.T. Centerline", "centerline", _north(-73.967, 41.028, 0.017)),
+    ("side_trails:fixture-far", "Fixture A.T. Side Trail", "side_trails", _north(-121.0, 46.0, 0.01)),
+]
+
 
 def closure_trail_lines_fixtures() -> dict[str, dict]:
-    """closure_trail_lines/nearby_trails.geojson: CLOSURE_TRAIL_LINES as nearby_trails.geojson carries a line."""
-    features = [
+    """closure_trail_lines/nearby_trails.geojson and closure_trail_lines/trails.geojson: CLOSURE_TRAIL_LINES as
+    nearby_trails.geojson carries a line, and CLOSURE_AT_LINES as trails.geojson does."""
+    nearby = [
         {
             "type": "Feature",
             "properties": {"id": line_id, "source": "oprhp_trails", "name": name, "blaze_color": None, "trail_status": "open"},
@@ -5136,7 +5148,23 @@ def closure_trail_lines_fixtures() -> dict[str, dict]:
         }
         for line_id, name, geometry in CLOSURE_TRAIL_LINES
     ]
-    return {"closure_trail_lines/nearby_trails.geojson": _feature_collection(features)}
+    at = [
+        {
+            "type": "Feature",
+            "properties": {
+                "id": line_id,
+                "source": source,
+                "name": name,
+                "blaze_color": "White" if source == "centerline" else "Blue",
+            },
+            "geometry": geometry,
+        }
+        for line_id, name, source, geometry in CLOSURE_AT_LINES
+    ]
+    return {
+        "closure_trail_lines/nearby_trails.geojson": _feature_collection(nearby),
+        "closure_trail_lines/trails.geojson": _feature_collection(at),
+    }
 
 
 #: Five metres and ten metres of latitude, near enough at 41.6 degrees north

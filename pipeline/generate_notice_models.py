@@ -275,6 +275,8 @@ class Reader:
     `roles` maps a role to the raw column (dlt's lowercased name) or `column.$path` for a value inside a
     JSON column; an ArcGIS layer's come from the fields seed instead. `listing` is `window` for a reader
     whose answer is the newest items rather than the whole list (extract/_notices.py's FeedNotices).
+    `category_holds` says what its category holds, `status` or `reason`, as the fields seed's column of the
+    same name does for a layer (seeds/_notices__seeds.yml has the standard: never a class code).
     """
 
     name: str
@@ -284,6 +286,7 @@ class Reader:
     roles: dict = field(default_factory=dict)
     lists: frozenset = frozenset()
     why: str = ""
+    category_holds: str = ""
 
 
 #: Every reader a closures or warnings resource may use, by class name. A resource of a class not here stops
@@ -302,6 +305,7 @@ READERS = {
         roles={"title": "title", "category": "categories", "starts": "published", "edited": "updated", "link": "link"},
         lists=frozenset({"categories"}),
         why="extract/_notices.py's FEED_COLUMNS: an RSS or Atom item's id, title, link, its own dates and categories",
+        category_holds="status",
     ),
     "PageNotice": Reader(
         "page_notice",
@@ -323,6 +327,7 @@ READERS = {
         key=("id",),
         roles={"title": "title", "category": "category", "edited": "lastindexeddate", "link": "url", "locality": "parkcode"},
         why="extract/_json_apis.py's NPS_ALERT_TEXT; `description` is NPS's wording and stays in base",
+        category_holds="status",
     ),
     "NpsRoadEvents": Reader(
         "nps_road_events",
@@ -338,6 +343,7 @@ READERS = {
             "locality": "data_source_organization",
         },
         why="extract/_json_apis.py's NpsRoadEvents: a WZDx 4.1 event with its line",
+        category_holds="status",
     ),
     "DcnrParkAdvisories": Reader(
         "dcnr_park_advisories",
@@ -359,6 +365,7 @@ READERS = {
             "locality": "obs_abbr",
         },
         why="extract/_json_apis.py's USGS_VOLCANO_TEXT; `notice_data` is USGS's wording and stays in base",
+        category_holds="status",
     ),
     "MediawikiAnnouncements": Reader(
         "mediawiki_announcements",
@@ -373,6 +380,7 @@ READERS = {
         key=("table_title", "sect", "begin_mile", "end_mile"),
         roles={"title": "sect", "category": "table_title", "edited": "report_date", "locality": "ranger_district"},
         why="extract/_json_apis.py's SHEET_COLUMNS; `description` and `comments` are the club's wording and stay in base",
+        category_holds="status",
     ),
     "MyMapsPlacemarks": Reader(
         "mymaps_placemarks",
@@ -380,6 +388,7 @@ READERS = {
         key=("folder", "name"),
         roles={"title": "name", "category": "folder"},
         why="extract/_json_apis.py's MyMapsPlacemarks; `description` is the map's own text and stays in base",
+        category_holds="status",
     ),
 }
 #: Readers whose tables are not notices on their own: a WordPress site's place terms are a lookup the posts

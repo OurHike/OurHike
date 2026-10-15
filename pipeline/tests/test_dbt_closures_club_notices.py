@@ -167,10 +167,13 @@ def test_missouris_archived_is_its_only_status_read_as_not_current():
 
 
 def test_michigans_unspecified_foot_travel_status_is_nothing_for_a_hiker_on_both_layers():
-    """P4: '-1', the domain's 'Unspecified', says nothing; the rows' own category, 'Motorized', limits them to a use
-    a hiker is not. A foot-travel status that says closed closes beside the same category."""
+    """P4: '-1', the domain's 'Unspecified', says nothing; the rows' own TrailUseCategory, 'Motorized', limits them to
+    a use a hiker is not. It was their category until the review of 2026-10-15 (thread 4279218690) and is read as
+    their narrative since, so their category shows their status. A foot-travel status that says closed closes beside
+    the same use."""
     assert reads_as("status", "-1") == {"unspecified"}
     assert reads_as("category", "Motorized") == {"not_a_hikers_use"}
+    assert reads_as("narrative", "Motorized") == {"not_a_hikers_use"}
     for value in (
         "Temporarily Closed",
         "Temporarily Closed Due To Timber Harvest",

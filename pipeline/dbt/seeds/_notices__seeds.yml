@@ -37,6 +37,7 @@ seeds:
         source_key: varchar
         title: varchar
         category: varchar
+        category_holds: varchar
         status: varchar
         starts: varchar
         ends: varchar
@@ -61,8 +62,28 @@ seeds:
           95: CPW's conflict areas, whose ACTIVITYCO reads BBHCA or MLHCA).
       - name: category
         description: >
-          The source's own category or type field, as text, or words in
-          single quotes as for `title`.
+          The field a row shows under its title as the source's own label,
+          'Listed as' its value (decisions 78 and 137), or words in single
+          quotes as for `title`. A STANDARD (the review of PR #1805 of
+          2026-10-15, thread 4279218690): it holds the row's own status, the
+          kind of notice its source files it as ('Safety Closure', 'Fire
+          Prevention Order'), or the reason it was posted ('Storm damage',
+          'Wildlife'), and never a class along another axis: a severity
+          (Wisconsin's Impact, 'Low'), a use (Michigan's TrailUseCategory,
+          'Nonmotorized', read as the narrative instead), an administrative
+          class (Midpen's CLOSETYPE, 'Regular'; Santa Clara's closure_type,
+          'long-term'), a site's own type (site_type) or a map symbol (PCTA's
+          'Purple'). Where a layer has no field that holds one, its status
+          is its category (decision 78), or it has none.
+      - name: category_holds
+        description: >
+          What `category` holds, `status` or `reason` as that column's
+          standard reads them, and empty where it names no field. Every row
+          that names a category says which:
+          tests/test_generated_notice_models.py fails one that does not, so a
+          field is checked against the standard when it is named, not after
+          a hiker reads it. Reasoned from each field's values in the live
+          read of 2026-10-15 and its layer's own field list and domains.
       - name: status
         description: The source's own status field, which notice_words reads.
       - name: starts
@@ -85,17 +106,24 @@ seeds:
           motorized and every-use words and outputs none of it, and the
           wording union still counts it as wording, so the leak test still
           holds a source whose mart rows carry it (decision 55). Named for
-          IDPR's two layers alone, where 4 of the 5 orders that bar motorized
-          use alone say so nowhere else (read live 2026-10-14).
+          IDPR's two layers, where 4 of the 5 orders that bar motorized use
+          alone say so nowhere else (read live 2026-10-14), and for
+          Michigan's two, whose TrailUseCategory says which use a row
+          concerns ('Motorized' on 124 of their 204 rows read live
+          2026-10-15) and was their category until the review of 2026-10-15
+          (thread 4279218690).
       - name: site_type
         description: >
           The field holding the source's own type for a row, the kind of
           place it is, which decision 190's site rule reads (the maintainer's
           poll of 2026-10-15: a closed site is not a closed trail). Never the
           category, which a row shows (decision 78). Named for USFS's
-          recreation sites alone, whose markeractivity reads 'Campground
+          recreation sites, whose markeractivity reads 'Campground
           Camping' 1,651, 'Trailhead' 156 and 'Day Hiking' 42 of the 2,999
-          closed or temporarily closed sites (read live 2026-10-15).
+          closed or temporarily closed sites (read live 2026-10-15), and for
+          the two layers whose own type was their category until the review
+          of 2026-10-15: Missouri's Katy trailheads' POINT_TYPE and BLM
+          Oregon's Status__RecreationSiteType.
       - name: season
         description: >
           The field holding the source's own words for a period that recurs

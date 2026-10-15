@@ -304,6 +304,75 @@ def test_a_page_is_one_notice_with_its_title_its_own_stated_date_and_a_hash_neve
     assert row["region_chars"] > 0 and len(row["region_sha256"]) == 64
 
 
+# PATC's Tuscarora page as read live 2026-10-15, its paragraph cut to the sentences the rule reads.
+DOLL_RIDGE = (
+    "The Tuscarora Trail section just west of Massanutten Mountain is closed due to loss of landowner permission. "
+    "&nbsp;Please respect the landowner's decision. &nbsp;This is the Doll Ridge section from Three Top Mountain to "
+    "Riverview Drive. &nbsp;To detour this section, please follow the following directions."
+)
+
+
+def test_a_page_stating_a_section_closed_lands_that_sentence_verbatim_as_its_title_and_nothing_more(registry, requests_mock):
+    """Decision 213's "Land the closing sentence": the sentence whole, the page's naming sentence after it, the
+    sentence between marked as left out, and no other word of the page."""
+    requests_mock.get(PAGE_URL, text=page(notice=DOLL_RIDGE))
+
+    (row,) = list(conditions().rows({}))
+
+    assert row["title"] == (
+        "The Tuscarora Trail section just west of Massanutten Mountain is closed due to loss of landowner permission."
+        " … This is the Doll Ridge section from Three Top Mountain to Riverview Drive."
+    )
+    assert "respect" not in json.dumps(row) and "detour" not in json.dumps(row)
+    assert set(row) == set(PAGE_COLUMNS)
+
+
+def test_the_region_hash_is_the_same_whatever_the_closing_sentence_rule_reads(registry, requests_mock):
+    """The blocks are read off line breaks the region's text folds to spaces, so no page's hash moves with this."""
+    requests_mock.get(PAGE_URL, text=page(notice=DOLL_RIDGE))
+    (row,) = list(conditions().rows({}))
+    reader = _notices._PageReader(_notices.DEFAULT_REGIONS)
+    reader.feed(page(notice=DOLL_RIDGE))
+    reader.close()
+
+    assert row["region_sha256"] == _notices._sha256(" ".join(" ".join(reader.blocks(True)).split()))
+
+
+@pytest.mark.parametrize(
+    ("text", "landed"),
+    [
+        # Closed, but no section: decision 55's title stands.
+        ("The ridge trail is closed for a reroute.", None),
+        # A section, but not closed.
+        ("This section reopened on May 1.", None),
+        # A heading never runs into the sentence under it.
+        ("<h2>Doll Ridge section</h2><p>The parking lot is closed.</p>", None),
+        # Closed in one sentence, named in the next.
+        ("The north section is closed. This is the Blue section.", "The north section is closed. This is the Blue section."),
+        # A naming sentence three sentences on is too far to be about it.
+        ("The north section is closed. One. Two. This is the Blue section.", "The north section is closed."),
+        # A closure announced for later is not closed now (Palmetto Trail's, read 2026-10-15).
+        ("Starting October 19th a section of trail will be closed for maintenance.", None),
+        # An abbreviation never ends the sentence (EBRPD's, read 2026-10-15).
+        (
+            "The bridge section is closed beginning Monday, Oct. 13, for repairs. Use the road.",
+            "The bridge section is closed beginning Monday, Oct. 13, for repairs.",
+        ),
+    ],
+)
+def test_a_closing_sentence_is_one_sentence_of_one_block_that_says_a_section_is_closed(registry, requests_mock, text, landed):
+    requests_mock.get(PAGE_URL, text=page(notice=text))
+    (row,) = list(conditions().rows({}))
+    assert row["title"] == (landed or "Current Trail Conditions")
+
+
+def test_a_sentence_over_the_cap_never_lands(registry, requests_mock):
+    """A paragraph with no full stop is not a sentence (CLOSING_SENTENCE_CHARS)."""
+    requests_mock.get(PAGE_URL, text=page(notice="The north section is closed " + "and more words " * 30))
+    (row,) = list(conditions().rows({}))
+    assert row["title"] == "Current Trail Conditions"
+
+
 def test_the_newest_stated_date_wins_and_a_footer_stamp_is_not_the_pages(registry, requests_mock):
     requests_mock.get(PAGE_URL, text=page(stated="6/1/26"))
 

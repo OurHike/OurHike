@@ -265,6 +265,7 @@ jobs:
             pipeline/tests/test_dbt_notice_source_freshness_runs.py
             pipeline/tests/test_dbt_data_quality_builds.py
             pipeline/tests/test_dbt_evaluator_exceptions.py
+            pipeline/tests/test_dbt_every_model_keyed.py
             pipeline/tests/conftest.py
             pipeline/pyproject.toml
             pipeline/requirements-dev.txt
@@ -743,6 +744,17 @@ jobs:
       - name: Exceptions rows name live resources (tests/test_dbt_evaluator_exceptions.py)
         if: steps.scope.outputs.run == 'true'
         run: OURHIKE_DBT="$(command -v dbt)" "$RUNNER_TEMP/pipeline/bin/python" -m pytest -o addopts="" -q -p no:cacheprovider tests/test_dbt_evaluator_exceptions.py
+
+      # Decision 197: every model has one column carrying an unfiltered
+      # unique and not_null at error, a generate_surrogate_key column where
+      # the key takes several, unless seeds/model_key_exceptions.csv records
+      # why not. The evaluator step below counts a key but reads neither a
+      # test's severity nor its `where`; the test's docstring says what it
+      # can and cannot catch. It parses the project into a directory of its
+      # own, as the step above does.
+      - name: Every model keyed (tests/test_dbt_every_model_keyed.py)
+        if: steps.scope.outputs.run == 'true'
+        run: OURHIKE_DBT="$(command -v dbt)" "$RUNNER_TEMP/pipeline/bin/python" -m pytest -o addopts="" -q -p no:cacheprovider tests/test_dbt_every_model_keyed.py
 
       # Shadow-run parity (ELT.md, "How a rule moves"): each family the dbt
       # path writes, against today's exporter on the same input, record by

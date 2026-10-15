@@ -32,6 +32,40 @@ seeds:
         description: A SQL LIKE pattern; findings whose column matches it are skipped.
       - name: comment
         description: Why, what ends it, and the issue by number and title.
+  - name: model_key_exceptions
+    description: >
+      The models excepted from decision 197, the maintainer's rule of
+      2026-10-15 that every model has one id: a column carrying an
+      unfiltered `unique` test and an unfiltered `not_null` (a test, or a
+      not_null constraint under an enforced contract), both at error. A
+      multi-column key counts only as a dbt_utils.generate_surrogate_key
+      column, never as a dbt_utils.unique_combination_of_columns test. A row
+      names the model (`name.vN` for one version of a versioned model, as
+      the evaluator names it), the key column it does have, the severity
+      that column's tests run at, why, and the day it was decided.
+      pipeline/tests/test_dbt_every_model_keyed.py reads this file and the
+      parsed manifest, and fails a model with no key and no row here, a row
+      naming no model, a row whose model now meets the rule, and a row whose
+      column does not carry both tests at that severity. Two rows, both the
+      maintainer's answer of 2026-10-15: "Keep warn, a recorded exception".
+    config:
+      column_types:
+        model: varchar
+        column_name: varchar
+        severity: varchar
+        reason: varchar
+        decided: date
+    columns:
+      - name: model
+        description: The model, as the evaluator names it (`name.vN` for one version of a versioned model).
+      - name: column_name
+        description: The model's key column, whose tests are below the rule's bar.
+      - name: severity
+        description: The severity that column's unique and not_null tests run at.
+      - name: reason
+        description: Why, in the model's own words and the maintainer's.
+      - name: decided
+        description: The day the maintainer decided it.
   - name: poi_type_mapping
     description: >
       Source-system codes -> the one unified poi_type, transcribed from code

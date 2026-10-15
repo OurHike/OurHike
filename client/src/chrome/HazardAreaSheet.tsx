@@ -15,13 +15,18 @@
 // organization the meta line already names (the word-choice review of #1805,
 // 2026-10-09).
 //
-// AN AREA THAT MAY NO LONGER APPLY IS SAID SO, as a row of the planned-hike
-// list is (the maintainer's frame A, 2026-10-10): past the last day
-// conditions/hazard_areas.json gives its notice (`current_until`), or with no
-// date at all, the card's Advisory tag greys and one line from
-// lib/noticeCurrency.ts sits under its source - "Its source gives no date. It
-// may no longer apply." The map still draws the area: drawings are the
-// maintainer's call, and unchanged.
+// NO AREA'S CARD GREYS WHILE DECISION 156 STANDS (the maintainer's poll of
+// 2026-10-11, "Stay current while served"). The card asks
+// lib/noticeCurrency.ts's notCurrent() about its notice, as a row of the
+// planned-hike list does (the maintainer's frame A, 2026-10-10), and would
+// grey its Advisory tag, with that module's line under its source, once the
+// notice's `current_until` day had passed. But pub_conditions_notices writes
+// no `current_until` key on a row that carries a `hazard`, and
+// conditions/hazard_areas.json copies those rows as written, so notCurrent()
+// answers null for every area a build publishes: a row with no key carries
+// no verdict. The greyed branch is there for a row that does carry a day,
+// which today is only a test's fixture. The map draws the area either way:
+// drawings are the maintainer's call, and unchanged.
 
 import { longDate } from '../lib/atcNoticeText'
 import { HAZARD_ADVISORIES, hazardDates } from '../lib/hazardAreas'

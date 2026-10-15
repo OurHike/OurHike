@@ -641,6 +641,19 @@ pull request closes. Nor can it see a production promotion, which deploys nothin
 new install of the production build starts on its older `DATA_RELEASE` and moves
 on its second launch, until the next tag ships a build that names the new one.
 
+**Since 2026-10-15 a deploy also weighs the release it pins.** In the step "Confirm
+the pinned data release exists", `pages.yml` and `ua.yml` run
+`.github/scripts/check_launch_budget.py` on the manifest they fetched: check 22
+(`pipeline/lib/client_contract.py`), which fails a release listing a file a phone
+fetches whole over `client/src/lib/artifactBudget.ts`'s launch budget. UA's release
+2026-10-03-2 resolved, and still drew no network sketch on any UA phone: its
+41,216,145-byte `network_overview.geojson` was over the 33,554,432-byte budget, so
+each phone declined it (review 5528343443 on PR #1805). **When it fails, pin a
+release whose files fit**, moving `channels.json` with it as above. `publish.py`
+refuses to stage a release that does not fit, so only a folder staged before then
+can be one. A pull request preview runs the same weigh as a warning that leads its
+comment.
+
 ## 11. What never waits for a release
 
 **Closures, hazard warnings and condition reports are not in a release.** They live in

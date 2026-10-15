@@ -357,6 +357,14 @@ jobs:
       # that name but UA does, it previews UA and says so in the comment.
       # Production stays the default in every other case, which is #1383's
       # decision; this only declines to publish a preview of nothing.
+      #
+      # THE PINNED RELEASE IS WEIGHED TOO, in whichever environment the
+      # preview reads: check 22 (.github/scripts/check_launch_budget.py), the
+      # same weigh ua.yml and pages.yml refuse a deploy on. Here it warns and
+      # leads the comment instead, because the preview is where a reviewer
+      # judges the change: a release over the launch budget draws without the
+      # file, as this pull request's preview of 2026-10-03-2 drew an opening
+      # map with the A.T. alone (review 5528343443 on PR #1805).
       - name: Resolve the data source
         if: steps.can.outputs.deploy == 'true' && github.event.action != 'closed'
         id: data
@@ -368,20 +376,35 @@ jobs:
           BASE="${FROM_VAR:-$FROM_SECRET}"
           ENVIRONMENT="${DATA_ENVIRONMENT:-production}"
           BANNER=""
+          release=$(sed -n "s/^export const DATA_RELEASE = '\\(.*\\)'$/\\1/p" client/src/lib/dataRelease.ts)
+          pinned="${RUNNER_TEMP:-/tmp}/pinned-manifest.json"
+          rm -f "$pinned"
           if [ "$ENVIRONMENT" = "ua" ]; then
             BANNER='**Previewing UA data** (`environments/ua`), not production - see features/DATA_ENVIRONMENTS.md.'
+            if [ -n "$BASE" ] && [ -n "$release" ]; then
+              curl -fsS --retry 3 --max-time 30 -o "$pinned" "${BASE%/}/environments/ua/releases/${release}/manifest.json" || rm -f "$pinned"
+            fi
           elif [ -n "$BASE" ]; then
-            release=$(sed -n "s/^export const DATA_RELEASE = '\\(.*\\)'$/\\1/p" client/src/lib/dataRelease.ts)
             if [ -z "$release" ]; then
               echo "::warning::Could not read DATA_RELEASE out of client/src/lib/dataRelease.ts - previewing production without checking the pin resolves there."
-            elif curl -fsS --retry 3 --max-time 30 -o /dev/null "${BASE%/}/releases/${release}/manifest.json" 2>/dev/null; then
+            elif curl -fsS --retry 3 --max-time 30 -o "$pinned" "${BASE%/}/releases/${release}/manifest.json" 2>/dev/null; then
               echo "Pinned release ${release} resolves at ${BASE%/}."
-            elif curl -fsS --retry 3 --max-time 30 -o /dev/null "${BASE%/}/environments/ua/releases/${release}/manifest.json"; then
+            elif curl -fsS --retry 3 --max-time 30 -o "$pinned" "${BASE%/}/environments/ua/releases/${release}/manifest.json"; then
               echo "Pinned release ${release} is not on production yet, and is on UA - previewing UA."
               ENVIRONMENT="ua"
               BANNER="**Previewing UA data** (\`environments/ua\`), not production: this branch pins \`DATA_RELEASE\` to \`${release}\`, which production does not carry yet - see features/DATA_ENVIRONMENTS.md."
             else
+              rm -f "$pinned"
               echo "::warning::DATA_RELEASE is pinned to ${release}, which neither production nor UA carries - previewing production, and the app will find no data."
+            fi
+          fi
+          if [ -s "$pinned" ]; then
+            weighed="${RUNNER_TEMP:-/tmp}/launch-budget-banner.md"
+            rm -f "$weighed"
+            if ! python3 .github/scripts/check_launch_budget.py "$pinned" --release "$release" --warn --banner "$weighed"; then
+              if [ -s "$weighed" ]; then
+                BANNER="${BANNER:+${BANNER} }$(cat "$weighed")"
+              fi
             fi
           fi
           if [ "$ENVIRONMENT" = "ua" ]; then

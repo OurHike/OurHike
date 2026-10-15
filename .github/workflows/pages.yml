@@ -460,6 +460,13 @@ jobs:
       # 2026-09-09, production held 14 releases and UA 31, with 10 in common.
       # Each build checking its own base turns "the pin must exist in both"
       # from something a person has to remember into a red deploy.
+      #
+      # AND WHAT IT HOLDS MUST FIT A LAUNCH: check 22 on the manifest just
+      # fetched (.github/scripts/check_launch_budget.py). A release over the
+      # launch budget resolves and still fails a phone: it declines the file
+      # and draws without it, as every UA phone did with 2026-10-03-2's
+      # network sketch (review 5528343443 on PR #1805). The steps below hold
+      # channels.json to this same release, so this one weigh covers it.
       - name: Confirm the pinned data release exists
         working-directory: client
         env:
@@ -475,12 +482,14 @@ jobs:
             exit 1
           fi
           manifest="${DATA_URL%/}/releases/${release}/manifest.json"
-          if curl -fsS --retry 3 --max-time 30 -o /dev/null "$manifest"; then
+          pinned="${RUNNER_TEMP:-/tmp}/pinned-manifest.json"
+          if curl -fsS --retry 3 --max-time 30 -o "$pinned" "$manifest"; then
             echo "Pinned release ${release} resolves at ${DATA_URL%/}."
           else
             echo "::error::DATA_RELEASE is pinned to ${release}, but ${manifest} does not resolve. A build deployed against this base would 404 every artifact."
             exit 1
           fi
+          python3 ../.github/scripts/check_launch_budget.py "$pinned" --release "$release"
 
       # channels.json's entry for this build's data environment and schema
       # version must resolve against the same base (pipeline/ELT.md,

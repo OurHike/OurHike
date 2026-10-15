@@ -24,6 +24,13 @@
 // nationwide sources over it (colorado-network.mjs's finding, at z7) still
 // reads as threads at the scale a hiker picks a region from.
 //
+// NO CLUB CLOSURE DRAWS HERE, since thread 4279229785 of the collaborator's
+// review of #1805 — dlt → dbt re-platform as one go/no-go change: the clubs'
+// paper, trace and shade start at zoom 7 with their marks
+// (map/clubClosureLayers.ts). Before it, the Pacific Northwest's fire
+// closures drew at this zoom as black-and-white smudges over the threads;
+// club-closures-far-out.mjs photographs the same ground at z6.
+//
 // SAFE TO TAKE AGAIN, WHATEVER THE DATA BECOMES (.claude/skills/pr-screenshot/
 // SKILL.md's four rules). No waypoint draws below POI_PIN_MIN_ZOOM, 7
 // (map/poiIds.ts), so no campsite of any kind is on the map at 2.9, and
@@ -39,7 +46,7 @@ export const region = 'national'
 export const camera = { center: [-107.5, 40], zoom: 2.9 }
 
 export const caption =
-  'Region `national`, the West, zoom 2.9 — the lower 48 west of the eastern box, where the build holds the nationwide and western trail layers (USFS, BLM, COTREX, Utah, Washington, the Pacific Crest and Continental Divide trails, the national historic trails; dbt/macros/lands_outside_its_region.sql). What to look for: whether two nationwide sources over one state still read as threads at the scale a hiker picks a region from. No waypoint draws below zoom 7, so no campsite can be in this frame.'
+  'Region `national`, the West, zoom 2.9 — the lower 48 west of the eastern box, where the build holds the nationwide and western trail layers (USFS, BLM, COTREX, Utah, Washington, the Pacific Crest and Continental Divide trails, the national historic trails; dbt/macros/lands_outside_its_region.sql). What to look for: whether two nationwide sources over one state still read as threads at the scale a hiker picks a region from, with no club closure drawn over them (they start at zoom 7). No waypoint draws below zoom 7, so no campsite can be in this frame.'
 export const alt =
   'The map screen over the western United States at zoom 2.9, from the Pacific coast to the Mississippi, with trails as thin coloured threads across the mountain states and no waypoint pins.'
 

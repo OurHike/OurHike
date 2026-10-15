@@ -39,7 +39,7 @@
 
 import { longDate } from '../lib/atcNoticeText'
 import { HAZARD_ADVISORIES, longDay } from '../lib/hazardAreas'
-import { notCurrent, obstructsOn, startsAhead } from '../lib/noticeCurrency'
+import { notCurrent, obstructsOn, standingLine, startsAhead } from '../lib/noticeCurrency'
 import { noticeOrgLabel, noticeUpdatedAt, type TrailNotice } from '../lib/notices'
 import type { PlannedHikeNotices, PlannedNotices } from '../lib/plannedNotices'
 import { isSafeLink } from '../lib/safeLink'
@@ -177,6 +177,10 @@ export function NoticeRow({
   const title = notice.title || `${org} notice`
   const category = categoryLine(notice, title, text)
   const old = notCurrent(notice, today)
+  const standing = old === null ? standingLine(notice, org) : null
+  // Decision 213, rule 21: a compiled layer's order names its issuer first,
+  // and its publisher keeps the credit.
+  const who = notice.issuer ? `${notice.issuer} order, via ${org}` : org
   // The edit date once, in the greyed line where that line carries it.
   const updatedAt = old?.saysUpdated ? null : noticeUpdatedAt(notice)
   const hazard =
@@ -219,9 +223,10 @@ export function NoticeRow({
       {hazard !== null && <p className="closure-sheet__range">{hazard.heading}</p>}
       {where.length > 0 && <p className="closure-sheet__range">{where.join(' · ')}</p>}
       <p className="closure-sheet__meta">
-        {updatedAt === null ? org : `${org} — updated ${longDate(updatedAt)}`}
+        {updatedAt === null ? who : `${who} — updated ${longDate(updatedAt)}`}
       </p>
       {old !== null && <p className="notice__not-current">{old.line}</p>}
+      {standing !== null && <p className="closure-sheet__range">{standing}</p>}
       {notice.carried_since && (
         <p className="atc-notices__offmap">
           OurHike hasn’t been able to read {possessive(org)} notices since{' '}

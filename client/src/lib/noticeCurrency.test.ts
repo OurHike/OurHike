@@ -6,6 +6,7 @@ import {
   longDay,
   notCurrent,
   obstructsOn,
+  standingLine,
   startsAhead,
 } from './noticeCurrency'
 import type { TrailNotice } from './notices'
@@ -246,6 +247,22 @@ describe('a closure whose own start is still ahead (frame B)', () => {
       const area = notice({ hazard, obstructs_trail: false, starts_on: '2026-10-20' })
       expect(startsAhead(area, '2026-10-11')).toBeNull()
     }
+  })
+})
+
+describe('standing closed land (decision 213, rule 14)', () => {
+  it('reads "Closed until <steward> says otherwise." and is never greyed, with no current_until', () => {
+    const land = notice({ standing: true, updated_at: '2026-07-21T14:39:07Z' })
+    expect(standingLine(land, 'Fixture Open Space')).toBe(
+      'Closed until Fixture Open Space says otherwise.',
+    )
+    expect(notCurrent(land, '2027-06-01')).toBeNull()
+  })
+
+  it('says nothing for a notice the file does not mark standing', () => {
+    expect(
+      standingLine(notice({ current_until: '2026-10-19' }), 'Fixture Open Space'),
+    ).toBeNull()
   })
 })
 

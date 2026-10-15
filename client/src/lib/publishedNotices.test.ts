@@ -95,6 +95,32 @@ describe('a current_until', () => {
   })
 })
 
+// Decision 213's rule 14: standing closed land carries `standing` true and no
+// current_until. Only a literal true is a claim.
+describe('an issuer', () => {
+  it('is kept, trimmed, where the file names one, and absent otherwise', () => {
+    expect(validNotice(row({ issuer: ' Bureau of Land Management ' }))?.issuer).toBe(
+      'Bureau of Land Management',
+    )
+    for (const value of ['', '  ', null, 3]) {
+      expect(validNotice(row({ issuer: value })) ?? {}).not.toHaveProperty('issuer')
+    }
+  })
+})
+
+describe('a standing flag', () => {
+  it('is kept where the file says true', () => {
+    expect(validNotice(row({ standing: true }))?.standing).toBe(true)
+  })
+
+  it('is absent for anything else, so no other row claims to stand', () => {
+    for (const value of [false, 'true', 1, null]) {
+      expect(validNotice(row({ standing: value })) ?? {}).not.toHaveProperty('standing')
+    }
+    expect(validNotice(row()) ?? {}).not.toHaveProperty('standing')
+  })
+})
+
 describe('a geometry place', () => {
   it.each([
     // What the writer's ST_AsGeoJSON makes of an empty polygon (the

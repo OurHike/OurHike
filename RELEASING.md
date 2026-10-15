@@ -617,7 +617,10 @@ it plus a dispatch of `publish.py --channels`, which uploads it beside `latest.j
 no tag and no app release are needed, so a monthly refresh reaches installed phones.
 Rolling it back is reverting that commit and dispatching again. `DATA_RELEASE` stays,
 as the compiled fallback a first run reads before it has reached the pointer, and
-`pages.yml` and `ua.yml` assert that both resolve against their own base.
+`pages.yml` and `ua.yml` assert that both resolve against their own base. Since
+decision 211 of [pipeline/ELT.md](pipeline/ELT.md) a phone also goes back to it when
+the release it recorded answers 404 for its own manifest: the phone forgets that
+release, and its next launch reads `DATA_RELEASE` and then the pointer.
 [pipeline/DATA_RELEASES.md](pipeline/DATA_RELEASES.md) §4 has the rest. Which
 dispatch runs the upload is the release train's to wire, and none does yet.
 

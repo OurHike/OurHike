@@ -319,9 +319,11 @@ jobs:
     runs-on: ubuntu-latest
     # 15 since decision 103 (pipeline/ELT.md): the dbt build step's own cap
     # rose from 6 to 10 minutes, and .github/tests/test_conditions_build_budget.py
-    # holds that cap, the freshness step's and the slowest rest of the job
-    # inside this one. client/src/lib/noticeSelection.ts's SAME_BUILD_MS is
-    # this number by its own reasoning, and moved with it.
+    # holds that cap, the trail lines' restore's, the freshness step's and the
+    # slowest rest of the job inside this one, and the hand-off to the
+    # minutes this job has left after the steps that follow it.
+    # client/src/lib/noticeSelection.ts's SAME_BUILD_MS is this number by its
+    # own reasoning, and moved with it.
     timeout-minutes: 15
     # NO GROUP OF THE LEG'S OWN beside the workflow's publish-data, which
     # holds the whole run. From decision 110 each leg held
@@ -407,6 +409,17 @@ jobs:
           if [ "$LEG" = "ua" ] && [ "${ASKED_PHONE_FILES,,}" = "dbt" ] && [ "$ASKED" != "ua" ]; then
             echo "::notice title=UA leg only::phone_files=dbt runs the UA leg alone, so production's conditions/ were left as they are."
           fi
+
+      # THE JOB'S OWN CLOCK, which "Hand this build's warehouse to its checks"
+      # reads to take only what this job has left of its 15 minutes after the
+      # steps that follow it (that step says why). Third, after the two
+      # refusals, which come first (.github/tests/test_conditions_production_leg_needs_main.py);
+      # the job's clock started "Set up job" earlier, 0 to 3 s on the UA soak
+      # runs 617 to 676 (Measured 2026-10-15 from the API's step times), and
+      # the hand-off's reserve counts that.
+      - name: Note when this job started, for the hand-off's share of its cap
+        working-directory: .
+        run: echo "PUBLISH_JOB_STARTED_AT=$(date +%s)" >> "$GITHUB_ENV"
 
       # THE SWITCH, READ FOR THIS LEG (decision 92). A dispatch's
       # `phone_files` wins for this run; `scheduled`, and a schedule, which
@@ -1317,24 +1330,51 @@ jobs:
           echo "read=$served" >> "$GITHUB_OUTPUT"
 
       # 2c. THE TRAIL LINES AN AREA CLOSURE IS CUT AGAINST (pipeline/ELT.md's
-      # decisions 187, 191 and 192, for conditions/trail_closures.json):
-      # the leg's current release's nearby trail lines and the A.T.'s own,
-      # which publish-weather.yml prepares once per release
+      # decisions 187, 191 and 192, for conditions/trail_closures.json): a
+      # release's nearby trail lines and the A.T.'s own, which
+      # publish-weather.yml prepares once per release
       # (prepare_closure_trail_lines.py) and caches under the release's id,
-      # as it does the weather squares. Restore only, and the newest entry of
-      # this leg's environment whose key names the script's schema (`-v2-`),
-      # so an entry prepared before the A.T.'s lines were added is never
-      # restored. The build's step_closure_trail_lines lands the ones near an
-      # area closure, and with no entry (the first hours after this lands, or
-      # production, whose latest.json named no release on 2026-10-11, and
-      # which publish-weather.yml does not prepare) it lands none and warns:
-      # every line and point closure still publishes, and every area closure,
-      # crossed out or shaded, misses the hour. Release 2026-10-10-2's entry
-      # was 85,588,154 bytes before the A.T.'s lines (Measured 2026-10-11);
-      # what restoring it adds to this job is @unvalidated until this step's
-      # log line gives it.
+      # as it does the weather squares. Restore only, and the newest entry
+      # this branch can see for this leg's environment whose key names the
+      # script's schema (`-v2-`), so an entry prepared before the A.T.'s
+      # lines were added is never restored. The build's
+      # step_closure_trail_lines lands the ones near an area closure.
+      #
+      # THE NEWEST ENTRY, WHICH NEED NOT BE THE LEG'S CURRENT RELEASE. GitHub
+      # searches a branch's own entries before main's and restores the newest
+      # it finds: after a release moves, that is the old release's until
+      # publish-weather.yml next runs in that scope and prepares the new one,
+      # and on a branch holding an older entry of its own it can stay the old
+      # release for good (review finding S2-4 of PR #1805 — dlt → dbt
+      # re-platform as one go/no-go change). So step_closure_trail_lines asks the leg's
+      # latest.json which release is current, one request inside the build,
+      # and when the lines are another release's it says so in a warning and
+      # the run's summary, naming both, and never stops the build for it. Run
+      # 676 (2026-10-15) restored release 2026-10-10-2's entry, which was UA's
+      # current release that morning (Measured: its log, and UA's
+      # latest.json read the same day). With no entry at all (the first hours
+      # after this lands, or production, whose latest.json named no release
+      # on 2026-10-11, and which publish-weather.yml does not prepare) it
+      # lands none and warns: every line and point closure still publishes,
+      # and every area closure, crossed out or shaded, misses the hour.
+      #
+      # ONE MINUTE, AND NEVER A FAILED JOB (review finding S2-7, the same
+      # review). Run 676 restored 86,479,282 bytes in 1.4 s (Measured, its
+      # log), but actions/cache waits 10 minutes on a stalled segment by
+      # default, long enough to run this job past its cap before "Publish to
+      # R2". SEGMENT_DOWNLOAD_TIMEOUT_MINS gives a stalled download up after
+      # half a minute, as a miss (actions/toolkit's
+      # packages/cache/src/options.ts reads it as a number of minutes, read
+      # 2026-10-15); the cap stops anything else; and continue-on-error makes
+      # either an hour with no lines, or lines that will not read, which
+      # step_closure_trail_lines warns of. .github/tests/test_conditions_build_budget.py
+      # counts this cap.
       - name: Restore the release's trail lines for the area closures' cut (dbt path)
         if: env.PHONE_FILES == 'dbt'
+        continue-on-error: true
+        timeout-minutes: 1
+        env:
+          SEGMENT_DOWNLOAD_TIMEOUT_MINS: "0.5"
         uses: actions/cache/restore@v6
         with:
           path: |
@@ -1438,6 +1478,10 @@ jobs:
           DESTINATION__FILESYSTEM__CREDENTIALS__ENDPOINT_URL: ${{ secrets.R2_ENDPOINT_URL }}
           DESTINATION__FILESYSTEM__CREDENTIALS__REGION_NAME: auto
           NOTICES_READ: ${{ steps.notices.outputs.read }}
+          # step_closure_trail_lines asks this leg's latest.json which release
+          # is current, to say when the restored lines are another's (step 2c).
+          CLOSURE_LINES_LEG: ${{ matrix.data_environment }}
+          DATA_BASE_URL: ${{ vars.DATA_BASE_URL }}
         run: |
           started=$SECONDS
           without=()
@@ -1554,41 +1598,73 @@ jobs:
       # red: hand_off.py's ::error says why, and the checks of this run then
       # say they found nothing to check.
       #
-      # ONE MINUTE, which the job's budget leaves
-      # (.github/tests/test_conditions_build_budget.py). The upload is
-      # gzipped (hand_off.py, "GZIPPED"): the fixtures' hourly warehouse,
-      # 257,699,840 bytes, went up as 6,074,023 in 1.72 s to a local
-      # directory (Measured 2026-10-09 in a sandbox). A real leg's holds more
-      # geometry, so its size and R2's rate are @unvalidated until this
-      # step's log line gives both. build_marts.py writes the build's record
-      # into the warehouse last (its docstring, "THE HOURLY LANE'S CHECKS RUN
-      # APART"), so what crosses is the whole of what the checks need. Soak
-      # run 624 (2026-10-10) handed off 2,626,433,024 bytes, 960,100,794
-      # gzipped, in 38.21 s of this step's 60 (Measured, its log).
+      # build_marts.py writes the build's record into the warehouse last (its
+      # docstring, "THE HOURLY LANE'S CHECKS RUN APART"), so what crosses is
+      # the whole of what the checks need, gzipped (hand_off.py, "GZIPPED").
       #
-      # THEN THE HOUR'S COMPARISON BUNDLE, AFTER THE WAREHOUSE (open question
-      # 17; hourly_parity.py's docstring): the answers the extract kept, the
-      # ATC and NYNJTC rows the build read, its weather squares and its exit,
-      # and the six files its writers wrote, a few megabytes, put beside the
-      # warehouse under a pointer of its own (hand_off.py put-bundle). After
-      # it, so the checks' hand-off keeps every second it had, and inside this
-      # step, because the job's caps already add to 899 of its 900 seconds
-      # (.github/tests/test_conditions_build_budget.py): no step of its own
-      # fits. Either half failing leaves the other alone, and only the
-      # warehouse's decides this step's outcome; a bundle that does not move
-      # is check-conditions.yml's `parity` job's to say, as an hour not
-      # compared. The bundle gets what the warehouse left of the first 50 s,
-      # under `timeout`, so it can never run this step into its cap after a
-      # hand-off that worked, and is put only once gathered, so one that
-      # failed leaves the last run's in the store, which take-bundle refuses
-      # as another run's.
-      # @unvalidated, picked: ten seconds of margin under the minute; the
-      # fixtures' bundle took 1.0 s and its put 0.19 s to a local directory
-      # (Measured 2026-10-10), and this step's log gives R2's real figure.
+      # THE HOUR'S COMPARISON BUNDLE FIRST (open question 17; hourly_parity.py's
+      # docstring): the answers the extract kept, the ATC and NYNJTC rows the
+      # build read, its weather squares and its exit, and the six files its
+      # writers wrote, put beside the warehouse under a pointer of its own
+      # (hand_off.py put-bundle). It went second, in what the warehouse left
+      # of this step's first 50 s, until the warehouse alone outgrew them: 5
+      # of the 18 runs of 2026-10-11 that had a bundle put none, and after run
+      # 653 (19:28 UTC) the soak branch had no run until 666 (2026-10-14
+      # 18:07), from which none of the eight runs to 676 put one, each comparison
+      # reading all six files not compared on a green run (review finding
+      # S2-1 of PR #1805 — dlt → dbt re-platform as one go/no-go change).
+      # On the UA soak runs 617 to 676 (2026-10-10 12:21 to
+      # 2026-10-15 02:47 UTC; Measured from each run's `handed run` lines),
+      # the 13 bundles that moved took 1.75 to 2.36 s each, gathered and put,
+      # 12 files and about 1.65 MB gzipped, so BUNDLE_SECONDS, 30, is about 13
+      # times the slowest (Reasoned) and the most it can take from the
+      # warehouse. A bundle that does not move leaves the store's last one,
+      # another run's, which take-bundle refuses, and check-conditions.yml's
+      # `parity` job says the hour was not compared. The warehouse's exit
+      # alone decides this step's outcome.
+      #
+      # THEN THE WAREHOUSE, WITH WHAT THIS JOB HAS LEFT. On the same 39 runs
+      # it grew from 2,624,598,016 bytes to 3,055,300,608, 93.8 MB a day, and
+      # its put took 27.03 to 71.90 s, growing about 3 s a day (least squares
+      # over the 39; Measured): within 1% of the same bytes it took 52.15 s in
+      # run 675 and 71.90 s in run 676 half an hour later, the runner or R2,
+      # not told apart. The one minute this step had could not hold that. Run
+      # 676's put landed at 72 s only because the runner's timeout signals a
+      # step's shell and never the shell's children (actions/runner's
+      # src/Runner.Sdk/ProcessInvoker.cs, read 2026-10-15: SIGINT, SIGTERM
+      # 7.5 s later, then the shell alone killed, and up to 5 s more for the
+      # step's output to close), so the put ran on, orphaned, and the bundle
+      # behind it in the same shell never ran. So each half runs under
+      # coreutils `timeout`, which stops the command's whole process group,
+      # for the smaller of its own ceiling and what this job has left of
+      # JOB_SECONDS after RESERVE_SECONDS for every step after this one: the
+      # freshness step's one-minute cap, the 2 to 5 s after it, and "Set up
+      # job"'s 0 to 3 s before the job's clock was read (Measured on the same
+      # runs, from the API's step times). WAREHOUSE_SECONDS, 240, is 3.3 times
+      # the slowest put (Reasoned), and bounds how long a slow upload can keep
+      # this job, and publish-data with it, waiting. This step began 335 to
+      # 567 s into those 39 jobs, so the warehouse would have had its whole
+      # 240 s every hour (Reasoned: 900 - 75 - 567 - 2.4 = 255.6). At about
+      # 3 s a day the slowest put meets that ceiling in about 55 days
+      # (Reasoned, if the growth stays linear); the build's own growth eats
+      # the job's remainder faster, and
+      # .github/tests/test_conditions_build_budget.py's headroom check on the
+      # build says so first. A put that runs out of time is stopped, says so,
+      # and leaves the last build's warehouse and pointer in the store, so
+      # this run's checks find nothing to check, a warning on a green run; an
+      # upload stopped part-way leaves an incomplete multipart upload in the
+      # raw store until a lifecycle rule removes it (@unvalidated: R2's
+      # default rule, not checked on this bucket).
+      #
+      # FIVE MINUTES, a backstop that never binds first: the two ceilings and
+      # their 5 s grace each come to 280 s.
+      # .github/tests/test_conditions_build_budget.py holds that, and that
+      # RESERVE_SECONDS covers every step after this one;
+      # .github/tests/test_hourly_parity_job.py runs this script.
       - name: Hand this build's warehouse to its checks (dbt path)
         if: ${{ !cancelled() && env.PHONE_FILES == 'dbt' && steps.build.outcome == 'success' && (steps.publish.outcome == 'success' || steps.publish.outcome == 'failure') }}
         continue-on-error: true
-        timeout-minutes: 1
+        timeout-minutes: 5
         env:
           ENVIRONMENT: ${{ matrix.data_environment }}
           RUN: ${{ github.run_id }}
@@ -1601,27 +1677,46 @@ jobs:
           DESTINATION__FILESYSTEM__CREDENTIALS__AWS_SECRET_ACCESS_KEY: ${{ secrets.R2_RAW_SECRET_ACCESS_KEY }}
           DESTINATION__FILESYSTEM__CREDENTIALS__ENDPOINT_URL: ${{ secrets.R2_ENDPOINT_URL }}
           DESTINATION__FILESYSTEM__CREDENTIALS__REGION_NAME: auto
+          # This job's cap, as its timeout-minutes says it; what the steps
+          # after this one need of it; and each half's own ceiling. The
+          # comment above has each figure.
+          JOB_SECONDS: "900"
+          RESERVE_SECONDS: "75"
+          BUNDLE_SECONDS: "30"
+          WAREHOUSE_SECONDS: "240"
         run: |
           set +e
-          started=$SECONDS
-          "$RUNNER_TEMP/extract/bin/python" hand_off.py put --url "s3://$R2_RAW_BUCKET/history/conditions_$ENVIRONMENT" \
+          : "${PUBLISH_JOB_STARTED_AT:?is set by the step Note when this job started, which runs before this one}"
+          # What this job has left after RESERVE_SECONDS, and the smaller of that and $1.
+          left() { echo $((JOB_SECONDS - RESERVE_SECONDS - ($(date +%s) - PUBLISH_JOB_STARTED_AT))); }
+          share() { local now; now=$(left); echo $((now < $1 ? now : $1)); }
+          seconds=$(share "$BUNDLE_SECONDS")
+          if [ "$seconds" -lt 5 ]; then
+            echo "::warning title=Comparison bundle not moved::this job had ${seconds} s left before the ${RESERVE_SECONDS} s the steps after this one need, so no comparison bundle was put and this hour's comparison will say so."
+          else
+            timeout --kill-after=5 "$seconds" bash -c '
+              "$RUNNER_TEMP/extract/bin/python" hourly_parity.py bundle --answers data/hourly_parity/answers \
+                --warehouse data/warehouse.duckdb --processed data/processed/dbt --out data/hourly_parity/bundle &&
+              "$RUNNER_TEMP/extract/bin/python" hand_off.py put-bundle \
+                --url "s3://$R2_RAW_BUCKET/history/conditions_$ENVIRONMENT" \
+                --bundle data/hourly_parity/bundle --run "$RUN" --attempt "$ATTEMPT" --commit "$COMMIT"
+            '
+            case "$?" in
+              124 | 137) echo "::warning title=Comparison bundle not moved::the bundle did not move in the ${seconds} s it had, so this hour's comparison will say so." ;;
+            esac
+          fi
+          seconds=$(share "$WAREHOUSE_SECONDS")
+          if [ "$seconds" -lt 5 ]; then
+            echo "::warning title=Warehouse not handed off::this job had ${seconds} s left before the ${RESERVE_SECONDS} s the steps after this one need, so its warehouse was not handed to its checks, which will find nothing to check."
+            exit 1
+          fi
+          timeout --kill-after=5 "$seconds" \
+            "$RUNNER_TEMP/extract/bin/python" hand_off.py put --url "s3://$R2_RAW_BUCKET/history/conditions_$ENVIRONMENT" \
             --warehouse data/warehouse.duckdb --run "$RUN" --attempt "$ATTEMPT" --commit "$COMMIT"
           status=$?
-          left=$((50 - (SECONDS - started)))
-          if [ "$left" -lt 5 ]; then
-            echo "::warning title=Comparison bundle not moved::the warehouse's hand-off took $((SECONDS - started)) s of this step's minute, so no comparison bundle was put and this hour's comparison will say so."
-            exit "$status"
-          fi
-          timeout "$left" bash -c '
-            "$RUNNER_TEMP/extract/bin/python" hourly_parity.py bundle --answers data/hourly_parity/answers \
-              --warehouse data/warehouse.duckdb --processed data/processed/dbt --out data/hourly_parity/bundle &&
-            "$RUNNER_TEMP/extract/bin/python" hand_off.py put-bundle \
-              --url "s3://$R2_RAW_BUCKET/history/conditions_$ENVIRONMENT" \
-              --bundle data/hourly_parity/bundle --run "$RUN" --attempt "$ATTEMPT" --commit "$COMMIT"
-          '
-          if [ "$?" -eq 124 ]; then
-            echo "::warning title=Comparison bundle not moved::the bundle did not move in the ${left} s the warehouse's hand-off left it, so this hour's comparison will say so."
-          fi
+          case "$status" in
+            124 | 137) echo "::warning title=Warehouse not handed off::its put did not finish in the ${seconds} s this job could give it, so this run's checks will find nothing to check." ;;
+          esac
           exit "$status"
 
       # A WARNING, NEVER RED: decision 100 (the maintainer's poll of

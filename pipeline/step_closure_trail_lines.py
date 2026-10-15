@@ -50,6 +50,23 @@ reaches conditions/trail_closures.json that run, neither crossed out nor
 shaded, since nothing then says which areas have a trail inside; it says so
 in a warning on the run's summary. Line and point closures, which need no
 lines, still publish. It never stops the build for it.
+
+ANOTHER RELEASE'S LINES ARE SAID, NEVER REFUSED. publish-conditions.yml
+restores the newest prepared entry its branch can see, which is the leg's
+current release only once publish-weather.yml has prepared that release and
+nothing older of the branch's own is newer (that workflow's restore step says
+why; review finding S2-4 of PR #1805 — dlt → dbt re-platform as one go/no-go
+change). Given the leg (--leg, or CLOSURE_LINES_LEG, which the workflow sets)
+and DATA_BASE_URL, this asks the leg's latest.json which release is current,
+once and never again that run (LATEST_SECONDS), and when the lines landed are
+another release's it says so in a warning and on the run's summary, naming
+both: a trail the current release added or moved inside an area is then not
+crossed out, and a stretch it removed can still be. The cut still runs on the
+lines it has (Reasoned: they differ from the current release's only where a
+release moved a trail, while refusing them would land none, and no area
+closure at all would reach conditions/trail_closures.json that hour), and
+every closure still publishes. A latest.json that cannot be read is said on
+the summary as not checked. Under --geojson nothing is asked.
 """
 
 from __future__ import annotations
@@ -63,6 +80,9 @@ from pathlib import Path
 import duckdb
 
 import prepare_closure_trail_lines
+from lib import data_env
+from lib.http_retry import request_with_retry
+from lib.user_agent import USER_AGENT
 
 ROOT = Path(__file__).parent
 WAREHOUSE_PATH = ROOT / "data" / "warehouse.duckdb"
@@ -72,6 +92,32 @@ TABLE = "closure_trail_lines"
 #: The areas this step lands lines near, each with its bounding box (models/intermediate/closures/).
 AREAS = "intermediate.int_closures__trail_closure_areas"
 NO_LINES_TITLE = "No trail lines to cut area closures against"
+OTHER_RELEASE_TITLE = "Area closures cut against another release's trail lines"
+#: The leg whose latest.json names the release the lines should be: publish-conditions.yml's build step sets it.
+LEG_VARIABLE = "CLOSURE_LINES_LEG"
+#: One read of latest.json, never retried, its connect and each of its reads given this long (requests' timeout, which
+#: bounds a stalled server, not a slow whole body): an answer the build can do without (the docstring's "ANOTHER
+#: RELEASE'S LINES ARE SAID"). @unvalidated, picked: UA's latest.json is 1,004,519 bytes and came back whole in 1.26
+#: to 2.29 s through a sandbox's proxy (Measured 2026-10-15, three reads); a runner's figure is this step's own.
+LATEST_SECONDS = 10
+
+
+def leg_release(base: str, leg: str) -> tuple[str | None, str]:
+    """The release `leg`'s latest.json names, with the URL it was read from; or None, with why it is not known."""
+    try:
+        url = f"{data_env.resolve_base(base, leg)}/latest.json"
+    except data_env.UnknownEnvironment as unknown:
+        return None, str(unknown)
+    try:
+        response = request_with_retry(
+            url, timeout=LATEST_SECONDS, backoff=(), label="latest.json", headers={"User-Agent": USER_AGENT}
+        )
+        release = prepare_closure_trail_lines.current_release(response.json())
+    except (Exception, SystemExit) as failed:  # noqa: BLE001 - any failure is "not checked", said, never the build's
+        return None, f"{url} could not be read ({type(failed).__name__})"
+    if release is None:
+        return None, f"{url} names no release carrying {' and '.join(prepare_closure_trail_lines.SOURCE_KEYS)}"
+    return release, url
 
 
 def create_empty(con: duckdb.DuckDBPyConnection) -> None:
@@ -150,6 +196,12 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--geojson", type=Path, help="prepare this nearby_trails.geojson first, in place of --lines")
     parser.add_argument("--at-geojson", type=Path, help="with --geojson: the A.T.'s trails.geojson to prepare beside it")
     parser.add_argument("--release", default="local", help="with --geojson: the release the files stand for")
+    parser.add_argument(
+        "--leg",
+        default=os.environ.get(LEG_VARIABLE) or None,
+        help=f"the leg whose latest.json names its current release (default ${LEG_VARIABLE}); unset, nothing is asked",
+    )
+    parser.add_argument("--base", help="data base URL for --leg's latest.json; defaults to $DATA_BASE_URL")
     args = parser.parse_args(argv)
     if args.at_geojson is not None and args.geojson is None:
         parser.error("--at-geojson needs --geojson")
@@ -193,9 +245,33 @@ def main(argv: list[str] | None = None) -> int:
     )
     if counts["landed"] == 0:
         line += ", and its first line besides, to say the lines were read"
+    if args.geojson is None and args.leg:
+        line += _against_the_legs_release(str(counts["release"]), args.leg, data_env.resolve_base(args.base))
     print(line)
     _summary(f"area closures cut against {line.split(': ', 1)[1]}")
     return 0
+
+
+def _against_the_legs_release(lines_release: str, leg: str, base: str) -> str:
+    """What the summary line adds about `lines_release` against `leg`'s current release, after warning when they
+    differ (the docstring's "ANOTHER RELEASE'S LINES ARE SAID, NEVER REFUSED")."""
+    if not base:
+        return f"; whether it is the {leg} leg's current release was not checked, as no DATA_BASE_URL was given"
+    current, said = leg_release(base, leg)
+    if current is None:
+        return f"; whether it is the {leg} leg's current release was not checked: {said}"
+    if current == lines_release:
+        return f", the {leg} leg's current release"
+    message = (
+        f"{SCHEMA}.{TABLE} holds release {lines_release}'s trail lines, and {said} names release {current}, so this "
+        f"hour's area closures were crossed out and shaded against {lines_release}'s trails: a trail {current} added "
+        f"or moved inside an area is not crossed out, and a stretch it removed can still be. Every closure still "
+        "publishes. The lines are the newest entry this branch's cache can see (publish-conditions.yml's step 2c), "
+        "and publish-weather.yml prepares a release's lines on a run that finds no entry of that release's."
+    )
+    print(f"::warning title={OTHER_RELEASE_TITLE}::{message}")
+    _summary(f"**{OTHER_RELEASE_TITLE}.** {message}")
+    return f", not the {leg} leg's current release, {current}"
 
 
 if __name__ == "__main__":

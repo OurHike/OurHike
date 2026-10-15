@@ -75,9 +75,9 @@ maintainer's poll of 2026-10-10: "Compare every soak hour"):
     python hand_off.py take-bundle --url URL --out DIR --run RUN [--commit SHA]
 
 hourly_parity.py's bundle, the answers today's exporters need and the six
-files the writers wrote, a few megabytes where the warehouse is 2,626,433,024
-bytes (soak run 624's log, 2026-10-10), goes beside the warehouse with a
-pointer of its own:
+files the writers wrote, 1,632,706 bytes gzipped in soak run 653 (2026-10-11)
+where run 676's warehouse was 3,055,300,608 bytes (2026-10-15; both their
+logs), goes beside the warehouse with a pointer of its own:
 
     checks/parity_inputs.json.gz  every file of the bundle, as one gzipped JSON document {path: text}
     checks/parity_inputs.json     which run put it, from which commit, its size and sha256: written last
@@ -86,9 +86,12 @@ The same rules as the warehouse's, on their own pointer, so neither can make
 the other's take fail: one copy a leg, overwritten each build; `take-bundle`
 finds nothing to compare (NOT_HANDED_OFF) for another run's or another
 commit's bundle, and answers a later put landing mid-download the same way.
-The publish job puts it AFTER the warehouse, in the same capped step, so the
-checks' hand-off keeps every second it had (publish-conditions.yml's
-"Hand this build's warehouse to its checks"). A bundle is text alone, and a
+The publish job puts it BEFORE the warehouse, in the same step and under a
+ceiling of its own, because it is about 2 s against the warehouse's 27 to 72 s
+(the UA soak runs of 2026-10-10 to 2026-10-15, Measured from their logs), and
+none of the eight soak runs 666 to 676 put one while it came second; the
+warehouse then gets what the job has left (publish-conditions.yml's "Hand this
+build's warehouse to its checks" has the figures). A bundle is text alone, and a
 path in it that is absolute or climbs out of the directory is refused rather
 than written. It holds rows, so purge_person_fields.py (decision 56) unpacks
 it and reads each of its files' keys (read_bundle()), as it reads the

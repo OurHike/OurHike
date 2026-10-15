@@ -110,3 +110,30 @@ def test_preparing_the_lines_never_delays_or_stops_a_forecast():
         step = steps[position]
         if "run" in step:
             assert step.get("continue-on-error") is True and step.get("timeout-minutes"), step["name"]
+
+
+STEP_SCRIPT = REPO / "pipeline" / "step_closure_trail_lines.py"
+#: step_closure_trail_lines.py's LEG_VARIABLE, read from its text as SCHEMA is above.
+LEG_VARIABLE = re.search(r'^LEG_VARIABLE = "([A-Z_]+)"$', STEP_SCRIPT.read_text(encoding="utf-8"), re.MULTILINE).group(1)
+
+
+def test_a_restore_that_stalls_gives_up_as_a_miss_inside_its_cap_and_never_fails_the_job():
+    """Review finding S2-7 of PR #1805 — dlt → dbt re-platform as one go/no-go change: actions/cache waits 10 minutes on
+    a stalled segment by default, before the build and "Publish to R2". A stalled download now gives up as a miss before
+    the step's cap, the cap stops anything else, and either is an hour without lines, never a failed job.
+    .github/tests/test_conditions_build_budget.py counts the cap."""
+    (restore,) = _caching(_steps(CONDITIONS, "publish"))
+
+    assert restore.get("continue-on-error") is True
+    assert restore.get("timeout-minutes") == 1
+    assert 0 < float(restore["env"]["SEGMENT_DOWNLOAD_TIMEOUT_MINS"]) < restore["timeout-minutes"]
+
+
+def test_the_build_names_its_leg_so_the_cut_can_say_when_the_lines_are_another_releases():
+    """Review finding S2-4, the same review: the restore takes the newest entry the branch can see, which need not be
+    the leg's current release, so step_closure_trail_lines asks the leg's latest.json and warns when it is not."""
+    steps = _steps(CONDITIONS, "publish")
+    (build,) = [step for step in steps if step.get("id") == "build"]
+
+    assert build["env"][LEG_VARIABLE] == "${{ matrix.data_environment }}"
+    assert build["env"]["DATA_BASE_URL"] == "${{ vars.DATA_BASE_URL }}"

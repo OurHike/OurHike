@@ -24,7 +24,9 @@ word reads lets the title speak (S1-1), a flag's coded unknown leaves it a flag 
 lists (S1-2), a start a title states with a day closes from that day (S1-4), a phrase naming both uses or everyone
 bars every use (S2-2), a qualifying word inside a `not_a_qualifier` phrase qualifies nothing (S2-3), a closures
 layer's detours and reopenings are not its closures (S2-4), a season a row states in words is read in the season
-that has not ended (S1-3), and dates that contradict each other close no trail (S2-5).
+that has not ended (S1-3), and dates that contradict each other close no trail (S2-5). Its second pass found
+facilities no site word named still crossed out (thread 4279221884): a dump station, a campground written 'CG', a
+district office and ten more now read as sites, and the site words say they are a deny-list.
 """
 
 import csv
@@ -45,12 +47,16 @@ TEST_SEASON = (
     "int_closures__club_notices_reads_a_stated_season_in_the_season_that_has_not_ended_and_dates_that_contradict_as_"
     "closing_nothing"
 )
+TEST_FACILITIES = "int_closures__club_notices_reads_a_facility_its_title_names_as_a_site_and_a_trail_named_after_one_as_the_trail"
+TEST_SHOWN = "int_closures__club_notices_shows_a_category_by_its_layers_own_label_and_names_a_bare_identifier_by_it"
 #: The reading tests, which mock the whole vocabulary, and the tests that mock only the words they need.
 WHOLE_VOCABULARY = (TEST, TEST_190, TEST_REVIEW)
 SOME_WORDS = (
     "int_closures__club_notices_keeps_a_notice_for_a_days_margin_either_side_of_its_own_dates",
     "int_closures__club_notices_places_a_point_inside_exactly_one_of_its_stewards_own_areas_by_that_area",
     TEST_SEASON,
+    TEST_FACILITIES,
+    TEST_SHOWN,
 )
 
 
@@ -163,10 +169,13 @@ def test_missouris_archived_is_its_only_status_read_as_not_current():
 
 
 def test_michigans_unspecified_foot_travel_status_is_nothing_for_a_hiker_on_both_layers():
-    """P4: '-1', the domain's 'Unspecified', says nothing; the rows' own category, 'Motorized', limits them to a use
-    a hiker is not. A foot-travel status that says closed closes beside the same category."""
+    """P4: '-1', the domain's 'Unspecified', says nothing; the rows' own TrailUseCategory, 'Motorized', limits them to
+    a use a hiker is not. It was their category until the review of 2026-10-15 (thread 4279218690) and is read as
+    their narrative since, so their category shows their status. A foot-travel status that says closed closes beside
+    the same use."""
     assert reads_as("status", "-1") == {"unspecified"}
     assert reads_as("category", "Motorized") == {"not_a_hikers_use"}
+    assert reads_as("narrative", "Motorized") == {"not_a_hikers_use"}
     for value in (
         "Temporarily Closed",
         "Temporarily Closed Due To Timber Harvest",
@@ -489,3 +498,75 @@ def test_a_season_is_read_in_the_season_that_has_not_ended_and_contradicting_dat
         assert expected[f"cotrex_seasonal_closures:{key}"]["obstructs_trail"] is None, key
     for notice_id in ("idpr_area_restrictions:end_before_start", "nps_yell_bear_management_areas:start_before_1900"):
         assert expected[notice_id]["obstructs_trail"] is None, notice_id
+
+
+def test_a_facility_the_review_named_is_a_site_and_the_site_words_say_they_are_a_deny_list():
+    """The review of 2026-10-15, thread 4279221884: Grand Canyon's 'RV Dump Station', 'Gas Station' and 'North Rim
+    Administrative Area', King County's playground, Wisconsin's 'Wildlife Exhibit Area', Region 4's 'Pine Valley CG'
+    and USFS's district office, put-in, wayside, hunt camp and resort were crossed out as trails because no site word
+    named them. Each word reads as a site in a title; 'administrative' alone does not, so an area closed for
+    administrative reasons still closes; and the site rule's own `why` says the words are a deny-list,
+    @unvalidated for a facility none of them names."""
+    for word in (
+        "dump station",
+        "gas station",
+        "playground",
+        "pullout",
+        "administrative area",
+        "administrative site",
+        "housing",
+        "exhibit",
+        "district office",
+        "resort",
+        "put in",
+        "wayside",
+        "hunt camp",
+        "cg",
+    ):
+        assert "a_site_not_the_trail" in reads_as("title", word), word
+    assert "a_site_not_the_trail" in reads_as("title", "Cherry Creek Put-in")
+    assert "a_site_not_the_trail" not in reads_as("title", "Bright Angel Point Administrative Closure")
+    (campground,) = [row for row in seed("notice_words") if row["word"] == "campground"]
+    assert "deny-list" in campground["why"] and "@unvalidated" in campground["why"]
+    expected = _expected(TEST_FACILITIES)
+    for key in (
+        "nps_grca_closures:dump_station",
+        "nps_grca_closures:administrative_area",
+        "usfs_r04_forest_orders:cg_order",
+        "usfs_rec_opportunities_status:district_office",
+    ):
+        assert expected[key]["read_from"].endswith("a site and not the trail"), key
+        assert expected[key]["obstructs_trail"] is None, key
+    for key in ("nps_grca_closures:administrative_closure", "usfs_rec_opportunities_status:hunt_camp_trail"):
+        assert expected[key]["obstructs_trail"] is True, key
+
+
+def test_every_mock_of_the_category_labels_is_rows_of_the_seed_file():
+    """Every reading test mocks seeds/notice_category_labels.csv, empty or with rows exactly as the seed holds them."""
+    labels = seed("notice_category_labels")
+    for name, test in _unit_tests().items():
+        if test["model"] != "int_closures__club_notices":
+            continue
+        for row in _given(test, "notice_category_labels"):
+            assert row in labels, (name, row)
+
+
+def test_a_category_shows_its_layers_own_label_and_a_bare_identifier_is_named_by_it():
+    """The review of 2026-10-15, threads 4279218690 and 4279219442: a category shows as its layer's own label for its
+    code (Utah FFSL's 'Prevention Order' is 'Fire Prevention Order'), and a title that is only an identifier is named by
+    that label, 'Fire Prevention Order UT914-25-001'. One with no category, a category of no letters, or a category
+    that is its status again (Region 8's burn block 'HS84-1'), keeps its identifier; a title of words holding a number
+    is its own."""
+    labels = {(row["source_key"], row["code"]): row["label"] for row in seed("notice_category_labels")}
+    assert labels[("utah_ffsl_fire_restrictions", "Prevention Order")] == "Fire Prevention Order"
+    assert labels[("wi_dnr_park_closures", "storm damage")] == "Storm damage"
+    expected = _expected(TEST_SHOWN)
+    assert expected["utah_ffsl_fire_restrictions:prevention_order"]["title"] == "Fire Prevention Order UT914-25-001"
+    assert expected["iata_lands_hunting_regs:open_hunting"]["category"] == "Open for public hunting"
+    for key, title in (
+        ("fltc_hunting_bypasses:bypass", "M08HBP01"),
+        ("wa_dnr_ifpl:precaution_zone", "685"),
+        ("usfs_r04_forest_orders:road_order", "NFSR 220 Road Closure"),
+        ("usfs_r08_prescribed_burns:burn_block", "HS84-1"),
+    ):
+        assert expected[key]["title"] == title, key

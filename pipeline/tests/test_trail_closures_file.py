@@ -43,12 +43,17 @@ def test_the_exposure_names_the_phones_key_on_the_hourly_clock():
 
 def test_the_writer_keeps_its_last_file_and_takes_its_rows_from_the_notices_writer_alone():
     """ONE HOME FOR EVERY RULE: which rows obstruct, the row shape and the dates are pub_conditions_notices'; the only
-    other thing the writer reads is the cut, and it reads no mart or source of its own."""
+    other things the writer reads are the cut and each area's own outline, which the same-closure rule measures (the
+    review of 2026-10-15, thread 4279223668), and it reads no mart or source of its own."""
     sql = WRITER.read_text(encoding="utf-8")
 
     assert "location='conditions_trail_closures.json'" in sql
     assert "meta={'when_empty': 'keep_last_file'}" in sql
-    assert set(REF.findall(sql)) == {"pub_conditions_notices", "int_closures__area_trail_cuts"}
+    assert set(REF.findall(sql)) == {
+        "pub_conditions_notices",
+        "int_closures__area_trail_cuts",
+        "int_closures__trail_closure_areas",
+    }
     assert "source(" not in sql
 
 

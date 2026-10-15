@@ -207,13 +207,19 @@ def test_a_narrative_is_staged_to_be_read_and_never_counted_as_a_fact(files):
     assert generator.PROSE_ROLES <= set(generator.ROLES)
     fields = {row["source_key"]: row for row in _seed("notice_source_fields")}
     named = {key for key, row in fields.items() if row["narrative"]}
-    assert named == {"idpr_emergency_route_closures", "idpr_area_restrictions"}
+    assert named == {
+        "idpr_emergency_route_closures",
+        "idpr_area_restrictions",
+        "mi_dnr_trail_temporary_closures",
+        "mi_dnr_trail_temporary_reroutes",
+    }
     sources = {source.key: source for source in generator.notice_sources()}
     for key in named:
         source = sources[key]
         assert "narrative" not in generator._fact_columns(source, fields), key
         model = files[DBT / "models" / "staging" / source.club / "notices" / f"{source.stg_model}.sql"]
-        assert "    {{ notice_field('narrative') }} as narrative,\n" in model, key
+        field = fields[key]["narrative"].lower()
+        assert f"    {{{{ notice_field('{field}') }}}} as narrative,\n" in model, key
     vtrans = sources["vtrans_rail_trail_closures"]
     model = files[DBT / "models" / "staging" / vtrans.club / "notices" / f"{vtrans.stg_model}.sql"]
     assert "    cast(null as varchar) as narrative,\n" in model
@@ -283,7 +289,54 @@ def test_a_layers_own_name_and_a_sites_own_type_are_staged_as_schema(files):
     model = files[DBT / "models" / "staging" / rec.club / "notices" / f"{rec.stg_model}.sql"]
     assert "    {{ notice_field('markeractivity') }} as site_type,\n" in model
     assert "{{ notice_field('openstatus') }} as category," in model
-    assert {key for key, row in fields.items() if row["site_type"]} == {"usfs_rec_opportunities_status"}
+    assert {key for key, row in fields.items() if row["site_type"]} == {
+        "usfs_rec_opportunities_status",
+        "mo_state_parks_katy_trailheads",
+        "blm_or_rec_site_status",
+    }
+
+
+def test_a_category_holds_a_status_or_a_reason_and_never_a_class_code():
+    """The review of PR #1805 of 2026-10-15, thread 4279218690: a category prints under a notice's tag as "Listed as"
+    its value (decisions 78 and 137), so Midpen's CLOSETYPE printed 'Regular' under a Closure tag on 122 closed areas,
+    which a hiker reads as open. The standard (seeds/_notices__seeds.yml): a category holds the row's own status, the
+    kind of notice its source files it as, or the reason it was posted, and never a class along another axis. Every
+    seed row and every fixed reader that stages a category says which it holds, so a field is checked against the
+    standard when it is named. The review's four: Midpen's category is its status, Wisconsin's its Reason, Santa
+    Clara's none, and Michigan's its foot-travel status, with TrailUseCategory read as the narrative."""
+    rows = _seed("notice_source_fields")
+    for row in rows:
+        if row["category"]:
+            assert row["category_holds"] in ("status", "reason"), row["source_key"]
+        else:
+            assert row["category_holds"] == "", row["source_key"]
+    for name, reader in generator.READERS.items():
+        if "category" in reader.roles:
+            assert reader.category_holds in ("status", "reason"), name
+        else:
+            assert reader.category_holds == "", name
+    fields = {row["source_key"]: row for row in rows}
+    assert fields["midpen_preserve_access"]["category"] == fields["midpen_preserve_access"]["status"] == "ACCESS"
+    assert (fields["wi_dnr_park_closures"]["category"], fields["wi_dnr_park_closures"]["category_holds"]) == (
+        "Reason",
+        "reason",
+    )
+    assert fields["scc_parks_closed_areas"]["category"] == ""
+    for key in ("mi_dnr_trail_temporary_closures", "mi_dnr_trail_temporary_reroutes"):
+        assert fields[key]["category"] == fields[key]["status"] == "OpenClosedStatusNonmotor", key
+        assert fields[key]["narrative"] == "TrailUseCategory", key
+
+
+def test_every_category_label_is_for_the_field_its_source_stages_as_its_category():
+    """seeds/notice_category_labels.csv copies each label from the domain of the field a source stages as its
+    category; a label for any other field would name a code of the wrong field, so it is held to
+    seeds/notice_source_fields.csv's `category`, and to a layer whose field this generator reads (an ArcGIS row)."""
+    fields = {row["source_key"]: row for row in _seed("notice_source_fields")}
+    labels = _seed("notice_category_labels")
+    assert labels
+    for row in labels:
+        assert fields[row["source_key"]]["category"] == row["field"], row
+        assert row["label"] != row["code"], row
 
 
 def test_a_conflicting_key_holds_its_source_and_never_stops_the_build(files):

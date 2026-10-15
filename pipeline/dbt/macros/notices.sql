@@ -45,7 +45,13 @@
       without an offset (Atom, WordPress's modified_gmt, ArcGIS's DateOnly
       'YYYY-MM-DD', NPS's '2026-10-02 00:00:00.0'). Without an offset the
       session's zone applies, which build_marts.py sets to UTC;
-    - RFC 822, an RSS pubDate, with 'GMT' read as '+0000';
+    - RFC 822, an RSS pubDate, with its zone named or numbered: a name
+      RFC 822 section 5.1 gives (UT, GMT, Z and the eight North American
+      ones) is read as the offset it stands for (notice_rfc822_offset()
+      below), so Maricopa County Parks' 'Tue, 2 Sep 2025 13:30:00 MST' is
+      20:30 UTC. Until the review of PR #1805 of 2026-10-15 (thread
+      4279226770) only ' GMT' was, and all 104 of Maricopa's items read
+      2026-10-15 had no date;
     - a day, alone or followed by words, which notice_stated_day() below
       reads: month/day/year, ISO, or a month's name on either side of the
       day.
@@ -61,10 +67,33 @@
         end,
         try_cast({{ text }} as timestamptz),
         try_strptime(
-            replace({{ text }}, ' GMT', ' +0000'), '%a, %d %b %Y %H:%M:%S %z'
+            {{ notice_rfc822_offset(text) }}, '%a, %d %b %Y %H:%M:%S %z'
         ),
         cast({{ notice_stated_day(text) }} as timestamptz)
     )
+{%- endmacro %}
+
+{#- A text value with an RFC 822 zone name at its end replaced by the offset
+    the name stands for (RFC 822, section 5.1), or the value as it was: the
+    numbered form strptime's %z reads. The military letters but Z are left
+    out, because RFC 1123 (section 5.2.14) says RFC 822 gave their signs the
+    wrong way round, and a zone RFC 822 does not name ('HST') is no instant
+    here, never a guess. Words that end in a zone name ('Closed until 5:00 PM
+    MST') still read as no instant: with the offset they are no RFC 822
+    date, and they state no day first. -#}
+{% macro notice_rfc822_offset(text) -%}
+    {%- set zones = {
+        'UT': '+0000', 'GMT': '+0000', 'Z': '+0000',
+        'EST': '-0500', 'EDT': '-0400', 'CST': '-0600', 'CDT': '-0500',
+        'MST': '-0700', 'MDT': '-0600', 'PST': '-0800', 'PDT': '-0700'
+    } -%}
+    case regexp_extract({{ text }}, ' ([A-Z]{1,3})$', 1)
+        {%- for name, offset in zones.items() %}
+        when '{{ name }}'
+            then regexp_replace({{ text }}, ' [A-Z]{1,3}$', ' {{ offset }}')
+        {%- endfor %}
+        else {{ text }}
+    end
 {%- endmacro %}
 
 {#- The day a source's text value starts with, as TIMESTAMP at midnight, or

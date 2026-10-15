@@ -14,7 +14,9 @@
 //     CLOSURE_NEAR_MIN_ZOOM in. Each is a symbol placed along the line, not
 //     a texture mapped onto it.
 //  4. THE MARK - one larger ✕ per closed run below CLOSURE_NEAR_MIN_ZOOM,
-//     where the run is too short on screen to carry a chain.
+//     where the run is too short on screen to carry a chain. On the clubs'
+//     feed it stays on past that zoom for a closure whose longest run is
+//     still too short for the chain (decision 198, CLOSURE_MARK_UNTIL_CROSSES).
 //
 // THE MAINTAINER'S CHOICE OF 2026-09-26, after four earlier spellings of the
 // band had failed: "The route closure is not readable. The alternating colors
@@ -64,7 +66,8 @@
 // corridor sketch's, and every club's closures from
 // conditions/trail_closures.json (map/clubClosureLayers.ts) - and
 // lib/atcUpdateStyle.ts calls it for the ATC's band at twice the spacing.
-// Only the id, the source, the filter and the spacing may differ.
+// Only the id, the source, the filter and the spacing may differ, and, on the
+// clubs' feed alone, how long the far mark stays (`markUntil`, decision 198).
 //
 // A CLOSURE AT A POINT IS THE FAR MARK, AT THE POINT (the maintainer's
 // standard S6, poll of 2026-10-11: "a point one ✕"). A bridge out has no run
@@ -130,17 +133,37 @@ export const CLOSURE_CASING_WIDTH = 2
 export const CLOSURE_MARK_MIN_ZOOM = 7
 
 /**
- * The zoom the chain of crosses takes over from the far mark, going in.
+ * The zoom the chain of crosses starts at, going in, and the zoom the far mark
+ * hands over to it on every feed but the clubs'.
  *
- * DERIVED FROM THE SHORTEST CLOSURE AND THE CROSS'S OWN SIZE. MapLibre puts a
- * symbol on a line only where the line is at least as long as the symbol's
- * image, so the question is: at what zoom is the shortest closure on this map
- * longer than one cross? OPRHP's closed runs are 1.1 to 1.9 km, and at
- * latitude 41 a zoom's metres per pixel is 117,610 / 2^z - so 1.1 km spans
- * 9.6 px at z10 and 19.2 px at z11. The cross's image is
- * closureCrossImageSize() = 14 CSS px at full size and CLOSURE_CROSS_SIZE's
- * 0.8 of that here, 11.2 px. z10 is short of it and z11 clears it, so z11 is
- * the first zoom at which every closure on the map is guaranteed a cross.
+ * WHAT IT WAS DERIVED FROM: the shortest closure the map drew when it was
+ * written, OPRHP's closed runs of 1.1 to 1.9 km, against one cross,
+ * closureCrossImageSize() = 14 CSS px at CLOSURE_CROSS_SIZE's 0.8 here, 11.2
+ * px. With 117,610 / 2^z metres per pixel at latitude 41, 1.1 km came to 9.6
+ * px at z10 and 19.2 px at z11, so z11 was "the first zoom at which every
+ * closure on the map is guaranteed a cross".
+ *
+ * NO LONGER TRUE OF EVERY CLOSURE. The clubs' closures
+ * (map/clubClosureLayers.ts) run down to 4.5 m, and on UA's file of
+ * 2026-10-14 125 of their 1,021 line closures drew no chain cross at z11, 57
+ * at z12, 25 at z13 and 11 at z14 (finding F1 of the client review of
+ * #1805 — dlt → dbt re-platform as one go/no-go change, counted tile by tile
+ * and rendered 2026-10-15). So the clubs' far mark does not stop here:
+ * it stays on a closure until its longest run is CLOSURE_MARK_UNTIL_CROSSES
+ * chain crosses long (decision 198). The other feeds still hand over here.
+ *
+ * TWO STEPS OF THE DERIVATION ARE WRONG. The value was not moved for them:
+ * the look the maintainer chose on 2026-09-26 was rendered handing over at
+ * 11. @unvalidated as a number now; a render of the five feeds at z10 beside
+ * z11 would settle whether it should be 10.
+ *  - 117,610 / 2^z is the scale of 256 px tiles. MapLibre's zoom is 512 px
+ *    tiles, on which 1.1 km is 19 px at z10, already a cross.
+ *  - MapLibre's room for a symbol on a line is not the image's width:
+ *    maplibre-gl 6.7.0 sizes an icon-only line symbol by the default 16 px
+ *    text over its 24 px glyph (symbol/get_anchors.ts, fed
+ *    symbol_layout.ts's textMaxBoxScale), so a run takes a cross from
+ *    14 x 16/24 = 9.33 px, whatever `icon-size` says.
+ * closureStyle.test.ts re-runs the first arithmetic as it was written.
  *
  * The same 11 the #1598 band stepped its rhythm at, by the same argument
  * (does the shortest closure hold one pitch), which is why it is the same
@@ -275,6 +298,47 @@ export const CLOSURE_MARK_HALO_WIDTH = 2.5
  */
 export const CLOSURE_MARK_PADDING = 6
 
+/**
+ * How many chain crosses long a club closure's longest run has to be on
+ * screen before its far mark lets go of it (decision 198, the maintainer's
+ * poll of 2026-10-15: "B: bold ✕ until chain fits"). One chain cross is
+ * closureCrossImageSize() at that zoom's CLOSURE_CROSS_SIZE: 11.2 px at z11,
+ * 12.6 at z12 and 14 from CLOSURE_FULL_WIDTH_ZOOM in.
+ *
+ * MORE THAN ONE, BECAUSE MAPLIBRE LAYS THE CHAIN OUT TILE BY TILE. It places
+ * a line's symbols on the piece of the line inside each tile, and only a piece
+ * that does not start on the tile's edge gets the retry at its middle
+ * (maplibre-gl 6.7.0, symbol/get_anchors.ts). So a run cut by a tile edge can
+ * be long enough as a whole and still have no piece with room for a cross.
+ * Reasoned, for a run cut once: the piece that starts inside the tile needs
+ * 9.33 px (CLOSURE_NEAR_MIN_ZOOM's docstring) and the piece that starts on
+ * the edge needs half the chain's spacing and half a cross, 13.7 to 16.7 px,
+ * so any run of 23 px at z11 to 26 px from z13 carries one. A run that
+ * zig-zags along an edge can need more.
+ *
+ * Measured 2026-10-15, by applying those rules tile by tile to the 1,021 line
+ * closures in UA's trail_closures.json of 2026-10-14, at z11 to z15. With one
+ * cross as the bar, 3, 1, 1, 0 and 1 closures had neither mark; the z12 one,
+ * rendered in maplibre-gl, drew no cross. With two, 1 was left, at z13. With
+ * 2.5, none, and 203, 169, 106, 54 and 33 closures draw both the far mark
+ * and the chain. @unvalidated beyond that file: a run cut more finely than
+ * any on it can still fall between the two marks, and re-running the
+ * tile-by-tile count on a newer file is what would show it.
+ */
+export const CLOSURE_MARK_UNTIL_CROSSES = 2.5
+
+/**
+ * The far mark's filter on a feed whose features say when the chain can carry
+ * them: on while the zoom is below the feature's `property`, a whole zoom
+ * (map/clubClosureLayers.ts's `clubClosureChainFrom`). A feature without it
+ * hands over at CLOSURE_NEAR_MIN_ZOOM, as every other feed's does. A filter's
+ * zoom is the tile's whole zoom, which is also the zoom MapLibre lays the
+ * chain out at.
+ */
+export function closureMarkUntilFilter(property: string): unknown[] {
+  return ['>', ['coalesce', ['get', property], CLOSURE_NEAR_MIN_ZOOM], ['zoom']]
+}
+
 /** A list of [zoom, value] stops as a linear `interpolate` on zoom. */
 function zoomRamp(stops: ReadonlyArray<readonly [number, number]>): unknown[] {
   return ['interpolate', ['linear'], ['zoom'], ...stops.flat()]
@@ -349,6 +413,11 @@ export interface ClosureLayerOptions {
   /** Multiplies the chain's spacing. 1 for a closure; the ATC band's slower
    *  cadence (lib/atcUpdateStyle.ts). */
   spacingScale?: number
+  /** The feature property saying the first zoom the chain can carry that
+   *  feature. Given, the far mark has no maxzoom and stays on each feature
+   *  until then (`closureMarkUntilFilter`); only the clubs' feed gives one
+   *  (decision 198). Omitted, it hands over at CLOSURE_NEAR_MIN_ZOOM. */
+  markUntil?: string
 }
 
 /**
@@ -356,15 +425,31 @@ export interface ClosureLayerOptions {
  * chain of crosses, the far mark. The header has what each is for.
  *
  * Built by one function for every feed, so the instances are byte-identical
- * apart from id, source, filter and spacing - the property the tests assert,
- * rather than four layer lists that currently agree.
+ * apart from id, source, filter and spacing, and the clubs' far mark's
+ * handover - the property the tests assert, rather than four layer lists that
+ * currently agree.
  */
 export function buildClosureLayers(
   sourceId: string,
   options: ClosureLayerOptions,
 ): LayerSpecification[] {
-  const { ground, ink, bandId = CLOSURE_LAYER_ID, filter, spacingScale = 1 } = options
+  const {
+    ground,
+    ink,
+    bandId = CLOSURE_LAYER_ID,
+    filter,
+    spacingScale = 1,
+    markUntil,
+  } = options
   const restrict = filter === undefined ? {} : { filter: filter as never }
+  // The far mark hands over to the chain at one zoom, or at each feature's
+  // own (decision 198).
+  const until = markUntil === undefined ? undefined : closureMarkUntilFilter(markUntil)
+  const markFilter =
+    until === undefined
+      ? restrict
+      : { filter: (filter === undefined ? until : ['all', filter, until]) as never }
+  const markMaxzoom = until === undefined ? { maxzoom: CLOSURE_NEAR_MIN_ZOOM } : {}
   const line = { 'line-cap': 'round', 'line-join': 'round' } as const
   return [
     {
@@ -419,9 +504,9 @@ export function buildClosureLayers(
       id: closureMarkId(bandId),
       type: 'symbol',
       source: sourceId,
-      ...restrict,
+      ...markFilter,
       minzoom: CLOSURE_MARK_MIN_ZOOM,
-      maxzoom: CLOSURE_NEAR_MIN_ZOOM,
+      ...markMaxzoom,
       layout: {
         'symbol-placement': 'line-center',
         'icon-image': CLOSURE_CROSS_ICON_ID,

@@ -14,10 +14,15 @@ import { MockMap, resetMapLibreMock } from '../test/mocks/maplibre-gl'
 import {
   buildClosureLayers,
   CLOSURE_CROSS_ICON_ID,
+  closureCrossImageSize,
+  closureCrossesId,
   CLOSURE_LAYER_ID,
   CLOSURE_MARK_HALO_WIDTH,
   CLOSURE_MARK_MIN_ZOOM,
   CLOSURE_MARK_SIZE,
+  CLOSURE_MARK_UNTIL_CROSSES,
+  closureMarkUntilFilter,
+  CLOSURE_NEAR_MIN_ZOOM,
   CLOSURE_TRACE_OPACITY,
   closureLayerIds,
   closureMarkId,
@@ -26,18 +31,25 @@ import {
 import { ATC_UPDATE_LAYER_ID } from '../lib/atcUpdateStyle'
 import type { TrailClosure } from '../lib/publishedConditions'
 import { validTrailClosure } from '../lib/publishedNotices'
-import { trailClosureRows } from '../../preview-shots/fixtures/clubClosures.mjs'
+import {
+  shortClosureRow,
+  trailClosureRows,
+} from '../../preview-shots/fixtures/clubClosures.mjs'
 import {
   buildClubClosureLayers,
   buildClubClosureShadeLayer,
   buildClubClosureSource,
+  CLUB_CLOSURE_CHAIN_FROM_PROPERTY,
   CLUB_CLOSURE_LINE_FILTER,
+  CLUB_CLOSURE_NEVER_CHAINED,
   CLUB_CLOSURE_POINT_FILTER,
   CLUB_CLOSURE_SHADE_FILTER,
   CLUB_CLOSURE_SHADE_LAYER_ID,
   CLUB_CLOSURE_SOURCE_ID,
+  clubClosureChainFrom,
   clubClosureShadeIdAt,
   clubClosureShadeImageId,
+  longestRunAtZ0,
   SHADE_INKS,
 } from './clubClosureLayers'
 import {
@@ -144,21 +156,42 @@ beforeEach(() => {
 })
 
 describe('how a club closure is drawn', () => {
-  it('crosses a line closure out with exactly the mark every closure feed wears', () => {
-    // "Only the id, the source, the filter and the spacing may differ"
+  it('crosses a line closure out with exactly the mark every closure feed wears, but for how long its far mark stays (decision 198)', () => {
+    // "Only the id, the source, the filter and the spacing may differ, and,
+    // on the clubs' feed alone, how long the far mark stays"
     // (lib/closureStyle.ts): held as equality with the temporary-closure
-    // feed's own four layers, paint and layout, rather than as constants.
+    // feed's own four layers, paint, layout and zooms, rather than as
+    // constants.
     const club = closureLayerIds(CLUB_CLOSURE_LAYER_ID).map(layer)
     const temporary = buildClosureLayers('closures', { ground: GROUND, ink: INK })
     expect(temporary.map((built) => built.id)).toEqual(closureLayerIds(CLOSURE_LAYER_ID))
     club.forEach((built, index) => {
       expect((built as { source?: unknown }).source).toBe(CLUB_CLOSURE_SOURCE_ID)
-      expect((built as { filter?: unknown }).filter).toEqual(CLUB_CLOSURE_LINE_FILTER)
       expect(built.paint, built.id).toEqual(temporary[index].paint)
       expect((built as { layout?: unknown }).layout, built.id).toEqual(
         (temporary[index] as { layout?: unknown }).layout,
       )
+      expect((built as { minzoom?: unknown }).minzoom, built.id).toBe(
+        (temporary[index] as { minzoom?: unknown }).minzoom,
+      )
     })
+    const [paper, trace, chain, mark] = club as Array<{
+      filter?: unknown
+      maxzoom?: unknown
+    }>
+    for (const each of [paper, trace, chain]) {
+      expect(each.filter).toEqual(CLUB_CLOSURE_LINE_FILTER)
+      expect(each.maxzoom).toBeUndefined()
+    }
+    // The far mark alone differs: no maxzoom, and the line filter joined by
+    // the handover each closure carries.
+    expect(mark.filter).toEqual([
+      'all',
+      CLUB_CLOSURE_LINE_FILTER,
+      closureMarkUntilFilter(CLUB_CLOSURE_CHAIN_FROM_PROPERTY),
+    ])
+    expect(mark.maxzoom).toBeUndefined()
+    expect((temporary[3] as { maxzoom?: unknown }).maxzoom).toBe(CLOSURE_NEAR_MIN_ZOOM)
   })
 
   it('draws a line and an area’s cut stretches on the line layers, and a point on the cross alone, as MapLibre’s tiler hands them over', () => {
@@ -179,10 +212,12 @@ describe('how a club closure is drawn', () => {
         .map((feature) => feature.tags?.[CLUB_CLOSURE_ID_PROPERTY])
     expect(drawnBy(CLUB_CLOSURE_LINE_FILTER)).toEqual([line.notice_id, area.notice_id])
     expect(drawnBy(CLUB_CLOSURE_POINT_FILTER)).toEqual([point.notice_id])
-    // And the source the style declares is there before any closure lands.
+    // And the source the style declares is there before any closure lands,
+    // keeping every line however short (decision 198).
     expect(buildClubClosureSource()).toEqual({
       type: 'geojson',
       data: { type: 'FeatureCollection', features: [] },
+      tolerance: 0,
     })
   })
 
@@ -302,13 +337,17 @@ describe('how a club closure is drawn', () => {
     expect((mark.layout as Record<string, unknown>)['icon-size']).toBe(CLOSURE_MARK_SIZE)
   })
 
-  it('draws a closure the list greys at the same full strength: nothing in a layer reads a feature, and a feature carries only its id', () => {
+  it('draws a closure the list greys at the same full strength: no layer reads the notice, and a feature carries only its id and its geometry’s handover zoom', () => {
     // The maintainer's "B: same mark" over fading it. A fade would need a
     // paint expression reading something off the feature; there is none, and
     // the only opacity anywhere is the trace's constant, the same on every
-    // closure feed.
+    // closure feed. The one property a layer reads is the far mark's handover
+    // zoom (decision 198), and it is worked out from the line alone, so the
+    // greyed closure and the same line with every date given carry the same.
     const built = JSON.stringify(buildClubClosureLayers(GROUND, INK))
-    expect(built).not.toContain('"get"')
+    expect(new Set(built.match(/\["get","[^"]*"\]/g))).toEqual(
+      new Set([`["get","${CLUB_CLOSURE_CHAIN_FROM_PROPERTY}"]`]),
+    )
     expect(built).not.toContain('feature-state')
     const opacities = buildClubClosureLayers(GROUND, INK).flatMap((each) =>
       Object.entries(each.paint ?? {}).filter(([property]) =>
@@ -316,10 +355,23 @@ describe('how a club closure is drawn', () => {
       ),
     )
     expect(opacities).toEqual([['line-opacity', CLOSURE_TRACE_OPACITY]])
-    const { greyed } = closures()
-    expect(clubClosureFeatureCollection([greyed]).features[0].properties).toEqual({
+    const { greyed, line } = closures()
+    const dated: TrailClosure = {
+      ...line,
+      notice_id: 'example:canyon-trail-dated',
+      place: greyed.place,
+    }
+    const [greyedFeature, datedFeature] = clubClosureFeatureCollection([
+      greyed,
+      dated,
+    ]).features
+    expect(greyedFeature.properties).toEqual({
       [CLUB_CLOSURE_ID_PROPERTY]: greyed.notice_id,
+      [CLUB_CLOSURE_CHAIN_FROM_PROPERTY]: clubClosureChainFrom(greyed.place.geometry),
     })
+    expect(datedFeature.properties[CLUB_CLOSURE_CHAIN_FROM_PROPERTY]).toBe(
+      greyedFeature.properties[CLUB_CLOSURE_CHAIN_FROM_PROPERTY],
+    )
   })
 
   it('repaints the point cross with every other closure layer on a sheet change', () => {
@@ -342,6 +394,178 @@ describe('how a club closure is drawn', () => {
   })
 })
 
+describe('a closure too short for the chain keeps the bold ✕ (decision 198)', () => {
+  // Finding F1 of the client review of #1805 — dlt → dbt re-platform as one
+  // go/no-go change: from z11 the only ✕ on a club closure was the chain,
+  // which puts none on a short run, and below z11 a line under 0.375 px was
+  // not tiled at all. These are the reviewer's own closures: straight
+  // east-west lines at latitude 41.
+
+  /** A line closure `metres` long, east-west at latitude 41. */
+  function lineClosure(metres: number): TrailClosure {
+    const halfDegrees = metres / 2 / (111_319.49 * Math.cos((41 * Math.PI) / 180))
+    return {
+      ...closures().line,
+      notice_id: `example:${metres}-m`,
+      place: {
+        kind: 'geometry',
+        geometry: {
+          type: 'LineString',
+          coordinates: [
+            [-74 - halfDegrees, 41],
+            [-74 + halfDegrees, 41],
+          ],
+        },
+      },
+    }
+  }
+
+  /** Metres on the ground for `pixels` on screen at a whole `zoom`, at
+   *  latitude 41 on MapLibre's 512 px tiles. */
+  function metresFor(pixels: number, zoom: number): number {
+    return (pixels * 40_075_016.686 * Math.cos((41 * Math.PI) / 180)) / (512 * 2 ** zoom)
+  }
+
+  /** Whether the far mark draws `closure` at a whole `zoom`: inside its
+   *  layer's zooms, and through its filter as MapLibre evaluates one, at the
+   *  tile's whole zoom, on the feature as the source holds it. */
+  function farMarkDraws(closure: TrailClosure, zoom: number): boolean {
+    const mark = layer(closureMarkId(CLUB_CLOSURE_LAYER_ID)) as {
+      minzoom?: number
+      maxzoom?: number
+      filter?: unknown
+    }
+    if (zoom < (mark.minzoom ?? 0) || zoom >= (mark.maxzoom ?? 24)) return false
+    const [feature] = clubClosureFeatureCollection([closure]).features
+    return featureFilter(mark.filter as never, 'filter').filter(
+      { zoom } as never,
+      { type: 2, properties: feature.properties, geometry: [] } as never,
+      null as never,
+    )
+  }
+
+  /** Whether the chain has room for a cross on `closure`'s longest run at a
+   *  whole `zoom`, on a run no tile edge cuts: its layer draws there, and the
+   *  run is at least the 14 x 16/24 px maplibre-gl 6.7.0 needs to place a
+   *  symbol on a line (lib/closureStyle.ts's CLOSURE_NEAR_MIN_ZOOM). */
+  function chainCarries(closure: TrailClosure, zoom: number): boolean {
+    const chain = layer(closureCrossesId(CLUB_CLOSURE_LAYER_ID))
+    const run = longestRunAtZ0(closure.place.geometry) ?? 0
+    return (
+      zoom >= (chain.minzoom ?? 0) &&
+      run * 2 ** zoom >= (closureCrossImageSize() * 16) / 24
+    )
+  }
+
+  /** The source's tile holding `[lon, lat]` at `zoom`, tiled as maplibre-gl
+   *  6.7.0's GeoJSON source tiles it (source/geojson_source.ts): geojson-vt
+   *  with the tolerance and the 128 px buffer in tile units, CSS px x 8192 /
+   *  512, and the source's default maxzoom of 18. */
+  function sourceTile(
+    [lon, lat]: [number, number],
+    zoom: number,
+    rows: readonly TrailClosure[],
+    tolerance = buildClubClosureSource().tolerance ?? 0.375,
+  ) {
+    const units = 8192 / 512
+    const index = new GeoJSONVT(clubClosureFeatureCollection(rows) as never, {
+      tolerance: tolerance * units,
+      extent: 8192,
+      buffer: 128 * units,
+      maxZoom: 18,
+    })
+    const x = Math.floor(((lon + 180) / 360) * 2 ** zoom)
+    const sin = Math.sin((lat * Math.PI) / 180)
+    const y = Math.floor(
+      (0.5 - Math.log((1 + sin) / (1 - sin)) / (4 * Math.PI)) * 2 ** zoom,
+    )
+    return index.getTile(zoom, x, y)
+  }
+
+  it('keeps one bold ✕ on a 20 m closure at z9 and at z12, where the chain has no room for one', () => {
+    const short = lineClosure(20)
+    expect(farMarkDraws(short, 9)).toBe(true)
+    expect(farMarkDraws(short, 12)).toBe(true)
+    expect(chainCarries(short, 12)).toBe(false)
+    // One: the far mark goes at the middle of each line it is handed
+    // (`line-center`), and this closure is one line.
+    const mark = layer(closureMarkId(CLUB_CLOSURE_LAYER_ID))
+    expect((mark.layout as Record<string, unknown>)['symbol-placement']).toBe(
+      'line-center',
+    )
+    expect(short.place.geometry.type).toBe('LineString')
+  })
+
+  it('crosses a 1000 m closure out with the chain at z12 and no bold ✕, as before', () => {
+    const long = lineClosure(1000)
+    expect(chainCarries(long, 12)).toBe(true)
+    expect(farMarkDraws(long, 12)).toBe(false)
+    expect(farMarkDraws(long, CLOSURE_NEAR_MIN_ZOOM)).toBe(false)
+    // And far out it has its bold ✕, as every closure does.
+    expect(farMarkDraws(long, 10)).toBe(true)
+    expect(farMarkDraws(long, CLOSURE_MARK_MIN_ZOOM)).toBe(true)
+    expect(farMarkDraws(long, CLOSURE_MARK_MIN_ZOOM - 1)).toBe(false)
+  })
+
+  it('lets go of the bold ✕ only once the longest run is 2.5 chain crosses long, so a run a tile edge cuts still has a mark', () => {
+    // At z13 a chain cross is 14 px. A run of two crosses has room for the
+    // chain on its own, and keeps the far mark anyway; one of three does not.
+    expect(CLOSURE_MARK_UNTIL_CROSSES).toBe(2.5)
+    const twoCrosses = lineClosure(metresFor(2 * closureCrossImageSize(), 13))
+    const threeCrosses = lineClosure(metresFor(3 * closureCrossImageSize(), 13))
+    expect(chainCarries(twoCrosses, 13)).toBe(true)
+    expect(farMarkDraws(twoCrosses, 13)).toBe(true)
+    expect(farMarkDraws(threeCrosses, 13)).toBe(false)
+    expect(clubClosureChainFrom(threeCrosses.place.geometry)).toBe(13)
+    // A run the chain can never carry keeps the far mark at every zoom.
+    expect(
+      clubClosureChainFrom({
+        type: 'LineString',
+        coordinates: [
+          [-74, 41],
+          [-74, 41],
+        ],
+      }),
+    ).toBe(CLUB_CLOSURE_NEVER_CHAINED)
+  })
+
+  it('reads the handover off the longest of an area’s cut stretches, and gives a point or a shade none', () => {
+    const long = lineClosure(1000).place.geometry.coordinates as number[][]
+    const short = lineClosure(20).place.geometry.coordinates as number[][]
+    expect(
+      clubClosureChainFrom({
+        type: 'MultiLineString',
+        coordinates: [short, long.map(([lon, lat]) => [lon, lat + 0.01])],
+      }),
+    ).toBe(clubClosureChainFrom(lineClosure(1000).place.geometry))
+    const { point, shade } = closures()
+    expect(clubClosureChainFrom(point.place.geometry)).toBeNull()
+    expect(clubClosureChainFrom(shade.place.geometry)).toBeNull()
+  })
+
+  it('never drops a short closure from a tile below z11, where only the far mark can show it', () => {
+    // geojson-vt leaves out a line shorter than the source's tolerance, and
+    // the far mark is placed on the line: at MapLibre's default 0.375 px this
+    // 5 m closure is gone at z7, and at the source's own it is in every tile.
+    const tiny = lineClosure(5)
+    const at: [number, number] = [-74, 41]
+    const ids = (tile: ReturnType<typeof sourceTile>) =>
+      (tile?.features ?? []).map((feature) => feature.tags?.[CLUB_CLOSURE_ID_PROPERTY])
+    expect(ids(sourceTile(at, CLOSURE_MARK_MIN_ZOOM, [tiny], 0.375))).toEqual([])
+    for (let zoom = CLOSURE_MARK_MIN_ZOOM; zoom < CLOSURE_NEAR_MIN_ZOOM; zoom += 1) {
+      expect(ids(sourceTile(at, zoom, [tiny])), `z${zoom}`).toEqual([tiny.notice_id])
+      expect(farMarkDraws(tiny, zoom), `z${zoom}`).toBe(true)
+    }
+  })
+
+  it('draws the preview recipe’s short closure, which the reader takes, with the bold ✕ at its z13 camera', () => {
+    const short = validTrailClosure(shortClosureRow())
+    expect(short).not.toBeNull()
+    expect(farMarkDraws(short as TrailClosure, 13)).toBe(true)
+    expect(chainCarries(short as TrailClosure, 13)).toBe(false)
+  })
+})
+
 describe('putting the closures on a live map', () => {
   it('puts a line, an area’s cut stretches and a point in the source, each on its own geometry and keyed by its notice id', () => {
     const { line, area, point } = closures()
@@ -351,12 +575,23 @@ describe('putting the closures on a live map', () => {
 
     attachClubClosureData(map as never, [line, area, point])
 
+    // A line closure and an area's stretches also carry the zoom their chain
+    // takes over (decision 198): both at CLOSURE_NEAR_MIN_ZOOM, the line 61
+    // px long there and the park's longer stretch 31, each past 2.5 chain
+    // crosses of 11.2 px. A point carries none.
     expect(map.sourceData.get(CLUB_CLOSURE_SOURCE_ID)).toEqual({
       type: 'FeatureCollection',
-      features: [line, area, point].map((closure) => ({
+      features: [
+        [line, { [CLUB_CLOSURE_CHAIN_FROM_PROPERTY]: CLOSURE_NEAR_MIN_ZOOM }],
+        [area, { [CLUB_CLOSURE_CHAIN_FROM_PROPERTY]: CLOSURE_NEAR_MIN_ZOOM }],
+        [point, {}],
+      ].map(([closure, handover]) => ({
         type: 'Feature',
-        geometry: closure.place.geometry,
-        properties: { [CLUB_CLOSURE_ID_PROPERTY]: closure.notice_id },
+        geometry: (closure as TrailClosure).place.geometry,
+        properties: {
+          [CLUB_CLOSURE_ID_PROPERTY]: (closure as TrailClosure).notice_id,
+          ...handover,
+        },
       })),
     })
   })

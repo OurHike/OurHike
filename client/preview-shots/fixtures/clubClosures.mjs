@@ -218,29 +218,64 @@ export function trailClosureRows() {
   }
 }
 
+/**
+ * A sixth closure, for club-closures-on-the-map.mjs alone: a 41 m washout,
+ * too short for the chain of crosses at the recipe's z13 (5.5 px, where the
+ * chain needs 9.33), so it shows decision 198's bold ✕ (the maintainer's poll
+ * of 2026-10-15, "B: bold ✕ until chain fits"). Before it, a run this short
+ * drew as a white stub with a grey dot or two and no ✕. Kept out of
+ * trailClosureRows(), which every client test of the file reads in full: the
+ * recipe adds it on the wire (`routeTrailClosures`'s `extra`). West of the
+ * area's stretches, in the empty ground between the northern line and the
+ * bridge.
+ */
+export function shortClosureRow() {
+  return row({
+    notice_id: 'example_trail_club_alerts:spring-trail-washout',
+    source_key: 'example_trail_club_alerts',
+    provider: 'ETC',
+    steward_kind: 'club',
+    title: 'Washout on Example Spring Trail (example)',
+    starts_on: localDay(-2),
+    current_until: localDay(30),
+    updated_at: stamp(-2),
+    place: geometry({
+      type: 'LineString',
+      coordinates: [
+        [-100.2097, 38.7579],
+        [-100.2093, 38.7581],
+      ],
+    }),
+    shape: 'line',
+  })
+}
+
 /** A point well inside the shaded area, where a tap opens its sheet. */
 export const SHADE_TAP_AT = [-100.1948, 38.7484]
 
-/** conditions/trail_closures.json, in the file's contract. */
-export function trailClosuresDocument() {
+/** conditions/trail_closures.json, in the file's contract, with `extra`
+ *  rows after the five. */
+export function trailClosuresDocument(extra = []) {
   return {
     generated_at: stamp(0),
-    closures: Object.values(trailClosureRows()),
+    closures: [...Object.values(trailClosureRows()), ...extra],
   }
 }
 
 /**
  * Answer conditions/trail_closures.json on the wire, before the app loads,
- * whatever the bucket serves: only these invented closures draw.
+ * whatever the bucket serves: only these invented closures draw, the five
+ * and any `extra` rows.
  *
  * @param {import('@playwright/test').Page} page
+ * @param {object[]} [extra]
  */
-export async function routeTrailClosures(page) {
+export async function routeTrailClosures(page, extra = []) {
   await page.route(/\/conditions\/trail_closures\.json(\?|$)/, (route) =>
     route.fulfill({
       status: 200,
       contentType: 'application/json',
-      body: JSON.stringify(trailClosuresDocument()),
+      body: JSON.stringify(trailClosuresDocument(extra)),
     }),
   )
 }

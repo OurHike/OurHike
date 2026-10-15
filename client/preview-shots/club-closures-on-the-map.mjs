@@ -1,6 +1,7 @@
 // Every club closure on the map (the maintainer's polls of 2026-10-11: Q2
-// "Build the map file now", and standard S6 as drawn in s6-map.html; and of
-// 2026-10-14: decision 191, "Shade them, no edge"), from
+// "Build the map file now", and standard S6 as drawn in s6-map.html; of
+// 2026-10-14: decision 191, "Shade them, no edge"; and of 2026-10-15:
+// decision 198, "B: bold ✕ until chain fits"), from
 // conditions/trail_closures.json, read at launch with no hike planned.
 //
 // WHAT A REVIEWER SHOULD CHECK IN THE FRAME, against S6's "the standard,
@@ -23,6 +24,12 @@
 //     itself in a light diagonal stone hatch with NOTHING on its edge - no
 //     line, no crosses - so a road or a trail along it still reads open.
 //     NEW with decision 191: before it, this area drew nowhere.
+//  6. Left of the middle, above the bridge: "Washout on Example Spring
+//     Trail", a 41 m line closure, 5.5 px at this zoom and too short for the
+//     chain, drawn as one larger cross like the bridge's. NEW with decision
+//     198: before it, a closure this short was a white stub with a grey dot
+//     or two and no cross at all (fixtures/clubClosures.mjs's
+//     shortClosureRow, added on the wire for this recipe alone).
 //
 // No A.T. is in the frame, and none can be: decision 192's crossed-out A.T.
 // is a stretch like the park's two, and what makes it the A.T. is the red
@@ -46,21 +53,23 @@ import {
   openClosureSheet,
   routeTrailClosures,
   SHADE_TAP_AT,
+  shortClosureRow,
   tapUntilClosureSheet,
   trailClosureRows,
 } from './fixtures/clubClosures.mjs'
 
 export const caption =
-  'Every club closure on the map, from conditions/trail_closures.json read at launch with no hike planned (the maintainer’s S6, 2026-10-11, and decision 191, 2026-10-14): a line closure crossed out along its own line, an area closure’s two trail stretches inside the park, one cross for a bridge out, a closure the list greys drawn at the same full strength, and, new, an area with no trail inside shaded with a light hatch and nothing on its edge. Every closure and organization is an invented example, over farmland.'
+  'Every club closure on the map, from conditions/trail_closures.json read at launch with no hike planned (the maintainer’s S6, 2026-10-11, decision 191, 2026-10-14, and decision 198, 2026-10-15): a line closure crossed out along its own line, an area closure’s two trail stretches inside the park, one cross for a bridge out, a closure the list greys drawn at the same full strength, an area with no trail inside shaded with a light hatch and nothing on its edge, and, new, a 41 m washout too short for the chain of crosses drawn as one larger cross (decision 198). Every closure and organization is an invented example, over farmland.'
 
 export const alt =
-  'The map screen at zoom 13 over farmland. Four invented closures are drawn with the crossed-out mark: near the top a long line drawn as a pale band carrying a dotted dark line with a chain of small dark x marks along it; to the right of the middle two short stretches meeting at a point, drawn the same way; lower left a single larger dark x with a pale edge; and near the bottom another long line, drawn exactly as the first. Below the two stretches, to the right, an irregular area is filled with thin grey-brown diagonal lines on a faint wash, with no outline. No sheet is open.'
+  'The map screen at zoom 13 over farmland. Four invented closures are drawn with the crossed-out mark: near the top a long line drawn as a pale band carrying a dotted dark line with a chain of small dark x marks along it; to the right of the middle two short stretches meeting at a point, drawn the same way; lower left a single larger dark x with a pale edge; and near the bottom another long line, drawn exactly as the first. Left of the middle, above the lower-left one, a second single larger dark x with a pale edge marks a closure only a few pixels long. Below the two stretches, to the right, an irregular area is filled with thin grey-brown diagonal lines on a faint wash, with no outline. No sheet is open.'
 
 /** Vector basemap tiles at z13, the allowance long-term-closures.mjs makes
  *  for a frame at this zoom. */
 export const wait = 22000
 
-export const before = routeTrailClosures
+/** The fixture's five closures, and decision 198's short one on top. */
+export const before = (page) => routeTrailClosures(page, [shortClosureRow()])
 
 export default async function drive(page) {
   // The bridge's cross, until its sheet opens; then put the sheet away.

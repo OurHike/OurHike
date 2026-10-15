@@ -15,7 +15,10 @@
 -- tolerance and no severity of its own (decision 204): an error in dev and
 -- CI, and in production and UA a warning, so every other file still
 -- publishes, which `holds_a_source` makes build_marts.py print and turn red
--- after the publish (its PARTIAL_EXIT).
+-- after the publish (its PARTIAL_EXIT). Decision 208 gates the tests of
+-- int_closures__gate at error and leaves this one on the switch, with the
+-- held share (int_closures__gate_holds_no_source): what it names is a held
+-- source, which at error would hold every conditions file.
 {{ config(meta={'holds_a_source': true}) }}
 
 with notice_sources as (

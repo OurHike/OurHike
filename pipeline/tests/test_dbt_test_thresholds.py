@@ -13,10 +13,16 @@ proposed", took the shape dbt/dbt_project.yml's comment above `data_tests:` desc
   for Elementary's checks;
 - `severity` is the switch: dbt_project.yml's expression on OURHIKE_DATA_ENV, warn in production and UA and error
   everywhere else. A test may set its own only to `error` (a pub_ writer's test, through the publish folder; a test
-  of the six marts a hiker's safety reads, through the `marts:` gates, or in a singular test's own config(); an
+  of the six marts a hiker's safety reads, through the `marts:` gates, or in a singular test's own config(); a test
+  of int_closures__gate or int_closures__nynjtc_checked, in its own YAML or config(), under decision 208; an
   Elementary check), to the switch itself (a hold of decision 81's inside a gated folder), to the row dates'
   expression, which also warns with the history off, or to `warn` with `meta.stays_at_warn` saying whose decision
   that is (decision 197's four closures key tests).
+
+Decision 208, the maintainer's poll of 2026-10-15, "B: Hold at last good copy": every test of int_closures__gate and
+int_closures__nynjtc_checked is an error in every environment, but the two that report a held source and keep the
+switch (ON_THE_SWITCH), because the nine hourly writers below the gate (WRITERS_BELOW_THE_GATE) published what the
+gate had passed while one of those tests warned.
 
 Two halves. The first reads the YAML and SQL as they stand, generated files included (tests/conftest.py refuses to
 start without them), with no dbt, so it runs in the pytest job too. The second parses the project with dbt 2.0.6,
@@ -56,6 +62,28 @@ ROW_DATES = (
 )
 STAYS_AT_WARN = "stays_at_warn"
 CONFIG_CALL = re.compile(r"\{\{\s*config\((.*?)\)\s*\}\}", re.S)
+#: Decision 208: the two models whose tests are errors in every environment but ON_THE_SWITCH, each in its own YAML or
+#: config() (a gate on intermediate/closures/ in dbt_project.yml would also catch models no writer reads).
+GATED_MODELS = ("int_closures__gate", "int_closures__nynjtc_checked")
+#: Decision 208's two exceptions, which keep the project's switch: a held source is what each reports, and at error in
+#: production one held source would hold every conditions file. The held share (a rows_named level) and decision 81's
+#: hold (`holds_a_source`).
+ON_THE_SWITCH = ("int_closures__gate_holds_no_source", "assert_every_held_notice_source_with_notices_has_rows_to_carry")
+#: The writers below int_closures__gate, whose files a failing test of either model holds at their last good copy.
+#: Measured on the parse (test_decision_208s_gate_holds_the_nine_hourly_writers_below_it): seven read the gate, and
+#: READ_THROUGH_NOTICES read pub_conditions_notices.
+WRITERS_BELOW_THE_GATE = (
+    "pub_conditions_atc_updates",
+    "pub_conditions_closures",
+    "pub_conditions_hazard_areas",
+    "pub_conditions_notices",
+    "pub_conditions_nynjtc_alerts",
+    "pub_conditions_reports",
+    "pub_conditions_trail_closures",
+    "pub_conditions_weather_alerts",
+    "pub_conditions_work_projects",
+)
+READ_THROUGH_NOTICES = ("pub_conditions_hazard_areas", "pub_conditions_trail_closures")
 
 
 def _project() -> dict:
@@ -219,6 +247,38 @@ def test_the_level_tests_warn_at_one_and_are_errors_at_two():
     assert set(levels.values()) == {(">0", ">1")}, levels
 
 
+def test_decision_208_every_yaml_test_of_the_gate_and_nynjtc_checked_is_an_error_but_the_held_share():
+    """Each in its own config, so no folder gate catches the other int_closures__ models. The held share
+    (int_closures__gate_holds_no_source) declares no severity, so it keeps the project's switch."""
+    severities = {
+        f"{where}: {body.get('name') or name}": (body.get("config") or {}).get("severity")
+        for where, name, body in YAML_TESTS
+        if where.split(": ", 1)[1].split(".", 1)[0] in GATED_MODELS
+    }
+    switched = {test: severity for test, severity in severities.items() if test.endswith(ON_THE_SWITCH)}
+    assert list(switched.values()) == [None], switched
+    gated = {test: severity for test, severity in severities.items() if test not in switched}
+    assert len(gated) >= 10, "the gate's six column tests and nynjtc_checked's four"
+    assert {test: severity for test, severity in gated.items() if severity != "error"} == {}
+
+
+def test_decision_208_every_singular_test_of_the_gate_is_an_error_but_decision_81s_hold():
+    """A singular test that refs either model sets `severity='error'` in its config(), but
+    assert_every_held_notice_source_with_notices_has_rows_to_carry, whose warning holds a source (`holds_a_source`)
+    and which sets no severity, so it keeps the project's switch."""
+    severities: dict[str, str | None] = {}
+    for path in sorted((DBT_DIR / "tests" / "singular").rglob("*.sql")):
+        text = path.read_text(encoding="utf-8")
+        if not any(re.search(rf"ref\(\s*['\"]{model}['\"]\s*\)", text) for model in GATED_MODELS):
+            continue
+        configs = [match.group(1) for match in CONFIG_CALL.finditer(text)]
+        severities[path.stem] = next((found for config in configs if (found := _keyword(config, "severity"))), None)
+    hold = "assert_every_held_notice_source_with_notices_has_rows_to_carry"
+    assert hold in ON_THE_SWITCH and severities.pop(hold) is None
+    assert len(severities) >= 2, "the absent raw table's hold and the closures-or-warnings partition"
+    assert {test: severity for test, severity in severities.items() if severity != "error"} == {}
+
+
 # --- every test node, as dbt parses the project ------------------------------------------------------------------
 
 
@@ -293,7 +353,8 @@ def test_every_test_dbt_parses_has_both_thresholds_in_the_declared_form(manifest
 def test_dev_and_ci_stop_on_every_error_and_production_warns_on_all_but_its_gates(manifests):
     """Unset (dev and CI), every test is an error but decision 197's four. In production every test the switch
     decides warns, and what stays an error is a pub_ writer's test, a test of a safety mart's folder, a test whose own
-    config says `error`, and Elementary's checks, which never change a production run's exit (build_marts.py)."""
+    config says `error` (decision 208's twelve among them, which the test after this one names), and Elementary's
+    checks, which never change a production run's exit (build_marts.py)."""
     dev, production = _test_nodes(manifests["dev"]), _test_nodes(manifests["production"])
     assert set(dev) == set(production)
     warns_in_dev = sorted(uid for uid, node in dev.items() if str(node["config"].get("severity")).lower() != "error")
@@ -320,3 +381,64 @@ def test_dev_and_ci_stop_on_every_error_and_production_warns_on_all_but_its_gate
         and (not _gated(node) or ((node["config"].get("meta") or {}).get("holds_a_source")))
     ]
     assert len(switched) > 5000 and all(str(production[uid]["config"]["severity"]).lower() == "warn" for uid in switched)
+
+
+def _tests_of(manifest: dict, models: tuple[str, ...]) -> dict[str, dict]:
+    """Every test node, by name, that reads one of `models` (its depends_on): a generic test on it, or a singular
+    test that refs it among others."""
+    wanted = {f"model.ourhike.{model}" for model in models}
+    return {
+        node["name"]: node
+        for node in _test_nodes(manifest).values()
+        if wanted & set((node.get("depends_on") or {}).get("nodes") or [])
+    }
+
+
+@pytest.mark.skipif(not DBT, reason="OURHIKE_DBT names no dbt (the dbt job and scripts/test.sh set it)")
+def test_decision_208_gates_every_test_of_the_gate_and_nynjtc_checked_in_production_but_two(manifests):
+    """In production every test that reads int_closures__gate or int_closures__nynjtc_checked is an error, so a
+    failure holds the nine writers' files at their last good copy (build_marts.py's failure_holds()); the two in
+    ON_THE_SWITCH warn there, as a held source must, and are errors in dev and CI like every other test. On the parse of
+    2026-10-15 that was 12 errors and the two: the gate's ten tests and nynjtc_checked's four."""
+    dev, production = _tests_of(manifests["dev"], GATED_MODELS), _tests_of(manifests["production"], GATED_MODELS)
+    assert set(dev) == set(production) and set(ON_THE_SWITCH) <= set(production), sorted(production)
+    severity = {name: str(node["config"].get("severity")).lower() for name, node in production.items()}
+    gated = sorted(name for name in production if name not in ON_THE_SWITCH)
+    assert len(gated) >= 12, gated
+    assert [name for name in gated if severity[name] != "error"] == []
+    assert {name: severity[name] for name in ON_THE_SWITCH} == dict.fromkeys(ON_THE_SWITCH, "warn")
+    assert {name: str(dev[name]["config"].get("severity")).lower() for name in ON_THE_SWITCH} == dict.fromkeys(
+        ON_THE_SWITCH, "error"
+    )
+
+
+def _descendants(manifest: dict, unique_id: str) -> set[str]:
+    """Every node below `unique_id`, by the manifest's child_map."""
+    children = manifest.get("child_map") or {}
+    found: set[str] = set()
+    queue = [unique_id]
+    while queue:
+        for child in children.get(queue.pop()) or []:
+            if child not in found:
+                found.add(child)
+                queue.append(child)
+    return found
+
+
+@pytest.mark.skipif(not DBT, reason="OURHIKE_DBT names no dbt (the dbt job and scripts/test.sh set it)")
+def test_decision_208s_gate_holds_the_nine_hourly_writers_below_it(manifests):
+    """Measured on the parse, not assumed: the pub_ writers below int_closures__gate, whose files build_marts.py's
+    failure_holds() holds when a test of the gate fails (it leaves out the gate and everything below it), are exactly
+    WRITERS_BELOW_THE_GATE, so a new one changes what decision 208 holds and is named here. Seven read the gate itself
+    and READ_THROUGH_NOTICES read pub_conditions_notices; int_closures__nynjtc_checked, above the gate through
+    int_closures__unioned and read by pub_conditions_notices, reaches the same nine."""
+    manifest = manifests["production"]
+    for model in GATED_MODELS:
+        below = _descendants(manifest, f"model.ourhike.{model}")
+        writers = sorted(uid.split(".")[2] for uid in below if uid.startswith("model.ourhike.pub_"))
+        assert writers == sorted(WRITERS_BELOW_THE_GATE), model
+    reading = manifest["child_map"]["model.ourhike.int_closures__gate"]
+    readers = sorted(uid.split(".")[2] for uid in reading if uid.startswith("model.ourhike.pub_"))
+    assert readers == sorted(set(WRITERS_BELOW_THE_GATE) - set(READ_THROUGH_NOTICES))
+    for writer in READ_THROUGH_NOTICES:
+        assert "model.ourhike.pub_conditions_notices" in manifest["parent_map"][f"model.ourhike.{writer}"], writer

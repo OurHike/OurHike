@@ -127,16 +127,40 @@ models:
       reads them and shaped as published_rows() publishes them (WN05-WN08),
       with why a post cannot be read in `problems`. int_closures__gate holds
       NYNJTC's file back on any problem, or on a category with no posts.
+    # DECISION 208 (the maintainer's poll, 2026-10-15, "Hold at last good
+    # copy"): these four tests are errors in every environment, as
+    # int_closures__gate's are. pub_conditions_notices reads this model, and
+    # so does int_closures__unioned, above the gate, so in production and UA
+    # a failure here holds all nine pub_conditions_* files at their last good
+    # copy (build_marts.py's failure_holds()) instead of publishing past it.
+    # A post the gate holds NYNJTC for still has its key, and a notice_id
+    # made from its slug or else its WordPress id, so that hold fails none
+    # of them (Reasoned from int_closures__nynjtc_checked.sql). The one post
+    # that would is one with no WordPress id and no slug of its own: its
+    # notice_id is null, and every conditions file waits. Nobody has seen
+    # one.
     columns:
       - name: trail_alert_key
         description: base_nynjtc__nynjtc_trail_alerts's key, the post's WordPress id.
-        data_tests: [not_null, unique]
+        data_tests:
+          - not_null:
+              config:
+                severity: error
+          - unique:
+              config:
+                severity: error
       - name: notice_id
         description: >
           `nynjtc_trail_alerts:<slug>`, the published notice_id, or
           `nynjtc_trail_alerts:post-<id>` for a post with no readable slug or a
           slug another post shares.
-        data_tests: [not_null, unique]
+        data_tests:
+          - not_null:
+              config:
+                severity: error
+          - unique:
+              config:
+                severity: error
       - name: slug
         description: The post's slug, stripped, as parse_alert() strips it.
       - name: title
@@ -486,12 +510,32 @@ models:
       # @unvalidated, half is the lead's pick). Measured: the fixture build of
       # 76e71a8d held 110 of its 326 sources, every one absent from the
       # fixture warehouse (34%), and UA's hourly page of 2026-10-15 04:38 UTC
-      # showed this test passing.
+      # showed this test passing. Decision 208 leaves it on the project's
+      # switch (below).
       - rows_named:
           name: int_closures__gate_holds_no_source
           arguments:
             named: "not passed"
             error_share: 0.5
+    # DECISION 208 (the maintainer's poll, 2026-10-15, "Hold at last good
+    # copy"): every other test of this model is an error in every
+    # environment, as the closures and warnings marts' are (dbt_project.yml,
+    # the comment above `data_tests:`): the six below, and the singular tests
+    # assert_a_notice_source_whose_raw_table_is_absent_is_held and
+    # assert_every_notice_lands_in_exactly_one_of_closures_or_warnings. Seven
+    # pub_conditions_* writers read this model and two read
+    # pub_conditions_notices (tests/test_dbt_test_thresholds.py reads that
+    # off the parse), so in production and UA a failure here holds all nine
+    # files at their last good copy (build_marts.py's failure_holds()), where
+    # the switch published what the gate had passed. Two keep the switch,
+    # because a held source is what they report and at error one held
+    # source would hold every file: int_closures__gate_holds_no_source above
+    # and assert_every_held_notice_source_with_notices_has_rows_to_carry
+    # (`holds_a_source`, decision 81). A source the gate holds still has its
+    # one row, and rows_invalid, may_publish, passed and awaiting_review are
+    # each a count, a coalesce or a comparison that is never null (Reasoned
+    # from int_closures__gate.sql), so holding one source fails none of the
+    # six.
     columns:
       - name: source_key
         description: >
@@ -501,20 +545,32 @@ models:
           it being read, and one each for
           OurHike's closures and reports, NWS's alerts and
           reference/work_projects.json, which have no sources.json row.
-        data_tests: [not_null, unique]
+        data_tests:
+          - not_null:
+              config:
+                severity: error
+          - unique:
+              config:
+                severity: error
       - name: rows_total
         description: >
           The source's rows: in int_closures__unioned for a notice source,
           else its public reports, landed alerts or work-project rows.
       - name: rows_invalid
         description: Its rows with a problem, or for reports a number that is not finite.
-        data_tests: [not_null]
+        data_tests:
+          - not_null:
+              config:
+                severity: error
       - name: may_publish
         description: >
           int_sources__publication's answer for the source, false where it has
           no row. The marts join that model themselves; it is here so a writer
           reads one answer per source.
-        data_tests: [not_null]
+        data_tests:
+          - not_null:
+              config:
+                severity: error
       - name: reviewed_at
         description: >
           ATC's `reviewed_at`, as written in the file landed whole, which
@@ -522,7 +578,10 @@ models:
           which no person reviews as a file.
       - name: passed
         description: Whether its rows may reach the marts and its file may be written.
-        data_tests: [not_null]
+        data_tests:
+          - not_null:
+              config:
+                severity: error
       - name: held_because
         description: Why not, in words for the job log; null where it passed.
       - name: awaiting_review
@@ -532,7 +591,10 @@ models:
           export_work_projects.py treat as no failure (each writes nothing and
           exits 0). The writer selects no row, as for any hold, and publish.py
           does not fail the run for this one.
-        data_tests: [not_null]
+        data_tests:
+          - not_null:
+              config:
+                severity: error
 
   - name: int_closures__work_projects_checked
     description: >

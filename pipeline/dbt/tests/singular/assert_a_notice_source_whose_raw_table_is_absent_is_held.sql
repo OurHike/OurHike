@@ -21,6 +21,18 @@
 -- raw_tatc__tatc_ridgerunner_reports and
 -- raw_trustees__trustees_hunting_designations).
 -- tests/test_dbt_notice_tables_absent_builds.py builds with every one gone.
+--
+-- An error in every environment (decision 208, the maintainer's poll of
+-- 2026-10-15, "Hold at last good copy"), as every test of int_closures__gate
+-- is but two: a gate that passes a source with no raw table would publish it
+-- as having no notices, so in production and UA a failure holds all nine
+-- pub_conditions_* files at their last good copy instead. Holding one source
+-- never fails it: that is what it checks for. build_marts.py's
+-- failure_holds() holds below every node a failed test reads, and this one
+-- reads seeds/notice_readers.csv too, so the hourly lane's
+-- conditions/data_quality.json waits as well (pub_conditions_data_quality
+-- reads that seed; measured on a parse, 2026-10-15).
+{{ config(severity='error') }}
 with readers as (
     select
         source_key,

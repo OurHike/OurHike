@@ -23,7 +23,8 @@
 -- (int_closures__window_carried) in the mart it was in.
 -- A gate on a mart a hiker's safety reads (decision 204, dbt_project.yml's
 -- `marts:` gates): an error in every environment, so in production a
--- failure holds the files below at their last good copy.
+-- failure holds the files below at their last good copy. It reads
+-- int_closures__gate too, whose tests decision 208 gates the same way.
 {{ config(severity='error') }}
 with passing as (
     select gate.source_key

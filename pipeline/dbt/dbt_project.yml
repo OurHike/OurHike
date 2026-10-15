@@ -138,11 +138,15 @@ seeds:
 #   phone file, which keeps the bucket's last copy (decision 81), where the
 #   switch would publish it.
 # - So do the tests outside publish/ whose own YAML or config() sets
-#   `severity: error`: 30 YAML entries and 14 singular tests (counted
-#   2026-10-15), most of them the invariants a hiker's safety turns on in the points_of_interest,
-#   places, trail_lines and elevation marts (a mile only on the A.T., a
-#   capacity absent or at least 1, a water distance never without its
-#   source), and Elementary's checks (make_dbt_staging.py's
+#   `severity: error`: 40 YAML entries and 15 singular tests (counted
+#   2026-10-15 with decision 208 built: YAML tests under models/, seeds/ and
+#   snapshots/ but models/publish/, Elementary's checks left out, and
+#   tests/singular/ files whose config() says so; 30 and 14 before it added
+#   10 and 1), most of them the invariants a hiker's safety turns on
+#   in the points_of_interest, places, trail_lines and elevation marts (a
+#   mile only on the A.T., a capacity absent or at least 1, a water
+#   distance never without its source) and the tests of the conditions
+#   writers' gate (below), and Elementary's checks (make_dbt_staging.py's
 #   ELEMENTARY_ANOMALY_LEVEL). Each such test holds what it reaches until
 #   somebody looks: in production build_marts.py builds on past it and every
 #   writer below keeps its last published file. The checks run in a `dbt
@@ -162,6 +166,20 @@ seeds:
 #   in its own YAML, as its hold needs a warning. Counted 2026-10-15: 13
 #   singular tests read those marts at zero tolerance, each gated in its own
 #   config().
+# - So do the tests of int_closures__gate and int_closures__nynjtc_checked
+#   (decision 208, the maintainer's poll of 2026-10-15, "Hold at last good
+#   copy"), each in its own YAML or config(), since a gate on
+#   intermediate/closures/ here would also catch models no writer reads.
+#   Nine hourly writers sit below the gate, seven reading it and two
+#   reading pub_conditions_notices, which also reads
+#   int_closures__nynjtc_checked; under the switch a failing test of either
+#   model let those nine files publish what the gate had passed, and now
+#   it holds all nine at their last good copy, weather_alerts.json among
+#   them. Two keep the switch, because a held source is what they report:
+#   int_closures__gate_holds_no_source (the held share) and
+#   assert_every_held_notice_source_with_notices_has_rows_to_carry
+#   (`holds_a_source`). tests/test_dbt_test_thresholds.py holds the 12 and
+#   the two on a production parse, and the nine below the gate.
 # A test's own YAML wins over all of this, and a generic test's config()
 # over the defaults here (measured the same day).
 data_tests:

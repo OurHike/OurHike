@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import gzip
 import json
+from datetime import UTC, datetime, timedelta
 
 import duckdb
 import pytest
@@ -246,3 +247,82 @@ def test_put_bundle_refuses_a_folder_holding_a_name_a_bundle_may_not_carry(tmp_p
 
     assert code == 1 and "is not a path a bundle may carry" in capsys.readouterr().out
     assert not (tmp_path / "store" / hand_off.BUNDLE_POINTER).exists()
+
+
+# --- none in 2.5 h is red (decision 200, the maintainer's poll of 2026-10-15, "Red if none in 2.5 h") -------------------
+
+
+def _put_hours_ago(store, pointer_file, hours):
+    """Rewrite the store's pointer as if its put landed `hours` ago."""
+    pointer = json.loads((store / pointer_file).read_text())
+    pointer["put_at"] = (datetime.now(UTC) - timedelta(hours=hours)).isoformat().replace("+00:00", "Z")
+    (store / pointer_file).write_text(json.dumps(pointer))
+
+
+@pytest.mark.parametrize(
+    ("hours", "code"),
+    [(1.1, hand_off.NOT_HANDED_OFF), (2.4, hand_off.NOT_HANDED_OFF), (2.6, hand_off.STALE), (30, hand_off.STALE)],
+)
+def test_another_runs_warehouse_is_a_warning_inside_the_age_limit_and_red_past_it(tmp_path, capsys, hours, code):
+    """One hour without this run's warehouse is the checks' warning, as before; a store whose newest is older than
+    check-conditions.yml's MAX_AGE_HOURS is a soak checking nothing, red."""
+    store = tmp_path / "store"
+    hand_off.put(str(store), _warehouse(tmp_path / "older.duckdb"), "6")
+    _put_hours_ago(store, hand_off.POINTER, hours)
+    args = ["take", "--url", str(store), "--warehouse", str(tmp_path / "checks.duckdb"), "--run", "7"]
+
+    assert hand_off.main([*args, "--max-age-hours", "2.5"]) == code
+    out = capsys.readouterr().out
+    assert ("::error title=No warehouse handed off for over 2.5 h::" in out) == (code == hand_off.STALE)
+    assert hand_off.main(args) == hand_off.NOT_HANDED_OFF, "without the limit, as before: a warning whatever its age"
+    assert not (tmp_path / "checks.duckdb").exists()
+
+
+@pytest.mark.parametrize(("hours", "code"), [(1.1, hand_off.NOT_HANDED_OFF), (2.6, hand_off.STALE)])
+def test_another_runs_bundle_is_a_warning_inside_the_age_limit_and_red_past_it(tmp_path, capsys, hours, code):
+    store = tmp_path / "store"
+    hand_off.put_bundle(str(store), _bundle(tmp_path / "bundle"), "6")
+    _put_hours_ago(store, hand_off.BUNDLE_POINTER, hours)
+    args = ["take-bundle", "--url", str(store), "--out", str(tmp_path / "out"), "--run", "7", "--max-age-hours", "2.5"]
+
+    assert hand_off.main(args) == code
+    out = capsys.readouterr().out
+    assert ("::error title=No comparison bundle handed off for over 2.5 h::" in out) == (code == hand_off.STALE)
+    assert "::warning" not in out, "a stale store is the run's red, never also take-bundle's warning"
+
+
+@pytest.mark.parametrize("command", ["take", "take-bundle"])
+def test_a_store_that_holds_none_is_red_under_the_age_limit(tmp_path, capsys, command):
+    store = tmp_path / "store"
+    (store / hand_off.FOLDER).mkdir(parents=True)
+    where = ["--warehouse", str(tmp_path / "checks.duckdb")] if command == "take" else ["--out", str(tmp_path / "out")]
+    args = [command, "--url", str(store), *where, "--run", "7"]
+
+    assert hand_off.main(args) == hand_off.NOT_HANDED_OFF
+    assert hand_off.main([*args, "--max-age-hours", "2.5"]) == hand_off.STALE
+    assert "it holds none" in capsys.readouterr().out
+
+
+def test_this_runs_own_warehouse_from_another_commit_is_new_so_only_a_warning(tmp_path):
+    """A push since the build: the store's newest is this hour's, so the soak is running, and nothing is red."""
+    store = tmp_path / "store"
+    hand_off.put(str(store), _warehouse(tmp_path / "build.duckdb"), "7", commit="27f4ee3a" + "0" * 32)
+    args = ["take", "--url", str(store), "--warehouse", str(tmp_path / "checks.duckdb"), "--run", "7"]
+
+    assert hand_off.main([*args, "--commit", "fc32a8e6" + "0" * 32, "--max-age-hours", "2.5"]) == hand_off.NOT_HANDED_OFF
+
+
+def test_a_put_at_that_cannot_be_read_is_red_under_the_age_limit(capsys):
+    nothing = hand_off.NotHandedOff("the store holds run 6's", put_at="yesterday afternoon")
+
+    assert hand_off.nothing_or_stale(nothing, 2.5, "warehouse") == hand_off.STALE
+    assert "put_at, 'yesterday afternoon', cannot be read" in capsys.readouterr().out
+
+
+def test_the_age_limit_is_inclusive_to_the_second():
+    now = datetime(2026, 10, 15, 4, 45, tzinfo=UTC)
+    at = (now - timedelta(hours=2.5)).isoformat().replace("+00:00", "Z")
+
+    assert hand_off.nothing_or_stale(hand_off.NotHandedOff("", put_at=at), 2.5, "warehouse", now) == hand_off.NOT_HANDED_OFF
+    later = now + timedelta(seconds=1)
+    assert hand_off.nothing_or_stale(hand_off.NotHandedOff("", put_at=at), 2.5, "warehouse", later) == hand_off.STALE

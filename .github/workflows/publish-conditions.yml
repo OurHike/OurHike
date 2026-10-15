@@ -317,14 +317,17 @@ jobs:
   publish:
     name: Publish (${{ matrix.data_environment }})
     runs-on: ubuntu-latest
-    # 15 since decision 103 (pipeline/ELT.md): the dbt build step's own cap
-    # rose from 6 to 10 minutes, and .github/tests/test_conditions_build_budget.py
-    # holds that cap, the trail lines' restore's, the freshness step's and the
-    # slowest rest of the job inside this one, and the hand-off to the
-    # minutes this job has left after the steps that follow it.
-    # client/src/lib/noticeSelection.ts's SAME_BUILD_MS is this number by its
-    # own reasoning, and moved with it.
-    timeout-minutes: 15
+    # 16 since decision 201 (pipeline/ELT.md; the maintainer's poll of
+    # 2026-10-15, "Job cap 16 minutes"), 15 since decision 103 raised the
+    # build step's own cap from 6 to 10 minutes, which stays.
+    # .github/tests/test_conditions_build_budget.py holds the build's cap, the
+    # trail lines' restore's and the freshness step's, all at once, with the
+    # slowest measured rest of the job, inside this one: 600 + 60 + 60 + 213
+    # = 933 s, 27 s inside 960, where 900 held it 33 s short (Measured on the
+    # UA soak runs 617 to 676). The hand-off takes only the minutes this job
+    # has left after the steps that follow it. client/src/lib/noticeSelection.ts's
+    # SAME_BUILD_MS is this number by its own reasoning, and moved with it.
+    timeout-minutes: 16
     # NO GROUP OF THE LEG'S OWN beside the workflow's publish-data, which
     # holds the whole run. From decision 110 each leg held
     # conditions-history-<leg> with check-conditions.yml's leg, so a build
@@ -411,7 +414,7 @@ jobs:
           fi
 
       # THE JOB'S OWN CLOCK, which "Hand this build's warehouse to its checks"
-      # reads to take only what this job has left of its 15 minutes after the
+      # reads to take only what this job has left of its 16 minutes after the
       # steps that follow it (that step says why). Third, after the two
       # refusals, which come first (.github/tests/test_conditions_production_leg_needs_main.py);
       # the job's clock started "Set up job" earlier, 0 to 3 s on the UA soak
@@ -1620,8 +1623,9 @@ jobs:
       # times the slowest (Reasoned) and the most it can take from the
       # warehouse. A bundle that does not move leaves the store's last one,
       # another run's, which take-bundle refuses, and check-conditions.yml's
-      # `parity` job says the hour was not compared. The warehouse's exit
-      # alone decides this step's outcome.
+      # `parity` job says the hour was not compared, and goes red once the
+      # store has had no bundle for 2.5 hours (decision 200). The
+      # warehouse's exit alone decides this step's outcome.
       #
       # THEN THE WAREHOUSE, WITH WHAT THIS JOB HAS LEFT. On the same 39 runs
       # it grew from 2,624,598,016 bytes to 3,055,300,608, 93.8 MB a day, and
@@ -1644,14 +1648,15 @@ jobs:
       # the slowest put (Reasoned), and bounds how long a slow upload can keep
       # this job, and publish-data with it, waiting. This step began 335 to
       # 567 s into those 39 jobs, so the warehouse would have had its whole
-      # 240 s every hour (Reasoned: 900 - 75 - 567 - 2.4 = 255.6). At about
+      # 240 s every hour (Reasoned: 960 - 75 - 567 - 2.4 = 315.6). At about
       # 3 s a day the slowest put meets that ceiling in about 55 days
       # (Reasoned, if the growth stays linear); the build's own growth eats
       # the job's remainder faster, and
       # .github/tests/test_conditions_build_budget.py's headroom check on the
       # build says so first. A put that runs out of time is stopped, says so,
       # and leaves the last build's warehouse and pointer in the store, so
-      # this run's checks find nothing to check, a warning on a green run; an
+      # this run's checks find nothing to check, a warning, or red once the
+      # store has had no warehouse for 2.5 hours (decision 200); an
       # upload stopped part-way leaves an incomplete multipart upload in the
       # raw store until a lifecycle rule removes it (@unvalidated: R2's
       # default rule, not checked on this bucket).
@@ -1680,7 +1685,7 @@ jobs:
           # This job's cap, as its timeout-minutes says it; what the steps
           # after this one need of it; and each half's own ceiling. The
           # comment above has each figure.
-          JOB_SECONDS: "900"
+          JOB_SECONDS: "960"
           RESERVE_SECONDS: "75"
           BUNDLE_SECONDS: "30"
           WAREHOUSE_SECONDS: "240"

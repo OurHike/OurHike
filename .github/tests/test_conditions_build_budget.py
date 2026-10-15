@@ -18,18 +18,19 @@ WHAT IS HELD, in the order a run reaches it:
 - a build at its cap still publishes, with the trail lines' restore stalled to
   its own cap before it (review finding S2-7 of PR #1805 — dlt → dbt
   re-platform as one go/no-go change);
-- a build at its cap and the freshness step at its cap still end inside the
-  job's cap, so that step ends with its own answer;
+- the build, the restore and the freshness step all at their caps, with the
+  rest at its slowest, still end inside the job's cap, so the freshness step
+  ends with its own answer: 600 + 60 + 60 + 213 = 933 s of 960;
 - the hand-off between them takes only what the job has left after every
   step that follows it, so it is never the step that runs the job into its
-  cap (review finding S2-1, the same review).
+  cap (review finding S2-1, the same review);
+- client/src/lib/noticeSelection.ts's SAME_BUILD_MS is the job's cap, as its
+  own reasoning says it must be.
 
-NOT HELD, and said: the build, the restore and the freshness step at their
-caps together, with the rest at its slowest, come to 600 + 60 + 60 + 213 =
-933 s, 33 over. Such an hour would publish and then end cancelled, without the
-freshness step's answer. Holding it as well means a 16-minute job, which
-client/src/lib/noticeSelection.ts's SAME_BUILD_MS follows, or a 9-minute
-build, exactly 1.5 times run 669's: the maintainer's call, not this file's.
+THE JOB'S CAP IS 16 MINUTES since decision 201 (the maintainer's poll of
+2026-10-15, "Job cap 16 minutes"): at 15, the joint sum above ran 33 s past
+the cap once these figures replaced the old ones. The build keeps the 10
+minutes decision 103 gave it.
 """
 
 from __future__ import annotations
@@ -95,13 +96,14 @@ def test_a_build_that_runs_to_its_cap_still_publishes_beside_a_restore_stalled_t
     assert caps + SLOWEST_REST_OF_JOB_SECONDS <= _job()["timeout-minutes"] * 60
 
 
-def test_a_build_and_the_freshness_step_each_at_its_cap_still_end_inside_the_jobs_cap():
+def test_the_build_the_restore_and_the_freshness_step_all_at_their_caps_still_end_inside_the_jobs_cap():
     """The freshness step (decision 100) runs after "Publish to R2", so it can never cost a publish, but a check that
     ran into the job's cap would end the run cancelled rather than with its own answer. The hand-off between them yields
-    the freshness step its cap (the next test), so only the build's cap and this one's are added to the rest."""
+    the freshness step its cap (the next test), so the build's cap, the restore's and this one's are added to the rest:
+    933 s, which the 900 s job decision 201 raised could not hold."""
     job_cap = _job()["timeout-minutes"] * 60
-    caps = (_build_step()["timeout-minutes"] + _freshness_step()["timeout-minutes"]) * 60
-    assert caps + SLOWEST_REST_OF_JOB_SECONDS <= job_cap
+    caps = (_build_step()["timeout-minutes"] + _named(RESTORE)["timeout-minutes"] + _freshness_step()["timeout-minutes"]) * 60
+    assert caps + SLOWEST_REST_OF_JOB_SECONDS <= job_cap, f"{caps + SLOWEST_REST_OF_JOB_SECONDS} s against {job_cap}"
 
 
 def test_the_hand_off_takes_only_what_the_job_has_left_after_every_step_that_follows_it():
@@ -140,3 +142,13 @@ def test_the_jobs_clock_is_read_before_anything_that_takes_time():
     assert clock["run"] == 'echo "PUBLISH_JOB_STARTED_AT=$(date +%s)" >> "$GITHUB_ENV"'
     assert names.index(CLOCK) < names.index("actions/checkout@v7")
     assert "PUBLISH_JOB_STARTED_AT" in _named(HAND_OFF)["run"]
+
+
+def test_the_clients_same_build_window_is_the_jobs_cap():
+    """client/src/lib/noticeSelection.ts's SAME_BUILD_MS is "publish-conditions.yml's cap on the whole job, which one
+    build's snapshots cannot outlast" (decision 87), and moved with it at decisions 103 and 201. Read from its text, so
+    neither can move without the other."""
+    source = (WORKFLOW.parents[2] / "client" / "src" / "lib" / "noticeSelection.ts").read_text(encoding="utf-8")
+    (minutes,) = re.findall(r"^export const SAME_BUILD_MS = (\d+) \* 60 \* 1000$", source, re.MULTILINE)
+
+    assert int(minutes) == _job()["timeout-minutes"]

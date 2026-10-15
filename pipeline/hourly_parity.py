@@ -134,9 +134,11 @@ HELD_BACK_EXITS = (5, 6)
 #: real runs settles it.
 FAMILY_SECONDS = 120
 
-#: gate_report.py's SOAK_HOURS, which the summary's not-compared line names: written out, because gate_report.py
-#: imports this file, and held equal by tests/test_hourly_parity.py.
+#: gate_report.py's SOAK_HOURS and SOAK_MAX_GAP_HOURS, which the summary's not-compared line names: written out,
+#: because gate_report.py imports this file, and held equal by tests/test_hourly_parity.py. check-conditions.yml's
+#: MAX_AGE_HOURS is the second (decision 200).
 GATE_SOAK_HOURS = 72
+GATE_SOAK_MAX_GAP_HOURS = 2.5
 
 #: A table's state (extract/_answers.table_states()) that leaves the committed table equal to this checkout's file:
 #: read from it this hour, or kept because its sha256 had not moved since the load that read it.
@@ -605,7 +607,8 @@ VERDICT_WORDS = {
 def not_compared_headline(run: dict) -> str | None:
     """The line that leads the summary when any file was not compared, or None when every one was.
 
-    A file not compared leaves the run green by design (the docstring's "A FAMILY NOT COMPARED THIS HOUR SAYS WHY"),
+    A file not compared leaves this step green by design (the docstring's "A FAMILY NOT COMPARED THIS HOUR SAYS WHY"),
+    the job going red only once the store has had no bundle for SOAK_MAX_GAP_HOURS (decision 200, check-conditions.yml),
     and gate_report.py's soak_coverage() then counts that key clean only once a whole SOAK_HOURS of runs after it have
     compared it clean. All eight soak runs from 666 (2026-10-14 18:07 UTC) to 676 put no bundle, nor did 5 of the 18
     runs of 2026-10-11 that had the step to put one, so none of their hours compared anything; and the summary said so
@@ -622,9 +625,10 @@ def not_compared_headline(run: dict) -> str | None:
     else:
         said = f"**{len(missing)} of the {len(families)} files were not compared this hour.**"
     return (
-        f"{said} The run stays green, but gate_report.py clears a key only when every run of the soak's last "
-        f"{GATE_SOAK_HOURS} hours compared it clean, so this hour holds each of these keys back for "
-        f"{GATE_SOAK_HOURS} hours.{why}"
+        f"{said} On its own an hour like this is a warning, and the job goes red only once the leg's store has had no "
+        f"bundle for {GATE_SOAK_MAX_GAP_HOURS:g} hours (decision 200); but gate_report.py clears a key only when every "
+        f"run of the soak's last {GATE_SOAK_HOURS} hours compared it clean, so this hour holds each of these keys back "
+        f"for {GATE_SOAK_HOURS} hours.{why}"
     )
 
 

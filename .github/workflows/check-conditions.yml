@@ -76,14 +76,14 @@
 # conditions/data_quality.json keeps its last copy, whose built_at says how
 # old it is. A dispatch by hand is safe whenever it is made.
 #
-# BUILD PLUS CHECKS FITS THE HOUR. The caps add to 45 minutes: the publish
-# job's 15, its `checks` job's 5 and this job's 25, against the 60 between
-# two hourly runs, so even a run whose every job ran to its cap leaves 15
-# (Reasoned from the caps; .github/tests/test_check_conditions.py holds the
-# sum). A usual hour takes about 16 to 22 of them and leaves about 40,
-# Reasoned: the publish job's 5 to 7 minutes (the 30 green soak dispatches
-# from run 532 to 569 took 288 to 383 s, Measured 2026-10-06, and run 593
-# about 7), half a minute to dispatch, and this job's checks step (8.5 to
+# BUILD PLUS CHECKS FITS THE HOUR. The caps add to 46 minutes: the publish
+# job's 16 (decision 201), its `checks` job's 5 and this job's 25, against
+# the 60 between two hourly runs, so even a run whose every job ran to its
+# cap leaves 14 (Reasoned from the caps; .github/tests/test_check_conditions.py
+# holds the sum). A usual hour takes about 17 to 25 of them and leaves about
+# 35, Reasoned: the publish job's 6 to 11 minutes (the 39 soak dispatches
+# from run 617 to 676 took 378 to 636 s, Measured 2026-10-15), half a
+# minute to dispatch, and this job's checks step (8.5 to
 # 12 minutes, its comment below) with about a minute of setup (run 585's)
 # and the take. On the fixtures in a sandbox the build took 202.8 s and its
 # checks run 362.8 s (Measured 2026-10-09; build_marts.py's docstring). This
@@ -152,12 +152,19 @@ env:
   # off is the only switch").
   RUNTIME__DLTHUB_TELEMETRY: "false"
   DBT_ENGINE_SEND_ANONYMOUS_USAGE_STATS: "false"
+  # Decision 200 (the maintainer's poll of 2026-10-15, "Red if none in 2.5 h"):
+  # a leg whose history store holds no warehouse, or no comparison bundle, put
+  # in this many hours goes red; one hour without one is a warning. It is
+  # gate_report.py's SOAK_MAX_GAP_HOURS, decision 158's gap
+  # (.github/tests/test_check_conditions.py holds them equal), and each take
+  # step says how it reads.
+  MAX_AGE_HOURS: "2.5"
 
 jobs:
   check:
     name: Check (${{ matrix.data_environment }})
     runs-on: ubuntu-latest
-    # The header's sum: 25 of the hour's 60, beside the build's 15 and the
+    # The header's sum: 25 of the hour's 60, beside the build's 16 and the
     # dispatch's 5. The checks step's own cap is 20 of them.
     timeout-minutes: 25
     # The header's "EACH LEG HOLDS A CONCURRENCY GROUP OF ITS OWN": one that
@@ -345,11 +352,20 @@ jobs:
       # checkout, which a push since the build makes the branch's newest
       # (hand_off.py, "THE CHECKS RUN THE BUILD'S OWN COMMIT, OR NONE").
       # Said, and the leg ends green with nothing checked; a store that
-      # cannot be read, or a torn upload, is red. Three minutes: the
-      # fixtures' 6,074,023-byte upload came back and unpacked in 1.02 s
-      # from a local directory (Measured 2026-10-09 in a sandbox); a real
-      # leg's size and R2's rate are @unvalidated until this step's log line
-      # gives both.
+      # cannot be read, or a torn upload, is red.
+      #
+      # AND RED WHEN THE STORE HAS HAD NO WAREHOUSE FOR MAX_AGE_HOURS
+      # (decision 200, the maintainer's poll of 2026-10-15, "Red if none in
+      # 2.5 h"): hand_off.py then exits 5 in place of 4, which ends the leg
+      # here, red. One hour without one stays the warning above; this many
+      # in a row is a soak that checks nothing, and its routine reads only
+      # red or green (hand_off.py, "ONE HOUR WITHOUT ONE IS A WARNING, NONE IN
+      # 2.5 HOURS IS RED", which says why that is the third such hour in a
+      # row). MAX_AGE_HOURS is the workflow's, at the top of this file.
+      #
+      # Three minutes: checks runs 55 and 56 took 3,020,959,744 and
+      # 3,055,300,608 bytes back in 37.33 s and 39.03 s, R2 and unpacking
+      # together (Measured 2026-10-15, their logs).
       - name: Take the warehouse this leg's build handed off
         id: take
         if: steps.wanted.outputs.run == 'true'
@@ -366,7 +382,7 @@ jobs:
         run: |
           set +e
           "$RUNNER_TEMP/extract/bin/python" hand_off.py take --url "s3://$R2_RAW_BUCKET/history/conditions_$ENVIRONMENT" \
-            --warehouse data/warehouse.duckdb --run "$BUILD_RUN" --commit "$COMMIT"
+            --warehouse data/warehouse.duckdb --run "$BUILD_RUN" --commit "$COMMIT" --max-age-hours "$MAX_AGE_HOURS"
           status=$?
           set -e
           if [ "$status" -eq 0 ]; then
@@ -569,7 +585,12 @@ jobs:
       # cannot be read or this step's cap included, costs this hour its
       # comparison and nothing else: the compare step, which runs after a
       # failed take too, then says every family was not compared, and goes
-      # red only for a difference.
+      # red only for a difference. Except exit 5: the store has had no
+      # bundle for MAX_AGE_HOURS, or holds none (decision 200, the
+      # maintainer's poll of 2026-10-15, "Red if none in 2.5 h"), which the
+      # last step turns red once this hour's comparison, every file not
+      # compared, has been written and uploaded. MAX_AGE_HOURS is the
+      # workflow's, at the top of this file.
       - name: Take the comparison bundle this leg's build handed off
         id: take
         if: steps.wanted.outputs.run == 'true'
@@ -586,13 +607,16 @@ jobs:
         run: |
           set +e
           "$RUNNER_TEMP/extract/bin/python" hand_off.py take-bundle --url "s3://$R2_RAW_BUCKET/history/conditions_$ENVIRONMENT" \
-            --out data/hourly_parity/bundle --run "$BUILD_RUN" --commit "$COMMIT"
+            --out data/hourly_parity/bundle --run "$BUILD_RUN" --commit "$COMMIT" --max-age-hours "$MAX_AGE_HOURS"
           status=$?
           set -e
           if [ "$status" -eq 0 ]; then
             echo "taken=true" >> "$GITHUB_OUTPUT"
           else
             echo "taken=false" >> "$GITHUB_OUTPUT"
+          fi
+          if [ "$status" -eq 5 ]; then
+            echo "stale=true" >> "$GITHUB_OUTPUT"
           fi
 
       # parity.py per family, --keys-only, on the bundle (hourly_parity.py
@@ -643,3 +667,16 @@ jobs:
           retention-days: 90
           if-no-files-found: error
           overwrite: true
+
+      # Decision 200: red, last, when the take found the store with no bundle
+      # for MAX_AGE_HOURS, so the hour's not-compared result is written and
+      # uploaded first and the soak's routine, which reads only red or green,
+      # sees an hourly comparison that has stopped comparing.
+      - name: Fail the comparison when no bundle has reached the store for MAX_AGE_HOURS
+        if: ${{ !cancelled() && steps.wanted.outputs.run == 'true' && steps.take.outputs.stale == 'true' }}
+        working-directory: .
+        env:
+          LEG: ${{ matrix.data_environment }}
+        run: |
+          echo "::error title=No comparison bundle in the store for over ${MAX_AGE_HOURS} h::The $LEG leg's history store holds no comparison bundle put in the last ${MAX_AGE_HOURS} hours (the take step's line says when the newest was put), so this hour, like those before it, compared nothing. This run is red so the soak shows it (decision 200)."
+          exit 1

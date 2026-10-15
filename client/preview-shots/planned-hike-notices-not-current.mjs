@@ -1,5 +1,6 @@
 // Notices for your planned hikes, with notices that may no longer apply
-// (#1805, the maintainer's frame A, poll of 2026-10-10).
+// (PR #1805 — dlt → dbt re-platform as one go/no-go change; the maintainer's
+// frame A, poll of 2026-10-10).
 //
 // WHAT A REVIEWER SHOULD CHECK IN THE FRAME, against frame A of the expiry
 // wireframe ("A: show, marked old") and client/src/lib/noticeCurrency.ts:
@@ -43,7 +44,7 @@ import {
 import { seedStewards } from './fixtures/stewards.mjs'
 
 export const caption =
-  'Notices for your planned hikes with notices that may no longer apply — kept in the list, greyed, with one line under each saying why: last reported more than 90 days ago, no date at all, or past its own end date (the maintainer’s frame A, #1805). Every organization and notice is an invented example.'
+  'Notices for your planned hikes with notices that may no longer apply — kept in the list, greyed, with one line under each saying why: last reported more than 90 days ago, no date at all, or past its own end date (the maintainer’s frame A, poll of 2026-10-10). Every organization and notice is an invented example.'
 
 export const alt =
   'The notices panel headed "Notices for your planned hikes", with one section for the day hike "Canyon rim loop (example)" today. First a Closure row, "Bridge out at Mill Creek (example)", from Example County Parks with its updated date, in full colour. Then three greyed rows, each with a grey box under its source: "Lower loop closed for 3 to 6 months (example)" from Example City Parks, "Last reported" and its date, "It may no longer apply."; "Section 12 closed (example)" from Example Trail Alliance, "Its source gives no date. It may no longer apply."; and a Notice row, "Campground closed (example)" from Example National Forest, "Its source said it would end" and its date, "It may no longer apply." Every organization and notice is an invented example.'

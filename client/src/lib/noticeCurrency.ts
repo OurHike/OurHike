@@ -1,6 +1,7 @@
 // Whether a notice still reads as current on this phone, and the one line a
-// hiker reads under it when it does not (#1805; pipeline/ELT.md, "Status,
-// water and expiry rules", rules 2 and 4).
+// hiker reads under it when it does not (PR #1805 — dlt → dbt re-platform
+// as one go/no-go change; pipeline/ELT.md, "Status, water and expiry rules",
+// rules 2 and 4).
 //
 // THE PIPELINE DECIDES THE DAY, THE PHONE DECIDES TODAY. conditions/notices.json
 // carries `current_until` on every notice: the last day it reads as current

@@ -282,9 +282,10 @@ export function clubClosureChainFrom(geometry: NoticeGeometryValue): number | nu
  * `closurePointId` gives.
  *
  * FROM CLOSURE_MARK_MIN_ZOOM, LIKE THE FAR MARK, so below the pin seam a
- * point closure draws nothing: the maintainer's call of 2026-09-08 (#1292)
- * keeps point marks off the far zooms, and a point has no run to knock out
- * of a trail there. NO MAXZOOM: the far mark gives way to a chain along its
+ * point closure draws nothing: the maintainer's call of 2026-09-08 (#1292 —
+ * Below the seam the map draws marks that read as waypoints; the opening
+ * camera should draw trail lines only) keeps point marks off the far zooms,
+ * and a point has no run to knock out of a trail there. NO MAXZOOM: the far mark gives way to a chain along its
  * line, and a point has no line for a chain.
  *
  * ALWAYS DRAWN, where the far mark collides (lib/closureStyle.ts's

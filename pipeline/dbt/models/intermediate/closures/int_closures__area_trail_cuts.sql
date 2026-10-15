@@ -30,13 +30,14 @@
 -- A.T.'s included (prepare_closure_trail_lines.py says why).
 --
 -- THE RULE, int_trail_lines__network_area_closures' (export_nearby_trails.py's
--- apply_area_closures(), #964) on each area alone, with the same GEOS
--- operations: a line's part inside an area is its intersection with it,
--- reduced to the LineStrings of two or more distinct vertices it holds
--- (_line_parts(): a point where a trail only grazes the edge is not a
--- walkable section), so a line half inside keeps only its inside half. A
--- line on the edge is inside, as that rule has it: the GEOS intersection of a
--- line with a polygon keeps the part along its boundary.
+-- apply_area_closures(), from #964 — NYS Parks closes areas, not trail
+-- segments, and the closure model has nowhere to put one) on each area
+-- alone, with the same GEOS operations: a line's part inside an area is its
+-- intersection with it, reduced to the LineStrings of two or more distinct
+-- vertices it holds (_line_parts(): a point where a trail only grazes the
+-- edge is not a walkable section), so a line half inside keeps only its
+-- inside half. A line on the edge is inside, as that rule has it: the GEOS
+-- intersection of a line with a polygon keeps the part along its boundary.
 --
 -- SHAPED AS A PHONE NEEDS A LINE, by macros/notice_phone_geometry.sql, the
 -- one home of that shape: Douglas-Peucker at 10 m with the topology kept, in

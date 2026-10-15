@@ -26,7 +26,14 @@ string, the safest guess for a column nobody has seen a value in (Reasoned).
 REVIEWED FILES run as they are: their upstream is a file in git under
 pipeline/reference/ (the podcast episodes, the POI identity ledger, ATC's
 reviewed Trail Updates, and each club's folder of challenge files, one row
-per file through ReviewedDir), so CI reads the real thing.
+per file through ReviewedDir), so CI reads the real thing. One is read from
+the fixtures instead (REVIEWED_STAND_INS): reference/work_projects.json,
+whose `rows` are empty by the maintainer's decision of 2026-08-20 on #760,
+so the real thing gave CI's work_projects family no row to compare.
+make_dbt_fixtures.py writes invented rows in its shape at
+lib/work_projects.FIXTURE_STAND_IN, landed here under the same table, and
+parity.py's old side reads the same file (the maintainer's poll of
+2026-10-15, with decision 199).
 
 OTHER UPSTREAMS are answered from what make_dbt_fixtures.py writes, so the
 suggested_hikes, closures and warnings marts build in CI (stage 3 of #1793 —
@@ -102,6 +109,7 @@ from __future__ import annotations
 import argparse
 import json
 import os
+from dataclasses import replace
 from datetime import datetime
 from pathlib import Path
 from types import SimpleNamespace
@@ -113,7 +121,7 @@ from requests.structures import CaseInsensitiveDict
 
 import export_conditions
 from extract import _content, _json_apis, _kinds, _notices, _pages_content, _robots
-from extract._contract import all_resources, discover, discover_shared
+from extract._contract import PIPELINE_DIR, all_resources, discover, discover_shared
 from extract._gis_files import GisFile
 from extract._kinds import (
     CONDITIONS_QUERIES,
@@ -137,6 +145,7 @@ from extract._ogc import JsonFeatures, OgcFeatures
 from extract._pages_points import PagePoints
 from lib.nws_alerts import ALERTS_URL as NWS_ALERTS_URL
 from lib.socrata import dataset_url
+from lib.work_projects import FIXTURE_STAND_IN as WORK_PROJECTS_STAND_IN
 
 FIXTURE_ETAG = '"fixture"'
 MAX_RECORD_COUNT = 1000
@@ -167,6 +176,9 @@ NOTICES_DIR = "notices"
 # page_points_fixtures()), one file per registry key, the NOTICES_DIR shape: `{"answers": {url: {"content_type",
 # "body"}}, "rows": n}`, served by exact URL, and `rows` what the page's own parser must land.
 PAGE_POINTS_DIR = "page_points"
+# A reviewed file read from the fixtures in place of git's copy, by that copy's path: the module docstring's
+# "REVIEWED FILES". The stand-in, when the fixtures hold it, lands under the same key and so the same table.
+REVIEWED_STAND_INS = {"reference/work_projects.json": WORK_PROJECTS_STAND_IN}
 JSON_API_KINDS = (
     _json_apis.NpsAlerts,
     _json_apis.NpsRoadEvents,
@@ -552,6 +564,10 @@ def fixture_resources(raw_dir: Path) -> tuple[list, FixtureAdapter]:
     nws, postgres = conditions_fixture(raw_dir, NWS_FIXTURE), conditions_fixture(raw_dir, POSTGRES_FIXTURE)
     for resource in all_resources(discover() + discover_shared()):
         if isinstance(resource, ReviewedFile | ReviewedDir):
+            stand_in = raw_dir / REVIEWED_STAND_INS.get(resource.path, "")
+            if resource.path in REVIEWED_STAND_INS and stand_in.is_file():
+                # Its path relative to pipeline/ where it can be, as `_path` lands a committed file's.
+                resource = replace(resource, path=os.path.relpath(stand_in.resolve(), PIPELINE_DIR))
             chosen.append(resource)  # a committed file, or a folder of them, is its own fixture
             continue
         if isinstance(resource, JSON_API_KINDS):

@@ -782,8 +782,11 @@ jobs:
           # fixture mode served and the squares.json step_weather_squares.py
           # landed, both under data/raw/. bake() imports shapely and pyproj.
           "$RUNNER_TEMP/pipeline/bin/python" parity.py --json-dir data/processed/parity weather_alerts --new data/processed/dbt/conditions_weather_alerts.json --raw-dir data/raw
-          # The club workdays: export_work_projects.py's main() over
-          # reference/work_projects.json from git, written into a temporary folder.
+          # The club workdays: export_work_projects.py's main(), written into a
+          # temporary folder, over make_dbt_fixtures.py's stand-in for
+          # reference/work_projects.json (lib/work_projects.FIXTURE_STAND_IN),
+          # which fixture mode landed for the writer too: invented rows, since
+          # the reviewed file's are empty (decisions 162 and 199).
           "$RUNNER_TEMP/pipeline/bin/python" parity.py --json-dir data/processed/parity work_projects --new data/processed/dbt/conditions_work_projects.json
           # The trail lines network, whose input is the fixture warehouse, not
           # a file in git.

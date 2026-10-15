@@ -448,16 +448,60 @@ def test_two_files_with_no_records_are_not_compared_unless_the_family_may_be_emp
     assert "ALLOWED_EMPTY_POI_TYPES" in next(item.reason for item in trailhead.listed if item.what == "records")
 
 
-def test_only_the_poi_types_export_poi_may_publish_empty_and_work_projects_may_compare_no_records():
+def test_only_the_poi_types_export_poi_may_publish_empty_and_three_conditions_families_may_compare_no_records():
     """One home for the POI types: lib/poi_schema.ALLOWED_EMPTY_POI_TYPES. Work projects is the maintainer's own
-    (decision 162); highlights is not on it."""
+    (decision 162), and so are closures and reports (decision 199); highlights is not on it."""
     from lib.poi_schema import ALLOWED_EMPTY_POI_TYPES
 
     expected = {f"poi_{kind}{version}" for kind in ALLOWED_EMPTY_POI_TYPES for version in ("", "_v2")}
     assert expected == {"poi_trailhead", "poi_trailhead_v2"}
-    assert set(gate_report.MAY_COMPARE_NO_RECORDS) == expected | {"work_projects"}
+    assert set(gate_report.MAY_COMPARE_NO_RECORDS) == expected | {"work_projects", "closures", "reports"}
     assert set(gate_report.MAY_COMPARE_NO_RECORDS) <= set(parity.FAMILIES)
     assert all(reason.strip() for reason in gate_report.MAY_COMPARE_NO_RECORDS.values())
+
+
+def test_an_empty_conditions_family_counts_only_while_ci_compares_its_writer_on_rows(tmp_path, monkeypatch):
+    """Decisions 162 and 199: an hour of the soak that compared two empty conditions/closures.json,
+    conditions/reports.json or conditions/work_projects.json files counts, because CI's fixture families compare each
+    writer on rows each time pipeline-tests.yml's dbt job runs. So the fixtures keep a row each family publishes, and
+    the parity step keeps all three lines: without either, nothing would compare that writer on a row while the empty
+    soak still counted. work_projects compared none until 2026-10-15 ('no differences across 0 work_projects' in run
+    38610267739, beside 3 closures and 3 reports), because both sides read reference/work_projects.json, empty by the
+    maintainer's decision of 2026-08-20 on #760; both now read make_dbt_fixtures.py's stand-in
+    (lib/work_projects.FIXTURE_STAND_IN), and tests/test_extract_fixtures.py holds fixture mode's half of that."""
+    import yaml
+
+    import make_dbt_fixtures
+    from lib.work_projects import FIXTURE_STAND_IN, file_problems, is_reviewed, published_rows
+
+    answers = make_dbt_fixtures._ourhike_postgres()
+    verified = [row for row in answers["closures"]["rows"] if row["moderation_status"] == "verified"]
+    public = [
+        row for row in answers["reports"]["rows"] if row["status"] in ("verified", "resolved") and row["visibility"] == "public"
+    ]
+    stand_in = json.loads(make_dbt_fixtures.closures_and_warnings_fixtures()[FIXTURE_STAND_IN])
+    assert is_reviewed(stand_in) and file_problems(stand_in) == []
+    workdays = published_rows(stand_in)
+    assert verified and public and workdays, "with no row in a fixture, CI compares that writer on none again"
+    # Each reason gives the count CI compares on, so a fixture that grows or shrinks takes its reason with it.
+    reasons = gate_report.MAY_COMPARE_NO_RECORDS
+    assert f"{len(verified)} verified closures" in reasons["closures"]
+    assert f"{len(public)} public reports" in reasons["reports"]
+    assert f"{len(workdays)} invented workdays" in reasons["work_projects"]
+    (tmp_path / FIXTURE_STAND_IN).parent.mkdir(parents=True)
+    (tmp_path / FIXTURE_STAND_IN).write_text(json.dumps(stand_in), encoding="utf-8")
+    monkeypatch.setattr(parity, "RAW_DIR", tmp_path)
+    assert len(parity._work_projects_old()["work_projects"]) == len(workdays), "the old side reads the stand-in"
+    workflow = Path(__file__).resolve().parents[2] / ".github" / "workflows" / "pipeline-tests.yml"
+    (step,) = [
+        step
+        for job in yaml.safe_load(workflow.read_text(encoding="utf-8"))["jobs"].values()
+        for step in job.get("steps") or []
+        if step.get("name") == "Parity with today's exporters"
+    ]
+    for family in ("closures", "reports", "work_projects"):
+        line = f"parity.py --json-dir data/processed/parity {family} --new data/processed/dbt/conditions_{family}.json"
+        assert line in step["run"], family
 
 
 def test_a_key_pattern_matches_whichever_placeholder_each_side_writes():

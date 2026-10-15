@@ -16,9 +16,13 @@
 --   records no organization type, so a registered row with that basis is
 --   refused until one is recorded. No row has it today:
 --   tests/test_organizations.py holds the registry to `stated_by_org`,
---   `maintainer_authorisation`, `public_gis` and `unresolved`.
+--   `maintainer_authorisation`, `public_gis`, `maintainer_clearinghouse`
+--   and `unresolved`.
 -- - `maintainer_clearinghouse` (decisions 20 and 22) covers NYS DEC and
---   OPRHP alone, so another steward's row with that basis is refused.
+--   OPRHP alone, so another steward's row with that basis is refused. The
+--   13 rows whose datasets the NYS GIS Clearinghouse lists carry it since
+--   2026-10-15; tests/test_organizations.py holds it to those two
+--   organizations' rows before this guard would see one.
 -- - `public_gis` (decision 21a) needs a GIS endpoint: an ArcGIS or Socrata
 --   layer (`club_arcgis_layer` is a club's ArcGIS layer that only the
 --   extract reads, lib/source_registry.py), a GIS file or an OGC API

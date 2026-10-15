@@ -10,8 +10,10 @@ import { atcBandIdAt } from './atcUpdateLayers'
 import { addClosureShadeImages } from './closureShade'
 import {
   CLUB_CLOSURE_CHAIN_FROM_PROPERTY,
+  CLUB_CLOSURE_FAR_SOURCE_ID,
   CLUB_CLOSURE_SOURCE_ID,
   clubClosureChainFrom,
+  clubClosureFarPoint,
   clubClosureShadeIdAt,
 } from './clubClosureLayers'
 import { closureIdAt, clubClosureIdAt, CLUB_CLOSURE_ID_PROPERTY } from './closureLayers'
@@ -66,6 +68,27 @@ export function clubClosureFeatureCollection(
   }
 }
 
+/** PROTOTYPE (Q22): one Point per closure, for the far-out marks' source,
+ *  keyed by notice id as the line features are, so a tap on a far-out mark
+ *  opens the same sheet. */
+export function clubClosureFarCollection(closures: readonly TrailClosure[]) {
+  return {
+    type: 'FeatureCollection' as const,
+    features: closures.flatMap((closure) => {
+      const point = clubClosureFarPoint(closure.place.geometry)
+      return point === null
+        ? []
+        : [
+            {
+              type: 'Feature' as const,
+              geometry: { type: 'Point' as const, coordinates: point },
+              properties: { [CLUB_CLOSURE_ID_PROPERTY]: closure.notice_id },
+            },
+          ]
+    }),
+  }
+}
+
 /** Pushes the closures onto the live map's source, and returns a detach.
  *  The shade's hatch images go first (map/closureShade.ts), so no shaded
  *  area reaches the source before its pattern does. */
@@ -81,6 +104,11 @@ export function attachClubClosureData(
       if (source === undefined || typeof source.setData !== 'function') return
       addClosureShadeImages(map)
       source.setData(clubClosureFeatureCollection(closures) as never)
+      // PROTOTYPE (Q22): the far-out marks' source, when the style has one.
+      const far = map.getSource<GeoJSONSource>(CLUB_CLOSURE_FAR_SOURCE_ID)
+      if (far !== undefined && typeof far.setData === 'function') {
+        far.setData(clubClosureFarCollection(closures) as never)
+      }
     },
     'club closures',
   )

@@ -373,3 +373,202 @@ export function buildClubClosureLayers(
     ),
   ]
 }
+
+// ---------------------------------------------------------------------------
+// PROTOTYPE, NOT WIRED IN (frames for Q22 of #1805 — dlt → dbt re-platform as
+// one go/no-go change, 2026-10-15): the maintainer chose "A small mark from
+// z5" over "nothing below z7". One mark per club closure, of every
+// organization, at z5 and z6 only, on its own small source of one point per
+// closure, so the line source's `tolerance: 0` and the clamp above are not
+// touched. Three variants are drawn for the maintainer to pick from; none is
+// in map/style.ts yet. Every size below is @unvalidated: picked off the
+// renders of 2026-10-15 to read as legible but quieter than the z7 far mark
+// (CLOSURE_MARK_SIZE, about 16 px of ink), and settled only by the
+// maintainer's pick and a look on a real phone.
+// ---------------------------------------------------------------------------
+
+/** The far-out marks' own source: one Point per closure. */
+export const CLUB_CLOSURE_FAR_SOURCE_ID = 'club-closures-far'
+
+/** The id of the far-out marks' layer (and of its count, in the counted
+ *  variant). */
+export const CLUB_CLOSURE_FAR_LAYER_ID = 'club-closure-far'
+export const CLUB_CLOSURE_FAR_COUNT_LAYER_ID = 'club-closure-far-count'
+
+/** The first zoom the far-out mark draws at: the maintainer's "from z5". It
+ *  stops at CLOSURE_MARK_MIN_ZOOM (maxzoom is exclusive), where the paper,
+ *  the trace, the far mark and the point cross take over, so no zoom draws
+ *  both. */
+export const CLUB_CLOSURE_FAR_MIN_ZOOM = 5
+
+export type ClubClosureFarVariant = 'cross' | 'dot' | 'counted'
+
+/** The small cross's `icon-size`: the chain's own cross at full size, about
+ *  7.2 px of ink (CLOSURE_CROSS_ARM + CLOSURE_CROSS_STROKE / 2, twice), under
+ *  half the z7 far mark's. */
+export const CLUB_CLOSURE_FAR_CROSS_SIZE = 1
+
+/** The small cross's collision padding in CSS px, where it collides. */
+export const CLUB_CLOSURE_FAR_CROSS_PADDING = 2
+
+/** The dot's radius in CSS px (a 5 px dot), and its paper ring. */
+export const CLUB_CLOSURE_FAR_DOT_RADIUS = 2.5
+export const CLUB_CLOSURE_FAR_DOT_RING = 1
+
+/** The counted variant's cluster radius in CSS px: closures whose marks
+ *  fall within it share one disc with their number on it. */
+export const CLUB_CLOSURE_FAR_CLUSTER_RADIUS = 28
+
+/** The point a closure's far-out mark sits at: halfway along a line
+ *  closure's longest run, a point closure's (first) point, the middle of a
+ *  shaded area's outer ring's box. Null for a geometry with no coordinates. */
+export function clubClosureFarPoint(geometry: NoticeGeometryValue): Position | null {
+  const g = geometry as { type: string; coordinates: unknown }
+  if (g.type === 'Point') return g.coordinates as Position
+  if (g.type === 'MultiPoint') return (g.coordinates as Position[])[0] ?? null
+  if (g.type === 'Polygon' || g.type === 'MultiPolygon') {
+    const ring =
+      g.type === 'Polygon'
+        ? (g.coordinates as Position[][])[0]
+        : (g.coordinates as Position[][][])[0]?.[0]
+    if (ring === undefined || ring.length === 0) return null
+    const xs = ring.map((p) => p[0])
+    const ys = ring.map((p) => p[1])
+    return [
+      (Math.min(...xs) + Math.max(...xs)) / 2,
+      (Math.min(...ys) + Math.max(...ys)) / 2,
+    ]
+  }
+  let best: Position[] | null = null
+  let bestLength = -1
+  for (const run of runsOf(geometry)) {
+    let length = 0
+    for (let i = 1; i < run.length; i += 1) {
+      length += Math.hypot(run[i][0] - run[i - 1][0], run[i][1] - run[i - 1][1])
+    }
+    if (length > bestLength) [best, bestLength] = [run, length]
+  }
+  if (best === null || best.length === 0) return null
+  let left = bestLength / 2
+  for (let i = 1; i < best.length; i += 1) {
+    const step = Math.hypot(best[i][0] - best[i - 1][0], best[i][1] - best[i - 1][1])
+    if (step >= left && step > 0) {
+      const t = left / step
+      return [
+        best[i - 1][0] + t * (best[i][0] - best[i - 1][0]),
+        best[i - 1][1] + t * (best[i][1] - best[i - 1][1]),
+      ]
+    }
+    left -= step
+  }
+  return best[best.length - 1]
+}
+
+export function buildClubClosureFarSource(
+  variant: ClubClosureFarVariant,
+): GeoJSONSourceSpecification {
+  return {
+    type: 'geojson',
+    data: { type: 'FeatureCollection', features: [] },
+    ...(variant === 'counted'
+      ? {
+          cluster: true,
+          clusterRadius: CLUB_CLOSURE_FAR_CLUSTER_RADIUS,
+          clusterMaxZoom: CLOSURE_MARK_MIN_ZOOM - 1,
+        }
+      : {}),
+  }
+}
+
+/** The far-out marks, z5 to z6, in the closure ink on the sheet's paper:
+ *  `cross` the small ✕, `dot` a 5 px dot, `counted` the small ✕ for a lone
+ *  closure and a paper disc with the number where several share a spot.
+ *  The counted variant's number needs the style's bundled glyphs. */
+export function buildClubClosureFarLayers(
+  variant: ClubClosureFarVariant,
+  ground: string,
+  ink: string,
+): LayerSpecification[] {
+  const zooms = { minzoom: CLUB_CLOSURE_FAR_MIN_ZOOM, maxzoom: CLOSURE_MARK_MIN_ZOOM }
+  // The small cross takes part in collision in the `cross` variant, as the
+  // z7 far mark does (CLOSURE_MARK_PADDING's reason): where marks would
+  // pile into one black blot (north-central Washington's 809 fire closure
+  // lines at z5), the first keeps its place and the rest are dropped, so a
+  // dense area reads as a few crosses. In `counted` nothing is dropped: the
+  // clusters already keep lone crosses apart.
+  const thinned = variant === 'cross'
+  const cross = (filter?: unknown[]): LayerSpecification =>
+    ({
+      id: CLUB_CLOSURE_FAR_LAYER_ID,
+      type: 'symbol',
+      source: CLUB_CLOSURE_FAR_SOURCE_ID,
+      ...zooms,
+      ...(filter === undefined ? {} : { filter }),
+      layout: {
+        'icon-image': CLOSURE_CROSS_ICON_ID,
+        'icon-size': CLUB_CLOSURE_FAR_CROSS_SIZE,
+        'icon-allow-overlap': !thinned,
+        'icon-ignore-placement': !thinned,
+        'icon-padding': CLUB_CLOSURE_FAR_CROSS_PADDING,
+      },
+      paint: {
+        'icon-color': ink,
+        'icon-halo-color': ground,
+        'icon-halo-width': CLOSURE_CROSS_HALO_WIDTH_FAR,
+      },
+    }) as LayerSpecification
+  if (variant === 'dot') {
+    return [
+      {
+        id: CLUB_CLOSURE_FAR_LAYER_ID,
+        type: 'circle',
+        source: CLUB_CLOSURE_FAR_SOURCE_ID,
+        ...zooms,
+        paint: {
+          'circle-radius': CLUB_CLOSURE_FAR_DOT_RADIUS,
+          'circle-color': ink,
+          'circle-stroke-color': ground,
+          'circle-stroke-width': CLUB_CLOSURE_FAR_DOT_RING,
+        },
+      } as LayerSpecification,
+    ]
+  }
+  if (variant === 'cross') return [cross()]
+  const clustered: unknown[] = ['has', 'point_count']
+  return [
+    cross(['!', clustered]),
+    {
+      id: `${CLUB_CLOSURE_FAR_LAYER_ID}-disc`,
+      type: 'circle',
+      source: CLUB_CLOSURE_FAR_SOURCE_ID,
+      ...zooms,
+      filter: clustered as never,
+      paint: {
+        'circle-radius': ['step', ['get', 'point_count'], 8, 10, 10, 100, 12],
+        'circle-color': ground,
+        'circle-stroke-color': ink,
+        'circle-stroke-width': 1.5,
+      },
+    } as LayerSpecification,
+    {
+      id: CLUB_CLOSURE_FAR_COUNT_LAYER_ID,
+      type: 'symbol',
+      source: CLUB_CLOSURE_FAR_SOURCE_ID,
+      ...zooms,
+      filter: clustered as never,
+      layout: {
+        'text-field': ['get', 'point_count_abbreviated'],
+        'text-font': ['Noto Sans Regular'],
+        'text-size': 10,
+        'text-allow-overlap': true,
+        'text-ignore-placement': true,
+      },
+      paint: { 'text-color': ink },
+    } as LayerSpecification,
+  ]
+}
+
+/** The small cross's paper ring, a little wider than the chain's
+ *  CLOSURE_CROSS_HALO_WIDTH because far out it sits on the map, often on a
+ *  red trail, not on the closure's own paper. */
+export const CLOSURE_CROSS_HALO_WIDTH_FAR = 1.5

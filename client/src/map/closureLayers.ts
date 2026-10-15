@@ -176,9 +176,14 @@ export function clubClosureIdAt(
   map: MapLibreMap,
   point: { x: number; y: number },
 ): string | null {
-  const layers = [CLUB_CLOSURE_LAYER_ID, closurePointId(CLUB_CLOSURE_LAYER_ID)].filter(
-    (layer) => map.getLayer(layer) !== undefined,
-  )
+  // PROTOTYPE (Q22): 'club-closure-far' is clubClosureLayers.ts's
+  // CLUB_CLOSURE_FAR_LAYER_ID, a literal so the launch bundle does not load
+  // that module: a tap on a far-out mark opens the closure's sheet, as at z7.
+  const layers = [
+    CLUB_CLOSURE_LAYER_ID,
+    closurePointId(CLUB_CLOSURE_LAYER_ID),
+    'club-closure-far',
+  ].filter((layer) => map.getLayer(layer) !== undefined)
   if (layers.length === 0) return null
   const [feature] = map.queryRenderedFeatures(closureTapBox(point), { layers })
   const id = feature?.properties?.[CLUB_CLOSURE_ID_PROPERTY]

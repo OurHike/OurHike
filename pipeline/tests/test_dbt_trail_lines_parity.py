@@ -41,6 +41,7 @@ import json
 import re
 from pathlib import Path
 
+import duckdb
 import numpy as np
 import pytest
 import shapely.geometry
@@ -55,6 +56,7 @@ import export_elevation
 import export_nearby_trails
 import export_spurs
 import export_trails
+import parity
 from lib import club_sections as lib_club_sections
 from lib import corridor
 from lib import spurs as lib_spurs
@@ -482,11 +484,6 @@ DELIBERATE: dict[tuple[str, str], str] = {
         "(client/src/lib/trailData.ts refuses miles whose hash is not the trails.geojson it holds) instead of "
         "comparing the two hashes."
     ),
-    ("pub_club_sections", "source_edited"): (
-        "Not built: club_sections.json's source_edited is {} until the extract lands each layer's "
-        "editingInfo.dataLastEditDate (pub_club_sections' header), where export_club_sections.py dates each "
-        "layer from fetch_all.py's manifest. The sheet omits the day, as it does for a release that carries none."
-    ),
 }
 
 
@@ -556,7 +553,10 @@ LEDGER_FILES = (
     "test_export_spurs",
 )
 CORRIDOR_NETWORK = "lib/corridor.py's network ring (#1016), which the POI clip reads (the poi family), not TL14's A.T. corridor"
-NOT_SOURCE_EDITED = "source_edited, not built (DELIBERATE: pub_club_sections source_edited)"
+NOT_SOURCE_EDITED = (
+    "source_edited: int_sources__data_edited's and pub_club_sections' unit tests, held to edited_day() and "
+    "source_edit_dates() below; parity.py's club_sections family on every build"
+)
 #: Every ledger-listed case no unit test names, and where its rule went instead.
 ELSEWHERE: dict[str, str] = {
     "test_export_trails::test_export_trails_decodes_side_trails_blaze_field_via_the_real_coded_domain": (
@@ -725,7 +725,7 @@ def test_every_ledger_listed_case_has_a_home():
 def test_every_deliberate_difference_names_a_unit_test_or_a_file_that_exists():
     names = {test["name"] for test in _at_document()["unit_tests"]}
     for test, _key in DELIBERATE:
-        assert test in names or test in ("parity.py trail_miles", "pub_club_sections"), test
+        assert test in names or test == "parity.py trail_miles", test
 
 
 # --- int_trail_lines__at_features, __at_sources, __at_clipped ------------------------
@@ -1195,7 +1195,157 @@ def test_trail_miles_parity_holds_trails_sha256_to_its_own_trails_geojson(tmp_pa
     assert shaped["trails_sha256_names_its_trails_geojson"] is True
 
 
-def test_club_sections_dates_no_layer_until_the_extract_lands_the_dates():
+# --- club_sections.json's source_edited: the extract's logged dates, as export_club_sections.py prints them ---------
+
+
+def _unit_tests_of(path: Path, model: str) -> list[dict]:
+    return [test for test in yaml.safe_load(path.read_text())["unit_tests"] if test["model"] == model]
+
+
+SOURCES_INTERMEDIATE = DBT / "models" / "intermediate" / "sources" / "_sources__intermediate.yml"
+PUBLISH_TRAIL_LINES = DBT / "models" / "publish" / "_publish__trail_lines.yml"
+
+
+def test_club_sections_dates_the_three_layers_it_names_from_the_extracts_logged_dates():
+    """Until the extract logged each layer's editingInfo.dataLastEditDate, the writer wrote `json('{}')` here and
+    DELIBERATE held the difference (UA release 2026-10-10-2's club sheet printed no edit day)."""
     writer = (DBT / "models" / "publish" / "pub_club_sections.sql").read_text()
-    written_empty = "json('{}') as source_edited" in writer
-    assert written_empty == (("pub_club_sections", "source_edited") in DELIBERATE)
+    assert "json('{}') as source_edited" not in writer
+    assert "ref('int_sources__data_edited')" in writer
+    for role, key in (
+        ("attribution", export_club_sections.CENTERLINE_KEY),
+        ("names", export_club_sections.POLYGONS_KEY),
+        ("miles", export_club_sections.MILEPOSTS_KEY),
+    ):
+        assert f"'{key}' as {role}_key" in writer, role
+        assert f"'{role}': layers.{role}_key" in writer, role
+    assert not [key for key in DELIBERATE if key[0] == "pub_club_sections"]
+
+
+def test_the_edit_day_unit_tests_print_the_day_edited_day_prints_and_leave_out_the_ones_it_does_not():
+    """int_sources__data_edited's days, given row by given row, against export_club_sections.edited_day()."""
+    tests = _unit_tests_of(SOURCES_INTERMEDIATE, "int_sources__data_edited")
+    assert len(tests) == 2, "the rule's test and the days' test"
+    for test in tests:
+        (given,) = test["given"]
+        expected = {row["source_key"]: row for row in test["expect"]["rows"]}
+        for row in expected.values():
+            assert export_club_sections.edited_day(row["data_last_edit_date"]) == row["data_edited_on"], test["name"]
+        if test["name"].endswith("_prints_the_days_edited_day_prints_and_no_other"):
+            for row in given["rows"]:
+                key = row["table_name"].removeprefix(f"raw_{row['club']}__")
+                day = export_club_sections.edited_day(row["data_last_edit_date"])
+                assert (key in expected) == (day is not None), (test["name"], key)
+
+
+def test_the_club_sections_writer_unit_tests_are_source_edit_dates_answers(tmp_path):
+    """pub_club_sections' expected `source_edited`, against export_club_sections.source_edit_dates() over a manifest
+    holding the same dates, key order included: the Python keys by layer in centerline, polygons, mileposts order."""
+    tests = _unit_tests_of(PUBLISH_TRAIL_LINES, "pub_club_sections")
+    assert len(tests) == 2
+    for test in tests:
+        given = next(given for given in test["given"] if given["input"] == "ref('int_sources__data_edited')")
+        (tmp_path / "manifest.json").write_text(
+            json.dumps({row["source_key"]: {"data_last_edit_date": row["data_last_edit_date"]} for row in given["rows"]})
+        )
+        (expected,) = test["expect"]["rows"]
+        python = export_club_sections.source_edit_dates(tmp_path)
+        assert json.loads(expected["source_edited"]) == python, test["name"]
+        assert list(json.loads(expected["source_edited"])) == list(python), test["name"]
+
+
+def _run_log_warehouse(path: Path, rows: list[dict]) -> Path:
+    """A warehouse whose run log holds `rows` in the columns extract/_warehouse.py loads, as bigint where it types one."""
+    with duckdb.connect(str(path)) as con:
+        con.execute("create schema raw")
+        con.execute(
+            f"create table {parity.RUN_LOG_TABLE} (club varchar, table_name varchar, run_id varchar, outcome varchar, "
+            "data_last_edit_date bigint)"
+        )
+        for row in rows:
+            con.execute(
+                f"insert into {parity.RUN_LOG_TABLE} values (?, ?, ?, ?, ?)",
+                [row["club"], row["table_name"], row["run_id"], row["outcome"], row["data_last_edit_date"]],
+            )
+    return path
+
+
+def test_the_run_log_parity_reads_is_the_extracts_and_the_dbt_sources():
+    from extract._run import RUNS_TABLE
+
+    sources = yaml.safe_load((DBT / "models" / "staging" / "extract" / "_extract__sources.yml").read_text())["sources"]
+    (source,) = sources
+    assert {f"{source['schema']}.{table.get('identifier', table['name'])}" for table in source["tables"]} == {
+        parity.RUN_LOG_TABLE
+    }
+    assert parity.RUN_LOG_TABLE == f"raw.{RUNS_TABLE}"
+
+
+def test_parity_dates_a_table_by_the_rule_the_dbt_unit_test_holds_the_sql_to(tmp_path):
+    """parity.py's _landed_edit_dates(), over int_sources__data_edited's own given rows, gives every expected date and
+    no other, so the old side reads what the dbt side read."""
+    (test,) = [
+        test
+        for test in _unit_tests_of(SOURCES_INTERMEDIATE, "int_sources__data_edited")
+        if test["name"].endswith("_dates_each_table_by_its_newest_load_or_a_skip_after_it")
+    ]
+    (given,) = test["given"]
+    warehouse = _run_log_warehouse(tmp_path / "warehouse.duckdb", given["rows"])
+
+    landed = parity._landed_edit_dates(warehouse)
+
+    assert landed == {row["source_key"]: {"data_last_edit_date": row["data_last_edit_date"]} for row in test["expect"]["rows"]}
+
+
+def test_parity_club_sections_old_side_dates_each_layer_from_the_run_log_through_the_exporters_own_reader(tmp_path, monkeypatch):
+    """The old side's source_edited: export_club_sections.py's source_edit_dates() over the manifest the run log
+    stands in for. A layer whose newest load logged no date is absent on both sides; a warehouse with no run log, as
+    a pin from before the date was logged builds, dates nothing on either."""
+    for name, value in (
+        ("load_features", lambda path: []),
+        ("attribute_mileposts", lambda *a: []),
+        ("build_club_index", lambda features: None),
+        ("assemble", lambda *a: ([], [])),
+        ("canonical_clubs", lambda features: {}),
+    ):
+        monkeypatch.setattr(export_club_sections, name, value)
+    warehouse = _run_log_warehouse(
+        tmp_path / "warehouse.duckdb",
+        [
+            {
+                "club": "atc",
+                "table_name": "raw_atc__centerline",
+                "run_id": "20261103T051500.000000Z",
+                "outcome": "loaded",
+                "data_last_edit_date": 1790035200000,
+            },
+            {
+                "club": "atc",
+                "table_name": "raw_atc__trail_club_sections",
+                "run_id": "20261003T051500.000000Z",
+                "outcome": "loaded",
+                "data_last_edit_date": None,
+            },
+            {
+                "club": "atc",
+                "table_name": "raw_atc__trail_club_sections",
+                "run_id": "20261103T051500.000000Z",
+                "outcome": "skipped",
+                "data_last_edit_date": 1723680000000,
+            },
+            {
+                "club": "atc",
+                "table_name": "raw_atc__half_mile_points_from_springer",
+                "run_id": "20261103T051500.000000Z",
+                "outcome": "loaded",
+                "data_last_edit_date": None,
+            },
+        ],
+    )
+    monkeypatch.setenv("OURHIKE_WAREHOUSE", str(warehouse))
+
+    old = parity._club_sections_old()
+
+    assert old["source_edited"] == {"centerline": "2026-09-22", "trail_club_sections": "2024-08-15"}
+    monkeypatch.setenv("OURHIKE_WAREHOUSE", str(tmp_path / "no-warehouse.duckdb"))
+    assert parity._club_sections_old()["source_edited"] == {}

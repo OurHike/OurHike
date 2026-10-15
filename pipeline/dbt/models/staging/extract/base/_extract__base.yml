@@ -34,3 +34,40 @@ models:
         description: >
           The upstream's own count read in the same run, null where the
           platform gives none or the resource did not run.
+  - name: base_extract__runs_monthly
+    data_tests:
+      # Says how many rows the dedupe dropped, which for a log written once per run is none.
+      - dbt_utils.equal_rowcount:
+          arguments:
+            compare_model: source('extract', '_extract_runs_monthly')
+          config:
+            severity: warn
+    description: >
+      The extract's run log as the monthly lane's nodes read it, one row per
+      resource per run, keyed: base_extract__runs over the lane copy of the
+      same table (_extract__sources.yml's _extract_runs_monthly).
+      int_sources__data_edited reads each layer's data edit date from it.
+    columns:
+      - name: extract_run_key
+        description: >
+          The row's key (decision 40): dbt_utils.generate_surrogate_key over
+          the run and the resource, as base_extract__runs builds it.
+        data_tests: [not_null, unique]
+      - name: club
+        description: The extract folder whose resource the row is for, the `<folder>` of `raw_<folder>__<key>`.
+        data_tests: [not_null]
+      - name: table_name
+        description: The raw table the resource lands, as dlt names it.
+        data_tests: [not_null]
+      - name: outcome
+        description: >
+          What the run did with the resource: `loaded`, `skipped` (FRESH),
+          `refused`, `incomplete`, `unverified` or `unavailable`.
+        data_tests: [not_null]
+      - name: data_last_edit_date
+        description: >
+          The upstream's own data edit date, in epoch milliseconds as it
+          stated it (ArcGIS's editingInfo.dataLastEditDate). Null where the
+          layer stated none or the run read no metadata, and on every row
+          but a `loaded` one and a `skipped` one whose check read it
+          (extract/_run.py's RUNS_COLUMNS comment).

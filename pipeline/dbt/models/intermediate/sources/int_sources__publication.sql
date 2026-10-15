@@ -80,8 +80,11 @@
 --   `stated_by_org`, `maintainer_clearinghouse`), names `.*`, which every
 --   row's licence matches. `cannot_be_met` has no answers row on purpose:
 --   decision 38 holds a layer whose condition a hiker's planning tool cannot
---   meet, and decision 193 keeps words forbidding a use the app makes
---   ("not intended for navigation", however worded) as that hold.
+--   meet, and decision 193 keeps words forbidding a use the app makes as
+--   that hold, however worded. The cannot_be_met row reads the wordings its
+--   `why` names: "not to be used", "not intended" or "not intended to be
+--   used" for navigation or planning, "not for navigation", "do not use ...
+--   for navigation" and "not suitable for navigation".
 --   THE BACKSTOP. Once every phrase is cut out of the words, any
 --   restriction-shaped word left (may not, prohibited, only, distribute,
 --   licence and the rest of the `unclassified` row's list) is

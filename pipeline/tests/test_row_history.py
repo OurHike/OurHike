@@ -177,6 +177,61 @@ def test_a_second_save_points_back_at_the_first_and_old_saves_beyond_keep_saves_
     assert pointer["previous_save_id"] in folders
 
 
+def _saves_in(tmp_path, name: str, saves: int):
+    """A store named `name` (its URL's last part), saved to `saves` times; returns the store's folder."""
+    store = tmp_path / "history" / name
+    store.parent.mkdir(exist_ok=True)  # Store.check_reachable() refuses a directory whose parent is not there
+    restore(str(store), tmp_path / f"{name}-0.duckdb", cold_start=True)
+    _snapshot(tmp_path / f"{name}-0.duckdb")
+    save(str(store), tmp_path / f"{name}-0.duckdb")
+    for number in range(1, saves):
+        warehouse = tmp_path / f"{name}-{number}.duckdb"
+        restore(str(store), warehouse, cold_start=False)
+        save(str(store), warehouse)
+    return store
+
+
+def test_the_monthly_store_keeps_its_newest_three_saves_by_its_own_row_of_row_history_stores_toml(tmp_path):
+    """Decision 206 (the maintainer's poll, 2026-10-15): "3 saves", the newest and two back, from the next save on."""
+    store = _saves_in(tmp_path, "monthly", 5)
+
+    pointer = json.loads((store / POINTER).read_text())
+    folders = sorted(path.name for path in (store / "saves").iterdir())
+    assert len(folders) == 3 and folders[-1] == pointer["save_id"] and pointer["previous_save_id"] == folders[-2]
+
+
+def test_a_store_row_history_stores_toml_does_not_name_keeps_keep_saves(tmp_path, monkeypatch):
+    """The hourly stores keep KEEP_SAVES (24); 2 here, as the test above it sets it, so that four saves show it."""
+    monkeypatch.setattr(row_history, "KEEP_SAVES", 2)
+    store = _saves_in(tmp_path, "conditions_ua", 4)
+
+    assert len(list((store / "saves").iterdir())) == 2
+
+
+def test_the_committed_keep_counts_are_three_for_the_monthly_store_and_keep_saves_for_the_hourly_ones():
+    assert row_history.keep_saves("monthly") == 3
+    assert row_history.keep_saves("conditions_ua") == row_history.keep_saves("conditions_production") == 24
+    assert row_history.KEEP_SAVES == 24
+
+
+@pytest.mark.parametrize("value", ["1", "0", "-1", "true", '"3"', "2.5"])
+def test_a_keep_count_below_two_or_not_a_whole_number_is_refused(tmp_path, value):
+    """A slice of the newest 0 keeps every folder, and of a negative number deletes the oldest: neither is a count."""
+    stores = tmp_path / "row_history_stores.toml"
+    stores.write_text(f"[keep_saves]\nmonthly = {value}\n")
+
+    with pytest.raises(Refused, match="keeps at least 2 saves"):
+        row_history.keep_saves("monthly", stores)
+
+
+def test_a_store_is_named_as_build_marts_names_it():
+    """build_marts.py imports only the standard library, so it holds its own copy of the rule."""
+    import build_marts
+
+    for url in ("s3://our-hike-raw/history/monthly", "s3://our-hike-raw/history/conditions_ua/", "/tmp/a/store"):
+        assert row_history.store_name(url) == build_marts.history_store_name(url)
+
+
 def test_a_cold_start_drops_whatever_history_the_warehouse_already_held(tmp_path):
     warehouse = tmp_path / "w.duckdb"
     _snapshot(warehouse)

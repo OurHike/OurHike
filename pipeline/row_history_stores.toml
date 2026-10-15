@@ -26,3 +26,11 @@ conditions_ua = "2026-10-03, publish-conditions.yml run 37151246098 (soak run 50
 [elementary_started]
 monthly = "2026-10-10, build-reference.yml run 38014567450 (monthly run 31), which saved Elementary's history: 5 tables, 859,804 bytes"
 conditions_ua = "by 2026-10-08 22:52 UTC: publish-conditions.yml run 596 (37930228326) restored Elementary's history from save 20261008T225246144583Z-cc6552, which an earlier hourly run wrote, and check-conditions.yml has saved it every hour since its run 1 (37931185273); run 15 (38041409377) saved 5 tables, 1,688,145 bytes"
+
+# How many saves each store keeps, its current one included, of saves/ and of
+# elementary/ alike: row_history.py's keep_saves(), which its own save prunes
+# by and prune_raw_store.py reads too. A store not listed keeps KEEP_SAVES
+# (24), which the hourly stores do. At least 2: the current save and the one
+# it was built on.
+[keep_saves]
+monthly = 3  # decision 206 (the maintainer's poll, 2026-10-15): the newest and two back

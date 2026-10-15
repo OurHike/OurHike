@@ -26,6 +26,7 @@ from __future__ import annotations
 
 import json
 import os
+import re
 import subprocess
 import sys
 import threading
@@ -241,13 +242,36 @@ def test_a_build_whose_title_names_no_raw_run_could_not_be_checked_and_is_never_
     assert "since" not in answer
 
 
+#: build-reference.yml's run-name: the retention step's title under retention_only, else the build's (decision 205).
+RUN_NAME = re.compile(
+    r"\$\{\{ inputs\.retention_only && format\('([^']*)', inputs\.raw_run\) "
+    r"\|\| format\('([^']*)', inputs\.raw_run\) \}\}"
+)
+
+
+def _title(raw_run: str, retention_only: bool = False) -> str:
+    """build-reference.yml's run-name as GitHub renders it for a dispatch with `raw_run` and `retention_only`."""
+    found = RUN_NAME.fullmatch(yaml.safe_load((WORKFLOWS / MONTHLY).read_text(encoding="utf-8"))["run-name"])
+    assert found, "build-reference.yml's run-name is no longer the retention step's title or the build's"
+    return (found.group(1) if retention_only else found.group(2)).replace("{0}", raw_run)
+
+
 def test_the_dates_read_are_the_ones_build_reference_titles_its_runs_with():
     """The stand-in's titles are build-reference.yml's run-name with a raw_run in it, so the alarm reads what a real
     run's display_title says."""
-    run_name = yaml.safe_load((WORKFLOWS / MONTHLY).read_text(encoding="utf-8"))["run-name"]
     raw_run = _run(1, 0, "success", confirm="success")["display_title"].rsplit(" ", 1)[1]
 
-    assert run_name.replace("${{ inputs.raw_run }}", raw_run) == _run(1, 0, "success", confirm="success")["display_title"]
+    assert _title(raw_run) == _run(1, 0, "success", confirm="success")["display_title"]
+
+
+def test_a_retention_only_run_builds_nothing_and_is_never_counted_as_refreshing_ua(api, tmp_path):
+    """Its title names the raw_run it keeps as UA's, a date the alarm could read; its confirm job is skipped with the
+    build, so it is never the run the alarm dates UA by."""
+    raw_run = _run(1, 0, "success", confirm="success")["display_title"].rsplit(" ", 1)[1]
+    api.runs = [_run(40, 1, "success", confirm="skipped", title=_title(raw_run, retention_only=True))]
+
+    outputs, answer = _alarm(api, tmp_path)
+    assert raw_run in api.runs[0]["display_title"] and answer["last_refresh"] is None, answer
 
 
 def test_a_pull_request_branchs_green_dispatch_is_not_the_monthly_lane_refreshing_ua(api, tmp_path):

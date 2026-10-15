@@ -45,6 +45,8 @@ seeds:
         link: varchar
         locality: varchar
         narrative: varchar
+        site_type: varchar
+        layer_title: varchar
         why: varchar
     columns:
       - name: source_key
@@ -84,6 +86,25 @@ seeds:
           holds a source whose mart rows carry it (decision 55). Named for
           IDPR's two layers alone, where 4 of the 5 orders that bar motorized
           use alone say so nowhere else (read live 2026-10-14).
+      - name: site_type
+        description: >
+          The field holding the source's own type for a row, the kind of
+          place it is, which decision 190's site rule reads (the maintainer's
+          poll of 2026-10-15: a closed site is not a closed trail). Never the
+          category, which a row shows (decision 78). Named for USFS's
+          recreation sites alone, whose markeractivity reads 'Campground
+          Camping' 1,651, 'Trailhead' 156 and 'Day Hiking' 42 of the 2,999
+          closed or temporarily closed sites (read live 2026-10-15).
+      - name: layer_title
+        description: >
+          The layer's own name as its service publishes it, the `name` of
+          its layer document, read for every ArcGIS row on 2026-10-15
+          through the extract's own request (lib/user_agent.py's
+          USER_AGENT). A schema fact, staged as a constant on every row:
+          decision 190 reads whether the layer is named for closures (a
+          layer closes by its own name only if that name says so, the
+          maintainer's poll of 2026-10-15) or for a kind of site. Empty for
+          a source no layer document names.
       - name: why
         description: The evidence for the row, quoted from its sources.json notes where they hold it.
   - name: notice_words
@@ -103,11 +124,19 @@ seeds:
       `not_a_closure` (alert, notice, restriction, only, beginning) word in
       the same field qualifies it, a `category_needs_title` word ('closure',
       a kind of notice in a category) finds no closing word in the title,
-      or an `a_site_not_the_trail` word
-      (campground, trailhead) says what closed is a facility. `stands` is an
-      on/off flag's yes and `unspecified` a coded unknown (-1): neither says
-      anything of the trail, so a closures layer's own name speaks for such a
-      row. It replaced the two per-source seeds, notice_status_values (70
+      or an `a_site_not_the_trail` word (campground, yurt, sno park) says
+      what closed is a site, unless a `names_a_trail` word (trail, path)
+      says the row is the trail. An area whose words hold a `names_a_road`
+      word (road, hwy) and no `names_an_area` word (area), trail or entry
+      word closes no trail. The maintainer's three fixes of 2026-10-15 read
+      two more fields: `layer`, the layer's own name
+      (seeds/notice_source_fields.csv's layer_title), where a closing word
+      lets a layer named for closures speak for a row whose words say
+      nothing and a site word names the layer's kind of site, and
+      `site_type`, the source's own type for a row. `stands` is an on/off
+      flag's yes and `unspecified` a coded unknown (-1): neither says
+      anything of the trail, so a layer named for closures speaks for such
+      a row. It replaced the two per-source seeds, notice_status_values (70
       rows) and notice_category_values (5), every row of which a word here
       reads the same but ctsst_public_hazards_closures' one-letter 'C'
       (notice_word_overrides). What each word does on the live read of
@@ -123,7 +152,7 @@ seeds:
       # The fields rule 2 reads, separated by one space.
       - dbt_utils.expression_is_true:
           arguments:
-            expression: "regexp_full_match(read_in, '(status|category|title|narrative)( (status|category|title|narrative))*')"
+            expression: "regexp_full_match(read_in, '(status|category|title|narrative|layer|site_type)( (status|category|title|narrative|layer|site_type))*')"
       # A `words` row is written as rule 2 compares: lowercase letters and
       # digits, one space between words.
       - dbt_utils.expression_is_true:
@@ -176,9 +205,9 @@ seeds:
       - name: reads_as
         description: >
           not_current, stands, unspecified, not_a_hikers_use, bars_every_use,
-          a_hikers_use, closes_trail, partly, not_a_closure or
-          a_site_not_the_trail; int_closures__club_notices' header says what
-          each does.
+          a_hikers_use, closes_trail, partly, not_a_closure,
+          a_site_not_the_trail, names_a_trail, names_a_road or names_an_area;
+          int_closures__club_notices' header says what each does.
         data_tests:
           - not_null
           - accepted_values:
@@ -194,6 +223,9 @@ seeds:
                   - partly
                   - not_a_closure
                   - a_site_not_the_trail
+                  - names_a_trail
+                  - names_a_road
+                  - names_an_area
       - name: outranks_status
         description: >
           True on a closing word whose reading holds however the row's own

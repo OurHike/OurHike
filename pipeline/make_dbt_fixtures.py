@@ -3789,6 +3789,9 @@ NOTICE_LAYERS = {
             "forestorgcode": "0811",
             "openstatus": "temporarily closed",
             "recareaurl": "https://www.fs.usda.gov/recarea/fixture",
+            # The site's own type, which decision 190's site rule reads (seeds/notice_source_fields.csv's
+            # site_type): a field the live layer lists, read 2026-10-15; the value is one it holds.
+            "markeractivity": "Campground Camping",
         },
     ),
     "usfs_r03_fire_restrictions": (

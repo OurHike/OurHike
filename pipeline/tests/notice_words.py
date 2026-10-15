@@ -50,3 +50,16 @@ def readings(field: str, value: str, *, states_only_codes: bool = True) -> set[t
 
 def reads_as(field: str, value: str, **kwargs) -> set[str]:
     return {reading for reading, _ in readings(field, value, **kwargs)}
+
+
+def layer_name(name: str) -> str:
+    """A layer's own name as the model reads it in its `layer` field: a capital after a small letter starts a word,
+    so 'TemporaryClosure' reads as 'Temporary Closure' (the model's `field_values`)."""
+    return re.sub(r"([a-z])([A-Z])", r"\1 \2", name)
+
+
+def layer_closes(name: str) -> bool:
+    """Whether a layer's own name says closures as the model's c3 needs it: a closing word no `partly` or
+    `not_a_closure` word in the same name qualifies."""
+    found = reads_as("layer", layer_name(name))
+    return "closes_trail" in found and not found & {"partly", "not_a_closure"}

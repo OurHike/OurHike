@@ -62,9 +62,13 @@
 --    own words. But make this logic that applies everywhere. we need to stop
 --    doing org by org customization."). seeds/notice_words.csv holds each
 --    word, the row's own fields it is read in (status, category, title,
---    narrative: the columns seeds/notice_source_fields.csv maps per source,
---    which is a source's schema, never a meaning), how it matches and what
---    it reads as. No rule here names a source. The one value no shared word
+--    narrative, site_type: the columns seeds/notice_source_fields.csv maps
+--    per source, which is a source's schema, never a meaning; and layer, the
+--    layer's own name as its service publishes it, recorded there as
+--    layer_title), how it matches and what it reads as. No rule here names a
+--    source, and the fact that OurHike files a source under closures is
+--    never read as its words (the maintainer's poll of 2026-10-15, "Add the 3
+--    fixes"). The one value no shared word
 --    can read, a one-letter code, is a row of
 --    seeds/notice_word_overrides.csv, which says why; it reads as a word of
 --    the vocabulary would, for its own source alone.
@@ -108,31 +112,49 @@
 --           'Closure for Resource Protection' whatever they bar ('Forest
 --           Wide - Alcohol', 'Reckless Driving'; read live 2026-10-14), so
 --           only an order's title says whether it closes an area or a trail.
---           It speaks unless an `a_site_not_the_trail` word in its title or
---           category says what closed is a facility (a campground, a
---           trailhead): that reads as a notice about the site, the principle
---           the per-source seeds kept by leaving Florida's campground and
---           Missouri's trailhead statuses unread. Only a site its own words
---           name is caught: Florida's campground status points are titled by
---           park, so 13 of them close (the live read, @unvalidated as a
---           reading of a campground layer; what would settle it is the
---           maintainer's call on whether a site layer's closure is ever the
---           trail's). A `bars_every_use` word lifts it, the site's closure
---           then barring entry outright (IDPR's Selway Falls Campground
---           orders);
+--           It speaks unless the row is a site (A CLOSED SITE, below);
 --       c2. where its status says nothing and its category holds no word of
 --           the vocabulary, a placed row's title holds such an unqualified
---           closing word, and no site word;
---       c3. where its status says nothing and its category holds no word,
---           the source files the placed row under closures (its club's
---           closures.py) and its title holds no `not_a_closure` and no site
---           word: the layer's own name is its words (IDPR's Emergency Route
---           Closures, VTrans's closure view, NETT's damaged bridges, the
---           maintainer's P11). A `partly` word in a title says which part a
---           line draws (IDPR's Porters Trail Partial Closure) and does not
---           stop it. A page, a feed item or a post is never placed: its
---           title is a headline ('Closures & Notices', 'Now Open: … Bridge
---           Closure', both in the live read), read for no closure.
+--           closing word, and the row is no site;
+--       c3. where its status says nothing and its category holds no word, A
+--           LAYER CLOSES BY ITS OWN NAME ONLY IF THAT NAME SAYS SO (the poll
+--           of 2026-10-15): the placed row's layer is named for closures, its
+--           own name holding an unqualified closing word, and its title holds
+--           no `not_a_closure` word and the row is no site. Named so on
+--           2026-10-15: IDPR's 'Emergency Route Closures', Santa Clara's
+--           'Areas Closed to the Public', Yosemite's 'Trail Closures
+--           (Yosemite)', Superior's 'Closure_Point', Region 6's
+--           'Region6FireClosureLine'; Ice Age Trail's 'surveyPoint' and
+--           VTrans's 'Notice Line' are not, so their word-silent rows are
+--           notices. A `partly` word in a title says which part a line draws
+--           (IDPR's Porters Trail Partial Closure) and does not stop it. A
+--           page, a feed item or a post is never placed: its title is a
+--           headline ('Closures & Notices', 'Now Open: … Bridge Closure',
+--           both in the live read of 2026-10-14), read for no closure.
+--       A CLOSED SITE IS NOT A CLOSED TRAIL (the poll of 2026-10-15): a
+--       closing row is a notice about a site, still listed, where an
+--       `a_site_not_the_trail` word (a campground, a yurt, a sno park, a
+--       restroom) is the last thing its title names, after any trail word,
+--       so 'Horse Camp Trail' is a trail and 'Trail Creek Trailhead' a site;
+--       or where its own site type names one (site_type: USFS's recreation
+--       sites' 'Campground Camping'); or where it has a site type that names
+--       no trail and no hiker's use, and its title and category name none
+--       ('Viewing Scenery', where 'Day Hiking' is the trail; a row the source
+--       types is a place, @unvalidated for a type no reviewer read: USFS's
+--       closed sites state 45 types and 36 state none, read live
+--       2026-10-15); or where its category or
+--       its layer's own name is a site's ('Trailhead', Florida's 'Campground
+--       Status') and neither its title, its category nor its type names a
+--       trail. A `bars_every_use` word lifts it, the site's closure then
+--       barring entry outright (IDPR's Selway Falls Campground orders).
+--       A CLOSURE THAT NAMES ONLY ROADS CLOSES THE ROAD, NOT THE TRAILS
+--       AROUND IT (the poll of 2026-10-15): an area (a Polygon or a
+--       MultiPolygon) whose title and category name a road and no area, no
+--       trail or hiker's use and no entry (`bars_every_use`) reads as a
+--       notice ('Seasonal Road Closures on the Evanston/Mt. View Ranger
+--       Districts'), where 'Area and Road Closures …' names the area and
+--       closes; a line or a point that names a road still closes its own
+--       place (IDPR's road orders, as the maintainer chose).
 --       A STATUS SAYS NOTHING where it is empty or `unspecified` (-1) on a
 --       source that states no status on any row, or is a `stands` word, an
 --       on/off flag's yes (Active, Yes, 1). A blank status on a source that
@@ -300,7 +322,9 @@ words as (
 -- Each notice's own fields, as rule 2 compares them: the whole value, case
 -- and surrounding space aside, and its words padded with a space each side,
 -- every run of characters that are not letters or digits one space, 'non'
--- joined to the word after it.
+-- joined to the word after it. The layer's own name is an identifier as often
+-- as a phrase ('TemporaryClosure', 'Region6FireClosureLine'), so a capital
+-- after a small letter starts a new word there too.
 field_values as (
     select
         notice_key,
@@ -328,6 +352,21 @@ field_values as (
         source_key,
         'narrative' as field,
         narrative as field_value
+    from notices
+    union all
+    select
+        notice_key,
+        source_key,
+        'site_type' as field,
+        site_type as field_value
+    from notices
+    union all
+    select
+        notice_key,
+        source_key,
+        'layer' as field,
+        regexp_replace(layer_title, '([a-z])([A-Z])', '\1 \2', 'g')
+            as field_value
     from notices
 ),
 
@@ -368,7 +407,9 @@ source_statuses as (
     group by notices.source_key
 ),
 
--- Every word of the vocabulary each notice's fields hold.
+-- Every word of the vocabulary each notice's fields hold, and for a `words`
+-- match how far from the field's end its last occurrence ends (1 at the end),
+-- so a title's last-named thing can be told from the others.
 hits as (
     select
         field_text.notice_key,
@@ -376,7 +417,15 @@ hits as (
         words.word,
         words.reads_as,
         words.outranks_status,
-        words.category_needs_title
+        words.category_needs_title,
+        case
+            when words.matches = 'words'
+                then
+                    strpos(
+                        reverse(field_text.padded_value),
+                        reverse(' ' || words.word || ' ')
+                    )
+        end as from_end
     from field_text
     inner join words on field_text.field = words.field
     inner join source_statuses
@@ -423,6 +472,16 @@ field_readings as (
         bool_or(reads_as = 'bars_every_use') as bars_every_use,
         bool_or(reads_as = 'a_hikers_use') as names_a_hikers_use,
         min(word) filter (where reads_as = 'a_site_not_the_trail') as site_word,
+        min(from_end) filter (
+            where reads_as = 'a_site_not_the_trail'
+        ) as site_from_end,
+        bool_or(reads_as in ('names_a_trail', 'a_hikers_use'))
+            as names_a_trail,
+        min(from_end) filter (
+            where reads_as in ('names_a_trail', 'a_hikers_use')
+        ) as trail_from_end,
+        min(word) filter (where reads_as = 'names_a_road') as road_word,
+        bool_or(reads_as = 'names_an_area') as names_an_area,
         bool_or(reads_as = 'stands') as stands,
         bool_or(reads_as = 'unspecified') as unspecified
     from hits
@@ -444,8 +503,39 @@ said as (
             as not_a_hikers_use_from,
         bool_or(bars_every_use) as bars_every_use,
         bool_or(names_a_hikers_use) as names_a_hikers_use,
-        min(field || ' ''' || site_word || '''')
-        filter (where field in ('title', 'category')) as site_from,
+        min('title ''' || site_word || '''')
+        filter (where field = 'title') as title_site_from,
+        coalesce(
+            bool_or(site_from_end < coalesce(trail_from_end, 2147483647))
+            filter (where field = 'title'),
+            false
+        ) as title_names_a_site_last,
+        min('site_type ''' || site_word || '''')
+        filter (where field = 'site_type') as type_site_from,
+        coalesce(
+            min('category ''' || site_word || '''')
+            filter (where field = 'category'),
+            min('layer ''' || site_word || '''')
+            filter (where field = 'layer')
+        ) as kind_site_from,
+        coalesce(
+            bool_or(names_a_trail)
+            filter (where field in ('title', 'category')),
+            false
+        ) as names_a_trail,
+        coalesce(
+            bool_or(names_a_trail) filter (where field = 'site_type'), false
+        ) as type_names_a_trail,
+        min(field || ' ''' || road_word || '''')
+        filter (where field in ('title', 'category')) as road_from,
+        coalesce(
+            bool_or(names_an_area)
+            filter (where field in ('title', 'category')),
+            false
+        ) as names_an_area,
+        min('layer ''' || closing_word || '''')
+        filter (where field = 'layer' and not is_qualified)
+            as layer_closes_from,
         coalesce(
             min('status ''' || closing_word || '''')
             filter (where field = 'status' and not is_qualified),
@@ -517,11 +607,34 @@ read_words as (
             end
         ) as closes_from,
         said.title_closes_from,
+        said.layer_closes_from,
         coalesce(said.bars_every_use, false) as bars_every_use,
         coalesce(said.names_a_hikers_use, false) as names_a_hikers_use,
         case
-            when not coalesce(said.bars_every_use, false) then said.site_from
+            when coalesce(said.bars_every_use, false) then null
+            when said.title_names_a_site_last then said.title_site_from
+            when said.type_site_from is not null then said.type_site_from
+            when
+                trim(coalesce(notices.site_type, '')) != ''
+                and not coalesce(said.type_names_a_trail, false)
+                and not coalesce(said.names_a_trail, false)
+                then 'site_type ''' || lower(trim(notices.site_type)) || ''''
+            when
+                said.kind_site_from is not null
+                and not coalesce(said.type_names_a_trail, false)
+                and not coalesce(said.names_a_trail, false)
+                then said.kind_site_from
         end as site_from,
+        coalesce(
+            json_extract_string(notices.geom_geojson, '$.type')
+            in ('Polygon', 'MultiPolygon')
+            and said.road_from is not null
+            and not said.names_an_area
+            and not said.names_a_trail
+            and not said.bars_every_use,
+            false
+        ) as area_names_only_a_road,
+        said.road_from,
         coalesce(said.closing_outranks, false) as closing_outranks,
         coalesce(said.title_says_not_a_closure, false)
             as title_says_not_a_closure,
@@ -597,7 +710,7 @@ ruled as (
                 ((status_is_blank and not states_a_status) or status_stands)
                 and not category_holds_a_word
                 and is_placed
-                and notice_type = 'closures'
+                and layer_closes_from is not null
                 and not title_says_not_a_closure
                 then 'c3'
             else 'd'
@@ -613,15 +726,21 @@ judged as (
         case
             when reading_rule = 'a' then 'not_current'
             when reading_rule = 'b' then 'nothing_for_a_hiker'
+            when
+                reading_rule in ('c1', 'c2', 'c3') and area_names_only_a_road
+                then 'notice'
             when reading_rule in ('c1', 'c2', 'c3') then 'closes_trail'
             else 'notice'
         end as reads_as,
         case
             when reading_rule = 'a' then not_current_from
             when reading_rule = 'b' then not_a_hikers_use_from
+            when
+                reading_rule in ('c1', 'c2', 'c3') and area_names_only_a_road
+                then road_from || ', an area that names only a road'
             when reading_rule = 'c1' then closes_from
             when reading_rule = 'c2' then title_closes_from
-            when reading_rule = 'c3' then 'its own layer, filed under closures'
+            when reading_rule = 'c3' then layer_closes_from
             when reading_rule = 'site'
                 then site_from || ', a site and not the trail'
         end as read_from,

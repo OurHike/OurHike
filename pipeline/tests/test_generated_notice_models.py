@@ -244,6 +244,28 @@ def test_the_recreation_site_layer_stages_its_own_status_as_its_category(files):
     assert "{{ notice_field('openstatus') }} as category," in model
 
 
+def test_a_layers_own_name_and_a_sites_own_type_are_staged_as_schema(files):
+    """The maintainer's fixes of 2026-10-15 read a layer's own name (whether it says closures, or names a kind of
+    site) and a site's own type. The name is the seed's `layer_title`, a constant on every row of every ArcGIS
+    layer; the type is USFS's markeractivity, staged as `site_type` beside its category, which stays its openstatus
+    (decision 78). A source the seed names no layer for stages a null name."""
+    fields = {row["source_key"]: row for row in _seed("notice_source_fields")}
+    sources = {source.key: source for source in generator.notice_sources()}
+    arcgis = [key for key, source in sources.items() if source.reader_class == "ArcgisLayer" and not source.hand_staged]
+    assert all(fields[key]["layer_title"] for key in arcgis), [key for key in arcgis if not fields[key]["layer_title"]]
+    for key in ("idpr_emergency_route_closures", "usfs_rec_opportunities_status", "gap_trail_alerts"):
+        source = sources[key]
+        model = files[DBT / "models" / "staging" / source.club / "notices" / f"{source.stg_model}.sql"]
+        title = fields[key]["layer_title"]
+        line = f"    '{title}' as layer_title,\n" if title else "    cast(null as varchar) as layer_title,\n"
+        assert line in model, key
+    rec = sources["usfs_rec_opportunities_status"]
+    model = files[DBT / "models" / "staging" / rec.club / "notices" / f"{rec.stg_model}.sql"]
+    assert "    {{ notice_field('markeractivity') }} as site_type,\n" in model
+    assert "{{ notice_field('openstatus') }} as category," in model
+    assert {key for key, row in fields.items() if row["site_type"]} == {"usfs_rec_opportunities_status"}
+
+
 def test_a_conflicting_key_holds_its_source_and_never_stops_the_build(files):
     """Every club notice source's exactness test warns, and the gate holds the source instead.
 

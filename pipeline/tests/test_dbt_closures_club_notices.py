@@ -9,13 +9,15 @@ It also holds the maintainer's answers of 2026-10-11 on how wave 6's statuses re
 to the shared words, where a later edit would otherwise move one without a word: Missouri's Archived alone is not
 current (P1), Michigan's '-1' rows are nothing for a hiker by their own category, 'Motorized' (P4), a closed Florida
 park closes its trails (P5) and is placed by its own boundary (Q3, seeds/notice_steward_areas.csv), the Great
-Allegheny Passage's Hidden and Cleared are both not current (P6), and NETT's damaged bridges close by their layer's
-own name (P11). NGPC's sections read as their sources.json row settles: a Condition of 'Impassable' or 'Not
+Allegheny Passage's Hidden and Cleared are both not current (P6), and NETT's damaged bridges close by their own
+words (P11). NGPC's sections read as their sources.json row settles: a Condition of 'Impassable' or 'Not
 Passable' closes the trail however Road_Status reads. And decision 190's own cases, by IDPR's live rows of
 2026-10-14: an order barring any use closes beside a note calling the trail non-motorized (2232), one barring the
 trail on weekdays closes (3018), one possibly closed closes (2245), and the three barring motorized use alone are
 nothing for a hiker. A category's 'closure' is the kind of notice, and closes only beside a title that names a
 closure too: USFS's forest orders are typed 'Safety Closure' whatever they bar, 'Forest Wide - Alcohol' among them.
+And the maintainer's three fixes (poll of 2026-10-15, "Add the 3 fixes"): a layer closes by its own name only where
+that name says closures, a closed site is not a closed trail, and an area that names only roads closes no trail.
 """
 
 import csv
@@ -24,7 +26,7 @@ from pathlib import Path
 
 import yaml
 
-from tests.notice_words import readings, reads_as, seed, words_of
+from tests.notice_words import layer_closes, layer_name, readings, reads_as, seed, words_of
 
 DBT = Path(__file__).resolve().parent.parent / "dbt"
 CLOSURES = DBT / "models" / "intermediate" / "closures" / "_closures__intermediate.yml"
@@ -195,16 +197,90 @@ def test_the_gap_alerts_hidden_and_cleared_are_both_not_current_and_fully_obstru
     assert words["fully obstructed"]["outranks_status"] == "false"
 
 
-def test_netts_damaged_bridges_and_vtranss_active_closure_close_by_their_layers_own_name():
-    """P11, frame A, and decision 190: a closures layer's row whose words say nothing closes (VTrans's isActive 1 is
-    a flag's yes, which says nothing of the trail); VTrans's isActive 0 holds the row."""
+def test_netts_damaged_bridges_and_vtranss_active_closure_close_by_their_own_words():
+    """P11, frame A, and decision 190 with the maintainer's fixes of 2026-10-15: neither layer's own name says
+    closures ('NET_KML_DAMAGED_BRIDGES', 'Notice Line'), so each row closes by its own words. NETT's bridges are
+    'collapsed' or a 'burned bridge'; VTrans's active row is titled 'Closure', its isActive 1 a flag's yes that says
+    nothing of the trail; its isActive 0 holds the row."""
+    fields = {row["source_key"]: row for row in seed("notice_source_fields")}
+    for key in ("nett_damaged_bridges", "vtrans_rail_trail_closures"):
+        assert not layer_closes(fields[key]["layer_title"]), key
+    for title in ("Bridge #o - Sulfur River (collapsed)", "Bridge #q - Collapsed Double Arch", "Annona Burned Bridge"):
+        assert "closes_trail" in reads_as("title", title), title
+    assert "closes_trail" not in reads_as("title", "Culvert collapse under IAT with large hole")
+    assert "closes_trail" not in reads_as("title", "BLM issues decision for Burned Area Rehabilitation")
     expected = _expected(TEST)
+    assert expected["nett_damaged_bridges:n34"]["read_from"] == "title 'collapsed'"
+    assert expected["vtrans_rail_trail_closures:v36"]["read_from"] == "title 'closure'"
     for notice_id in ("nett_damaged_bridges:n34", "vtrans_rail_trail_closures:v36"):
         assert expected[notice_id]["obstructs_trail"] is True, notice_id
-        assert expected[notice_id]["read_from"] == "its own layer, filed under closures", notice_id
     assert expected["vtrans_rail_trail_closures:v35"]["reads_as"] == "not_current"
     assert reads_as("status", "0") == {"not_current"} and reads_as("status", "1") == {"stands"}
     assert reads_as("status", "0", states_only_codes=False) == set(), "a 0 on a scale is never a flag's no"
+
+
+def test_a_layer_closes_by_its_own_name_only_where_that_name_says_closures():
+    """The maintainer's first fix of 2026-10-15: "By their own words" means the source's own layer name, never the
+    fact that OurHike files the source under closures. Each name is the layer document's own, read 2026-10-15 and
+    recorded as schema (seeds/notice_source_fields.csv's layer_title); an identifier's capitals start words."""
+    fields = {row["source_key"]: row for row in seed("notice_source_fields")}
+    named = {key for key, row in fields.items() if row["layer_title"] and layer_closes(row["layer_title"])}
+    for key in (
+        "idpr_emergency_route_closures",
+        "scc_parks_closed_areas",
+        "nps_yose_trail_closures",
+        "usfs_r09_superior_closures",
+        "usfs_r06_fire_closure_lines",
+        "pcta_closure_lines",
+        "wsprc_winter_rec_closures",
+    ):
+        assert key in named, (key, fields[key]["layer_title"])
+    for key in ("iata_trail_conditions", "nett_damaged_bridges", "vtrans_rail_trail_closures", "pcta_fires_and_closures"):
+        assert key not in named, (key, fields[key]["layer_title"])
+    assert layer_name("TemporaryClosure") == "Temporary Closure"
+    assert not layer_closes("Partial Closures"), "a name its own partly word qualifies says no row is a closure"
+    sql = MODEL.read_text()
+    assert "notice_type = 'closures'\n                and not title_says_not_a_closure" not in sql
+    expected = _expected(TEST_190)
+    assert expected["fixture_closed_areas:layer_named_closed"]["read_from"] == "layer 'closure'"
+    assert expected["fixture_survey_points:layer_named_survey"]["reads_as"] == "notice"
+
+
+def test_a_closed_site_is_a_notice_and_a_row_that_names_a_trail_is_the_trail():
+    """The maintainer's second fix of 2026-10-15: a site's own type is read wherever the source states it, its
+    title's last-named thing, its type (USFS's recreation sites' markeractivity, staged as site_type, never as the
+    category, decision 78), its category or its layer's own name; a row whose title or type names a trail is the
+    trail."""
+    (rec,) = [row for row in seed("notice_source_fields") if row["source_key"] == "usfs_rec_opportunities_status"]
+    assert (rec["site_type"], rec["category"]) == ("markeractivity", "openstatus")
+    words = {row["word"]: row for row in seed("notice_words")}
+    for word in ("campground", "yurt", "sno park", "ski area", "canoe landing", "lake site", "carry down", "camping"):
+        assert words[word]["reads_as"] == "a_site_not_the_trail", word
+        assert "site_type" in words[word]["read_in"].split(), word
+    assert "layer" not in words["day use"]["read_in"].split(), "Florida's 'Day Use Status' is the park's own status"
+    assert "title" not in words["recreation site"]["read_in"].split()
+    expected = _expected(TEST_190)
+    for key in ("rec_campground", "rec_viewing"):
+        assert expected[f"fixture_rec_sites:{key}"]["reads_as"] == "notice", key
+    for key in ("rec_trail_named", "rec_day_hiking"):
+        assert expected[f"fixture_rec_sites:{key}"]["obstructs_trail"] is True, key
+    assert expected["fixture_campground_status:campground_layer"]["reads_as"] == "notice"
+    assert expected["fixture_trail_status:horse_camp_trail"]["obstructs_trail"] is True
+    assert expected["fixture_trail_status:trail_parking"]["reads_as"] == "notice"
+    assert expected["idpr_area_restrictions:campground_area"]["obstructs_trail"] is True, "an order that bars entry"
+    assert _expected(TEST)["fl_state_parks_campground_status:f29"]["reads_as"] == "notice"
+
+
+def test_a_closure_that_names_only_roads_closes_the_road_and_no_trail_around_it():
+    """The maintainer's third fix of 2026-10-15: an area whose words name a road and no area, trail or entry is a
+    notice; 'Area and Road Closures' names the area and closes; a line that names a road closes its own line."""
+    assert reads_as("title", "Seasonal Road Closures on the Evanston/Mt. View Ranger Districts") >= {"names_a_road"}
+    assert "names_an_area" in reads_as("title", "Area and Road Closures on the Heber-Kamas Ranger District")
+    expected = _expected(TEST_190)
+    assert expected["fixture_orders:road_only_area"]["reads_as"] == "notice"
+    assert expected["fixture_orders:road_only_area"]["read_from"].endswith("an area that names only a road")
+    assert expected["fixture_orders:area_and_road"]["obstructs_trail"] is True
+    assert expected["idpr_emergency_route_closures:road_line"]["obstructs_trail"] is True
 
 
 def test_ngpcs_impassable_sections_close_however_road_status_reads():
@@ -230,11 +306,12 @@ def test_ngpcs_impassable_sections_close_however_road_status_reads():
 def test_a_categorys_closure_is_a_kind_of_notice_that_closes_only_beside_its_title():
     """'closure' in a category is the kind of notice the source files the row as: USFS's forest orders are typed
     'Safety Closure' whatever they bar, 'Forest Wide - Alcohol' among them (read live 2026-10-14). It is the one word
-    that needs its title, the plural 'closures' agrees with it in a title alone, and a state ('closed', 'impassable',
+    that needs its title, the plural 'closures' agrees with it in a title (and names a layer's closures, never a
+    category's topic), and a state ('closed', 'impassable',
     an exclusion) still closes from a category by itself."""
     words = {row["word"]: row for row in seed("notice_words")}
     assert [word for word, row in words.items() if row["category_needs_title"] == "true"] == ["closure"]
-    assert (words["closures"]["read_in"], words["closures"]["reads_as"]) == ("title", "closes_trail")
+    assert (words["closures"]["read_in"].split(), words["closures"]["reads_as"]) == (["title", "layer"], "closes_trail")
     assert reads_as("category", "Closures and NTH North") == set()
     expected = _expected(TEST_190)
     assert expected["fixture_orders:order_act"]["reads_as"] == "notice"

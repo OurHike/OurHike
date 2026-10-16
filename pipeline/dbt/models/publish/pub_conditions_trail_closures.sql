@@ -29,7 +29,8 @@
 -- not ATC's own (`atc_trail_updates`), whose band the phone already draws
 -- from conditions/atc_updates.json. No date decides it: a closure whose start
 -- is still ahead is here (decision 167, "show it now, as upcoming";
--- int_closures__club_notices' rule 1 has it), and so is one the list greys
+-- int_closures__club_notices' rule 1 has it, and holds a recurring season
+-- until 30 days before it, decision 213's rule 9), and so is one the list greys
 -- (decisions 146 and 150), at full strength (decision 187's fork, answered
 -- "same mark"). The phone draws each from the day before its `starts_on` and
 -- says on the sheet that a greyed one may no longer apply.
@@ -51,9 +52,10 @@
 --   reached a hiker only through notices.json's list.
 -- In an hour with no trail lines to cut against the cut has no row, and every
 -- area closure is left out, neither crossed out nor shaded (the cut's header
--- says why). A row with no geometry of those kinds (`unplaced`, `org_terms`,
--- a GeometryCollection) is left out too: there is nothing to draw, and a
--- guess would draw a closure where its source drew none.
+-- says why), and the file says so (THE FILE SAYS WHETHER ITS AREAS WERE
+-- CUT, below). A row with no geometry of those kinds (`unplaced`,
+-- `org_terms`, a GeometryCollection) is left out too: there is nothing to
+-- draw, and a guess would draw a closure where its source drew none.
 --
 -- THE SAME CLOSURE FROM TWO SOURCES IS DRAWN ONCE (the review of PR #1805
 -- of 2026-10-15, thread 4279223668). Two drawn areas of different sources
@@ -94,6 +96,29 @@
 -- coarsely enough to fall below it. An intersection that raises compares
 -- nothing, so both rows stay drawn: a duplicate hatch is the safer failure.
 --
+-- THE FILE SAYS WHETHER ITS AREAS WERE CUT THIS HOUR (decision 213, Q11, the
+-- maintainer's poll of 2026-10-15, "Now, in this PR"), because a phone keeps
+-- the last file it read as its offline copy, and one read in an hour with no
+-- lines drew none of the area closures until it next connected: on UA,
+-- whenever publish-weather.yml had no prepared lines to hand over, and in
+-- production every hour until production's lines are prepared (#1811 —
+-- Fast follows after PR #1805's dlt → dbt re-platform, section 5 of its
+-- comment of 2026-10-14). Two keys beside `closures`:
+-- - `areas_cut`, false when the file holds an area closure this hour and the
+--   cut has no row at all, which is an hour with no lines or one where every
+--   area's cut raised; true otherwise, an hour with no area closure
+--   included, when there is nothing to cut and nothing a phone should keep.
+-- - `uncut_areas`, the notice_id of every area closure in this hour's notices
+--   that the file does not draw because its cut has no row: every one in an
+--   hour that was not cut, and in one that was, an area whose own cut raised
+--   or came out empty. Never one the same-closure rule left out, which is not
+--   drawn on purpose. In notice_id order.
+-- The phone (client/src/lib/publishedNotices.ts) keeps the last area or shade
+-- it drew for each id listed and draws nothing for an id it never drew. A
+-- closure lifted since is in no list, so it is dropped as soon as the file
+-- that leaves it out arrives, as on any hour. Absent keys, a file written
+-- before this, read as cut with nothing listed.
+--
 -- ORDER: by source_key, then notice_id, that writer's order.
 --
 -- SIZE. UA's first published file, of 2026-10-14 18:15 UTC, built before
@@ -116,7 +141,7 @@
 -- writes an empty list: the file arrived and no club closes a trail on the
 -- map. An hour with no trail lines to cut against
 -- (pipeline/step_closure_trail_lines.py) writes every line and point closure
--- and no area, and its run summary says so.
+-- and no area, `areas_cut` false, and its run summary says so.
 {%- set same_closure_share = 0.9 %}
 with document as (
     select
@@ -290,10 +315,36 @@ closure_rows as (
 closures as (
     select list(closure order by source_key, notice_id) as closures
     from closure_rows
+),
+
+-- Every area closure of the hour the cut has no row for, the same-closure
+-- rule's left-out row aside.
+uncut as (
+    select list(closing.notice_id order by closing.notice_id) as uncut_areas
+    from closing
+    left join cuts on closing.notice_id = cuts.notice_id
+    where closing.shape = 'area' and cuts.notice_id is null
+),
+
+-- Whether the cut ran this hour, and whether there was an area to cut.
+cut_hour as (
+    select count(*) > 0 as any_cut
+    from cuts
+),
+
+area_hour as (
+    select count(*) > 0 as any_area
+    from closing
+    where shape = 'area'
 )
 
 select
     document.generated_at,
-    coalesce(to_json(closures.closures), cast('[]' as json)) as closures
+    coalesce(to_json(closures.closures), cast('[]' as json)) as closures,
+    cut_hour.any_cut or not area_hour.any_area as areas_cut,
+    coalesce(to_json(uncut.uncut_areas), cast('[]' as json)) as uncut_areas
 from document
 cross join closures
+cross join cut_hour
+cross join area_hour
+cross join uncut

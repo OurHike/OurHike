@@ -189,7 +189,10 @@ models:
       posted twice, only the row edited first is drawn; the other stays in
       the list too. Only areas the cut has a row for compete, measured by
       the outline the cut carries, so an area drawn nowhere never hides a
-      drawn copy. The phone reads it at launch, whatever is planned. Writes nothing while
+      drawn copy. `areas_cut` says whether the hour's areas were cut and
+      `uncut_areas` names each area closure not drawn for want of a cut, so
+      a phone keeps its last drawing of those (decision 213, Q11). The
+      phone reads it at launch, whatever is planned. Writes nothing while
       that writer writes nothing, so the phone keeps its last copy; an empty
       list when no club closes a trail. No parity line: no exporter writes
       this file.
@@ -211,6 +214,22 @@ models:
           stretches inside the area at 5 decimal places; a "shade" row's is
           `{"kind": "geometry", "geometry": <Polygon or MultiPolygon>}`, the
           area as its source drew it, simplified at 10 m, at 5 decimal places.
+        data_type: json
+      - name: areas_cut
+        description: >
+          Whether this hour's area closures were cut against trail lines
+          (decision 213, Q11): false when the file holds an area closure and
+          the cut has no row, an hour with no lines or one where every area's
+          cut raised; true otherwise, an hour with no area closure included.
+        data_type: boolean
+        data_tests: [not_null]
+      - name: uncut_areas
+        description: >
+          The notice_id of every area closure of this hour's notices that the
+          file does not draw because the cut has no row for it, in notice_id
+          order: all of them in an hour that was not cut. The phone keeps the
+          area or shade it last drew for each one, and drops any it drew that
+          is in neither list.
         data_type: json
 
   - name: pub_conditions_notice_states
@@ -566,7 +585,8 @@ unit_tests:
       that does not obstruct, an area with no row in the cut (its cut
       raised) and an unplaced closure are left out, and a cut for no closure
       of the file adds nothing. By source_key, then notice_id, under the
-      notices file's own `generated_at`.
+      notices file's own `generated_at`. The hour was cut (`areas_cut`), and
+      the area with no row of the cut is the one `uncut_areas` names.
     given:
       - input: ref('pub_conditions_notices')
         format: sql
@@ -581,7 +601,7 @@ unit_tests:
           - {notice_id: 'club_area:9', stretches: 1, stretches_geojson: '{"type":"MultiLineString","coordinates":[[[-74.0,41.0],[-74.0,41.01]]]}', shade_geojson: null, area_geojson: '{"type":"Polygon","coordinates":[[[-74.005,40.995],[-73.995,40.995],[-73.995,41.015],[-74.005,41.015],[-74.005,40.995]]]}'}
     expect:
       rows:
-        - {generated_at: '2026-10-11T16:23:24Z', closures: '[{"notice_id":"club_area:1","source_key":"club_area","hazard":null,"obstructs_trail":true,"starts_on":null,"current_until":null,"states":["NY"],"place":{"kind":"geometry","geometry":{"type":"MultiLineString","coordinates":[[[-73.97,41.032],[-73.97,41.035]]]}},"shape":"area"},{"notice_id":"club_area:2","source_key":"club_area","hazard":null,"obstructs_trail":true,"place":{"kind":"geometry","geometry":{"type":"MultiPolygon","coordinates":[[[[-71.299,44.2],[-71.297,44.2],[-71.297,44.205],[-71.299,44.2]]]]}},"shape":"shade"},{"notice_id":"club_line:3","source_key":"club_line","place":{"kind":"geometry","geometry":{"type":"MultiLineString","coordinates":[[[-74.2,41.2],[-74.2,41.25]]]}},"hazard":null,"obstructs_trail":true,"starts_on":"2027-01-15","current_until":null,"shape":"line"},{"notice_id":"club_line:9","source_key":"club_line","place":{"kind":"geometry","geometry":{"type":"LineString","coordinates":[[-73.97,41.03],[-73.97,41.035]]}},"hazard":null,"obstructs_trail":true,"starts_on":null,"current_until":"2026-12-01","shape":"line"},{"notice_id":"club_point:1","source_key":"club_point","place":{"kind":"geometry","geometry":{"type":"MultiPoint","coordinates":[[-74.3,41.3]]}},"hazard":null,"obstructs_trail":true,"starts_on":"2025-05-01","current_until":"2026-01-01","shape":"point"},{"notice_id":"club_point:2","source_key":"club_point","place":{"kind":"geometry","geometry":{"type":"Point","coordinates":[-74.1,41.2]}},"hazard":null,"obstructs_trail":true,"starts_on":null,"current_until":null,"shape":"point"}]'}
+        - {generated_at: '2026-10-11T16:23:24Z', closures: '[{"notice_id":"club_area:1","source_key":"club_area","hazard":null,"obstructs_trail":true,"starts_on":null,"current_until":null,"states":["NY"],"place":{"kind":"geometry","geometry":{"type":"MultiLineString","coordinates":[[[-73.97,41.032],[-73.97,41.035]]]}},"shape":"area"},{"notice_id":"club_area:2","source_key":"club_area","hazard":null,"obstructs_trail":true,"place":{"kind":"geometry","geometry":{"type":"MultiPolygon","coordinates":[[[[-71.299,44.2],[-71.297,44.2],[-71.297,44.205],[-71.299,44.2]]]]}},"shape":"shade"},{"notice_id":"club_line:3","source_key":"club_line","place":{"kind":"geometry","geometry":{"type":"MultiLineString","coordinates":[[[-74.2,41.2],[-74.2,41.25]]]}},"hazard":null,"obstructs_trail":true,"starts_on":"2027-01-15","current_until":null,"shape":"line"},{"notice_id":"club_line:9","source_key":"club_line","place":{"kind":"geometry","geometry":{"type":"LineString","coordinates":[[-73.97,41.03],[-73.97,41.035]]}},"hazard":null,"obstructs_trail":true,"starts_on":null,"current_until":"2026-12-01","shape":"line"},{"notice_id":"club_point:1","source_key":"club_point","place":{"kind":"geometry","geometry":{"type":"MultiPoint","coordinates":[[-74.3,41.3]]}},"hazard":null,"obstructs_trail":true,"starts_on":"2025-05-01","current_until":"2026-01-01","shape":"point"},{"notice_id":"club_point:2","source_key":"club_point","place":{"kind":"geometry","geometry":{"type":"Point","coordinates":[-74.1,41.2]}},"hazard":null,"obstructs_trail":true,"starts_on":null,"current_until":null,"shape":"point"}]', areas_cut: true, uncut_areas: '["club_area:3"]'}
 
   - name: pub_conditions_trail_closures_leaves_every_area_out_in_an_hour_with_no_lines
     model: pub_conditions_trail_closures
@@ -589,7 +609,10 @@ unit_tests:
       An hour whose step read no trail lines, where the cut has no row:
       every line and point closure is still written, and every area closure
       is left out, neither crossed out nor shaded, since nothing says which
-      areas have a trail inside (int_closures__area_trail_cuts' header).
+      areas have a trail inside (int_closures__area_trail_cuts' header). The
+      file says so: `areas_cut` false, and the area closure in
+      `uncut_areas`, so a phone keeps the area it last drew (decision 213,
+      Q11).
     given:
       - input: ref('pub_conditions_notices')
         format: sql
@@ -609,7 +632,7 @@ unit_tests:
           where false
     expect:
       rows:
-        - {generated_at: '2026-10-14T18:15:19Z', closures: '[{"notice_id":"club_line:1","source_key":"club_line","place":{"kind":"geometry","geometry":{"type":"LineString","coordinates":[[-73.97,41.03],[-73.97,41.035]]}},"hazard":null,"obstructs_trail":true,"shape":"line"}]'}
+        - {generated_at: '2026-10-14T18:15:19Z', closures: '[{"notice_id":"club_line:1","source_key":"club_line","place":{"kind":"geometry","geometry":{"type":"LineString","coordinates":[[-73.97,41.03],[-73.97,41.035]]}},"hazard":null,"obstructs_trail":true,"shape":"line"}]', areas_cut: false, uncut_areas: '["club_area:1"]'}
 
   - name: pub_conditions_trail_closures_writes_an_empty_list_when_no_club_closes_a_trail
     model: pub_conditions_trail_closures
@@ -628,7 +651,7 @@ unit_tests:
         rows: []
     expect:
       rows:
-        - {generated_at: '2026-10-11T16:23:24Z', closures: '[]'}
+        - {generated_at: '2026-10-11T16:23:24Z', closures: '[]', areas_cut: true, uncut_areas: '[]'}
 
   - name: pub_conditions_trail_closures_writes_a_multipoint_closure_as_a_point_with_every_member_kept
     model: pub_conditions_trail_closures

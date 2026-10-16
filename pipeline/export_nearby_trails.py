@@ -1393,6 +1393,14 @@ def load_closure_areas(sources: list[dict]) -> list[dict]:
     return areas
 
 
+#: Decision 213, rule 6 (the maintainer's poll of 2026-10-15, "Only inside closes"): a piece of a trail inside a
+#: closed area closes only if some part of it lies more than this many metres in from the area's outline, measured in
+#: EPSG:5070 (`_TO_METRIC`); one lying wholly within that band, along the edge, stays open. The same number is
+#: dbt_project.yml's `area_closure_edge_m`, which both of dbt's area cuts read and the network parity test holds to
+#: this. @unvalidated: the maintainer's number, not a measurement; dbt_project.yml says what would settle it.
+AREA_EDGE_M = 2.0
+
+
 def _line_parts(geometry) -> list:
     """A geometry's drawable LineStrings, and nothing else.
 
@@ -1439,7 +1447,10 @@ def apply_area_closures(records: list[dict], areas: list[dict]) -> tuple[list[di
     than an accident: a line is closed where it is INSIDE the polygon, by
     `intersection`. Geometry the polygon merely touches is not inside it, so a
     grazing trail stays open. The opposite reading - closing anything that
-    intersects at all - is what produces the Suffern-Bear Mountain case.
+    intersects at all - is what produces the Suffern-Bear Mountain case. And
+    a piece inside that lies wholly within AREA_EDGE_M of the outline runs
+    along the edge rather than inside, so it stays open too (decision 213,
+    rule 6).
 
     WHAT IT DOES NOT DO: invent a date. OPRHP publishes none per feature
     ("Closed Until 2027" is prose inside the reason, not a field), so a closed
@@ -1449,6 +1460,7 @@ def apply_area_closures(records: list[dict], areas: list[dict]) -> tuple[list[di
         return records, {"areas": 0, "closed": 0, "split": 0, "wholly_closed": 0}
 
     closed_union = unary_union([a["geometry"] for a in areas])
+    edge_band = shapely_transform(_TO_METRIC, closed_union.boundary).buffer(AREA_EDGE_M)
 
     out: list[dict] = []
     stats = {"areas": len(areas), "closed": 0, "split": 0, "wholly_closed": 0}
@@ -1459,11 +1471,17 @@ def apply_area_closures(records: list[dict], areas: list[dict]) -> tuple[list[di
             out.append(record)
             continue
 
-        inside = _line_parts(geometry.intersection(closed_union))
-        outside = _line_parts(geometry.difference(closed_union))
+        # A piece lying wholly within AREA_EDGE_M of the outline runs along the edge, not inside (decision 213, rule
+        # 6): it stays open, after the pieces outside.
+        pieces = _line_parts(geometry.intersection(closed_union))
+        on_edge = [edge_band.covers(shapely_transform(_TO_METRIC, piece)) for piece in pieces]
+        inside = [piece for piece, along in zip(pieces, on_edge, strict=True) if not along]
+        outside = _line_parts(geometry.difference(closed_union)) + [
+            piece for piece, along in zip(pieces, on_edge, strict=True) if along
+        ]
 
         if not inside:
-            # Touching the boundary and no more. Not inside anything.
+            # Touching the boundary, or running along it, and no more. Not inside anything.
             out.append(record)
             continue
 

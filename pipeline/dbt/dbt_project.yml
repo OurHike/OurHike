@@ -367,6 +367,22 @@ vars:
   trail_lines_network_overview_min_feature_m: 1873.7331444281513
   trail_lines_network_overview_seam_tolerance_m: 936.8665722140756
   trail_lines_network_overview_seam_decimals: 3
+  # Decision 213, rule 6 (the maintainer's poll of 2026-10-15, "Only inside
+  # closes"): when an area is closed, a trail stretch the cut finds inside it
+  # closes only if it reaches more than this far in from the area's outline.
+  # One lying wholly within it, along the edge, stays open. Read by both cuts
+  # of an area closure onto lines, the hourly one
+  # (int_closures__area_trail_cuts) and the monthly one
+  # (int_trail_lines__network_area_closures, where parity holds it to
+  # export_nearby_trails.py's AREA_EDGE_M). @unvalidated: the maintainer's
+  # number, not a measurement. It clears the 0.78 m the hourly lines' 5
+  # decimal places can move a vertex (macros/notice_phone_geometry.sql) with
+  # room; what would settle it is how far trails that follow an area's edge
+  # on the ground are drawn from that edge, source by source, which nobody
+  # has measured. On UA's live areas of 2026-10-15, 1,081 of the 5,090
+  # stretches inside an area lay wholly within 2 m of its outline (25.99 of
+  # 3,554.09 miles; int_closures__area_trail_cuts' header has how).
+  area_closure_edge_m: 2.0
 
   # The trail_lines family (stage 3 of #1793). First, export_elevation.py's
   # marker calibration of the A.T. mile axis, read by the
@@ -445,6 +461,15 @@ vars:
   # (`_changed_at`, and when a key leaves), never a number picked by hand for
   # one source or one closure.
   notice_freshness_limit_days: 90
+  # Decision 213, rule 9 (the maintainer's poll of 2026-10-15, "Hold until a
+  # month before"): a recurring season a source states in words
+  # (int_closures__club_notices' rule 1, macros/notice_season.sql) publishes
+  # only from this many days before its `starts_on`, for every source with a
+  # season field; a notice that states no season is not held for its start
+  # (decision 167). @unvalidated: the maintainer's number, not a measurement.
+  # What would settle it is how far ahead hikers plan the trips a seasonal
+  # closure would change, which nothing records.
+  notice_season_lead_days: 30
   poi_site_name_radius_m: 150.0            # lib/poi_sites.py NAME_MATCH_RADIUS_M
   poi_site_proximity_radius_m: 60.0        # lib/poi_sites.py PROXIMITY_RADIUS_M
   poi_site_max_radius_m: 1609.344          # lib/poi_sites.py MAX_SITE_RADIUS_M

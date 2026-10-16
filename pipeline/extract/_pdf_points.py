@@ -1,12 +1,12 @@
-"""Decision 54, wave 4, section S: the points a club publishes in a PDF, read with a parser per document family.
+"""The points a club publishes in a PDF, read with a parser per document family.
 
     pdf_points(key)   one PDF's points, one row per row its parser reads (a water cache box, a trailhead, an
                       access point), each with the document's own manifest
 
-pipeline/ELT.md, "Loading everything the clubs publish (decision 54)", wave 4: "PDFs | the club-PDF kind exists
+pipeline/ELT.md, "Source kinds": "PDFs | the club-PDF kind exists
 (GATC) | a parser per document family; a PDF that only a person can read stays a note". extract/_kinds.py's
-ClubPdf (GATC's water sources) is the pattern, and lib/club_pdfs.py its parsers; this is section S's module
-for the points-shaped ones (the content types' PDFs are section K's, extract/_pdf_content.py). A builder like
+ClubPdf (GATC's water sources) is the pattern, and lib/club_pdfs.py its parsers; this is the module for the
+points-shaped ones (the content types' PDFs are extract/_pdf_content.py's). A builder like
 the rest: it takes a sources.json key, never a URL.
 
 THE TEXT is pypdf's plain extraction, one string a page, through fetch_club_pdfs.py's extract_page_texts, the
@@ -24,7 +24,7 @@ fused, as lib/club_pdfs.py keeps GATC's, rather than splitting them by guesswork
 THE ROW is the facts the parser reads, the point as GeoJSON in `geometry` (null where the row states none,
 never looked up from a name), and the document's manifest: `source_url`, `document_etag`,
 `document_last_modified`, `document_sha256` and `document_bytes`, so the date the club put on the file is in
-the warehouse beside what it says. A sentence of the document's lands in no column (decision 55).
+the warehouse beside what it says. A sentence of the document's lands in no column.
 
 THE CHANGE CHECK is per file (the round brief): a HEAD, and its ETag, else its Last-Modified with its
 Content-Length, compared with what the last load recorded; a file that sends neither is UNKNOWN and is read.

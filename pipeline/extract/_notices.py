@@ -1,35 +1,35 @@
-"""Two generic notice readers for decision 53's phase B: FeedNotices (RSS 2.0 and Atom) and PageNotice (one notice a page).
+"""Two generic notice readers: FeedNotices (RSS 2.0 and Atom) and PageNotice (one notice a page).
 
-pipeline/ELT.md, "Every club's closures and alerts (decision 53)", phase B, is
+pipeline/ELT.md is
 the design: every club's closures and alerts become a one-line resource over
 a generic reader, one reader per format. These two are the RSS-or-Atom and
 the HTML-page rows of that table, with the PDF row folded into PageNotice.
 They live here rather than in extract/_kinds.py, which was 2,025 lines, and
-_kinds.py imports them, so a club file writes `from extract._kinds import
+_kinds.py imports them, so extract/_readers.py writes `from extract._kinds import
 page_notice` like any other builder. This module imports nothing from
 _kinds.py at its top, because _kinds.py imports it: `_kinds()` below fetches
 the registry and the named session when a reader runs, which is also what
 lets fixture mode's swapped `_kinds.session` reach them.
 
-Both readers keep the rules decision 53 set (ELT.md, "The rules this keeps"),
-and decision 55 (the maintainer's poll, 2026-10-03): facts and a link,
+Both readers keep the notice rules (ELT.md, "The rules this keeps"),
+and the maintainer's poll of 2026-10-03: facts and a link,
 never the club's paragraphs. A row carries a title, a date as the source
 states it, the link, and a sha256 of what the source said, so a change is
 detectable and no wording is copied. No description, no `content:encoded`,
 no page text lands in any column, and no author: RSS `dc:creator` and
 Atom `<author>` name staff (BLM's Utah feed, CFPA's and GATC's carry a
 person's name; the Mid State Trail's Atom feed an e-mail address; read in
-decision 53's inventory, 2026-10-03), so the readers name the fields they
+the notices inventory, 2026-10-03), so the readers name the fields they
 keep and drop everything else.
 
-THE INVENTORY these were designed from is decision 53's phase A, run
+THE INVENTORY these were designed from is the first notices inventory, run
 2026-10-03 against all 129 clubs, one request per URL under lib/user_agent.py's
 agent, every robots.txt read first (kept in the session's scratchpad, never
 in the repository). Where a docstring here says "the inventory" it means that
 read, and the batch in brackets ([b1] to [b5]) is the worker that measured it.
 
-Both readers are hourly when they feed closures or warnings (decision 28a),
-and both are gentle the way decision 53 asks:
+Both readers are hourly when they feed closures or warnings,
+and both are gentle the way the notice rules ask:
 
 - ONE REQUEST A RUN. The change check's read is kept for the read that
   follows in the same run (`_remember()`), so a STALE source costs one
@@ -97,7 +97,7 @@ def _sha256(data: bytes | str) -> str:
 # A reader that would build a query URL there refuses at import, so the
 # layout test fails rather than the host being asked. Compared without a
 # leading `www.`. A list a person edits, from robots.txt as it read at
-# registration (decision 53, "Access is checked, never assumed"). Every run
+# registration ("Access is checked, never assumed"). Every run
 # also reads each host's robots.txt as it starts asking that host
 # (extract/_robots.py) and refuses whatever it disallows then, so this list
 # is what stops such a reader being written, and a run is what stops one
@@ -235,7 +235,7 @@ def refuse_other_hosts(http: requests.Session, entry: dict | None = None) -> req
 # --- Politeness: one gap per host, across every reader and thread ----------
 
 # The gap kept between two requests to one host when its robots.txt asks for
-# none. @unvalidated: two seconds is decision 53's inventory rule ("at least
+# none. @unvalidated: two seconds is the notices inventory rule ("at least
 # 2 s between requests to one host otherwise", the session's worker brief), a
 # courtesy, not a measurement of what any host can bear; what would settle it
 # is a host telling us otherwise.
@@ -325,7 +325,7 @@ def polite(http: requests.Session, delay: float) -> requests.Session:
 # --- One request a run: the check's answer, kept for the read ---------------
 
 # How long the read may use what the change check read, instead of asking
-# again. Reasoned: since decision 61 these readers run on the notices legs,
+# again. Reasoned: these readers run on the notices legs,
 # whose job is held to 60 minutes (extract-notices.yml), so an answer older
 # than that is not this run's. It was 600, the conditions job's 10 minutes;
 # on a notices leg the change checks alone may take 600 s
@@ -588,7 +588,7 @@ class FeedNotices(_NoticeSource):
     of category names (RSS text, Atom `term`), which places some notices by
     a closed vocabulary (AZT's 'Passage 38' [b1]). `item_sha256` hashes the
     whole item as served, prose included, so an edit to the body is seen
-    without a word of it landing (decision 55). `feed_items` is the item
+    without a word of it landing. `feed_items` is the item
     count read from the same response, and the run check's proof: the rows
     are that count exactly (`exact_proof`). An empty channel is therefore a
     proven zero; a body that is not a feed raises, never a zero.
@@ -602,7 +602,7 @@ class FeedNotices(_NoticeSource):
     went back to 2025-11-05 and NYSDEC's GovDelivery feed's 25 covered five
     days. So no dbt model may read absence from this table as an ending: a
     notice ends on its own end date or a rule for its source (ELT.md, "An
-    RSS-fed closure ends only on an explicit signal"), and phase C's snapshot
+    RSS-fed closure ends only on an explicit signal"), and dbt's snapshot
     of this table keeps a row that leaves the window rather than closing it.
     Where a club also publishes the complete list (a WordPress category, a
     listing page), that list is the source and the feed is not.
@@ -861,7 +861,7 @@ def html_text(fragment: str) -> str:
 # and each read that way (Reasoned). A date with no year ('Trail Update
 # 4/13', foothillstrail.org [b1]) is not read: the year would be a guess.
 #
-# DATE READS THE FORMS SOURCES USE GENERALLY, not only those (P13, the
+# DATE READS THE FORMS SOURCES USE GENERALLY, not only those (the
 # maintainer, 2026-10-11: "Fix the dates! the reader should be able to handle
 # different format"), each tested by its form in tests/test_extract_notices.py:
 # - month first, the month's name full or cut short, with or without a
@@ -877,11 +877,11 @@ def html_text(fragment: str) -> str:
 #   2024)' name no day, and are not read;
 # - either one behind a weekday, full or cut short: 'Monday, August 24th,
 #   2026' (pa.gov's Tioga State Forest advisories page, read 2026-10-03 and
-#   quoted in extract/pasda/closures.py; an advisory's start, which
+#   quoted in pasda.closures; an advisory's start, which
 #   STATED_DATE leaves alone, as no "Updated" stands before it), 'Fri, 14 Aug
 #   2026'. A weekday the day is not refuses the date: which of the two is the
 #   slip would be a guess;
-# - ISO, 'YYYY-MM-DD' (NBATC's announcements' items, extract/nbatc/closures.py);
+# - ISO, 'YYYY-MM-DD' (NBATC's announcements' items, nbatc.closures);
 # - numeric, month first, 'M/D/YYYY' or 'M/D/YY', as above. A numeric date
 #   whose first part is over 12 is refused rather than read day first: no
 #   source here writes one (every registered one is in the United States,
@@ -919,7 +919,7 @@ _DATE = (
 )
 STATED_DATE = re.compile(r"\b(?:last\s+)?updated?(?:\s+on)?\s*:?\s*" + _DATE, re.IGNORECASE)
 # The date part alone, for a page whose own wording STATED_DATE does not
-# match: a club file's `date_pattern` is its words around DATE, so DEC's
+# match: a registry row's `date_pattern` is its words around DATE, so DEC's
 # backcountry page's header 'New this week (10/1/2026)' [b3] is
 # `r"New this week \(" + DATE + r"\)"`. A listing whose items carry
 # "Updated" stamps (USFS alert pages: 'UPDATED: April 16, 2026' on one card
@@ -975,7 +975,7 @@ def page_stated_date(text: str, pattern: re.Pattern | None = STATED_DATE) -> tup
     newest part changed: Tahoe Rim Trail's 'Updated August 17, 2026' above
     nine segments stamped 'Last Updated: 6/24/26' to '7/7/26' [b1]. A date
     more than a day ahead of today is not a page's update date and is
-    skipped, rather than published as one. A pattern of a club file's own
+    skipped, rather than published as one. A pattern of a row's own
     embeds DATE, whose groups this reads.
     """
     if pattern is None:
@@ -1076,15 +1076,15 @@ def read_pdf(body: bytes) -> PdfFacts:
 # The columns a page notice lands, and nothing else.
 PAGE_COLUMNS = ("url", "title", "date", "date_text", "date_source", "format", "region", "region_chars", "region_sha256")
 
-# THE CLOSING SENTENCE (decision 213, the maintainer's poll of 2026-10-15, "Land the closing sentence
-# (Recommended)"): for a page notice of every organization, the one place decision 55's "facts and a link" bends. A
+# THE CLOSING SENTENCE (the maintainer's poll of 2026-10-15, "Land the closing sentence
+# (Recommended)"): for a page notice of every organization, the one place "facts and a link" bends. A
 # page that states that a named section of its trail is closed lands that sentence verbatim, as the row's title,
-# beside the link, so the closures vocabulary (seeds/notice_words.csv, decision 190) reads the club's own words for
-# whether the trail is closed, and the section-closure rule (lib/section_closures.py, decision 212) reads which
+# beside the link, so the closures vocabulary (seeds/notice_words.csv) reads the club's own words for
+# whether the trail is closed, and the section-closure rule (lib/section_closures.py) reads which
 # section. Quoted, never paraphrased or cut: a sentence is landed whole or not at all. Nothing else of the page
 # lands. The pages are the clubs' own, and no registered page notice's `terms` names a restriction on quoting (each
 # row's licence is "Facts and a link only", the maintainer's call, not the club's grant), so a verbatim sentence
-# attributed and linked stays inside what decision 213 answered (Reasoned from sources.json's 69 page_notice rows'
+# attributed and linked stays inside what the maintainer's poll of 2026-10-15 answered (Reasoned from sources.json's 69 page_notice rows'
 # `licence` and `terms`, read 2026-10-15).
 #
 # A CLOSING SENTENCE says that a section is closed: the word "section" and a closed-verb (CLOSED_VERB), in one
@@ -1160,11 +1160,11 @@ def closing_sentence(blocks: list[str]) -> str | None:
 class PageNotice(_NoticeSource):
     """One notice per page: its title, its own stated date and which date that is, the link, and a hash of its notice region.
 
-    The HTML-page and PDF rows of decision 53's phase B (ELT.md): 126 of the
+    The HTML-page and PDF rows of the notices survey (ELT.md): 126 of the
     inventory's 356 notice URLs are web pages and 6 are PDFs, and no generic
     reader can tell one item on a page from the next, so the page is the
     notice. Nothing is parsed out of its prose into a closure: what lands is
-    PAGE_COLUMNS, facts and a link (decision 55), never the page's wording.
+    PAGE_COLUMNS, facts and a link, never the page's wording.
     A page whose markup addresses items stably (USFS's alert cards, CFPA's
     `a.trail-notice-item`, mass.gov's action steps [b1, b5]) may get a
     per-item reader later, by the inventory's evidence; this is not it.

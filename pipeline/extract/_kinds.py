@@ -1,14 +1,14 @@
-"""One builder per source kind: what a club file calls to declare a resource.
+"""One builder per source kind: what a registry row's `extract` names to declare a resource.
 
 Every builder takes a KEY and never a URL. The URL, the field names, the
-filter and the change marker come from the key's sources.json entry, so a club
-file cannot fetch an upstream the registry does not register, and an upstream
-has one home (pipeline/ELT.md, "One home: sources.json, trail_orgs.json, the
-club file").
+filter and the change marker come from the key's sources.json entry, so the
+extract cannot fetch an upstream the registry does not register, and an upstream
+has one home: its sources.json row (extract/_readers.py says how a row's
+`extract` field names its builder).
 
 Nothing here imports dlt. A builder yields plain rows and says what its columns
 are; extract/_run.py wraps each one in a dlt resource. That keeps the layout
-test, which imports every club file, free of the run machinery, and keeps one
+test, which builds every registry row's resources, free of the run machinery, and keeps one
 place deciding the dlt settings every resource shares.
 
 The kinds built so far for stage 2 (#1793 — Rebuild the data platform as dlt → dbt):
@@ -37,7 +37,7 @@ The kinds built so far for stage 2 (#1793 — Rebuild the data platform as dlt �
     feed_notices(key)       a club's RSS or Atom notices, one row per item (extract/_notices.py)
     page_notice(key)        a club's notice page or PDF, one notice per page (extract/_notices.py)
     catalogue_row()         the club's own trail_orgs.json row, which discover() makes for every
-                            managing club (decision 88)
+                            managing club
     atc_trail_update_pages(key)
                             ATC's Trail Updates read off their website, one row
                             per update their trail-updates sitemap lists, as
@@ -68,7 +68,6 @@ from psycopg.rows import dict_row
 import export_conditions
 from check_freshness import CORRIDOR_PROBES
 from extract._contract import (
-    EXTRACT_DIR,
     PIPELINE_DIR,
     TRAIL_ORGS_PATH,
     Carried,
@@ -76,12 +75,12 @@ from extract._contract import (
     Proofs,
     Resource,
     Unavailable,
-    read_club_file,
+    registry_claims,
     slug_for_folder,
 )
 
-# Decision 53's notice readers, in a module of their own for this file's
-# length. They are builders like the rest, so a club file imports them from
+# The notice readers, in a module of their own for this file's
+# length. They are builders like the rest, so extract/_readers.py imports them from
 # here; extract/_notices.py's docstring says why it cannot import this file.
 from extract._notices import (  # noqa: F401
     DEFAULT_HOST_GAP_SECONDS,
@@ -142,7 +141,7 @@ REFERENCE_DIR = PIPELINE_DIR / "reference"
 # DEC's published number for an emergency in the backcountry, not a person's:
 # it belongs in nysdec's catalogue row, its trail_orgs.json row, rather than
 # in a layer, and adding it there is a reviewed change to that file, not made
-# yet (this note sat in nysdec/org.py's docstring until decision 88).
+# yet (this note sat in nysdec/org.py's docstring until the move to one notes file).
 #
 # A denylist is only as complete as the layers somebody has read: a person
 # field under another name loads until its name is added here, which is why a
@@ -187,7 +186,7 @@ PERSON_FIELDS = frozenset(
 # Since standard S4 (the maintainer's poll of 2026-10-11) no person reads a
 # person-shaped column's values to clear it (ORGANISATION_SUFFIXES says what
 # clears one now).
-# @unvalidated: the word list was drafted for decision 54 on 2026-10-03 from
+# @unvalidated: the word list was drafted on 2026-10-03 from
 # the names seen so far, not from a survey of field names. What would settle
 # it is the names a few monthly runs print, read for false matches and misses.
 #
@@ -217,7 +216,7 @@ PERSON_FIELDS = frozenset(
 # that asks this backstop lands a column a model reads by that name (the Hike
 # Finder's `author`, which publishes, is PublishedHikes', which names its own).
 #
-# WIDENED 2026-10-09, when decision 54's wave 6 registered two layers whose
+# WIDENED 2026-10-09, when the layer survey registered two layers whose
 # person fields these words missed: D&L Corridor's trailheads name their
 # inspectors in `updatedBy`, and Montour Trail's access areas carry editor
 # accounts in `MODIFIED_BY` and the locator in `LocationBy`. Both rows name
@@ -386,7 +385,7 @@ SHAPED = "a person-shaped name"
 
 @dataclass(frozen=True)
 class PersonRule:
-    """Which of an upstream's own field names never load: decision 59's rule, one home for every reader kind.
+    """Which of an upstream's own field names never load: the person-field rule, one home for every reader kind.
 
     ELT.md's rule 8 ("Who may publish"): a field that names or reaches a
     person never loads, and is left out inside the resource, before dlt sees
@@ -582,7 +581,7 @@ def session(entry: dict | None = None) -> requests.Session:
     reads no other host's answer.
 
     Every request sends lib/user_agent.py's USER_AGENT, on every host, and
-    never a browser's (decision 39): an operator should see who is asking from
+    never a browser's: an operator should see who is asking from
     one line of their log, and a host that refuses our own named agent has
     refused us. Every request is checked first against its origin's
     robots.txt, read once a run, and held to the Crawl-delay it asks
@@ -930,7 +929,7 @@ class ArcgisLayer(PersonRuled, Resource):
         leaves nothing half-written. The pages are spooled to a temporary file
         on disk, one feature a line, rather than held in memory: monthly run 12
         (refresh-reference.yml 37180229539) lost its runner 43 minutes into the
-        extract, after 15 silent minutes, with decision 54's largest layers to
+        extract, after 15 silent minutes, with the largest layers to
         read (USGS's 176,566 populated places, Washington's 32,563 public-land
         polygons). That memory was the cause is Reasoned, not measured; the
         line each monthly layer now prints with its peak RSS settles it. A
@@ -1270,7 +1269,7 @@ class WordpressPosts(PersonRuled, Resource):
     their taxonomy ids: the terms are their own daily table
     (`wordpress_terms`), resolved in dbt (ELT.md, "Source kinds").
 
-    THREE OPTIONS, each for a site decision 53's inventory measured on
+    THREE OPTIONS, each for a site the notices inventory measured on
     2026-10-03 (extract/_notices.py's module docstring says what that read
     was, and the bracketed batch which of its workers read it):
 
@@ -1415,8 +1414,8 @@ class WordpressPosts(PersonRuled, Resource):
     def plumbing(self) -> frozenset[str]:
         """WP_DROPPED, which PersonRule leaves out of every post with the row's own `person_fields`.
 
-        Decision 59 leaves a free-text field that carries personal data out
-        whole, never redacted. Measured in decision 53's phase B (2026-10-03):
+        The person-field rule leaves a free-text field that carries personal data out
+        whole, never redacted. Measured in the notices survey (2026-10-03):
         the Ozark Highlands Trail's alert posts carry a maintenance e-mail
         address and a telephone number in `content`, TEHCC's Appalachian
         Trail posts 14 telephone numbers and Trailkeepers of Oregon's
@@ -1693,7 +1692,7 @@ class ClubPdf(Resource):
     GATC's file, read 2026-10-04: `Last-Modified` Mon, 02 Mar 2026, and its
     embedded title "GATC Water Update July 2020.xlsx" (WATER_SOURCES.md §4),
     so a card that printed only the first would present six-year-old water
-    data as this year's. Decision 75 publishes that list at low confidence
+    data as this year's. The maintainer's ruling publishes that list at low confidence
     with its document date; the title is the half of that date a hiker
     needs. Either is null where the PDF does not state it.
     """
@@ -2166,7 +2165,7 @@ POSTGRES_TYPES = {
 class ConditionsQuery(Resource):
     """One of OurHike's own conditions artifacts, read from its Postgres through the bake's own query.
 
-    Decision 6: moderator-verified rows only, hourly. The query is
+    Moderator-verified rows only, hourly. The query is
     export_conditions.py's PUBLIC_*_SQL, whole, so its moderation predicate,
     its 90-day and five-per-place windows, and its two-account dispute rule
     all hold here as they hold in the bake, and `verified_by` and
@@ -2479,12 +2478,11 @@ class CatalogueRow(Resource):
         if org is None:
             raise KeyError(f"{self.club}/ has no trail_orgs.json row with slug {slug!r}")
         claims = []
-        # A club with no resource file has no folder (decision 88), and so claims nothing.
-        for path in sorted((EXTRACT_DIR / self.club).glob("*.py")):
-            club_file = read_club_file(path)
-            for key in club_file.claims:
-                entry = _registry(REGISTRY_PATH).get(key, {})
-                claims.append({"key": key, "type": club_file.type, **{name: entry.get(name) for name in CLAIM_FIELDS}})
+        # By type, then in the registry's order: the order the claims have always come in.
+        mine = [(type_, key) for org, type_, key in registry_claims(REGISTRY_PATH, TRAIL_ORGS_PATH) if org == self.club]
+        for type_, key in sorted(mine, key=lambda claim: f"{claim[0]}.py"):
+            entry = _registry(REGISTRY_PATH).get(key, {})
+            claims.append({"key": key, "type": type_, **{name: entry.get(name) for name in CLAIM_FIELDS}})
         yield {**{name: org.get(name) for name in ORG_FIELDS}, "claims": claims}
 
 
@@ -2641,7 +2639,7 @@ ATC_PAGE_ALLOWANCE_SECONDS = 15
 
 # Kept back from the read's budget for what follows the last page (building
 # the rows) and for the read_each thread's own start. @unvalidated: a round
-# number; what would settle it is the UA soak's summaries (decision 30),
+# number; what would settle it is the UA soak's summaries,
 # which time the read and would show whether the margin is ever needed.
 ATC_READ_MARGIN_SECONDS = 5
 

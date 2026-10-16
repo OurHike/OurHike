@@ -278,8 +278,8 @@ def test_the_catalogue_row_is_held_to_one_row_per_club_whatever_any_count_says(r
 
 
 def test_fdeps_park_boundaries_may_not_land_empty_or_shrunk_though_they_ride_the_closures_lane():
-    """FDEP's park boundaries are a resource of fl_state_parks/closures.py, so that the notices job reads them and the
-    hourly build that places each closed park's status point by its own boundary holds them (decision 185). That made
+    """FDEP's park boundaries are a resource of fl_state_parks.closures, so that the notices job reads them and the
+    hourly build that places each closed park's status point by its own boundary holds them. That made
     their table a closures table, which may land empty beside the server's own zero and has no shrink floor, because
     every closure lifted looks like that. A boundary layer is not a list of closures: landed empty, or 20 of its 179,
     it would un-place every closed Florida park until the next daily read, the trails inside no longer crossed out

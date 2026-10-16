@@ -1,18 +1,18 @@
-"""Decision 54, wave 5, section S: the points a club publishes on its own web pages, read with a parser per site.
+"""The points a club publishes on its own web pages, read with a parser per site.
 
     page_points(key)   the points one club's page or pages publish, one row per point (a shelter, a water cache,
                        a trailhead, a parking area), as the parser registered for the key reads them
 
-pipeline/ELT.md, "Loading everything the clubs publish (decision 54)", wave 5: "web pages | none | a parser per
-site". This is the section S half (points of interest, trail lines, places, elevation); the content types'
-pages are section K's, in extract/_pages_content.py. It is a builder like the rest: it takes a sources.json
-key, never a URL, so a club file cannot fetch a page the registry does not hold.
+pipeline/ELT.md, "Source kinds": "web pages | none | a parser per
+site". This is the points half (points of interest, trail lines, places, elevation); the content types'
+pages are read in extract/_pages_content.py. It is a builder like the rest: it takes a sources.json
+key, never a URL, so the extract cannot fetch a page the registry does not hold.
 
 WHAT A ROW IS. One point the page publishes, with only the facts the site's parser reads: a name, a kind as the
 page states it, numbers with their units, a mile, and the point as GeoJSON in `geometry` under rule 1's JSON
 hint. Every row also carries `source_url`, the page a hiker reads it on, and, for a WordPress page read through
 its REST route, `page_modified_gmt`, the page's own modified date. A page's body text lands nowhere (the round
-brief, item 3, and decision 55): a parser names the facts it keeps and drops everything else, so a sentence of
+brief, item 3): a parser names the facts it keeps and drops everything else, so a sentence of
 the club's lands in no column. A point the page states no coordinate for lands with `geometry` null, never a
 coordinate looked up from its name (the round brief: "Coordinates come from the page's own data, never geocoded
 from a name"); a staging model reads a null geometry as no place to draw.
@@ -27,14 +27,14 @@ than_relabelling) carried to pages.
 THE CHANGE CHECK IS THE READ, and FRESH only when what would land hashes exactly as the last load's rows. The
 pages measured send no validator of their own: WordPress REST answers carry none, and the HTML pages' Last-
 Modified is the request time (mdhta.com, friendsoftheouachita.org, aztrail.org, read 2026-10-04), which is
-extract/_notices.py's finding for decision 53's pages too. So a site-wide or request-time validator never
+extract/_notices.py's finding for the notice pages too. So a site-wide or request-time validator never
 decides FRESH (the dlt skill, rule 4). The check's answer is kept for the read in the same run
 (extract/_notices.py's _remember), so a page costs one request a run, not two.
 
 ACCESS. Every request sends lib/user_agent.py's USER_AGENT through extract/_kinds.py's session() and passes
 extract/_notices.py's per-host gate: DEFAULT_HOST_GAP_SECONDS after the last request to that host ended, or the
 row's `crawl_delay` where the host's robots.txt asks for more. robots.txt is read when a row is registered
-(decision 53, "Access is checked, never assumed"), and each row says what it read. A wall, a refusal or a
+("Access is checked, never assumed"), and each row says what it read. A wall, a refusal or a
 redirect to another host raises (extract/_notices.py's NoticeUnreadable): never an empty answer.
 
 PERSON FIELDS never load (ELT.md, "Who may publish", rule 8). A parser's columns are an allowlist that names no
@@ -191,7 +191,7 @@ def _parser(key: str):
 
 #: The kinds MDHTA's trail guide marks its points with (`data-type`, read 2026-10-04): 19 trailheads, 11
 #: campgrounds, 8 waterboxes, 6 river crossings, 6 points of interest. A trail line's anchor carries a
-#: `data-geojson` instead, which mdhta/trail_lines.py's mdhta_trail_guide reads; it has no point.
+#: `data-geojson` instead, which mdhta.trail_lines's mdhta_trail_guide reads; it has no point.
 MDHTA_POINT_KINDS = frozenset({"trailheads", "campgrounds", "waterboxes", "river-crossings", "points-of-interest"})
 #: The kinds a page with none of has stopped being the trail guide: the safety ones, which it has always had.
 MDHTA_ALWAYS = frozenset({"trailheads", "campgrounds", "waterboxes"})

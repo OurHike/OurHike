@@ -1,4 +1,4 @@
-"""extract/_warehouse.py's served copy: how the hourly build reads a notices leg's store (decision 61).
+"""extract/_warehouse.py's served copy: how the hourly build reads a notices leg's store.
 
 The notices legs write their store every 4 hours (extract-notices.yml), in
 runs that may overlap the hourly job's (publish-conditions.yml), and a
@@ -507,7 +507,7 @@ def notices_load_hours_ago(stores, monkeypatch, hours: float, *resources):
 def test_add_served_turns_a_leg_with_no_copy_red_once_its_first_committed_run_is_over_8_hours_old(
     stores, command, tmp_path, monkeypatch, capsys
 ):
-    """Decision 96 (the maintainer's poll, 2026-10-06: "Red after 8 h, like stale"). A leg with no served copy read as
+    """The maintainer's poll of 2026-10-06: "Red after 8 h, like stale". A leg with no served copy read as
     a cold start however long that lasted, so the hourly run stayed green while a copy 8 h 01 min old turned it red
     (review finding PY-3 of PR #1805 — dlt → dbt re-platform as one go/no-go change). The leg has owed a copy since
     its first committed run; past SERVED_STALE_HOURS of that it is overdue, and the run turns red after publishing."""

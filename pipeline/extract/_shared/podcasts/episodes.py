@@ -3,11 +3,11 @@
 71 episodes, keyed by `spotify_id` (ELT.md, "One key per table"). Places are
 tagged on the Podcast desk, a private claude.ai artifact out of CI's reach
 (features/PODCAST_PLACES.md), and reviewed into this file; the file is what
-loads. A show a club publishes is that club's (atc/podcasts.py extracts The
+loads. A show a club publishes is that club's (atc.podcasts extracts The
 Green Tunnel's feed); this file is OurHike's own selection across shows.
 
 Each row lands verbatim, as the JSON the reviewer wrote, because the gate dbt
-runs over it (int_podcasts__checked, lib/podcasts.py's rules) refuses a row
+runs over it (int_podcasts__checked, lib.podcasts's rules) refuses a row
 for its field names and value types, and typed columns would have let dlt
 coerce exactly those typos away (ReviewedFile's `verbatim` has the
 measurement).

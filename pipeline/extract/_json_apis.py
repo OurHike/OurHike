@@ -1,7 +1,7 @@
-"""One small adapter per JSON API that publishes closures or warnings (ELT.md decision 53, phase B, "JSON API").
+"""One small adapter per JSON API that publishes closures or warnings (ELT.md, "JSON API").
 
 Each is a Resource over a sources.json key, as every kind in extract/_kinds.py
-is, and lives here rather than there so the phase B readers for other formats
+is, and lives here rather than there so the notice readers for other formats
 (feeds, pages, PDFs) are not all edits to one file:
 
     nps_alerts(key)               NPS's /alerts for every park code the entry lists, one row per alert
@@ -12,9 +12,9 @@ is, and lives here rather than there so the phase B readers for other formats
     sheet_csv_segments(key)       a Google Sheet's CSV export, one row per trail-segment row
     my_maps_placemarks(key)       a Google My Maps KML export, one row per placemark, as served
 
-The last is a KML file, not JSON: the decision 53 inventory listed it among the
+The last is a KML file, not JSON: the notices inventory listed it among the
 JSON APIs, and it is the one closure source in that list with the steward's own
-geometry and status, so it is read here rather than waiting for decision 54's
+geometry and status, so it is read here rather than waiting for the
 GIS-file wave.
 
 THE ZERO. Closures and warnings may be empty, and an empty table counts only
@@ -26,7 +26,7 @@ count come from one answer, the proof is exact (Resource.exact_proof).
 
 THE KEY. NPS's two endpoints sit behind api.data.gov's gateway, which refuses a
 request with no key (`API_KEY_MISSING`, answered to /robots.txt itself; the
-decision 53 inventory, 2026-10-03). The key is read from NPS_API_KEY_ENV at
+the notices inventory, 2026-10-03). The key is read from NPS_API_KEY_ENV at
 run time and sent as the gateway's `X-Api-Key` header, never in the URL, so no
 log line, retry message or raise_for_status() text can carry it. With the
 variable unset, the change check raises Unavailable: the run leaves the
@@ -64,7 +64,7 @@ from lib.http_retry import request_with_retry
 NPS_API_KEY_ENV = "NPS_API_KEY"
 
 # A host that states no Crawl-delay still gets at least this long between two
-# requests: ELT.md decision 53's "Gentle on their servers", as a number. It is
+# requests: ELT.md's "Gentle on their servers", as a number. It is
 # a floor this pull request's readers chose, not one any host asked for
 # (@unvalidated as a courtesy; no host here has said what it wants).
 # docs.google.com's robots.txt asks `Crawl-delay: 1` (read 2026-10-03), which
@@ -230,9 +230,9 @@ def nps_alerts_url(base: str, park_codes: list[str], start: int, limit: int = NP
 class NpsAlerts(_kinds.PersonRuled, Resource):
     """NPS's alerts for every park code the sources.json entry lists, read in one paged request, one row per alert.
 
-    The entry's `park_codes` maps each code to the club folders that draw on
+    The entry's `park_codes` maps each code to the clubs that draw on
     it, so the list and the reason for each code have one home; dbt assigns a
-    club its portion from the same map (decision 34's `via` rule). Every
+    club its portion from the same map (the one-extraction rule). Every
     alert lands as NPS serves it. `category` is NPS's own field (Park Closure,
     Danger, Caution, Information): the closures staging model reads it too, and
     which category feeds which mart is decided in dbt, never by leaving rows
@@ -393,7 +393,7 @@ def advisory_key(park_id: int, message: str, occurrence: int) -> str:
     """A ParkAdvisory item's key: its park and its text, plus how many identical texts that park listed before it.
 
     The items carry no id, title or date (measured 2026-10-03), so the text
-    is the identity: an edited advisory is a new key, and decision 52's
+    is the identity: an edited advisory is a new key, and the
     snapshot closes the old one and opens the new. `occurrence` keeps two
     identical advisories in one park apart instead of refusing the read.
     """
@@ -886,7 +886,7 @@ class MyMapsPlacemarks(_kinds.PersonRuled, Resource):
     The entry's `url` is the export (`/maps/d/kml?mid=…&forcekml=1`), which
     www.google.com's robots.txt allows for every agent: `Disallow: /maps/`
     but the longer `Allow: /maps/d/` wins (RFC 9309's longest match; the
-    decision 53 inventory, 2026-10-03). FMST's map, the first, records each
+    the notices inventory, 2026-10-03). FMST's map, the first, records each
     line's status twice, and both land as served: in the description's
     "Trail Status" line, and in the line's style, whose colour the map's own
     legend reads (red closed, orange detour, green open, yellow open but not

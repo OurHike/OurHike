@@ -1,11 +1,10 @@
-"""extract/_pages_content.py, decision 54 wave 5's page readers for the content types (section K), against mocked
-servers.
+"""extract/_pages_content.py, the page readers for the content types, against mocked servers.
 
-Each site parser is run over invented markup shaped like the live page it was written from (section K's reads of
+Each site parser is run over invented markup shaped like the live page it was written from (the reads of
 2026-10-04, each sources.json row's `notes`), and the reader around them over requests_mock. Nothing reaches the
 network: conftest.py's socket guard stays on.
 
-The cases are the ones decision 55 and a changed page turn on: a row carries facts and the link and nothing else, a
+The cases are the ones facts-and-a-link and a changed page turn on: a row carries facts and the link and nothing else, a
 figure the page states ambiguously lands as its text with no number, a page that no longer has its parser's shape
 refuses rather than landing what still matched, a page that lists nothing is a changed shape and never an empty
 list, the reader never leaves its host or asks a query string its site's robots.txt was not read for, and one run
@@ -797,7 +796,7 @@ def test_a_georgia_peak_lands_its_land_area_and_trails_and_never_its_notes():
 
 def test_every_content_page_resource_rides_its_types_monthly_lane_with_a_parser_for_its_type():
     pages = [r for r in all_resources(discover()) if isinstance(r, ContentPages)]
-    assert pages, "the club folders declare no content page reader, so this checked nothing"
+    assert pages, "the registry declares no content page reader, so this checked nothing"
     for resource in pages:
         assert resource.cadence == "monthly", resource.key
         assert resource.type in TYPE_COLUMNS, resource.key

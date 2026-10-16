@@ -3,7 +3,7 @@
 The query is export_conditions.py's PUBLIC_REPORTS_SQL, whole: `status IN
 ('verified', 'resolved') AND visibility = 'public'`, with `verified_at` and
 never `verified_by` or `reporter_id`. Every public report lands. The serious
-ones are the warnings mart's (decision 7's split), and that choice is dbt's.
+ones are the warnings mart's (the closures/warnings split), and that choice is dbt's.
 Like closures, an unreadable table stops the lane.
 """
 

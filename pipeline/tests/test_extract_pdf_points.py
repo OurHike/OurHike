@@ -1,4 +1,4 @@
-"""extract/_pdf_points.py, decision 54's wave 4 (section S): the points clubs print in PDFs, against mocked servers.
+"""extract/_pdf_points.py: the points clubs print in PDFs, against mocked servers.
 
 A parser is a function of pypdf's page texts, so most cases hand it strings shaped exactly like pypdf's plain
 extraction of the live document (read 2026-10-04, each sources.json row's `notes`), with every name and number

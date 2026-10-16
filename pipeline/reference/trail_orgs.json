@@ -679,7 +679,8 @@
    "attribution": "Appalachian Trail Conservancy",
    "load": "ship",
    "already": "13 layers",
-   "why": "Already the registry's largest provider, shipping on the maintainer's authorisation recorded in sources.json's atc_licence block. The research's 'agreement required' is the general public's path; this project's basis is narrower and already written down. All 30 A.T. maintaining clubs resolve here."
+   "why": "Already the registry's largest provider, shipping on the maintainer's authorisation recorded in sources.json's atc_licence block. The research's 'agreement required' is the general public's path; this project's basis is narrower and already written down. All 30 A.T. maintaining clubs resolve here.",
+   "reviewed_files": [{"path": "reference/challenges/atc", "type": "challenges", "reads": [{"reader": "reviewed_dir", "verbatim": true}]}, {"path": "reference/atc_updates.json", "type": "closures", "reads": [{"reader": "reviewed_file", "rows_key": null, "verbatim": true}]}, {"path": "reference/water_distance.json", "type": "points_of_interest", "reads": [{"reader": "reviewed_file", "rows_key": "sites"}]}]
   },
   {
    "slug": "pcta",
@@ -1513,7 +1514,8 @@
    "endpoint": null,
    "endpoint_kind": null,
    "confidence": "inferred",
-   "attribution": null
+   "attribution": null,
+   "reviewed_files": [{"path": "reference/nynjtc_hike_photos.json", "type": "photos", "reads": [{"reader": "reviewed_file", "rows_key": "photos", "verbatim": true}]}]
   },
   {
    "slug": "batona",

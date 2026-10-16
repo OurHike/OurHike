@@ -1,6 +1,5 @@
 """King County Parks and Recreation: closures, extracted here once for every club that draws on it
-(decision 53 phase B, 2026-10-03). Its steward has no club folder (decision 18), so it lives in
-_shared/, and each club's own file carries a `via` note naming it (decision 34).
+(read 2026-10-03). Its steward is no managing club, so it lives in _shared/, and each club that draws on it says so in not_available.toml.
 
 - `king_county_parks_alerts_points`: King County Parks alerts and construction (points),
   `Parks_alert_and_construction_view/FeatureServer/0`.

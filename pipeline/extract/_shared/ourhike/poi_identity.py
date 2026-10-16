@@ -3,7 +3,7 @@
 8,563 POIs on 2026-10-01, 5,412 of them retired, keyed by `poi_id`: "never
 re-mint, never reuse, never delete" (reconcile_poi_identity.py). The ledger
 decides published POI ids, which the points_of_interest mart carries, and
-which ids the podcast episodes and highlights may tag (lib/podcasts.py's
+which ids the podcast episodes and highlights may tag (lib.podcasts's
 `_pois`). It is a reviewed file, so its bytes are its upstream and its row
 count is its own proof. A regeneration run proposes; a person reviews it in.
 

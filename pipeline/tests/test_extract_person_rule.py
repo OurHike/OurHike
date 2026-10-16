@@ -1,6 +1,6 @@
 """One rule for the upstream fields that name a person, in every reader that lands fields it did not name.
 
-Decision 59 and ELT.md's rule 8 ("Who may publish") say a field that names or reaches a person never loads. Review
+The person-field rule (ELT.md, "Who may publish") says a field that names or reaches a person never loads. Review
 findings PY-1 and SEC-4 of PR #1805 (dlt → dbt re-platform as one go/no-go change) found that rule written once per
 reader kind, seven copies in five variants, and disagreeing: SocrataDataset and OpentrailFeed read only
 PERSON_FIELDS, so a name in a Socrata row's own `person_fields` kept loading and so did a column named like a
@@ -302,7 +302,7 @@ def test_every_registered_reader_whose_row_lists_person_fields_carries_them_into
 #: facts (`id`, `title`, `link`, `modified_gmt`), NYNJTC's base model (`slug`, `modified` and its four place
 #: taxonomies), the wording union's prose (`content`, `excerpt`, `uagb_excerpt`), and, because the suggested-hike
 #: staging models carry every other column in `properties`, the fields WordPress's own REST API serves and the
-#: taxonomies the registered hike lists are read with (GMC's six, site_terms() in extract/gmc/suggested_hikes.py).
+#: taxonomies the registered hike lists are read with (GMC's six, site_terms() in gmc.suggested_hikes).
 WORDPRESS_COLUMNS_MODELS_READ = (
     *("id", "date", "date_gmt", "modified", "modified_gmt", "slug", "status", "type", "link", "title"),
     *("content", "excerpt", "uagb_excerpt", "featured_media", "sticky", "format", "categories", "tags", "acf"),
@@ -428,7 +428,7 @@ def test_a_field_name_written_with_spaces_never_lands_from_any_reader_whose_name
 
 # --- the backstop widened on 2026-10-09 -----------------------------------------------------------------------------
 
-#: Field names PERSON_SHAPED let load until 2026-10-09, each a person's by its shape: the three decision 54's wave 6
+#: Field names PERSON_SHAPED let load until 2026-10-09, each a person's by its shape: the three the layer survey
 #: found on D&L Corridor's trailheads and Montour Trail's access areas (both rows list them by hand), the 23 that
 #: PR #1805's security review listed that night, the same shapes run together, cut to a shapefile's ten characters or
 #: plural, as registry rows already list them by hand (OWNERNAME, entityphone, created_us), and the Buckeye Trail's

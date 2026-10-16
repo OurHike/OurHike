@@ -1,5 +1,5 @@
-"""Trust for Public Land: ParkServe's parks, held. Decision 126 (the maintainer's poll, 2026-10-09: "Load it,
-held") loads it under decision 122; what it is used for is decided later. TPL keeps its trail_orgs.json row, a
+"""Trust for Public Land: ParkServe's parks, held. The maintainer's poll of 2026-10-09 ("Load it,
+held") loads it held; what it is used for is decided later. TPL keeps its trail_orgs.json row, a
 national umbrella with no trail data (extract/_shared/not_clubs.py's line), so this folder is not a club's.
 
 - `tpl_parkserve_parks`: `ParkServe/ParkServe_ProdNew/MapServer/2` on TPL's own ArcGIS Server, 154,780 park

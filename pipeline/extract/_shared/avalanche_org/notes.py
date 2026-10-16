@@ -1,7 +1,7 @@
-"""avalanche.org's forecast map layer: not fetched, because its API asks for permission first (decision 53, phase B).
+"""avalanche.org's forecast map layer: not fetched, because its API asks for permission first.
 
 One upstream serves three clubs' avalanche zones, so if it is ever read it is
-read once, here (decision 34): the Utah Avalanche Center's zones for wmc/,
+read once, here: the Utah Avalanche Center's zones for wmc/,
 the Chugach National Forest Avalanche Information Center (`CNFAIC`) for
 iditarod/ and the Mount Washington Avalanche Center (`MWAC`) for rmc/. The
 API's root page asks anyone using it to ask first, so this is a stated
@@ -21,7 +21,7 @@ from extract._contract import NotAvailable
 NOT_AVAILABLE = NotAvailable(
     confirmed=date(2026, 10, 3),
     checked=(
-        "https://api.avalanche.org/ (the API root, 200 text/html, read by the decision 53 inventory, batches 3 and "
+        "https://api.avalanche.org/ (the API root, 200 text/html, read by the notices inventory, batches 3 and "
         '4, 2026-10-03): "Please contact avalanche.org / American Avalanche Associate for permission" '
         "('Associate' as written). The host has no robots.txt: /robots.txt answers the same HTML root page.",
         "(the inventory, 2026-10-03) `/v2/public/products/map-layer/CNFAIC`: 4 "
@@ -30,7 +30,7 @@ NOT_AVAILABLE = NotAvailable(
         "zone: name, center_id, danger, danger_level, travel_advice, warning, start_date, end_date, off_season, "
         "link, and a polygon. Weak ETags, cache-control max-age=10.",
         "(the inventory, 2026-10-03) `/v2/public/products/map-layer` for the Utah Avalanche Center's 9 zones "
-        "(wmc) was not fetched (batch 3: 'none until permission').",
+        "(wmc) was not fetched ('none until permission').",
     ),
     where=(
         "https://api.avalanche.org/",

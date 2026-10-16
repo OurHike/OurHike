@@ -1,13 +1,13 @@
-"""Decision 54, wave 2: a GIS file read whole, one row per feature (the `gis_file` kind).
+"""A GIS file read whole, one row per feature (the `gis_file` kind).
 
     gis_file(key)   a KML, KMZ, GPX, GeoJSON, zipped shapefile, zip of KML or GPX files, or CSV of points
 
-pipeline/ELT.md, "Loading everything the clubs publish (decision 54)", wave 2:
+pipeline/ELT.md, "Source kinds":
 "GIS files: KML, KMZ, GPX, GeoJSON, shapefiles, Google My Maps | one `gis_file`
 kind | the kind, and a change check per file (ETag or length, never a site-wide
 validator)". It lives here rather than in extract/_kinds.py, which is long
 enough, and is a builder like the rest: it takes a sources.json key, never a
-URL, so a club file cannot fetch a file the registry does not hold.
+URL, so the extract cannot fetch a file the registry does not hold.
 
 THE ROW. One per feature: a KML or KMZ placemark, a GPX waypoint, route or
 track, a GeoJSON feature, a shapefile record, or a CSV row. Every row carries
@@ -15,7 +15,7 @@ track, a GeoJSON feature, a shapefile record, or a CSV row. Every row carries
 and `feature_index` (its position in that file, counted from 0), then the
 file's own properties flattened one column each, then `geometry` as GeoJSON
 under rule 1's JSON hint. `feature_index` is a position, which a re-saved file
-renumbers, so it is never a key on its own (decision 40); the measured key on
+renumbers, so it is never a key on its own; the measured key on
 each sources.json row names what is.
 
 EVERY PROPERTY LANDS AS TEXT: a string as the file spells it, anything else as
@@ -48,7 +48,7 @@ PersonRule leaves out a property whose name is in PERSON_FIELDS or the row's
 `person_fields`, or reads as a person's by PERSON_SHAPED unless the row's
 `not_person_fields` clears it, before dlt sees the row, and the read prints it. A free
 text column that carries a person's details is the row's `person_fields` too
-(decision 59), since rule 8 excludes in dlt and never redacts in dbt.
+(the person-field rule), since it excludes in dlt and never redacts in dbt.
 
 THE CHANGE CHECK is per file (rule 4): a HEAD of each file, and its ETag, else
 its Last-Modified with its Content-Length, never one validator for a whole
@@ -81,7 +81,7 @@ ACCESS: every request sends lib/user_agent.py's USER_AGENT through
 extract/_kinds.py's session(), and passes extract/_notices.py's per-host gate,
 POLITE_SECONDS after the last request to that host ended, or the row's
 `crawl_delay` where the host's robots.txt asks for more. robots.txt is read when
-a row is registered (decision 53, "Access is checked, never assumed"), and a
+a row is registered ("Access is checked, never assumed"), and a
 row records what it said. A wall (extract/_notices.py's wall()) raises, and so
 does a redirect to another host the row does not name in `redirect_hosts`
 (extract/_notices.py's redirect_refused, which session() applies to every reader).
@@ -109,7 +109,7 @@ from lib.http_retry import request_with_retry
 #: The formats a row's `file_format` may name.
 FORMATS = ("kml", "kmz", "gpx", "geojson", "shapefile_zip", "zip", "csv_points")
 
-#: The gap kept between two requests to one host when its robots.txt asks for none: decision 53's inventory
+#: The gap kept between two requests to one host when its robots.txt asks for none: the notices inventory
 #: rule ("at least 2 s between requests to one host otherwise"), extract/_notices.py's DEFAULT_HOST_GAP_SECONDS.
 #: A courtesy, not a measurement of what any host can bear (@unvalidated; a host telling us otherwise settles it).
 POLITE_SECONDS = _notices.DEFAULT_HOST_GAP_SECONDS
@@ -615,7 +615,7 @@ def parse_csv_points(
     stays the row's position after the header.
 
     `as_of_label` names a cell above the header that a sheet dates itself
-    by, FMST's `Current as of:` (decision 72): the next non-empty cell on
+    by, FMST's `Current as of:`: the next non-empty cell on
     that line lands verbatim on every row as `source_as_of`, so the date a
     card prints is the sheet's own on the day it was read. A sheet whose
     label or date has gone is unreadable, as a header without its columns

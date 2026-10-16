@@ -1,6 +1,6 @@
 """East Bay Regional Park District: alerts and closures, hourly, extracted here once for every club that draws
-on it (decision 53 phase B, 2026-10-03). EBRPD has no club folder (decision 18), so it lives in _shared/,
-and not_available.toml [ridgetrail.closures] carries the `via` note naming it (decision 34); 52.1 Bay Area Ridge Trail
+on it (read 2026-10-03). EBRPD is no managing club, so it lives in _shared/,
+and not_available.toml [ridgetrail.closures] says ridgetrail draws on it; 52.1 Bay Area Ridge Trail
 miles are EBRPD's.
 
 - `ebrpd_alerts_closures`: https://www.ebparks.org/alerts-closures, one PageNotice (extract/_notices.py).
@@ -13,7 +13,7 @@ and an 'Updated <date>'; the newest of those is the row's date (2026-10-03 that 
 Gorge and Lake Anza trails closed from Monday 2026-10-05). Its Last-Modified is the response time. The
 'No Water' and 'Water Advisory' items are water facts a hiker needs, which the water path does not
 read yet. EBRPD's terms forbid redistributing "any information ... obtained from this website" beyond
-personal use; they do not name automated access, so this is decision 55's case (the Bay Area Ridge
+personal use; they do not name automated access, so this is the facts-and-a-link case (the Bay Area Ridge
 Trail is named there): facts and a link, the terms quoted on the row.
 """
 

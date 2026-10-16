@@ -1,7 +1,7 @@
-"""extract/_content.py, decision 54 wave 3's content readers (section C), against mocked servers.
+"""extract/_content.py, the content readers, against mocked servers.
 
 Each reader is asked for its rows directly, or run through the monthly lane into a `file://` raw store under
-tmp_path where what lands is the question. requests_mock answers as each upstream did on section C's live reads of
+tmp_path where what lands is the question. requests_mock answers as each upstream did on the live reads of
 2026-10-04; the bodies are invented and shaped like those answers. Nothing reaches the network: conftest.py's socket
 guard stays on.
 
@@ -97,7 +97,7 @@ def query(request) -> dict:
 
 
 def feed(items: int = 2) -> str:
-    """A podcast feed shaped like the live ones: every person tag section C met, an image by href, an enclosure."""
+    """A podcast feed shaped like the live ones: every person tag the live feeds carried, an image by href, an enclosure."""
     body = "".join(
         f"<item><title>Fixture Episode {i}</title><guid>fixture-{i}</guid><pubDate>Mon, 2{i} Sep 2026 14:00:00 +0000</pubDate>"
         f"<description>Fixture notes {i}, call 555-0100.</description><content:encoded>Fixture notes {i}.</content:encoded>"
@@ -138,7 +138,7 @@ def test_a_podcast_feeds_guests_hosts_and_their_addresses_never_reach_a_row(regi
 
 
 def test_every_person_tag_is_left_out_by_its_namespaced_name():
-    """The list is explicit (decision 59), so each tag the live feeds carried is named, namespace and all."""
+    """The list is explicit, so each tag the live feeds carried is named, namespace and all."""
     for tag in (
         "author",
         "{http://www.itunes.com/dtds/podcast-1.0.dtd}author",
@@ -607,7 +607,7 @@ def test_two_templates_on_one_wiki_are_two_reads_not_one_dataset_twice(registry)
 
 
 def test_the_content_module_is_what_the_registrys_content_rows_are_read_with():
-    """Every section C resource the club folders declare is one of this module's readers or an existing kind."""
+    """Every content resource the registry declares is one of this module's readers or an existing kind."""
     kinds = (PodcastEpisodes, NpsContent, WordpressChildPages, SiteTerms, MediawikiTemplatePages, _kinds.WordpressPosts)
     content = [r for r in all_resources(discover()) if type(r).__module__ == _content.__name__]
     assert content and all(isinstance(r, kinds) for r in content)

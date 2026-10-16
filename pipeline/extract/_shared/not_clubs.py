@@ -1,4 +1,4 @@
-"""The trail_orgs.json rows that get no club folder, one dated line each (decision 18).
+"""The trail_orgs.json rows that are not managing clubs, one dated line each.
 
 Twelve national umbrellas and thirteen route-only trails, counted 2026-10-01:
 each publishes through somebody else, so there is nothing of its own to
@@ -7,8 +7,8 @@ route-only trail's is the same for all thirteen, so it is written once here
 rather than copied with the route authors' names some of those rows carry.
 The aggregators (osm, outerspatial, avenza) are not here: each has a
 _shared/ folder. One umbrella has a _shared/ folder as well: tpl, whose
-ParkServe parks load held under decision 126 (the maintainer's poll,
-2026-10-09); it keeps its line here, since it maintains no trail.
+ParkServe parks load held by the maintainer's poll of
+2026-10-09; it keeps its line here, since it maintains no trail.
 tests/test_extract_layout.py holds every umbrella and route-only slug to
 exactly one line.
 """

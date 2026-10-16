@@ -1,14 +1,14 @@
-"""extract/_notices.py's FeedNotices and PageNotice, and the WordpressPosts options decision 53's inventory needs.
+"""extract/_notices.py's FeedNotices and PageNotice, and the WordpressPosts options the notices inventory needs.
 
 Every server here is requests_mock under conftest.py's socket guard, and every
 feed, page and post is invented in the shape the inventory read (2026-10-03):
 RSS 2.0 as WordPress, BLM's Drupal and Weebly serve it, Atom as Joomla serves
-it, WordPress's REST page, a PDF. The cases are the ones decision 53 names: a
+it, WordPress's REST page, a PDF. The cases are the ones the notice rules name: a
 304 to a trusted validator is FRESH and never reaches dlt; an unchanged
 upstream is left out of the run with its rows standing (the dlt skill's
 hazard rule 2); an empty feed proves its own zero; a walled page is UNKNOWN
 and its last row stands, never zero; a page with no date lands none; and no
-prose and no person lands from either reader (decision 55).
+prose and no person lands from either reader.
 """
 
 from __future__ import annotations
@@ -90,7 +90,7 @@ def store(tmp_path):
 
 
 def leg(store, *resources):
-    """A notices leg, where every club's feed, page and WordPress notices run since decision 61."""
+    """A notices leg, where every club's feed, page and WordPress notices run."""
     return run_pipeline("notices_ua", store["url"], resources=list(resources), pipelines_dir=store["dir"])
 
 
@@ -147,7 +147,7 @@ def test_an_rss_item_lands_its_id_title_link_date_and_categories_and_no_prose_or
     assert [row["_row"] for row in rows] == [0, 1]
     landed_text = json.dumps(rows)
     assert "A. Volunteer" not in landed_text, "dc:creator names a person and never lands"
-    assert "footbridge" not in landed_text, "description and content:encoded are prose and never land (decision 55)"
+    assert "footbridge" not in landed_text, "description and content:encoded are prose and never land"
     assert rows[0]["item_sha256"] != rows[1]["item_sha256"]
     assert all(r.headers["User-Agent"] == USER_AGENT for r in requests_mock.request_history)
 
@@ -300,7 +300,7 @@ def test_a_page_is_one_notice_with_its_title_its_own_stated_date_and_a_hash_neve
     assert row["url"] == PAGE_URL and row["title"] == "Current Trail Conditions", "the region's <h1>, not <title>"
     assert (row["date"], row["date_text"], row["date_source"]) == ("2026-08-27", "August 27, 2026", "page_text")
     assert row["region"] == "main" and row["format"] == "html"
-    assert "ridge trail" not in json.dumps(row), "the page's wording never lands (decision 55)"
+    assert "ridge trail" not in json.dumps(row), "the page's wording never lands"
     assert row["region_chars"] > 0 and len(row["region_sha256"]) == 64
 
 
@@ -313,7 +313,7 @@ DOLL_RIDGE = (
 
 
 def test_a_page_stating_a_section_closed_lands_that_sentence_verbatim_as_its_title_and_nothing_more(registry, requests_mock):
-    """Decision 213's "Land the closing sentence": the sentence whole, the page's naming sentence after it, the
+    """The maintainer's "Land the closing sentence" (2026-10-15): the sentence whole, the page's naming sentence after it, the
     sentence between marked as left out, and no other word of the page."""
     requests_mock.get(PAGE_URL, text=page(notice=DOLL_RIDGE))
 
@@ -341,7 +341,7 @@ def test_the_region_hash_is_the_same_whatever_the_closing_sentence_rule_reads(re
 @pytest.mark.parametrize(
     ("text", "landed"),
     [
-        # Closed, but no section: decision 55's title stands.
+        # Closed, but no section: the page's own title stands.
         ("The ridge trail is closed for a reroute.", None),
         # A section, but not closed.
         ("This section reopened on May 1.", None),
@@ -627,7 +627,7 @@ def test_a_page_with_its_own_wording_states_its_date_through_a_pattern_around_da
     assert page_stated_date("Backcountry information. New this week (10/1/2026)", pattern) == ("10/1/2026", "2026-10-01")
 
 
-# The forms P13 added (the maintainer, 2026-10-11: "Fix the dates! the reader should be able to handle different
+# The forms added on the maintainer's word (2026-10-11: "Fix the dates! the reader should be able to handle different
 # format"), one test each, and each refusal; extract/_notices.py's comment above DATE names the sources that use them.
 
 
@@ -679,7 +679,7 @@ def test_a_day_with_st_nd_rd_or_th_after_it_is_read_month_first_or_day_first(tex
     ],
 )
 def test_a_date_behind_its_weekday_is_read_with_the_weekday_in_its_text(text, expected):
-    """pa.gov's Tioga advisories write 'Monday, August 24th, 2026' (extract/pasda/closures.py)."""
+    """pa.gov's Tioga advisories write 'Monday, August 24th, 2026' (pasda.closures)."""
     assert page_stated_date(text) == expected
 
 
@@ -734,7 +734,7 @@ def test_a_word_that_is_no_months_name_is_not_read(text):
 
 
 def rctc_resource(key: str):
-    """The conservancy's own resource, as extract/rctc/closures.py declares it."""
+    """The conservancy's own resource, as rctc.closures declares it."""
     (resource,) = [resource for resource in all_resources(discover()) if resource.key == key]
     return resource
 
@@ -742,8 +742,8 @@ def rctc_resource(key: str):
 def test_an_rctc_trail_page_is_dated_by_its_newest_alert_and_never_by_a_month_with_no_day(requests_mock):
     """The Baker Trail's page in its own shape (read 2026-10-11): no "Updated" stamp, each alert ending in its date.
 
-    Through the real resource, extract/rctc/closures.py's, whose
-    ALERT_DATE is DATE alone in parentheses. Before P13 the row landed no date.
+    Through the real resource, rctc.closures's, whose
+    ALERT_DATE is DATE alone in parentheses. Before 2026-10-11 the row landed no date.
     """
     url = "https://www.rachelcarsontrails.org/trails/baker-trail"
     alerts = (
@@ -867,7 +867,7 @@ def test_wordpress_posts_keep_the_hosts_crawl_delay_between_their_requests(regis
 def test_ratcs_mcafee_page_is_one_notice_and_its_dragons_tooth_water_line_never_lands(requests_mock):
     """RATC's McAfee Knob page (ratc_mcafee_page, WordPress page 2821) states a water hazard for the Dragons Tooth area
     among its standing rules (read 2026-10-10). Registered as every page notice is, it lands one row of PAGE_COLUMNS:
-    its title, its own date and its link, and none of its sentences (decisions 55, 107 and 141), so a hiker meets the
+    its title, its own date and its link, and none of its sentences, so a hiker meets the
     page's title and a link, never the water line itself. The real registry row and resource; the REST answer shaped
     as the live one, with invented words."""
     (resource,) = [r for r in all_resources(discover()) if r.key == "ratc_mcafee_page"]

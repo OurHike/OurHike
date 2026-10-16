@@ -1,7 +1,7 @@
 """Section K's hand-back: the challenges and suggested hikes a club publishes as an Excel workbook, one parser per
 workbook family, beside extract/_pdf_content.py's PDFs.
 
-Section K of decision 54 left two workbooks unread because the extract job could not open one: the Smoky Mountains
+The page and PDF readers left two workbooks unread because the extract job could not open one: the Smoky Mountains
 Hiking Club's 900 Miler trail list, an .xls, and the Wasatch Mountain Club's hike ratings, an .xlsx.
 requirements-extract.in now pins a reader for each, xlrd for the old binary .xls and openpyxl for .xlsx, and says
 why those two.
@@ -12,7 +12,7 @@ THE CELLS OF ONE SHEET, NEVER THE FILE'S PROPERTIES. A workbook's document prope
 read on 2026-10-10 name their author and the person who last saved them, and WMC's cover sheet names its compilers.
 So a family names the one sheet it reads, sheet_cells() opens that sheet alone, and nothing here reads a property.
 A row is extract/_pages_content.py's TYPE_COLUMNS allowlist plus the family's own columns, held by checked_row():
-facts and the link, never the club's prose (decision 55), and a text value past its MAX_FACT_CHARS raises.
+facts and the link, never the club's prose, and a text value past its MAX_FACT_CHARS raises.
 
 REFUSED RATHER THAN RELABELLED, lib/club_pdfs.py's rule as extract/_pdf_content.py keeps it: a family reads the
 header it was written for, and a sheet whose header moved, or that reads as no item, raises SheetLayoutChanged, so a

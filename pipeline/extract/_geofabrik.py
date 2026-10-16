@@ -7,9 +7,8 @@ private raw bucket that outlives the 7-day Actions cache. Two halves:
     python -m extract._geofabrik pull ...    refresh-reference.yml's pin job
     python -m extract._geofabrik landed ...  the same job, after its water scans
 
-THE BYTES NEVER REACH dlt. A .pbf is a file to keep, not rows (decision 4,
-"Manifest row first, then bytes as well"; ELT.md, "Storage tiers": "PBFs stay
-bytes only"). So the resource is BucketListing's pattern rather than
+THE BYTES NEVER REACH dlt. A .pbf is a file to keep, not rows ("Manifest row
+first, then bytes as well"; ELT.md, "Storage tiers": "PBFs stay bytes only"). So the resource is BucketListing's pattern rather than
 ClubPdf's: one manifest row per file (where it is kept, its size, sha256,
 Geofabrik's Last-Modified and ETag), and never the file. ClubPdf parses its
 document into rows and holds the whole body in memory (`response.content`)

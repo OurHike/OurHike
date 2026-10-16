@@ -33,7 +33,7 @@ so the real thing gave CI's work_projects family no row to compare.
 make_dbt_fixtures.py writes invented rows in its shape at
 lib/work_projects.FIXTURE_STAND_IN, landed here under the same table, and
 parity.py's old side reads the same file (the maintainer's poll of
-2026-10-15, with decision 199).
+2026-10-15).
 
 OTHER UPSTREAMS are answered from what make_dbt_fixtures.py writes, so the
 suggested_hikes, closures and warnings marts build in CI (stage 3 of #1793 —
@@ -62,7 +62,7 @@ the HTTP session or the Postgres connection, is swapped:
 - a guide published as web pages (the guide_pages kind), page by page from
   guide_pages/<key>/, so its own parser reads NYNJTC's skeleton;
 - each club's notice page or feed (extract/_notices.py's PageNotice and
-  FeedNotices, decision 53 phase B), from conditions/notices/<key>.json:
+  FeedNotices, the notices survey), from conditions/notices/<key>.json:
   `{"answers": {url: {"content_type", "body"}}, "rows": n}`, served by exact
   URL as TEXT_FIXTURES are, so a page's fetch, region, title, stated date and
   hash and a feed's item allowlist and count-as-proof run, and `rows` is what
@@ -70,7 +70,7 @@ the HTTP session or the Postgres connection, is swapped:
   each host's Crawl-delay are switched off for the build, as ATC's Crawl-delay
   is, since no host is asked anything;
 - each club page read for its points (extract/_pages_points.py's PagePoints,
-  decision 54's wave 5), from conditions/page_points/<key>.json in the same
+  the page readers), from conditions/page_points/<key>.json in the same
   shape, so the page's own parser, its refusal of a changed layout and the
   count-as-proof run; a PDF's points (extract/_pdf_points.py) need pypdf and
   stay out, as the notice PDFs do;
@@ -84,7 +84,7 @@ the HTTP session or the Postgres connection, is swapped:
   body, so a reader's paging, count and person-column rules run. NPS's key is
   set to a placeholder for the build, since no request leaves the process.
   Section K's content pages (extract/_pages_content.py's ContentPages,
-  decision 54 wave 5) ride the same folder, each page an answer by its URL,
+  the page readers) ride the same folder, each page an answer by its URL,
   so a site parser runs over its fixture's markup. Its PDFs
   (extract/_pdf_content.py) have no fixture, because fixture mode's Python
   need not have pypdf.
@@ -172,7 +172,7 @@ JSON_API_DIR = "json_apis"
 # _notice_fixtures_n_to_z() for the rest), one file per registry key, the TEXT_FIXTURES shape plus the rows its
 # reader must land: `{"answers": {url: {"content_type", "body"}}, "rows": n}`.
 NOTICES_DIR = "notices"
-# The points read off club pages (extract/_pages_points.py, decision 54's wave 5, make_dbt_fixtures.py's
+# The points read off club pages (extract/_pages_points.py, make_dbt_fixtures.py's
 # page_points_fixtures()), one file per registry key, the NOTICES_DIR shape: `{"answers": {url: {"content_type",
 # "body"}}, "rows": n}`, served by exact URL, and `rows` what the page's own parser must land.
 PAGE_POINTS_DIR = "page_points"

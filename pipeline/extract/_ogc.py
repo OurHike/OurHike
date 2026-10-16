@@ -1,9 +1,9 @@
-"""Decision 54, wave 3: the geographic APIs, OGC API Features and a JSON API whose items carry a coordinate.
+"""the geographic APIs, OGC API Features and a JSON API whose items carry a coordinate.
 
     ogc_features(key)    an OGC API Features collection's items, paged by the `next` link the server gives
     json_features(key)   a JSON API's list of items, each a row, its coordinate made a Point
 
-pipeline/ELT.md, "Loading everything the clubs publish (decision 54)", wave 3:
+pipeline/ELT.md, "Source kinds":
 "feeds and APIs: WordPress, RSS, JSON, OGC Features | WordPress exists; OGC
 Features and generic JSON are new". Both are builders like extract/_kinds.py's:
 each takes a sources.json key, never a URL. They live here, beside each other,
@@ -57,7 +57,7 @@ PERSON FIELDS never load, by extract/_kinds.py's PersonRule: PERSON_FIELDS, the
 row's own `person_fields`, WordPress's plumbing that names a user (WP_DROPPED: `author`,
 Yoast's blocks), and a top-level field whose name reads as a person's
 (PERSON_SHAPED) unless the row's `not_person_fields` clears it. They are left
-out of the row before dlt sees it, and never redacted downstream (decision 59).
+out of the row before dlt sees it, and never redacted downstream.
 
 ACCESS: lib/user_agent.py's USER_AGENT through extract/_kinds.py's session(),
 and extract/_notices.py's per-host gate, at least POLITE_SECONDS between two
@@ -339,7 +339,7 @@ class JsonFeatures(_Paged):
 
         The key is every field of the row's `key_fields`, read from each item.
         Only values whose copies differ are named; exact copies are the staging
-        dedupe's (decision 40). An item missing a key field counts as one
+        dedupe's. An item missing a key field counts as one
         distinct item, since it cannot be shown to repeat another. A row with
         no key, or whose key holds the geometry, answers (len(items), {}); a
         paged row needs one (json_features()).

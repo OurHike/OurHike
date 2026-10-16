@@ -1,7 +1,7 @@
 {#-
     THE DAY A TITLE SAYS ITS NOTICE ENDS, as a DATE, or null where the title
-    states none this reads (rule 13, the maintainer's poll of
-    2026-10-15: "a title that states its own end is read as the row's end").
+    states none this reads (the maintainer's poll of 2026-10-15: "a title
+    that states its own end is read as the row's end").
     int_closures__club_notices takes the later of this and the row's own end
     date as its `ends_on`, and int_closures__oprhp_areas reads its areas'
     reasons by it, so a title is read the same way for every source.
@@ -14,15 +14,18 @@
       or a year alone, after one of 'early', 'mid', 'late', 'spring',
       'summer', 'fall', 'autumn' or 'winter' or after nothing ('Closed Until
       2027', 'through Fall 2025');
-    - a range of two years, '(2026-2027)' or '2026-27', neither year part of
-      a longer run of digits, dashes or slashes, so an order number
-      ('UTW002-2026-10') or an ISO day is no range, and the second year not
-      before the first.
+    - a season's range of two years, the second not before the first, and
+      only where it reads as a season: alone in brackets ('(2026-2027)',
+      Wisconsin DNR's), after a lead word above or 'season' ('through
+      2026-27'), or followed by 'season' ('2026-27 season'). Any other
+      range is no end: an order number ('Closure Order No. 2023-31',
+      'Forest Order #2024-28') or a past season named in passing ('2020-21
+      Fire Scar Closure') reads as nothing.
 
     TOWARD CAUTION: a month alone is its last day, and a year alone, or a
     season of it, its December 31: a closure is read as standing to the end
-    of the period its title names, never greyed inside it (Reasoned; the
-    maintainer's rule 13). A title that names several ends ('Sept. 8, 2026
+    of the period its title names, never greyed inside it (Reasoned). A
+    title that names several ends ('Sept. 8, 2026
     through June 2027' names one) is read at the latest.
 
     WHAT IT DOES NOT READ: a day with no year ('December 15 thru June 15',
@@ -50,8 +53,17 @@
     {%- set year_alone -%}
         {{ lead }}(?:(?:early|mid|late|spring|summer|fall|autumn|winter)\s+)?([0-9]{4})(?:[^0-9/-]|-[^0-9]|-$|$)
     {%- endset -%}
-    {%- set year_range -%}
-        (?:^|[^0-9/-])((?:19|20)[0-9]{2})\s*[-–—]\s*((?:19|20)?[0-9]{2})(?:[^0-9/-]|$)
+    {%- set years -%}
+        ((?:19|20)[0-9]{2})\s*[-–—]\s*((?:19|20)?[0-9]{2})
+    {%- endset -%}
+    {%- set bracketed_range -%}
+        \(\s*{{ years }}\s*\)
+    {%- endset -%}
+    {%- set lead_range -%}
+        (?i)(?:^|[^a-z])(?:until|till|thru|through|season)\s+{{ years }}(?:[^0-9/-]|$)
+    {%- endset -%}
+    {%- set season_range -%}
+        (?i)(?:^|[^0-9/#.-])\s*{{ years }}\s+season(?:[^a-z]|$)
     {%- endset -%}
     {%- set months -%}
         ['january', 'february', 'march', 'april', 'may', 'june', 'july',
@@ -94,8 +106,20 @@
         ),
         list_max(
             list_transform(
-                regexp_extract_all({{ text }}, '{{ year_range }}'),
-                lambda found: {{ notice_title_end_year_range('found', year_range) }}
+                regexp_extract_all({{ text }}, '{{ bracketed_range }}'),
+                lambda found: {{ notice_title_end_year_range('found', bracketed_range) }}
+            )
+        ),
+        list_max(
+            list_transform(
+                regexp_extract_all({{ text }}, '{{ lead_range }}'),
+                lambda found: {{ notice_title_end_year_range('found', lead_range) }}
+            )
+        ),
+        list_max(
+            list_transform(
+                regexp_extract_all({{ text }}, '{{ season_range }}'),
+                lambda found: {{ notice_title_end_year_range('found', season_range) }}
             )
         )
     )

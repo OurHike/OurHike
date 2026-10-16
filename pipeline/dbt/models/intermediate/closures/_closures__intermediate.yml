@@ -4780,6 +4780,42 @@ unit_tests:
         - {source_key: club_leaking, rows_total: 3, passed: false, held_because: '2 club_leaking row(s) hold the source''s own wording in a published column, the first club_leaking:2, so none of its rows is published (int_warnings__wording_leaks names each)'}
         - {source_key: club_outside, rows_total: 2, passed: false, held_because: '1 club_outside row(s) reach outside the eastern box its source publishes in, the first club_outside:1: a lon/lat swap, or a source registered without its region (macros/lands_outside_its_region.sql), so none of its rows is published'}
 
+  - name: int_closures__oprhp_areas_reads_a_year_range_as_an_end_only_where_it_names_a_season
+    description: >
+      A range of two years in a reason is its end only where it reads as a
+      season: alone in brackets, as Wisconsin DNR writes '(2026-2027)', or
+      after 'through'. An order number ('Closure Order No. 2023-31',
+      'Forest Order #2024-28') or a past season named in passing ('2020-21
+      Fire Scar Closure') is no end, so it can neither keep a lapsed order
+      closing until 2031 nor grey a closure still in force.
+    model: int_closures__oprhp_areas
+    given:
+      - input: ref('stg_oprhp__trail_closures')
+        format: sql
+        rows: |
+          select
+              closure_key,
+              row_number() over (order by closure_key) as source_row,
+              closure_reason,
+              cast(null as varchar) as closure_place,
+              st_geomfromtext('POLYGON((-74 41, -73.9 41, -73.9 41.1, -74 41.1, -74 41))') as geom,
+              timestamptz '2026-10-15 00:00:00+00' as loaded_at
+          from (
+              values
+              ('order_number', 'Closure Order No. 2023-31'),
+              ('order_hash', 'Forest Order #2024-28 Area Closure'),
+              ('past_season', '2020-21 Fire Scar Closure'),
+              ('bracketed_season', 'Trail Closed (2026-2027)'),
+              ('through_season', 'Closed through 2026-27')
+          ) as reasons (closure_key, closure_reason)
+    expect:
+      rows:
+        - {closure_key: order_number, ends_on: null}
+        - {closure_key: order_hash, ends_on: null}
+        - {closure_key: past_season, ends_on: null}
+        - {closure_key: bracketed_season, ends_on: '2027-12-31'}
+        - {closure_key: through_season, ends_on: '2027-12-31'}
+
   - name: int_closures__trail_closure_areas_keeps_each_obstructing_club_area_as_its_source_drew_it
     model: int_closures__trail_closure_areas
     description: >

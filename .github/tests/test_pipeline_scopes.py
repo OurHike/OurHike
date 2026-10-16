@@ -112,17 +112,17 @@ def test_the_roster_is_derived_and_complete():
 
 
 def test_a_notices_source_stales_the_extract_path_that_lands_it_and_needs_no_dispatch():
-    """A club's closures file is read by extract-notices.yml (an hourly type, extract/_contract.py's
-    CADENCE_BY_TYPE), whose schedule reruns it from main; publishing paths do not claim it yet, so it is still
-    named unclaimed for them rather than read as fresh."""
-    verdict = _verdict(["pipeline/extract/usfs/closures.py"])
+    """A notices file of an hourly type is read by extract-notices.yml (extract/_contract.py's CADENCE_BY_TYPE),
+    whose schedule reruns it from main; publishing paths do not claim it yet, so it is still named unclaimed for them
+    rather than read as fresh."""
+    verdict = _verdict(["pipeline/extract/_shared/nifc/perimeters.py"])
     assert "STALE  extract-notices.yml" in verdict
     assert "nothing to dispatch" in _note_after(verdict, "extract-notices.yml")
-    assert "unclaimed  pipeline/extract/usfs/closures.py" in verdict
+    assert "unclaimed  pipeline/extract/_shared/nifc/perimeters.py" in verdict
 
 
-def test_a_monthly_types_club_file_leaves_the_extract_path_fresh():
-    verdict = _verdict(["pipeline/extract/usfs/trail_lines.py"])
+def test_a_monthly_types_file_leaves_the_extract_path_fresh():
+    verdict = _verdict(["pipeline/extract/_shared/ourhike/highlights.py"])
     assert "fresh  extract-notices.yml" in verdict
 
 
@@ -144,13 +144,11 @@ def test_a_monthly_types_extract_file_stales_the_publishing_path_that_runs_the_m
     for changed in (
         "pipeline/extract/_shared/osm/geofabrik.py",
         "pipeline/extract/_geofabrik.py",
-        "pipeline/extract/usfs/trail_lines.py",
         "pipeline/extract/_shared/ourhike/highlights.py",
     ):
         verdict = _verdict([changed])
         assert "STALE  refresh-reference.yml" in verdict, changed
         assert f"unclaimed  {changed}" not in verdict, changed
-    assert "fresh  refresh-reference.yml" in _verdict(["pipeline/extract/usfs/closures.py"])
     assert "fresh  refresh-reference.yml" in _verdict(["pipeline/extract/_shared/nifc/perimeters.py"])
     # publish-conditions.yml's monthly-lane run reads the registry alone (`--only`), which is not the lane.
     assert "fresh  publish-conditions.yml" in _verdict(["pipeline/extract/_shared/osm/geofabrik.py"])

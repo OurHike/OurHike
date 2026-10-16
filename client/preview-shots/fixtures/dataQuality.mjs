@@ -1,6 +1,6 @@
 // /data/quality/ for the camera, drawn from INVENTED data_quality.json files,
-// because no published release carries one yet (pipeline/ELT.md decision 102,
-// step 4: the file starts with the build that runs the checks). A recipe's
+// because no published release carries one yet (the file starts with the
+// build that runs the checks). A recipe's
 // `before`, after serveMarketingSite (fixtures/marketingSite.mjs), whose
 // catch-all route these two override.
 //

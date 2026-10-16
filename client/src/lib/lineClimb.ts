@@ -81,8 +81,7 @@ const METRES_PER_MILE = 1609.344
  *
  * @unvalidated 8% is picked, not found. It has to absorb two disagreements
  * that are both real and neither measured here: the graph's `length_m` and
- * `lengthMiles` are both the pipeline's WGS84 geodesic length (decisions 90
- * and 97, #1805), but of differently drawn lines - the edges' pieces over
+ * `lengthMiles` are both the pipeline's WGS84 geodesic length (#1805), but of differently drawn lines - the edges' pieces over
  * vertices rounded to six decimals, the line as export_nearby_trails.py
  * simplifies it; and an edge is filed whole into every cell its bounding
  * box touches, so a held cell can carry slightly MORE of a line than the
@@ -113,7 +112,7 @@ export const COVERAGE_TOLERANCE = 0.08
  * tile and another in the graph, and the sheet would print the other line's
  * climb as this one's, on the figure a hiker uses to judge daylight.
  *
- * Reasoned, from what the shortfall allows and from decisions 90 and 97.
+ * Reasoned, from what the shortfall allows and from the geodesic lengths.
  * Within one release both lengths are geodesic on WGS84 and measure one line:
  * `length_miles` is the published 1 m line's (`published_length_m` in
  * int_trail_lines__network_published.sql), and the edges are pieces of that
@@ -123,7 +122,7 @@ export const COVERAGE_TOLERANCE = 0.08
  * releases, a phone can hold one side in EPSG:5070 metres (production's
  * graph until #1822 — Production's trail_graph.json measures every edge in
  * EPSG:5070, up to 29% off outside the lower 48, until decision 90's lengths
- * are published and promoted): decision 97 measured that change moving a
+ * are published and promoted): that change was measured moving a
  * lower-48 line's `length_miles` by at most 1.24% and an Alaskan one's by up
  * to 20.8% (UA's release 2026-10-03-2, 2026-10-07). The first fits inside 8%;
  * the second does not, and such a line answers with no climb, the cautious

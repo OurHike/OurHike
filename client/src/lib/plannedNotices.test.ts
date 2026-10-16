@@ -14,7 +14,7 @@ import type { Steward, Stewards } from './stewards'
 import { buildTrailIndex } from './trailPosition'
 import type { Trip } from './trips'
 
-// Decision 66's rule (the maintainer, 2026-10-04): "Every notice that touches
+// The planned-hike rule (the maintainer's poll of 2026-10-04): "Every notice that touches
 // a planned hike in the next 7 days. for a long hike get everything along the
 // planned hike in the next 7". The cases the brief named: the 7-day window's
 // edge, a long hike's 7-day stretch, a placed notice off the route, and an
@@ -526,7 +526,7 @@ describe('an unplaced notice', () => {
   })
 })
 
-describe('a club notice whose park terms are mapped to park areas (rule 19, decision 213)', () => {
+describe('a club notice whose park terms are mapped to park areas', () => {
   // The day hike runs north along -76.5 from 41.1 to 41.2 on NYS OPRHP's
   // trails (`dayHike`), so OPRHP's org_terms notices are its club's.
   function parks(
@@ -595,7 +595,7 @@ describe('a club notice whose park terms are mapped to park areas (rule 19, deci
   })
 })
 
-describe('a state-wide agency notice (decision 76)', () => {
+describe('a state-wide agency notice', () => {
   // Two invented states sharing a meridian at -76.4: "UT" to its west, where
   // the fixture day hike's taps (-76.5, 41.1 to 41.2) sit about 8 km from the
   // line, and "CO" to its east. Boxes, not anybody's real shape.
@@ -704,7 +704,7 @@ describe('a state-wide agency notice (decision 76)', () => {
     expect(pick([stateWide([UTAH])], [], [other]).hikes[0].stateWide).toEqual([])
   })
 
-  it('shows nowhere without the states’ shapes, as decision 68 left it', () => {
+  it('shows nowhere without the states’ shapes, as before state shapes existed', () => {
     const noShapes = { ...stateWide([UTAH]), state_areas: undefined }
     expect(pick([noShapes], [], [dayHike(TODAY)]).hikes[0].stateWide).toEqual([])
   })
@@ -858,7 +858,7 @@ describe('what the panel shows, once', () => {
   })
 })
 
-// P3, the maintainer's frame B (2026-10-11): a closure whose own start is
+// The maintainer's frame B (2026-10-11): a closure whose own start is
 // still ahead is shown now and closes the trail only from the day before its
 // start (lib/noticeCurrency.ts's obstructsOn), so until then it does not sort
 // among the closures. The hike is five days out; the closure starts the day

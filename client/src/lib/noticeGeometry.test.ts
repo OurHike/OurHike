@@ -141,8 +141,8 @@ describe('linesMeetGeometry', () => {
 })
 
 describe('linesMeetParts on a state-sized area of many polygons', () => {
-  // The shape of Utah FFSL's fire-restriction order 19 after decision 77's
-  // shaping (899 polygons and 53,358 vertices, measured 2026-10-05 by running
+  // The shape of Utah FFSL's fire-restriction order 19 after the phone
+  // shaping (grown and simplified at 100 m) (899 polygons and 53,358 vertices, measured 2026-10-05 by running
   // the macro's SQL over soak run 536's row in DuckDB): invented here as 899
   // 60-gons, 53,940 vertices, on a 30 x 30 grid over a box the size of Utah,
   // with one grid square left empty for a hike to walk through.

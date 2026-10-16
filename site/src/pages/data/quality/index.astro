@@ -1,14 +1,14 @@
 ---
 // docs.ourhike.org/data/quality/ - every check Elementary ran on the data in
 // the release this build ships, and on the latest hourly run of trail conditions,
-// counted (pipeline/ELT.md, "Data quality (decision 102)", step 4). Mock B's
+// counted (pipeline/ELT.md, "The data checks"). Mock B's
 // layout, which the maintainer chose by poll on 2026-10-07.
 //
 // THE FIGURES ARE NOT IN THIS FILE. The page reads two `data_quality.json`
 // files in the visitor's browser - the monthly one in the pinned release's
 // folder, the hourly one beside the other conditions files - and draws only
 // what they say (src/lib/dataQuality.mjs; LANE_KEYS there is where the two
-// keys live). Public and counts only, decision 10's rule for /data/: the
+// keys live). Public and counts only, the rule for /data/: the
 // files carry counts, table names and expected ranges, never a row.
 //
 // TWO PLACEHOLDERS, SUBSTITUTED AT DEPLOY. `__DATA_BASE_URL__` and
@@ -34,7 +34,7 @@
 // but `quality/`, and docs that bring a `quality/` of their own, so neither
 // copy can silently replace the other.
 //
-// ON THE DOCS' OWN HOST (pipeline/ELT.md decision 144): pages.yml deploys
+// ON THE DOCS' OWN HOST: pages.yml deploys
 // this page with the docs to docs.ourhike.org, and Base.astro writes the
 // site's nav and footer links on it as full ourhike.org addresses, since
 // that host has none of the site's other pages.
@@ -44,7 +44,7 @@ import Base from '../../../layouts/Base.astro'
 import DataNav from '../../../components/DataNav.astro'
 import { providersByKey } from '../../../lib/dataQualitySummary.mjs'
 
-// WHO A FLAGGED FEED BELONGS TO, for the summary at the top (Q24 of #1805):
+// WHO A FLAGGED FEED BELONGS TO, for the summary at the top:
 // pipeline/sources.json's `provider` for each source key, read when the site
 // is built (the site builds from a checkout of the whole repository, in
 // pages.yml and pr-preview.yml alike). A build without the file still builds:
@@ -172,7 +172,7 @@ const description =
       <p data-slot="made-from" hidden></p>
       <p>
         What each kind of check looks at, and where it runs, is written up in <a
-          href="https://github.com/OurHike/OurHike/blob/__SOURCE_COMMIT__/pipeline/ELT.md#the-checks-and-where-each-goes"
+          href="https://github.com/OurHike/OurHike/blob/__SOURCE_COMMIT__/pipeline/ELT.md#the-data-checks"
           >the data platform's notes</a
         >.
       </p>

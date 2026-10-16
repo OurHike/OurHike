@@ -222,7 +222,7 @@ const SOURCES: TrailSourceTable = {
   },
 }
 
-describe('a club’s own line (decision 64)', () => {
+describe('a club’s own line', () => {
   it('marks a club line so the sheet can say it is drawn and not routed', () => {
     expect(buildLineDetail({ ...NEARBY_LINE, lineKind: 'club' }, {}, []).isClubLine).toBe(
       true,
@@ -344,7 +344,7 @@ describe('a long-term closed trail', () => {
   })
 })
 
-describe('a section an organization’s own notice closed (decision 213)', () => {
+describe('a section an organization’s own notice closed', () => {
   // What dbt's int_trail_lines__network_section_closures ships: USFS drew the
   // line, PATC's notice named its section closed, and the reason is PATC's
   // own sentence, verbatim.

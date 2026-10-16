@@ -1,6 +1,5 @@
 // docs.ourhike.org/data/quality/'s chart on a phone, drawn from the INVENTED
-// many-problems files in site/src/lib/dataQualityExamples.mjs (pipeline/ELT.md
-// decision 102), with the maximum of elevation's gain_ft chosen in the Show
+// many-problems files in site/src/lib/dataQualityExamples.mjs, with the maximum of elevation's gain_ft chosen in the Show
 // menu.
 //
 // WHAT CHANGED, AND IS IN THIS FRAME. The review of #1805 (2026-10-15, thread
@@ -11,8 +10,8 @@
 // "Flagged as high", the value being in the sentence under the chart. Here
 // the whole label fits, left of the point. The label the review saw run over
 // the axis was a source's freshness history ("41 days between updates,
-// flagged as high", 249 px measured), which decision 203 removed along with
-// the history, and no example label left is that long, so this frame shows
+// flagged as high", 249 px measured), which went when freshness became our
+// last read of a source, along with the history, and no example label left is that long, so this frame shows
 // the placement holding at a phone's width rather than the fault itself;
 // dataQualityHtml.test.mjs holds every example label inside the plot from
 // 300 to 1300 px.

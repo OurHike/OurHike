@@ -20,15 +20,15 @@
 // already block, and it is an allowlist rather than a blocklist because the
 // set of schemes a WebView will act on is not a list this file could keep.
 
-// AND A PAGE BACK INTO THE APP IS NOT ONE OF THEM (SEC-3 of PR #1805's
-// second review; decision 94 in pipeline/ELT.md). Every sink below opens its
+// AND A PAGE BACK INTO THE APP IS NOT ONE OF THEM (a finding of
+// PR #1805's second security review). Every sink below opens its
 // link in a new tab, and a new tab of the app signs itself in from whatever
 // session the URL carries: lib/supabase.ts sets `detectSessionInUrl` and no
 // `flowType`, so auth-js 2.115.0 takes the implicit flow, reads
 // `access_token` and `refresh_token` out of the fragment or the query
 // (parseParametersFromURL, both through URLSearchParams), checks the token
-// with the server and saves the session - whoever minted it (SEC-3 traced
-// GoTrueClient.js:376-413). So refused, at every sink:
+// with the server and saves the session - whoever minted it (the security
+// review traced GoTrueClient.js:376-413). So refused, at every sink:
 // - a link whose origin is the page's own;
 // - any relative link, which is the page's own origin by construction - and
 //   that includes `https:#…` and `https:host/…`, which an https page

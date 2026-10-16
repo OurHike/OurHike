@@ -66,7 +66,7 @@ export function parseTrailMiles(text: string): TrailMiles | null {
 }
 
 /**
- * `v2/trail_miles.json` (decision 44, stage 6 of #1793): v1's file with each
+ * `v2/trail_miles.json` (#1793): v1's file with each
  * chain's miles as whole thousandths of a mile, the first vertex's as itself
  * and every later one as its step from the vertex before
  * (pipeline/dbt/models/publish/pub_trail_miles_v2.sql writes it). A step can

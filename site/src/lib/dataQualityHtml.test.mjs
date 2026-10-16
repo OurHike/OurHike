@@ -199,7 +199,7 @@ describe("Needs a look, the Show menu and the Chart buttons, as markup", () => {
     ]);
     const selected = [...body.matchAll(/<option value="([^"]*)" selected>/g)].map((m) => m[1].replaceAll("&quot;", '"'));
     expect(selected).toEqual([page.sections.chart.key]);
-    // 30: the 38 there were before decision 203, less the 8 freshness histories.
+    // 30: the 38 there were before freshness became our last read, less the 8 freshness histories.
     expect(body.match(/<option /g)).toHaveLength(30);
   });
 

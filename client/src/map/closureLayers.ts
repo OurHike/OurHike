@@ -161,7 +161,7 @@ export const CLUB_CLOSURE_ID_PROPERTY = 'notice_id'
 
 /**
  * Which club closure a touch landed on, by notice id, or null (the
- * maintainer's S6, 2026-10-11): the paper along a closed line, or the cross
+ * maintainer's closure-map standard, 2026-10-11): the paper along a closed line, or the cross
  * at a closed point, in the same box as `closureIdAt`'s tape.
  *
  * HERE, BESIDE THE TAPE'S PROBE, because every handler that yields to the
@@ -176,7 +176,7 @@ export function clubClosureIdAt(
   map: MapLibreMap,
   point: { x: number; y: number },
 ): string | null {
-  // And the small ✕ of z5 and z6 (Q22, map/clubClosureLayers.ts's
+  // And the small ✕ of z5 and z6 (map/clubClosureLayers.ts's
   // buildClubClosureFarLayer): a tap on the ✕ that won its spot opens that
   // closure's sheet, the same sheet as at z7.
   const layers = [

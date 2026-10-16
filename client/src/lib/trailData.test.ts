@@ -337,11 +337,11 @@ describe('trail data', () => {
     })
   })
 
-  // v2/poi_<type>.geojson (decision 44, stage 6 of #1793) holds a POI's
+  // v2/poi_<type>.geojson (#1793) holds a POI's
   // position once, as the Point's coordinates at 6 decimals, with no lat and
   // lon properties. Dropping the properties without this reading would drop
-  // every waypoint, every water source among them (pipeline/ELT.md, "One copy
-  // of each POI coordinate").
+  // every waypoint, every water source among them (pipeline/ELT.md, "Versions
+  // and channels").
   describe('a POI position, in v1 and v2 files', () => {
     beforeEach(() => {
       build.readsV2 = true
@@ -491,7 +491,7 @@ describe('trail data', () => {
         expect(requested()).toContain(dataUrl(`v2/${key}`))
         expect(requested()).not.toContain(dataUrl(key))
       }
-      // trails.geojson has no v2 (decision 8), so it keeps its one key.
+      // trails.geojson has no v2, so it keeps its one key.
       expect(requested()).toContain(dataUrl(TRAILS_KEY))
     })
 
@@ -799,7 +799,7 @@ describe('trail data', () => {
     }
   })
 
-  // Decision 65: pipeline/dbt's water_caution, on a plumbed tap whose
+  // pipeline/dbt's water_caution, on a plumbed tap whose
   // publisher records no shutoff season. Only the one value, only on water:
   // the card words that value and nothing else, and a caution read off a
   // shelter would be a display outrunning its source.

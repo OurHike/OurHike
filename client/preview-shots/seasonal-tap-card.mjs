@@ -1,8 +1,8 @@
-// A plumbed tap's card, with decision 65's season caution under the
+// A plumbed tap's card, with the season caution under the
 // unconfirmed line.
 //
-// WHAT THIS FRAME IS EVIDENCE FOR. Decision 65 (pipeline/ELT.md's decisions
-// table, chosen by poll 2026-10-04) puts the plumbed water BLM, NPS, NJDEP,
+// WHAT THIS FRAME IS EVIDENCE FOR. The maintainer's poll of 2026-10-04 puts the
+// plumbed water BLM, NPS, NJDEP,
 // IATA, NCTA, FLTC, Tennessee and NY Parks publish on the map as unconfirmed
 // water - the hollow pin - with `water_caution: 'no_shutoff_season'` on the
 // feature, because none of those layers says when a tap is shut off. The
@@ -19,7 +19,7 @@
 // "source" meant a publisher in one sentence and a water point in the next.)
 //
 // THE TAP IS INVENTED, AND THE CAPTION SAYS SO. The recipe was written
-// against a release published before decision 65 was built, in whose
+// against a release published before the season caution was built, in whose
 // nearby_poi.geojson no feature carried `water_caution` (UA's 2026-10-03-2,
 // read 2026-10-04: 0 of 19,802). The recipe's `before` adds one record to
 // the pinned release's file on the way in and rewrites the manifest's hash
@@ -47,7 +47,7 @@
 import { injectIntoRelease } from './fixtures/releaseInjection.mjs'
 
 export const caption =
-  'Decision 65: a plumbed tap shown as unconfirmed water, with the season caution under the unconfirmed line. The tap is INVENTED (“Example tap (preview fixture)”), added to the pinned release’s nearby_poi.geojson by the recipe, which was written before any release carried water_caution'
+  'A plumbed tap shown as unconfirmed water, with the season caution under the unconfirmed line. The tap is INVENTED (“Example tap (preview fixture)”), added to the pinned release’s nearby_poi.geojson by the recipe, which was written before any release carried water_caution'
 export const alt =
   'A waypoint card for “Example tap (preview fixture)”, a water point marked unconfirmed, with a separate boxed note reading “Tap water. Its listing doesn’t say when it’s turned off for the season, and taps like this are often off out of season. Carry enough to reach the next water.” Or, where this build has no waypoint data, the search panel reading “Nothing here by that name.”'
 

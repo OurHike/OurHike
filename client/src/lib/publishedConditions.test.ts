@@ -359,7 +359,7 @@ describe('fetchPublishedNynjtcAlerts', () => {
   })
 })
 
-// conditions/notices.json (#1805, decision 53 phase D): every club's notices,
+// conditions/notices.json (#1805): every club's notices,
 // in the shape pipeline/dbt's pub_conditions_notices writes.
 const A_NOTICES_DOCUMENT = {
   generated_at: '2026-10-04T12:00:00Z',
@@ -470,7 +470,7 @@ describe('fetchPublishedNotices', () => {
   })
 })
 
-// Decision 76: a state-wide notice names its states, and
+// A state-wide notice names its states, and
 // conditions/notice_states.json carries their shapes, read beside it.
 const A_STATE_WIDE_DOCUMENT = {
   generated_at: '2026-10-04T12:00:00Z',
@@ -533,7 +533,7 @@ function mockByKey(bodies: Record<string, unknown>) {
   })
 }
 
-describe('fetchPublishedNotices with the states’ shapes (decision 76)', () => {
+describe('fetchPublishedNotices with the states’ shapes', () => {
   it('attaches the shape of each named state the file holds, and leaves the rest out', async () => {
     const fetchSpy = mockByKey({
       'conditions/notices.json': A_STATE_WIDE_DOCUMENT,

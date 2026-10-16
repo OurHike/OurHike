@@ -772,7 +772,7 @@ export function poiKey(type: PoiType): string {
 }
 
 /**
- * The phone files that have a v2 shape (decision 44, stage 6 of #1793), each
+ * The phone files that have a v2 shape (#1793), each
  * published at `v2/<key>` inside the release folder, beside its v1 at `<key>`
  * (pipeline/ELT.md, "Versions and channels"): the elevation profile and the
  * per-vertex miles as delta-coded whole numbers, and every POI file with its
@@ -783,7 +783,7 @@ export function poiKey(type: PoiType): string {
  * parseTrailMiles, trailData.ts's readPois), each in a build whose
  * READS_V2 (below) is true.
  *
- * trails.geojson is not here: its 6 decimals are v1's already (decision 8),
+ * trails.geojson is not here: its 6 decimals are v1's already,
  * so it has no v2.
  */
 export const V2_PHONE_FILE_KEYS: ReadonlySet<string> = new Set([

@@ -84,7 +84,7 @@ export interface TappedLineFacts {
   /** The other trail sharing this stretch of treadway, from a shared-ground
    *  half's `concurrent_with` (#1384, map/sharedGround.ts). */
   sharedWith?: string | null
-  /** `club` on a club's own line (decision 64, the maintainer's poll of
+  /** `club` on a club's own line (the maintainer's poll of
    *  2026-10-04: "draw now, route later"), from nearby_trails.geojson's
    *  `line_kind`; absent on every other line, and on any release cut before
    *  the field existed. */
@@ -172,7 +172,7 @@ export interface LineDetail {
    *  half (#1384); null on every plain line. The sentence is the point of
    *  tapping the two-tone: the line says two trails, and this says which. */
   sharedLine: string | null
-  /** A club's own line (decision 64), drawn and never routed: the sheet
+  /** A club's own line, drawn and never routed: the sheet
    *  heads it with a "Club line" tag and LineSheet.tsx's CLUB_LINE_SENTENCE,
    *  and offers no day-hike point on it. The sentence lives with the sheet,
    *  which is deferred, so the launch does not carry it (LAUNCH_BUDGET.md). */
@@ -498,7 +498,7 @@ export function buildLineDetail(
       return attribution !== null && attribution.trim() !== '' ? attribution : null
     }
 
-    // `section` (decision 213): an organization's own notice named this
+    // `section`: an organization's own notice named this
     // line's section closed, so the sentence is theirs and carries their own
     // words verbatim, as an area's does - with no "temporarily", which their
     // notice may not say.

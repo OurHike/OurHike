@@ -1,4 +1,4 @@
-// The summary at the top of /data/quality/ (Q24 of #1805 — dlt → dbt
+// The summary at the top of /data/quality/ (#1805 — dlt → dbt
 // re-platform as one go/no-go change), from INVENTED files in the contract's
 // shape: every organization and source key here is an example, none is a
 // real steward's.

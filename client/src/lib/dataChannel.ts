@@ -1,4 +1,4 @@
-// Reading the pointer, `channels.json` (decision 44): what lib/dataRelease.ts
+// Reading the pointer, `channels.json`: what lib/dataRelease.ts
 // decides a session's release FROM, read on launch and recorded for the next
 // one. dataRelease.ts holds the synchronous half - the mirror read that fixes
 // this session's release before the first URL is built - and this module the
@@ -15,7 +15,7 @@
 // figure moves by about 10 bytes between builds, as the chunk hashes in it
 // change.)
 //
-// Decision 211's check (manifestAnswers404 and forget, below) went in here for
+// The gone-release check (manifestAnswers404 and forget, below) went in here for
 // the same reason. Measured 2026-10-15 the same way: the eager closure was
 // 244,748-244,759 bytes over three builds before it and 244,745-244,755 over
 // four after, inside that drift, and this chunk went from 898 bytes to 1,035.
@@ -81,7 +81,7 @@ export const CHANNEL_READ_TIMEOUT_MS = 20_000
 
 /** What one pointer read did. Every outcome but `recorded` leaves the record
  *  as it stood when the pointer was read: the last good release, or none -
- *  none, too, when the answer's `forgotten` names a release decision 211's
+ *  none, too, when the answer's `forgotten` names a release the gone-release
  *  check deleted first. */
 export type ChannelOutcome =
   /** No data base is configured, so there is no pointer to read. */
@@ -106,7 +106,7 @@ export interface ChannelAnswer {
   outcome: ChannelOutcome
   /** The release the record holds after this read, or null for none. */
   recorded: string | null
-  /** The release this read forgot (decision 211): the record named it and its
+  /** The release this read forgot: the record named it and its
    *  own manifest answered 404, so the mirror was removed and the record
    *  deleted - or, where IndexedDB refused the delete, left for the next
    *  launch's check to forget again (forget says how). Absent when nothing
@@ -207,7 +207,7 @@ async function resolves(
 
 /**
  * Whether `release`'s own manifest at `base` answers exactly 404: the one
- * answer that makes readDataChannel forget a recorded release (decision 211).
+ * answer that makes readDataChannel forget a recorded release.
  *
  * Every other result is false: a 200, a 5xx or any other status, no answer,
  * the deadline passing, the caller aborting. Each of those is also what a
@@ -251,7 +251,7 @@ async function manifestAnswers404(
 }
 
 /**
- * Delete the record and its mirror (decision 211), so that the next launch
+ * Delete the record and its mirror, so that the next launch
  * reads the compiled DATA_RELEASE and then reads `channels.json` again.
  *
  * The mirror goes first, and whether or not IndexedDB deletes the record,
@@ -288,8 +288,8 @@ async function forget(): Promise<void> {
  * entry naming a release whose manifest does not resolve is never recorded.
  * Never rejects; a caller may drop the promise.
  *
- * FIRST, A RECORDED RELEASE WHOSE FOLDER IS GONE IS FORGOTTEN (decision 211,
- * #1833 — A phone that recorded a data release keeps reading it after the
+ * FIRST, A RECORDED RELEASE WHOSE FOLDER IS GONE IS FORGOTTEN
+ * (#1833 — A phone that recorded a data release keeps reading it after the
  * folder is gone, and no app update moves it off). Before the pointer is
  * read, and whatever it says, a phone with a record asks for that release's
  * own manifest; exactly 404 deletes the record and its mirror
@@ -297,7 +297,7 @@ async function forget(): Promise<void> {
  * release it started on. The next launch reads the compiled DATA_RELEASE and
  * then the pointer, as a phone with no record does, and a pointer naming the
  * same gone release is `unresolved` like any other. The check does not wait
- * on the pointer because a bucket move like decision 43's of 2026-10-02,
+ * on the pointer because a bucket move like the one of 2026-10-02,
  * which copied nothing, takes `channels.json` with the folder, and then the
  * pointer can never move the phone. Before this nothing deleted the record,
  * so a recorded release outranked every DATA_RELEASE an app update shipped.

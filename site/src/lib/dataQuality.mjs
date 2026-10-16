@@ -1,6 +1,5 @@
 // What docs.ourhike.org/data/quality/ shows, worked out from the two files it reads
-// (pipeline/ELT.md, "Data quality (decision 102)", step 4 of its order of
-// work). Pure: no fetch, no DOM, no clock it was not handed. So every state
+// (pipeline/ELT.md, "The data checks"). Pure: no fetch, no DOM, no clock it was not handed. So every state
 // the page can be in - nothing published, one lane only, learning, all green,
 // something to look at, a fetch that failed, a file of the wrong format - is
 // a vitest case (dataQuality.test.mjs) rather than something only a browser
@@ -14,7 +13,7 @@
 // from a test's own message - the file carries no free text to copy (decision
 // 10: public, counts only, no coordinates). What is written here rather than
 // read is only what a kind of check IS (KINDS' `about`), which comes from
-// ELT.md's "The checks, and where each goes", not from any build.
+// ELT.md's "The data checks", not from any build.
 //
 // AN HONEST UNKNOWN OUTRANKS A CONFIDENT ANSWER (CLAUDE.md). A file this page
 // cannot read in full is shown as unreadable, never half-drawn; a metric whose
@@ -60,7 +59,7 @@ export const RELEASE_ID = /^\d{4}-\d{2}-\d{2}(-\d+)?$/;
 
 /**
  * The five kinds of check, in the order the page shows them, from the file's
- * `kind` (ELT.md, "The checks, and where each goes"). `passed` captions the
+ * `kind` (ELT.md, "The data checks"). `passed` captions the
  * "N of M" figure, `problem` names a check of this kind that did not pass,
  * and `about` says what the kind covers when nothing of it needs a look.
  *
@@ -68,11 +67,11 @@ export const RELEASE_ID = /^\d{4}-\d{2}-\d{2}(-\d+)?$/;
  * "retyped upstream", "phone file", "nulls", "contracts" and "safety
  * columns" were the pipeline's words (the word-choice review of #1805,
  * 2026-10-09). Each sentence still claims no more than the checks do, read
- * against ELT.md's table and pipeline/dbt's YAML on 2026-10-09: schema
+ * against ELT.md and pipeline/dbt's YAML on 2026-10-09: schema
  * validity runs on the marts a single phone file reads, not on every file,
  * so Schema says "files the app reads" and not "each"; freshness is dbt's
  * source freshness, one check per source, measured from when OurHike last
- * read it or confirmed it unchanged (decision 203, the maintainer,
+ * read it or confirmed it unchanged (the maintainer,
  * 2026-10-15; pipeline/dbt/macros/data_quality.sql's "FRESHNESS"), so
  * Freshness says that and not "between updates"; minimum and maximum
  * run on water distance and elevation only, so Anomalies names the lowest
@@ -126,19 +125,19 @@ const KIND = new Map(KINDS.map((kind) => [kind.id, kind]));
 /**
  * The kinds whose checks compare a build with the builds before it, and so
  * wait for the file's `learning.needed` builds before they can fire: each is
- * an Elementary `*_anomalies` test (ELT.md's table). `needed` is 11 at
+ * an Elementary `*_anomalies` test. `needed` is 11 at
  * Elementary's 3 standard deviations, this build included, because a point
  * is scored against a mean that counts it (pipeline/dbt/dbt_project.yml has
  * the measurement). Schema changes compare with the one build before
  * (0.26.0's test_schema_changes.sql calls
  * `get_columns_changes_from_last_run_query`, read 2026-10-08), dbt tests
- * with nothing, and freshness with each source's own fixed limits since
- * decision 203, so none of the three learns.
+ * with nothing, and freshness with each source's own fixed limits, measured from
+ * OurHike's last read, so none of the three learns.
  */
 export const LEARNING_KINDS = new Set(["volume", "anomalies"]);
 
 /**
- * The metric of a source's freshness entry (decision 203): the seconds since
+ * The metric of a source's freshness entry: the seconds since
  * OurHike's extract last read the source or confirmed it unchanged, against
  * its error limit, `expected_max` (pipeline/dbt/macros/data_quality.sql's
  * "FRESHNESS"). It has no history, so no series, and its row says what it
@@ -163,13 +162,13 @@ const OTHER_STATUS_RANK = 3;
  * How a metric's value is worded, by Elementary's own metric names, and
  * LAST_READ, the one name the pipeline gives a measure of dbt's. A source's
  * freshness is in seconds, and so is Elementary's `freshness`, which a file
- * written before decision 203 still carries (0.26.0's
+ * written before freshness became our last read still carries (0.26.0's
  * table_monitoring_query.sql takes it as `timediff("second", ...)`); its
  * `*_percent` metrics run 0 to 100, as `value / total * 100.0`
  * (macros/utils/percent_query.sql), both read 2026-10-08. If the data-quality
  * pass converts either before writing the file, this is the table to change.
  * Elementary's event_freshness, the time since a club last edited a notice,
- * is gone with decision 203, and its words with it: an older file's entry of
+ * is gone, and its words with it: an older file's entry of
  * it is printed as a bare number. `floor` is the least a value can be, so a
  * band whose lower edge Elementary put below it (a mean minus deviations can
  * go negative) is printed from the floor rather than as "-3 rows".
@@ -209,7 +208,7 @@ const MART_METRIC = "row_count";
 /**
  * What the chart's table and readout say of a point with no band drawn. Not
  * "No range yet": the band drawn at a point is the one from the point before
- * it (decision 118), so the chart's first point has none, and so does a point
+ * it, so the chart's first point has none, and so does a point
  * after one no run in the history scored, such as a check's first; no later
  * run gives either one (the chart's caption, chartView).
  */
@@ -518,7 +517,7 @@ function parse(value, lane) {
     ...counts(entry, `by_mart[${i}]`),
   }));
 
-  // Decision 213's rule 23 (the maintainer's poll, 2026-10-15): each published
+  // The maintainer's poll of 2026-10-15: each published
   // source's last post, the newest edit date its own layer states, shown as
   // information and never as a status. Absent in a file from before it.
   const lastPosts = (value.last_posts === undefined ? [] : list(value.last_posts, "last_posts")).map((entry, i) => {
@@ -755,7 +754,7 @@ function countSentences(item) {
 
 /**
  * WHERE AN ENTRY'S VALUE SITS, for its Needs a look row and its kind's card
- * (decision 130, itemSentence): `before`, the range expected from the builds
+ * (itemSentence): `before`, the range expected from the builds
  * before - the band the chart draws at the entry's own point (bandBefore) -
  * or null where the page has none; `side`, the value against that range
  * ("below", "above" or "inside"), null without one; and `flagged`, the side
@@ -786,7 +785,7 @@ export const FLAGGED_AS = { above: "high", below: "low" };
 
 /**
  * A ROW'S SENTENCE. For a measured value, the range it quotes is the one the
- * maintainer chose by poll on 2026-10-09 (decision 130): the range expected
+ * maintainer chose by poll on 2026-10-09: the range expected
  * from the builds before, the band the chart draws at the entry's own point
  * (bandBefore), so the page shows one range per point. "4,118 rows at this
  * build, below the usual 5,199 to 5,322" on the invented monthly file, where
@@ -817,7 +816,8 @@ export const FLAGGED_AS = { above: "high", below: "low" };
  * WHERE THE PAGE HAS NO RANGE FROM THE BUILDS BEFORE, the row quotes none
  * and says so ("flagged as high. No earlier range to compare it with."),
  * rather than falling back on Elementary's own range, which is the range
- * decision 130 turned down: the maintainer chose that by the same poll. That is an entry with no history in the files, one whose
+ * the maintainer turned down by the same poll. That is an entry with no
+ * history in the files, one whose
  * history holds no point of it (a series two checks report on carries one
  * check's bands: flaggedPoints), and one whose point before carries no band,
  * where the chart's table says NO_RANGE too. A file the pipeline writes gives
@@ -847,7 +847,7 @@ function itemSentence(item, series) {
   // A schema entry with no value is a schema_changes result, which compares
   // the table with the build before (LEARNING_KINDS' note on
   // test_schema_changes.sql); schema_changes_from_baseline, the one that
-  // would not, runs on no table (ELT.md, "No schema_changes_from_baseline").
+  // would not, runs on no table, since every mart's contract is enforced.
   if (item.kind === "schema") return "Its columns changed since the last build.";
   if (item.kind === "dbt_tests") return item.status === "fail" ? "A dbt test on it failed." : "A dbt test on it warned.";
   return item.status === "fail" ? "Elementary's check on it failed." : "Elementary's check on it warned.";
@@ -855,7 +855,7 @@ function itemSentence(item, series) {
 
 /**
  * A SOURCE'S FRESHNESS, IN THE WORDS OF THE FRAME THE MAINTAINER WAS SHOWN
- * (decision 203, the lead's freshness_basis.html, 2026-10-15): "read or
+ * (the lead's freshness_basis.html, 2026-10-15): "read or
  * confirmed 2.2 h ago · limit 24 h". Hours on the hourly run's rows and days
  * on the monthly build's, whose limits are 35 and 62 days, each to one
  * decimal under ten and whole above it, as formatDuration rounds. The limit
@@ -873,7 +873,7 @@ const capitalised = (text) => text.charAt(0).toUpperCase() + text.slice(1);
 
 /**
  * A kind's card names its first row in short. "Its usual range" there is
- * the row's range from the builds before (decision 130), so the card names a
+ * the row's range from the builds before, so the card names a
  * side only where that range gives the side Elementary flagged; anywhere else
  * it says which side Elementary flagged ("flagged as high"), in the row's own
  * words, and the row below says the rest.
@@ -936,8 +936,8 @@ function mergedItems(read) {
 
 /**
  * Said only on the kinds that learn (LEARNING_KINDS): their passes may only
- * mean that a check could not fire yet. Freshness is no longer one of them
- * (decision 203): each source has a fixed limit, so its passes are real ones
+ * mean that a check could not fire yet. Freshness is no longer one of them:
+ * each source has a fixed limit, so its passes are real ones
  * from the first build.
  */
 function learningNote(read) {
@@ -1035,7 +1035,7 @@ function tableVersion(table) {
  * no Chart button rather than a guess.
  *
  * A MART WITH TWO VERSIONS SHOWS THE HIGHER ONE'S: v1 is written beside v2
- * until its deprecation_date and then dropped (decision 44, pipeline/ELT.md),
+ * until its deprecation_date and then dropped (pipeline/ELT.md),
  * so v2's is the history that carries on, and the button names the table
  * the mart is becoming. Nothing a reader would miss is hidden by it: each
  * v2 holds its v1's rows by an equal_rowcount test in its mart's YAML, so
@@ -1169,7 +1169,7 @@ function pickSeries(series, items, menu) {
  * series two checks both report on carries one check's bands, so only that
  * check's entry can be placed). The file keeps no verdict on any other point.
  *
- * READ FROM THE ENTRY, NEVER FROM THE BAND THE CHART DRAWS (decision 118).
+ * READ FROM THE ENTRY, NEVER FROM THE BAND THE CHART DRAWS.
  * Elementary judges a point against a band that counts the point itself; the
  * chart draws the band from the builds before it. The two differ, so a point
  * can sit outside the drawn band and not be flagged, as an early point
@@ -1223,11 +1223,11 @@ function sameAtFilePrecision(a, b) {
 }
 
 /**
- * THE RANGE EXPECTED FROM THE BUILDS BEFORE point `i` of a series' points
- * (decision 118): `{min, max}`, the band stored at the point before it, or
+ * THE RANGE EXPECTED FROM THE BUILDS BEFORE point `i` of a series' points:
+ * `{min, max}`, the band stored at the point before it, or
  * null where there is none - at the first point, and after a point no run in
  * the history scored. The chart draws this at every point (chartView), and a
- * Needs a look row quotes it at its entry's point (decision 130, itemSentence),
+ * Needs a look row quotes it at its entry's point (itemSentence),
  * so the row and the chart cannot quote two ranges for one point.
  */
 function bandBefore(points, i) {
@@ -1241,7 +1241,7 @@ function chartView(series, read) {
   const file = read.find((candidate) => candidate.lane === series.lane);
   const flagged = flaggedPoints(series, file?.items ?? []);
   // THE BAND DRAWN AT A POINT IS THE ONE FROM THE BUILDS BEFORE IT, the
-  // maintainer's choice by poll on 2026-10-09 (decision 118, "A: band from
+  // maintainer's choice by poll on 2026-10-09 ("A: band from
   // before"): the band stored for the point before. A stored band is the one
   // Elementary scored its own point against, the mean of that point and
   // those before it in its window, plus or minus three deviations, so it
@@ -1288,7 +1288,7 @@ function chartView(series, read) {
   }
   // WHAT THE CAPTION MUST SAY, since the band and the triangles answer two
   // different questions: the band is the range expected from the points
-  // before (decision 118), and a triangle is Elementary's verdict, made
+  // before, and a triangle is Elementary's verdict, made
   // against a band that counts the point. So a point can sit outside the
   // band unflagged, and none can be flagged before its check holds
   // `learning.needed` points (dbt_project.yml's measurement). A point with no
@@ -1431,7 +1431,7 @@ function sectionsView(lanes, read) {
 
   // Each source's last post, from the monthly file, in its order (by title).
   // Information only: no pill, no icon, no colour, and no age, which would
-  // read as a judgement the page does not make (decision 213's rule 23).
+  // read as a judgement the page does not make.
   const lastPosts = read
     .filter((file) => file.lane === "monthly")
     .flatMap((file) => file.lastPosts)

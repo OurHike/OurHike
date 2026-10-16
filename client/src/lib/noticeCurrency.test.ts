@@ -12,8 +12,8 @@ import {
 import type { TrailNotice } from './notices'
 import { localDay } from './passedToday'
 
-// The phone's half of rules 2 and 4 (pipeline/ELT.md, "Status, water and
-// expiry rules"): the pipeline publishes `current_until`, and this compares it
+// The phone's half of the notice-expiry rules (pipeline/ELT.md, "Closures and
+// notices"): the pipeline publishes `current_until`, and this compares it
 // with the phone's own calendar. The clock is mocked, as a phone's would be
 // read, so each test says what a hiker sees on a given day without any new
 // file arriving - the offline case the field exists for. Every notice here is
@@ -159,7 +159,7 @@ describe('notCurrent’s line, one for each step that set current_until', () => 
   })
 })
 
-// P3, the maintainer's frame B (poll of 2026-10-11): "Shown now, marked with
+// The maintainer's frame B (poll of 2026-10-11): "Shown now, marked with
 // its start. It closes the trail only from its start day." The phone closes
 // it from the day before (`obstructsOn` says why), and keeps the start until
 // the day itself. Each day is read through the mocked clock, as above.
@@ -191,7 +191,7 @@ describe('a closure whose own start is still ahead (frame B)', () => {
     const startDay = phoneDayAt(2026, 10, 20, 6)
     expect(startsAhead(upcoming, startDay)).toBeNull()
     expect(obstructsOn(upcoming, startDay)).toBe(true)
-    // As every start-only row reads once it has begun (unchanged by P3).
+    // As every start-only row reads once it has begun (unchanged by the upcoming rule).
     expect(notCurrent(upcoming, startDay)?.line).toBe(NOT_CURRENT_LINES.startOnly)
   })
 
@@ -250,7 +250,7 @@ describe('a closure whose own start is still ahead (frame B)', () => {
   })
 })
 
-describe('standing closed land (decision 213, rule 14)', () => {
+describe('standing closed land', () => {
   it('reads "Closed until <steward> says otherwise." and is never greyed, with no current_until', () => {
     const land = notice({ standing: true, updated_at: '2026-07-21T14:39:07Z' })
     expect(standingLine(land, 'Fixture Open Space')).toBe(

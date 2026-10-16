@@ -3,7 +3,7 @@
 // dlt → dbt re-platform as one go/no-go change.
 //
 // WHY THIS SCREEN NEEDED A CAMERA. A planned hike's notices come only from
-// conditions/notices.json (decision 77 downloads it once a hike is planned).
+// conditions/notices.json, which is downloaded once a hike is planned.
 // A phone holding no copy of it - a first run with no signal, a file over
 // lib/conditionsCache.ts's 32 MiB ceiling relaunched offline, or a download
 // that failed - showed ATC's and NYNJTC's list under "Read all N trail

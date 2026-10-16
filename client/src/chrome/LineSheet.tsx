@@ -19,7 +19,7 @@ import { useEffect, useState } from 'react'
 import type { LineDetail } from '../lib/lineDetail'
 
 /**
- * What the sheet says about a club's own line (decision 64), in the words of
+ * What the sheet says about a club's own line, in the words of
  * the card the maintainer chose from (decisions-64-67-mock.html section 1).
  *
  * A club line is drawn as soon as its layer's rules are in, and joins routes,
@@ -129,7 +129,7 @@ export interface LineSheetProps {
    *  taken". Passed only when `taken` is 'tap'. */
   onLetGo?: () => void
   /**
-   * Decision 67's advisories for the stretch tapped (#1805): one per hunting
+   * The hazard advisories for the stretch tapped (#1805): one per hunting
    * area, shooting site or burned area the tapped point is inside or beside,
    * each a heading and OurHike's own sentence (lib/hazardAreas.ts). Empty or
    * absent, nothing is drawn. Never a closure: each says the trail is open.
@@ -268,7 +268,7 @@ export function LineSheet({
         <p className="closure-sheet__range">{detail.sharedLine}</p>
       )}
 
-      {/* A club's own line (decision 64): drawn and not routed, said under
+      {/* A club's own line: drawn and not routed, said under
           what the line is and above the closure and the source, the order
           the card the maintainer chose put it in. A tag and a sentence,
           because the tag is what a hiker comparing two sheets scans for and
@@ -331,7 +331,7 @@ export function LineSheet({
           line is right above this, and offering a hiker a walk down a trail
           the router will then decline to route is worse than offering
           nothing - it is the app promising with one sentence what it refuses
-          with the next. A club line the same (decision 64): the day-hike
+          with the next. A club line the same: the day-hike
           builder routes on the graph, which no club line is in. */}
       {onAddToDayHike !== undefined &&
         detail.closureLine === null &&

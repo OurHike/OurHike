@@ -1,8 +1,7 @@
 // docs.ourhike.org/data/quality/'s "By finished table" on a phone (headed "By
 // mart" until the word-choice review of #1805, 2026-10-09: "mart" is the
 // pipeline's word, not a visitor's), drawn from the INVENTED
-// many-problems files in site/src/lib/dataQualityExamples.mjs (pipeline/ELT.md
-// decision 102).
+// many-problems files in site/src/lib/dataQualityExamples.mjs.
 //
 // WHAT CHANGED, AND IS IN THIS FRAME. The maintainer's poll on 2026-10-08
 // ("B: count under name"): on a phone the Checks column goes, each mart's

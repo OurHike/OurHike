@@ -232,7 +232,7 @@ export function attachAtcUpdateTaps(
     if (warningIdAt(map, event.point) !== null) return
     if (poiPinAt(map, event.point) !== undefined) return
     if (closureIdAt(map, event.point) !== null) return
-    // A club's closure is the same tape (the maintainer's S6, 2026-10-11),
+    // A club's closure is the same tape (the maintainer's closure-map standard, 2026-10-11),
     // at the same rank.
     if (clubClosureIdAt(map, event.point) !== null) return
     const id = atcBandIdAt(map, event.point)

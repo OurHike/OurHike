@@ -1,4 +1,4 @@
-// The sheet over a club closure tapped on the map (the maintainer's S6, poll
+// The sheet over a club closure tapped on the map (the maintainer's closure-map standard, poll
 // of 2026-10-11: "same sheet as its list row"): the planned-hike list's own
 // row for the notice, in the closing organization's voice.
 
@@ -93,7 +93,7 @@ describe('ClubClosureSheet', () => {
 
   it('says the closure is the organization’s and not OurHike’s, and that OurHike works out no detour', () => {
     // A route the hiker builds still goes through a drawn club closure (the
-    // maintainer's Q2, 2026-10-11), so the detour sentence is load-bearing.
+    // maintainer's poll of 2026-10-11), so the detour sentence is load-bearing.
     const note = within(sheet(closure())).getByRole('note')
     expect(note).toHaveTextContent(
       'This is Example Trail Club’s notice, not OurHike’s. OurHike has not checked the trail itself, and does not work out detours — follow their notice, or the signage on the ground.',
@@ -128,7 +128,7 @@ describe('ClubClosureSheet', () => {
     expect(within(sheet(closure())).queryByText(/Gathered by OurHike/)).toBeNull()
   })
 
-  it('says the closure came from the organization’s own published notices, and links how OurHike gathers and checks it (Q24 of #1805)', () => {
+  it('says the closure came from the organization’s own published notices, and links how OurHike gathers and checks it', () => {
     const shown = sheet(closure(), new Date('2026-10-11T09:00:00Z'))
     const age = within(shown).getByText(/^Gathered by OurHike on /)
     expect(age).toHaveTextContent(

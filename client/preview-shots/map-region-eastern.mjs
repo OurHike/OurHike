@@ -1,4 +1,4 @@
-// Decision 31's map shot for the `eastern` region box: the A.T. states and the
+// The map shot for the `eastern` region box: the A.T. states and the
 // Northeast, at zoom 3.5 (fixtures/regionCamera.mjs says what the set is for).
 //
 // THE REGION IS THE CODE'S, NOT A GUESS. Every geometry mart holds each
@@ -40,7 +40,7 @@ export const region = 'eastern'
 export const camera = { center: [-78, 40], zoom: 3.5 }
 
 export const caption =
-  'Region `eastern`, zoom 3.5 — the box decision 31’s map shots start from: every source the build holds to the A.T. states and the Northeast (lat 30–50, lon −90 to −66; dbt/macros/lands_outside_its_region.sql). Trails here draw from the network sketch and the A.T.’s own line, so what to look for is whether the East reads as threads rather than a mat of colour, and whether anything lands off the land it belongs to. No waypoint draws below zoom 7, so no campsite can be in this frame.'
+  'Region `eastern`, zoom 3.5 — the box the region map shots start from: every source the build holds to the A.T. states and the Northeast (lat 30–50, lon −90 to −66; dbt/macros/lands_outside_its_region.sql). Trails here draw from the network sketch and the A.T.’s own line, so what to look for is whether the East reads as threads rather than a mat of colour, and whether anything lands off the land it belongs to. No waypoint draws below zoom 7, so no campsite can be in this frame.'
 export const alt =
   'The map screen over the eastern United States at zoom 3.5, from the Mississippi to the Atlantic and from Florida to southern Canada, with the Appalachian Trail as a line down the mountains and other trails as thin coloured threads, and no waypoint pins.'
 

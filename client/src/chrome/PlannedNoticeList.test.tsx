@@ -6,7 +6,7 @@ import type { PlannedNotices, PlannedStretch } from '../lib/plannedNotices'
 import type { TrailNotice } from '../lib/notices'
 import type { Stewards } from '../lib/stewards'
 
-// The panel decision 66 chose (#1805): each hike planned in the next 7 days
+// The planned-hike panel (#1805): each hike planned in the next 7 days
 // and the notices that touch it, and with none an honest sentence - never a
 // feed of every club.
 
@@ -139,7 +139,7 @@ describe('PlannedNoticeList', () => {
     ).toBeTruthy()
   })
 
-  it('says the notices came from each organization’s own published notices, and links how OurHike gathers and checks them (Q24 of #1805)', () => {
+  it('says the notices came from each organization’s own published notices, and links how OurHike gathers and checks them', () => {
     renderList({ empty: 'nothing_planned', undated: 0, hikes: [] })
 
     const age = screen.getByText(/^Gathered by OurHike on /)
@@ -211,7 +211,7 @@ describe('PlannedNoticeList', () => {
     ).toBeTruthy()
   })
 
-  it('names a state-wide notice’s states as “All of”, tagged Notice and never Advisory (decision 76)', () => {
+  it('names a state-wide notice’s states as “All of”, tagged Notice and never Advisory', () => {
     const area = (state: string, name: string) => ({
       state,
       name,
@@ -245,7 +245,7 @@ describe('PlannedNoticeList', () => {
     expect(within(list).queryByText('Advisory')).toBeNull()
   })
 
-  // Decision 78 (card N2, frame A): the source's own category, on its own line
+  // The source's own category, on its own line
   // under the title. Every row here is invented.
   function renderRows(...rows: TrailNotice[]) {
     renderList({
@@ -261,7 +261,7 @@ describe('PlannedNoticeList', () => {
     return item
   }
 
-  it('shows a category "closed" as Listed as “Closed” under the title and before the locality (decision 78)', () => {
+  it('shows a category "closed" as Listed as “Closed” under the title and before the locality', () => {
     renderRows(
       notice({
         notice_id: 'usfs:1',
@@ -283,7 +283,7 @@ describe('PlannedNoticeList', () => {
     )
   })
 
-  it('keeps a category as its source wrote it past the first letter (decision 78)', () => {
+  it('keeps a category as its source wrote it past the first letter', () => {
     renderRows(
       notice({
         notice_id: 'usfs:2',
@@ -308,7 +308,7 @@ describe('PlannedNoticeList', () => {
     category: 'Detour',
   })
 
-  it('adds no category line to a row whose category is null or blank (decision 78)', () => {
+  it('adds no category line to a row whose category is null or blank', () => {
     renderRows(
       SHOWN,
       notice({ notice_id: 'gmc:null', title: 'Fixture null category', category: null }),
@@ -320,7 +320,7 @@ describe('PlannedNoticeList', () => {
     }
   })
 
-  it('does not repeat a category equal to the title or to the tag, ignoring case and spacing (decision 78)', () => {
+  it('does not repeat a category equal to the title or to the tag, ignoring case and spacing', () => {
     renderRows(
       SHOWN,
       notice({
@@ -341,7 +341,7 @@ describe('PlannedNoticeList', () => {
     }
   })
 
-  it('still shows a category that only appears inside the title, or names another tag (decision 78)', () => {
+  it('still shows a category that only appears inside the title, or names another tag', () => {
     renderRows(
       notice({
         notice_id: 'usfs:order',
@@ -557,7 +557,7 @@ describe('PlannedNoticeList', () => {
       ).toBeTruthy()
     })
 
-    it('says "Closed until Green Mountain Club says otherwise." under standing closed land, never greyed (decision 213, rule 14)', () => {
+    it('says "Closed until Green Mountain Club says otherwise." under standing closed land, never greyed', () => {
       // The pipeline writes such a row no current_until and `standing` true.
       renderRows(
         notice({
@@ -576,7 +576,7 @@ describe('PlannedNoticeList', () => {
       expect(screen.queryByText(/may no longer apply/)).toBeNull()
     })
 
-    it('names a compiled order "Bureau of Land Management order, via Green Mountain Club" (decision 213, rule 21)', () => {
+    it('names a compiled order "Bureau of Land Management order, via Green Mountain Club"', () => {
       renderRows(
         notice({
           notice_id: 'gmc:compiled',
@@ -602,7 +602,7 @@ describe('PlannedNoticeList', () => {
     })
   })
 
-  // P3, the maintainer's frame B (poll of 2026-10-11): "Shown now, marked with
+  // The maintainer's frame B (poll of 2026-10-11): "Shown now, marked with
   // its start. It closes the trail only from its start day." The frame's row:
   // the "Starts" tag, the title, the row's own "from" date, then the club.
   describe('a closure whose own start is still ahead (frame B)', () => {

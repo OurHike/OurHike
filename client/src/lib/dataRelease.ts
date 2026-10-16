@@ -4,9 +4,8 @@
 /// <reference types="vite/client" />
 
 /**
- * Which published dataset this build reads, and since decision 44 the answer
- * has two parts (pipeline/ELT.md, "Versions and channels (decision 44), as
- * stage 4 builds them").
+ * Which published dataset this build reads. Since 2026-10-02 the answer has
+ * two parts (pipeline/ELT.md, "Versions and channels").
  *
  * THE POINTER. A committed `channels.json` at the repository root names, per
  * data environment and per schema version, the release folder a phone reads:
@@ -24,7 +23,7 @@
  * this phone has never recorded a pointer it could verify: a first run, a
  * phone that has never reached `channels.json`, or a record that did not
  * survive - including one lib/dataChannel.ts forgot because its release's
- * own manifest answered 404 (decision 211). It is kept for exactly that, and
+ * own manifest answered 404. It is kept for exactly that, and
  * `pages.yml` and `ua.yml` still assert it resolves, because a first run that
  * cannot reach the pointer reads it.
  *
@@ -55,7 +54,7 @@
  * same of `channels.json`'s entry for this build's schema version, and that
  * the copy uploaded at that base, where one is, names the same release.
  *
- * Since decision 145 both also refuse a build whose DATA_RELEASE is not that
+ * Both also refuse a build whose DATA_RELEASE is not that
  * entry. A first run reads this constant and every launch after it has read
  * the pointer takes the entry, so two different values are a phone that
  * changes release on its second launch. This line therefore moves in one
@@ -142,8 +141,8 @@
  * production answers 404. So pages.yml's guard refuses a production deploy,
  * and pr-preview.yml previews UA for this pin (#1374 — One pathway from first
  * run to a walk finished: the front-end rebuild from the ClaudeDesign flow
- * review). No promotion can fix that: under decision 44 (DATA_RELEASES.md §4,
- * amended 2026-10-02) a promotion is a channels.json commit and a
+ * review). No promotion can fix that: under DATA_RELEASES.md §4 (amended
+ * 2026-10-02) a promotion is a channels.json commit and a
  * `publish.py --channels` dispatch, which refuses unless the release's
  * manifest is in that environment's own tree, and a release id is the date
  * of the publish that wrote it (pipeline/lib/releases.py's `next_release_id`).
@@ -151,7 +150,7 @@
  * Measured 2026-10-09, it holds no release at all: data.ourhike.org's
  * `latest.json` lists 8 `conditions/` files, and `releases/index.json`,
  * `channels.json` and `releases/2026-09-24-2/manifest.json` answer 404 -
- * decision 43's bucket move, which copied nothing by the maintainer's choice
+ * the bucket move of 2026-10-02, which copied nothing by the maintainer's choice
  * ("No need to copy that data over"; OurHike has no users yet).
  *
  * THEN TO 2026-10-03-2, the same day, because 2026-10-03 had no climb and
@@ -171,7 +170,7 @@
  *
  * build-reference.yml run 2 (38044889854) staged 2026-10-10-2 in UA on
  * 2026-10-10, from the dbt path, green in every job with all 41 parity
- * families matching (pipeline/ELT.md, "Work in flight"). Measured 2026-10-15
+ * families matching. Measured 2026-10-15
  * against its folder: 4,449 artifacts, every key 2026-10-03-2 lists among
  * them (eleven v2 files and two hike details are the rest); its sketch
  * 2,710,574 bytes; check 22 passes, the largest file a phone fetches whole
@@ -181,14 +180,14 @@
  * four cell indexes name; and all 199 hikes in suggested_hikes.json have their
  * detail. UA's environments/ua/latest.json names it. Production holds no
  * release at all, so its channels.json entry stays where the release train
- * left it (decision 145, RELEASING.md §10).
+ * left it (RELEASING.md §10).
  *
  * @see pipeline/DATA_RELEASES.md §4, pipeline/R2_LAYOUT.md
  */
 export const DATA_RELEASE = '2026-10-10-2'
 
 /**
- * The schema version of the phone files this build reads (decision 44): the
+ * The schema version of the phone files this build reads: the
  * entry it takes from `channels.json`. `v1` is today's shape; a build that
  * reads a v2 changes this, and only then does it read `v2`'s entry.
  */
@@ -213,7 +212,7 @@ export const CHANNELS_KEY = 'channels.json'
  *
  * DELETED, BOTH, in one case only: lib/dataChannel.ts's readDataChannel
  * forgets a recorded release whose own `releases/<id>/manifest.json` answers
- * exactly 404 (decision 211), so the next launch reads DATA_RELEASE.
+ * exactly 404, so the next launch reads DATA_RELEASE.
  */
 export const CHANNEL_RECORD_KEY = 'ourhike:data-channel'
 

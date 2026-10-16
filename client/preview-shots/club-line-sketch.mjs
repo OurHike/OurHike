@@ -1,9 +1,9 @@
 // A club's trail line in the opening sketch, drawn as every other
-// organization's line is (decision 64).
+// organization's line is.
 //
-// WHAT THIS FRAME IS EVIDENCE FOR. Decision 64 (pipeline/ELT.md's decisions
-// table, chosen by poll 2026-10-04) draws the clubs' own trail lines and
-// routes none of them. In network_overview.geojson a club's lines are one
+// WHAT THIS FRAME IS EVIDENCE FOR. A club's own trail lines draw on the map
+// and route nowhere (the maintainer's poll of 2026-10-04: "draw now, route
+// later"). In network_overview.geojson a club's lines are one
 // group per (source, blaze colour), after every network group, carrying
 // `line_kind: 'club'` and no `trail_status` (the pipeline's
 // int_trail_lines__network_overview_features). The client draws the sketch
@@ -13,7 +13,7 @@
 // what this frame is for.
 //
 // THE LINE IS INVENTED, AND THE CAPTION SAYS SO. The recipe was written
-// against a release published before decision 64 was built, whose sketch no
+// against a release published before club lines were drawn, whose sketch no
 // feature carried `line_kind` in (UA's 2026-10-03-2, read 2026-10-04: 0 of
 // 211). So the recipe's `before` appends one club group to the pinned
 // release's network_overview.geojson on the way in and rewrites the
@@ -42,7 +42,7 @@
 // line, so a tap at this zoom answers nothing. A club line's sheet
 // (chrome/LineSheet.tsx's "Club line" note) opens from the tiled band
 // (nearby_trails.pmtiles, z5 up), which a recipe cannot edit on the way in -
-// it is read by range, tile by tile. 2026-10-03-2, built before decision 64,
+// it is read by range, tile by tile. 2026-10-03-2, built before club lines were drawn,
 // had no club line to tile; whether 2026-10-10-2's tiles carry its 12 has not
 // been read. Until a recipe opens one, lib/lineDetail.test.ts and
 // chrome/LineSheet.test.tsx hold that sheet.
@@ -59,7 +59,7 @@
 import { injectIntoRelease } from './fixtures/releaseInjection.mjs'
 
 export const caption =
-  'Decision 64: a club’s trail line in the opening sketch, drawn in the style every other organization’s line already has (thinner, dashed, the same red). The W-shaped line across central Nevada is INVENTED, added to the pinned release’s network_overview.geojson by the recipe, which was written before any release carried a club line; the pinned release’s own club lines, the Arizona Trail’s and the Old Spanish Trail’s, cross this frame too, drawn the same way'
+  'A club’s own trail line in the opening sketch, drawn in the style every other organization’s line already has (thinner, dashed, the same red). The W-shaped line across central Nevada is INVENTED, added to the pinned release’s network_overview.geojson by the recipe, which was written before any release carried a club line; the pinned release’s own club lines, the Arizona Trail’s and the Old Spanish Trail’s, cross this frame too, drawn the same way'
 export const alt =
   'The map zoomed out over central Nevada, with a thin dashed red W-shaped line at the centre among the other thin dashed red lines of the trail network; no sheet is open.'
 

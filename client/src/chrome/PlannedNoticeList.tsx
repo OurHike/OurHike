@@ -1,12 +1,12 @@
 // The notices that touch a hike the hiker has planned for the next 7 days
-// (#1805, decision 66).
+// (#1805).
 //
 // What chrome/NoticeList.tsx is for two organizations, this is for every
 // club conditions/notices.json carries - and with 129 clubs a list of
 // everything is the feed features/ORG_NOTICES.md §9 warns about. So the list
 // is the maintainer's rule, lib/plannedNotices.ts's: per planned hike, the
 // placed notices that meet its route, then an agency's state-wide ones for a
-// state the route is in on that agency's trails (decision 76, each saying
+// state the route is in on that agency's trails (each saying
 // "All of Utah"), then the unplaced ones from the clubs that maintain its
 // trails. Nothing else.
 //
@@ -16,8 +16,8 @@
 // a silent blank a hiker could read as "no notices". The notices the map
 // draws still open their own sheet when tapped.
 //
-// FACTS AND A LINK (decision 55): a title, the source's own category under it
-// (decision 78), the club, the dates, where, and the club's own page. The
+// FACTS AND A LINK: a title, the source's own category under it,
+// the club, the dates, where, and the club's own page. The
 // organization's name is read from the registry (ORG_NOTICES.md §6) and never
 // written here.
 //
@@ -31,7 +31,7 @@
 // as the frame has it. Judged on the phone's own day (`today`), so a notice
 // greys on the day its date passes, offline or not.
 //
-// A NOTICE THAT HAS NOT STARTED LEADS WITH ITS START (P3, the maintainer's
+// A NOTICE THAT HAS NOT STARTED LEADS WITH ITS START (the maintainer's
 // frame B, poll of 2026-10-11): "Starts Oct 20" in place of its kind, until
 // that day, over its own "from October 20, 2026" line, and it is never
 // greyed before it starts. It counts as a closure, tag and order, only from
@@ -112,7 +112,7 @@ function sameWords(a: string, b: string): boolean {
 }
 
 /**
- * The notice's own category, for the line under its title (decision 78), or
+ * The notice's own category, for the line under its title, or
  * null where there is nothing to add. The row prints it quoted, after
  * "Listed as" (`Listed as “Closed”`): a bare source word such as "Unknown" or
  * "Unreachable" under a campground's name does not say what it describes,
@@ -124,7 +124,7 @@ function sameWords(a: string, b: string): boolean {
  * "not cleared", "unknown"), and other layers send "Closure Order", "No
  * Hunting" or a fire's name. Only the first letter is raised, here at the
  * display and never in the published file, so "closed" reads "Closed" as the
- * approved frame (card N2, frame A) draws it and the rest stays as the source
+ * approved frame draws it and the rest stays as the source
  * wrote it.
  *
  * NOT REPEATED where the row already says it: a category equal to the title
@@ -149,7 +149,7 @@ function categoryLine(
 }
 
 /** "All of Utah", "All of Oregon and Washington": where a state-wide notice
- *  applies (decision 76), from the shapes the phone matched it by, or ''. */
+ *  applies, from the shapes the phone matched it by, or ''. */
 function allOf(notice: TrailNotice): string {
   const names = (notice.state_areas ?? []).map((area) => area.name)
   if (names.length === 0) return ''
@@ -161,7 +161,7 @@ function allOf(notice: TrailNotice): string {
  * One notice's row: its tag, title, category, where and when, the
  * organization and its date, the greyed line where it may no longer apply,
  * and its page. Exported because a club closure tapped on the map opens this
- * same row in a sheet (chrome/ClubClosureSheet.tsx, the maintainer's S6:
+ * same row in a sheet (chrome/ClubClosureSheet.tsx, the maintainer's closure-map standard:
  * "same sheet as its list row"), so the two can never say different things
  * about one notice.
  */
@@ -179,7 +179,7 @@ export function NoticeRow({
   const category = categoryLine(notice, title, text)
   const old = notCurrent(notice, today)
   const standing = old === null ? standingLine(notice, org) : null
-  // Decision 213, rule 21: a compiled layer's order names its issuer first,
+  // A compiled layer's order names its issuer first,
   // and its publisher keeps the credit.
   const who = notice.issuer ? `${notice.issuer} order, via ${org}` : org
   // The edit date once, in the greyed line where that line carries it.
@@ -386,7 +386,7 @@ export function PlannedNoticeList({
       )}
 
       {/* No date and no hike is a phone with nothing planned, which
-          downloaded no notices to date (decision 77), so it says nothing
+          downloaded no notices to date, so it says nothing
           about when they were gathered. */}
       {generatedAt !== null ? (
         <p className="closure-sheet__age">

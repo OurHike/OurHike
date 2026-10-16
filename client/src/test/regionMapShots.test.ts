@@ -1,5 +1,4 @@
-// Decision 31's map shot per region (pipeline/ELT.md, "The go/no-go gate"),
-// preview-shots/map-region-*.mjs, held to the three things that keep the set
+// The map shot per region box, preview-shots/map-region-*.mjs, held to the three things that keep the set
 // honest and keep every frame safe to take again as the data changes.
 //
 // THE REGIONS ARE THE CODE'S: region_boxes() in

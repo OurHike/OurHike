@@ -1,5 +1,5 @@
 // docs.ourhike.org/data/quality/ on a laptop, drawn from INVENTED data_quality.json
-// files (pipeline/ELT.md decision 102, step 4) - the page mock B laid out,
+// files - the page mock B laid out,
 // which the maintainer chose by poll on 2026-10-07.
 //
 // WHY INVENTED. No published release carries the file yet: it starts with the
@@ -13,15 +13,15 @@
 // Everything is drawn from the files: change one count in
 // site/src/lib/dataQualityExamples.mjs and this frame changes with it.
 //
-// WHAT CHANGED SINCE, AND IS IN THIS FRAME: two kinds' notes. Decision 130
-// (the maintainer's poll of 2026-10-09) makes "its usual range" on a kind's
+// WHAT CHANGED SINCE, AND IS IN THIS FRAME: two kinds' notes. The
+// maintainer's poll of 2026-10-09 makes "its usual range" on a kind's
 // card the range expected from the builds before, the one its row quotes, so
 // a card names a side of it only where that range gives the side Elementary
 // flagged, and otherwise says which side Elementary flagged. The light files
 // hold no history for the anomalies entry, so Anomalies reads "Null rate:
 // 4.2%, flagged as high.", where it said "above its expected range";
-// Freshness said the same of "26 hours between updates" until decision 203,
-// below.
+// Freshness said the same of "26 hours between updates" until it became our
+// last read of each source.
 //
 // AND THE WORD-CHOICE REVIEW OF #1805 (2026-10-09), in this frame: the
 // monthly card's line starts "Release <the pinned id>" (2026-10-10-2 since

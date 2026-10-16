@@ -1,6 +1,6 @@
 // One invented record added to a file of the release this build pins, for a
 // recipe whose screen no published release reached when it was written
-// (decisions 64 and 65: a club line in the sketch, a seasonal tap's card).
+// (a club line in the sketch, a seasonal tap's card).
 //
 // WHY A RECIPE HAD TO DO THIS. The pipeline writes `line_kind` and
 // `water_caution` from the dbt path, and the release a build pinned was

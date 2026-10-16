@@ -1,7 +1,6 @@
 // Whether a notice still reads as current on this phone, and the one line a
 // hiker reads under it when it does not (PR #1805 — dlt → dbt re-platform
-// as one go/no-go change; pipeline/ELT.md, "Status, water and expiry rules",
-// rules 2 and 4).
+// as one go/no-go change; pipeline/ELT.md, "Closures and notices").
 //
 // THE PIPELINE DECIDES THE DAY, THE PHONE DECIDES TODAY. conditions/notices.json
 // carries `current_until` on every notice: the last day it reads as current
@@ -27,11 +26,11 @@
 // A FILE WITH NO VERDICT READS AS IT ALWAYS DID. A notice whose row has no
 // `current_until` key at all - a copy of notices.json kept from before the
 // field existed, or a row of conditions/atc_updates.json or nynjtc_alerts.json,
-// whose shapes decision 51 keeps as they are - is current here. Greying every
+// whose shapes are kept as they are for installed phones - is current here. Greying every
 // notice of an older file would be a display outrunning its source just as
 // surely as calling a stale one current; the file simply makes no claim.
 //
-// A NOTICE WHOSE OWN START IS STILL AHEAD (P3, the maintainer's frame B, poll
+// A NOTICE WHOSE OWN START IS STILL AHEAD (the maintainer's frame B, poll
 // of 2026-10-11: "Shown now, marked with its start. It closes the trail only
 // from its start day."). conditions/notices.json carries such a notice with
 // its `starts_on` and, for a closure, `obstructs_trail` true, so the phone
@@ -44,7 +43,7 @@
 // A LEAF MODULE, with no import but the notice's type, for the launch budget's
 // reason (lib/noticeSelection.ts's header): lib/plannedNotices.ts and
 // lib/hazardAreas.ts import it, and so does App.tsx for the header's "may no
-// longer apply" (decision 157), which puts it in the eager entry chunk - the
+// longer apply", which puts it in the eager entry chunk - the
 // built main chunk carries this module's lines (measured 2026-10-11) - so
 // every byte here is a launch byte (client/scripts/check-build-output.mjs).
 
@@ -93,7 +92,7 @@ function stampDay(stamp: string | null): string | null {
 
 /**
  * The notice's own start day while it is still after `today`, the phone's
- * calendar day, else null: what frame B's "Starts Oct 20" tag names (P3).
+ * calendar day, else null: what frame B's "Starts Oct 20" tag names.
  *
  * Only a real ISO day counts. A start this build cannot read is no start, so
  * the notice reads as already begun and closes the trail as published, the
@@ -193,7 +192,7 @@ export const NOT_CURRENT_LINES = {
 } as const
 
 /**
- * The line under standing closed land (decision 213, rule 14, the maintainer's
+ * The line under standing closed land (the maintainer's
  * poll of 2026-10-15): "Closed until <steward> says otherwise." where the
  * file marks the notice `standing`, else null. Such a notice carries no
  * `current_until`, so `notCurrent` never greys it; this line says why it

@@ -147,7 +147,7 @@ describe('the line-detail sheet', () => {
   })
 })
 
-// Decision 67's advisory on a tapped stretch, and the maintainer's frame A
+// A hazard area's advisory on a tapped stretch, and the maintainer's frame A
 // (2026-10-10): an area whose own notice may no longer apply greys its
 // advisory, which then carries the area card's line. Both areas invented.
 describe('a stretch’s hazard advisories', () => {
@@ -201,7 +201,7 @@ describe('adding a point to a day hike (#979)', () => {
     expect(screen.queryByRole('button', { name: /day hike/i })).not.toBeInTheDocument()
   })
 
-  it('says a club line is drawn and not routed, and offers no point on it (decision 64)', () => {
+  it('says a club line is drawn and not routed, and offers no point on it', () => {
     // The day-hike builder routes on the junction graph, which no club line
     // is in, so a button here would promise a walk the builder then refuses.
     const club: LineDetail = {

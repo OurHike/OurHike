@@ -4,8 +4,8 @@
 // The door is the one occupant of the map's lower third nobody asked for,
 // and it renders in exactly the state where the map's taps are live; it sits
 // last in the canvas, so at equal z-index it would cover whatever sheet a
-// tap had just opened. A hazard area's sheet (decision 67) and a club
-// closure's (the maintainer's S6, 2026-10-11) were not counted, so the door
+// tap had just opened. A hazard area's sheet and a club
+// closure's (the maintainer's closure-map standard, 2026-10-11) were not counted, so the door
 // could cover either, both of them about what a hiker is walking into.
 //
 // Its own file for App.clubClosures.test.tsx's reason, plus a GPS fix: the

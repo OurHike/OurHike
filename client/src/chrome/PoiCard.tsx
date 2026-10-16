@@ -145,7 +145,7 @@ export interface PoiDetail {
   trailsClosedWithinM?: number
   /**
    * A tap or fountain whose publisher does not say when it is shut off for the
-   * season (decision 65) - lib/trailData.ts's StoredPoi.waterCaution. The
+   * season - lib/trailData.ts's StoredPoi.waterCaution. The
    * card says so in its own line, apart from the unverified one: the pin
    * already says "unconfirmed", and this says why a plumbed tap in particular
    * may be dry when the hiker gets there.
@@ -1178,8 +1178,8 @@ export function PoiCard({
       </p>
     ) : null
 
-  /* Decision 65's season caution (the maintainer's poll of 2026-10-04, from
-     the drawn card in decisions-64-67-mock.html section 2): a plumbed tap
+  /* The season caution (the maintainer's poll of 2026-10-04, from the
+     drawn card in the mock's section 2): a plumbed tap
      whose publisher records no shutoff season. Its own line, under the
      unverified one and never folded into it: that line says nobody vouched
      for the pin, and this one says why a tap in particular can be dry even

@@ -1,5 +1,5 @@
 // The block at the top of /data/quality/: how the last build of each thing on
-// the map went, in a hiker's words, then by organization (Q24 of #1805 — dlt →
+// the map went, in a hiker's words, then by organization (#1805 — dlt →
 // dbt re-platform as one go/no-go change: the maintainer chose "All three as
 // drawn", 2026-10-15, from q24_frames.html). Pure, like dataQuality.mjs: it
 // takes the files that module read and returns what to print.

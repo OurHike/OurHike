@@ -42,7 +42,7 @@ import type { MileRange } from '../lib/walkedMiles'
 import type { UnitSystem } from '../lib/userPreferences'
 import type { StretchAdvisory } from '../lib/hazardAreas'
 
-/** No advisory anywhere: a phone without decision 67's areas. One shared
+/** No advisory anywhere: a phone without hazard areas. One shared
  *  reference, for NO_PAPER_MAPS's reason. */
 function noAdvisories(): StretchAdvisory[] {
   return []
@@ -65,7 +65,7 @@ export interface TappedLinePanel {
 }
 
 export interface TappedLineInput {
-  /** Decision 67's advisories for a tapped place (#1805): each drawn
+  /** The hazard advisories for a tapped place (#1805): each drawn
    *  hunting area, shooting site or burned area it is inside or beside, from
    *  chrome/noticesPanel.tsx, which owns the areas. Absent is none. */
   hazardAdvisoriesAt?: (at: [number, number]) => StretchAdvisory[]
@@ -405,7 +405,7 @@ export function useTappedLinePanel({
           <LineSheet
             detail={lineDetail}
             onClose={() => setSelectedLine(null)}
-            // The advisories for the tapped stretch (#1805, decision 67):
+            // The advisories for the tapped stretch (#1805):
             // each drawn hunting area, shooting site or burned area the
             // tapped point is inside or beside. The point is already on the
             // line (map/lineTaps.ts), so this is the stretch the hiker

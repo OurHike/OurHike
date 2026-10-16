@@ -7,8 +7,8 @@
 // The ODbL credit is a licence condition (LAUNCH_CHECKLIST.md §7), not a
 // courtesy, and it names OpenStreetMap on every page this footer reaches.
 //
-// TWO PREFIXES, BECAUSE THIS FOOTER IS ON TWO HOSTS (pipeline/ELT.md
-// decision 144; Base.astro works both out). `site` goes before every link
+// TWO PREFIXES, BECAUSE THIS FOOTER IS ON TWO HOSTS (the docs
+// moved off the app's origin; Base.astro works both out). `site` goes before every link
 // to one of the site's pages, and is the site's own address on the pages
 // docs.ourhike.org serves. `docs` goes before the two data links, and is
 // docs.ourhike.org's address once pages.yml has found that host serving the
@@ -60,14 +60,14 @@ const { site = '', docs = '' } = Astro.props
       </div>
       {
         /* THE DATA, LAST: "How the data is built" at /data/how/, the site's
-           plain page in front of the dbt docs at /data/ (Q24 of #1805), and
-           the data-quality page at /data/quality/ (pipeline/ELT.md decisions
-           10 and 102), which the maintainer chose on 2026-10-08 as how a
+           plain page in front of the dbt docs at /data/, and
+           the data-quality page at /data/quality/ (public and
+           counts only), which the maintainer chose on 2026-10-08 as how a
            visitor finds them. Both are in site/dist; the dbt docs they link
            to are not - pages.yml and pr-preview.yml copy the docs to /data/
            when they assemble the site. In
            production it is docs.ourhike.org's /data/ once that host serves
-           the docs (decision 144), and `docs` carries the link there. */
+           the docs, and `docs` carries the link there. */
       }
       <div class="footer__col">
         <span class="footer__heading">THE PROJECT</span>

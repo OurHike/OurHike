@@ -195,7 +195,7 @@ describe('PoiCard', () => {
     ).toBeInTheDocument()
   })
 
-  // Decision 65 (the maintainer's poll of 2026-10-04): a plumbed tap whose
+  // The maintainer's poll of 2026-10-04: a plumbed tap whose
   // publisher records no shutoff season is shown as unconfirmed water with a
   // season caution, in a line of its own beside the unverified one.
   const TAP: PoiDetail = {

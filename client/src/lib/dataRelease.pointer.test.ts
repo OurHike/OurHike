@@ -1,8 +1,7 @@
-// The pointer (decision 44): `channels.json`, which release a phone reads.
+// The pointer: `channels.json`, which release a phone reads.
 //
-// pipeline/ELT.md, "Versions and channels (decision 44), as stage 4 builds
-// them": on launch, when online, the app reads `channels.json` and takes its
-// environment's entry for its schema version; offline or unreachable, the
+// pipeline/ELT.md, "Versions and channels": on launch, when online, the app
+// reads `channels.json` and takes its environment's entry for its schema version; offline or unreachable, the
 // release it last read; on a first run with no record, the compiled
 // DATA_RELEASE; and an entry naming a release that does not resolve keeps the
 // last good one.
@@ -17,7 +16,7 @@
 // session's release is decided once when the module loads.
 //
 // ONE CASE DOES MOVE A PHONE OFF ITS RECORD, AND NOT THROUGH THE POINTER
-// (decision 211, #1833): a recorded release whose own manifest answers exactly
+// (#1833): a recorded release whose own manifest answers exactly
 // 404 is forgotten, record and mirror, so the next launch reads DATA_RELEASE.
 // So every phone below that keeps its record has its release still served
 // (stillServed), and "forgetting a recorded release whose folder is gone"
@@ -138,7 +137,7 @@ const releaseManifest =
 
 /** `release`'s own manifest, still in the bucket. readDataChannel asks for it
  *  whenever the phone holds a record of it, and a 404 there forgets the
- *  record (decision 211), so a test whose phone keeps its record serves it. */
+ *  record, so a test whose phone keeps its record serves it. */
 function stillServed(release: string): Record<string, Route> {
   return { [`${BASE}/releases/${release}/manifest.json`]: releaseManifest(release) }
 }
@@ -297,7 +296,7 @@ describe('reading the pointer', () => {
     expect(idb.store.get(KEY)).toMatchObject({ release: NEWER, environment: 'ua' })
   })
 
-  // Since decision 211 a phone with a record sends one HEAD for that release's
+  // Since the gone-release check, a phone with a record sends one HEAD for that release's
   // manifest on every read; before it, this read made one request, the
   // pointer's.
   it('sends one uncached HEAD for an entry it already recorded, and never GETs that manifest again', async () => {
@@ -615,7 +614,7 @@ describe('a phone never ends with no data because of the pointer', () => {
   })
 })
 
-describe('forgetting a recorded release whose folder is gone (decision 211)', () => {
+describe('forgetting a recorded release whose folder is gone', () => {
   // #1833 — A phone that recorded a data release keeps reading it after the
   // folder is gone, and no app update moves it off. The maintainer's poll of
   // 2026-10-15, "As drawn": exactly 404 for the recorded release's own
@@ -656,7 +655,7 @@ describe('forgetting a recorded release whose folder is gone (decision 211)', ()
     expect(next.SESSION_FOLLOWS_POINTER).toBe(false)
   })
 
-  // A bucket move like decision 43's of 2026-10-02 copied nothing, so the
+  // A bucket move like the one of 2026-10-02 copied nothing, so the
   // folder and channels.json went together and the pointer cannot help.
   it('forgets the record when channels.json answers 404 too, as after a bucket move', async () => {
     rememberPointer(LAST_GOOD)

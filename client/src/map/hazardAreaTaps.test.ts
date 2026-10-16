@@ -18,7 +18,7 @@ import { CLUB_CLOSURE_SHADE_LAYER_ID } from './clubClosureLayers'
 import { BLAZE_LAYER_ID } from './style'
 import { WARNING_ID_PROPERTY, WARNING_LAYER_ID } from './warningLayers'
 
-// Decision 67 (the maintainer, 2026-10-04, decisions-64-67-mock.html §4
+// The hazard areas (the maintainer's poll of 2026-10-04, the mock's §4
 // option A): an area washed in orange under the trail, a dashed edge, and
 // the trail open. These drive the map the way a hiker does - the push, and a
 // touch - and assert on what the shell is told.

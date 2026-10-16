@@ -52,7 +52,7 @@ put here is published, not stored. Also never: credentials, mirrors of raw upstr
 about generated data), and anything whose licence has not been established
 ([CONTRIBUTING.md](../CONTRIBUTING.md)).
 
-**Raw never lands in this bucket.** Decision 43 of `pipeline/ELT.md` (2026-10-01) superseded decision 42, which had put raw and the step cache here with a hold-out list for the rows this project never publishes. Every raw table and the step cache now go in one private bucket, `our-hike-raw`, under `raw/` and `steps/`, with one key, so nothing here is raw and there is no hold-out list to keep (the maintainer: *"Noooooo don't partition the sources … Can you make the private r2 bucket for me and store the secrets to GitHub?"*). **#1793 — Rebuild the data platform as dlt → dbt: seven contracted marts, a monthly refresh, published docs, and lighter phone downloads** builds it. The earlier design, which reached the same answer for its own reasons:
+**Raw never lands in this bucket.** An earlier plan (2026-10-01) put raw and the step cache here, with a hold-out list for the rows this project never publishes; the maintainer replaced it the same day. Every raw table and the step cache now go in one private bucket, `our-hike-raw`, under `raw/` and `steps/`, with one key, so nothing here is raw and there is no hold-out list to keep (the maintainer: *"Noooooo don't partition the sources … Can you make the private r2 bucket for me and store the secrets to GitHub?"*). **#1793 — Rebuild the data platform as dlt → dbt: seven contracted marts, a monthly refresh, published docs, and lighter phone downloads** builds it. The earlier design, which reached the same answer for its own reasons:
 
 **There is a design for a raw store, and it is a different bucket** —
 [INCREMENTAL.md](INCREMENTAL.md), designed 2026-09-09, unbuilt. It exists to keep the
@@ -135,7 +135,7 @@ app-store builds cannot be forced forward (and RELEASING.md §10's planned `DATA
 constant would pin them harder still), so moving the flat keys is a change no phone
 already in the field could survive.
 
-**A versioned file lives only in a release folder** (decision 44 of [ELT.md](ELT.md),
+**A versioned file lives only in a release folder** ([ELT.md](ELT.md),
 "Versions and channels"). A v2 phone file is written beside its v1 at
 `releases/<id>/v2/<file>`, and it has no flat key: every root key is v1's, and a build that
 reads v2 resolves its release folder and reads `v2/<file>` there
@@ -169,23 +169,22 @@ Retention is therefore trivial and needs no prune job: one object per artifact, 
 in place, never accumulating. That is the exemption to DATA_RELEASES.md's rule that a new
 prefix needs a retention clock written for it — there is nothing to retain.
 
-**`conditions/hazard_areas.json` joined the prefix on 2026-10-05** (decision 84 of
-[ELT.md](ELT.md)), and like every key here it is permanent from its first upload. It holds
+**`conditions/hazard_areas.json` joined the prefix on 2026-10-05**, and like every key here it is permanent from its first upload. It holds
 the rows of `conditions/notices.json` that carry a `hazard` — the hunting areas, shooting
 sites and burned areas the map draws — written by the dbt writer `pub_conditions_hazard_areas`,
-because a phone downloads `notices.json` only once a hike is planned (decision 77) and reads
+because a phone downloads `notices.json` only once a hike is planned and reads
 this one at launch. Like `notices.json` it is written only on the dbt path, so a bucket the
 exporters still publish answers 404 for it, and the client reads that as no answer rather
 than as no hazard area (`client/src/lib/publishedNotices.ts`).
 
-**`conditions/trail_closures.json` joined the prefix with decisions 184 and 187 of
-[ELT.md](ELT.md)** (polls of 2026-10-11, building **#1152 — Move OPRHP's temporary
+**`conditions/trail_closures.json` joined the prefix on 2026-10-14** (the maintainer's
+polls of 2026-10-11, building **#1152 — Move OPRHP's temporary
 closures onto the conditions clock, where a safety layer belongs** in its shape C, for
-every club closure, and S6 for how each is drawn). It holds the rows of
+every club closure). It holds the rows of
 `conditions/notices.json` that obstruct a trail, but ATC's, each with a `shape` of
 `line`, `area`, `shade` or `point`; an area's `place` is the trail stretches inside it, cut
-every hour against the release's own trail lines (the nearby ones and the A.T.'s, decision
-192), and a `shade`'s is the area itself, where no mapped trail runs inside (decision 191).
+every hour against the release's own trail lines (the nearby ones and the A.T.'s),
+and a `shade`'s is the area itself, where no mapped trail runs inside.
 The dbt writer
 `pub_conditions_trail_closures` writes it, the phone reads it at launch and draws each
 closure with the crossed-out mark, and like `hazard_areas.json` it is written only on the

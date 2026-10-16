@@ -70,7 +70,7 @@ describe('parseTrailMiles', () => {
   })
 })
 
-// v2/trail_miles.json (decision 44, stage 6 of #1793): each chain's miles as
+// v2/trail_miles.json (#1793): each chain's miles as
 // whole thousandths, delta-coded. A mile is a safety field, so a chain has to
 // read exactly v1's numbers, not numbers close to them.
 describe('parseTrailMiles on a v2 file', () => {

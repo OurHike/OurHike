@@ -264,7 +264,7 @@ export interface MapViewProps {
    *  - this component deliberately does not know what a sheet is. */
   onSelectAtcUpdate?: (bandId: string) => void
   /**
-   * Decision 67's hunting areas, shooting sites and burned areas a trail on
+   * The hunting areas, shooting sites and burned areas a trail on
    * this phone runs through (#1805, lib/hazardAreas.ts), drawn under the
    * trail and never as a closure.
    */
@@ -274,7 +274,7 @@ export interface MapViewProps {
   onSelectHazardArea?: (noticeId: string) => void
   /**
    * Every club closure that closes the trail on the phone's own day, from
-   * conditions/trail_closures.json (the maintainer's S6, 2026-10-11),
+   * conditions/trail_closures.json (the maintainer's closure-map standard, 2026-10-11),
    * crossed out as map/clubClosureLayers.ts says. The shell decides which
    * draw (chrome/noticesPanel.tsx); this component draws what it is given.
    */
@@ -635,7 +635,7 @@ function lazily<Module>(
 const attachHazardLazily = lazily(() => import('./hazardAreaTaps'))
 
 /** map/clubClosureTaps.ts, the same way, the first time a club closure is
- *  drawn or a tap on one is wired (the maintainer's S6, 2026-10-11). */
+ *  drawn or a tap on one is wired (the maintainer's closure-map standard, 2026-10-11). */
 const attachClubClosuresLazily = lazily(() => import('./clubClosureTaps'))
 const NO_WARNINGS: readonly WarningPoint[] = []
 const NO_WORKDAYS: readonly WorkdayPoint[] = []
@@ -1489,7 +1489,7 @@ export function MapView({
     return attachAtcUpdateTaps(map, onSelectAtcUpdate)
   }, [map, onSelectAtcUpdate, onRouteTap, pressPlateOpen])
 
-  // Decision 67's areas (#1805), under the same suppressions, and last in
+  // The hazard areas (#1805), under the same suppressions, and last in
   // line for a touch (map/hazardAreaTaps.ts's attachHazardTaps). No area,
   // no tap to wire.
   //
@@ -1504,7 +1504,7 @@ export function MapView({
     return attachHazardLazily((taps) => taps.attachHazardTaps(map, onSelectHazardArea))
   }, [map, onSelectHazardArea, onRouteTap, pressPlateOpen, hazardAreas])
 
-  // A club closure's tap (the maintainer's S6), under the same suppressions,
+  // A club closure's tap (the maintainer's closure-map standard), under the same suppressions,
   // at the tape's rank (map/clubClosureTaps.ts). No closure, no tap to wire.
   //
   // KEYED ON THE LIST, NOT ON WHETHER THERE IS ONE, so the tap is wired

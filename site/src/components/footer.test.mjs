@@ -1,7 +1,6 @@
 // The site footer's links to the data pages: the dbt docs at /data/ and the
 // data-quality page at /data/quality/, as the last two lines of "The project"
-// on every page (the maintainer's choice, 2026-10-08; pipeline/ELT.md
-// decision 102). Read from source, like treadCard.test.mjs, because what this
+// on every page (the maintainer's choice, 2026-10-08). Read from source, like treadCard.test.mjs, because what this
 // guards against - the two lines dropped, reordered or pointed elsewhere - is
 // a line of source; client/e2e/sitePages.spec.ts already holds every footer
 // link to a phone-sized target in a browser.
@@ -66,7 +65,7 @@ describe("the footer's data links", () => {
   });
 });
 
-// pipeline/ELT.md decision 144: the pages under /data/ are served from
+// The pages under /data/ are served from
 // docs.ourhike.org too, a host with none of the site's other pages, and the
 // site's data links point there once pages.yml finds it serving them. What
 // each build writes was measured on 2026-10-10 by building the site both ways:

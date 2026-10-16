@@ -1,5 +1,5 @@
 // The hatch a club's area closure is shaded with where no mapped trail runs
-// inside it (decision 191), held to open-questions-1014.html's frame A: its
+// inside it, held to open-questions-1014.html's frame A: its
 // stone inks and opacities, its 45-degree lines running up to the right,
 // and a tile that repeats with no seam.
 

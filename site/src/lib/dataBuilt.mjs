@@ -1,6 +1,6 @@
 // The two counts "How the data is built" (/data/how/) prints, worked out from
-// the repository when the site is built (Q24 of #1805 — dlt → dbt re-platform
-// as one go/no-go change: "figures must come from data", the lead's brief of
+// the repository when the site is built (#1805 — dlt → dbt re-platform
+// as one go/no-go change: "figures must come from data", the brief for
 // the maintainer's "All three as drawn", 2026-10-15). Measured, not typed:
 // the page's numbers are whatever the checkout it was built from holds, so
 // they cannot go stale against the code beside them.

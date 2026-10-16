@@ -523,11 +523,11 @@ test.describe('every trail notice the app holds', () => {
   // TODAY'S LIST, which a phone shows while conditions/notices.json has not
   // reached it: production's state until the cutover (#1805). UA has served
   // that file since soak run 529 (publish-conditions.yml 37232255266,
-  // 2026-10-04), and a phone on a bucket that serves it shows decision 66's
+  // 2026-10-04), and a phone on a bucket that serves it shows the
   // planned-hike panel in this list's place, so these two tests went red the
   // first time they met it. They reach the list by answering the file 404,
   // its GET and the HEAD a phone with nothing planned sends instead
-  // (decision 77) alike, exactly as a bucket the exporters publish does; the
+  // alike, exactly as a bucket the exporters publish does; the
   // panel has its own test below.
   test.beforeEach(async ({ page }) => {
     await page
@@ -613,10 +613,9 @@ test.describe('the notices for planned hikes', () => {
   test('entrance: a phone with nothing planned downloads none of notices.json, and still opens the planned-hike panel, saying so', async ({
     page,
   }) => {
-    // Decision 66 (#1805): with conditions/notices.json a phone shows the
-    // notices that touch a hike planned in the next 7 days, never every
-    // club's list. Decision 77: the file is downloaded only once a hike is
-    // planned, and this phone plans nothing, so it only asks the bucket
+    // With conditions/notices.json a phone shows the notices that touch a
+    // hike planned in the next 7 days, never every club's list. The file
+    // is downloaded only once a hike is planned, and this phone plans nothing, so it only asks the bucket
     // with a HEAD whether the file is served (lib/publishedNotices.ts's
     // noticesListed). That HEAD is the response waited on here; it used to
     // be the file's own GET, and the "Gathered by OurHike on" line that

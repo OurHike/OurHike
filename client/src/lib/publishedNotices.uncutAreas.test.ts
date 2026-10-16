@@ -1,5 +1,5 @@
 // conditions/trail_closures.json in an hour whose areas were not cut
-// (decision 213, Q11, the maintainer's poll of 2026-10-15, "Now, in this
+// (the maintainer's poll of 2026-10-15, "Now, in this
 // PR"): pipeline/dbt's pub_conditions_trail_closures writes `areas_cut`
 // false and names every standing area closure in `uncut_areas`, and the
 // phone keeps the area or shade it last drew for each one, in what it shows

@@ -156,7 +156,7 @@ export function poiIdAt(
   // which sat on top. That is the defect closureLayers.ts's "ONE TOUCH, ONE
   // INTERPRETER" note records as the first version's, reappearing one rank
   // down. A dot loses to an ambient mark; that rule now covers both of them,
-  // and a club's closure (the maintainer's S6, 2026-10-11), the same tape.
+  // and a club's closure (the maintainer's closure-map standard, 2026-10-11), the same tape.
   if (yieldToMarks && closureIdAt(map, point) !== null) return null
   if (yieldToMarks && clubClosureIdAt(map, point) !== null) return null
   if (yieldToMarks && atcBandIdAt(map, point) !== null) return null

@@ -18,20 +18,19 @@
 // ORG_NOTICES.md §3 is why that is the honest split rather than a stopgap:
 // `unplaced` is a first-class arm of the union, not a failure to place.
 //
-// EVERY CLUB, ONCE conditions/notices.json IS HERE (#1805, decisions 66 and
-// 67). That file carries every club's notices, and a list of all of them is
+// EVERY CLUB, ONCE conditions/notices.json IS HERE (#1805). That file carries every club's notices, and a list of all of them is
 // a feed, so with it the panel becomes the maintainer's rule instead: the
 // notices that touch a hike planned in the next 7 days (lib/plannedNotices.ts
 // says what counts as planned and what "touches" means), and an empty state
-// that says why when nothing is planned - never every club. Decision 67's
-// hunting areas, shooting sites and burned areas come out of the same file,
+// that says why when nothing is planned - never every club. The hazard
+// areas - hunting areas, shooting sites and burned areas - come out of the same file,
 // or out of conditions/hazard_areas.json, which a phone reads whatever is
-// planned (decision 84), drawn where a trail this phone holds crosses one.
+// planned, drawn where a trail this phone holds crosses one.
 // Without the file - a
 // bucket the exporters still publish - everything above is exactly as it
 // was. The map's A.T. bands and dots come from ATC's own file either way.
 //
-// EVERY CLUB CLOSURE ON THE MAP, WHATEVER IS PLANNED (the maintainer's S6,
+// EVERY CLUB CLOSURE ON THE MAP, WHATEVER IS PLANNED (the maintainer's closure-map standard,
 // poll of 2026-10-11): conditions/trail_closures.json, read at launch, drawn
 // crossed out from the day before each closure's own start
 // (lib/noticeCurrency.ts's `obstructsOn`), greyed in the list or not - the
@@ -177,7 +176,7 @@ export interface NoticesPanel {
    */
   sheetOpen: boolean
   /**
-   * Decision 67's areas the map is drawing (#1805), for the tapped line's
+   * The hazard areas the map is drawing (#1805), for the tapped line's
    * card, which prints an area's advisory on the stretch inside it
    * (chrome/tappedLinePanel.tsx). Returned beside `mapScreen` rather than in
    * it because it is that panel's input, not this screen's.
@@ -224,13 +223,12 @@ export interface NoticesInput {
   /** The shell's clock, so the "new notices" window moves with it. */
   now: Date
   /**
-   * Every club's notices from conditions/notices.json (#1805, decision 53
-   * phase D), or null when that file has not reached this phone.
+   * Every club's notices from conditions/notices.json (#1805), or null when that file has not reached this phone.
    *
    * NULL KEEPS TODAY'S PANEL: the two files above, NoticeList, the extent
-   * scoping. Present, the panel becomes decision 66's - the notices that
+   * scoping. Present, the panel becomes the planned-hike panel - the notices that
    * touch a hike planned in the next 7 days (lib/plannedNotices.ts) - and
-   * decision 67's hazard areas draw. The map's A.T. bands and dots come
+   * the hazard areas draw. The map's A.T. bands and dots come
    * from `updates` either way.
    */
   clubNotices?: readonly TrailNotice[] | null
@@ -238,9 +236,9 @@ export interface NoticesInput {
   clubNoticesGeneratedAt?: Date | null
   /**
    * Whether the bucket serves conditions/notices.json though this phone has
-   * not downloaded it (lib/useConditions.ts): decision 77 downloads it only
+   * not downloaded it (lib/useConditions.ts): a phone downloads it only
    * once a hike is planned. With it and nothing planned, the panel is still
-   * decision 66's, saying no hike is planned, and never the list above. With
+   * the planned-hike panel, saying no hike is planned, and never the list above. With
    * a hike planned it counts for nothing: a planned hike's notices come only
    * from the file, never from its absence.
    */
@@ -256,15 +254,15 @@ export interface NoticesInput {
    */
   clubNoticesMissing?: boolean
   /**
-   * conditions/hazard_areas.json (decision 84), read whatever is planned,
-   * or null when it has not reached this phone. Decision 67's areas draw
+   * conditions/hazard_areas.json, read whatever is planned,
+   * or null when it has not reached this phone. The hazard areas draw
    * from it, or from `clubNotices` when that file is the newer of the two
    * or this one is missing (lib/noticeSelection.ts's `hazardView`), so a
    * phone with no hike planned still draws them and none draws twice.
    */
   hazardFile?: { items: readonly TrailNotice[]; generatedAt: Date } | null
   /**
-   * conditions/trail_closures.json (the maintainer's S6, 2026-10-11), read
+   * conditions/trail_closures.json (the maintainer's closure-map standard, 2026-10-11), read
    * whatever is planned, or null when it has not reached this phone - which
    * draws no club closure, as before the file.
    */
@@ -274,14 +272,14 @@ export interface NoticesInput {
   /** The hiker's day hikes (lib/dayHikes.ts). */
   dayHikes?: readonly DayHike[]
   /** The trail graph this phone holds, or null: what routes a day hike and
-   *  what decision 67's areas are checked against beside the A.T. */
+   *  what the hazard areas are checked against beside the A.T. */
   graph?: TrailGraphIndex | null
   /** ATC's club sections (lib/clubSections.ts): which club maintains each
    *  A.T. mile, for a long hike's clubs. */
   clubSections?: ClubSections
   /**
    * Asks the shell for conditions/notices.json whatever is planned, because
-   * the hiker opened the "Read all" door (decision 213's Q20): decision 77
+   * the hiker opened the "Read all" door: a phone
    * downloads it only for a planned hike, and a tap on the door is a hiker
    * asking for it.
    */
@@ -314,7 +312,7 @@ export function useNoticesPanel({
   const [selectedBandId, setSelectedBandId] = useState<string | null>(null)
   /** The tapped hazard area, by notice id (#1805). */
   const [selectedHazardId, setSelectedHazardId] = useState<string | null>(null)
-  /** The tapped club closure, by notice id (the maintainer's S6). */
+  /** The tapped club closure, by notice id (the maintainer's closure-map standard). */
   const [selectedClubClosureId, setSelectedClubClosureId] = useState<string | null>(null)
   /**
    * Whether the full list of notices is open.
@@ -325,7 +323,7 @@ export function useNoticesPanel({
    * and closes that sheet should find the list still where they left it.
    */
   const [noticesOpen, setNoticesOpen] = useState(false)
-  /** Whether the "Read all" door's list is open (decision 213's Q20). */
+  /** Whether the "Read all" door's list is open. */
   const [allClubsOpen, setAllClubsOpen] = useState(false)
   /**
    * The newest edit the hiker has already silenced on this phone, PER
@@ -421,7 +419,7 @@ export function useNoticesPanel({
   )
 
   /**
-   * Decision 66's panel (#1805): each hike planned in the next 7 days and
+   * The planned-hike panel (#1805): each hike planned in the next 7 days and
    * the notices that touch it, or why there is none. Only with
    * conditions/notices.json, or with the bucket serving it and nothing
    * planned; otherwise the panel stays today's.
@@ -431,7 +429,7 @@ export function useNoticesPanel({
    */
   /**
    * The rule and the geometry (lib/noticeSelection.ts), imported when the
-   * panel first becomes decision 66's and not before: the launch budget's
+   * panel first becomes the planned-hike panel and not before: the launch budget's
    * reason, which that module's header gives. Until it has loaded, such a
    * phone shows the planned-hike row with nothing counted yet,
    * never today's list of everything - which would flash the old panel for a
@@ -440,15 +438,15 @@ export function useNoticesPanel({
   const [selection, setSelection] = useState<NoticeSelection | null>(loadedSelection)
 
   const hikePlanned = anyHikePlanned(trips, dayHikes)
-  /** Whether the panel is decision 66's: conditions/notices.json is on the
+  /** Whether the panel is the planned-hike panel: conditions/notices.json is on the
    *  phone, whether or not its rule has finished loading - or the bucket
-   *  serves it and nothing is planned, so decision 77 downloaded nothing. */
+   *  serves it and nothing is planned, so nothing was downloaded. */
   const clubMode = clubNotices !== null || (clubNoticesListed && !hikePlanned)
   /** Whether today's list is shown to a hiker with a hike planned whose
    *  notices this phone does not hold, and has to say so first. */
   const plannedMissing = clubNotices === null && hikePlanned && clubNoticesMissing
 
-  // Also for the hazard areas' own file alone (decision 84): a phone with
+  // Also for the hazard areas' own file alone: a phone with
   // nothing planned and no notices.json still draws them. An import that
   // fails (a stale precache, no signal) is asked for again when the next
   // notices or hazard file lands: App holds this hook for the app's life.
@@ -500,9 +498,9 @@ export function useNoticesPanel({
   const planned = view?.planned ?? null
 
   /**
-   * Decision 67's areas a trail on this phone runs through (#1805), drawn
+   * The hazard areas a trail on this phone runs through (#1805), drawn
    * under the trail, from conditions/hazard_areas.json or notices.json,
-   * whichever lib/noticeSelection.ts's `hazardView` takes (decision 84); an
+   * whichever lib/noticeSelection.ts's `hazardView` takes; an
    * area no held trail meets is not drawn (lib/hazardAreas.ts).
    */
   const hazards = useMemo(
@@ -540,7 +538,7 @@ export function useNoticesPanel({
   )
 
   /**
-   * The club closures the map crosses out today (the maintainer's S6): each
+   * The club closures the map crosses out today (the maintainer's closure-map standard): each
    * that closes the trail on the phone's own day, from the day before its
    * own start (`obstructsOn`). Whether it reads as current does not enter
    * into it - a closure the list greys draws with the same full mark, the
@@ -678,7 +676,7 @@ export function useNoticesPanel({
   )
 
   /**
-   * THE "READ ALL" DOOR (decision 213, the maintainer's Q20 of 2026-10-15,
+   * THE "READ ALL" DOOR (the maintainer's poll of 2026-10-15,
    * "Keep a 'Read all' door (Recommended)"): every club's notices that no map
    * draws - its own notices with no place (`unplaced`, and `org_terms`, which
    * places nothing a map draws) - planned or not. The planned-hike panel

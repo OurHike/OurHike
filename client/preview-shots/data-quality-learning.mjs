@@ -1,6 +1,6 @@
 // docs.ourhike.org/data/quality/ on a laptop while the anomaly checks are still
 // learning, drawn from the INVENTED learning files in
-// site/src/lib/dataQualityExamples.mjs (pipeline/ELT.md decision 102): the
+// site/src/lib/dataQualityExamples.mjs: the
 // monthly build is the third of the 11 an anomaly check needs before it can
 // flag anything, and every check of the hourly run passed.
 //

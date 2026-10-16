@@ -1,4 +1,4 @@
-// conditions/trail_closures.json, read and checked (the maintainer's S6, poll
+// conditions/trail_closures.json, read and checked (the maintainer's closure-map standard, poll
 // of 2026-10-11): every club closure, each a conditions/notices.json row plus
 // the shape the map crosses it out as.
 //
@@ -116,11 +116,11 @@ describe('a conditions/trail_closures.json row (validTrailClosure)', () => {
     expect(read[2]?.place.geometry.type).toBe('Point')
     // The greyed row's missing dates stay missing: no date, never a default.
     expect(read[3]).toMatchObject({ current_until: null, updated_at: null })
-    // The shade is the area itself (decision 191), kept as it came.
+    // The shade is the area itself, kept as it came.
     expect(read[4]?.place.geometry).toEqual(rows.shade.place.geometry)
   })
 
-  it('reads a shade as the area it hatches: a Polygon, holes and all, or a MultiPolygon (decision 191)', () => {
+  it('reads a shade as the area it hatches: a Polygon, holes and all, or a MultiPolygon', () => {
     const outline = [
       [-100.2, 38.75],
       [-100.19, 38.75],

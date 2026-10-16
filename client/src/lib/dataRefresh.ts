@@ -103,7 +103,7 @@ export interface StoredRelease {
   /** When it completed, epoch ms. Recorded so a prompt can say how old the
    *  data is rather than only that it is not the newest. */
   at: number
-  /** The release folder the bytes came from (decision 44). Absent from a
+  /** The release folder the bytes came from. Absent from a
    *  record written before `channels.json` existed, which came from the
    *  compiled pin. */
   release?: string
@@ -188,7 +188,7 @@ export interface AvailableRefresh {
    * back, as a rollback moves it. Still offered, because the pointer is the
    * reviewed answer to which release a phone reads, but chrome/TrailDataUpdate
    * must not call it newer. False where either release is unknown, as on a
-   * record written before decision 44, which never stamped one.
+   * record written before the pointer (2026-10-02), which never stamped one.
    */
   older: boolean
   added: number
@@ -241,13 +241,13 @@ export function availableRefresh(
   if (stored.version === null) return null
   if (stored.version === snapshot.version) return null
   // A SESSION ON THE COMPILED FALLBACK NEVER OFFERS IT OVER DATA THE POINTER
-  // BROUGHT (decision 44). The fallback is the release this build shipped
+  // BROUGHT. The fallback is the release this build shipped
   // with, and the pointer moves past it with every promotion, so offering it
   // here would offer older water, closures and lines as "newer trail data".
   // A session reads the fallback while holding pointer data only when the
   // mirror of the pointer record was lost and the record and the data were
   // not (lib/dataRelease.ts); the next launch reads the repaired mirror and
-  // asks honestly. Or, since decision 211, when lib/dataChannel.ts forgot a
+  // asks honestly. Or when lib/dataChannel.ts forgot a
   // recorded release whose folder answered 404: then nothing is offered until
   // a pointer read records a release that resolves, and the launch after
   // that asks honestly. A deliberate rollback is not this case: it moves the
@@ -335,7 +335,7 @@ export async function recallRelease(): Promise<StoredRelease | null> {
   if (version !== null && typeof version !== 'string') return null
   if (typeof hashes !== 'object' || hashes === null) return null
   if (typeof at !== 'number' || !Number.isFinite(at)) return null
-  // Both optional: every record written before decision 44 has neither.
+  // Both optional: every record written before the pointer has neither.
   if (release !== undefined && typeof release !== 'string') return null
   if (fromPointer !== undefined && typeof fromPointer !== 'boolean') return null
   const entries = Object.entries(hashes as Record<string, unknown>)

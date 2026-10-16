@@ -12,7 +12,7 @@ import {
 import type { TrailNotice } from './notices'
 import { buildTrailIndex } from './trailPosition'
 
-// Decision 67 (the maintainer, 2026-10-04): a hunting area, a shooting site
+// The maintainer's poll of 2026-10-04: a hunting area, a shooting site
 // or a burned area draws where a downloaded trail crosses one, with the
 // advisory on the card for that stretch, and THE TRAIL STAYS OPEN.
 
@@ -124,7 +124,7 @@ describe('the advisory on a tapped stretch', () => {
     }
   })
 
-  // Decision 99 (poll, 2026-10-07): a tapped stretch's sheet keeps "This
+  // The maintainer's poll of 2026-10-07: a tapped stretch's sheet keeps "This
   // stretch…"; the area's own card, opened by tapping the area, never says it.
   it('words the stretch and the area each for what was tapped, every kind', () => {
     for (const advisory of Object.values(HAZARD_ADVISORIES)) {

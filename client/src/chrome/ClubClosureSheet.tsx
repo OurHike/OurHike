@@ -1,4 +1,4 @@
-// The sheet over a club closure tapped on the map (the maintainer's S6, poll
+// The sheet over a club closure tapped on the map (the maintainer's closure-map standard, poll
 // of 2026-10-11: "same sheet as its list row").
 //
 // THE ROW IS THE PLANNED-HIKE LIST'S OWN. A row of "Notices for your planned
@@ -17,7 +17,7 @@
 // and the note under it is chrome/OrgNoticeSheet.tsx's, which says the
 // closure is theirs and not OurHike's, that OurHike has not checked the
 // trail, and that it works out no detour. The route a hiker builds still goes
-// through the closure (the maintainer's Q2 answer, 2026-10-11), so that last
+// through the closure (the maintainer's poll of 2026-10-11), so that last
 // sentence is load-bearing.
 //
 // A CLOSURE THAT MAY NO LONGER APPLY SAYS SO HERE AND ONLY HERE. The map
@@ -75,7 +75,7 @@ export function ClubClosureSheet({
 
       {generatedAt !== null && (
         // Where OurHike got it, and a way to how it gathers and checks it
-        // (Q24 of #1805, the maintainer's "All three as drawn"). "Published
+        // (the maintainer's "All three as drawn"). "Published
         // notices" rather than the frame's "feed": some organizations
         // publish a page or a PDF, not a feed (pipeline/extract/).
         <p className="closure-sheet__age">

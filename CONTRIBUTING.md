@@ -29,7 +29,7 @@ This repository keeps two different kinds of writing, and the difference is wort
 | [ROADMAP.md](ROADMAP.md) | Phase narrative — where the project is and what each phase means |
 | [LAUNCH_CHECKLIST.md](LAUNCH_CHECKLIST.md) | Ordered runbook for getting v1 deployed |
 | [RELEASING.md](RELEASING.md) | How a release is versioned, named, gated and shipped, and the three environments it moves through |
-| [pipeline/ELT.md](pipeline/ELT.md), [pipeline/DBT.md](pipeline/DBT.md), [pipeline/DATA_RELEASES.md](pipeline/DATA_RELEASES.md) | Data platform designs: ELT.md is the dlt → dbt target, DBT.md the history of the dbt layer built so far |
+| [pipeline/ELT.md](pipeline/ELT.md), [pipeline/DBT.md](pipeline/DBT.md), [pipeline/DATA_RELEASES.md](pipeline/DATA_RELEASES.md) | Data platform designs: ELT.md is the dlt → dbt pipeline as it runs, DBT.md the history of the dbt layer's first phases |
 | [pipeline/R2_LAYOUT.md](pipeline/R2_LAYOUT.md) | Where an artifact goes in the bucket and what it may be called |
 | [pipeline/SOURCE_SURVEY.md](pipeline/SOURCE_SURVEY.md) | Upstream A.T. data sources, surveyed and qualified (dated snapshot) |
 | [pipeline/NYC_SOURCE_SURVEY.md](pipeline/NYC_SOURCE_SURVEY.md) | Trail sources within a day of NYC — DEC, NYNJTC, the NJ side — surveyed and qualified (dated snapshot) |

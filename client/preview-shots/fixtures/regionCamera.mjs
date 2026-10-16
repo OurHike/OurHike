@@ -1,8 +1,7 @@
 // The drive every map-region recipe shares (preview-shots/map-region-*.mjs):
 // open the map screen at one remembered camera, and do nothing else.
 //
-// DECISION 31's MAP SHOT PER REGION (pipeline/ELT.md, "The go/no-go gate"):
-// the new-data review report counts what the marts carry, and these recipes
+// ONE MAP SHOT PER REGION BOX: the new-data review report counts what the marts carry, and these recipes
 // are its picture, one per part of the ground the marts' region boxes cover
 // (pipeline/dbt/macros/lands_outside_its_region.sql's region_boxes()). Each
 // recipe holds its own camera, so touching a recipe re-photographs the frame

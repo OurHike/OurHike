@@ -1,10 +1,10 @@
 ---
 // The two data pages, as tabs across the top of the ones this site builds:
 // "How the data is built" at /data/how/, the plain page that leads into the
-// dbt docs at /data/ (Q24 of #1805 — dlt → dbt re-platform as one go/no-go
+// dbt docs at /data/ (#1805 — dlt → dbt re-platform as one go/no-go
 // change, the maintainer's "All three as drawn", 2026-10-15), and the
 // data-quality page at /data/quality/ (mock B, chosen by the maintainer on
-// 2026-10-07; pipeline/ELT.md decision 102).
+// 2026-10-07; pipeline/ELT.md, "The data checks").
 //
 // UNDER THE SITE'S OWN NAV, NOT IN PLACE OF IT. Mock B drew a header holding
 // the mark and these two tabs and nothing else. On ourhike.org the page is
@@ -21,8 +21,8 @@
 //
 // ROOT-RELATIVE ON PURPOSE, unlike the site's links on this page (Base.astro).
 // Both tabs are pages of the docs bundle, and every host that serves the
-// bundle serves it at /data/: docs.ourhike.org since decision 144
-// (pipeline/ELT.md), a preview, and ourhike.org until the move. So `/data/`
+// bundle serves it at /data/: docs.ourhike.org since the docs
+// moved off the app's origin, a preview, and ourhike.org until the move. So `/data/`
 // is the docs host's own page on the docs host and a preview's own on a
 // preview, which a full address could not be.
 const here = Astro.url.pathname

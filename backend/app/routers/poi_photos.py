@@ -27,6 +27,7 @@ import re
 from datetime import timedelta
 
 from fastapi import APIRouter, Depends, HTTPException, Request, Response, status
+from fastapi.concurrency import run_in_threadpool
 from sqlalchemy import Date, cast, func, or_
 from sqlalchemy.orm import Session
 
@@ -260,19 +261,7 @@ async def upload_shared_photo(
     chose over refusing the thirteenth share.
     """
     poi_id = _checked_poi_id(poi_id)
-
-    if not photo_uploads_enabled():
-        raise HTTPException(
-            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
-            detail="Photo storage is not configured on this server.",
-        )
-
-    photo = db.query(PoiPhoto).filter(PoiPhoto.poi_id == poi_id, PoiPhoto.contributor_id == current_user.id).one_or_none()
-    if photo is None:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail="Share the photo before uploading its bytes.",
-        )
+    photo = await run_in_threadpool(_photo_this_caller_may_upload, db, poi_id, current_user)
 
     if request.headers.get("content-type", "").split(";")[0].strip() != ALLOWED_CONTENT_TYPE:
         raise HTTPException(
@@ -289,6 +278,29 @@ async def upload_shared_photo(
             detail=f"Waypoint photos must be {ALLOWED_CONTENT_TYPE}.",
         )
 
+    # The R2 put, the commits and the eviction's deletes are all blocking, so
+    # they run off the event loop; `read_capped_body` is the only awaited part
+    # (#1753).
+    return await run_in_threadpool(_store_and_record, db, photo, poi_id, body, current_user)
+
+
+def _photo_this_caller_may_upload(db: Session, poi_id: str, current_user: Profile) -> PoiPhoto:
+    if not photo_uploads_enabled():
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="Photo storage is not configured on this server.",
+        )
+
+    photo = db.query(PoiPhoto).filter(PoiPhoto.poi_id == poi_id, PoiPhoto.contributor_id == current_user.id).one_or_none()
+    if photo is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Share the photo before uploading its bytes.",
+        )
+    return photo
+
+
+def _store_and_record(db: Session, photo: PoiPhoto, poi_id: str, body: bytes, current_user: Profile) -> PoiPhotoOut:
     try:
         store_photo_object(poi_photo_key(poi_id, current_user.id), body)
     except PhotoStorageUnavailable as error:

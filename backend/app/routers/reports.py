@@ -9,6 +9,7 @@ it to and, later, moderate against.
 from datetime import datetime, time, timedelta
 
 from fastapi import APIRouter, Depends, HTTPException, Request, Response, status
+from fastapi.concurrency import run_in_threadpool
 from fastapi.responses import RedirectResponse
 from sqlalchemy import and_, or_
 from sqlalchemy.exc import IntegrityError
@@ -602,7 +603,7 @@ async def upload_report_photo_at(
     cap enforced as the body arrives, the row written last - is unchanged from
     the single-photo endpoint below, and is shared with it rather than copied.
     """
-    report = _report_this_caller_may_upload_to(db, report_id, current_user)
+    report = await run_in_threadpool(_report_this_caller_may_upload_to, db, report_id, current_user)
 
     if index < FIRST_PHOTO_INDEX or index > MAX_REPORT_PHOTOS:
         raise HTTPException(
@@ -655,7 +656,7 @@ async def upload_report_photo(
     and status first. Nothing here makes a photo reachable.
     """
     return await _store_report_photo(
-        _report_this_caller_may_upload_to(db, report_id, current_user),
+        await run_in_threadpool(_report_this_caller_may_upload_to, db, report_id, current_user),
         FIRST_PHOTO_INDEX,
         request,
         db,
@@ -723,6 +724,15 @@ async def _store_report_photo(
             detail=f"Report photos must be {ALLOWED_CONTENT_TYPE}.",
         )
 
+    # Everything after the read is blocking I/O (an R2 put_object, then a
+    # synchronous commit), so it leaves the event loop for the threadpool, as
+    # every `def` handler already does. Left on the loop, a 2 MiB put stalled
+    # every other request, /health included (#1753).
+    stored = await run_in_threadpool(_store_and_record_photo, report, index, body, db)
+    return ReportOut.for_viewer(stored, current_user)
+
+
+def _store_and_record_photo(report: Report, index: int, body: bytes, db: Session) -> Report:
     try:
         key = store_photo(report.id, body, index)
     except PhotoStorageUnavailable as error:
@@ -732,7 +742,7 @@ async def _store_report_photo(
         raise HTTPException(status_code=status.HTTP_503_SERVICE_UNAVAILABLE, detail=error.detail) from error
 
     _record_photo(report, index, key)
-    return ReportOut.for_viewer(commit_and_refresh(db, report), current_user)
+    return commit_and_refresh(db, report)
 
 
 def _record_photo(report: Report, index: int, key: str) -> None:

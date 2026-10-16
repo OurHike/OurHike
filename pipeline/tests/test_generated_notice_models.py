@@ -444,10 +444,12 @@ def test_every_pdf_notice_keeps_its_freshness_and_only_cis_two_freshness_command
     workflows = PIPELINE.parent / ".github" / "workflows"
     ci = yaml.safe_load((workflows / "pipeline-tests.yml").read_text(encoding="utf-8"))["jobs"]["dbt"]["steps"]
     (ci_step,) = [step for step in ci if step.get("name") == "dbt source freshness"]
-    assert ci_step["run"] == f"dbt source freshness --profiles-dir . {exclude}"
+    # And derived.section_closures, which the fixtures leave empty on purpose: an empty table has no _loaded_at, and
+    # the workflow comment says why only this step leaves it out.
+    assert ci_step["run"] == f"dbt source freshness --profiles-dir . {exclude} source:derived.section_closures"
     test_sh = (PIPELINE.parent / "scripts" / "test.sh").read_text(encoding="utf-8")
     (local,) = re.findall(r'^\s*step "dbt source freshness"\s+(.*)$', test_sh, re.MULTILINE)
-    assert local.endswith(f"source freshness --profiles-dir . {exclude}"), local
+    assert local.endswith(f"source freshness --profiles-dir . {exclude} source:derived.section_closures"), local
     conditions = yaml.safe_load((workflows / "publish-conditions.yml").read_text(encoding="utf-8"))
     (production,) = [
         step["run"]

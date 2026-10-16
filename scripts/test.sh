@@ -596,7 +596,7 @@ if selected_has dbt; then
       step "dbt parity $family" env -C pipeline "$PY" parity.py "$family" --new "$dbt_tmp/processed/$family.json" --raw-dir "$dbt_tmp/raw" --warehouse "$dbt_tmp/warehouse.duckdb"
     done
     # The PDF notices left out, as CI's step leaves them (generate_notice_models.py's PDF_NOTICE_TAG).
-    step "dbt source freshness"  "${dbt_cmd[@]}" source freshness --profiles-dir . --exclude tag:pdf_notice
+    step "dbt source freshness"  "${dbt_cmd[@]}" source freshness --profiles-dir . --exclude tag:pdf_notice source:derived.section_closures
     step "dbt docs generate"     "${dbt_cmd[@]}" docs generate --profiles-dir . --output-dir target/docs
     step "dbt docs site"         env -C pipeline "$PY" check_docs_site.py dbt/target/docs
     step "dbt project evaluator" env DBT_PROJECT_EVALUATOR_SEVERITY=error "${dbt_cmd[@]}" build -s package:dbt_project_evaluator --profiles-dir .

@@ -256,6 +256,15 @@ def test_every_registry_row_the_extract_reads_says_where_its_data_comes_from_in_
     assert not numbered, f"notes citing a decision number rather than stating the choice: {numbered}"
 
 
+def test_no_not_available_row_cites_a_decision_number_or_a_deleted_club_file():
+    """A note states the choice it rests on, and names a club's answer as <folder>.<type> (the file's header says so):
+    the per-org files are gone, so a path like `nps/warnings.py` leads nowhere."""
+    text = NOT_AVAILABLE_PATH.read_text(encoding="utf-8")
+    assert not re.findall(r"\b[Dd]ecisions? \d", text)
+    types = "|".join(FILE_TYPES)
+    assert not re.findall(rf"(?<![\w/])[a-z][a-z_]*/(?:{types})\.py\b", text)
+
+
 def test_every_read_names_a_reader_and_no_url():
     """Builders take keys: an option holding a URL would fetch an upstream the registry row does not register."""
     from extract._readers import READERS

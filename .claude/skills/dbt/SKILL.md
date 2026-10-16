@@ -422,12 +422,74 @@ the packages itself, which in a sandbox empties them (below).
 
 ## State, for a pull request
 
-State buys a pull request two answers and no time: a 13-node deferred build
-took 6.9 s against 7.1 s for the full build (measured on 1.12.2 fixtures). So
-pull-request jobs build everything and use state only for these. The shape,
-from `pipeline/dbt/` (the base manifest is the merge-base parsed in a
-`git worktree` in the same job, which needs no storage and no credential —
-Reasoned; the job's exact paths are `pipeline/ELT.md`'s, "Running it"):
+**A pull request builds only what changed since main's last build** (decision
+210, the maintainer's poll of 2026-10-15: "In this PR anyway"). The rule was
+the opposite until then, on a measurement of the project as `main` held it:
+a 13-node deferred build took 6.9 s against 7.1 s for a 141-node build on dbt
+1.12.2, where at 2a826f01 the `dbt` job's build step took 16 min 7 s
+(Pipeline tests run 38773605297). How it runs, in `pipeline-tests.yml`'s
+`dbt` job:
+
+1. **A push to `main` keeps its build**: right after a build that passed, the
+   fixture warehouse and the manifest it was built with go to the Actions
+   cache as `dbt-ci-base-<commit>`. Nothing else saves one.
+2. **A pull request decides before its fixture load** (`pipeline/state_base.py`):
+   a state build only when the cache matched (its base commit's entry, else
+   the newest), that commit fetches, every path `git diff` lists from it is
+   one `state_base.RULES` lets through, and no macro's text differs from the
+   cached manifest's. Anything else is the full build, said in one
+   `::notice` naming the path or macro that decided it.
+3. **`build_marts.py --fixtures --state-base <main's target/>`** runs over
+   main's warehouse with this run's raw tables loaded into it: it lists
+   `state:modified` once after the seeds, then builds that, every model or
+   test that reads the clock, and what a Python step rewrote from a changed
+   input, each with what it feeds. Every step and every `pub_` writer still
+   runs, so the parity step reads every file, and a build that selects
+   nothing is left out. No `--defer`: every other node is in the warehouse
+   already. Its docstring, "A PULL REQUEST BUILDS ONLY WHAT CHANGED SINCE
+   MAIN'S LAST BUILD", has the rest.
+
+What keeps a state build right, so keep it true:
+
+- **A model that reads the clock says so in its SQL.** `build_marts.CLOCK`
+  finds `now()`, `current_date` and their kin in a node's code or in any
+  macro it calls, comments aside, and a state build always rebuilds those:
+  `int_challenges__items` and the two closures models that call
+  `notice_build_date()`, at 2a826f01. A date that reaches a model any other
+  way would let main's copy answer with main's day.
+- **A Python step names what it reads in its `step_<name>` exposure**, or a
+  node that reaches it (`step_form_route` reads `int_trail_network__edges`
+  through the two graph models its exposure lists). That list is how a state
+  build knows the step's table changed.
+- **A rule in `state_base.RULES` needs a measurement** that dbt's
+  `state:modified` sees the change, or a reason no build reads the path. A
+  macro, a generic test (which is a macro), `dbt_project.yml`, the packages,
+  the extract, the fixtures, the generators and the steps build everything:
+  dbt 2.0.6 marked the 11 marts that call `row_history_mart()` modified after
+  a comment inside it (measured 2026-10-15), but not what a dispatched
+  override reaches (decision 111), so macros are compared by text instead.
+
+Measured 2026-10-15 in the shared 4-core sandbox, DuckDB capped at 3 GB, each
+run under the build lock: the full fixture build of 2a826f01 took 992 s of
+`build_marts.py` (its checks base the same commit, so no check ran), and the
+state build of a comment added to `stg_atc__shelters.sql`, from that build's
+warehouse, 755 s, its 40 checks included (59 s; the full build's empty pass
+took 35 s). Stage A went from 264 s to 61 s; the steps and what they unblock
+from 472 s to 421 s, since 6 of the 10 steps read something below a shelter
+and their tables were built whole. A comment added to
+`stg_atc__club_sections.sql` instead, which reaches 11 models and no step's
+input, took 545 s, its steps and their builds 149 s. In both, 39 of the 52
+phone files were the full build's byte for byte; 11 differed only in
+`generated_at`, `checked_at` and `fetched_at`, and the two data-quality files
+in their `built_at` and in counting the tests each build ran. What a runner
+saves is `@unvalidated` until the first pull request after decision 210 logs
+it.
+
+State also gives a pull request two answers, against its merge base rather
+than main's last build. The shape, from `pipeline/dbt/` (the base manifest is
+the merge-base parsed in a `git worktree` in the same job, which needs no
+storage and no credential — Reasoned; the job's exact paths are
+`pipeline/ELT.md`'s, "Running it"):
 
 ```sh
 BASE=$(mktemp -d)        # outside the repository, never under pipeline/
@@ -555,8 +617,11 @@ python -m venv "$RUNNER_TEMP/pipeline" && "$RUNNER_TEMP/pipeline/bin/pip" instal
 "$RUNNER_TEMP/pipeline/bin/pip" install "duckdb-extension-spatial==<that venv's duckdb version>"
 "$RUNNER_TEMP/pipeline/bin/python" seed_spatial_extension.py   # Python's 1.5.5 only; dbt's 1.5.4 is cached, or dbt fetches it
 python make_dbt_fixtures.py
+# a pull request: restore the dbt-ci-base-<commit> cache main saved, then a state build or the full one (decision 210)
+python state_base.py --matched-key <the restored key> --base-dir "$RUNNER_TEMP/dbt-ci-base" --head-manifest dbt/target/manifest.json --warehouse data/warehouse.duckdb
 "$RUNNER_TEMP/extract/bin/python" -m extract._fixtures --raw-dir data/raw --warehouse data/warehouse.duckdb
 python build_marts.py --fixtures --python "$RUNNER_TEMP/pipeline/bin/python"   # seed, stage A, each step and what it unblocks, the pub_ writers last
+#   + --state-base "$RUNNER_TEMP/dbt-ci-base/target" when state_base.py chose a state build; a push to main then saves its build
 "$RUNNER_TEMP/pipeline/bin/python" -m pytest tests/test_dbt_<...>_builds.py   # four steps, one file each: row dates, notices absent, a club held for its rows, club layers absent
 "$RUNNER_TEMP/pipeline/bin/python" -m pytest tests/test_dbt_notice_source_freshness_runs.py   # decision 100's freshness, on a warehouse holding only a run log
 "$RUNNER_TEMP/pipeline/bin/python" parity.py --json-dir data/processed/parity <family> --new data/processed/dbt/<file>   # one line per family

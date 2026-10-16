@@ -1,7 +1,7 @@
 """Every job that runs `dbt deps`, and the docs site's build.sh, check dbt_packages/ against pipeline/dbt/packages.sha256
 before dbt reads it, and only a tree that passed is ever saved to the cache.
 
-Decision 144 (pipeline/ELT.md, the maintainer's poll of 2026-10-09): the dbt install and the dbt packages are
+The maintainer, 2026-10-09: the dbt install and the dbt packages are
 hash-pinned. packages.yml and package-lock.yml pin versions only, so pipeline/check_dbt_packages.py compares every
 file a package shipped with its committed sha256. It has to run after the packages land (a cache hit or `dbt deps`),
 before the first command that reads them, and before the save: a tree saved without passing would be what every

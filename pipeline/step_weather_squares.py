@@ -7,8 +7,8 @@ squares to SQL (int_warnings__nws_alert_shapes, int_warnings__nws_placed).
 The squares themselves stay build_weather_squares.py's, a Python job outside
 dbt: which squares lie under a trail or a waypoint is read from the release's
 published files on NOAA's grid, a square's water test reads two NOAA rasters
-(URMA's terrain, HRRR's land mask), which no table here may hold (decision 35,
-"No raster lands as data"), and its NWS zones come from NWS's zone shapefiles.
+(URMA's terrain, HRRR's land mask), which no table here may hold ("No raster
+lands as data"), and its NWS zones come from NWS's zone shapefiles.
 That job writes squares.json, and export_weather_alerts.py reads it today.
 
 THIS STEP IS THE HAND-OFF, and does nothing else. It lands the file's document

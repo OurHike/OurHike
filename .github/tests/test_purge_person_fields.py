@@ -1,4 +1,4 @@
-"""purge-person-fields.yml, decision 56's purge: dispatch-only with the placeholder's one input, the raw store's key and
+"""purge-person-fields.yml, the person-fields purge: dispatch-only with the placeholder's one input, the raw store's key and
 nothing else, one run at a time with the monthly lane, and --delete passed only when a person asked for it.
 
 PR #1827 - Add dispatch-only build-reference.yml and purge-person-fields.yml placeholders to main - put a placeholder

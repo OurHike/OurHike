@@ -219,7 +219,7 @@ def test_a_family_whose_input_was_not_this_hours_says_why_it_was_not_compared(tm
 
 
 def test_a_writer_the_build_held_back_is_not_compared_rather_than_a_difference(tmp_path):
-    """Decision 81: the key keeps the bucket's last copy, which this hour's answers did not make."""
+    """The key keeps the bucket's last copy, which this hour's answers did not make."""
     out = tmp_path / "bundle"
     document = hourly_parity.bundle(
         _answers(tmp_path / "answers"),
@@ -228,9 +228,7 @@ def test_a_writer_the_build_held_back_is_not_compared_rather_than_a_difference(t
         out,
     )
 
-    assert "held part of itself back (exit 5, decision 81)" in hourly_parity.why_not(
-        hourly_parity.FAMILIES["closures"], document, out
-    )
+    assert "held part of itself back (exit 5)" in hourly_parity.why_not(hourly_parity.FAMILIES["closures"], document, out)
     assert hourly_parity.why_not(hourly_parity.FAMILIES["reports"], document, out) is None
 
 
@@ -327,8 +325,7 @@ def test_compare_runs_parity_keys_only_per_family_and_turns_red_only_for_a_diffe
 
 def test_no_bundle_reads_as_every_family_not_compared_and_the_run_stays_green(tmp_path, fake_parity, capsys):
     """Green, and impossible to miss: the summary opens on it and one annotation says it for the hour, ahead of the six
-    (review finding S2-1 of PR #1805 — dlt → dbt re-platform as one go/no-go change: eight soak runs compared nothing
-    and every one read clean)."""
+    (eight soak runs once compared nothing and every one read clean)."""
     summary = tmp_path / "summary.md"
     code = hourly_parity.main(
         ["compare", "--bundle", str(tmp_path / "none"), "--out", str(tmp_path / "result"), "--missing", "nothing was handed on"]
@@ -342,7 +339,7 @@ def test_no_bundle_reads_as_every_family_not_compared_and_the_run_stays_green(tm
     page = summary.read_text()
     first = page.split("\n\n")[1]
     assert first.startswith("**Nothing was compared this hour: none of the 6 files.** On its own an hour like this is")
-    assert "goes red only once the leg's store has had no bundle for 2.5 hours (decision 200)" in first
+    assert "goes red only once the leg's store has had no bundle for 2.5 hours" in first
     assert first.endswith("Why: no bundle: nothing was handed on")
     assert "**0 file(s) turn this run red**: none; **6 not compared**." in page
     out = capsys.readouterr().out.splitlines()
@@ -373,9 +370,8 @@ def _stopped_at(monkeypatch, name: str, stop: type[BaseException] = KeyboardInte
 
 
 def test_a_comparison_stopped_part_way_leaves_run_json_naming_where_it_stopped(tmp_path, monkeypatch):
-    """The 2026-10-15 review's finding S2-3: compare() wrote run.json once, after the last family, so a step killed at
-    its cap or a compare() that raised left no run.json, and the gate read the hour as one that never came, which
-    decision 158's gap rule absorbs. run.json is written before the first family and after each, so the family being
+    """Written once, after the last family, run.json would be missing for a step killed at its cap or a compare()
+    that raised, and the gate would read the hour as one that never came, which the soak's gap absorbs. run.json is written before the first family and after each, so the family being
     compared reads `failed` (a crash, which makes the key differ) and the families after it `not_compared`."""
     bundle_dir = tmp_path / "bundle"
     hourly_parity.bundle(

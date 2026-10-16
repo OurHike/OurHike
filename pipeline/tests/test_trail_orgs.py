@@ -34,7 +34,7 @@ LICENCE_BASES = {
     "unstated",
 }
 #: The catalogue's `type`s. `county_agency` joined on 2026-10-11 for maricopa-parks, Maricopa County Parks and
-#: Recreation (the maintainer's poll, review page 02, P14). Pinned here so that a type cannot be introduced by
+#: Recreation (the maintainer's choice). Pinned here so that a type cannot be introduced by
 #: editing the data alone: each is either a club (generate_notice_models.py's CLUB_TYPES), not a managing
 #: organisation at all (extract/_contract.py's NOT_CLUB_TYPES), or an agency, which is every other type here.
 ORG_TYPES = {
@@ -136,8 +136,8 @@ def test_every_licence_basis_is_one_this_repository_defines(orgs):
     replaces 'unresolved' because it says which of the two it is - nobody asked,
     rather than somebody asked and got no answer. pipeline/ELT.md's "Who may
     publish" adds two more, each a maintainer's decision of 2026-10-01:
-    maintainer_clearinghouse (decisions 20 and 22, NYS DEC and OPRHP) and
-    public_gis (decision 21a).
+    maintainer_clearinghouse (NYS DEC and OPRHP) and
+    public_gis.
     """
     used = {o["licence_basis"] for o in orgs if o["licence_basis"] is not None}
     unknown = sorted(used - LICENCE_BASES)
@@ -148,8 +148,8 @@ def test_every_org_type_is_one_this_repository_defines(orgs):
     """A type outside ORG_TYPES is a type no reader knows, and both type sets the pipeline reads must name real ones.
 
     generate_notice_models.py's CLUB_TYPES makes a notice's `steward_kind` a club's and every other type an
-    agency's (decision 66), and extract/_contract.py's NOT_CLUB_TYPES leaves a row out of the managing clubs that
-    answer every type (decision 18). A misspelt type in either set would silently turn a club into an agency, or a
+    agency's, and extract/_contract.py's NOT_CLUB_TYPES leaves a row out of the managing clubs that
+    answer every type. A misspelt type in either set would silently turn a club into an agency, or a
     managing organisation into one that answers nothing.
     """
     from extract._contract import NOT_CLUB_TYPES
@@ -163,8 +163,8 @@ def test_every_org_type_is_one_this_repository_defines(orgs):
 
 def test_a_county_agency_is_an_agency_that_manages_trails(orgs):
     """Maricopa County Parks publishes its own trails and notices, so it answers every type as a managing organisation,
-    and its notices reach a planned hike as an agency's do, only where they are placed on or near the route
-    (decision 66), not as a club's."""
+    and its notices reach a planned hike as an agency's do, only where they are placed on or near the route,
+    not as a club's."""
     from extract._contract import NOT_CLUB_TYPES
     from generate_notice_models import CLUB_TYPES
 
@@ -249,7 +249,7 @@ def test_every_accepted_arcgis_owner_says_why_it_is_an_institution(catalogue):
 
 
 def test_maintainer_clearinghouse_is_new_yorks_alone(orgs):
-    """Decisions 20 and 22 ruled on NYS DEC's and OPRHP's clearinghouse datasets, nobody else's.
+    """The clearinghouse basis covers NYS DEC's and OPRHP's datasets, nobody else's.
 
     No state work is public domain by default, so pipeline/ELT.md's "Who may
     publish" moved both rows off `public_domain` on 2026-10-01. A third row with

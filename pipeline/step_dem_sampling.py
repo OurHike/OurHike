@@ -29,7 +29,7 @@ THE STEP, between two dbt invocations:
 4. dbt builds everything downstream of the `derived` source.
 
 EVERY POINT IS ANSWERED AT ITS OWN POINT, whatever the cache beside the index
-holds and whoever asked first. Since decision 115 the sampler keys its cache
+holds and whoever asked first. The sampler keys its cache
 on each point's exact coordinates (export_elevation.SAMPLE_CACHE_KEYS), the
 same rule today's three exporters read under, so a cached answer is the DEM's
 at the point asked, and a run's answers are a cold run's. The questions go in
@@ -38,7 +38,7 @@ walk, every sample included, then each edge by its edge_index from its
 start), which decides no answer now; export_network_profile.py asks the edge
 points again and is answered from the cache, so one question serves both.
 
-UNTIL DECISION 115 IT WAS NOT. The cache keyed a point to 6 decimals and gave
+IT WAS NOT ALWAYS SO. The cache once keyed a point to 6 decimals and gave
 every point under a key the pixel of the first one asked, and the file
 outlives the run (the monthly build restores the last one). Monthly run 30
 (refresh-reference.yml 37772454847) answered all 22,000,918 of its points from

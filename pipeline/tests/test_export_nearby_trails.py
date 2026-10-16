@@ -194,7 +194,7 @@ def test_publishes_the_six_properties_the_client_draws_from(tmp_path, monkeypatc
     """`length_miles` is the sixth, added by #1516 so a phone can tell a whole
     trail from part of one. It is asserted separately from the exact-equality
     check below because its value is the WGS84 ellipsoid's rather than this
-    writer's (decision 97), and pinning the literal would turn a test of what
+    writer's, and pinning the literal would turn a test of what
     gets published into a test of the geodesic.
     test_length_miles_is_the_lines_wgs84_geodesic_not_its_epsg5070_length pins
     the measure."""
@@ -1083,9 +1083,8 @@ def test_a_trail_that_only_touches_at_a_point_stays_open(tmp_path, monkeypatch):
     there is nothing to close.
 
     A trail running ALONG the boundary is the next test's case: shapely
-    counts it as inside, because a polygon contains its own edge, and until
-    decision 213 this left it closed; rule 6 of that decision ("Only inside
-    closes", the maintainer's poll of 2026-10-15) opens it.
+    counts it as inside, because a polygon contains its own edge, and the
+    rule "Only inside closes" (the maintainer, 2026-10-15) opens it.
     """
     touches_the_corner = [(-74.15, 41.15), (-74.10, 41.20)]
     manifest, body = _run(
@@ -1106,7 +1105,7 @@ def test_a_trail_that_only_touches_at_a_point_stays_open(tmp_path, monkeypatch):
 
 
 def test_a_trail_along_the_edge_of_a_closed_area_stays_open(tmp_path, monkeypatch):
-    """Decision 213, rule 6 ("Only inside closes"): a trail lying within AREA_EDGE_M (2 m) of the closed area's outline
+    """A trail lying within AREA_EDGE_M (2 m) of the closed area's outline
     runs along its edge, not inside it, so it ships open, whole. 0.00001 degrees of longitude is 0.84 m at this
     latitude; the trail beside it 0.0001 in (8.4 m) is inside, and closes."""
     along_the_west_edge = [(-74.09999, 41.21), (-74.09999, 41.29)]
@@ -1891,8 +1890,7 @@ FIVE_MILES_NORTH = {
 
 @pytest.mark.parametrize(("wkt", "conus_albers_miles"), FIVE_MILES_NORTH.values(), ids=FIVE_MILES_NORTH.keys())
 def test_length_miles_is_the_lines_wgs84_geodesic_not_its_epsg5070_length(wkt, conus_albers_miles):
-    """Decision 97 (the maintainer, 2026-10-06): `length_miles` is measured on the WGS84 ellipsoid, as decision 90
-    measures the graph's edges. EPSG:5070 is equal-area for the lower 48 only and its metre is not the ground's, so
+    """The maintainer, 2026-10-06: `length_miles` is measured on the WGS84 ellipsoid, as the graph's edges are. EPSG:5070 is equal-area for the lower 48 only and its metre is not the ground's, so
     `length_miles` read `conus_albers_miles` here before. The line sheet prints it, and lineClimb compares it with
     the graph edges' geodesic metres to tell a whole trail from part of one."""
     geojson = ex.records_to_geojson(
@@ -2566,7 +2564,7 @@ def test_a_long_line_still_cuts_a_tile_archive_the_client_can_read(tmp_path, mon
     assert (header["min_zoom"], header["max_zoom"]) == (ex.TILES_MIN_ZOOM, ex.TILES_MAX_ZOOM)
 
 
-# --- The context zooms carry what the map reads there (decision 202) -------
+# --- The context zooms carry what the map reads there -------
 #
 # z5-z8 used to be cut with every line's every property, which filled a
 # dense tile past GDAL's MAX_SIZE and had GDAL redraw it on a coarser grid:
@@ -2773,7 +2771,7 @@ def test_lines_that_differ_in_nothing_kept_merge_into_one_and_keep_every_vertex(
 
 
 def test_the_zooms_above_the_context_are_the_bytes_the_single_cut_wrote(tmp_path, monkeypatch):
-    """z9-z14 are cut by the statement write_tiles ran before decision 202,
+    """z9-z14 are cut by the statement write_tiles ran before it split the zooms,
     with GDAL's own defaults spelled out and the tile budget raised from
     500,000 to TILES_MAX_BYTES. Every tile that fit the old budget - every
     tile these lines make - must be identical, byte for byte, to that cut's."""

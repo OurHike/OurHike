@@ -56,7 +56,7 @@ psycopg[binary]
 pypdf
 
 # extract/_sheet_content.py's two workbook readers, for the content a club
-# publishes as a spreadsheet (section K's hand-back of decision 54): xlrd reads
+# publishes as a spreadsheet: xlrd reads
 # the old binary .xls (SMHC's 900 Miler list) and openpyxl the .xlsx (WMC's hike
 # ratings). Chosen on PyPI's own records, read 2026-10-10: xlrd 2.0.2
 # (2025-06-14, BSD, a 96,555-byte pure-Python wheel with no dependencies) and

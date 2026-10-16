@@ -250,9 +250,8 @@ origins:
 
   - pattern: https://docs.ourhike.org
     probe: https://docs.ourhike.org
-    # The data docs and the data-quality page (pipeline/ELT.md decisions 10
-    # and 102), on a host of their own since decision 144 moved them off
-    # ourhike.org/data/, where any script of theirs could read the session a
+    # The data docs and the data-quality page, on a host of their own, moved
+    # off ourhike.org/data/, where any script of theirs could read the session a
     # signed-in hiker keeps on the app's origin. pages.yml's env names this
     # origin and the Cloudflare Pages project serving it, and
     # .github/tests/test_pages_publish.py holds the two to each other.

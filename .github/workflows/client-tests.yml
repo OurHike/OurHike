@@ -78,12 +78,12 @@ jobs:
           #   pipeline/dbt/macros/lands_outside_its_region.sql
           #                                         test/regionMapShots.test.ts
           #
-          # The region macro is decision 31's map shots: regionMapShots.test.ts
+          # The region macro is the new data's map shots: regionMapShots.test.ts
           # holds every box its region_boxes() names to at least one preview
           # recipe, so a box added there with no recipe to photograph it fails
           # this suite.
           #
-          # channels.json and the publish models arrived with decision 44
+          # channels.json and the publish models arrived with versioning
           # (pipeline/ELT.md, "Versions and channels"): the promotion pull
           # request changes channels.json and nothing else, and these are the
           # only checks of its entries against the client's own release-id

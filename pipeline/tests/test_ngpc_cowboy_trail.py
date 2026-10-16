@@ -1,6 +1,6 @@
 """NGPC's Cowboy Trail: one 29-section status layer is both its closures and its line.
 
-The maintainer's P7+P8 on wave 6's review page 01 (poll of 2026-10-11): NGPC ships, and the Cowboy Trail draws from
+The maintainer, 2026-10-11: NGPC ships, and the Cowboy Trail draws from
 the commission's section layer, `ngpc_cowboy_trail_improvements` (Cowboy_Trail/FeatureServer/5), developed trail
 only; the 321-mile corridor line must never draw as trail. What holds that here, without a warehouse:
 
@@ -90,7 +90,7 @@ LIVE_VALUES = {
 
 def test_a_line_closes_on_exactly_the_values_its_closures_read_as_closing_the_trail():
     """For each layer the layer_rules seed closes lines on: of the layer's live values, the ones the shared vocabulary
-    (seeds/notice_words.csv, decision 190) reads as closing the trail in the role that field fills for its notices are
+    (seeds/notice_words.csv) reads as closing the trail in the role that field fills for its notices are
     exactly the closed_where values, field by field (dlt's names), so the line and the closures list close the same
     sections. NGPC's is the one today."""
     fields = {row["source_key"]: row for row in _seed("notice_source_fields")}

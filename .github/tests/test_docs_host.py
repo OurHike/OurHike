@@ -1,4 +1,4 @@
-"""`.github/scripts/docs_host.py`: the data docs on docs.ourhike.org (pipeline/ELT.md decision 144).
+"""`.github/scripts/docs_host.py`: the data docs on docs.ourhike.org.
 
 Two promises are held here, and the rest serves them. ourhike.org never sends
 a visitor to a host with nothing on it: `live` says the docs host serves the
@@ -230,7 +230,7 @@ def _front(build: str = BUILD) -> tuple[int, str]:
 
 
 # What the zone in front of docs.ourhike.org adds right after <body> when a
-# non-browser agent asks (docs_host.EDGE_PATHS; measured by the lead against
+# non-browser agent asks (docs_host.EDGE_PATHS; measured against
 # the maintainer's placeholder, 2026-10-10 21:07 UTC).
 INJECTED = (
     '<a href="https://docs.ourhike.org/cdn-cgi/content?id=abc" aria-hidden="true" rel="nofollow noopener"'

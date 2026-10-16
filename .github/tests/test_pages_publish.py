@@ -615,7 +615,7 @@ class TestTheCustomDomainAndTheBuildAgree:
         assert "/" not in self._host()
 
     def test_the_dbt_link_checks_refuse_links_to_the_cnames_host(self):
-        """Decision 94: pipeline/dbt/macros/link_into_the_app.sql refuses a closure link back into the app by its
+        """pipeline/dbt/macros/link_into_the_app.sql refuses a closure link back into the app by its
         host, read from dbt_project.yml's `app_host` var, which has to be site/CNAME's or it refuses nothing."""
         variables = yaml.safe_load((REPO_ROOT / "pipeline" / "dbt" / "dbt_project.yml").read_text(encoding="utf-8"))["vars"]
         assert variables["app_host"] == self._host()
@@ -845,8 +845,7 @@ class TestTheDataDocs:
     Stage 7 of **#1793 — Rebuild the data platform as dlt → dbt: seven
     contracted marts, a monthly refresh, published docs, and lighter phone
     downloads**. Every preview serves the page beside the app, and so does
-    production until docs.ourhike.org serves it (decision 144,
-    `TestTheDocsHost` below), each copy built by `.github/actions/dbt-docs-site`
+    production until docs.ourhike.org serves it (`TestTheDocsHost` below), each copy built by `.github/actions/dbt-docs-site`
     and checked by `pipeline/check_docs_site.py` as copied; UA has no site and
     gets none. The first three tests are the three assertions ELT.md names;
     the fourth is its "the docs step needs no secret".
@@ -882,7 +881,7 @@ class TestTheDataDocs:
             assert names.index(build["name"]) < names.index(assemble)
             assert step["env"]["DOCS_DIR"] == "${{ steps.%s.outputs.dir }}" % build["id"]
         else:
-            # Built in a job of its own (pages.yml, SEC-8 of PR #1805's second review) and handed over as an
+            # Built in a job of its own (pages.yml) and handed over as an
             # artifact, downloaded before the assembly to the path it copies from.
             upload = next(s for s in builder["steps"] if str(s.get("uses", "")).startswith("actions/upload-artifact@"))
             assert upload["with"]["path"] == "${{ steps.%s.outputs.dir }}" % build["id"]
@@ -943,8 +942,7 @@ class TestTheDataDocs:
 
     def test_the_deploy_job_leaves_no_write_token_on_disk_for_the_docs_build(self):
         """pages.yml's build job holds `contents: write` and replaces gh-pages,
-        and runs two npm installs; until SEC-8 of PR #1805's second review it
-        ran the docs build too, which installs dbt, runs `dbt deps` and
+        and runs two npm installs; it once ran the docs build too, which installs dbt, runs `dbt deps` and
         downloads a native driver, none of them hash-pinned. A checkout that
         persists its token leaves that token in .git/config for every one of
         them to read.
@@ -966,7 +964,7 @@ class TestTheDataDocs:
         assert 'git -C "$WORK" remote add origin "$REMOTE_URL"' in script
 
     def test_the_docs_build_runs_in_a_job_whose_token_can_only_read(self):
-        """SEC-8 of PR #1805's second review: a token kept out of .git/config is still in the job's secrets, which
+        """A token kept out of .git/config is still in the job's secrets, which
         every step's process can reach, and the docs build installs dbt, fetches dbt's packages by tag and a native
         driver, none of them hash-pinned. So /data/ is built in a job of its own whose token can read and not push,
         and the job that pushes gh-pages only downloads what that job built, installing and running nothing of dbt's.
@@ -1054,7 +1052,7 @@ class TestTheDataDocs:
 
 
 class TestTheDataDocsLoadNoCodeFromAnotherOrigin:
-    """Decision 93 (pipeline/ELT.md), answering SEC-1 of PR #1805's second review.
+    """The data docs load no code from another origin.
 
     The /data/ page runs on the app's origin, where a signed-in hiker's
     session is kept, so DuckDB-WASM is served from our own site at
@@ -1091,7 +1089,7 @@ class TestTheDataDocsLoadNoCodeFromAnotherOrigin:
 
     def test_the_pinned_duckdb_wasm_is_one_this_dbt_s_page_was_loaded_with(self):
         requirements = (REPO_ROOT / "pipeline" / "requirements-dbt.txt").read_text(encoding="utf-8")
-        # The pin line ends in ` \` since the file is hash-pinned (decision 144): its hashes follow on their own lines.
+        # The pin line ends in ` \` since the file is hash-pinned: its hashes follow on their own lines.
         dbt = re.search(r"^dbt==([^\s\\;]+)", requirements, re.MULTILINE).group(1)
         manifest = json.loads((self.DUCKDB / "package.json").read_text(encoding="utf-8"))
         lock = json.loads((self.DUCKDB / "package-lock.json").read_text(encoding="utf-8"))
@@ -1115,7 +1113,7 @@ class TestTheDataDocsLoadNoCodeFromAnotherOrigin:
 
 
 class TestTheDocsHost:
-    """Decision 144's second half (pipeline/ELT.md): pages.yml also deploys /data/ to docs.ourhike.org.
+    """pages.yml also deploys /data/ to docs.ourhike.org.
 
     Three promises, each held below. The docs deploy never breaks the app's:
     it is a job nothing waits for, after the job that publishes gh-pages.
@@ -1198,7 +1196,7 @@ class TestTheDocsHost:
         assert job["if"] == "${{ !inputs.draft_only }}"
 
     def test_the_job_holding_the_token_installs_and_builds_nothing(self):
-        """The same token previews use, so the same rule SEC-8 of PR #1805's second review set for jobs holding one."""
+        """The same token previews use, so the same rule as every job holding one."""
         job = self._parsed()["jobs"]["docs-host"]
         assert job["permissions"] == {"contents": "read"}
         steps = job["steps"]

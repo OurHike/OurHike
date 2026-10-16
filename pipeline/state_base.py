@@ -1,10 +1,9 @@
-"""state_base: whether CI's dbt job builds a pull request from main's last build, by dbt state (decision 210).
+"""state_base: whether CI's dbt job builds a pull request from main's last build, by dbt state.
 
     python state_base.py --matched-key KEY --base-dir DIR --head-manifest dbt/target/manifest.json \\
         --warehouse data/warehouse.duckdb [--github-output "$GITHUB_OUTPUT"]
 
-The maintainer's poll of 2026-10-15 ("In this PR anyway", pipeline/ELT.md
-decision 210): on 2a826f01 the dbt job's build step, "dbt build, the Python
+The maintainer, 2026-10-15: on 2a826f01 the dbt job's build step, "dbt build, the Python
 steps and the pub_ writers (build_marts.py)", took 16 min 7 s (Pipeline tests
 run 38773605297), and every pull request paid it whole. So a push to main
 keeps its fixture build, and a pull request starts from it and rebuilds only
@@ -59,8 +58,8 @@ changed-paths action, which its scope list in pipeline-tests.yml says and
 full build, and every other path outside pipeline/ goes through.
 
 MACROS ARE COMPARED BY CONTENT. dbt 2.0.6 does mark a model modified when a
-macro it calls changes (the row_history_mart() probe above), but decision
-111's probe of 2026-10-08 (build_marts.py's docstring, "A PULL REQUEST RUNS
+macro it calls changes (the row_history_mart() probe above), but a probe of
+2026-10-08 (build_marts.py's docstring, "A PULL REQUEST RUNS
 THE CHECKS ITS CHANGE REACHES") found a comment in a dispatched override,
 macros/elementary_overrides.sql, and one in Elementary's own
 test_volume_anomalies.sql each selecting nothing. And two of the generated
@@ -259,7 +258,7 @@ def main(argv: list[str] | None = None) -> int:
             with args.github_output.open("a", encoding="utf-8") as output:
                 output.write(f"dir={(args.base_dir / MANIFEST_IN_BASE).parent}\n")
     else:
-        print(f"::notice title=Full fixture build::Every node is built, as before decision 210: {reason}.", flush=True)
+        print(f"::notice title=Full fixture build::Every node is built: {reason}.", flush=True)
     return 0
 
 

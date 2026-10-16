@@ -2243,7 +2243,7 @@ def test_the_release_folder_manifest_is_stored_as_json_so_the_cdn_compresses_it(
     assert "artifacts" in json.loads(stored["Body"].read())
 
 
-# --- The pin behind an environment's data (decision 205): latest.json's raw_run ---
+# --- The pin behind an environment's data: latest.json's raw_run ---
 #
 # prune_raw_store.py keeps the pin an environment's latest.json names, and its
 # stored warehouse; build-reference.yml's "Publish to UA" sets OURHIKE_RAW_RUN

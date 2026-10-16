@@ -669,7 +669,7 @@ def test_a_5xx_burst_that_halves_the_first_page_to_one_feature_does_not_read_the
 
     Before the fix the size went back to the last page that answered, which
     was that one rounded feature, so every later page asked for 1: a layer
-    of N features cost N + 12 requests (review finding EXD-5).
+    of N features cost N + 12 requests.
     """
     layer = "https://example.test/arcgis/rest/services/T/MapServer/0"
     burst = {"left": 10}

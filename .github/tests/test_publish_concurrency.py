@@ -36,7 +36,7 @@ PUBLISH_GROUP = "publish-data"
 #: sidecar in place and touches no latest.json, no artifact and no release folder, so the race this file guards cannot
 #: involve it, and each holds a group of its own instead, named here with why.
 SIDECAR_ONLY = {
-    # Decision 110: the hourly lane's checks put conditions/data_quality.json in place after the build has published,
+    # The hourly lane's checks put conditions/data_quality.json in place after the build has published,
     # holding conditions-checks-<leg>, a group no publisher holds. In publish-data, or in any group a publisher holds,
     # every checks run would be an entrant that cancels a publisher queued there (#1513 - A queued publish is silently
     # cancelled when another one joins publish-data, and it looks like a green build).

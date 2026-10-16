@@ -1,11 +1,10 @@
 """check-conditions.yml's `parity` job: the six conditions files against today's exporters, every hour.
 
-pipeline/ELT.md's open question 17, answered by the maintainer's poll of 2026-10-10: "Compare every soak hour". What is
+The maintainer, 2026-10-10: "Compare every soak hour". What is
 held here is what keeps that comparison out of a hiker's way and honest about what it compared:
 - the extract keeps the hour's answers, and publish-conditions.yml's hand-off step puts them in the leg's private
   history store first, under a ceiling of their own and without touching the step's status, and the warehouse after
-  them with what the job has left, so neither can starve the other (review finding S2-1 of PR #1805 — dlt → dbt
-  re-platform as one go/no-go change: while it came second, none of the eight soak runs 666 to 676 put one);
+  them with what the job has left, so neither can starve the other (while it came second, none of the eight soak runs 666 to 676 put one);
 - the comparison runs in check-conditions.yml, beside the checks and on exactly their legs, and in no job of
   publish-conditions.yml, every one of which holds publish-data until its run ends (#1513 - A queued publish is
   silently cancelled when another one joins publish-data, and it looks like a green build);
@@ -268,7 +267,7 @@ def _run_a_step(tmp_path: Path, step: dict, env: dict[str, str], program: str, c
 def test_a_bundle_that_cannot_be_taken_is_an_hour_not_compared_never_a_red_step(tmp_path, code, output):
     """take-bundle's exit 4 is another run's bundle, or another commit's, or none; 1 is a store that could not be
     read or a torn upload. Either costs this hour its comparison, which the compare step then says, and nothing else.
-    5 is the store with no bundle for MAX_AGE_HOURS (decision 200): the same here, and `stale` for the last step."""
+    5 is the store with no bundle for MAX_AGE_HOURS: the same here, and `stale` for the last step."""
     env = {"ENVIRONMENT": "ua", "BUILD_RUN": BUILD_RUN, "COMMIT": "e49ca601", "R2_RAW_BUCKET": "raw"}
     env["MAX_AGE_HOURS"] = _workflow(CHECKS)["env"]["MAX_AGE_HOURS"]
     status, calls, written = _run_a_step(tmp_path, _step(CHECKS, "parity", TAKE), env, "python", code)
@@ -283,7 +282,7 @@ def test_a_bundle_that_cannot_be_taken_is_an_hour_not_compared_never_a_red_step(
 def test_the_compare_step_runs_after_a_take_that_failed_or_timed_out_so_the_hour_is_recorded():
     """A take step killed at its 2-minute cap fails, and an `if:` with no status function carries an implicit
     success(), so the compare step was skipped and the hour left no run.json: the gate read it as a run that never came,
-    which decision 158's gap rule absorbs (the 2026-10-15 review's finding S2-3). With !cancelled() it runs, finds
+    which the soak's gap absorbs. With !cancelled() it runs, finds
     TAKEN empty, and writes every family not compared; the upload keeps that whatever the compare step's outcome."""
     compare, upload = _step(CHECKS, "parity", COMPARE), _step(CHECKS, "parity", UPLOAD)
 
@@ -293,7 +292,7 @@ def test_the_compare_step_runs_after_a_take_that_failed_or_timed_out_so_the_hour
 
 
 def test_a_store_with_no_bundle_for_max_age_hours_turns_the_comparison_red_last(tmp_path):
-    """Decision 200 (the maintainer's poll of 2026-10-15, "Red if none in 2.5 h"): after the hour's result, every file
+    """The maintainer, 2026-10-15: "Red if none in 2.5 h". After the hour's result, every file
     not compared, has been written and uploaded, so gate_report.py still reads the hour, and whatever went before."""
     steps = _job(CHECKS, "parity")["steps"]
     names = [step.get("name") for step in steps]

@@ -446,8 +446,8 @@ def iter_layer_pages(
             cursor = highest
         if rounded:
             # With no page answered before it, the one rounded feature is no size to keep: a fast 5xx burst on
-            # the first page halved 1,000 to 1 and would have read the rest of the layer a feature a request
-            # (review finding EXD-5). A server that really cannot take `initial` halves again, ten requests at most.
+            # the first page halved 1,000 to 1 and would have read the rest of the layer a feature a request.
+            # A server that really cannot take `initial` halves again, ten requests at most.
             # After a cluster, `last_good` can itself be one feature (ParkServe's was, 2026-10-09), which grown()
             # doubles back from, GROW_AFTER_PAGES pages at a time.
             rounded = False

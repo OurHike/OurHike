@@ -1,4 +1,4 @@
-"""Decision 61's split, as the two workflows carry it: extract-notices.yml every 4 hours, publish-conditions.yml hourly.
+"""The notices split, as the two workflows carry it: extract-notices.yml every 4 hours, publish-conditions.yml hourly.
 
 The maintainer, 2026-10-04: every club's and agency's notices move to a job
 every 4 hours with up to an hour to read, and NWS, OurHike's own moderated
@@ -138,7 +138,7 @@ def test_the_notices_job_extracts_into_its_legs_store_copies_it_and_publishes_no
     names = [step.get("name") for step in _steps(NOTICES, "extract")]
     assert names.index(EXTRACT_STEP) < names.index(SERVE_STEP), "copied only after a run that loaded"
     assert serve.get("if") == extract.get("if") == "steps.wanted.outputs.run == 'true'", (
-        "a partial extract is still copied; the only condition is decision 92's skip of an unread leg"
+        "a partial extract is still copied; the only condition is the skip of a leg nothing reads"
     )
 
 
@@ -170,8 +170,8 @@ def _after_partial(path: Path, job: str, step_id: str) -> dict:
 
 
 def test_a_source_the_notices_job_refused_on_its_own_is_a_warning_and_never_turns_the_run_red(tmp_path):
-    """Decision 100 (the maintainer's poll of 2026-10-07, on round-2 finding ARC-5: "Red after 24h. But this should
-    be Red in the data source freshness feature of dbt. Not blocking a datasource pipeline"). Notices runs 6, 7, 9
+    """The maintainer, 2026-10-07: "Red after 24h. But this should be Red in the data source freshness feature of dbt.
+    Not blocking a datasource pipeline". Notices runs 6, 7, 9
     and 14 went red this way, run 14 on mass.gov answering 403 to GitHub's runners for ma_dcr_blue_hills_alerts. The
     source's last committed table stands, the run summary names it, and publish-conditions.yml's freshness step is
     where it turns red, once it has gone 24 hours unread."""
@@ -183,7 +183,7 @@ def test_a_source_the_notices_job_refused_on_its_own_is_a_warning_and_never_turn
 
 
 def test_a_table_the_notices_job_could_not_copy_whole_still_turns_the_run_red_after_the_copy(tmp_path):
-    """Decision 100 moved a refused source's red, not this one: the copy carries a torn table's last good rows or
+    """Only a refused source's red moved to dbt's freshness, not this one: the copy carries a torn table's last good rows or
     leaves it out, which is the store's fault, not an upstream's."""
     names = [step.get("name") for step in _steps(NOTICES, "extract")]
     step = _after_partial(NOTICES, "extract", "serve")
@@ -246,10 +246,10 @@ def _notices_steps_that_run(tmp_path: Path, leg: str, production_line: str | Non
 
 
 def test_the_production_notices_leg_extracts_nothing_while_production_is_on_the_exporters(tmp_path):
-    """Decision 92 (the maintainer's poll, 2026-10-06): production's conditions leg stays on the exporters until the
+    """Production's conditions leg stays on the exporters until the
     cutover, and the exporters read no notices store. So the production notices leg asked every club's host and filled
     a store and a served copy every 4 hours for no reader: about 9 runner-minutes and at least 197 upstream requests
-    a run (review finding ARC-2 of PR #1805 — dlt → dbt re-platform as one go/no-go change). It is skipped by its own
+    a run. It is skipped by its own
     condition, read off publish-conditions.yml's line, and says so."""
     ran, printed = _notices_steps_that_run(tmp_path, "production", "exporters")
     assert EXTRACT_STEP not in ran and SERVE_STEP not in ran, f"the production leg ran {ran}"
@@ -313,7 +313,7 @@ def test_the_hourly_extract_records_a_source_refused_on_its_own_and_carries_on_t
 
 
 def test_a_source_the_hourly_extract_refused_on_its_own_is_a_warning_and_never_turns_the_run_red(tmp_path):
-    """Decision 101 (the maintainer's poll of 2026-10-07: "Both, NWS red after 2 h") brought decision 100 to this leg:
+    """The same rule on this leg (the maintainer, 2026-10-07: "Both, NWS red after 2 h"):
     NWS's alerts, ATC's, NYNJTC's and OPRHP's notices and the reviewed files a conditions leg can refuse on its own
     keep their last committed tables and warn here; each turns red in the freshness step once it has gone 24 hours
     unread, NWS's alerts 2 (pipeline/tests/test_notice_source_freshness.py holds both)."""
@@ -411,11 +411,9 @@ def test_the_build_saves_no_row_history_unless_it_read_the_newest_notices_copy(t
 
 
 def test_a_notices_leg_with_no_copy_for_over_8_hours_turns_the_hourly_run_red_after_the_publish(tmp_path):
-    """Decision 96 (the maintainer's poll, 2026-10-06: "Red after 8 h, like stale"): add-served's SERVED_OVERDUE_EXIT,
+    """The maintainer, 2026-10-06: "Red after 8 h, like stale". add-served's SERVED_OVERDUE_EXIT,
     a leg that has owed a copy for longer than SERVED_STALE_HOURS, reads as `none`, so the build still runs without the
-    leg's tables and saves no row history, and a step after "Publish to R2" turns the run red. Before it no step read
-    `none` as red, however long it lasted (review finding PY-3 of PR #1805 — dlt → dbt re-platform as one go/no-go
-    change)."""
+    leg's tables and saves no row history, and a step after "Publish to R2" turns the run red."""
     steps = _steps(CONDITIONS, "publish")
     names = [step.get("name") or step.get("uses") for step in steps]
     red = [step for step in steps if "steps.notices.outputs.overdue" in str(step.get("if", ""))]

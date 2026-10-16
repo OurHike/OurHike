@@ -8,7 +8,7 @@
 # ships.
 #
 # WITH DuckDB-WASM OF OUR OWN at /data/duckdb/, which the page loads its
-# engine from, never a CDN (pipeline/ELT.md decision 93; build.sh and
+# engine from, never a CDN (build.sh and
 # duckdb-wasm/loader.js say how, and what was measured). It is most of the
 # site's size: measured 2026-10-06 on builds of 24da1f07 and of this change,
 # the site went from 355 files, 14,425,647 bytes, to 365 files, 95,913,727
@@ -23,7 +23,7 @@
 # to it is about 26.6 MB, once, before the browser caches it.
 #
 # AGAINST AN EMPTY WAREHOUSE, never fixtures or real data: the page is
-# public, counts only and no maps (decision 10), and a warehouse with no
+# public, counts only and no maps, and a warehouse with no
 # tables cannot put a row in it. Measured 2026-10-03, dbt 2.0.6, this
 # project: on a DuckDB file with no tables, `dbt docs generate` compiled all
 # 1,845 nodes and wrote 355 files, 13,165,633 bytes (315 assets, 38
@@ -80,7 +80,7 @@ runs:
           ~/.duckdb/extensions/v1.5.4
         key: dbt-v2-runtime-${{ runner.os }}-${{ hashFiles('pipeline/requirements-dbt.txt') }}
 
-    # Hash-checked (pipeline/ELT.md decision 144): the page this action builds
+    # Hash-checked: the page this action builds
     # runs on ourhike.org's origin, and dbt writes that page's own scripts
     # from what this step installs (DuckDB-WASM's come from npm ci, below).
     # dbt's build requirement first, so the build fetches nothing unhashed
@@ -91,8 +91,7 @@ runs:
         pip install --require-hashes -r pipeline/requirements-dbt-build.txt
         pip install --require-hashes --no-build-isolation -r pipeline/requirements-dbt.txt
 
-    # The dbt generators' output, which is not committed (pipeline/ELT.md
-    # decision 91), written before build.sh's dbt reads the project. On a venv
+    # The dbt generators' output, which is not committed, written before build.sh's dbt reads the project. On a venv
     # of the extract's pins: the generators read its club folders, whose
     # modules import dlt, and requirements-dbt.txt cannot share a venv with
     # them (pipeline-tests.yml's dbt job says why).

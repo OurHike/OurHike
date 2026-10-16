@@ -1,6 +1,6 @@
-"""check-conditions.yml, the hourly lane's checks (decision 110), and the job of publish-conditions.yml that starts them.
+"""check-conditions.yml, the hourly lane's checks, and the job of publish-conditions.yml that starts them.
 
-The maintainer's poll of 2026-10-08: "All of them, hourly. build a different workflow that kicks off after the actual
+The maintainer, 2026-10-08: "All of them, hourly. build a different workflow that kicks off after the actual
 build". What is held here is what keeps that workflow out of a hiker's way and inside the hour:
 
 - its inputs are the placeholder's on main (PR #1827 - Add dispatch-only build-reference.yml, purge-person-fields.yml
@@ -31,7 +31,7 @@ from test_conditions_production_leg_needs_main import MAIN, OTHER_REFS, PHONE_FI
 WORKFLOWS = Path(__file__).resolve().parents[1] / "workflows"
 CHECKS = WORKFLOWS / "check-conditions.yml"
 BAKE = WORKFLOWS / "publish-conditions.yml"
-#: publish-conditions.yml's freshness step: decision 100's red, in dbt's source freshness.
+#: publish-conditions.yml's freshness step: the notices' red, in dbt's source freshness.
 FRESHNESS_STEP = "Check the notice sources' freshness, red after 24 hours unread (dbt path)"
 BUILD_RUN = "37800000001"
 
@@ -290,10 +290,10 @@ def test_the_one_object_the_checks_write_is_conditions_data_quality_json_after_t
 
 
 def test_the_checks_run_measures_freshness_only_through_build_marts_so_a_late_source_never_turns_it_red():
-    """Decision 203: the hourly page's freshness is the checks run's `dbt source freshness`, which build_marts.py runs
+    """The hourly page's freshness is the checks run's `dbt source freshness`, which build_marts.py runs
     before the data-quality file, on publish-conditions.yml's own freshness selection (pipeline/tests/
     test_build_marts.py holds the two equal), and whose exit it records and never raises. So this workflow runs no
-    freshness of its own: publish-conditions.yml's freshness step is the one that turns an hour red (decision 100)."""
+    freshness of its own: publish-conditions.yml's freshness step is the one that turns an hour red."""
     runs = "\n".join(str(step.get("run", "")) for job in _load(CHECKS)["jobs"].values() for step in job.get("steps") or [])
     checks = _step(CHECKS, "check", "Run every check of the hourly lane, and write the data-quality file")["run"]
 
@@ -374,7 +374,7 @@ def test_a_build_and_its_checks_each_at_their_caps_still_end_inside_the_hour():
     assert run["timeout-minutes"] + take["timeout-minutes"] < checks["check"]["timeout-minutes"], "the job's cap holds both"
 
 
-# --- none in 2.5 h is red (decision 200, the maintainer's poll of 2026-10-15, "Red if none in 2.5 h") ---------------
+# --- none in 2.5 h is red (the maintainer, 2026-10-15) ---------------
 
 #: gate_report.py's SOAK_MAX_GAP_HOURS, read from its text: this suite does not import pipeline/.
 SOAK_MAX_GAP_HOURS = float(
@@ -387,7 +387,7 @@ SOAK_MAX_GAP_HOURS = float(
 
 
 def test_the_age_past_which_a_missing_hand_off_is_red_is_the_soaks_own_gap():
-    """Decision 158's gap, which gate_report.py already holds the soak to, and nowhere else in this workflow."""
+    """The soak's allowed gap, which gate_report.py already holds the soak to, and nowhere else in this workflow."""
     assert float(_load(CHECKS)["env"]["MAX_AGE_HOURS"]) == SOAK_MAX_GAP_HOURS
     jobs = _load(CHECKS)["jobs"].values()
     envs = [job.get("env") or {} for job in jobs] + [step.get("env") or {} for job in jobs for step in job["steps"]]

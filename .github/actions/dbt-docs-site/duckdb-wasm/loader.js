@@ -1,6 +1,5 @@
 // The module dbt's /data/ page imports DuckDB-WASM from, served from our own
-// site instead of jsDelivr (pipeline/ELT.md decision 93, SEC-1 of PR #1805's
-// second review). stage.mjs bundles this file with @duckdb/duckdb-wasm and
+// site instead of jsDelivr. stage.mjs bundles this file with @duckdb/duckdb-wasm and
 // apache-arrow, at the versions package-lock.json pins, into
 // /data/duckdb/duckdb.js.
 //

@@ -14,7 +14,7 @@ lane's checks run restores and saves it alone ("ELEMENTARY'S HISTORY ALONE").
 
 WHY OUTSIDE THE WAREHOUSE. Each lane builds its warehouse from the raw pin on
 a fresh runner, so the snapshot tables (int_<mart>__history, one per mart, in
-the `intermediate` schema: decision 57) would start over every run, and every
+the `intermediate` schema) would start over every run, and every
 mart row would read as first seen that day. GitHub's Actions cache evicts an entry not read for 7
 days, and the monthly lane runs once a month, so the cache cannot hold them
 either. So they are stored at a URL of their own: OURHIKE_HISTORY_URL, which
@@ -33,7 +33,7 @@ dbt_valid_from: a row first seen then was already upstream when history
 began). The newest keep_saves() folders are kept, so a save that recorded a bad
 load can be undone by pointing history.json at the one before: KEEP_SAVES (24)
 unless row_history_stores.toml's [keep_saves] names the store, which it does
-for `monthly`, 3 (decision 206; prune_raw_store.py reads the same row).
+for `monthly`, 3 (prune_raw_store.py reads the same row).
 
 s3:// goes through s3fs, with the credentials the workflows already give the
 raw store's key for dlt (DESTINATION__FILESYSTEM__CREDENTIALS__AWS_ACCESS_KEY_ID,
@@ -86,7 +86,7 @@ naming its table `../<…>/escaped` made a restore write escaped.parquet
 outside the temporary directory it downloads into, and report success (review
 finding of PR #1805 — dlt → dbt re-platform as one go/no-go change).
 
-ELEMENTARY'S HISTORY (decision 102, pipeline/ELT.md "Memory between runs").
+ELEMENTARY'S HISTORY (pipeline/ELT.md "Memory between runs").
 Each lane builds its warehouse from nothing, so without it an anomaly check
 would never see an earlier build and a schema check never an earlier column.
 `restore` puts it into the warehouse's `elementary` schema before
@@ -94,7 +94,7 @@ build_marts.py's "Elementary's own tables", whose incremental models then add
 this build to it rather than starting empty; `save` writes it out with the
 snapshots. Its own pointer, elementary.json, and its own folders,
 elementary/<save_id>/, so neither part's failure touches the other's pointer,
-and a save by a row_history.py from before decision 102, which knows only
+and a save by an older row_history.py, which knows only
 history.json and saves/, leaves it alone. Both parts of one `save` share its
 save id. The history is matched by name: Elementary names a table
 DATABASE.SCHEMA.TABLE, and DuckDB names the database after the warehouse's
@@ -116,7 +116,7 @@ says it was measured:
     (get_columns_snapshot_query(), get_columns_changes_from_last_run_query()).
   - elementary_test_results: one row per check per build. No check reads it
     back; the page does, for how long a check has warned and how many builds
-    the history holds (decision 102's step 4).
+    the history holds.
   - dbt_invocations: one row per dbt command, which the results' invocation_id
     names, so the page can tell a build's checks run from its other commands.
   - test_result_rows, and of it only each scored bucket's expected range
@@ -200,11 +200,11 @@ THE COLD START. An absent elementary.json is a cold start only when allowed:
 with --cold-start (a store that may start its row history may start
 Elementary's), or --elementary-cold-start, which build_marts.py passes for a
 store row_history_stores.toml's [elementary_started] does not list. Every
-store saved before decision 102 holds a history.json and no elementary.json,
+store saved before Elementary's history was kept holds a history.json and no elementary.json,
 and that is Elementary's first build there, not a loss. Once a store is
 listed, an absent elementary.json is refused (exit 2) as lost history.
 
-ELEMENTARY'S HISTORY ALONE (--elementary-only, decision 110). The hourly
+ELEMENTARY'S HISTORY ALONE (--elementary-only). The hourly
 lane's checks run in a run of their own after its build has published
 (build_marts.py --checks-only, check-conditions.yml), over the warehouse the
 build left. The build restored and saved both parts; the checks run then
@@ -307,7 +307,7 @@ FORMAT = 1
 #: names the store (keep_saves()). Elementary's folders keep the same number. The hourly stores keep this:
 #: @unvalidated, a day of hourly saves, a round number, and how long a bad load goes unnoticed before someone points
 #: history.json back, which nobody has measured, would settle it. The monthly store keeps 3, the newest and two
-#: back (decision 206, the maintainer's poll of 2026-10-15, "3 saves"), asked when its 6 saves held about 16 GB
+#: back (the maintainer, 2026-10-15, "3 saves"), asked when its 6 saves held about 16 GB
 #: (Reasoned from Actions logs and two listings of the bucket, not a listing of the store itself).
 KEEP_SAVES = 24
 #: The fewest a store may keep: the current save and the one it was built on, the way back (keep_saves() refuses

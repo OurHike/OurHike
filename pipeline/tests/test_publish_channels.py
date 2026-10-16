@@ -1,6 +1,6 @@
-"""publish.py --channels: decision 44's pointer, uploaded where phones read it.
+"""publish.py --channels: the versions pointer, uploaded where phones read it.
 
-pipeline/ELT.md, "Versions and channels (decision 44), as stage 4 builds them":
+pipeline/ELT.md, "Versions and channels, as stage 4 builds them":
 the committed channels.json names, per data environment and schema version,
 the release folder a phone reads, and is "uploaded to the bucket root
 (root-scoped, like latest.json) only by a dispatch, never by a push".
@@ -153,7 +153,7 @@ def test_the_command_line_runs_it_and_nothing_else(monkeypatch, s3_client, tmp_p
 def test_an_ordinary_publish_never_moves_the_pointer(s3_client, tmp_path):
     """The hourly conditions bake runs publish() on a schedule; if it carried
     channels.json, a merged pointer change would reach phones without the
-    dispatch decision 44 reserves for it."""
+    dispatch reserved for it."""
     exported = tmp_path / "conditions_closures.json"
     exported.write_text('{"closures": []}')
     artifacts = {"conditions/closures.json": {"path": str(exported), "sha256": publish.sha256_file(exported)}}

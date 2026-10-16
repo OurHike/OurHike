@@ -1,4 +1,4 @@
-"""Check the dbt docs site before ourhike.org/data/ serves it (pipeline/ELT.md decision 10).
+"""Check the dbt docs site before ourhike.org/data/ serves it.
 
     python check_docs_site.py <site dir> [--project dbt] [--served]
 
@@ -33,7 +33,7 @@ FAILS (exit 1) on any of:
 TWO EXEMPTIONS, on provenance: the unit tests' `given` and `expect` cells in
 `dbt.unit_tests`, and a singular test's `raw_code` and `compiled_code` in
 `dbt.data_tests` when the test is a hand-written file under `tests/singular/`
-(added 2026-10-05 for decision 77's
+(added 2026-10-05 for
 `assert_a_notice_area_covers_every_vertex_of_its_source`, whose made-up shapes
 are WKT; the same rule as the unit tests below, and the same open question
 for the maintainer). Measured 2026-10-03 on dbt 2.0.6, with the docs built
@@ -46,16 +46,15 @@ such a cell passes when every such number in it is in the test's
 fails. Three decimal places is about 110 m of latitude, and a number with
 fewer is not traced: that threshold is `@unvalidated`, and what would settle
 it is the coarsest precision at which a published point still gives a
-sensitive site away, which nobody has measured. Whether decision 10 allows
-these rows on the page at all is the maintainer's call; `dbt docs generate
+sensitive site away, which nobody has measured. Whether the docs' rule (counts
+only, no maps) allows these rows on the page at all is the maintainer's call; `dbt docs generate
 --exclude resource_type:unit_test` does not remove them (measured the same
 day: the page still held all 244).
 
 WITH --served, for the copy pages.yml and pr-preview.yml are about to publish
 at /data/, one more:
 
-5. CODE FROM ANOTHER ORIGIN (pipeline/ELT.md decision 93, SEC-1 of PR #1805's
-   second review). The page runs on the app's own origin, where a signed-in
+5. CODE FROM ANOTHER ORIGIN. The page runs on the app's own origin, where a signed-in
    hiker's session is kept, so every script, worker and WASM file it loads
    must be a file of this site. Fails:
    - a DuckDB-WASM base (`duckdb_cdn_base` in the page's settings) that is not

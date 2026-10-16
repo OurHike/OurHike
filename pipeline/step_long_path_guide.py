@@ -15,7 +15,7 @@ de-duplicated where the guide names one place twice (STATED_DUPLICATE_M,
 100 m, for two lots with coordinates). Every entry it does not place is
 counted by reason, and the step prints the count.
 
-WHY A STEP (decision 23 sends a rule to SQL first). The classification is
+WHY A STEP (a rule goes to SQL first when it can). The classification is
 some thirty regular expressions with look-ahead and look-behind, which RE2,
 DuckDB's engine, does not have, so the patterns themselves would have to be
 rewritten, and each rewrite is a new judgement about what a sentence means on
@@ -49,6 +49,7 @@ from pathlib import Path
 import duckdb
 
 from lib import nynjtc_long_path_guide as guide
+from lib.derived import replace_table
 
 ROOT = Path(__file__).parent
 WAREHOUSE_PATH = ROOT / "data" / "warehouse.duckdb"
@@ -114,16 +115,11 @@ def read_lines(con: duckdb.DuckDBPyConnection, relation: str = LINES) -> list[di
 
 def write_guide(con: duckdb.DuckDBPyConnection, records: list[dict], loaded_at: datetime) -> int:
     """Replace derived.long_path_guide with one row per record. Returns the row count."""
-    con.execute(f"create schema if not exists {SCHEMA}")
-    columns = ", ".join(f"{name} {kind}" for name, kind in COLUMNS)
-    con.execute(f"create or replace table {SCHEMA}.{TABLE} (record_row integer, {columns}, record json, _loaded_at timestamptz)")
+    columns = (("record_row", "integer"), *COLUMNS, ("record", "json"), ("_loaded_at", "timestamptz"))
     rows = [
         (row, *(record.get(name) for name, _ in COLUMNS), json.dumps(record), loaded_at) for row, record in enumerate(records)
     ]
-    if rows:
-        marks = ", ".join("?" * (len(COLUMNS) + 3))
-        con.executemany(f"insert into {SCHEMA}.{TABLE} values ({marks})", rows)
-    return con.execute(f"select count(*) from {SCHEMA}.{TABLE}").fetchone()[0]
+    return replace_table(con, TABLE, columns, rows)
 
 
 def main(argv: list[str] | None = None) -> int:

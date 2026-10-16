@@ -1,4 +1,4 @@
-"""Point /data/quality/ at the data this deploy serves (pipeline/ELT.md decision 102, step 4).
+"""Point /data/quality/ at the data this deploy serves (step 4).
 
     DATA_URL=https://... SOURCE_COMMIT=<sha> python .github/scripts/configure_quality_page.py _site/data/quality/index.html
 

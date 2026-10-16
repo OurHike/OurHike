@@ -352,7 +352,7 @@ def test_a_writer_whose_own_test_failed_refuses_because_its_file_is_already_writ
 
 
 def test_after_a_partial_build_a_failed_writers_key_is_kept_its_file_unread_and_the_rest_collected(project):
-    """Decision 81 and soak run 531: one writer's error published nothing, though six others had written. Under
+    """Soak run 531: one writer's error published nothing, though six others had written. Under
     OURHIKE_BUILD_PARTIAL a failed writer's key keeps the bucket's last copy, and so does one whose own test failed,
     whatever is on disk under their names, and every other file is collected."""
     _write_all(project)
@@ -397,7 +397,7 @@ PROFILE_WRITERS = {
 
 
 def test_a_profile_whose_null_share_test_failed_keeps_the_buckets_last_copy_only_after_a_partial_build(project):
-    """Decision 194: each writer wrote a mostly null profile and its own null-share test refused it. After
+    """Each writer wrote a mostly null profile and its own null-share test refused it. After
     build_marts.py's PARTIAL_EXIT both keys keep the bucket's last copy, whatever is on disk under their names; without
     it the publish refuses. build-reference.yml's monthly publish never sees that refusal: its build job fails on the
     exit, and `publish` needs the build job, so the whole last good release stays."""
@@ -707,7 +707,7 @@ def test_the_podcast_list_is_never_in_the_manifest_or_a_release(project, s3_clie
 
 # --- build metadata from a dbt writer: the data-quality page's files -----------
 
-# The two writers decision 102 adds, in their shapes (models/publish/_publish__data_quality.yml): each exposure's
+# The two data-quality writers, in their shapes (models/publish/_publish__data_quality.yml): each exposure's
 # meta says `sidecar`, and the hourly one's key is under conditions/.
 QUALITY_WRITERS = {
     "model.ourhike.pub_stewards": WRITERS["model.ourhike.pub_stewards"],
@@ -745,7 +745,7 @@ def test_a_writer_whose_exposure_says_sidecar_is_build_metadata_and_never_a_phon
 
 
 def test_the_data_quality_files_go_up_beside_a_new_version_and_only_the_monthly_one_into_its_release(project, s3_client):
-    """The page reads releases/<DATA_RELEASE>/data_quality.json and conditions/data_quality.json (decision 102). As
+    """The page reads releases/<DATA_RELEASE>/data_quality.json and conditions/data_quality.json. As
     build metadata, neither is in latest.json's or a release manifest's artifacts, the lists check_deployment.py,
     smoke_published.py, verify_release.py and the phone walk; latest.json's `sidecars` names both."""
     _write_quality(project, "2026-10-08T07:12:00Z")
@@ -802,7 +802,7 @@ def test_with_the_switch_on_main_uploads_the_writers_build_metadata_beside_the_v
     assert f"releases/{result['release']}/data_quality.json" in _keys(s3_client)
 
 
-# --- the hourly lane's data-quality file, put in place by its checks run (decision 110) ------------------------------
+# --- the hourly lane's data-quality file, put in place by its checks run ------------------------------
 
 #: The checks run's one dbt writer: build_marts.py --checks-only builds pub_conditions_data_quality and nothing else.
 CHECKS_RUN = ["model.ourhike.pub_conditions_data_quality"]

@@ -10,567 +10,310 @@
 
 The one home of the build order (pipeline/ELT.md, "Python steps, outside dbt"
 and "Running it"). CI's dbt job and scripts/test.sh call it with --fixtures.
+This file imports only the standard library, so it runs on either of CI's
+venvs; --dbt and --python name the interpreters for dbt and the steps.
 
 WHY MORE THAN ONE `dbt build`. A rule that stays Python runs as a step between
 dbt invocations: it reads a named intermediate and writes `derived.<table>`,
-which dbt reads back as a source (models/staging/derived/). A single
-`dbt build` would reach the first stg_derived__ model before any step had
-written its table, and fail. So:
+which dbt reads back as a source (models/staging/derived/). One `dbt build`
+would reach a stg_derived__ model before its step had run. So:
 
 1. `dbt seed`;
 2. stage A: everything not downstream of a `derived` source, except the pub_
-   writers and the evaluator package (CI runs it on its own, at severity
-   error);
+   writers and the evaluator package (CI runs that on its own);
 3. for each STEPS entry, in order: the step, then
    `dbt build -s source:derived.<its table>+`, less what a later step's table
-   also feeds, which waits for that step;
-4. the pub_ writers after every other model (`-s path:models/publish`): `dbt
-   build` tests each model after building it, so a writer built beside its
-   parents would write its file before a failing test upstream could stop it
-   (ELT.md, "Publish (reverse ETL)");
-5. Elementary's checks (`dbt test -s tag:elementary_check`), which every
-   build before leaves out: below, "ELEMENTARY'S CHECKS RUN AFTER THE
-   WRITERS", and in the hourly lane a run of their own after the build has
-   published, "THE HOURLY LANE'S CHECKS RUN APART";
-6. each source's freshness (`dbt source freshness`), then the lane's
-   data-quality file, which counts both: below, "EACH SOURCE'S FRESHNESS IS
-   MEASURED FOR THE DATA-QUALITY FILE" and "THE DATA-QUALITY FILE IS WRITTEN
-   LAST".
+   also feeds;
+4. the pub_ writers, after every other model, so a failing test upstream
+   stops a writer before it writes (ELT.md, "Publish (reverse ETL)");
+5. Elementary's checks ("ELEMENTARY'S CHECKS RUN AFTER THE WRITERS", or
+   "THE HOURLY LANE'S CHECKS RUN APART");
+6. each source's freshness, then the lane's data-quality file.
 
-Contracts stay enforced in every invocation. `dbt deps` is not here: CI and
-scripts/test.sh run it first, and a sandbox whose proxy cannot fetch the
-packages skips it (scripts/test.sh --no-dbt-deps).
+Contracts are enforced in every invocation. `dbt deps` is not here: CI and
+scripts/test.sh run it first.
 
 A LANE BUILDS ONLY ITS OWN NODES (--lane; ELT.md, "Every node carries its
-cadence"). A node's cadence is the fastest `meta.cadence` among the sources
-it reads, so `config.meta.cadence:hourly+` selects every node an hourly
-source reaches.
-- `monthly` (build-reference.yml) excludes every node an hourly or daily
-  source reaches, writers included: its warehouse holds only the monthly raw
-  tables, so those nodes would fail on a missing source or, if built, store
-  month-old closures (ELT.md's probe, measured on dbt-oss 2.0.5). A source
-  with no `meta.cadence` is built here, so an untagged source lands where
-  today's build puts it rather than nowhere.
-- `hourly` builds the seeds, every node an hourly or daily source reaches,
-  the hourly steps and what they unblock, then those nodes' writers. What
-  they read from the monthly lane comes through `--defer --state`; without
-  --state the build also takes every parent of those nodes (LANE_PARENTS),
-  so the warehouse must hold the monthly raw tables they read (the registry,
-  today).
+cadence"). A node's cadence is the fastest `meta.cadence` among the sources it
+reads, so `config.meta.cadence:hourly+` selects every node an hourly source
+reaches.
+- `monthly` (build-reference.yml) leaves out every node an hourly or daily
+  source reaches, writers included: its warehouse holds only monthly raw
+  tables. A source with no `meta.cadence` is built here.
+- `hourly` builds the seeds, every node an hourly or daily source reaches, the
+  hourly steps and what they unblock, then those nodes' writers. Monthly
+  parents come through `--defer --state`; without --state the build also
+  takes them (LANE_PARENTS), so the warehouse must hold their raw tables.
 - Each STEPS entry runs in its `lane`. After `dbt seed`, lane_problems()
-  refuses a step with no `step_<name>` exposure listing its inputs
-  (models/intermediate/*/_*__intermediate.yml) unless it `reads_no_model`, a
-  monthly step reading a node an hourly or daily source reaches, and a step
-  whose table feeds only the other lane's writers.
-- --without-step NAME leaves a step out with everything its table unblocks,
-  so those writers keep their last files (publish.py's `kept`): for an input
-  a run does not have, such as the weather squares the hourly production leg
-  lacks (publish-conditions.yml).
-With no --lane every step and node builds, as CI's fixture warehouse, which
-holds both lanes' tables, needs.
+  refuses a step with no `step_<name>` exposure listing its inputs (unless it
+  `reads_no_model`), a monthly step reading an hourly node, and a step whose
+  table feeds only the other lane's writers.
+- --without-step NAME leaves a step out with everything its table unblocks, so
+  those writers keep their last files (publish.py's `kept`).
+With no --lane every step and node builds, as CI's fixture warehouse needs.
 
 A MODEL TAGGED `builds_alone` BUILDS WITH NO OTHER MODEL BESIDE IT, so it has
-DuckDB's whole memory limit to itself. Monthly run 20 (refresh-reference.yml
-37296900535) failed at "what derived.poi_photos unblocks" with
-int_places__resolved and int_trail_network__cuts building side by side:
-"Out of Memory Error: failed to allocate data of size 16.0 MiB (12.5 GiB/12.4
-GiB used)" (its log, 2026-10-05). Alone was not enough: monthly run 21
-(37323395441) built each of them by itself, the rest of the step waiting on
-it, and each ran out the same way, so both queries were rewritten to hold
-less (each model's own header says how, and what it was measured on). That
-either now fits in the limit is @unvalidated until a monthly run passes that
-build; the tag stays, so neither shares the limit while that is unknown.
-dbt has no per-model setting that keeps two
-table models apart: `concurrent_batches` is a microbatch model's, about its
-own batches. So every dbt build here but the writers' and the hourly lane's
-is split into up to three, each keeping the build's selection and excludes:
-(a) the same command, `--exclude tag:builds_alone+` added, at --threads;
-(b) the tagged models, `-s <each -s item>,tag:builds_alone` (`-s
-    tag:builds_alone` for a build with no -s), at --threads 1;
-(c) what they feed, `-s <each -s item>,tag:builds_alone+` and `--exclude
-    tag:builds_alone` added, at --threads.
-Nothing in (a) reads a node of (b) or (c), since `+` takes every descendant,
-and (b) reads only what (a) built, unless a tagged model reads a model that
-(c) builds (an untagged descendant of another tagged one), or a test that (b)
-runs reads one: alone_problems() refuses both after `dbt seed`, naming them.
-Once `dbt seed` has written the manifest, main() plans again with it: a pass
-it shows selecting nothing is left out (selects_anything()), and a build
-whose pass (b) selects nothing runs whole, as it did before the split. That
-is because dbt 2.0.6 answers an empty selection with exit 0 and two
-warnings (dbt1092, dbt1601) only after reading the whole project: stage A's
-pass (b), which selects nothing, took 30.9 to 34.2 s three times over against
-the fixture warehouse (Measured 2026-10-05, in a 4-core sandbox), and the
-fixture build leaves 18 passes out. Over the real project with today's two
-tags, the split reaches one build, "what derived.poi_photos unblocks", in the
-monthly lane and in a build with no lane (plan() over `dbt parse`'s manifest,
-2026-10-05). The hourly lane never splits: publish-conditions.yml gives its
-build 10 minutes (6 until decision 103), and a dbt invocation on a runner
-spends about 9.4 s before its first node (run 20's step 13, from its start
-to its first result: Measured). alone_problems() refuses a tagged model an
-hourly or daily source reaches, whose tag that lane would ignore.
+DuckDB's whole memory limit. int_places__resolved and int_trail_network__cuts
+ran out of memory building side by side (refresh-reference.yml 37296900535,
+2026-10-05), and alone too, so both queries were rewritten to hold less.
+@unvalidated: that either now fits is settled by the next monthly build that
+passes; the tag stays until then. dbt has no per-model setting that keeps two
+table models apart, so every build here except the writers' and the hourly
+lane's is split into up to three passes, each keeping the build's selection:
+(a) the command with `--exclude tag:builds_alone+`, at --threads;
+(b) the tagged models (`-s <each -s item>,tag:builds_alone`), at one thread;
+(c) what they feed (`-s <each -s item>,tag:builds_alone+`, `--exclude
+    tag:builds_alone`), at --threads.
+alone_problems() refuses, after `dbt seed`, a tagged model that reads a model
+(c) builds, a test in (b) that reads one, and a tagged model an hourly source
+reaches. A pass that selects nothing is left out (selects_anything()): dbt
+2.0.6 takes 30.9 to 34.2 s to answer an empty selection (measured 2026-10-05).
+The hourly lane never splits: it has 10 minutes, and each dbt invocation costs
+about 9.4 s before its first node (measured, refresh-reference.yml run 20).
 
 THE PUB_ WRITERS BUILD ONE AT A TIME (--threads 1) in every lane but the
-hourly one. Monthly run 25 (refresh-reference.yml 37614075245) built every
-stage and then failed at "the pub_ writers" with pub_nearby_trails,
-pub_trail_graph, pub_trail_graph_geometry and pub_trail_graph_profile
-building side by side, each 9.4 to 9.9 s in: "Out of Memory Error: failed to
-allocate data of size 256.0 MiB (12.4 GiB/12.4 GiB used)" (its log,
-2026-10-07). Each of the four is one row holding a whole network-wide file
-as one string (nearby_trails.geojson was published at 228,820,578 bytes,
-artifactBudget.ts), which DuckDB holds in memory rather than spilling. That
-each fits the limit alone is @unvalidated: settled by the writers step of
-the next monthly run. One thread for every writer, rather than a
-builds_alone tag on the four: the other 38 writers' own times in run 25 sum
-to 48.3 s, against a monthly run of four hours or more, and a heavy
-writer added later is covered without anybody tagging it. The hourly lane
-keeps --threads: it writes only the files an hourly or daily source reaches,
-none of the four, inside publish-conditions.yml's 10 minutes.
+hourly one. Four network-wide writers (pub_nearby_trails and the three
+pub_trail_graph files) ran out of DuckDB's 12.4 GiB side by side
+(refresh-reference.yml 37614075245, 2026-10-07); each holds a whole file as one
+string. @unvalidated: that each fits alone is settled by the next monthly
+writers step. One thread for every writer rather than a tag on four: the other
+38 took 48.3 s together in that run, and a heavy writer added later is covered.
+The hourly lane keeps --threads: it writes none of the four.
 
-A FAILED dbt BUILD IS RETRIED, up to DBT_RETRIES (3) times, in every lane:
-`dbt retry --threads 1` after the build, then after each retry that fails,
-until one exits 0 (the maintainer, 2026-10-07, on monthly run 26: "I would
-expect the run to execute that if there is a failure up to 3 times", pointing
-at dbt's `retry` command; then "The hourly lane should get the same retry
-logic", and "do up to 3 retries. period"). Run 26's build job failed twice on
-nodes that run 25 had built: attempt 1 on int_places__resolved ("Invalid
-unicode (byte sequence mismatch) detected in segment statistics update"),
-which built in 3 m 18 s on attempt 2; attempt 2 out of DuckDB's 12.4 GiB with
-assert_every_elevation_sample_was_read_at_its_own_point,
-int_elevation__edge_samples and int_elevation__profile building side by side,
-as run 25 had built all three (refresh-reference.yml 37649648453 and
-37614075245, their logs, 2026-10-07). Measured on dbt 2.0.6 in a scratch
-project the same day: a retry builds only the nodes that failed and the ones
-they skipped, keeps the build's `-s` and `--exclude` (an excluded model stayed
-unbuilt), accepts `--indirect-selection` (retry_argv() passes the build's),
-exits 1 while one still fails and 0 once all pass, and exits 1 when there is
-nothing left to retry, so a retry never follows a pass. One thread, because
-both of run 26's failures were one node beside others. Each retry leaves
-run_results.json holding only its own nodes, so retry_failed_build() writes
-back every node the build ran with its last attempt's result: a test that
-warned and holds a source in the first attempt still holds it after a retry
-passes. A failure that is not chance, a SQL error, costs three more runs of
-its failed nodes and what they skipped, at one thread; what that costs a
-monthly run is @unvalidated, settled by the step times of the first run that
-retries one. The hourly lane gets no deadline either: a build that fails and
-retries three times can meet publish-conditions.yml's 10-minute step cap, which
-fails the job before "Publish to R2", so that hour publishes nothing new; how
-often is @unvalidated, settled by the summary's retry lines over the first
-weeks. A build that defers (`--defer --state`) is retried the same way:
-retry_argv() passes no `--state`, and after a deferred build failed, a plain
-`dbt retry` re-ran its failed model, the two models it skipped and their test
-(measured the same day; given `--state` itself, retry read that directory's
-run_results.json and found nothing to retry). Whether the retry still defers
-is @unvalidated; publish-conditions.yml passes no `--state`.
+A FAILED dbt BUILD IS RETRIED, up to DBT_RETRIES (3) times, in every lane
+(the maintainer, 2026-10-07: "do up to 3 retries. period"): `dbt retry
+--threads 1` until one exits 0. Measured on dbt 2.0.6 (2026-10-07): a retry
+builds only the failed nodes and those they skipped, keeps the build's `-s`
+and `--exclude`, accepts `--indirect-selection`, and exits 1 when nothing is
+left to retry. Each retry's run_results.json holds only its own nodes, so
+retry_failed_build() writes back every node with its last result. retry_argv()
+passes no `--state`: given it, retry reads that directory's run_results.json
+and finds nothing to retry. @unvalidated: whether a retry of a deferred build
+still defers, what retries cost a monthly run, and how often three retries
+push the hourly build past its 10-minute cap; each is settled by the run
+summary's retry lines over the first weeks.
 
-NOT dbt's `selectors.yml` (ELT.md's shape): dbt documents `--selector` as not
-combinable with `-s` or `--exclude`, which every invocation here carries, so a
-selector file would need one selector per invocation per lane. A lane is one
-more `--exclude` on each, and LANE_EXCLUDES is its one home. That 2.0.6 keeps
-dbt's rule is @unvalidated: the one probe (2026-10-02) named an undefined
-selector beside `--exclude`, and dbt crashed rather than answering. A probe
-with a defined selector beside `--exclude` would settle it.
+NOT dbt's `selectors.yml`: dbt documents `--selector` as not combinable with
+`-s` or `--exclude`, which every invocation here carries, so a lane is one
+more `--exclude` and LANE_EXCLUDES is its one home. @unvalidated for 2.0.6:
+a probe with a defined selector beside `--exclude` would settle it.
 
 A NEW STEP IS ONE STEPS ENTRY plus its script; nothing in CI or
-scripts/test.sh changes. After `dbt seed`, derived_source_problems() refuses
-a `derived` table no step writes, which would leave everything downstream of
-it unbuilt without one failing node, and a step writing a table no source
-declares.
+scripts/test.sh changes. After `dbt seed`, derived_source_problems() refuses a
+`derived` table no step writes, and a step writing a table no source declares.
 
 THE ROW HISTORY IS RESTORED FIRST AND SAVED LAST. The row-history snapshots
-(int_<mart>__history, one per mart, decision 57; macros/row_history.sql) are
-the only state a build carries from one run to the next, and the warehouse is
-rebuilt from raw every
-run, so `row_history.py restore` runs before `dbt seed` and `row_history.py
-save` after the writers and Elementary's checks, only when every command
-before it succeeded (the checks pass excepted, which never stops a build). The
-store is --history-url, else OURHIKE_HISTORY_URL. A store with no history
-yet is a cold start, and cold starts are allowed only:
-- under --fixtures with no store named, into a new temporary directory, so
-  CI and scripts/test.sh start history in every run and keep none;
-- for a store whose name (its URL's last part, `monthly` for
-  s3://<bucket>/history/monthly) row_history_stores.toml does not list as
-  started: its first run, said in a warning;
+(int_<mart>__history, one per mart; macros/row_history.sql) are the only state
+a build carries between runs, and the warehouse is rebuilt from raw every run,
+so `row_history.py restore` runs before `dbt seed` and `row_history.py save`
+after the writers and checks, only when every command before it succeeded.
+The store is --history-url, else OURHIKE_HISTORY_URL. A store with no history
+is a cold start, allowed only:
+- under --fixtures with no store named (a new temporary directory each run);
+- for a store row_history_stores.toml does not list as started (its first
+  run, said in a warning);
 - with --history-cold-start, by hand.
-Anything else with no history fails before dbt runs, because a silent cold
-start would date every row as first seen in this build. Without --fixtures a
-store must be named: there is no default that keeps history. The restore and
-the save run on --history-python (default: this interpreter), which needs
-DuckDB, and s3fs for an s3:// store: the extract's venv in a workflow.
-Every dbt command runs with TZ=UTC, so a TIMESTAMPTZ column is hashed in the
-same characters on every machine (macros/row_hash.sql), and with
-OURHIKE_BUILT_BY, the git commit and workflow run, which each snapshot
-version records as `_built_by` (never hashed), so a reader can tell a change
-upstream from a change to this project's rules.
-ELEMENTARY'S HISTORY RIDES IN THE SAME TWO COMMANDS (decision 102;
-row_history.py, "ELEMENTARY'S HISTORY"): the restore puts its five kept
-tables back before "Elementary's own tables" builds, so their incremental
-models add this build to them, and the save writes them out with the
-snapshots, keeping ELEMENTARY_KEEP_DAYS of the lane's builds (--keep-days).
-A store with no Elementary history yet may start it under the same three
-rules, against row_history_stores.toml's [elementary_started] rather than
-[started]: every store saved before decision 102 holds the snapshots and no
-Elementary history, which is its first run, not a loss.
+Anything else fails before dbt runs: a silent cold start would date every row
+as first seen in this build. The restore and save run on --history-python,
+which needs DuckDB, and s3fs for an s3:// store. Every dbt command runs with
+TZ=UTC, so a TIMESTAMPTZ hashes the same everywhere (macros/row_hash.sql), and
+with OURHIKE_BUILT_BY (commit and workflow run), which each snapshot version
+records as `_built_by`, never hashed.
+ELEMENTARY'S HISTORY RIDES IN THE SAME TWO COMMANDS (row_history.py,
+"ELEMENTARY'S HISTORY"): the restore puts its kept tables back before
+"Elementary's own tables" builds, and the save writes them out, keeping
+ELEMENTARY_KEEP_DAYS of builds (--keep-days). Its cold start follows the same
+rules against row_history_stores.toml's [elementary_started].
 
---no-history-save restores the history and builds with it, and saves
-nothing back, Elementary's history included, so a build known to lack inputs
-never joins its checks' training set either: for a build that knows some of
-its inputs are missing, so that a row's absence is never recorded as its
-removal. publish-conditions.yml passes it when the notices legs' served copy was not the newest
-(extract/_warehouse.py, "THE SERVED COPY"), because the closures and
-warnings marts then lack, or hold older, notices; saved, the history would
-close those rows and reopen them an hour later with a new `_changed_at`.
-What it costs is the date of a row that did change: it is dated by the next
-build that saves (Reasoned).
+--no-history-save restores and builds, and saves nothing back, so a build that
+knows some inputs are missing never records a row's absence as its removal.
+publish-conditions.yml passes it when the notices legs' served copy was not
+the newest (extract/_warehouse.py, "THE SERVED COPY"). The cost: a row that
+did change is dated by the next build that saves (Reasoned).
 
---history-on-failure degrade IS THE CONDITIONS LEGS' (the maintainer, by poll,
-2026-10-03): closures and warnings must still publish when their history
-cannot be restored. Then the restore's failure is printed as an error, every
-dbt command runs with OURHIKE_ROW_HISTORY=off and leaves the snapshots out,
-so the marts read their final intermediates with both dates null (unknown,
-never "new"), nothing is saved, and the build exits DEGRADED_EXIT once
-everything else has passed, so the workflow publishes and then goes red. A
-command that fails with that code itself is answered with 1, so the workflow
-never reads a failed build as a publishable one. The
-default, `fail`, is the monthly lane's: a restore that fails stops the build
-before dbt runs. Elementary's history fails the same way in each lane, with
-one difference degrade needs: row_history.py gets --elementary-on-failure
-degrade, and when only Elementary's part fails it still restores or saves
-the snapshots and exits ELEMENTARY_DEGRADED_EXIT (3). That is answered as
-part of the build held back, PARTIAL_EXIT, never as DEGRADED_EXIT: the row
-dates stand, Elementary's checks see no earlier build in that run or its
-history is not saved, and the workflow publishes and then goes red. A
-failure of Elementary's history never nulls a hiker's row dates.
+--history-on-failure degrade IS THE CONDITIONS LEGS' (the maintainer,
+2026-10-03): closures and warnings still publish when their history cannot be
+restored. The failure is printed as an error, every dbt command runs with
+OURHIKE_ROW_HISTORY=off, so both row dates are null (unknown, never "new"),
+nothing is saved, and the build exits DEGRADED_EXIT after everything else
+passed: the workflow publishes, then goes red. A command that itself exits
+with that code is answered with 1. The default, `fail`, is the monthly lane's.
+When only Elementary's part fails under degrade, row_history.py still
+restores or saves the snapshots and exits ELEMENTARY_DEGRADED_EXIT, answered
+as PARTIAL_EXIT: a failure of Elementary's history never nulls a row date.
 
-ONE SOURCE OR ONE WRITER NEVER STOPS THE REST (decision 81, the maintainer's
-poll of 2026-10-05: "Hold that source and publish the rest"; review finding
-ARCH-1 of PR #1805 — dlt → dbt re-platform as one go/no-go change). Five of
-the hourly soak's first ten runs published nothing because of one source:
-runs 525 to 527 and 530 on a test of one source's rows, run 531 on one
-writer's SQL after six other writers had written. Four things now answer
-PARTIAL_EXIT instead, once everything else has run, so the workflow publishes
-what was written and then turns the run red:
-- a test whose `meta` sets `holds_a_source` warned: it names rows that
-  int_closures__gate holds their source for (a club's wording in a published
-  column, a row outside its region box), and its rows are printed as a failed
-  test's are;
-- a model or data test of one generated club notice source failed in stage A
-  (a SQL error on one source's rows, or, in publish-conditions.yml run 599, a
-  key test naming a column the source's layer does not serve): that source's
-  raw tables are dropped from the warehouse and stage A runs once more, so
-  the gate holds the source as "not in this warehouse" and it carries its
-  last good rows. Any other failure in stage A stops a dev or CI build, as
-  before, and production and UA build on past it (below, "EVERY TEST HAS TWO
-  THRESHOLDS");
-- some pub_ writers failed and every failure in that dbt run is a writer's
-  own (its model, or a test or unit test of it): each failed writer's file is
-  removed from the processed directory, so a half-written or untested file
-  is never there to publish, and its key keeps the bucket's last copy. The
-  log says which files were written. publish.py, told so by
-  OURHIKE_BUILD_PARTIAL, keeps a failed writer's key rather than refusing
-  the whole publish;
-- a table the extract withdrew (WITHDRAWABLE: OurHike's field notes and
-  disputes, when the reader cannot see public.field_notes): it is not in the
-  warehouse, and its hand-staged base model reads source() directly, so
-  stage A used to fail on it and publish nothing, #922 — The whole
-  conditions bake has been failing hourly since field notes landed, so the
-  closures baseline is ageing, back on this path (review finding PY-2 of PR
-  #1805). Its source and everything below it are left out of every dbt
-  build; no mart reads either table.
-The row history is still saved: the marts passed their tests, and a source
-held this way carries its rows rather than losing them (Reasoned).
+ONE SOURCE OR ONE WRITER NEVER STOPS THE REST (the maintainer, 2026-10-05:
+"Hold that source and publish the rest"). Five of the hourly soak's first ten
+runs published nothing because of one source or one writer. These four answer
+PARTIAL_EXIT once everything else has run, so the workflow publishes what was
+written and then turns red:
+- a test whose `meta` sets `holds_a_source` warned: int_closures__gate holds
+  the rows' source, and the rows are printed as a failed test's are;
+- a model or test of one generated club notice source failed in stage A: that
+  source's raw tables are dropped and stage A runs again, so the gate holds
+  the source and it carries its last good rows;
+- some pub_ writers failed and every failure in that run is a writer's own:
+  each failed writer's file is removed, so a half-written file is never
+  published, and publish.py (told by OURHIKE_BUILD_PARTIAL) keeps that key's
+  last copy;
+- a table the extract withdrew (WITHDRAWABLE: field notes and disputes, when
+  the reader cannot see public.field_notes): its source and everything below
+  it are left out of every dbt build (#922 — The whole conditions bake has
+  been failing hourly since field notes landed, so the closures baseline is
+  ageing).
+The row history is still saved: a held source carries its rows (Reasoned).
 
-EVERY TEST HAS TWO THRESHOLDS, AND THE ENVIRONMENT DECIDES WHO STOPS
-(decision 204, the maintainer, 2026-10-15: "Every test should have both the
-warning and error thresholds. If an error like freshness would prevent
-building the model, then that should be enabled/disabled based on the
-environment. prod environment should ignore those, dev & ci should not.";
-"Build as proposed", his poll answer the same day). OURHIKE_DATA_ENV is the
-one switch (data_environment(), lib/data_env.py's three names; anything else
-is refused before anything runs), and dbt_project.yml reads the same
-variable for every test's severity:
-- production and UA (BUILDS_ON): a failing test warns, so dbt builds what is
-  below it, and a warning past the test's own `error_if` is reported here as
-  an error (relabelled_errors(): its rows printed, an `::error`, a line on
-  the run summary), then PARTIAL_EXIT, so the workflow publishes and turns
-  the run red. What still fails in dbt, a pub_ writer's test, a test whose
-  own YAML says `severity: error`, a unit test, a contract, a model's SQL or
-  a Python step, no longer stops the build: failure_holds() leaves the
-  failed node and everything it reaches out of every later dbt build, and a
-  step that reads any of it (steps_reading()) is left out as --without-step
-  leaves one, so each writer below keeps its last published file; the rest
-  builds and publishes, and the run goes red (PARTIAL_EXIT). A failed
-  writer's file is removed as decision 81 removes it. Elementary's checks
-  never change the exit (decisions 102 and 110), and their errors are an
-  `::error` on the run summary and a failure on the data-quality page.
-- dev and CI (unset, or `dev`): a failing test is an error and stops the
-  build as before, and a check past its error threshold fails the build at
-  its end, once the history is saved.
-dbt itself was measured on 2.0.6 in a scratch project (2026-10-15): a
-failing test at error skipped every model below its model, at warn the same
-failure built them and kept its count in run_results.json, and under warn
-`error_if` is not evaluated. A test whose meta says STAYS_AT_WARN (decision
-197's four closures key tests) warns everywhere and is never relabelled.
+EVERY TEST HAS TWO THRESHOLDS, AND THE ENVIRONMENT DECIDES WHO STOPS (the
+maintainer, 2026-10-15: "prod environment should ignore those, dev & ci should
+not"). OURHIKE_DATA_ENV is the one switch (data_environment(); a name
+lib/data_env.py does not know is refused), and dbt_project.yml reads it for
+every test's severity:
+- production and UA (BUILDS_ON): a failing test warns, so dbt builds below it,
+  and a warning past the test's own `error_if` is reported here as an error
+  (relabelled_errors(): rows, an `::error`, a summary line), then
+  PARTIAL_EXIT. What still fails in dbt (a writer's test, a test set to
+  `severity: error`, a unit test, a contract, a model's SQL, a Python step) no
+  longer stops the build: failure_holds() leaves the failed node and all it
+  reaches out of every later dbt build, a step reading any of it
+  (steps_reading()) is left out, each writer below keeps its last file, and
+  the rest publishes before the run goes red. Elementary's checks never change
+  the exit; their errors are an `::error` and a failure on the data-quality
+  page.
+- dev and CI (unset, or `dev`): a failing test stops the build, and a check
+  past its error threshold fails the build at its end, after the history is
+  saved.
+Measured on dbt 2.0.6 (2026-10-15): at warn a failing test still builds the
+models below it and keeps its count in run_results.json, and `error_if` is
+not evaluated. A test whose meta sets STAYS_AT_WARN warns everywhere and is
+never relabelled.
 
---dbt and --python differ in CI, where dbt is in the job's
-requirements-dbt.txt venv and the steps need requirements.txt's rasterio
-($RUNNER_TEMP/pipeline); this file imports only the standard library, so it
-runs on either. Every dbt command gets OURHIKE_WAREHOUSE and
-OURHIKE_PROCESSED_DIR as absolute paths, so dbt and the steps read one
-warehouse.
-
-ELEMENTARY'S TABLES ARE BUILT FIRST, right after the row history and
-Elementary's own history are restored (decision 102, ELT.md "Data quality
-(decision 102)"). Every dbt command here
-runs with OURHIKE_ELEMENTARY=true, dbt_project.yml's switch for Elementary's
-models and its two hooks, and the end-of-run hook writes each command's
-results into those tables. With a table missing, a command records nothing
-and still passes (measured 2026-10-08 on dbt 2.0.6), so `dbt run --select
+ELEMENTARY'S TABLES ARE BUILT FIRST, right after both histories are restored.
+Every dbt command runs with OURHIKE_ELEMENTARY=true (dbt_project.yml's switch
+for Elementary's models and hooks), and the end-of-run hook writes each
+command's results into those tables. With a table missing a command records
+nothing and still passes (measured 2026-10-08), so `dbt run --select
 package:elementary` comes before `dbt seed`, and stage A leaves the package
-out. That run also loads the tables describing the project itself, through
-their own post-hooks, which is why dbt_project.yml turns the end-of-run
-hook's copy of that work off. The pytest suites leave the switch off.
+out. The pytest suites leave the switch off.
 
-ELEMENTARY'S CHECKS RUN AFTER THE WRITERS, in a pass of their own, before the
-row history's save (decision 102, ELT.md "Data quality (decision 102)"):
-`dbt test -s tag:elementary_check` at one thread, lane-scoped as the writers
-are (the lane's excludes, a held step's and a withdrawn table's). Every check
-is tagged `elementary_check` (make_dbt_staging.py's raw_table_checks() on
-every raw table, the marts' YAML for the rest), and every dbt build before
-the pass leaves that tag out, so no check runs beside its model, where one
-that errored would fail the build. Since decision 204 each check has two
-thresholds at severity error (make_dbt_staging.py's elementary_check_config()):
-a warning where Elementary flags a point or a column was added, an error past
-6 deviations and 50% from the usual value, or a column removed or retyped. The
-pass never changes a production or UA build's exit and never stops a
-publish; the data-quality file reads its warnings and failures, and a check
-past its error threshold is one `::error` annotation (checks_report()). In
-dev and CI a check that failed or could not run fails the build at its end
-(below, "EVERY TEST HAS TWO THRESHOLDS"). A check that errors, or a pass that
-ends without results or selects none, is named in the log with one
-`::warning` annotation, and the build goes on to save its history. It is never retried: `dbt retry` follows
-a build that failed, whose nodes a publish needs, and a check is no such node
-(Reasoned; the maintainer's three retries were asked of builds). The checks
-on a raw table the warehouse does not hold are left out (absent_sources()),
-because they would error on an absence the extract has already reported. The
-monthly lane's pass trains on MONTHLY_TRAINING_DAYS, given as --vars.
-Nearly all of the pass's time is Elementary's own work while dbt compiles each
-check (it queries the table, stores the metrics and scores them, before the
-test's one select runs), so the pass grows with the number of checks and
-hardly with their kind, and not with --threads: 0.32 to 0.35 s of CPU a check
-and about 20 s a pass (measured 2026-10-08 on the fixtures in a 4-CPU
-sandbox: the monthly lane's 917 checks took 314 s of CPU and 295 s of wall on
-a quiet machine; under other builds' load the hourly lane's 1,041 took 381 s
-and 485 s, 280 of them 117 s and 189 s, and all 1,041 at four threads 407 s
-in 390 s; dbt timed the tests themselves at 5 to 22 s a pass). The checks
-are enabled only where they are needed, for Elementary's own tables and for
-the pass, and only in a build that runs them (CHECKS_SWITCH), because enabled
-they cost every dbt command too: `dbt parse` with Elementary on took 16.9 to
-17.5 s of CPU with the 1,979 enabled against 12.0 to 12.8 s without them,
-alternated three times the same day, and 13.9 to 16.8 s with them disabled.
-The hourly lane, which runs none, took 406 s of CPU against 347 s before the
-checks with them enabled, 86 s against 47 s of its Elementary tables' wall
-in loading dbt_tests, and 384 s against 359 s with them disabled (two runs,
-each beside a build of the commit before, the same day). CI's fixture build
-with every check runs the 1,949 whose tables its warehouse holds: 718 s and
-802 s of wall in two builds in that sandbox, about 650 to 700 s of CPU by the
-figures above, against the 253 to 428 s its whole build_marts.py took on
-runners before the checks (ELT.md, "What step 1 measured").
+ELEMENTARY'S CHECKS RUN AFTER THE WRITERS, in a pass of their own before the
+history is saved: `dbt test -s tag:elementary_check` at one thread, scoped as
+the writers are. Every check carries that tag (make_dbt_staging.py) and every
+build before the pass leaves it out, so no check runs beside its model. Each
+check warns where Elementary flags a point or an added column, and errors past
+6 deviations and 50% from the usual value, or on a column removed or retyped
+(make_dbt_staging.py's elementary_check_config()). In production and UA the
+pass never changes the exit; in dev and CI a check that failed or could not
+run fails the build at its end. A check that errors, or a pass with no
+results, is one `::warning`, and the build goes on. Checks are never retried:
+a retry is for nodes a publish needs (Reasoned). Checks on a raw table the
+warehouse lacks are left out (absent_sources()). The monthly pass trains on
+MONTHLY_TRAINING_DAYS. The checks are switched on (CHECKS_SWITCH) only in the
+two commands that need them, because enabled they slow every dbt command:
+`dbt parse` took 16.9 to 17.5 s of CPU with them against 12.0 to 12.8 s
+without (measured 2026-10-08). A pass costs about 0.33 s of CPU a check,
+whatever --threads (measured 2026-10-08 on the fixtures).
 
-A PULL REQUEST RUNS THE CHECKS ITS CHANGE REACHES (decision 111, the
-maintainer's poll of 2026-10-08: "Run all of them that have been modified,
-and downstream models"; --checks-base). Given the base commit's dbt project
-directory, parsed with Elementary's two switches on into its own target/,
-the pass selects `tag:elementary_check,state:modified+` with `--state` at
-that target/: the checks on every node dbt finds changed against the base,
-and on every node below one. It runs every check instead, and says why in
-the log (checks_base_problems()), when no base is given (CI's dbt job gives
-none on a push to main, a merge-queue entry, or a base that would not parse,
-and says which), when the base's manifest is missing, when dbt_project.yml,
-packages.yml or package-lock.yml differs from the base's, or when any macro's
-SQL does: dbt 2.0.6's state comparison reads neither a var nor a macro.
-Measured 2026-10-08 with `dbt ls` against this project, its base parsed from
-this commit: no change selected 0 of the project's 1,979 checks (a fixture
-build runs the 1,949 whose tables its warehouse holds), and a comment added
-to closures.sql the 6 on that mart (its pub_ writers below it carry none);
-anomaly_sensitivity moved from 3 to 4 in dbt_project.yml, a comment added to
-macros/elementary_overrides.sql, and one added to Elementary's own
-test_volume_anomalies.sql each selected 0. A comment added to
-_warnings__models.yml beside closures.sql's added nothing to those 6
-(2026-10-09), so a comment in a models YAML file is no change. In a fixture
-build with that closures.sql comment (2026-10-09, the shared 4-core sandbox,
-under the heavy lock) the log named the base, and the pass ran those 6,
-every one passing, in 27.5 s of a 663.4 s build, where every check took
-718 s and 802 s in two earlier builds there. Two bases are no base: one
-parsed with the switches off, as CI's contract-versions step parses it,
-reads every check as new (1,979 of 1,979), and so does one parsed against a
-warehouse file of another name, since the file's name is every node's
-database (1,979 of 1,979; its folder, OURHIKE_PROCESSED_DIR,
-OURHIKE_BUILT_BY, OURHIKE_BUILD_STARTED_AT and TZ moved none), so the base
-is parsed against the build's own warehouse path. A selection that reaches
-no check is an answer, said in the log without an annotation. Only a build
-with no lane takes a base: each lane runs every check it has.
+A PULL REQUEST RUNS THE CHECKS ITS CHANGE REACHES (--checks-base; the
+maintainer, 2026-10-08: "Run all of them that have been modified, and
+downstream models"). Given the base commit's dbt project, parsed with
+Elementary's two switches on and against the build's own warehouse path (the
+file's name is every node's database), the pass selects
+`tag:elementary_check,state:modified+` with `--state` at the base's target/.
+It runs every check instead, and says why (checks_base_problems()), when no
+base is given, the base's manifest is missing, or dbt_project.yml,
+packages.yml, package-lock.yml or any macro differs: dbt 2.0.6's state
+comparison reads neither a var nor a macro. Measured 2026-10-08 with `dbt ls`:
+no change selected 0 of 1,979 checks; a comment in closures.sql selected the 6
+on that mart; a comment in a models YAML file selected none. Only a build with
+no lane takes a base.
 
-A PULL REQUEST BUILDS ONLY WHAT CHANGED SINCE MAIN'S LAST BUILD (decision 210,
-the maintainer's poll of 2026-10-15: "In this PR anyway"; --state-base). This
-build took 16 min 7 s of CI's dbt job on 2a826f01 (Pipeline tests run
-38773605297, its step "dbt build, the Python steps and the pub_ writers"), on
-every pull request. A push to main now keeps its fixture warehouse and the
-manifest it was built with in the Actions cache, and a pull request whose
-change state_base.py lets through (its docstring has the rules) moves that
-warehouse to --warehouse, loads the fixtures' raw tables into it as every
-build does, and passes the cached manifest's directory as --state-base. Then:
-- right after `dbt seed`, `dbt ls -s state:modified --state <it>` lists what
-  dbt finds changed (STATE_LIST), and main() plans again with that list;
-- stage A selects `state:modified+` and every model or test whose SQL reads
-  the clock, with what they feed (clock_readers()): int_challenges__items and
-  the two closures models that read notice_build_date() answer from the day
-  they were built, so main's copy would publish main's day;
-- each Python step still runs. What its table unblocks is built whole when
-  the step read an input that changed (changed_step_tables(): its
-  step_<name> exposure lists a node below what changed, below what reads the
-  clock, or below an earlier such step's table), and otherwise only where it
-  meets those;
-- the pub_ writers, Elementary's checks (with --checks-base, as before), the
-  sources' freshness and the data-quality file run as in any build, so every
-  phone file is written and the parity step compares each of them;
-- no --defer: every node this build leaves unselected is already in the
-  warehouse, at the relation its ref resolves to, because main built it there
-  in a file of the same name (the file's name is every node's database, as
-  the checks base above found), so a defer would point each ref where it
-  already reads;
-- the row history is neither restored nor saved: a restore replaces every
-  snapshot table, and each mart this build leaves alone would then read a
-  history it never rebuilt. The cached snapshots stay, so a snapshot this
-  build re-runs adds to the history main's build began, as a lane's does to
-  its store's: a column added to int_podcasts__final, built with its
-  snapshot over a state build's warehouse, joined the history and opened a
-  new version of each of its 71 rows, since the hash covers it (measured
-  2026-10-15 on dbt 2.0.6), where a full fixture build starts the history
-  with the column. Only `_changed_at` tells the two apart. Elementary's history
-  alone starts cold (row_history.py restore --elementary-only --cold-start),
-  as every fixture build's does, so no check compares this build with main's:
-  a schema check would otherwise fail a pull request that retypes a column,
-  which a full build passes;
-- the data-quality file counts the tests this build ran, fewer than a full
-  build's; it is page data, and no step of the job compares it.
+A PULL REQUEST BUILDS ONLY WHAT CHANGED SINCE MAIN'S LAST BUILD (--state-base;
+the maintainer, 2026-10-15). The full build took 16 min 7 s of CI's dbt job
+(Pipeline tests run 38773605297). A push to main caches its fixture warehouse
+and manifest; a pull request that state_base.py lets through (its docstring
+has the rules) reuses that warehouse, reloads the fixtures' raw tables, and
+passes the cached manifest as --state-base. Then:
+- after `dbt seed`, `dbt ls -s state:modified --state <it>` (STATE_LIST) lists
+  what changed, and main() plans again with that list;
+- stage A selects `state:modified+` plus every node whose SQL reads the clock
+  (clock_readers()), so no file publishes main's day;
+- each Python step still runs; what its table unblocks is built whole when the
+  step read a changed input (changed_step_tables()), otherwise only where it
+  meets a change;
+- the writers, checks, freshness and data-quality file run as in any build, so
+  parity compares every phone file;
+- no --defer: every unselected node is already in the warehouse, where main
+  built it;
+- the row history is neither restored nor saved: a restore would replace
+  snapshots this build does not rebuild. Elementary's history alone starts
+  cold, so no schema check compares this build with main's.
 plan() refuses --state-base with a lane, with --state, and outside
---fixtures; main() refuses it with a history store named or --checks-only,
-and stops after `dbt seed` when any macro differs from the cached manifest's
-(state_base.macro_problems(), which the workflow's decision asks first). A
-failure of one notice source in stage A stops a state build rather than
-being held: holding it would mean building again what that source feeds,
-which a state build did not select, and CI goes red on either exit.
+--fixtures; main() refuses it with a history store or --checks-only, and stops
+after `dbt seed` when a macro differs (state_base.macro_problems()). A failed
+notice source in stage A stops a state build rather than being held.
 
-THE HOURLY LANE'S CHECKS RUN APART, AFTER ITS BUILD HAS PUBLISHED (decision
-110, the maintainer's poll of 2026-10-08: "All of them, hourly. build a
-different workflow that kicks off after the actual build";
-HOURLY_LANE_CHECKS). Its 1,053 checks cost about 360 to 385 s of CPU by the
-figures above, 7.2 to 10.6 minutes on a runner that pays Elementary 1.2 to
-1.65 times what the sandbox did (ELT.md, "What step 1 measured"), where
-decision 103 gives the whole build step 10 minutes and the build took 244.6 s
-of them on a runner (Measured from the log's timestamps of
-publish-conditions.yml run 593, 37855544935, its UA leg on 2026-10-08, 13.8 s
-of it the data-quality pass), which leaves about 5.9 minutes for checks that
-need 7.2 to 10.6 (Reasoned). So `--lane
-hourly` builds, writes, saves its history and publishes with none of them,
-and writes no data-quality file, and `--lane hourly --checks-only` is the
-run that does both, over the warehouse the build left: check-conditions.yml,
-which publish-conditions.yml starts once its build has published, with the
-warehouse handed over through the leg's history store (hand_off.py). That
-run plans only these (plan_checks()):
-1. Elementary's history alone, restored from the store the build saved it
-   to (row_history.py restore --elementary-only), so its save, at the end,
-   builds on the build's;
-2. Elementary's own tables, with the checks' switch, so dbt_tests describes
-   each check the file counts;
-3. every check the lane has, as an in-build pass would select them;
-4. each source's freshness, on publish-conditions.yml's freshness step's own
-   selection (below, "EACH SOURCE'S FRESHNESS IS MEASURED FOR THE
-   DATA-QUALITY FILE");
-5. the lane's data-quality writer, counting the build's own results, the
-   checks' and the freshness run's, since OURHIKE_BUILD_STARTED_AT is the
-   build's;
+THE HOURLY LANE'S CHECKS RUN APART, AFTER ITS BUILD HAS PUBLISHED
+(HOURLY_LANE_CHECKS; the maintainer, 2026-10-08: "build a different workflow
+that kicks off after the actual build"). Its 1,053 checks need 7.2 to 10.6
+minutes on a runner, and the build step's 10 minutes leave about 5.9 after the
+build's 244.6 s (publish-conditions.yml run 37855544935, 2026-10-08;
+Reasoned). So `--lane hourly` builds, writes, saves and publishes with no
+checks and no data-quality file, and `--lane hourly --checks-only`
+(check-conditions.yml, started once the build has published, with the
+warehouse handed over by hand_off.py) runs only these (plan_checks()):
+1. Elementary's history alone, restored from the build's save;
+2. Elementary's own tables, with the checks' switch;
+3. every check the lane has;
+4. each source's freshness, on publish-conditions.yml's own selection;
+5. the lane's data-quality writer, counting the build's results with its own
+   (OURHIKE_BUILD_STARTED_AT is the build's);
 6. Elementary's history alone, saved back.
-What it needs of the build it reads from the build's record, the table
-BUILD_RECORD that every build of a lane whose checks run apart writes into
-its warehouse last (write_build_record()): when the build started, the
+What it needs of the build it reads from BUILD_RECORD, which such a build
+writes into its warehouse last (write_build_record()): when it started, the
 store it restored from, the steps it held, whether its row history was on,
-whether it saved Elementary's history, and when the notices copy it read
-began its run, if it read one (NOTICES_READ_AT_ENV). A build that saved none of it
-(--no-history-save, a restore that failed, or a save of Elementary's part
-that failed) leaves its warehouse's own Elementary tables, the history it
-restored with its own results added, to the checks, which then restore and
-save nothing either: the build's inputs were short, so neither part joins
-the training set. The checks run never touches a phone file, and its exits
-are the build's: PARTIAL_EXIT when Elementary's history was held back and
-the file written, and 1 when the file was not. Measured 2026-10-09 on the
-fixtures in the shared 4-core sandbox, one run of each: the hourly build took
-202.8 s and left a 257,699,840-byte warehouse holding its record, and the
-checks run over it took 362.8 s: Elementary's history restored from the
-build's save in 1.0 s, its tables with the checks' switch in 58.5 s, 1,041
-checks in 278.6 s, every one passing (the lane's own, less those on the 4
-raw tables the fixtures lack), the data-quality file in 23.2 s, counting
-1,801 checks, the build's own tests with them, and Elementary's history
-saved in 0.6 s, 418,698 bytes, its pointer naming the build's save as the
-one before.
+whether it saved Elementary's history, and when its notices copy was read
+(NOTICES_READ_AT_ENV). A build that saved no Elementary history leaves its
+own tables to the checks, which then restore and save nothing. The checks run
+never touches a phone file; it exits PARTIAL_EXIT when Elementary's history
+was held back and the file written, and 1 when the file was not. Measured
+2026-10-09 on the fixtures: the hourly build took 202.8 s, the checks run
+362.8 s (1,041 checks in 278.6 s).
 
-EACH SOURCE'S FRESHNESS IS MEASURED FOR THE DATA-QUALITY FILE (decision 203,
-the maintainer, 2026-10-15: freshness is OurHike's own last successful read of
-a source, in every lane). `dbt source freshness` runs right before the
-data-quality writer, in the build of a lane that writes its file there and in
-the hourly lane's checks run, and Elementary's end-of-run hook writes each
-source's result into its dbt_source_freshness_results, which
-macros/data_quality.sql counts as the file's freshness. Each source is measured
-by its own `loaded_at_query`, when the extract last read it or confirmed it
-unchanged (macros/last_read_or_confirmed_at.sql), against its own warn_after
-and error_after. What each run measures (freshness_selection()):
-- the hourly lane: publish-conditions.yml's freshness step's own selection,
-  `tag:conditions_job`, with `tag:notices_job` when the build read a notices
-  copy, which the build record says (its notices_read_at); without one the
-  warehouse holds none of the notices legs' run log, as that step says;
-- the monthly lane: every other source, less the Python steps' own tables
+EACH SOURCE'S FRESHNESS IS MEASURED FOR THE DATA-QUALITY FILE (the maintainer,
+2026-10-15: freshness is OurHike's own last successful read of a source, in
+every lane). `dbt source freshness` runs right before the data-quality writer,
+and Elementary's hook records each result, which macros/data_quality.sql
+counts. Each source is measured by its own `loaded_at_query`
+(macros/last_read_or_confirmed_at.sql) against its own warn_after and
+error_after. What each run measures (freshness_selection()):
+- hourly: publish-conditions.yml's own selection, `tag:conditions_job`, with
+  `tag:notices_job` when the build read a notices copy;
+- monthly: every other source, less the Python steps' tables
   (FRESHNESS_LEFT_OUT);
-- a build with no lane, CI's fixtures: every source but those, and under
-  --fixtures the PDF notices, which fixture mode never lands, as CI's own
-  freshness command leaves them out.
-NEVER THE BUILD'S EXIT, AND NEVER RETRIED. A source past its error limit is a
-`failed` freshness check on the page and a line in the log, never an
-annotation: in the hourly lane publish-conditions.yml's own freshness step is
-the one that turns a run red (decision 100, "Red in the data source freshness
-feature of dbt. Not blocking a datasource pipeline"), and the monthly lane's
-measure is page data. A run that measured nothing leaves the file's freshness
-at none, and says so (freshness_report()). Measured 2026-10-15 on dbt 2.0.6,
-Elementary 0.26.0 and DuckDB, against a warehouse holding Elementary's tables
-and a run log, with this project's vars (disable_dbt_artifacts_autoupload
-true): the hook wrote one row per source measured, its status and the two
-instants, and left max_loaded_at_time_ago_in_s null on every row, where dbt's
-own target/sources.json gave the age, so macros/data_quality.sql works the
-age out from the two instants.
+- no lane (CI's fixtures): every source but those, and under --fixtures the
+  PDF notices, which fixtures never land.
+Freshness never changes the build's exit and is never retried: in the hourly
+lane publish-conditions.yml's own freshness step turns a run red. A run that
+measured nothing says so (freshness_report()). Measured 2026-10-15 on
+Elementary 0.26.0: the hook leaves max_loaded_at_time_ago_in_s null, so
+macros/data_quality.sql works the age out from the two instants.
 
-THE DATA-QUALITY FILE IS WRITTEN LAST (decision 102, step 4): the lane's
-DATA_QUALITY_WRITERS entry, pub_data_quality or pub_conditions_data_quality,
-in a pass of its own after the writers and Elementary's checks, before the
-row history is saved, because it reads what those checks recorded. The
-writers' pass leaves both out. ONE WRITER OF EACH FILE: a lane whose checks
-run apart writes its file in that run and never in its build, so the hourly
-file always counts a build and its checks, never a build alone. Every dbt
-command gets OURHIKE_BUILD_STARTED_AT (UTC, to the second), which tells the
-file this build's results from the history in Elementary's tables
-(macros/data_quality.sql); the checks run takes the build's. Two rules keep
-the pass from touching what hikers get:
-- publish.py reads the run results of the writers' run as the proof that a
-  phone file was written (publish.collect_dbt_phone_files), and every later
-  dbt command writes its own over them, so the writers' are kept aside as
-  writers_run_results.json, beside run_results.json, and written back after
-  this pass with its own results added. With them lost, publish.py would read
-  every phone file but this one as kept, and publish nothing else, quietly.
-- a failed pass never stops the build or changes its exit: the file is page
-  data, not a phone file (decision 102: the checks "never block a publish").
-  Its file is removed, the writers' run results are written back without it,
-  so publish.py keeps the bucket's last copy, and an ::error says so.
-The checks run has no writers' run before its pass, so the pass's own results
-are what `publish.py --sidecar` reads there, and the file being that run's one
-product, a failed pass removes it and ends the run with 1, after the save.
+THE DATA-QUALITY FILE IS WRITTEN LAST: the lane's DATA_QUALITY_WRITERS entry,
+in a pass of its own after the writers and checks, before the history is
+saved, because it reads what the checks recorded. ONE WRITER OF EACH FILE: a
+lane whose checks run apart writes it only in the checks run, so the hourly
+file always counts a build and its checks. OURHIKE_BUILD_STARTED_AT tells the
+file this build's results from older ones. Two rules keep the pass away from
+what hikers get:
+- publish.py reads the writers' run results as proof that a phone file was
+  written, and every later dbt command overwrites run_results.json, so the
+  writers' are kept as writers_run_results.json and written back after this
+  pass with its results added;
+- a failed pass never stops the build or changes its exit (the checks "never
+  block a publish"): its file is removed, so publish.py keeps the last copy,
+  and an ::error says so.
+In the checks run the file is the run's one product, so a failed pass removes
+it and ends the run with 1, after the save.
 """
 
 from __future__ import annotations
@@ -621,9 +364,8 @@ MONTHLY_TRAINING_DAYS = 400
 #: build with no lane), or APART, a run of their own over the warehouse the build left, after the build has published
 #: (--checks-only; the module docstring, "THE HOURLY LANE'S CHECKS RUN APART").
 IN_BUILD, APART = "in the build", "apart"
-#: The hourly lane's answer: APART, every one of its checks every hour (decision 110, the maintainer's poll of
-#: 2026-10-08: "All of them, hourly. build a different workflow that kicks off after the actual build"), because they
-#: take longer than decision 103's 10-minute build step has left (the module docstring has the sums).
+#: The hourly lane runs every check every hour, APART, because they take longer than its 10-minute build step has
+#: left (the module docstring has the sums).
 HOURLY_LANE_CHECKS = APART
 #: The table a build whose lane's checks run apart writes into its warehouse last, for the checks run to read: what
 #: that run needs of the build (write_build_record()). Not a dbt schema, so no dbt command touches it.
@@ -739,14 +481,14 @@ class Step:
 #: The Python steps, in the order they run (pipeline/ELT.md, "Python steps,
 #: outside dbt", has the four planned and why each stays Python).
 STEPS: list[Step] = [
-    # Decisions 212 and 213 (#1801 — The junction graph routes hikers onto the
-    # Tuscarora's Doll Ridge section, which PATC says is closed for loss of
-    # landowner permission): the network lines an organization's own notice
-    # closes by naming their section, from the conditions/notices.json the
-    # hourly lane published, which the monthly lane reads from the bucket
-    # (OURHIKE_DATA_ENV and DATA_BASE_URL); under --fixtures,
+    # The network lines an organization's own notice closes by naming their
+    # section (#1801 — The junction graph routes hikers onto the Tuscarora's
+    # Doll Ridge section, which PATC says is closed for loss of landowner
+    # permission), from the conditions/notices.json the hourly lane published;
+    # the monthly lane reads it from the bucket, --fixtures from
     # make_dbt_fixtures.py's copy. FIRST: its table reaches the network lines,
-    # which OSM water's reach (step_osm_water_grade's input) and the graph read. No file closes nothing, and never stops the build.
+    # which OSM water's reach and the graph read. No file closes nothing and
+    # never stops the build.
     Step(
         name="step_section_closures",
         table="section_closures",
@@ -859,10 +601,8 @@ STEPS: list[Step] = [
         lane=HOURLY,
         reads_no_model=True,
     ),
-    # Decision 187 (S6, the maintainer's poll of 2026-10-11): the release's trail
-    # lines whose box meets an area closure's, for
-    # int_closures__area_trail_cuts to cut, the A.T.'s own among them since
-    # decision 192. The hourly lane reads the lines
+    # The release's trail lines (the A.T.'s among them) whose box meets an area
+    # closure's, for int_closures__area_trail_cuts to cut. The hourly lane reads the lines
     # prepare_closure_trail_lines.py prepared once per release, which
     # publish-conditions.yml restores from the cache; with none it lands no
     # row and warns, and only the area closures miss that hour. Under
@@ -942,8 +682,8 @@ PUBLISHABLE_EXITS = (DEGRADED_EXIT, PARTIAL_EXIT, DEGRADED_PARTIAL_EXIT)
 #: How much older than the writers' run a file may look and still count as written by it: publish.py's
 #: WRITER_CLOCK_SLACK_S, for the same filesystems, @unvalidated there.
 WRITER_CLOCK_SLACK_S = 2.0
-#: THE A.T. PROFILE'S NULL SHARE IN FIXTURE MODE. dbt_project.yml's var elevation_profile_max_null_share (decision
-#: 194: above it, pub_elevation_profile's and pub_elevation_profile_v2's error-level test fails each writer, so the
+#: THE A.T. PROFILE'S NULL SHARE IN FIXTURE MODE. dbt_project.yml's var elevation_profile_max_null_share (above
+#: it, pub_elevation_profile's and pub_elevation_profile_v2's error-level test fails each writer, so the
 #: bucket's last good copy stays) reads this variable, 0.01 when it is unset. make_dbt_fixtures.py's DEM leaves 8 of
 #: the fixture profile's 45 samples null on purpose, two in the tile's nodata rows and six past its edge
 #: (tests/test_dbt_elevation_parity.py, test_the_fixture_dem_gives_the_fixture_profile_both_kinds_of_gap), which 1%
@@ -954,8 +694,8 @@ PROFILE_NULL_SHARE_VARIABLE = "OURHIKE_ELEVATION_PROFILE_MAX_NULL_SHARE"
 FIXTURE_PROFILE_MAX_NULL_SHARE = "0.2"
 #: The `meta` key of a test whose warning means int_closures__gate held a source for the rows it returns.
 HOLDS_A_SOURCE = "holds_a_source"
-#: The `meta` key of a test that warns in every environment and is never reported as an error: decision 197's four
-#: closures key tests, the maintainer's "Keep warn, a recorded exception" (seeds/model_key_exceptions.csv).
+#: The `meta` key of a test that warns in every environment and is never reported as an error: the four closures key
+#: tests recorded as exceptions in seeds/model_key_exceptions.csv.
 STAYS_AT_WARN = "stays_at_warn"
 #: The module docstring, "EVERY TEST HAS TWO THRESHOLDS, AND THE ENVIRONMENT DECIDES WHO STOPS": the data environments
 #: (lib/data_env.py's names) whose build goes on past a failure, as dbt_project.yml's switch makes a failing test warn.
@@ -966,8 +706,7 @@ THRESHOLD = re.compile(r"\s*(>=|<=|!=|<>|==|=|>|<)\s*(-?[0-9]+(?:\.[0-9]+)?)\s*"
 NOTICE_READERS = DBT_DIR / "seeds" / "notice_readers.csv"
 #: THE HAND-STAGED RAW TABLES A CONDITIONS LEG MAY WITHDRAW, each with its dbt source: OurHike's field notes and
 #: disputes, the ConditionsQuery tables whose database table export_conditions.py's PENDING_READER_SETUP lets go
-#: missing. Their base models read source() directly, so a withdrawn one fails stage A (review finding PY-2 of PR
-#: #1805). Named here because this file imports only the standard library; tests/test_build_marts.py holds it against
+#: missing. Their base models read source() directly, so a withdrawn one would fail stage A. Named here because this file imports only the standard library; tests/test_build_marts.py holds it against
 #: PENDING_READER_SETUP.
 WITHDRAWABLE = {"raw_ourhike__notes": "ourhike", "raw_ourhike__disputes": "ourhike"}
 #: extract/_run.py's RUNS_TABLE and UNAVAILABLE, as extract/_warehouse.py loads the run log into the warehouse.
@@ -1448,7 +1187,7 @@ def plan_checks(
     after = ("--indirect-selection", "cautious")
     held = tuple(f"source:{DERIVED_SOURCE}.{step.table}+" for step in steps if step.lane != lane or step.name in without)
     held += tuple(f"source:{WITHDRAWABLE[table]}.{table}+" for table in withdrawn)
-    # What the build held back for a failure (decision 204's failure_holds()): checked by nothing, as it built nothing.
+    # What the build held back for a failure (failure_holds()): checked by nothing, as it built nothing.
     held += tuple(record.get("held_nodes") or ())
     no_snapshots = (SNAPSHOTS,) if record.get("row_history") == "off" else ()
     runs = [
@@ -2243,7 +1982,7 @@ def checks_report(results: list[dict] | None, returncode: int, *, none_is_an_ans
     """What the log says about Elementary's checks pass, which never changes a production or UA build's exit (the module
     docstring, "ELEMENTARY'S CHECKS RUN AFTER THE WRITERS"): a count of each status, every check that warned, failed or
     errored by name, each failure's and error's first line cut at FAILED_VALUE_WIDTH, an annotation (`::error`) naming
-    the checks that finished past their error threshold (decision 204), and one (`::warning`) when any check errored or
+    the checks that finished past their error threshold, and one (`::warning`) when any check errored or
     the pass ended without results. No check's rows: Elementary keeps none (dbt_project.yml's test_sample_row_count).
     `none_is_an_answer` for a pass that selects what a change reaches ("A PULL REQUEST RUNS THE CHECKS ITS CHANGE
     REACHES"): a change that reaches no check selects none, which is said without an annotation, and so is a pass
@@ -2286,7 +2025,7 @@ def checks_report(results: list[dict] | None, returncode: int, *, none_is_an_ans
         shown = ", ".join(failing[:10]) + (f" and {len(failing) - 10} more" if len(failing) > 10 else "")
         lines.append(
             f"::error title=Elementary's checks past their error threshold::{len(failing)} check(s) failed: {shown}. "
-            "An anomaly past 6 deviations and 50% from its usual value, or a column removed or retyped (decision 204). "
+            "An anomaly past 6 deviations and 50% from its usual value, or a column removed or retyped. "
             "Production and UA build and publish on, and the page counts it; dev and CI fail the build at its end."
         )
     if errored or returncode != 0:
@@ -2295,7 +2034,7 @@ def checks_report(results: list[dict] | None, returncode: int, *, none_is_an_ans
             f"::warning title=Elementary's checks errored::{len(errored)} check(s) errored (exit {returncode})"
             + (f": {shown}" if shown else "")
             + ". A check that errors stops nothing in production and UA: the build, its exit and its publish go on, and "
-            "the page counts it. Dev and CI fail the build at its end (decision 204)."
+            "the page counts it. Dev and CI fail the build at its end."
         )
     return lines
 
@@ -2555,7 +2294,76 @@ def _resolved(value: Path | str | None, variable: str, default: Path) -> Path:
     return default
 
 
-def main(argv: list[str] | None = None) -> int:
+def _run_env(files: dict[str, str], record: dict, fixtures: bool) -> dict[str, str]:
+    """The environment every command of this build runs with: this process's, the warehouse and processed paths,
+    TZ=UTC, the build's identity and start, and Elementary's switch, less what each Run gives itself."""
+    env = {
+        **os.environ,
+        **files,
+        "TZ": "UTC",
+        "OURHIKE_BUILT_BY": built_by(os.environ),
+        "OURHIKE_BUILD_STARTED_AT": record.get("started_at") or build_started_at(),
+        **ELEMENTARY_SWITCH,
+    }
+    for name, _ in CHECKS_SWITCH:
+        env.pop(name, None)  # the checks' switch is each Run's own to give (Run.env), never inherited by every command
+    # Fixture mode's own A.T. profile null share, and no other build's (FIXTURE_PROFILE_MAX_NULL_SHARE says why).
+    env.pop(PROFILE_NULL_SHARE_VARIABLE, None)
+    if fixtures:
+        env[PROFILE_NULL_SHARE_VARIABLE] = FIXTURE_PROFILE_MAX_NULL_SHARE
+        print(f"-- build_marts: {PROFILE_NULL_SHARE_VARIABLE}={FIXTURE_PROFILE_MAX_NULL_SHARE} (the fixture profile's gaps)")
+    if record.get("row_history") == "off":
+        env["OURHIKE_ROW_HISTORY"] = "off"  # as the build's dbt commands ran, so the project renders as it did there
+    return env
+
+
+def _report_warnings(
+    results: dict | None,
+    warehouse: Path,
+    results_since: float,
+    *,
+    environment: str,
+    history_off: bool,
+    relabelled: dict[str, str],
+    summary: list[str],
+    partial: list[str],
+) -> None:
+    """After a dbt build that passed, or that a build going on past failures ran: name each test that warned past its
+    own error_if as an error, and each test that held a source for its rows, adding to `relabelled`, `summary` and
+    `partial` (the module docstring, "EVERY TEST HAS TWO THRESHOLDS" and "ONE SOURCE OR ONE WRITER NEVER STOPS THE
+    REST"). A test already named by an earlier build is not named again."""
+    if results is None:
+        return
+    # A warning past its own error_if is an error, reported here and red after the publish.
+    if errors := relabelled_errors(results, _read_manifest(), history_off=history_off):
+        errors = {test: why for test, why in errors.items() if test not in relabelled}
+        relabelled.update(errors)
+        for line in failed_test_rows(warehouse, results_since, statuses=("warn",), only=set(errors)):
+            print(line, flush=True)
+        for test, why in sorted(errors.items()):
+            print(
+                f"::error title=A test past its error threshold::{_name(test)} warned with {why}, so it is "
+                f"an error. {data_env.ENVIRONMENT_VAR}={environment} builds on past it, "
+                "and the run goes red after the publish.",
+                flush=True,
+            )
+            summary.append(f"- error past its threshold: `{_name(test)}`, {why}")
+        if errors:
+            partial.append(f"{len(errors)} test(s) past their error threshold")
+    if holds := source_holds(results, _read_manifest()):
+        for line in failed_test_rows(warehouse, results_since, statuses=("warn",), only=holds):
+            print(line, flush=True)
+        for test in sorted(holds):
+            print(
+                f"::error title=A source held for its rows::{test} warned: int_closures__gate holds the source "
+                "of each row it names, which carries its last good rows while every other source publishes. "
+                "The run goes red afterwards.",
+                flush=True,
+            )
+        partial.append(f"{len(holds)} test(s) holding a source")
+
+
+def _parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(description=__doc__.split("\n", 1)[0])
     parser.add_argument("--fixtures", action="store_true", help="point every step at make_dbt_fixtures.py's inputs")
     parser.add_argument("--dbt", default="dbt", help="the dbt executable (default: dbt, from PATH)")
@@ -2616,9 +2424,14 @@ def main(argv: list[str] | None = None) -> int:
         "--state-base",
         type=Path,
         help="no lane, --fixtures: the directory holding the manifest.json of main's build, whose warehouse is --warehouse; "
-        "only what changed since, and what it reaches, is built again (decision 210)",
+        "only what changed since, and what it reaches, is built again",
     )
     parser.add_argument("--dry-run", action="store_true", help="print the commands and run none")
+    return parser
+
+
+def main(argv: list[str] | None = None) -> int:
+    parser = _parser()
     args = parser.parse_args(argv)
 
     paths = Paths(
@@ -2629,7 +2442,7 @@ def main(argv: list[str] | None = None) -> int:
     checks_only = args.checks_only
     record: dict = {}
     try:
-        # Decision 204's switch, read as dbt_project.yml reads it (data_environment()).
+        # The environment switch, read as dbt_project.yml reads it (data_environment()).
         environment = data_environment(os.environ)
         history, notice = resolve_history(
             args.history_url,
@@ -2693,23 +2506,7 @@ def main(argv: list[str] | None = None) -> int:
     files = {"OURHIKE_WAREHOUSE": str(paths.warehouse), "OURHIKE_PROCESSED_DIR": str(paths.processed_dir)}
     # TZ=UTC and OURHIKE_BUILT_BY: the module docstring, "THE ROW HISTORY IS RESTORED FIRST AND SAVED LAST";
     # OURHIKE_BUILD_STARTED_AT: "THE DATA-QUALITY FILE IS WRITTEN LAST", the build's own in its checks run.
-    env = {
-        **os.environ,
-        **files,
-        "TZ": "UTC",
-        "OURHIKE_BUILT_BY": built_by(os.environ),
-        "OURHIKE_BUILD_STARTED_AT": record.get("started_at") or build_started_at(),
-        **ELEMENTARY_SWITCH,
-    }
-    for name, _ in CHECKS_SWITCH:
-        env.pop(name, None)  # the checks' switch is each Run's own to give (Run.env), never inherited by every command
-    # Fixture mode's own A.T. profile null share, and no other build's (FIXTURE_PROFILE_MAX_NULL_SHARE says why).
-    env.pop(PROFILE_NULL_SHARE_VARIABLE, None)
-    if args.fixtures:
-        env[PROFILE_NULL_SHARE_VARIABLE] = FIXTURE_PROFILE_MAX_NULL_SHARE
-        print(f"-- build_marts: {PROFILE_NULL_SHARE_VARIABLE}={FIXTURE_PROFILE_MAX_NULL_SHARE} (the fixture profile's gaps)")
-    if record.get("row_history") == "off":
-        env["OURHIKE_ROW_HISTORY"] = "off"  # as the build's dbt commands ran, so the project renders as it did there
+    env = _run_env(files, record, fixtures=args.fixtures)
     print("-- build_marts: " + " ".join(f"{name}={value}" for name, value in files.items()), flush=True)
     print(f"-- build_marts: OURHIKE_BUILT_BY={env['OURHIKE_BUILT_BY']}", flush=True)
     # The module docstring, "EVERY TEST HAS TWO THRESHOLDS, AND THE ENVIRONMENT DECIDES WHO STOPS".
@@ -2718,10 +2515,10 @@ def main(argv: list[str] | None = None) -> int:
         f"-- build_marts: {data_env.ENVIRONMENT_VAR}={environment}: "
         + (
             "a failing test warns, a test past its error threshold is reported as an error, and the build goes on "
-            "past any failure, holding what it reaches, then goes red after the publish (decision 204)"
+            "past any failure, holding what it reaches, then goes red after the publish"
             if goes_on
             else "a failing test is an error, the build stops on it, and an Elementary check past its error threshold "
-            "fails the build at its end (decision 204)"
+            "fails the build at its end"
         ),
         flush=True,
     )
@@ -2744,7 +2541,7 @@ def main(argv: list[str] | None = None) -> int:
             f"-- build_marts: a state build from main's build, whose manifest is in {options['state_base']} and whose "
             f"warehouse is {paths.warehouse}: only what dbt lists as changed, what reads the clock and what a step "
             "wrote from a changed input are built again, with what each reaches; main's snapshots are kept, and "
-            "Elementary's history starts cold (decision 210)",
+            "Elementary's history starts cold",
             flush=True,
         )
     if args.no_history_save:
@@ -2784,7 +2581,7 @@ def main(argv: list[str] | None = None) -> int:
     if options["withdrawn"] and not checks_only:
         partial.append(f"{', '.join(options['withdrawn'])} withdrawn by the extract")
     stage_a_rerun = False
-    # Decision 204: the tests reported as errors past their error_if, the checks that failed, and the run summary's lines.
+    # The tests reported as errors past their error_if, the checks that failed, and the run summary's lines.
     relabelled: dict[str, str] = {}
     checks_failing: list[str] = []
     summary: list[str] = []
@@ -2923,38 +2720,19 @@ def main(argv: list[str] | None = None) -> int:
             if not goes_on:
                 return completed.returncode
         if is_build and (completed.returncode == 0 or goes_on):
-            results = read_run_results(results_since)
-            # Decision 204: a warning past its own error_if is an error, reported here and red after the publish.
-            history_off = env.get("OURHIKE_ROW_HISTORY") == "off"
-            if results is not None and (errors := relabelled_errors(results, _read_manifest(), history_off=history_off)):
-                errors = {test: why for test, why in errors.items() if test not in relabelled}
-                relabelled.update(errors)
-                for line in failed_test_rows(paths.warehouse, results_since, statuses=("warn",), only=set(errors)):
-                    print(line, flush=True)
-                for test, why in sorted(errors.items()):
-                    print(
-                        f"::error title=A test past its error threshold::{_name(test)} warned with {why}, so it is "
-                        f"an error (decision 204). {data_env.ENVIRONMENT_VAR}={environment} builds on past it, "
-                        "and the run goes red after the publish.",
-                        flush=True,
-                    )
-                    summary.append(f"- error past its threshold: `{_name(test)}`, {why}")
-                if errors:
-                    partial.append(f"{len(errors)} test(s) past their error threshold")
-            if results is not None and (holds := source_holds(results, _read_manifest())):
-                for line in failed_test_rows(paths.warehouse, results_since, statuses=("warn",), only=holds):
-                    print(line, flush=True)
-                for test in sorted(holds):
-                    print(
-                        f"::error title=A source held for its rows::{test} warned: int_closures__gate holds the source "
-                        "of each row it names, which carries its last good rows while every other source publishes. "
-                        "The run goes red afterwards.",
-                        flush=True,
-                    )
-                partial.append(f"{len(holds)} test(s) holding a source")
+            _report_warnings(
+                read_run_results(results_since),
+                paths.warehouse,
+                results_since,
+                environment=environment,
+                history_off=env.get("OURHIKE_ROW_HISTORY") == "off",
+                relabelled=relabelled,
+                summary=summary,
+                partial=partial,
+            )
         if completed.returncode != 0 and goes_on and (is_build or run.label in step_names):
             # The module docstring, "EVERY TEST HAS TWO THRESHOLDS, AND THE ENVIRONMENT DECIDES WHO STOPS": hold what
-            # failed and everything it reaches, a writer's file as decision 81 holds it, and build the rest.
+            # failed and everything it reaches, a failed writer's file removed, and build the rest.
             manifest = _read_manifest()
             if is_build:
                 results = read_run_results(results_since)
@@ -2978,7 +2756,7 @@ def main(argv: list[str] | None = None) -> int:
                 f"{data_env.ENVIRONMENT_VAR}={environment} builds on: what it reaches is held, so each writer below it "
                 "keeps its last published file"
                 + (f", the step(s) {', '.join(held_steps)} with it" if held_steps else "")
-                + ", everything else builds and publishes, and the run goes red afterwards (decision 204).",
+                + ", everything else builds and publishes, and the run goes red afterwards.",
                 flush=True,
             )
             summary.append(f"- held back for a failure in {run.label}: {what}")
@@ -3033,14 +2811,12 @@ def main(argv: list[str] | None = None) -> int:
                 flush=True,
             )
             runs = runs[:position] + again
-    write_step_summary(
-        ([f"**build_marts.py ({data_env.ENVIRONMENT_VAR}={environment}), decision 204**", ""] + summary) if summary else []
-    )
+    write_step_summary(([f"**build_marts.py ({data_env.ENVIRONMENT_VAR}={environment})**", ""] + summary) if summary else [])
     if checks_failing and not goes_on:
-        # Decision 204: dev and CI stop on an Elementary check past its error threshold, once everything else has run.
+        # Dev and CI stop on an Elementary check past its error threshold, once everything else has run.
         print(
             f"-- build_marts: exit 1: {len(checks_failing)} of Elementary's checks finished past their error threshold "
-            f"or could not run, which {data_env.ENVIRONMENT_VAR}={environment} does not build past (decision 204): "
+            f"or could not run, which {data_env.ENVIRONMENT_VAR}={environment} does not build past: "
             + ", ".join(checks_failing[:10])
             + (f" and {len(checks_failing) - 10} more" if len(checks_failing) > 10 else ""),
             flush=True,
@@ -3070,7 +2846,7 @@ def main(argv: list[str] | None = None) -> int:
                 "built_by": env["OURHIKE_BUILT_BY"],
                 "without": sorted(planned.get("without") or ()),
                 "state": str(options["state"]) if options["state"] else None,
-                # What a failure held back (decision 204), which the checks run then leaves unchecked.
+                # What a failure held back, which the checks run then leaves unchecked.
                 "held_nodes": sorted(planned.get("held_nodes") or ()),
                 "history_url": history.url,
                 "row_history": "off" if degraded else "on",

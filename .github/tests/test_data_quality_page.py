@@ -1,4 +1,4 @@
-"""/data/quality/, the data-quality page (pipeline/ELT.md decision 102, step 4), as both site builds deploy it.
+"""/data/quality/, the data-quality page (step 4), as both site builds deploy it.
 
 The page ships three placeholders and reads its two files in the visitor's
 browser, so it is right only if the deploy points it at the data the app in
@@ -130,7 +130,7 @@ def test_the_page_is_pointed_after_it_is_copied_in(workflow: str, assemble: str)
 
 
 def test_the_docs_host_gets_the_page_as_pointed():
-    """pages.yml's copy for docs.ourhike.org (pipeline/ELT.md decision 144) is made from `_site/data/` after the
+    """pages.yml's copy for docs.ourhike.org is made from `_site/data/` after the
     page is pointed, so the page there reads the same data as the app this deploy ships."""
     commands = _commands(_step("pages.yml", "Assemble the site")["run"])
     (bundle,) = [i for i, command in enumerate(commands) if "docs_host.py bundle _site " in command]

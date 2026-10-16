@@ -1,4 +1,4 @@
-"""prune_raw_store.py, decision 205's retention step, end to end on a local raw store: real dlt, real pins and the
+"""prune_raw_store.py, the raw store's retention step, end to end on a local raw store: real dlt, real pins and the
 as-landed files they copy, stored warehouses, row-history saves, and each environment's latest.json on a local public
 bucket.
 
@@ -136,7 +136,7 @@ def test_listing_only_deletes_nothing_and_names_every_unit_with_why(months, caps
     assert "production: release 2026-09-24-2, latest.json names no raw_run: serves no pin" in out
     assert "Listing only, nothing deleted. A dispatch with retention=delete deletes the" in out
     page = summary.read_text()
-    assert "## Retention step (decision 205)" in page and "### Pins: would delete" in page
+    assert "## Retention step" in page and "### Pins: would delete" in page
     assert "| before |" in page and "| after |" in page
 
 
@@ -306,7 +306,7 @@ def put_saves(store: Store, name: str, folder: str, ids: list[str]) -> None:
 
 
 def test_the_monthly_store_keeps_its_newest_three_saves_and_every_save_its_pointers_name(months, capsys):
-    """Decision 206. elementary.json was pointed back at s2 by hand: a save a pointer names is kept, as
+    """The monthly store keeps 3 saves. elementary.json was pointed back at s2 by hand: a save a pointer names is kept, as
     row_history.py's own _prune() keeps the save a save was built on."""
     ids = [f"s{number}" for number in range(1, 7)]
     put_saves(months, "monthly", "saves", ids)

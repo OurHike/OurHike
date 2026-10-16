@@ -4,10 +4,9 @@
     OURHIKE_DATA_ENV=ua DATA_BASE_URL=https://data.ourhike.org \\
         python step_section_closures.py --warehouse W --from-bucket            # the environment's published file
 
-Decision 212's rule (lib/section_closures.py), wired into the monthly lane by decision 213 (the maintainer's polls of
-2026-10-15, for #1801 — The junction graph routes hikers onto the Tuscarora's Doll Ridge section, which PATC says is
+lib/section_closures.py's rule, in the monthly lane (the maintainer, 2026-10-15, for #1801 — The junction graph routes hikers onto the Tuscarora's Doll Ridge section, which PATC says is
 closed for loss of landowner permission): a notice that closes the trail in its own words, has no geometry of its own
-("No, own geometry wins (Recommended)": a notice with its own geometry is never read here), and is the line's steward's
+(a notice with its own geometry is never read here), and is the line's steward's
 or a club's naming the trail, closes the one line set whose name is the section it names. This lands one row per line
 it closes, with the notice's own title as the reason, verbatim, and int_trail_lines__network_section_closures marks
 those lines closed, so nearby_trails.geojson carries the closure and int_trail_network__routable refuses them.
@@ -40,6 +39,7 @@ from pathlib import Path
 import duckdb
 
 from lib import data_env
+from lib.derived import replace_table
 from lib.http_retry import request_with_retry
 from lib.section_closures import evaluate, line_sets
 from lib.source_registry import load_registry
@@ -51,6 +51,7 @@ TABLE = "section_closures"
 #: The network lines as the monthly lane holds them after NYS Parks' area closures split them.
 LINES = "intermediate.int_trail_lines__network_area_closures"
 NOTICES_KEY = "conditions/notices.json"
+COLUMNS = ("trail_segment_key", "notice_id", "closure_source", "closure_reason", "line_set")
 
 
 def read_notices(path: Path | None, from_bucket: bool) -> tuple[list[dict] | None, str]:
@@ -111,21 +112,11 @@ def closures(notices: list[dict], lines: list[tuple], providers: dict[str, str])
 
 
 def write(con: duckdb.DuckDBPyConnection, rows: list[dict], loaded_at: datetime) -> None:
-    con.execute(f"create schema if not exists {SCHEMA}")
-    con.execute(f"""
-        create or replace table {SCHEMA}.{TABLE} (
-            trail_segment_key varchar, notice_id varchar, closure_source varchar, closure_reason varchar,
-            line_set varchar, _loaded_at timestamptz
-        )
-    """)
-    if not rows:
-        return
-    con.executemany(
-        f"insert into {SCHEMA}.{TABLE} values (?, ?, ?, ?, ?, ?)",
-        [
-            (r["trail_segment_key"], r["notice_id"], r["closure_source"], r["closure_reason"], r["line_set"], loaded_at)
-            for r in rows
-        ],
+    replace_table(
+        con,
+        TABLE,
+        [(name, "varchar") for name in COLUMNS] + [("_loaded_at", "timestamptz")],
+        [(*(row[name] for name in COLUMNS), loaded_at) for row in rows],
     )
 
 

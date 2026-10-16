@@ -761,15 +761,14 @@ def elevation_ft(lat: float, lon: float) -> float | None:
 
 
 # What an epqs_elevations.json key is, written into the file as its `keys`
-# field: the point itself (decision 131, the maintainer's poll of 2026-10-09,
-# the rule decision 115 gave export_elevation.py's DEM sample cache in
-# ffea5e31). Each coordinate is written as Python's repr writes a double, the
+# field: the point itself (the maintainer, 2026-10-09, the rule
+# export_elevation.py's DEM sample cache follows). Each coordinate is written as Python's repr writes a double, the
 # shortest text that reads back to that same double, so two points share a key
 # only when they are one point, and a cached answer is only ever EPQS's answer
 # for the point that was asked. (0.0 and -0.0 are one point under two keys,
 # which costs a lookup and never a wrong answer.)
 #
-# WHAT IT REPLACED. Until decision 131 a point was keyed "lat,lon" to 6
+# WHAT IT REPLACED. A point was once keyed "lat,lon" to 6
 # decimals, about 0.11 m, and a key held the answer for the first point asked
 # under it and gave it to every later point inside the same 0.11 m box. The
 # cache feeds the water-grade gate: both ends of every walk to water that
@@ -779,7 +778,7 @@ def elevation_ft(lat: float, lon: float) -> float | None:
 # point could be graded on another point's ground. How far off depends on how
 # EPQS reads 3DEP: if it answers from the cell a point falls in, as
 # export_elevation.py's sampler does, two points either side of a cell edge
-# differ by the step between cells, the case decision 115 measured on the DEM
+# differ by the step between cells, the case measured on the DEM
 # sample cache (monthly run 30: up to 19 ft on one sample). How EPQS reads it
 # is not recorded here, and nobody has checked a run for a water verdict the
 # old key changed; the exact key removes the cause either way.
@@ -797,7 +796,7 @@ def elevation_ft(lat: float, lon: float) -> float | None:
 # "40.000001,-75.000001" is the 6-decimal key every point within half a
 # millionth of a degree of that one was stored under, and that one point's
 # exact key as well. So _load_elevation_cache() reads a file only when its
-# `keys` is this value. Every file written before decision 131 is a bare map
+# `keys` is this value. Every file written under the old keys is a bare map
 # of keys to feet, carries no `keys` and is discarded whole, so each carried
 # cache's first run after it asks EPQS for every point again: monthly runs 20
 # to 22 graded the same 3,118 corridor OSM water points with nothing cached
@@ -911,7 +910,7 @@ def _load_elevation_cache(path: Path) -> dict[str, float]:
     """The answers a cache file holds, or none at all.
 
     DISCARDED WHOLE, never in part, when its `keys` is not
-    ELEVATION_CACHE_KEYS: every file written before decision 131 keyed a point
+    ELEVATION_CACHE_KEYS: every file written under the old keys keyed a point
     to 6 decimals, and one of its keys can be the exact key of a point it was
     never asked for (ELEVATION_CACHE_KEYS says how), so not one entry of it is
     served. Discarded too when it cannot be read or is not the shape

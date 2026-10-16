@@ -1,7 +1,6 @@
 """publish-conditions.yml's dbt path measures the notice sources' freshness after it has published, and only that is red.
 
-Decision 100 (the maintainer's poll of 2026-10-07, on round-2 finding ARC-5:
-"Red after 24h. But this should be Red in the data source freshness feature
+The maintainer, 2026-10-07 ("Red after 24h. But this should be Red in the data source freshness feature
 of dbt. Not blocking a datasource pipeline"): a notice source that has gone 24
 hours without being read or confirmed unchanged turns red in dbt's source
 freshness, and the check never holds back a publish. So the step runs
@@ -85,7 +84,7 @@ def test_the_freshness_step_runs_whatever_turned_the_run_red_before_it_but_only_
 @pytest.mark.parametrize(("read", "notices"), [("latest", True), ("older", True), ("none", False), ("unread", False)])
 def test_the_notices_jobs_sources_are_measured_only_when_the_build_read_a_notices_copy(tmp_path, read, notices):
     """Their run log rows reach the warehouse only with a served copy (extract/_warehouse.py's add_served()), and
-    without one every notices source would read as never read, a red that decision 96's 8 hours and the `unread`
+    without one every notices source would read as never read, a red that the 8-hour overdue step and the `unread`
     step already own. The conditions job's own sources are measured every run."""
     finished, argv = _run(tmp_path, read, 0, [])
     assert finished.returncode == 0, finished.stdout + finished.stderr

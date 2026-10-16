@@ -61,8 +61,7 @@ than on origin; (#659) one sibling per declared origin's parent domain,
 which catches a glob widened one token too far - `https://*.pages.dev/**`
 accepts every Pages site anyone can register, and the first two probes would
 both stay green against it; and the root of every declared origin that signs
-nobody in (`supabase: []`, the data docs' host since pipeline/ELT.md decision
-144), which a host-wide entry for it or a `*.ourhike.org` glob would accept,
+nobody in (`supabase: []`, the data docs' host), which a host-wide entry for it or a `*.ourhike.org` glob would accept,
 and which runs dbt's page, the code that decision moved off the app's origin.
 An entry naming only a path under that host would not be seen by it.
 
@@ -356,7 +355,7 @@ def check_project(manifest: dict, project: str, base: str, api_key: str, session
         reports.append(
             check_refused(base, api_key, sibling, project, f"a sibling under {origin['pattern']}'s parent domain", session)
         )
-    # The hosts nothing signs in on (decision 144's docs host): a sign-in
+    # The hosts nothing signs in on (the docs host): a sign-in
     # handed back to one would put an auth code in front of whatever runs
     # there, which is the exposure moving the docs off the app's origin ended.
     for origin in signs_nobody_in(manifest):

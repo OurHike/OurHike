@@ -39,8 +39,8 @@ publisher's own word or a measurement over lines this run published:
               on a point inside it
   trailMiles  MEASURED: miles of published trail line inside a park's
               boundary, or within PLACE_TRAIL_RADIUS_MILES of a point, or a
-              trail's own length, on the WGS84 ellipsoid (decision 97,
-              _geodesic_metres). Omitted on every row when no line was
+              trail's own length, on the WGS84 ellipsoid
+              (_geodesic_metres). Omitted on every row when no line was
               published to measure against (see below) - absent means
               unknown, never zero.
 
@@ -402,8 +402,8 @@ def _bbox(west: float, south: float, east: float, north: float) -> list[float]:
 def _geodesic_metres(projected: str) -> str:
     """SQL for the length in metres on the WGS84 ellipsoid of `projected`, a
     geometry in PROJECTED_CRS: every `trailMiles` this artifact prints
-    (decision 97, the maintainer's poll of 2026-10-06, as decision 90
-    measures the graph's edges).
+    (the maintainer, 2026-10-06, as the graph's edges are
+    measured).
 
     PROJECTED_CRS, EPSG:5070, is equal-area for the lower 48 only and its
     metre is not the ground's: five miles due north read 4.4 at Anchorage
@@ -470,11 +470,11 @@ def load_named_trails(con: duckdb.DuckDBPyConnection, registry: dict) -> list[di
     trail = f"CASE WHEN source = '{AT_SOURCE}' THEN '{owned}' ELSE name END" if owned else "name"
     # The threshold still reads the EPSG:5070 length (`projected_metres`),
     # the measure export_nearby_trails._through_routes() sums against the
-    # same NAMED_TRAIL_THRESHOLD_MILES: decision 97 moved the miles printed,
+    # same NAMED_TRAIL_THRESHOLD_MILES: the ellipsoid moved the miles printed,
     # not which trails are listed. The miles printed are the length on the
     # earth (_geodesic_metres), so near the threshold the two can disagree
     # outside the lower 48. At Anchorage, where EPSG:5070 reads an east-west
-    # kilometre as 1,126.4 m and a north-south one as 887.7 m (decision 90's
+    # kilometre as 1,126.4 m and a north-south one as 887.7 m (the graph's
     # measured scale), a 45-mile east-west trail is listed at 45.0 and a
     # 52-mile north-south one is not listed (Reasoned from that scale).
     rows = con.execute(f"""
@@ -552,9 +552,9 @@ def measure(con: duckdb.DuckDBPyConnection, parks: list[dict], points: list[dict
     )
     # The disc is a circle in EPSG:5070 metres, so outside the lower 48 it is
     # not `radius_miles` on the ground: at Anchorage about 4.4 miles east-west
-    # and 5.6 north-south (Reasoned from decision 90's measured scale: there
+    # and 5.6 north-south (Reasoned from the graph's measured scale: there
     # EPSG:5070 reads a kilometre on the ground as 1,126.4 m east-west and
-    # 887.7 m north-south). Decision 97 moved the lengths measured inside it,
+    # 887.7 m north-south). The ellipsoid moved the lengths measured inside it,
     # not the disc.
     disc = f"ST_Buffer(ST_Transform(geom, '{GEOGRAPHIC_CRS}', '{PROJECTED_CRS}', always_xy := true), {radius_miles * METERS_PER_MILE})"
     con.execute(f"""

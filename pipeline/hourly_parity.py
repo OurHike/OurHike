@@ -4,8 +4,7 @@
     python hourly_parity.py compare --bundle B --out R [--summary FILE] [--extract-python PY]
         [--run BUILD_RUN --attempt N --commit SHA --leg ua --compared-in RUN]
 
-pipeline/ELT.md's open question 17, answered by the maintainer's poll of
-2026-10-10, "Compare every soak hour": the six `conditions/*` keys block go
+The maintainer, 2026-10-10: "Compare every soak hour": the six `conditions/*` keys block go
 because their parity families (parity.py) compared only on the fixture
 warehouse, and these are the files that put a hiker in front of something
 dangerous. So every hour that publish-conditions.yml builds them, today's
@@ -60,7 +59,7 @@ check hold that, and their fixture families still compare the fetchers.
 A FAMILY NOT COMPARED THIS HOUR SAYS WHY, and is never a difference: its
 input was not this hour's (NWS's read was refused, so the table the build read
 is an earlier hour's, whose answer was not recorded), the build held its
-writer back (decision 81: the key kept the bucket's last copy), or no bundle
+writer back (the key kept the bucket's last copy), or no bundle
 reached the job. Only a difference nothing explains, or a comparison that
 crashed, turns the run red; gate_report.py counts every hour that compared
 nothing as a hole in the soak.
@@ -76,16 +75,15 @@ Whatever of that reaches this process, or a compare() that raised, the
 run.json on disk is a whole one in which the family being compared reads
 `failed` (STOPPED_IN: a crash, which gate_report.py reads as `differs`) and
 those after it `not_compared` (NOT_REACHED: a hole), and the parity job
-uploads it, as it uploads a failed step's results. Until the 2026-10-15
-adversarial review (finding S2-3) run.json was written once, after the last
-family, so such an hour left none, and gate_report.py read it as a run that
-never came, which decision 158's 2.5-hour rule absorbs. That is how the gate
+uploads it, as it uploads a failed step's results. Written only after the
+last family, such an hour would leave none, and gate_report.py would read it
+as a run that never came, which the soak's 2.5-hour gap absorbs. That is how the gate
 tells the two apart: an hour whose `hourly_parity.py compare` began has a
 run.json, a take that failed or timed out included (check-conditions.yml
 runs the compare step after it, and every family reads not compared); an
 hour with none is one whose build was never dispatched, or whose parity job
 was cancelled, lost its runner or had no Python before that command began,
-and only those fall under decision 158.
+and only those fall under the 2.5-hour gap.
 
 NO RECORD AND NO PERSON FIELD IS PRINTED OR UPLOADED. parity.py runs with
 --keys-only, so its console and its result files carry each difference's key
@@ -137,7 +135,7 @@ FAMILY_SECONDS = 120
 
 #: gate_report.py's SOAK_HOURS and SOAK_MAX_GAP_HOURS, which the summary's not-compared line names: written out,
 #: because gate_report.py imports this file, and held equal by tests/test_hourly_parity.py. check-conditions.yml's
-#: MAX_AGE_HOURS is the second (decision 200).
+#: MAX_AGE_HOURS is the second.
 GATE_SOAK_HOURS = 72
 GATE_SOAK_MAX_GAP_HOURS = 2.5
 
@@ -468,7 +466,7 @@ def why_not(family: HourlyFamily, document: dict, bundle_dir: Path) -> str | Non
             )
     if not (bundle_dir / NEW / family.new_file).exists() and (document.get("build") or {}).get("exit") in HELD_BACK_EXITS:
         return (
-            f"the build held part of itself back (exit {(document.get('build') or {}).get('exit')}, decision 81) and its writer "
+            f"the build held part of itself back (exit {(document.get('build') or {}).get('exit')}) and its writer "
             f"wrote no {family.new_file}, so {family.key} kept the bucket's last copy this hour"
         )
     return None
@@ -609,12 +607,11 @@ def not_compared_headline(run: dict) -> str | None:
     """The line that leads the summary when any file was not compared, or None when every one was.
 
     A file not compared leaves this step green by design (the docstring's "A FAMILY NOT COMPARED THIS HOUR SAYS WHY"),
-    the job going red only once the store has had no bundle for SOAK_MAX_GAP_HOURS (decision 200, check-conditions.yml),
+    the job going red only once the store has had no bundle for SOAK_MAX_GAP_HOURS (check-conditions.yml),
     and gate_report.py's soak_coverage() then counts that key clean only once a whole SOAK_HOURS of runs after it have
     compared it clean. All eight soak runs from 666 (2026-10-14 18:07 UTC) to 676 put no bundle, nor did 5 of the 18
     runs of 2026-10-11 that had the step to put one, so none of their hours compared anything; and the summary said so
-    only in its reasons and a closing "0 file(s) turn this run red" (review finding S2-1 of PR #1805 — dlt → dbt
-    re-platform as one go/no-go change), so this line comes first."""
+    only in its reasons and a closing "0 file(s) turn this run red", so this line comes first."""
     families = run["families"]
     missing = [answer for answer in families.values() if answer["verdict"] == "not_compared"]
     if not missing:
@@ -627,7 +624,7 @@ def not_compared_headline(run: dict) -> str | None:
         said = f"**{len(missing)} of the {len(families)} files were not compared this hour.**"
     return (
         f"{said} On its own an hour like this is a warning, and the job goes red only once the leg's store has had no "
-        f"bundle for {GATE_SOAK_MAX_GAP_HOURS:g} hours (decision 200); but gate_report.py clears a key only when every "
+        f"bundle for {GATE_SOAK_MAX_GAP_HOURS:g} hours; but gate_report.py clears a key only when every "
         f"run of the soak's last {GATE_SOAK_HOURS} hours compared it clean, so this hour holds each of these keys back "
         f"for {GATE_SOAK_HOURS} hours.{why}"
     )

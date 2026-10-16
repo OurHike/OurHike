@@ -14,7 +14,7 @@
     python parity.py elevation_v2 --new data/processed/dbt/elevation_profile_v2.json
     python parity.py poi_water_v2 --new data/processed/dbt/poi_water_v2.geojson
 
-A v2 family (decision 44, stage 6) compares a v2 file with the v1 file its
+A v2 family (stage 6) compares a v2 file with the v1 file its
 own build wrote beside it, decoded as a phone would decode it (the last
 section below).
 
@@ -50,7 +50,7 @@ Exit 1 on any difference, so a CI step fails on one.
 
 `--json-dir DIR` also writes the comparison as `DIR/<family>.json`
 (RESULT_FORMAT, from result_document()) for gate_report.py, which turns every
-family's result into decision 30's per-key report; the console and exit code
+family's result into the gate's per-key report; the console and exit code
 are unchanged. Beyond what the console prints, the file holds the file
 compared, each difference's changed field paths (changed_fields()), the
 fields compared by form only (`stamps`), and each side's record source keys
@@ -123,7 +123,7 @@ class Family:
     # nearby_trails.geojson and trails.geojson, and reading the dbt writers'
     # copies puts both paths on one input.
     reads_new_dir: bool = False
-    # A v2 file (decision 44; stage 6 of #1793) is compared with the v1 file of
+    # A v2 file (stage 6 of #1793) is compared with the v1 file of
     # this name beside --new, whose path `old` takes: the v1 writer's own
     # parity line holds v1 to today's exporter, and this holds v2 to v1.
     v1_beside: str | None = None
@@ -135,7 +135,7 @@ class Family:
     # first (_trail_graph_kinds).
     kinds: Callable[[dict, dict, list], dict[str, str]] | None = None
     kind_meanings: tuple[tuple[str, str], ...] = ()
-    # Standard S3 (the maintainer's poll of 2026-10-11) needs, for each difference `explained` gives one of
+    # The exact-copy standard needs, for each difference `explained` gives one of
     # EXACT_COPY_REASONS, the record on the other side it is an exact copy of: {difference: that record's key}. For
     # a copy only today's file publishes, the record the dbt writer still publishes; for a record only the dbt
     # writer's holds, one of today's copies of it. result_document() writes that key and the field paths on which
@@ -217,7 +217,7 @@ def _graph_companions_old(raw_dir: Path, warehouse: Path) -> tuple[list, list]:
     """export_network_elevation.build and export_network_profile.build over the build's own graph.
 
     Run in publish-vector-data.yml's order on one cold copy of the tile index (_cold_index()): export_elevation.py's
-    A.T. profile, then the climbs, then the profiles. Since decision 115 the sampler's cache keys each point exactly
+    A.T. profile, then the climbs, then the profiles. The sampler's cache keys each point exactly
     (export_elevation.SAMPLE_CACHE_KEYS), so every point here is read at its own pixel, as step_dem_sampling reads it
     on the dbt side whatever the dbt side's cache already held."""
     import export_elevation
@@ -244,14 +244,14 @@ def _by_edge(entries: list) -> dict:
     return {"edges": [{"edge_index": index, "entry": entry} for index, entry in enumerate(entries)]}
 
 
-#: Why an edge's climb in the dbt writer's trail_graph_elevation.json can be a foot more than in today's: decision 194
-#: (the maintainer's poll of 2026-10-14, "Toward caution") rounds gain and loss UP to the whole foot in
+#: Why an edge's climb in the dbt writer's trail_graph_elevation.json can be a foot more than in today's: the dbt
+#: path rounds toward caution, gain and loss UP to the whole foot in
 #: int_elevation__edge_climbs, where export_network_elevation.edge_climb rounds to the nearest. tests/
 #: test_dbt_elevation_network_parity.py holds the reason to the unit test where the two writers answer that way. Kept
 #: short: a monthly run lists it once per edge that rounds differently, about 590,000 of UA's 3,552,477 (Reasoned from
 #: the 1,104,236 edges with a non-zero figure, each figure's fraction taken as uniform).
 CLIMB_ROUNDED_UP_REASON = (
-    "expected by decision 194 ('Toward caution', the maintainer's poll of 2026-10-14): the dbt writer rounds an edge's "
+    "expected by rounding toward caution: the dbt writer rounds an edge's "
     "gain and loss up to the whole foot, export_network_elevation.py to the nearest; each figure the same or one more"
 )
 
@@ -505,7 +505,7 @@ NETWORK_ID_REASONS = {
     "staging_key_for_a_line_with_no_id": (
         "an improvement over numbering by place (TL05): a line with none of the ids the SQL reads (a GlobalID, an "
         "object id named OBJECTID or FID, a Socrata row id) and no raw-table order in its staging model is published "
-        "under its staging key, as every club line is: decision 40's key, unique in its layer and the same for the "
+        "under its staging key, as every club line is: the staging key, unique in its layer and the same for the "
         "same row next release. Today's exporter numbers such a line `generated-<n>` by its place in a file whose "
         "features carry no GeoJSON id, an id that names another line once the file's order moves. On an ArcGIS "
         "layer's own fetch it would publish the layer's object id instead, so a layer whose object id has a third "
@@ -527,7 +527,7 @@ STAGING_KEY = re.compile(r"[0-9a-f]{32}")
 #: of that model, and tests/test_dbt_trail_lines_network_parity.py holds it to
 #: a pair of files instead.
 NETWORK_COPY_REASON = (
-    "expected by decision 40: staging keeps one of a layer's exact copies, the lowest Socrata or server row id "
+    "expected by the exact-copy dedupe: staging keeps one of a layer's exact copies, the lowest Socrata or server row id "
     "(macros/duckdb__deduplicate.sql), where export_nearby_trails.py draws every copy. Measured 2026-10-03 on NYC "
     "Open Data's live rows: nyc_dot_greenways repeats 10 segments on 54 rows and nyc_parks_trails 4 on 8, each copy "
     "differing only in Socrata's row id"
@@ -666,7 +666,7 @@ def _club_line_reasons(old: dict, new: dict, family_key: str, key_of: Callable[[
 
 #: Why a line that swallowed another layer's copies of it can carry another name in each file (TL18).
 INHERITED_NAME_REASON = (
-    "expected by standard S2 (the maintainer's poll of 2026-10-11), which int_trail_lines__network_deduplicated's "
+    "expected by the inherited-name rule, which int_trail_lines__network_deduplicated's "
     "header states: a line with no name of its own takes the name its swallowed copies carry along the greatest length "
     "within 10 m of it, each name's copies unioned, and a name within 1 cm of that length ties, the one sorting first "
     "winning. Today's exporter picks differently: lib/duplicates.py's apply_duplicates() merges the copies in file "
@@ -706,14 +706,14 @@ def _inherited_name_reasons(old: dict, new: dict) -> dict[str, str]:
 
 def _nearby_trails_reasons(old: dict, new: dict) -> dict[str, str]:
     """nearby_trails' three explained kinds: a line whose id alone differs, a name inherited in another order, and
-    decision 64's club lines."""
+    the club lines drawn but never routed."""
     club = _club_line_reasons(old, new, "properties.id", lambda feature: str(feature["properties"]["id"]))
     return {**_network_id_reasons(old, new), **_inherited_name_reasons(old, new), **club}
 
 
 #: Why a sketch group of today's draws a part more often than the dbt writer's (_overview_copy_reasons()).
 OVERVIEW_COPY_REASON = (
-    "expected by decision 40, as NETWORK_COPY_REASON is for the lines: write_overview() draws a part for each line "
+    "expected by the exact-copy dedupe, as NETWORK_COPY_REASON is for the lines: write_overview() draws a part for each line "
     "of a group, so today's sketch draws a line export_nearby_trails.py publishes twice, an exact copy, twice, where "
     "staging keeps one copy and the dbt writer draws it once. Explained only where the two groups draw the same "
     "parts and today's draws some of them more often. Monthly run 30's two: alaska_trails' 7 exact copies, 2 of "
@@ -750,7 +750,7 @@ def _overview_copy_reasons(old: dict, new: dict) -> dict[str, str]:
 
 
 def _network_overview_reasons(old: dict, new: dict) -> dict[str, str]:
-    """network_overview's two explained kinds: a group today's draws some parts of more often, and decision 64's club
+    """network_overview's two explained kinds: a group today's draws some parts of more often, and the club
     groups, after every network group."""
     club = _club_line_reasons(old, new, "properties (source, name, blaze_color, trail_status)", _overview_key)
     return {**_overview_copy_reasons(old, new), **club}
@@ -760,13 +760,13 @@ def _network_overview_reasons(old: dict, new: dict) -> dict[str, str]:
 #: the case where the two writers answer that way.
 PLACES_REASONS = {
     "new_source": (
-        "expected by decision 31 ('Publish new data in this PR'): a trailhead, parking lot or town from a point layer "
-        "no exporter reads, one of decision 54's wave 1 point layers (int_points_of_interest__club_points), so there "
+        "expected by the new-data rule: a trailhead, parking lot or town from a club point layer "
+        "no exporter reads (int_points_of_interest__club_points), so there "
         "is no old record to compare it with; new_data_report.py counts its layer under nearby_poi"
     ),
     "club_places": (
-        "expected by decision 31 ('Publish new data in this PR'): a park or town from one of decision 54's wave 1 "
-        "places layers (int_places__club_units), which no exporter reads, so there is no old record to compare it "
+        "expected by the new-data rule: a park or town from a club "
+        "places layer (int_places__club_units), which no exporter reads, so there is no old record to compare it "
         "with; new_data_report.py counts its layer under places"
     ),
 }
@@ -783,7 +783,7 @@ def _club_places_sources() -> frozenset[str]:
 
 
 def _places_reasons(old: dict, new: dict) -> dict[str, str]:
-    """The places the dbt writer publishes from a point layer today's exporter never reads: decision 31's new data.
+    """The places the dbt writer publishes from a point layer today's exporter never reads: new data.
 
     Only a place the new file holds and the old one lacks, whose `source` is set and is neither a layer
     export_nearby_poi.poi_sources() reads nor a source any place in today's file names. The order is explained only
@@ -807,7 +807,7 @@ def _places_reasons(old: dict, new: dict) -> dict[str, str]:
 #: Why a long trail's `trailMiles` can be shorter in the dbt writer's places.json than in today's.
 #: tests/test_dbt_places_parity.py holds it to a network file with a copy in it.
 PLACES_COPY_REASON = (
-    "expected by decision 40: staging keeps one of a layer's exact copies, where today's network file draws every "
+    "expected by the exact-copy dedupe: staging keeps one of a layer's exact copies, where today's network file draws every "
     "copy, and export_places.load_named_trails() sums a long trail's miles over every line drawn under its name. "
     "Explained only for a `trail:` place in both files that differs in `trailMiles` alone, where today's network file "
     "draws a line of that source and name more than once with one geometry, and export_places' own measure of those "
@@ -875,7 +875,7 @@ def _trail_miles_counting_copies(keys: set[tuple[str, str]]) -> dict[tuple[str, 
 #: Why a trailhead's, parking lot's or town's `trailMiles` can be smaller in the dbt writer's places.json than in
 #: today's. tests/test_dbt_places_parity.py holds it to a network file with a copy inside a point's disc.
 PLACES_DISC_COPY_REASON = (
-    "expected by decision 40: staging keeps one of a layer's exact copies, where today's network file draws every "
+    "expected by the exact-copy dedupe: staging keeps one of a layer's exact copies, where today's network file draws every "
     "copy, and export_places.measure() sums every line inside a point place's PLACE_TRAIL_RADIUS_MILES disc. "
     "Explained only for a place in both files with no bbox and no `trail:` id that differs in `trailMiles` alone, where "
     "export_places.measure() run again on today's two line files gives today's miles with every line counted and the "
@@ -924,7 +924,7 @@ def _disc_miles_counting_copies(points: dict[str, tuple[float, float]]) -> dict[
     _places_old() hands build_output(): today's network file (_published_network()) and the cut trails.geojson
     (_cut_trails()), each loaded by export_places.load_lines().
 
-    Only the network file's copies are counted once, because they are what this explains: decision 40's dedupe is
+    Only the network file's copies are counted once, because they are what this explains: the staging dedupe is
     within one layer, and the A.T. file's lines are counted as both writers count them."""
     import duckdb
 
@@ -968,7 +968,7 @@ def _places_old() -> dict:
     - OPRHP's park layer and ATC's Communities, as fixture mode landed them;
     - nearby_trails.geojson from export_nearby_trails.main() (_published_network(), which the POI exporters read too);
     - trails.geojson from export_trails.main() (_export_trails_run()), cut to six decimals (_cut_trails()),
-      because the dbt side measures the trail_lines mart's geometry, which is the cut file's (decision 8). Measured
+      because the dbt side measures the trail_lines mart's geometry, which is the cut file's. Measured
       2026-10-02 on 1,546 real places: the cut moves one lot's trailMiles by a tenth, 17.8 to 17.9, and nothing else;
     - the trailhead, parking and resupply poi_<type>.geojson files from export_poi.main(), as _poi_by_type_old() runs it;
     - nearby_poi.geojson, as _nearby_poi_old() builds it.
@@ -1064,8 +1064,7 @@ def _export_trails_run() -> Path:
 
 @functools.cache
 def _cut_trails() -> Path:
-    """_export_trails_run()'s trails.geojson with every coordinate cut to six decimals, as decision 8 cuts the dbt
-    file's, by export_nearby_trails._rounded_geometry, the never-degenerate rule included, written once for this
+    """_export_trails_run()'s trails.geojson with every coordinate cut to six decimals, as the dbt file's are cut, by export_nearby_trails._rounded_geometry, the never-degenerate rule included, written once for this
     process to a folder of its own. The trails family's old side is this file, and the places and challenges old sides
     read it as their trails.geojson, so all three measure the line the dbt side measures."""
     import tempfile
@@ -1107,7 +1106,7 @@ def _trails_old() -> dict:
 
 def _trail_miles_records(document: dict, path: Path) -> dict:
     """trail_miles.json as one record per chain, and `trails_sha256` as whether it names the trails.geojson beside
-    it. The two paths' hashes differ by construction (decision 8 changes trails.geojson's bytes), so each file is
+    it. The two paths' hashes differ by construction (the six-decimal cut changes trails.geojson's bytes), so each file is
     asked what the phone asks of it (client/src/lib/trailData.ts): that it names the lines written with it."""
     trails = path.parent / "trails.geojson"
     names_its_trails = document.get("trails_sha256") == hashlib.sha256(trails.read_bytes()).hexdigest()
@@ -1318,7 +1317,7 @@ HIKE_JSON_FIELDS = {
 
 def _landed_rows(warehouse: Path, table: str, order_by: str) -> list[dict] | None:
     """Every row of `table` in the warehouse as {column: value}, in `order_by` order, rows that differ only in dlt's
-    own row id (`_dlt_id`) read once, as decision 40's staging dedupe keeps one of them; None where the warehouse or
+    own row id (`_dlt_id`) read once, as the staging dedupe keeps one of them; None where the warehouse or
     the table does not exist.
 
     A TIMESTAMP WITH TIME ZONE column (dlt lands `_loaded_at` so, and an ISO string such as the hike finder's
@@ -1478,7 +1477,7 @@ FAMILIES: dict[str, Family] = {
     ),
     # The junction graph's two elevation companions: index-aligned arrays
     # whose entries carry no id, so each is keyed by its place, which is the
-    # edge it describes. The climbs round up since decision 194, and today's
+    # edge it describes. The dbt climbs round up, and today's
     # exporter to the nearest foot (CLIMB_ROUNDED_UP_REASON).
     "trail_graph_elevation": Family(
         old=lambda raw_dir, warehouse: _by_edge(_graph_companions_old(raw_dir, warehouse)[0]),
@@ -1581,7 +1580,7 @@ FAMILIES: dict[str, Family] = {
 #
 # Ten files, three exporters. The records are GeoJSON features, keyed by
 # properties.id (`key_of`), and each kind of deliberate difference is named by
-# `explained`: nearby_poi's exact copies and decision 31's new data, and the
+# `explained`: nearby_poi's exact copies and new data, and the
 # poi_<type> files' synthesized water held on a retired ledger id.
 
 
@@ -1589,16 +1588,16 @@ def _poi_id(feature: dict) -> str:
     return str(feature["properties"]["id"])
 
 
-#: The opening every decision-31 reason carries: a record from a source today's exporters never read, which parity
+#: The opening every new-data reason carries: a record from a source today's exporters never read, which parity
 #: cannot check (pipeline/ELT.md, "The go/no-go gate") and new_data_report.py counts. gate_report.py lists every
 #: difference so explained once, as new data, and never as a safety field changed.
-NEW_DATA_REASON = "expected by decision 31 ('Publish new data in this PR')"
+NEW_DATA_REASON = "expected by the new-data rule"
 
 #: Why a club's own line is in the dbt writers' nearby_trails.geojson and network_overview.geojson and in neither of
-#: today's (decision 64, the maintainer's poll of 2026-10-04: "draw now, route later"). Starts with NEW_DATA_REASON:
+#: today's (the maintainer, 2026-10-04: "draw now, route later"). Starts with NEW_DATA_REASON:
 #: no exporter reads a club's trail-line layer, so there is no old record to compare it with.
 CLUB_LINE_REASON = (
-    f"{NEW_DATA_REASON}, and drawn by decision 64: a line from one of decision 54's wave 1 trail-line layers "
+    f"{NEW_DATA_REASON}, drawn but never routed: a line from a club trail-line layer "
     "(int_trail_lines__club_published), carrying `line_kind` 'club', which no junction graph routes on "
     "(build_trail_graph.py refuses it, and int_trail_network__routable reads only the network's rows)"
 )
@@ -1608,13 +1607,13 @@ CLUB_LINE_REASON = (
 #: where the two writers answer that way, so none outlives its reason.
 POI_REASONS = {
     "exact_copy": (
-        "expected by decision 40, and accepted as an improvement on 2026-10-02: staging removes a row that is an "
+        "expected by the exact-copy dedupe, accepted as an improvement on 2026-10-02: staging removes a row that is an "
         "exact copy of another in every column but the server's own row id (ELT.md, 'A dedupe may only remove "
         "exact copies, and the build proves it'), keeping the lowest OBJECTID, where export_nearby_poi.py "
         "publishes every copy as a pin of its own at the same spot"
     ),
     "new_source": (
-        f"{NEW_DATA_REASON}: a POI from a layer no exporter reads, one of decision 54's wave 1 point layers "
+        f"{NEW_DATA_REASON}: a POI from a club point layer no exporter reads "
         "(int_points_of_interest__club_points), so there is no old record to compare it with; new_data_report.py "
         "counts it by source and type, and lists every water and shelter source line by line"
     ),
@@ -1627,23 +1626,22 @@ POI_REASONS = {
         "site stays in none, so its site_id, site_role and site_name are null"
     ),
     "seasonal_tap": (
-        "expected by decision 65 (the maintainer's poll of 2026-10-04): a plumbed tap or fountain whose layer records "
+        "expected by the seasonal-tap rule, a tap with no shutoff season ships with a caution: a plumbed tap or fountain whose layer records "
         "no shutoff season, which export_nearby_poi.py holds back as a water holdback (sources.json's "
         "oprhp_water_holdback), ships as unconfirmed water carrying water_caution 'no_shutoff_season' "
-        "(int_points_of_interest__cautioned), where its steward's own public flag shows it (decision 195); only a "
+        "(int_points_of_interest__cautioned), where its steward's own public flag shows it; only a "
         "record today's file lacks, of a layer whose taps layer_rules names plumbed_water, at low confidence with "
         "that caution"
     ),
     "steward_hides": (
-        "expected by decision 195 (the maintainer's polls of 2026-10-14, 'A pin claims no more than its steward' and "
-        "'Taps only'): a water point whose steward's own public flag does not show it is held "
+        "expected by the steward's own flag, a pin claims no more than its steward: a water point whose steward's own public flag does not show it is held "
         "(int_points_of_interest__publishable, var poi_types_held_when_steward_hides), where export_nearby_poi.py's "
         "public_verdict() keeps it at low confidence because that layer's flag sets confidence rather than "
         "filtering (sources.json's public_flag_sets_confidence); only a record today's file holds and the dbt "
         "writer's lacks, of such a layer with no confidence floor, of a held type, rated low"
     ),
     "exact_copy_site": (
-        "expected by decision 40, as an exact copy staging removes is: the POI is in both files and only its site "
+        "expected by the exact-copy dedupe, as an exact copy staging removes is: the POI is in both files and only its site "
         "differs, by exactly what lib/poi_sites.py's group_place_sites() makes of today's records once the copies "
         "staging removed are gone. Today's file folds a privy or fountain and its exact copy, same name and same "
         "spot, into one site (the copy riding the other's pin); with the copy gone the site is gone, and site_id, "
@@ -1659,8 +1657,8 @@ POI_REASONS = {
     ),
 }
 
-#: The reasons that say a record is an exact copy, by decision 40's staging dedupe, of one the other file holds:
-#: standard S3 (the maintainer's poll of 2026-10-11) accepts a difference one of these explains without row review,
+#: The reasons that say a record is an exact copy, by the staging dedupe, of one the other file holds:
+#: the exact-copy standard accepts a difference one of these explains without row review,
 #: on a safety field too, when the copy and the record that still publishes carry the same value there, so a hiker
 #: sees the same value. Each family that can give one has a Family.copies, which names that record; gate_report.py
 #: reads both. Every other reason on a safety field still comes to the maintainer.
@@ -1789,7 +1787,7 @@ def _new_source_reasons(old: dict, new: dict) -> dict[str, str]:
     """The POIs the dbt writer publishes from a source today's file never carries and today's exporter never reads.
 
     Only a record the new file holds and the old one lacks, whose `source` is neither a layer
-    export_nearby_poi.poi_sources() reads nor any source a record of today's file names: decision 31's new data.
+    export_nearby_poi.poi_sources() reads nor any source a record of today's file names: new data.
     A record of a layer today's exporter reads that the new file adds is still a difference.
     """
     old_features = old.get("features") or []
@@ -1804,13 +1802,13 @@ def _new_source_reasons(old: dict, new: dict) -> dict[str, str]:
 
 @functools.cache
 def _plumbed_water_sources() -> frozenset[str]:
-    """The layers a layer_rules `plumbed_water` row names: decision 65's one home for which taps carry a caution."""
+    """The layers a layer_rules `plumbed_water` row names: the one home for which taps carry a caution."""
     with (Path(__file__).resolve().parent / "dbt" / "seeds" / "layer_rules.csv").open(newline="") as handle:
         return frozenset(row["source_key"] for row in csv.DictReader(handle) if row["rule"] == "plumbed_water")
 
 
 def _seasonal_tap_reasons(old: dict, new: dict) -> dict[str, str]:
-    """The taps decision 65 ships from a layer today's exporter reads and holds them back from.
+    """The taps the dbt path ships, with a caution, from a layer today's exporter reads and holds them back from.
 
     Only a record the new file holds and the old one lacks, of a layer a plumbed_water rule names, that is water at
     low confidence carrying the season caution: anything else a layer of today's adds is still a difference.
@@ -1829,7 +1827,7 @@ def _seasonal_tap_reasons(old: dict, new: dict) -> dict[str, str]:
 
 @functools.cache
 def _held_when_steward_hides() -> tuple[frozenset[str], frozenset[str]]:
-    """(the POI types decision 195 holds, the layers whose public flag sets confidence and that record no confidence
+    """(the POI types held when their steward hides them, the layers whose public flag sets confidence and that record no confidence
     floor): dbt_project.yml's var poi_types_held_when_steward_hides, the rule's one home, and the sources.json entries
     on which export_nearby_poi.public_verdict() rates low exactly the rows the flag does not show."""
     import yaml
@@ -1848,7 +1846,7 @@ def _held_when_steward_hides() -> tuple[frozenset[str], frozenset[str]]:
 
 
 def _steward_hides_reasons(old: dict, new: dict) -> dict[str, str]:
-    """The water points decision 195 holds that today's exporter ships at low confidence.
+    """The water points held when their steward hides them, that today's exporter ships at low confidence.
 
     Only a record today's file holds and the new one lacks, of a layer whose public flag sets confidence and that
     records no confidence floor, of a type the rule holds, rated low: the mark public_verdict() leaves on a row the
@@ -1870,8 +1868,8 @@ def _steward_hides_reasons(old: dict, new: dict) -> dict[str, str]:
 
 def _nearby_poi_reasons(old: dict, new: dict) -> dict[str, str]:
     """nearby_poi's six explained kinds: an exact copy staging removed, the site its removal dissolves, a whole
-    number written two ways, decision 31's new data, decision 65's seasonal taps from a layer today's exporter reads,
-    and decision 195's water points their steward does not show."""
+    number written two ways, new data, seasonal taps from a layer today's exporter reads, and water points their
+    steward does not show."""
     return {
         **_exact_copy_reasons(old, new),
         **_copy_site_reasons(old, new),
@@ -2285,7 +2283,7 @@ FAMILIES.update(
 # old side reads what export_challenges.main() reads: the club folders and
 # publishers.json in git, sources.json, the poi_<type>.geojson files
 # export_poi.main() writes from the same raw layers, and trails.geojson's
-# centerline from export_trails.main(), cut to decision 8's six decimals by
+# centerline from export_trails.main(), cut to six decimals by
 # _cut_trails(), the trails family's old side, so both sides measure one line.
 
 #: Why a challenge can be in today's file and not in the dbt writer's.
@@ -2293,7 +2291,7 @@ FAMILIES.update(
 #: the two writers answer that way, so it cannot outlive its case.
 CHALLENGE_REASONS = {
     "held_back": (
-        "expected by rule 6 of pipeline/ELT.md's 'Who may publish': the club's folder (reference/challenges/<club>) "
+        "expected by pipeline/ELT.md's 'Who may publish': the club's folder (reference/challenges/<club>) "
         "has no sources.json row and no unregistered_publishing_sources row, so int_sources__publication holds it "
         "back, where export_challenges.py publishes the list as a labelled draft. The record the dbt models resolved "
         "for it (int_challenges__resolved) equals today's, field for field"
@@ -2432,8 +2430,8 @@ FAMILIES["challenges"] = Family(old=_challenges_old, records="challenges", key="
 # phone files, so the old side builds the graph from the dbt writers' copies
 # of nearby_trails.geojson and trails.geojson beside `--new`: both paths then
 # read the same lines, and a difference is the graph's rules alone, not one
-# of the explained differences upstream (the A.T.'s six decimals, decision
-# 40's copies). EXCEPT THE LINE'S ID: on the old side, each edge's
+# of the explained differences upstream (the A.T.'s six decimals, the
+# staging dedupe's copies). EXCEPT THE LINE'S ID: on the old side, each edge's
 # `trail_id` is the id today's nearby_trails.geojson publishes its line
 # under (_todays_line_ids()), because a phone joins a graph cell's edges to a
 # tile's lines by it (client/src/lib/lineClimb.ts), and its tiles can be from
@@ -2613,8 +2611,8 @@ FAMILIES.update(
 
 # --- stage 6: the v2 phone files decode to v1's values (#1793) --------------
 #
-# Decision 44 writes each packed or one-coordinate file as a v2 beside its v1,
-# and a v2 must decode to exactly its v1's values at decision 8's 6 decimals.
+# Each packed or one-coordinate file is written as a v2 beside its v1, and a
+# v2 must decode to exactly its v1's values at 6 decimals.
 # Elevation, miles and coordinates are safety fields, so any difference fails
 # the line and none is ever explained away. Each family reads the v1 file its
 # own build wrote beside the v2 (`v1_beside`), and the v2 through a Python copy
@@ -2800,7 +2798,7 @@ def differences(old: dict, new: dict, family: Family) -> list[tuple[str, str | N
     # A KEY EITHER SIDE HOLDS MORE THAN ONCE is a difference of its own, carrying every copy of it on each side, even
     # when both sides hold the same copies: a record key names one record in the file a phone reads. Keyed into one
     # record per key, the last copy stood for the rest, so a writer that published one water point twice, one copy
-    # wrong, compared equal on an unordered family (PY-4 of PR #1805's second review).
+    # wrong, compared equal on an unordered family.
     a, b = records_by_key(old, family), records_by_key(new, family)
     for key in sorted(a.keys() | b.keys(), key=key_order):
         was, now = a.get(key, []), b.get(key, [])
@@ -2966,7 +2964,7 @@ def result_document(
     `family.kinds` sorted carries its `kind`, and `kinds` counts each.
 
     An explained difference whose reason is one of EXACT_COPY_REASONS also
-    carries standard S3's two facts, from `copies` (Family.copies):
+    carries the exact-copy standard's two facts, from `copies` (Family.copies):
     `exact_copy_of`, the record on the other side it is an exact copy of,
     and `differs_from_exact_copy`, the field paths on which the copy as
     today's file publishes it and the record the dbt writer publishes
@@ -2989,7 +2987,7 @@ def result_document(
         return {**found_entry, "kind": kinds[what]} if what in kinds else found_entry
 
     def copy_facts(what: str, a: str | None, b: str | None) -> dict:
-        """S3's two facts for one difference (the docstring): the partner is on the side that lacks the record."""
+        """The exact-copy standard's two facts for one difference (the docstring): the partner is on the side that lacks the record."""
         if reasons.get(what) not in EXACT_COPY_REASONS or what not in copies or (a is None) == (b is None):
             return {}
         partner = sides["new" if b is None else "old"].get(copies[what], [])

@@ -33,16 +33,16 @@ Both are real stewards with real data in `data/raw/`. Neither belongs on a
 hiker's screen until its licence answer lands, and the flag is what keeps that
 true without anybody re-reading a paragraph.
 
-ON THE EXPORTERS' PATH, ONLY WHAT THE EXPORTERS READ (decision 196 in
-pipeline/ELT.md, the maintainer's poll of 2026-10-14)
+ON THE EXPORTERS' PATH, ONLY WHAT THE EXPORTERS READ (the maintainer,
+2026-10-14)
 
 The same rule, one step further. `reaches_hikers` says a row ships, not which
-pipeline ships it. Decision 54's club layers, files, pages and PDFs, decision
-53's club notices and the podcast feeds reach a phone only through dbt, and
+pipeline ships it. Club layers, files, pages and PDFs, club notices and the
+podcast feeds reach a phone only through dbt, and
 production's phone files come from this pipeline's Python exporters until the
 cutover: publish-vector-data.yml runs them, dbt's monthly lane
 (build-reference.yml) publishes to UA only, and publish-conditions.yml's
-PRODUCTION_PHONE_FILES keeps production's hourly leg on them (decision 92). Counted
+PRODUCTION_PHONE_FILES keeps production's hourly leg on them. Counted
 over every shipping row, production's sources screen would have named 111
 stewards while its files carry 28 stewards' data (build_output() in memory on
 2026-10-14, over this branch's registry at dd5f57f7 and main's at e61373be).

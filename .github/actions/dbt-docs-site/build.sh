@@ -6,7 +6,7 @@
 #
 # Run from the repository root, with pipeline/requirements-dbt.txt's dbt first
 # on PATH, after pipeline/generate_dbt.py has written the generated models
-# (decision 91; action.yml's step before this one), and Node and npm for
+# (action.yml's step before this one), and Node and npm for
 # DuckDB-WASM below. --no-dbt-deps (scripts/test.sh's sandbox workaround) uses
 # pipeline/dbt/dbt_packages/ as it is, because a web session's proxy cannot
 # fetch the package tarballs (the dbt skill has the clone commands). The
@@ -35,9 +35,8 @@ export DBT_ENGINE_SEND_ANONYMOUS_USAGE_STATS=false
 export OURHIKE_WAREHOUSE="$scratch/warehouse.duckdb"
 export OURHIKE_PROCESSED_DIR="$scratch/processed"
 
-# DuckDB-WASM, served at /data/duckdb/ from our own site and never from a CDN
-# (pipeline/ELT.md decision 93, SEC-1 of PR #1805's second review): the page
-# runs on ourhike.org's origin, where a signed-in hiker's session is kept, so
+# DuckDB-WASM, served at /data/duckdb/ from our own site and never from a CDN:
+# the page runs on ourhike.org's origin, where a signed-in hiker's session is kept, so
 # any script it loads can read that session. duckdb-wasm/loader.js says why
 # the files are laid out as they are, and what was measured.
 # - The npm packages as duckdb-wasm/package-lock.json pins them: npm ci checks
@@ -72,7 +71,7 @@ if $deps; then
 else
   echo "dbt deps: skipped (--no-dbt-deps), using pipeline/dbt/dbt_packages/ as it is"
 fi
-# The packages' own files, hash-pinned (pipeline/ELT.md decision 144), either
+# The packages' own files, hash-pinned, either
 # way: dbt compiles their macros and models into the page, which runs on
 # ourhike.org's origin.
 python ../check_dbt_packages.py

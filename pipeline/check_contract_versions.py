@@ -1,9 +1,9 @@
-"""A pull request's contracted dbt models, version by version, against main's (decision 44).
+"""A pull request's contracted dbt models, version by version, against main's.
 
     python check_contract_versions.py --head dbt/target/manifest.json --base <main>/pipeline/dbt/target/manifest.json
     python check_contract_versions.py --head dbt/target/manifest.json
 
-pipeline/ELT.md, "Versions and channels (decision 44), as stage 4 builds them":
+pipeline/ELT.md, "Versions and channels, as stage 4 builds them":
 a phone file's shape is a dbt model version, and v1 is today's shape.
 Removing, renaming or retyping a column is breaking, so the change ships as a
 new version written beside the old one until the old one's
@@ -31,7 +31,7 @@ A version the base does not have is new and compared with nothing, so a change
 made as a v2 beside an untouched v1 passes. A model gaining `versions:` for the
 first time is the same model: its v1 is compared with the base's unversioned
 one. A removed `not_null` or other constraint is a warning, never a failure:
-dbt Core counts it as breaking, and decision 44 did not name it.
+dbt Core counts it as breaking, and the versioning rule does not name it.
 
 IN THE HEAD ALONE, on every run:
 
@@ -236,7 +236,7 @@ def _counterpart(identity, head_models: dict) -> dict | None:
     """The head's model for a base model, by name and version.
 
     A model that gained `versions:` keeps its consumers through v1, the
-    version decision 44 makes today's shape, so the base's unversioned model
+    version that is today's shape, so the base's unversioned model
     is the head's v1; and back again, for a model whose versions were folded
     away."""
     if identity in head_models:

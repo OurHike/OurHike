@@ -212,7 +212,7 @@ def test_with_two_steps_the_first_steps_build_leaves_the_second_tables_descendan
 
 
 def test_elementary_s_own_tables_build_before_the_seeds_and_stage_a_leaves_the_package_out():
-    """With Elementary on and its tables missing, a dbt command records nothing (decision 102, measured on dbt
+    """With Elementary on and its tables missing, a dbt command records nothing (measured on dbt
     2.0.6), the seeds' included, so its tables come first."""
     for lane in (None, "monthly", "hourly"):
         runs = plan([DEM_SAMPLING], dbt="dbt", python="python", paths=PATHS, fixtures=False, lane=lane)
@@ -447,7 +447,7 @@ def test_main_runs_the_plan_in_order_with_one_warehouse_for_dbt_and_the_steps(mo
 
 
 def test_every_command_runs_with_elementary_on(monkeypatch, tmp_path):
-    """dbt_project.yml's switch (decision 102): on for everything build_marts.py runs, off for the pytest suites."""
+    """dbt_project.yml's switch: on for everything build_marts.py runs, off for the pytest suites."""
     _, recorder = _main(monkeypatch, tmp_path, _manifest(*STEP_TABLES))
 
     assert {env.get("OURHIKE_ELEMENTARY") for _, _, env in recorder.calls} == {"true"}
@@ -1431,7 +1431,7 @@ def test_a_store_listed_as_started_may_not_cold_start_and_one_not_listed_may_wit
     assert forced.cold_start and forced.elementary_cold_start
 
 
-def test_a_store_started_before_decision_102_may_start_elementarys_history_until_it_is_listed_for_it():
+def test_a_store_saved_before_elementarys_history_may_start_it_until_it_is_listed_for_it():
     """Every store saved before Elementary came holds the snapshots and no elementary.json (row_history.py's
     docstring, "THE COLD START"): its first run with Elementary starts that history, said in a warning, and only a
     store [elementary_started] lists refuses a missing one."""
@@ -1637,7 +1637,7 @@ def test_an_expression_tests_failure_shows_the_models_own_failing_rows_not_its_c
     assert json.loads(lines[1]) == {"source_key": "club_x", "column_name": "title"}
 
 
-# --- Decision 81: one source or one writer never stops the rest ---------------------------------------------------
+# --- One source or one writer never stops the rest ---------------------------------------------------
 
 
 def _is_writers_run(argv: tuple[str, ...]) -> bool:
@@ -1726,7 +1726,7 @@ def test_a_writer_that_fails_while_the_others_write_leaves_no_file_and_the_build
     assert recorder.calls[-1][0][:3] == (*RESTORE, "save"), "the marts passed, so the row history is saved"
 
 
-#: The A.T. profile's two writers beside the climbs writer, and decision 194's null-share tests as dbt ids a named
+#: The A.T. profile's two writers beside the climbs writer, and their null-share tests as dbt ids a named
 #: generic test (tests/test_dbt_elevation_profile_null_share.py holds the names to _publish__elevation.yml).
 PROFILE_WRITERS = {
     "model.ourhike.pub_elevation_profile": "elevation_profile.json",
@@ -1744,7 +1744,7 @@ PROFILE_CHECKS = {
 def test_a_mostly_null_at_profile_fails_both_its_writers_so_their_files_go_and_the_build_exits_partial(
     monkeypatch, tmp_path, capsys
 ):
-    """Decision 194: dbt has written both profile files by the time their null-share tests fail, as they would on a
+    """Dbt has written both profile files by the time their null-share tests fail, as they would on a
     DEM that stopped answering. Each test is its writer's own, so both files are removed and can never publish, the
     climbs file that passed stays, the row history is still saved, and the build answers PARTIAL_EXIT; publish.py then
     keeps the bucket's last copies (tests/test_publish_dbt.py). Neither writer is keep_last_file, so this is the only
@@ -1848,7 +1848,7 @@ def test_a_test_that_holds_a_source_warned_so_the_build_names_its_rows_publishes
             "attached_node": "model.ourhike.leaks",
             "test_metadata": {"name": "expression_is_true", "kwargs": {"expression": "false"}},
         },
-        # The gate's own review aid, a level test below its error threshold (decision 204).
+        # The gate's own review aid, a level test below its error threshold.
         quiet: {"config": {"meta": {}, "error_if": ">1"}},
         "model.ourhike.leaks": {"relation_name": '"warehouse"."intermediate"."leaks"'},
     }
@@ -2012,8 +2012,8 @@ def _withdrawn_warehouse(tmp_path: Path, notes: tuple[str, ...] = ("loaded", "un
 
 
 class _DbtLackingTables(_DbtRuns):
-    """dbt as it answered PY-2's warehouse (dbt 2.0.6, 2026-10-06: "Catalog Error: Table with name raw_ourhike__notes
-    does not exist!", review finding PY-2 of PR #1805 — dlt → dbt re-platform as one go/no-go change): stage A fails on
+    """dbt as it answered a warehouse missing a withdrawn table (dbt 2.0.6, 2026-10-06: "Catalog Error: Table with name
+    raw_ourhike__notes does not exist!"): stage A fails on
     each base model whose raw table the warehouse lacks, unless the build excludes that table's source and everything
     below it."""
 
@@ -2038,7 +2038,7 @@ def test_notes_and_disputes_the_extract_withdrew_are_left_out_of_every_dbt_build
     monkeypatch, tmp_path, capsys
 ):
     """#922 — The whole conditions bake has been failing hourly since field notes landed, so the closures baseline is
-    ageing, back on the dbt path (review finding PY-2 of PR #1805): with public.field_notes unreadable, the extract
+    ageing, back on the dbt path: with public.field_notes unreadable, the extract
     withdraws notes and disputes by design and closures carry on, and stage A then failed on base_ourhike__notes, so no
     closures, warnings or notices file was written. Now each withdrawn table's source, and everything below it, is left
     out of every dbt build, the writers run, and the build answers PARTIAL_EXIT so the workflow publishes and goes red."""
@@ -2250,7 +2250,7 @@ def test_main_gives_the_checks_switch_to_elementarys_tables_and_the_pass_and_to_
 @pytest.mark.parametrize("manifest", [None, NONE_ALONE, HEAVY], ids=["unplanned", "none alone", "split"])
 def test_every_dbt_build_leaves_elementarys_checks_out_split_or_not(lane, manifest):
     """A check built beside its model would run before the writers and at the build's threads, and an anomaly check
-    that errors there would fail the build (decision 102's "never blocks a publish"), so no dbt build selects one."""
+    that errors there would fail the build (the checks never block a publish), so no dbt build selects one."""
     runs = plan(STEPS, dbt="dbt", python="python", paths=PATHS, fixtures=False, lane=lane, manifest=manifest)
 
     builds = [run for run in runs if run.argv[:2] == ("dbt", "build")]
@@ -2296,7 +2296,7 @@ def test_the_monthly_lanes_checks_leave_out_what_its_writers_do_and_train_on_its
 
 @pytest.mark.parametrize("state", [None, Path("/m/target")], ids=["no state", "deferred"])
 def test_hourly_lane_checks_run_apart_so_its_build_runs_none_and_writes_no_data_quality_file(state):
-    """Decision 110 (build_marts.py's docstring, "THE HOURLY LANE'S CHECKS RUN APART"): every check, every hour, in a
+    """build_marts.py's docstring, "THE HOURLY LANE'S CHECKS RUN APART": every check, every hour, in a
     run of their own after the build has published; the file that counts them is that run's, one writer an hour."""
     assert build_marts.HOURLY_LANE_CHECKS == build_marts.APART
     assert [build_marts.runs_checks(lane) for lane in (None, "monthly", "hourly")] == [True, True, False]
@@ -2754,7 +2754,7 @@ CHECK_RESULTS = [
 
 
 def test_a_check_that_errors_is_annotated_and_changes_neither_the_builds_exit_nor_its_save(monkeypatch, tmp_path, capsys):
-    """Decision 102: the checks never block a publish, which decision 204 keeps for production and UA. A check that
+    """The checks never block a publish in production and UA. A check that
     errors is said in the log and as an annotation, never retried, and the build goes on to save its history and
     answers as it would have without the pass."""
     recorder = _DbtRuns(tmp_path / "run_results.json", [(_is_checks_run, 1, CHECK_RESULTS, {})])
@@ -2782,7 +2782,7 @@ def test_a_check_that_errors_is_annotated_and_changes_neither_the_builds_exit_no
 
 
 def test_in_dev_a_check_that_errors_fails_the_build_at_its_end(monkeypatch, tmp_path, capsys):
-    """Decision 204: dev and CI do not build past a check that could not run, once the history is saved."""
+    """Dev and CI do not build past a check that could not run, once the history is saved."""
     recorder = _DbtRuns(tmp_path / "run_results.json", [(_is_checks_run, 1, CHECK_RESULTS, {})])
 
     code, _ = _main(monkeypatch, tmp_path, _manifest(*STEP_TABLES), recorder=recorder)
@@ -2849,7 +2849,7 @@ def test_a_checks_pass_that_selects_nothing_is_annotated_because_every_lane_has_
 
 @pytest.mark.parametrize("results", [[], None], ids=["none selected", "no results left"])
 def test_a_pass_of_what_a_change_reaches_that_reaches_no_check_is_an_answer_with_no_annotation(results):
-    """Decision 111: a pull request that changes only a pub_ writer, which carries no check, selects none."""
+    """A pull request that changes only a pub_ writer, which carries no check, selects none."""
     lines = build_marts.checks_report(results, 0, none_is_an_answer=True)
 
     assert lines == [
@@ -2862,7 +2862,7 @@ def test_a_pass_of_what_a_change_reaches_that_failed_without_results_is_still_an
     assert build_marts.checks_report(None, 2, none_is_an_answer=True)[0].startswith("::warning title=Elementary's checks")
 
 
-# --- decision 111: a pull request runs the checks its change reaches ------------------------------------------------
+# --- A pull request runs the checks its change reaches ------------------------------------------------
 
 
 def test_given_a_base_the_checks_pass_selects_what_state_modified_reaches_from_its_target():
@@ -3006,7 +3006,7 @@ def _is_quality_run(argv: tuple[str, ...]) -> bool:
 
 @pytest.mark.parametrize("lane, writers", [(None, QUALITY_WRITERS), ("monthly", ("pub_data_quality",))])
 def test_the_lanes_data_quality_writer_builds_after_the_writers_and_before_the_save_and_the_writers_leave_it(lane, writers):
-    """Decision 102's run order: the writers, Elementary's checks, then the file that reads what the checks recorded,
+    """The run order: the writers, Elementary's checks, then the file that reads what the checks recorded,
     then the save. The writers' `-s path:models/publish` would take both data-quality writers, so it leaves them out.
     The hourly lane's file is its checks run's (test_plan_checks_restores_elementarys_history_alone_...)."""
     history = History("s3://bucket/history/x", False, "python")
@@ -3074,7 +3074,7 @@ def test_after_the_data_quality_pass_run_results_hold_the_writers_results_and_it
 def test_a_failed_data_quality_pass_removes_its_file_and_leaves_the_writers_results_and_the_exit_alone(
     monkeypatch, tmp_path, capsys
 ):
-    """Decision 102's checks never block a publish, and nor does the file that reports them: a pass that fails after
+    """The checks never block a publish, and nor does the file that reports them: a pass that fails after
     its retries leaves no file to publish, run results that name no data-quality writer (so publish.py keeps the
     bucket's last copy), and the build's exit as the rest of the build made it, with the row history still saved."""
     processed = tmp_path / "processed"
@@ -3120,7 +3120,7 @@ def _publish_conditions_freshness_step() -> dict:
 
 
 def test_the_hourly_lanes_freshness_is_publish_conditions_freshness_steps_own_selection():
-    """Decision 203: the page's hourly freshness is the run that turns an hour red, read again (decision 100). That
+    """The page's hourly freshness is the run that turns an hour red, read again. That
     step measures `tag:conditions_job` every run and adds `tag:notices_job` when step 2b read a notices copy (`latest`
     or `older`); add-served writes OURHIKE_NOTICES_READ_AT exactly then, so the build record's notices_read_at decides
     the same."""
@@ -3190,7 +3190,7 @@ def test_a_source_past_its_error_limit_is_logged_and_changes_neither_the_builds_
 ):
     """dbt exits 1 for a source past its error limit (measured on 2.0.6). The run is never retried and never stops the
     build: the data-quality file is written after it and counts it, the history is saved, and nothing is annotated,
-    because publish-conditions.yml's own freshness step is the one that turns an hour red (decision 100)."""
+    because publish-conditions.yml's own freshness step is the one that turns an hour red."""
     sources = {
         "results": [
             {"unique_id": "source.ourhike.nws.raw_nws__alerts", "status": "Error", "max_loaded_at_time_ago_in_s": 11250.0},
@@ -3228,7 +3228,7 @@ def test_a_freshness_run_that_left_no_sources_json_says_the_file_counts_none(tmp
     )
 
 
-# --- Every test has two thresholds, and the environment decides who stops (decision 204; build_marts.py's docstring,
+# --- Every test has two thresholds, and the environment decides who stops (build_marts.py's docstring,
 # "EVERY TEST HAS TWO THRESHOLDS, AND THE ENVIRONMENT DECIDES WHO STOPS") ---
 
 
@@ -3288,7 +3288,7 @@ def _relabel_manifest() -> dict:
         "test.ourhike.rows_named_half.1": {"config": {"error_if": ">1", "meta": {}}},
         "test.ourhike.rows_named_some.1": {"config": {"error_if": ">1", "meta": {}}},
         "test.ourhike.unique_area_cuts_notice_id.1": {
-            "config": {"error_if": ">0", "meta": {build_marts.STAYS_AT_WARN: "decision 197"}}
+            "config": {"error_if": ">0", "meta": {build_marts.STAYS_AT_WARN: "a recorded exception"}}
         },
         "test.ourhike.not_null_x_id.1": {"config": {"error_if": ">0", "meta": {}}},
     }
@@ -3325,7 +3325,7 @@ def test_a_marts_row_date_test_is_no_relabelled_error_when_the_history_is_off():
 
 
 def test_in_ua_a_warning_past_its_error_if_is_an_error_and_the_build_publishes_then_goes_red(monkeypatch, tmp_path, capsys):
-    """Decision 204: in production and UA the switch makes a failing test warn, so dbt builds below it; the build names
+    """In production and UA the switch makes a failing test warn, so dbt builds below it; the build names
     the tests past their own error_if as errors, prints their rows, puts them on the run summary, and answers
     PARTIAL_EXIT, so the workflow publishes and then turns the run red."""
     duckdb.connect(str(tmp_path / "warehouse.duckdb")).close()
@@ -3412,7 +3412,7 @@ def test_failure_holds_hold_a_failed_model_itself_and_a_failed_source_tests_sour
 
 
 def test_in_ua_a_failed_test_holds_what_it_reaches_and_the_rest_builds_publishes_and_goes_red(monkeypatch, tmp_path, capsys):
-    """Decision 204, production's half: a failure dbt still raises (a test at `severity: error`, here the gate's) no
+    """A failure dbt still raises (a test at `severity: error`, here the gate's) no
     longer stops the build. Every later dbt build leaves out what it reaches, a step reading any of it is left out with
     what its table unblocks, so each writer below keeps its last published file, and the rest builds, saves its
     history and answers PARTIAL_EXIT."""
@@ -3498,7 +3498,7 @@ def test_in_dev_a_check_past_its_error_threshold_fails_the_build_at_its_end_afte
 
 
 def test_in_ua_a_check_past_its_error_threshold_is_an_error_on_the_summary_and_never_the_exit(monkeypatch, tmp_path, capsys):
-    """Decisions 102 and 110: the checks never block a publish, and decision 204 leaves that to production and UA."""
+    """In production and UA the checks never block a publish."""
     duckdb.connect(str(tmp_path / "warehouse.duckdb")).close()
     recorder = _DbtRuns(tmp_path / "run_results.json", [(_is_checks_run, 1, _failed_check_results(), {})])
 
@@ -3517,7 +3517,7 @@ def test_plan_checks_leaves_out_what_the_builds_failures_held():
     assert held in quality[quality.index("--exclude") :]
 
 
-# --- decision 210: a pull request builds only what changed since main's last build -----------------------------------
+# --- A pull request builds only what changed since main's last build -----------------------------------
 # build_marts.py's docstring, "A PULL REQUEST BUILDS ONLY WHAT CHANGED SINCE MAIN'S LAST BUILD"; the workflow's half,
 # and state_base.py's rules, are .github/tests/test_dbt_state_build.py's.
 
@@ -3750,7 +3750,7 @@ def test_a_state_base_is_refused_a_lane_the_hourly_lanes_state_and_a_build_outsi
 
 
 def test_the_hourly_lanes_plan_carries_nothing_of_a_state_build():
-    """The hourly lane is byte for byte what it was before decision 210: no listing, no state selector, no --state but
+    """The hourly lane is byte for byte what it was before state builds: no listing, no state selector, no --state but
     its own defer's (the dry-run plans of 2a826f01 and of this change compared equal, 2026-10-15)."""
     for state in (None, Path("/m/target")):
         runs = plan(STEPS, dbt="dbt", python="python", paths=PATHS, fixtures=False, lane="hourly", state=state)

@@ -954,9 +954,9 @@ def test_the_same_point_asked_for_twice_in_one_run_is_read_once(tmp_path, monkey
     assert len(windows) == 1
 
 
-# --- The key is the point itself (decision 115) ------------------------------
+# --- The key is the point itself ------------------------------
 #
-# Until decision 115 the cache keyed a point to 6 decimals and answered a key
+# The cache once keyed a point to 6 decimals and answered a key
 # with whoever asked it first, so a point a hair across a 3DEP pixel edge from
 # one asked before it took that point's pixel: monthly run 30 published the
 # neighbouring pixel on 133 samples of 123 graph edges that way. These hold the
@@ -979,7 +979,7 @@ def _ramp_index(tmp_path):
 
 
 def _six_decimal_key(lon, lat):
-    """The key every samples.json written before decision 115 holds a point under."""
+    """The key every samples.json written under the old keys holds a point under."""
     return f"{lon:.6f},{lat:.6f}"
 
 
@@ -1035,7 +1035,7 @@ def test_cache_key_reads_back_to_the_points_own_doubles_and_parts_two_adjacent_o
     assert export_elevation._cache_key(np.float64(lon), np.float64(lat)) == "-84.15,34.65"
 
 
-@pytest.mark.parametrize("keys", [None, "6 decimals"], ids=["no keys field, as before decision 115", "another rule"])
+@pytest.mark.parametrize("keys", [None, "6 decimals"], ids=["no keys field, as the old files have", "another rule"])
 def test_samples_json_keyed_under_another_rule_is_discarded_whole(tmp_path, keys):
     """An old file's key can be a new point's exact key: "-84.150001,34.650001" is the 6-decimal key every point
     within half a millionth of a degree of that one was stored under, and that one point's exact key too. So a file

@@ -3,8 +3,7 @@
 A step that hits its `timeout-minutes` fails the job, and every step after it
 is skipped, "Publish to R2" among them: NWS's alerts, OurHike's own closures
 and the drought bands all miss that hour. The build step's cap was 4 minutes
-while soak run 538 spent 182 s of its 240 in it (WF5 of the PR #1805 review,
-and the cap half of ARCH-7).
+while soak run 538 spent 182 s of its 240 in it.
 
 THE FIGURES ARE MEASURED, from the GitHub API's step times for the UA leg of
 the dbt path's 39 soak runs 617 to 676 (2026-10-10 12:21 to 2026-10-15 02:47
@@ -16,21 +15,18 @@ job, its time less the build, the freshness step and the hand-off, 140 to
 WHAT IS HELD, in the order a run reaches it:
 - the build's cap is half again above its slowest measured build;
 - a build at its cap still publishes, with the trail lines' restore stalled to
-  its own cap before it (review finding S2-7 of PR #1805 — dlt → dbt
-  re-platform as one go/no-go change);
+  its own cap before it;
 - the build, the restore and the freshness step all at their caps, with the
   rest at its slowest, still end inside the job's cap, so the freshness step
   ends with its own answer: 600 + 60 + 60 + 213 = 933 s of 960;
 - the hand-off between them takes only what the job has left after every
   step that follows it, so it is never the step that runs the job into its
-  cap (review finding S2-1, the same review);
+  cap;
 - client/src/lib/noticeSelection.ts's SAME_BUILD_MS is the job's cap, as its
   own reasoning says it must be.
 
-THE JOB'S CAP IS 16 MINUTES since decision 201 (the maintainer's poll of
-2026-10-15, "Job cap 16 minutes"): at 15, the joint sum above ran 33 s past
-the cap once these figures replaced the old ones. The build keeps the 10
-minutes decision 103 gave it.
+THE JOB'S CAP IS 16 MINUTES (the maintainer, 2026-10-15): at 15, the joint
+sum above ran 33 s past the cap. The build step's cap is 10 minutes.
 """
 
 from __future__ import annotations
@@ -97,10 +93,10 @@ def test_a_build_that_runs_to_its_cap_still_publishes_beside_a_restore_stalled_t
 
 
 def test_the_build_the_restore_and_the_freshness_step_all_at_their_caps_still_end_inside_the_jobs_cap():
-    """The freshness step (decision 100) runs after "Publish to R2", so it can never cost a publish, but a check that
+    """The freshness step runs after "Publish to R2", so it can never cost a publish, but a check that
     ran into the job's cap would end the run cancelled rather than with its own answer. The hand-off between them yields
     the freshness step its cap (the next test), so the build's cap, the restore's and this one's are added to the rest:
-    933 s, which the 900 s job decision 201 raised could not hold."""
+    933 s, which a 900 s job could not hold."""
     job_cap = _job()["timeout-minutes"] * 60
     caps = (_build_step()["timeout-minutes"] + _named(RESTORE)["timeout-minutes"] + _freshness_step()["timeout-minutes"]) * 60
     assert caps + SLOWEST_REST_OF_JOB_SECONDS <= job_cap, f"{caps + SLOWEST_REST_OF_JOB_SECONDS} s against {job_cap}"
@@ -146,7 +142,7 @@ def test_the_jobs_clock_is_read_before_anything_that_takes_time():
 
 def test_the_clients_same_build_window_is_the_jobs_cap():
     """client/src/lib/noticeSelection.ts's SAME_BUILD_MS is "publish-conditions.yml's cap on the whole job, which one
-    build's snapshots cannot outlast" (decision 87), and moved with it at decisions 103 and 201. Read from its text, so
+    build's snapshots cannot outlast", and moves with it. Read from its text, so
     neither can move without the other."""
     source = (WORKFLOW.parents[2] / "client" / "src" / "lib" / "noticeSelection.ts").read_text(encoding="utf-8")
     (minutes,) = re.findall(r"^export const SAME_BUILD_MS = (\d+) \* 60 \* 1000$", source, re.MULTILINE)

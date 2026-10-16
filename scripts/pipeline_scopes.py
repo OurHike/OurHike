@@ -17,9 +17,9 @@ scripts/suite_scopes.py - a hand copy is exactly the half that goes stale):
    invokes `publish.py` with a Python interpreter, or dispatches a workflow
    that does (below). Nine files on 2026-10-08: publish-weather.yml was the
    sixth (2026-09-25), refresh-reference.yml the seventh, and since the
-   maintainer's choice B split the monthly lane (2026-10-08) it publishes
-   through build-reference.yml, the eighth; check-conditions.yml, decision
-   110's hourly checks, the ninth, which `publish.py --sidecar` makes one
+   maintainer split the monthly lane (2026-10-08) it publishes through
+   build-reference.yml, the eighth; check-conditions.yml, the hourly
+   checks, the ninth, which `publish.py --sidecar` makes one
    and publish-conditions.yml dispatches after each build, so a change to
    what the checks run stales both and the bake's schedule reruns both. The
    next joins this report by existing rather than by being remembered.
@@ -50,7 +50,7 @@ scripts/suite_scopes.py - a hand copy is exactly the half that goes stale):
 
 AN EXTRACT PATH FEEDS A PUBLISH WITHOUT BEING ONE. A workflow that runs
 `python -m extract._run` and no publish.py lands raw tables a publishing
-path reads later: extract-notices.yml, decision 61's notices legs, whose
+path reads later: extract-notices.yml, the notices legs, whose
 served copy publish-conditions.yml's hourly dbt path reads. Its scope is the
 extract package's own modules (pipeline/extract/_*.py) and their import
 closure, the club files of the types on the hourly lane (extract/_contract.py's
@@ -69,7 +69,7 @@ publish-conditions.yml's legs read them and are not modelled here yet
 (pipeline/ELT.md, "scripts/pipelines.sh must learn the new layout").
 
 A WORKFLOW THAT DISPATCHES A PUBLISHING PATH IS ONE TOO. Since the
-maintainer's choice B (2026-10-08) refresh-reference.yml extracts and pins,
+maintainer split the monthly lane (2026-10-08), refresh-reference.yml extracts and pins,
 and its dispatch job starts build-reference.yml, which publishes, with
 `gh workflow run build-reference.yml`. So a run script's `gh workflow run
 <file>` (dispatched()) makes its workflow a publishing path when <file> is
@@ -345,7 +345,7 @@ def rerun_note(workflow: Path) -> str:
     build-dem's name, for the reason everything else here is: a second
     variant-taking workflow gets the right answer without editing this file.
 
-    A workflow with no schedule that a scheduled one dispatches (choice B's
+    A workflow with no schedule that a scheduled one dispatches (the split's
     build-reference.yml, which refresh-reference.yml starts after each pin)
     is rerun by that schedule, and can be dispatched sooner with its own
     required inputs, which the note names from its workflow_dispatch block

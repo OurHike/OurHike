@@ -153,7 +153,7 @@ jobs:
       # real spread (pipeline/ELT.md, "The schedule: 05:15 UTC on the 3rd").
       # The age runs from the extract behind the newest build on main that
       # refreshed UA: the instant its raw_run began, which build-reference.yml's
-      # run-name writes into the run's title. Until the maintainer's choice B
+      # run-name writes into the run's title. Until the maintainer's split of the monthly lane
       # (2026-10-08) split the lane, one run extracted and built, so its own
       # start was that instant; dating a build by its start now would let a
       # build from an old pin, dispatched by hand, clear the alarm while UA
@@ -170,7 +170,7 @@ jobs:
       # REFRESHED UA, NOT GREEN (WF3 of the PR #1805 review). A run can
       # refresh UA and still conclude `failure`: monthly runs 16 and 17 did,
       # when one workflow still extracted and built and its last job failed
-      # the run for a layer left out (decision 49), and a build-reference.yml
+      # the run for a layer left out, and a build-reference.yml
       # run does when a parity group fails after its confirm passed. So a run
       # counts when its job "Confirm UA serves what the build wrote" succeeded,
       # whatever the run concluded, and only a run of main counts: a pull

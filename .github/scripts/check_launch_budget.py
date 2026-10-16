@@ -26,8 +26,8 @@ and the sentence `--banner` writes leads its comment instead.
 
 ONE MANIFEST IS ENOUGH. The step weighs the release DATA_RELEASE names. A phone
 that has read channels.json follows that file's entry instead, and the two
-steps after it hold that entry to DATA_RELEASE (check_pin_matches_channels.py,
-decision 145) and the uploaded copy to the committed entry, so a build that
+steps after it hold that entry to DATA_RELEASE (check_pin_matches_channels.py)
+and the uploaded copy to the committed entry, so a build that
 deploys has one release to weigh.
 
 ONLY THE STANDARD LIBRARY, here and in lib/client_contract.py, so a runner's

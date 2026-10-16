@@ -3,28 +3,27 @@
 # publishes nothing to phones: publish-conditions.yml's hourly dbt path reads
 # what this leaves and builds the closures and warnings marts from it.
 #
-# DECISION 61 (pipeline/ELT.md's decisions table, 2026-10-04) IS WHY THIS IS
-# ITS OWN JOB. The maintainer: "we can move the conditions to run every 4
+# WHY THIS IS ITS OWN JOB. The maintainer, 2026-10-04: "we can move the conditions to run every 4
 # hours and to take up to an hour. if this is going to be too hard to keep
-# fast, let's expand now and not waste time on it", and then, by poll, kept
+# fast, let's expand now and not waste time on it", and then kept
 # what a storm or a moderator's closure turns on in the short hourly job. So
 # the hourly lane is read by two jobs (extract/_run.py's LEGS and job_of()):
 #
 #  - publish-conditions.yml, hourly, reads the upstreams the bake published
-#    before decision 53: NWS's alerts, OurHike's own moderated closures and
+#    before the club notices joined: NWS's alerts, OurHike's own moderated closures and
 #    reports, ATC's and NYNJTC's notices, OPRHP's trail closures and the
 #    reviewed work projects (_run.py's HOURLY_JOB_TABLES, which
 #    pipeline/tests/test_extract_layout.py pins table by table).
 #  - this job reads every other closures and warnings resource, every
-#    decision 53 source whatever its reader (ArcGIS, JSON, feed, page,
+#    club or agency notice source whatever its reader (ArcGIS, JSON, feed, page,
 #    WordPress), by that rule rather than by a list, so a club wired later
 #    comes here without anybody naming it.
 #
 # What the split costs a hiker, said plainly: a club's notice can now reach
 # the warehouse up to about 4 hours after the club posts it, plus however
 # late GitHub fires this cron. The phone already says "Conditions as of Nh
-# ago" at any age (client/src/lib/conditionState.ts), and decision 61 chose
-# this over letting a short NWS warning expire unseen.
+# ago" at any age (client/src/lib/conditionState.ts), and the maintainer
+# chose this over letting a short NWS warning expire unseen.
 #
 # HOW THE HOURLY JOB READS IT WITHOUT TEARING. A `replace` load deletes a
 # table's files before it writes the new ones, and its run log lands after
@@ -53,14 +52,12 @@
 # hourly dbt path publishes from, and only reviewed, merged code may fill it.
 #
 # AND IT EXTRACTS ONLY WHILE PRODUCTION'S HOURLY LEG IS ON THE dbt PATH
-# (decision 92, the maintainer's poll of 2026-10-06: "UA on dbt, prod on
-# exporters"). Until the cutover that leg runs the exporters, which read no
+# (the maintainer, 2026-10-06: "UA on dbt, prod on exporters"). Until the cutover that leg runs the exporters, which read no
 # notices store, so this leg asked every club's host and wrote a store and a
 # served copy every 4 hours for no reader: 521 s a leg run on average over
 # notices runs 1 to 10 (Measured from the Actions API), and at least 197
 # upstream requests a run (Reasoned: each resource's change check is at
-# least one request a run, extract/_run.py), both review finding ARC-2's of
-# PR #1805 — dlt → dbt re-platform as one go/no-go change. Its
+# least one request a run, extract/_run.py). Its
 # step "Run the production leg only while production's hourly leg reads it"
 # reads publish-conditions.yml's PRODUCTION_PHONE_FILES line, so the cutover,
 # which changes that line to `dbt`, switches this leg on with it. The UA leg
@@ -85,7 +82,7 @@ on:
     # every cron in this directory records (GitHub queues everything
     # submitted at :00 behind everyone else's), on a minute no other
     # workflow here uses, and off midnight UTC, by analogy with that rule
-    # only. Every 4 hours is decision 61's.
+    # only. Every 4 hours is the maintainer's choice (2026-10-04).
     #
     # @unvalidated: what GitHub actually does with a 4-hourly cron. #1346 -
     # Every cron in this repository fires about five times a day, whatever
@@ -98,7 +95,7 @@ on:
   workflow_dispatch:
     inputs:
       # `ua` runs the UA leg alone: the soak's dispatch from the pull
-      # request's branch (decision 62 restarts the soak on these jobs). `both`
+      # request's branch (a change to these jobs restarts the soak). `both`
       # is the schedule's behaviour, and means both legs only from main.
       data_environment:
         description: "Which legs to run: both (production and UA; from main only) or ua alone"
@@ -112,14 +109,14 @@ permissions:
 env:
   PYTHONUNBUFFERED: "1"
   # dlt's telemetry is on by default and would send from a job holding the
-  # raw store's write key (the dlt skill, rule 3).
+  # raw store's write key (the dlt skill).
   RUNTIME__DLTHUB_TELEMETRY: "false"
 
 jobs:
   extract:
     name: Extract notices (${{ matrix.data_environment }})
     runs-on: ubuntu-latest
-    # DECISION 61'S HOUR. The steps' caps below are sized inside it: 3 minutes
+    # THE HOUR THIS JOB HAS. The steps' caps below are sized inside it: 3 minutes
     # to install, 50 to extract and 5 to copy, 58 of the 60, with checkout and
     # Python a few seconds besides (publish-conditions.yml's run 510 measured
     # 3 s and 8 s for those two, 2026-10-04).
@@ -179,7 +176,7 @@ jobs:
 
       - uses: actions/checkout@v7
 
-      # DECISION 92's SKIP, read off the file publish-conditions.yml's
+      # THE PRODUCTION LEG'S SKIP, read off the file publish-conditions.yml's
       # production leg chooses from, at this checkout: the one line
       # `  PRODUCTION_PHONE_FILES: <exporters|dbt>`, exactly. `exporters`
       # skips every step below with a notice and leaves the leg green;
@@ -238,8 +235,7 @@ jobs:
       # table standing, and the rest load. A refusal exits 3, recorded here so
       # the copy below still runs and a step after it warns; a refused source
       # whose sources.json row says reaches_hikers false exits 0
-      # (exit_status()). Since decision 100 a refusal never turns this run
-      # red: dbt's source freshness does, in publish-conditions.yml, once the
+      # (exit_status()). A refusal never turns this run red: dbt's source freshness does, in publish-conditions.yml, once the
       # source has gone 24 hours unread. A run takes on at most 150 tables it
       # has never loaded (NEW_TABLES_PER_LEG_RUN, which says what that rests
       # on).
@@ -333,13 +329,11 @@ jobs:
             exit "$status"
           fi
 
-      # A WARNING, NEVER RED: decision 100 (the maintainer's poll of
-      # 2026-10-07, on round-2 finding ARC-5 of PR #1805 — dlt → dbt
-      # re-platform as one go/no-go change: "Red after 24h. But this should be
-      # Red in the data source freshness feature of dbt. Not blocking a
-      # datasource pipeline"). Until it, this step turned the run red for any
-      # one refused source: notices runs 6, 7, 9 and 14 went red that way
-      # (pipeline/ELT.md's decision 100 row), run 14 on mass.gov answering
+      # A WARNING, NEVER RED (the maintainer, 2026-10-07: "Red after 24h. But
+      # this should be Red in the data source freshness feature of dbt. Not
+      # blocking a datasource pipeline"). This step once turned the run red for
+      # any one refused source: notices runs 6, 7, 9 and 14 went red that way,
+      # run 14 on mass.gov answering
       # 403 to GitHub's runners for ma_dcr_blue_hills_alerts on both attempts
       # (37636022925, 2026-10-07).
       # The source's last committed table stands, the extract step's summary

@@ -51,7 +51,7 @@
 # (.github/actions/dbt-docs-site) in a job of its own that holds no secret, so
 # a pull request that changes the dbt project shows its docs page before a tag
 # publishes it. Production serves them from docs.ourhike.org, a host of their
-# own (pipeline/ELT.md decision 144; pages.yml's docs-host job), under the
+# own (pages.yml's docs-host job), under the
 # same /data/ path; a preview keeps them on its own hostname, beside its app,
 # so the site it builds is given no PUBLIC_DOCS_ORIGIN and its data links
 # stay on the preview.
@@ -154,7 +154,7 @@ jobs:
   # The /data/ page, built by the same action as pages.yml (the action says
   # why an empty warehouse; it reads no secret). A job of its own, holding a
   # token that can only read and handed no secret, as pages.yml's docs job is
-  # and for the reason that job gives (SEC-8 of PR #1805's second review): it
+  # and for the reason that job gives: it
   # installs dbt, fetches dbt's packages by tag, may download a native driver
   # and runs npm ci for DuckDB-WASM, and a step's process can reach whatever
   # its job holds. The preview job below holds the Cloudflare token and
@@ -657,7 +657,7 @@ jobs:
       # copy taken any earlier would upload an app with no pictures in it and a
       # comment linking at them.
       # check_docs_site.py, below, reads the docs' Parquet files with duckdb.
-      # The docs are built in their own read-only job (round-2 finding SEC-8),
+      # The docs are built in their own read-only job,
       # so nothing in this job installs dbt or duckdb any more: it needs
       # duckdb alone, at the pipeline's own pin, on the Python the docs action
       # builds with. Without it the check failed on its import (PR Preview run

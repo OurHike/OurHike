@@ -66,7 +66,7 @@ UA = {
     "hiker_facing": False,
 }
 
-# The data docs' host since pipeline/ELT.md decision 144: on the bucket's
+# The data docs' host: on the bucket's
 # CORS list for the quality page, and on no Supabase list, explicitly.
 DOCS = {
     "pattern": "https://docs.ourhike.org",
@@ -325,7 +325,7 @@ class TestTheFaultsThisExistsFor:
 
 
 class TestAHostThatSignsNobodyIn:
-    """The data docs' host (pipeline/ELT.md decision 144), declared with `supabase: []`.
+    """The data docs' host, declared with `supabase: []`.
 
     Moving the docs off the app's origin is what keeps dbt's page away from a
     hiker's session; an allow-list that handed a sign-in back to the docs

@@ -46,6 +46,7 @@ import duckdb
 
 import build_osm_water_reach
 import fetch_trail_water
+from lib.derived import replace_table
 from step_site_water import offline_elevations
 
 ROOT = Path(__file__).parent
@@ -54,6 +55,17 @@ REACH = "intermediate.int_points_of_interest__osm_water_reach"
 POINTS = "derived.osm_water"
 SCHEMA = "derived"
 TABLE = "osm_water_grade"
+
+COLUMNS = (
+    ("osm_id", "varchar"),
+    ("passes_grade", "boolean"),
+    ("drop_ft", "double"),
+    ("grade", "double"),
+    ("grade_floored", "boolean"),
+    ("reachable", "boolean"),
+    ("reason", "varchar"),
+    ("_loaded_at", "timestamptz"),
+)
 
 
 def read_reach(con: duckdb.DuckDBPyConnection, relation: str = REACH) -> list[dict]:
@@ -141,19 +153,6 @@ def previous_reachable(path: Path | None) -> int | None:
 
 def write_grade(con: duckdb.DuckDBPyConnection, records: list[dict], loaded_at: datetime) -> int:
     """Replace derived.osm_water_grade with one row per record. Returns the row count."""
-    con.execute(f"create schema if not exists {SCHEMA}")
-    con.execute(f"""
-        create or replace table {SCHEMA}.{TABLE} (
-            osm_id varchar,
-            passes_grade boolean,
-            drop_ft double,
-            grade double,
-            grade_floored boolean,
-            reachable boolean,
-            reason varchar,
-            _loaded_at timestamptz
-        )
-    """)
     rows = [
         (
             record["osm_id"],
@@ -167,9 +166,7 @@ def write_grade(con: duckdb.DuckDBPyConnection, records: list[dict], loaded_at: 
         )
         for record in records
     ]
-    if rows:
-        con.executemany(f"insert into {SCHEMA}.{TABLE} values (?, ?, ?, ?, ?, ?, ?, ?)", rows)
-    return con.execute(f"select count(*) from {SCHEMA}.{TABLE}").fetchone()[0]
+    return replace_table(con, TABLE, COLUMNS, rows)
 
 
 def _landed(con: duckdb.DuckDBPyConnection) -> int:

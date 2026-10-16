@@ -1,4 +1,4 @@
-"""seeds/notice_words.csv as int_closures__club_notices' rule 2 matches it, for checks that need no warehouse.
+"""seeds/notice_words.csv as int_closures__club_notices' word rule matches it, for checks that need no warehouse.
 
 A mirror of the model's word matching only (its `field_text` and `hits` CTEs), never of the readings' order: the
 dbt unit tests hold the SQL itself, and test_dbt_closures_club_notices.py holds their mocks to the seed files. A

@@ -1,12 +1,12 @@
-"""Hold pipeline/dbt/dbt_packages/ to the sha256 of every file its four packages shipped (decision 144).
+"""Hold pipeline/dbt/dbt_packages/ to the sha256 of every file its four packages shipped.
 
     python check_dbt_packages.py            # compare the tree with dbt/packages.sha256; exit 1 on any difference
     python check_dbt_packages.py --write    # rewrite dbt/packages.sha256 from the tree, after a reviewed upgrade
 
 packages.yml and package-lock.yml pin each package to a version, and `dbt deps` fetches that version's tarball from
 codeload.github.com, but nothing checks what the tarball holds: a tag moved upstream would change the macros every
-dbt command here runs, in jobs that hold the raw store's and the bucket's write keys. The maintainer's poll of
-2026-10-09 asked for the dbt install and the dbt packages to be hash-pinned (decision 144, pipeline/ELT.md);
+dbt command here runs, in jobs that hold the raw store's and the bucket's write keys. The maintainer
+(2026-10-09) asked for the dbt install and the dbt packages to be hash-pinned (pipeline/ELT.md);
 requirements-dbt.txt pins the install, and this file pins the packages, by comparing every file under
 dbt_packages/ with dbt/packages.sha256 and failing on any file changed, missing or added.
 
@@ -21,8 +21,7 @@ the log once the difference is understood.
 
 A SYMLINK IS A DIFFERENCE, wherever it is and whatever it points at, and so is anything else that is neither a
 regular file nor a folder; `--write` refuses a tree holding one. dbt follows a link when it reads a macro, so a link
-adds bytes no pin names: the adversarial review of 2026-10-15 on PR #1805 — dlt → dbt re-platform as one go/no-go
-change (its finding S2-6) put a macro under dbt_utils/.git/, which is left out, linked it into dbt_utils/macros/,
+adds bytes no pin names: a review on 2026-10-15 put a macro under dbt_utils/.git/, which is left out, linked it into dbt_utils/macros/,
 and this check passed while dbt 2.0.6 parsed the macro and ran it. Hashing what a link points at instead would pin
 bytes the package never shipped under that name, from a place the pin does not cover (its own .git, or outside the
 tree), and a link to a folder would still be a tree nobody walked. Every file the four packages shipped is a regular
@@ -105,7 +104,7 @@ def differences(pinned: dict[str, str], found: dict[str, str]) -> list[str]:
 def write_manifest(path: Path, found: dict[str, str]) -> None:
     header = (
         "# sha256 of every file under pipeline/dbt/dbt_packages/, checked by pipeline/check_dbt_packages.py\n"
-        "# (decision 144). Rewrite only with `python check_dbt_packages.py --write`, after reviewing the upgrade.\n"
+        "#. Rewrite only with `python check_dbt_packages.py --write`, after reviewing the upgrade.\n"
     )
     path.write_text(header + "".join(f"{digest}  {name}\n" for name, digest in sorted(found.items())), encoding="utf-8")
 
@@ -124,7 +123,7 @@ def main(argv: list[str] | None = None) -> int:
     if args.write and refused:
         print(
             f"::error title=dbt packages hold a symlink::{len(refused)} entr(y/ies) under {args.packages_dir} are not "
-            f"regular files, so {args.manifest.name} was not written: no pin may leave one out (decision 144)",
+            f"regular files, so {args.manifest.name} was not written: no pin may leave one out",
             flush=True,
         )
         for line in refused[:SHOWN]:
@@ -140,7 +139,7 @@ def main(argv: list[str] | None = None) -> int:
         return 0
     print(
         f"::error title=dbt packages differ from {args.manifest.name}::{len(lines)} file(s) differ from the pinned "
-        "packages; dbt runs nothing from this tree until they are understood (decision 144)",
+        "packages; dbt runs nothing from this tree until they are understood",
         flush=True,
     )
     for line in lines[:SHOWN]:

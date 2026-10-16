@@ -1,12 +1,12 @@
-"""The section-closure rule (decision 212): which trail lines an organization's own closure notice closes by name.
+"""Which trail lines an organization's own closure notice closes by naming their section.
 
-The maintainer's poll of 2026-10-15, "General rule, measured (Recommended)", replacing a reviewed row that named
-two lines: "we want generalized rules that apply across all orgs. Not just 1 by 1 org specific examples." It follows
-decision 141 (no per-closure rules): nothing here names an organization, a trail or a line.
+One general rule for every organization: nothing here names an organization, a trail or a line.
 
 THE RULE. A notice closes a set of lines when all of these hold, and otherwise closes nothing:
+- it is in force: its `starts_on` is not after today and its `ends_on` is not before it (a notice with neither
+  date is in force), as every other closure path reads a notice;
 - it is closing in its own words: `obstructs_trail` in conditions/notices.json, which the closures vocabulary
-  (decision 190, seeds/notice_words.csv) decides upstream;
+  (seeds/notice_words.csv) decides upstream;
 - it carries no geometry of its own (`place.kind` is not `geometry`): a placed notice already draws its own extent,
   and closing every line of the same name could close more ground than the notice does;
 - it names a section: its whole title, or a phrase of one to four words before the word "section" in it;
@@ -15,15 +15,15 @@ THE RULE. A notice closes a set of lines when all of these hold, and otherwise c
   its section part, and only when the notice's title also names its trail part;
 - the notice is the line's steward's (the same registry `provider`), or a club's that names the trail part.
 Every comparison is on lowercase words, so punctuation and case never decide a match. Two or more line sets is
-ambiguous and closes nothing; so does a section that no line set carries. Both are listed by evaluate(), for a
-person to read before the rule's output ships (measure_section_closures.py).
+ambiguous and closes nothing; so does a section that no line set carries. evaluate() lists both, and
+step_section_closures.py prints the list in every monthly build's log for a person to read.
 
 WHY THIS STRICT (CLAUDE.md, "Miss rather than cry wolf"): measured 2026-10-15 over UA's release 2026-10-10-2, a
 looser rule (a line name found anywhere inside a title) matched a notice titled "Bass River SF" to a New Jersey line
 named "River", and "Boreas Pass Section House" to two USFS lines named "PASS". Whole names do not.
 
 @unvalidated: the four-word cap on a section phrase and the generic words below are picked, not fitted; what would
-settle them is the list measure_section_closures.py prints, read by a person, over the next months' notices.
+settle them is the list step_section_closures.py prints, read by a person, over the next months' notices.
 """
 
 from __future__ import annotations
@@ -31,6 +31,7 @@ from __future__ import annotations
 import re
 from collections import defaultdict
 from dataclasses import dataclass, field
+from datetime import UTC, date, datetime
 
 #: Words that never make a name on their own: a section name of only these closes nothing.
 GENERIC_WORDS = frozenset({"a", "and", "of", "the", "trail", "trails", "trl", "section", "path", "loop"})
@@ -106,13 +107,23 @@ class Outcome:
 
 #: closes: exactly one line set, and it closes. The rest close nothing and are listed for a person:
 #: ambiguous (two or more sets), no_line (a "<name> section" phrase no set carries), not_closing (a notice whose
-#: words would match but which does not close the trail), placed (a closing notice drawn by its own geometry).
-VERDICTS = ("closes", "ambiguous", "no_line", "not_closing", "placed")
+#: words would match but which does not close the trail), not_in_force (a closing notice that has not started or has
+#: ended), placed (a closing notice drawn by its own geometry).
+VERDICTS = ("closes", "ambiguous", "no_line", "not_closing", "not_in_force", "placed")
 
 
-def evaluate(notices, sets: list[LineSet]) -> list[Outcome]:
+def in_force(notice: dict, today: date) -> bool:
+    """Whether the notice has started and not ended on `today`, from its ISO-day `starts_on` and `ends_on`. A missing
+    date bounds nothing, so a notice with neither is in force."""
+    starts, ends = notice.get("starts_on"), notice.get("ends_on")
+    return (not starts or date.fromisoformat(starts) <= today) and (not ends or date.fromisoformat(ends) >= today)
+
+
+def evaluate(notices, sets: list[LineSet], today: date | None = None) -> list[Outcome]:
     """Every notice the rule has something to say about, in the notices' order. A notice with no candidate set and
-    no section phrase is left out: there is nothing to read."""
+    no section phrase is left out: there is nothing to read. `today` decides which notices are in force (default: the
+    UTC date now)."""
+    today = today or datetime.now(UTC).date()
     by_section: dict[tuple[str, ...], list[LineSet]] = defaultdict(list)
     for line_set in sets:
         if _named(line_set.section):
@@ -138,6 +149,8 @@ def evaluate(notices, sets: list[LineSet]) -> list[Outcome]:
             continue
         if not closing:
             verdict = "not_closing"
+        elif not in_force(notice, today):
+            verdict = "not_in_force"
         elif (notice.get("place") or {}).get("kind") == "geometry":
             verdict = "placed"
         elif len(candidates) > 1:

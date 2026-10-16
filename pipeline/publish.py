@@ -54,8 +54,8 @@ and the version written records it as latest.json's `raw_run`, which every
 other publish carries forward (RAW_RUN_ENV_VAR says why, and
 prune_raw_store.py is what reads it).
 
-`python publish.py --channels` uploads the committed channels.json, decision
-44's pointer to the release folder each environment's phones read, and nothing
+`python publish.py --channels` uploads the committed channels.json, the
+pointer to the release folder each environment's phones read, and nothing
 else. It is the release train's step, run by a dispatch; publish() never does
 it, so no scheduled run can move what a phone reads.
 """
@@ -569,7 +569,7 @@ def release_only(name: str) -> bool:
     """Whether an artifact's bytes live only in a release folder: a
     release-scoped key under a schema version's own segment, `v2/<file>`.
 
-    Decision 44 writes a v2 beside its v1 at `releases/<id>/v2/<file>` and adds
+    A v2 is written beside its v1 at `releases/<id>/v2/<file>` and adds
     no root key (pipeline/ELT.md, "Versions and channels"). The root's flat
     keys are what installed apps read, and all of them are v1's. A build that
     reads v2 resolves its release folder and reads `v2/<key>` inside it
@@ -1636,7 +1636,7 @@ def _collect_cells(family: str, artifacts: dict[str, dict]) -> None:
 #: that writer's file and drops the exporter's entry for it, so each key has
 #: one owner per run; keys no exposure names (the cells, the archives, the
 #: weather and field note files) stay the exporters'. An environment variable,
-#: so the UA soak (decision 30) can run the dbt path while production stays on
+#: so the UA soak can run the dbt path while production stays on
 #: the exporters; any other value refuses, so a typo cannot quietly pick one.
 PHONE_FILES_ENV_VAR = "OURHIKE_PHONE_FILES"
 PHONE_FILES_FROM_EXPORTERS = "exporters"
@@ -1660,7 +1660,7 @@ DBT_PROCESSED_DIR_DEFAULT = "../data/processed/dbt"
 DBT_WAREHOUSE_ENV_VAR = "OURHIKE_WAREHOUSE"
 DBT_WAREHOUSE_DEFAULT = "../data/warehouse.duckdb"
 #: Set to "true" by publish-conditions.yml when build_marts.py exited its
-#: PARTIAL_EXIT (decision 81: "Hold that source and publish the rest"): some
+#: PARTIAL_EXIT ("Hold that source and publish the rest"): some
 #: writers failed while the others wrote. collect_dbt_phone_files() then keeps
 #: a failed writer's key, its file never read, rather than refusing the whole
 #: publish, and the workflow turns the run red once everything else is
@@ -1709,7 +1709,7 @@ DETAIL_FAMILY_KEY = "suggested_hikes_detail_{number}.json"
 DETAIL_FAMILY_PATTERN = re.compile(r"^suggested_hikes_detail_\d+\.json$")
 #: The exposure `meta` key that makes a dbt writer's file build metadata, a
 #: sidecar as SIDECARS' are, rather than a phone file: the data-quality page's
-#: two files (decision 102, models/publish/_publish__data_quality.yml says
+#: two files (models/publish/_publish__data_quality.yml says
 #: why). A sidecar never causes a version and is uploaded only beside one, so
 #: a file whose bytes change every build (its `built_at`) cannot stage a
 #: release folder on its own, and it is in no manifest's `artifacts`, which
@@ -1741,7 +1741,7 @@ def phone_files_source(value: str | None = None) -> str:
     return raw
 
 
-#: THE PIN THIS BUILD READ (decision 205, pipeline/ELT.md). build-reference.yml's "Publish to UA" sets it to the
+#: THE PIN THIS BUILD READ (pipeline/ELT.md). build-reference.yml's "Publish to UA" sets it to the
 #: raw_run it built from, and publish() records it as latest.json's `raw_run` (lib/releases.RAW_RUN_FIELD) in the
 #: version it writes, and so in the release folder that version stages. Unset, a version carries the field forward
 #: from the manifest it replaces, so a weather, conditions or basemap publish leaves it naming the pin the monthly
@@ -1957,8 +1957,8 @@ def collect_dbt_phone_files(
 
     A WRITER THAT FAILED, its own model or a test of it, is refused, unless
     `writers_may_fail` (default: BUILD_PARTIAL_ENV_VAR is "true", which
-    publish-conditions.yml sets when build_marts.py exited PARTIAL_EXIT;
-    decision 81). Then its keys are kept and `failed`, and its file is never
+    publish-conditions.yml sets when build_marts.py exited PARTIAL_EXIT).
+    Then its keys are kept and `failed`, and its file is never
     read, whatever its age: a writer that failed mid-write, or wrote a file
     its own test refused, never publishes it. build_marts.py removes that
     file as well.
@@ -2148,6 +2148,18 @@ def verify_hashes(entries: dict[str, dict]) -> None:
             + " - the artifact changed after its exporter recorded the hash. "
             "Re-run that exporter (all the way through its gate) before publishing."
         )
+
+
+def r2_client(config: BotocoreConfig | None = None):
+    """An S3 client for the public R2 bucket, from R2_ENDPOINT_URL and its key pair."""
+    kwargs = {"config": config} if config is not None else {}
+    return boto3.client(
+        "s3",
+        endpoint_url=os.environ["R2_ENDPOINT_URL"],
+        aws_access_key_id=os.environ["R2_ACCESS_KEY_ID"],
+        aws_secret_access_key=os.environ["R2_SECRET_ACCESS_KEY"],
+        **kwargs,
+    )
 
 
 def load_remote_json(s3_client, bucket: str, manifest_key: str = MANIFEST_KEY) -> dict | None:
@@ -2431,21 +2443,12 @@ def publish(
     )
 
     if s3_client is None:
-        s3_client = boto3.client(
-            "s3",
-            endpoint_url=os.environ["R2_ENDPOINT_URL"],
-            aws_access_key_id=os.environ["R2_ACCESS_KEY_ID"],
-            aws_secret_access_key=os.environ["R2_SECRET_ACCESS_KEY"],
-            # Sized to the requests the stages below can have open at
-            # once, which is the thread count times what a managed upload
-            # fans out to - see PUBLISH_POOL_CONNECTIONS for why the default
-            # of 10 costs handshakes rather than queueing. Only the client
-            # this function builds: one passed in belongs to its caller.
-            config=BotocoreConfig(
-                max_pool_connections=PUBLISH_POOL_CONNECTIONS,
-                read_timeout=PUBLISH_READ_TIMEOUT_S,
-            ),
-        )
+        # Sized to the requests the stages below can have open at once, which
+        # is the thread count times what a managed upload fans out to - see
+        # PUBLISH_POOL_CONNECTIONS for why the default of 10 costs handshakes
+        # rather than queueing. Only the client this function builds: one
+        # passed in belongs to its caller.
+        s3_client = r2_client(BotocoreConfig(max_pool_connections=PUBLISH_POOL_CONNECTIONS, read_timeout=PUBLISH_READ_TIMEOUT_S))
     if bucket is None:
         bucket = os.environ["R2_BUCKET"]
 
@@ -2925,13 +2928,7 @@ def publish_live(
     verify_hashes({key: dbt.live[key] for key in keys if key in dbt.live})
 
     if s3_client is None:
-        s3_client = boto3.client(
-            "s3",
-            endpoint_url=os.environ["R2_ENDPOINT_URL"],
-            aws_access_key_id=os.environ["R2_ACCESS_KEY_ID"],
-            aws_secret_access_key=os.environ["R2_SECRET_ACCESS_KEY"],
-            config=BotocoreConfig(read_timeout=PUBLISH_READ_TIMEOUT_S),
-        )
+        s3_client = r2_client(BotocoreConfig(read_timeout=PUBLISH_READ_TIMEOUT_S))
     if bucket is None:
         bucket = os.environ["R2_BUCKET"]
 
@@ -2997,13 +2994,7 @@ def publish_sidecar(
     verify_hashes({key: dbt.sidecars[key] for key in keys if key in dbt.sidecars})
 
     if s3_client is None:
-        s3_client = boto3.client(
-            "s3",
-            endpoint_url=os.environ["R2_ENDPOINT_URL"],
-            aws_access_key_id=os.environ["R2_ACCESS_KEY_ID"],
-            aws_secret_access_key=os.environ["R2_SECRET_ACCESS_KEY"],
-            config=BotocoreConfig(read_timeout=PUBLISH_READ_TIMEOUT_S),
-        )
+        s3_client = r2_client(BotocoreConfig(read_timeout=PUBLISH_READ_TIMEOUT_S))
     if bucket is None:
         bucket = os.environ["R2_BUCKET"]
 
@@ -3018,7 +3009,7 @@ def publish_sidecar(
     return {"environment": environment, "uploaded": uploaded, "kept": sorted(set(keys) - set(uploaded))}
 
 
-#: The committed pointer (decision 44; pipeline/ELT.md, "Versions and
+#: The committed pointer (pipeline/ELT.md, "Versions and
 #: channels"): which release folder a phone reads, per data environment and
 #: schema version, e.g. {"production": {"v1": "2026-09-24-2"}, "ua": {...}}.
 #: client/src/lib/dataRelease.ts reads the uploaded copy at each
@@ -3062,7 +3053,7 @@ def publish_channels(
 ) -> dict:
     """Upload the committed channels.json to this environment's root.
 
-    THE PROMOTION AND THE ROLLBACK (decision 44): a reviewed commit moves an
+    THE PROMOTION AND THE ROLLBACK: a reviewed commit moves an
     entry, and this, run by a dispatch, is what puts it where phones read it.
     Never part of publish(), so no scheduled run - the hourly conditions bake
     included - can move what a phone reads; and never by a push, which no
@@ -3095,12 +3086,7 @@ def publish_channels(
     assert_valid_keys([key, *manifests.values()])
 
     if s3_client is None:
-        s3_client = boto3.client(
-            "s3",
-            endpoint_url=os.environ["R2_ENDPOINT_URL"],
-            aws_access_key_id=os.environ["R2_ACCESS_KEY_ID"],
-            aws_secret_access_key=os.environ["R2_SECRET_ACCESS_KEY"],
-        )
+        s3_client = r2_client()
     if bucket is None:
         bucket = os.environ["R2_BUCKET"]
 
@@ -3257,11 +3243,11 @@ def main(argv: list[str] | None = None) -> dict:
         if result["sidecars"]:
             print(f"Build metadata published alongside it: {result['sidecars']}.")
     if raw_run and result["version_written"]:
-        print(f"latest.json records raw_run {raw_run}, the pin this build read (decision 205).")
+        print(f"latest.json records raw_run {raw_run}, the pin this build read.")
     elif raw_run:
         print(
             f"No version written, so latest.json still names raw_run {result.get('raw_run') or 'none'} rather than "
-            f"this build's {raw_run}: what it serves is already these bytes (decision 205)."
+            f"this build's {raw_run}: what it serves is already these bytes."
         )
     if result["photos_uploaded"]:
         # Reported whether or not a version was written: photos are outside

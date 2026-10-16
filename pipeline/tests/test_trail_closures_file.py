@@ -1,7 +1,7 @@
 """conditions/trail_closures.json is wired as conditions/hazard_areas.json is, and its cut can never stop the hourly build.
 
-Decisions 184 and 187 (the maintainer's polls of 2026-10-11): build #1152 — Move OPRHP's temporary closures onto the conditions clock, where a
-safety layer belongs — in its shape C for every club closure, drawn by S6. The file's rows and its cut are held
+It builds #1152 — Move OPRHP's temporary closures onto the conditions clock, where a safety layer belongs — for
+every club closure. The file's rows and its cut are held
 by dbt unit tests (models/publish/_publish__conditions.yml, models/intermediate/closures/_closures__intermediate.yml);
 this holds what those cannot see: its exposure, the one home its rows come from, and where the step that hands the cut
 its lines runs in each lane.
@@ -65,11 +65,11 @@ def test_every_geos_operation_on_the_hourly_path_before_the_writers_is_tried_rat
     assert "try(st_collectionextract(geom, 3))" in areas
     assert "try(st_intersection(lines.geom, areas.geom))" in cut
     assert "try({{ notice_phone_geometry('geom') }})" in cut
-    assert "try({{ notice_phone_geometry('areas.geom', grown=false) }})" in cut, "decision 191's shade"
+    assert "try({{ notice_phone_geometry('areas.geom', grown=false) }})" in cut, "an area no trail runs inside is shaded whole"
 
 
 def test_a_shade_is_the_area_as_its_source_drew_it_never_grown():
-    """Decision 191: the hatch must not reach past the closure's edge onto an open trail, which the 100 m growth
+    """The hatch must not reach past the closure's edge onto an open trail, which the 100 m growth
     conditions/notices.json gives an area for a planned route would. The shade comes from the cut, which reads the
     source's own area (int_closures__trail_closure_areas), and the macro's ungrown branch grows nothing."""
     cut = CUT.read_text(encoding="utf-8")

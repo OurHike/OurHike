@@ -4,10 +4,9 @@
     python step_closure_trail_lines.py --warehouse W --geojson <nearby_trails.geojson> \\
         [--at-geojson <trails.geojson>] --release fixture   # fixtures
 
-Decision 187 (S6, the maintainer's poll of 2026-10-11) crosses out an area
-closure's trails where they run inside it, and int_closures__area_trail_cuts
-cuts them, in SQL. This hands that model its lines: the release's trail
-lines, its nearby trail lines and, since decision 192, the A.T.'s own, which
+An area closure crosses out its trails where they run inside it, and
+int_closures__area_trail_cuts cuts them, in SQL. This hands that model its
+lines: the release's nearby trail lines and the A.T.'s own, which
 prepare_closure_trail_lines.py read once per release and
 publish-conditions.yml restores from the cache before the hourly build.
 
@@ -32,9 +31,9 @@ areas this lands lines for, land() kept 1,332 of the release's 364,167 lines
 in 3.67 s and grew the warehouse by 20,185,088 bytes (Measured the same day in
 a 4-core sandbox other builds shared, at a load average of 25 to 41).
 
-THE TABLE IS EMPTY EXACTLY WHEN NO LINES WERE READ. Decision 191 (the
-maintainer's poll of 2026-10-14, "Shade them, no edge") shades an area no
-mapped trail runs inside, so the cut has to tell "no line runs inside this
+THE TABLE IS EMPTY EXACTLY WHEN NO LINES WERE READ. An area no mapped trail
+runs inside is shaded whole (the maintainer, 2026-10-14: "Shade them, no
+edge"), so the cut has to tell "no line runs inside this
 area" from "this hour had no lines to look with", and this table is all it
 sees. So when a lines file is read and no line's box meets an area's, the
 step lands the file's first line by id anyway, one line no area needs, and
@@ -55,8 +54,7 @@ ANOTHER RELEASE'S LINES ARE SAID, NEVER REFUSED. publish-conditions.yml
 restores the newest prepared entry its branch can see, which is the leg's
 current release only once publish-weather.yml has prepared that release and
 nothing older of the branch's own is newer (that workflow's restore step says
-why; review finding S2-4 of PR #1805 — dlt → dbt re-platform as one go/no-go
-change). Given the leg (--leg, or CLOSURE_LINES_LEG, which the workflow sets)
+why). Given the leg (--leg, or CLOSURE_LINES_LEG, which the workflow sets)
 and DATA_BASE_URL, this asks the leg's latest.json which release is current,
 once and never again that run (LATEST_SECONDS), and when the lines landed are
 another release's it says so in a warning and on the run's summary, naming

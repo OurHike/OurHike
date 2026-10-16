@@ -1,5 +1,5 @@
-"""Elementary's checks (decision 102) are where pipeline/ELT.md's "The checks, and where each goes" puts them, each
-with its two thresholds (decision 204).
+"""Elementary's checks are where pipeline/ELT.md's "The checks, and where each goes" puts them, each
+with its two thresholds.
 
 Read from the project's YAML as it stands, the generated tree included (tests/conftest.py refuses to start without
 it), so nothing here runs dbt:
@@ -9,7 +9,7 @@ it), so nothing here runs dbt:
   tag, and the checks' own switch alone, and no other test carries the tag, because build_marts.py leaves it out of
   every dbt build and runs it in a pass of its own after the writers;
 - every raw table, generated or hand-written, carries exactly make_dbt_staging.py's raw_table_checks(), the one home
-  of them, and no Elementary freshness check runs anywhere (decision 203);
+  of them, and no Elementary freshness check runs anywhere;
 - no pub_ writer carries one (ELT.md: each is one row holding a whole phone file);
 - every mart carries its own, the safety columns theirs, and exposure_schema_validity sits exactly where
   Elementary 0.26.0 can check something on dbt 2.0.6: a mart one phone file reads, whose exposure names the columns
@@ -97,7 +97,7 @@ def test_there_are_checks_of_every_kind_elt_md_names():
 
 
 def test_no_elementary_freshness_check_is_declared_anywhere():
-    """Decision 203 (the maintainer, 2026-10-15): freshness is measured from OurHike's own last read of a source, by
+    """The maintainer, 2026-10-15: freshness is measured from OurHike's own last read of a source, by
     dbt's `source freshness` on the run log, never by Elementary's learned checks. freshness_anomalies on `_loaded_at`
     learned how long a source usually goes unchanged, and event_freshness_anomalies how long since a club last
     edited a notice; a table_anomalies or a table monitor of either metric learns the same, so none is declared."""
@@ -116,7 +116,7 @@ def test_no_elementary_freshness_check_is_declared_anywhere():
 def test_every_elementary_check_has_its_kinds_two_thresholds_and_carries_the_tag_and_no_other_test_carries_it():
     """build_marts.py runs exactly the tagged tests in its checks pass and leaves them out of every build: a check that
     lost the tag would run inside a build and could fail it, and a dbt test that gained it would stop blocking. Each
-    check's severity, level and thresholds are elementary_check_config()'s for its kind (decision 204), enabled with
+    check's severity, level and thresholds are elementary_check_config()'s for its kind, enabled with
     the checks' own switch alone (make_dbt_staging.ELEMENTARY_ENABLED says why and when)."""
     untagged, tagged_other = [], []
     keys = ("severity", "fail_calc", "warn_if", "error_if", "tags", "enabled")
@@ -274,7 +274,7 @@ def test_each_one_reader_exposure_names_the_columns_it_reads_in_elementarys_word
             assert column["data_type"] == _normalized(contract[column["column_name"]]["data_type"]), f"{exposure}: {column}"
 
 
-#: The safety columns (decision 102: water distance, elevation, trail status, closure dates) and the monitors each
+#: The safety columns (water distance, elevation, trail status, closure dates) and the monitors each
 #: carries: Elementary's minimum and maximum are numeric monitors only (0.26.0's get_available_monitors()).
 SAFETY_COLUMNS = {
     ("points_of_interest", 1, "water_distance_ft"): ["null_percent", "min", "max"],
@@ -320,7 +320,7 @@ def test_elementarys_training_and_detection_settings_are_its_defaults_written_wh
         "anomaly_sensitivity": 3,
     }
     assert "min_training_set_size" not in variables
-    assert variables["test_sample_row_count"] == 0, "no failing row is kept (decision 102's rules)"
+    assert variables["test_sample_row_count"] == 0, "no failing row is kept"
 
 
 #: The anomaly-test arguments that would let a check fire before its window holds the 11 points

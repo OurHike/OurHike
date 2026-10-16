@@ -1,8 +1,10 @@
 """lib/section_closures.py: an organization's closure notice closes the one line set that carries the section it names.
 
 Shapes from UA's files of 2026-10-15 (release 2026-10-10-2's nearby_trails.geojson, conditions/notices.json):
-USFS's "TUSCARORA - DOLL RIDGE" lines, PATC's page notice, and the near-misses measure_section_closures.py listed.
+USFS's "TUSCARORA - DOLL RIDGE" lines, PATC's page notice, and near-misses the rule refuses.
 """
+
+from datetime import date
 
 from lib.section_closures import evaluate, line_sets, section_names, words
 
@@ -17,8 +19,10 @@ def _sets(*rows):
     return line_sets(rows, PROVIDERS)
 
 
-def _notice(title, *, provider="PATC", steward_kind="club", closing=True, place="unplaced"):
+def _notice(title, *, provider="PATC", steward_kind="club", closing=True, place="unplaced", starts=None, ends=None):
     return {
+        "starts_on": starts,
+        "ends_on": ends,
         "notice_id": f"n:{title[:20]}",
         "title": title,
         "provider": provider,
@@ -42,6 +46,25 @@ def test_a_clubs_closing_notice_naming_the_doll_ridge_section_closes_both_lines_
     (closed,) = outcome.candidates
     assert closed.line_ids == ("usfs_trails:10026704", "usfs_trails:10027002")
     assert round(closed.miles, 2) == 3.42
+
+
+TODAY = date(2026, 10, 16)
+
+
+def test_a_closing_notice_that_starts_tomorrow_closes_nothing_and_is_listed_as_not_in_force():
+    (outcome,) = evaluate([_notice(DOLL_RIDGE_PAGE, starts="2026-10-17")], DOLL_RIDGE, today=TODAY)
+    assert outcome.verdict == "not_in_force"
+
+
+def test_a_closing_notice_that_ended_yesterday_closes_nothing_and_is_listed_as_not_in_force():
+    (outcome,) = evaluate([_notice(DOLL_RIDGE_PAGE, ends="2026-10-15")], DOLL_RIDGE, today=TODAY)
+    assert outcome.verdict == "not_in_force"
+
+
+def test_a_closing_notice_closes_on_its_first_and_last_day():
+    for notice in (_notice(DOLL_RIDGE_PAGE, starts="2026-10-16"), _notice(DOLL_RIDGE_PAGE, ends="2026-10-16")):
+        (outcome,) = evaluate([notice], DOLL_RIDGE, today=TODAY)
+        assert outcome.verdict == "closes"
 
 
 def test_patcs_notice_as_ua_lands_it_names_no_section_and_closes_nothing():

@@ -61,6 +61,7 @@ import duckdb
 import export_suggested_hikes as exporter
 import route_hikefinder
 from lib import trail_graph_route as router
+from lib.derived import replace_table
 from lib.hike_route_builder import measure_published, measure_route, track_gap_m
 from lib.hikefinder import parse_gpx
 
@@ -268,12 +269,7 @@ def form(graph: router.Graph, hike: dict, loaded_at: datetime) -> tuple:
 
 def write_formed_routes(con: duckdb.DuckDBPyConnection, rows: list[tuple]) -> int:
     """Replace derived.formed_routes with these rows. Returns the row count."""
-    con.execute(f"create schema if not exists {SCHEMA}")
-    columns = ", ".join(f"{name} {kind}" for name, kind in COLUMNS)
-    con.execute(f"create or replace table {SCHEMA}.{TABLE} ({columns})")
-    if rows:
-        con.executemany(f"insert into {SCHEMA}.{TABLE} values ({', '.join('?' for _ in COLUMNS)})", rows)
-    return con.execute(f"select count(*) from {SCHEMA}.{TABLE}").fetchone()[0]
+    return replace_table(con, TABLE, COLUMNS, rows)
 
 
 def main(argv: list[str] | None = None) -> int:

@@ -8,7 +8,7 @@ bake is the one exemption). A schedule fires from main alone, but
 #1793 — Rebuild the data platform as dlt → dbt: seven contracted marts, a
 monthly refresh, published docs, and lighter phone downloads soaks its new
 path by dispatching this workflow from its pull request's branch, hourly, for
-seven days (decision 30). Before this guard, that dispatch ran the matrix
+seven days. Before this guard, that dispatch ran the matrix
 `[production, ua]` and published unmerged code to production.
 
 TWO LOCKS, AND THIS FILE HOLDS BOTH.
@@ -27,7 +27,7 @@ TWO LOCKS, AND THIS FILE HOLDS BOTH.
 
 The same two locks keep the production leg from a dispatch that picks
 `phone_files: dbt`, from any ref: that path has soaked on UA only, and
-decision 92 keeps production on the exporters until the cutover. The
+production stays on the exporters until the cutover. The
 schedule passes no input, and a dispatch left at `phone_files: scheduled`
 asks for no path, so neither is touched.
 
@@ -358,7 +358,7 @@ def test_the_refusal_is_the_first_step_and_nothing_after_it_runs_regardless():
     ask: its `if:` names none of always(), failure() or cancelled(), so a
     refused production leg reads nothing and publishes nothing. The one shape
     that may is a step that also asks for a build that succeeded (the hand-off
-    of the build's warehouse to its checks, decision 110), which a refused leg
+    of the build's warehouse to its checks), which a refused leg
     never has."""
     steps = _workflow()["jobs"][JOB]["steps"]
     assert steps[0].get("name") == GUARD_STEP

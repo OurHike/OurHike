@@ -4,7 +4,7 @@ and the alarm dates it by the extract it was built from.
 check-upstream-freshness.yml rings #478 when the monthly lane has not
 refreshed UA for 35 days, and build-data-release.yml's give-way stops planning
 once the monthly lane has run. Both asked the API for `status=success` runs.
-Under decision 49 a monthly run that leaves one layer out still loads the rest
+A monthly run that leaves one layer out still loads the rest
 and refreshes UA, and its last job ("Fail the run if a layer was refused on
 its own") then fails the run on purpose. Monthly runs 16 (37210020925) and 17
 (37232256991) both concluded `failure` that way, so neither check counted
@@ -13,7 +13,7 @@ green dispatch did count (WF3 of the PR #1805 review).
 
 What counts now is the run's own proof that UA serves what it built: its job
 "Confirm UA serves what the build wrote" concluded `success`, on a run of
-`main`. Since the maintainer's choice B (2026-10-08) that job is
+`main`. Since the maintainer's split of the monthly lane (2026-10-08) that job is
 build-reference.yml's, which refresh-reference.yml dispatches after each pin
 and a person can dispatch on any older pin, so the alarm dates a build by the
 raw_run in its title (the run-name), the instant its extract began, and not by
@@ -221,7 +221,7 @@ def test_a_run_whose_confirm_job_failed_does_not_count_and_the_last_one_that_pas
 
 
 def test_a_build_from_an_old_pin_is_dated_by_its_extract_not_by_the_build(api, tmp_path):
-    """Choice B lets a person build from any pin that exists. A build yesterday from an extract 40 days old leaves UA
+    """The monthly lane's split lets a person build from any pin that exists. A build yesterday from an extract 40 days old leaves UA
     serving 40-day-old data, so the alarm rings; it has still refreshed UA, so the weekly planner gives way."""
     api.runs = [_run(31, 1, "success", confirm="success", pinned_days_ago=40)]
 
@@ -242,7 +242,7 @@ def test_a_build_whose_title_names_no_raw_run_could_not_be_checked_and_is_never_
     assert "since" not in answer
 
 
-#: build-reference.yml's run-name: the retention step's title under retention_only, else the build's (decision 205).
+#: build-reference.yml's run-name: the retention step's title under retention_only, else the build's.
 RUN_NAME = re.compile(
     r"\$\{\{ inputs\.retention_only && format\('([^']*)', inputs\.raw_run\) "
     r"\|\| format\('([^']*)', inputs\.raw_run\) \}\}"

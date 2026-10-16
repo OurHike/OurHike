@@ -14,10 +14,10 @@ over at least MIN_GRADE_RUN_FT (10 ft), measured from USGS EPQS elevations at
 both ends; every refusal kept with its numbers. Each gate's evidence is on its
 constant in fetch_trail_water.py, and that file stays the one home of all four.
 
-WHY A STEP, AND WHY THE GATES STAY IN IT (decision 23 sends a rule to SQL
-first). What is not arithmetic here cannot be SQL in this build: the
+WHY A STEP, AND WHY THE GATES STAY IN IT (a rule goes to SQL first when it
+can). What is not arithmetic here cannot be SQL in this build: the
 hydrography is 21 NHD GeoPackages of about 270 MB, downloaded and deleted in
-turn, which stay files (decision 4), and fourteen Geofabrik state extracts
+turn, which stay files, and fourteen Geofabrik state extracts
 (#1652 — Download OSM's Geofabrik extracts at most once a month, into a
 private raw bucket that outlives the 7-day Actions cache); and EPQS answers
 one point at a time, at about 1.9 s a point, which is why it is asked only
@@ -75,6 +75,7 @@ from pathlib import Path
 import duckdb
 
 import fetch_trail_water
+from lib.derived import replace_table
 
 ROOT = Path(__file__).parent
 WAREHOUSE_PATH = ROOT / "data" / "warehouse.duckdb"
@@ -83,6 +84,16 @@ SCHEMA = "derived"
 TABLE = "site_water"
 #: fetch_trail_water.py's two layers, in the order its _run() fetches them.
 LAYERS = ("shelters", "campsites")
+COLUMNS = (
+    ("site_row", "integer"),
+    ("layer", "varchar"),
+    ("atc_global_id", "varchar"),
+    ("atc_name", "varchar"),
+    ("water", "json"),
+    ("unresolved", "varchar"),
+    ("candidate", "json"),
+    ("_loaded_at", "timestamptz"),
+)
 
 
 def read_sites(con: duckdb.DuckDBPyConnection, relation: str = SITES) -> dict[str, list[dict]]:
@@ -106,8 +117,8 @@ def offline_elevations(path: Path):
     """fetch_trail_water.elevation_ft's lookup against a file alone: a point it does not hold has no elevation.
 
     Keyed "lat,lon" at 6 dp, as make_dbt_fixtures.py writes the answers, where
-    fetch_trail_water.py's own cache has keyed each point exactly since
-    decision 131 (ELEVATION_CACHE_KEYS). The file stands in for EPQS, not for
+    fetch_trail_water.py's own cache has keyed each point exactly
+    (ELEVATION_CACHE_KEYS). The file stands in for EPQS, not for
     the cache: it holds one invented answer per place a scenario names, and a
     point computed from geometry may differ from that place in a double's last
     bits, which an exact key would turn into no answer at all.
@@ -156,19 +167,6 @@ def _json(value) -> str | None:
 
 def write_site_water(con: duckdb.DuckDBPyConnection, records: list[dict], loaded_at: datetime) -> int:
     """Replace derived.site_water with one row per site record, in order. Returns the row count."""
-    con.execute(f"create schema if not exists {SCHEMA}")
-    con.execute(f"""
-        create or replace table {SCHEMA}.{TABLE} (
-            site_row integer,
-            layer varchar,
-            atc_global_id varchar,
-            atc_name varchar,
-            water json,
-            unresolved varchar,
-            candidate json,
-            _loaded_at timestamptz
-        )
-    """)
     rows = [
         (
             row,
@@ -182,10 +180,7 @@ def write_site_water(con: duckdb.DuckDBPyConnection, records: list[dict], loaded
         )
         for row, record in enumerate(records)
     ]
-    # No records is an empty table, not an error: executemany refuses an empty list.
-    if rows:
-        con.executemany(f"insert into {SCHEMA}.{TABLE} values (?, ?, ?, ?, ?, ?, ?, ?)", rows)
-    return con.execute(f"select count(*) from {SCHEMA}.{TABLE}").fetchone()[0]
+    return replace_table(con, TABLE, COLUMNS, rows)
 
 
 def main(argv: list[str] | None = None) -> int:

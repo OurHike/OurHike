@@ -72,9 +72,8 @@ REQUIRED_FIELDS = ("id", "club_name", "title", "starts_on", "ends_on", "signup_m
 # old side, which runs export_work_projects.py over it. Without it, CI's
 # fixture family compared both writers of conditions/work_projects.json on no
 # row ("no differences across 0 work_projects", pipeline-tests.yml run
-# 38610267739, 2026-10-14), and decision 162 counts that key as covered
-# because that family compares rows (the maintainer's poll of 2026-10-15,
-# with decision 199). Nothing that publishes reads this path, and the
+# 38610267739, 2026-10-14), and the gate counts that key as covered only
+# because that family compares rows (the maintainer, 2026-10-15). Nothing that publishes reads this path, and the
 # reviewed file's own `rows` stay empty (the module docstring). An hour's
 # comparison (hourly_parity.py) reads no stand-in, so on real data both sides
 # read git's file; run by hand over a fixture build, it would find the

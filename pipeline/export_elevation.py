@@ -629,8 +629,8 @@ DEFAULT_TILE_WORKERS = 8
 # no cache-list change - checked against that file 2026-09-08.
 #
 # WHAT IT COSTS, since a cache that is itself a problem is worth naming before
-# somebody finds it. One entry is a key of about 36 characters since decision
-# 115 keyed each point exactly (SAMPLE_CACHE_KEYS has the measurement), a
+# somebody finds it. One entry is a key of about 36 characters, each point
+# keyed exactly (SAMPLE_CACHE_KEYS has the measurement), a
 # value of up to 17 digits and three separators - call it 60 bytes of JSON.
 # Run #88 sampled 138,695 points for the A.T. profile (measured, 2026-09-08),
 # so that half is about 8 MB (Reasoned: the count times 60 bytes). The
@@ -645,14 +645,14 @@ SAMPLE_CACHE_NAME = "samples.json"
 SAMPLE_CACHE_PATH = ELEVATION_INDEX_PATH.parent / SAMPLE_CACHE_NAME
 
 # What a samples.json key is, written into the file as its `keys` field: the
-# point itself (decision 115, the maintainer's poll of 2026-10-09). Each
+# point itself (the maintainer, 2026-10-09). Each
 # coordinate is written as Python's repr writes a double, the shortest text
 # that reads back to that same double, so two points share a key only when
 # they are one point, and a lookup can only ever answer the point that was
 # asked. (0.0 and -0.0 are one point under two keys, which costs a read and
 # never a wrong answer.)
 #
-# WHAT IT REPLACED. Until decision 115 a point was keyed to 6 decimals, and a
+# WHAT IT REPLACED. A point was once keyed to 6 decimals, and a
 # key held the pixel of the first point asked under it and gave it to every
 # later one, on the argument that two points under one key lie within ~0.11 m.
 # But the read is nearest-neighbour, so a point answered from a key its
@@ -684,7 +684,7 @@ SAMPLE_CACHE_PATH = ELEVATION_INDEX_PATH.parent / SAMPLE_CACHE_NAME
 # "-84.150001,34.650001" is the 6-decimal key every point within half a
 # millionth of a degree of that one was stored under, and that one point's
 # exact key as well. So _load_sample_cache reads a file only when its `keys`
-# is this value, every file written before decision 115 carries none and is
+# is this value, every file written under the old keys carries none and is
 # discarded whole, and the first run after it reads every point from the
 # tiles, as the first run after a re-fly does.
 SAMPLE_CACHE_KEYS = "exact"
@@ -767,7 +767,7 @@ def _load_sample_cache(path: Path, marker: str | None) -> dict[str, float | None
     serve a safety path.
 
     A FILE KEYED UNDER ANOTHER RULE IS DISCARDED WHOLE TOO: its `keys` must be
-    SAMPLE_CACHE_KEYS. Every file written before decision 115 keyed a point to
+    SAMPLE_CACHE_KEYS. Every file written under the old keys keyed a point to
     6 decimals and carries no `keys`, and one of its keys can be the exact key
     of a point it was never read at (SAMPLE_CACHE_KEYS says how), so not one
     entry of it is served.
@@ -1232,8 +1232,8 @@ class ElevationSampler:
     def sample_many(self, points: list[tuple[float, float]]) -> list[float | None]:
         """Batched point sampling, through the per-point cache.
 
-        Each point is keyed by its own exact lon/lat (_cache_key, decision
-        115), so an answer is only ever the DEM's at the point asked. A key
+        Each point is keyed by its own exact lon/lat (_cache_key), so an
+        answer is only ever the DEM's at the point asked. A key
         already known - from this run, or from the cache file the last run
         left beside the tile index - costs nothing at all: no open, no range
         request, no block read. Only the keys nobody has answered yet reach

@@ -1,21 +1,20 @@
-"""prune_raw_store: decision 205's retention step. List what the raw store keeps and why, and what it no longer needs,
+"""prune_raw_store: the raw store's retention step. List what the raw store keeps and why, and what it no longer needs,
 and with --delete delete exactly that.
 
     python prune_raw_store.py --raw-bucket NAME --data-base-url URL --keep-raw-run ua=RAW_RUN [--delete] [--summary FILE]
     python prune_raw_store.py --bucket-url file:///a/local/store --data-base-url file:///a/public/bucket [--delete]
 
-build-reference.yml's `maintain` job runs it with the raw store's key only (decision 43), inside raw-lake-monthly: after
+build-reference.yml's `maintain` job runs it with the raw store's key only, inside raw-lake-monthly: after
 each build whose confirm job found UA serving what it wrote, and alone when dispatched with retention_only. Its
-`retention` input is `delete`, the default since decision 207 (which passes --delete), or `list`. It runs on the
+`retention` input is `delete`, the default (which passes --delete), or `list`. It runs on the
 extract's own venv, as purge_person_fields.py does, whose bucket listing, units and delete it shares. The tests run it
 on a local `file://` store (tests/test_prune_raw_store.py).
 
 WHY. The maintainer, 2026-10-15: "The R2 bucket already has 233.23 GB in the raw data folder. Should some of that get
 cleaned up? What's going on that we have so many copies of the raw data?" Every monthly run wrote a pin, its loads'
 as-landed files and a row-history save, every build stored a warehouse, and nothing deleted any of them: ELT.md planned a
-maintenance step after each monthly build, and it was never built. Decision 205 (the maintainer's poll, 2026-10-15,
-"Retention step, then delete") is this file; decision 206 ("3 saves") is the monthly row-history store's count.
-pipeline/ELT.md's decisions table has the sizes, each with its grade.
+maintenance step after each monthly build, and it was never built. The maintainer chose (2026-10-15) "Retention step,
+then delete", and "3 saves" for the monthly row-history store.
 
 WHAT IS KEPT, kind by kind. No rule is a date alone: each names the reader that needs what it keeps.
   PINS, steps/raw_inputs/<raw_run>/ (extract/_warehouse.py's pin_raw_inputs()):
@@ -25,9 +24,8 @@ WHAT IS KEPT, kind by kind. No rule is a date alone: each names the reader that 
     - one step back: the newest finished pin older than UA's newest served raw_run that no environment serves, the way
       back if UA's month is pulled. Counted from UA's newest, so a --keep-raw-run naming an older pin by mistake keeps
       that pin as well and never costs the real step back;
-    - every pin newer than the newest served one, finished or not. Decision 205 as asked kept the served pin and one
-      back. A newer pin is one no environment has been built from yet, after a build that failed or before its first,
-      and decision 105's rebuild after a fix starts from it (ELT.md, "Rebuilding from a pin"), so deleting it would
+    - every pin newer than the newest served one, finished or not. A newer pin is one no environment has been built from yet, after a build that failed or before its first,
+      and a rebuild after a fix starts from it (ELT.md, "Rebuilding from a pin"), so deleting it would
       throw away the extract that path exists to save. Kept, and the listing says why.
     - a pin a build is reading: none can be. This job is a job of a build-reference.yml run, which holds
       raw-lake-monthly from its first job to its last, so no other run of build-reference.yml, refresh-reference.yml or
@@ -51,7 +49,7 @@ WHAT IS KEPT, kind by kind. No rule is a date alone: each names the reader that 
     newest keep_saves(<store>) of each folder, by save id, which sorts in the order the saves were made, and every save
     the store's own pointer names (history.json's or elementary.json's save_id and previous_save_id), as row_history.py's
     _prune() keeps them. row_history_stores.toml's [keep_saves] holds the count, read through keep_saves() here as there:
-    3 for the monthly store (decision 206), KEEP_SAVES (24) for every other. Deleted here only in PRUNED_STORES, whose
+    3 for the monthly store, KEEP_SAVES (24) for every other. Deleted here only in PRUNED_STORES, whose
     one writer is build-reference.yml's build job, inside raw-lake-monthly. The hourly stores' writers,
     publish-conditions.yml and check-conditions.yml, run outside that group and prune their own stores on each save, so
     their saves are listed and left: a folder deleted here between one of their saves listing it and removing it would
@@ -67,7 +65,7 @@ SERVED: which raw_run each environment's data was built from, kept with everythi
     found every file its build wrote on UA, or, under retention_only, as the dispatcher names it.
   Both are kept when they differ: a build whose files UA already serves writes no version, so latest.json goes on
   naming the pin that built those bytes first.
-  WHY THESE AND NOT ANOTHER RECORD (decision 205 asked which is reliable):
+  WHY THESE AND NOT ANOTHER RECORD (which is reliable):
     - a stored warehouse's manifest is dbt's, which names no raw_run but by its key; and a warehouse is stored before
       the publish, so one is there for a build UA never served (a publish cancelled in publish-data: #1513 — A queued
       publish is silently cancelled when another one joins publish-data, and it looks like a green build), while a
@@ -324,8 +322,7 @@ def decide_pins(store: Store, served: dict[str, Served], problems: list[str]) ->
             unit.why = f"one step back: the newest finished pin before {MUST_KNOW}'s"
         elif newest is not None and unit.name > newest:
             unit.why = (
-                "newer than every served pin: no environment has been built from it yet, and a rebuild after a fix "
-                "starts from it (decision 105)"
+                "newer than every served pin: no environment has been built from it yet, and a rebuild after a fix starts from it"
             )
         else:
             unit.keep = False
@@ -606,7 +603,7 @@ def totals(plan: Plan) -> list[tuple[str, int, int]]:
 def listing(plan: Plan, deleting: bool) -> list[str]:
     """The plan as plain lines for the job's log: keys, names and sizes, never a row of data."""
     lines = [
-        f"Decision 205's retention step, {'DELETING' if deleting else 'listing only'}: {plan.store.url}, "
+        f"The raw store's retention step, {'DELETING' if deleting else 'listing only'}: {plan.store.url}, "
         f"{_objects(len(plan.store.objects))}, {_gb(plan.total)}.",
         "",
         "WHAT EACH ENVIRONMENT SERVES",
@@ -663,7 +660,7 @@ def listing(plan: Plan, deleting: bool) -> list[str]:
 
 def summary(plan: Plan, deleting: bool, verdict: str, deleted: list[str]) -> str:
     """The plan as Markdown for the run's summary page ($GITHUB_STEP_SUMMARY): a row per unit, never a key list."""
-    text = ["## Retention step (decision 205)", "", f"**{verdict}**", "", "### What each environment serves", ""]
+    text = ["## Retention step", "", f"**{verdict}**", "", "### What each environment serves", ""]
     text += ["| environment | release | latest.json's raw_run | --keep-raw-run | kept as served |", "|---|---|---|---|---|"]
     for found in plan.served.values():
         if found.error:
@@ -724,7 +721,7 @@ def keep_spec(text: str) -> tuple[str, str]:
 
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(
-        description="Decision 205's retention step: list, and with --delete delete, what the "
+        description="The raw store's retention step: list, and with --delete delete, what the "
         "raw store no longer needs (this module's docstring)."
     )
     where = parser.add_mutually_exclusive_group(required=True)

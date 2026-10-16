@@ -1,4 +1,4 @@
-"""Refuse a deploy whose DATA_RELEASE and channels.json entry name two releases (pipeline/ELT.md decision 145).
+"""Refuse a deploy whose DATA_RELEASE and channels.json entry name two releases.
 
     DATA_URL=https://... python3 .github/scripts/check_pin_matches_channels.py
 
@@ -150,7 +150,7 @@ def main(argv: list[str]) -> int:
         print(
             f"::error::DATA_RELEASE is {release} and channels.json's {environment} {schema} entry is {entry}, so a phone "
             f"installing this build reads {release} on its first launch and switches to {entry} on the launch after it "
-            f"reads the pointer (pipeline/ELT.md decision 145). Move both to one release {environment} holds, in one "
+            f"reads the pointer. Move both to one release {environment} holds, in one "
             "commit, as the release train does (RELEASING.md §10), and deploy that commit."
         )
         return 1

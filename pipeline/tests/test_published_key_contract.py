@@ -61,7 +61,7 @@ CLIENT_SRC = Path(__file__).resolve().parents[2] / "client" / "src"
 CONFIG = CLIENT_SRC / "lib" / "config.ts"
 PUBLISHED_CONDITIONS = CLIENT_SRC / "lib" / "publishedConditions.ts"
 #: The conditions/notices.json reader, behind import() for the launch budget, which declares the keys of the files it
-#: reads beside that one: conditions/notice_states.json (decision 76) and conditions/hazard_areas.json (decision 84).
+#: reads beside that one: conditions/notice_states.json and conditions/hazard_areas.json.
 PUBLISHED_NOTICES = CLIENT_SRC / "lib" / "publishedNotices.ts"
 HIKING_DETAIL = CLIENT_SRC / "lib" / "hikingDetail.ts"
 PACKAGES = CLIENT_SRC / "lib" / "packages.ts"
@@ -163,7 +163,7 @@ def client_conditions_keys() -> dict[str, str]:
     )
     keys = {key: f"publishedConditions.ts {name}" for name, key in found}
     # publishedNotices.ts, which the conditions hook loads behind import(), declares the one key it reads beside
-    # conditions/notices.json there rather than here, so that it adds no launch byte (decision 76).
+    # conditions/notices.json there rather than here, so that it adds no launch byte.
     lazy = re.findall(r"export const (PUBLISHED_\w+_KEY) = '(conditions/[^']+)'", _read(PUBLISHED_NOTICES))
     assert lazy, "publishedNotices.ts declares no `PUBLISHED_..._KEY = 'conditions/...'`; fix the pattern here"
     keys.update({key: f"publishedNotices.ts {name}" for name, key in lazy})
@@ -518,16 +518,16 @@ def dbt_exposure_keys() -> set[str]:
 
 
 #: Client keys only a dbt writer writes: a 404 on a bucket the exporters
-#: still publish (production until the cutover, decision 30), so each must be
+#: still publish (production until the cutover), so each must be
 #: one the client reads as optional and falls back from. conditions/notices.json
-#: (#1805, decision 53 phase D) is: lib/useConditions.ts keeps the panel on
+#: (#1805) is: lib/useConditions.ts keeps the panel on
 #: atc_updates.json and nynjtc_alerts.json while it is absent. Named rather
 #: than derived, so a second dbt-only key is a decision somebody writes here.
-#: conditions/notice_states.json (decision 76) is too: lib/publishedNotices.ts reads a 404 as no states' shapes, and
-#: the planned-hike panel then shows no state-wide notice, as decision 68 left them.
-#: conditions/hazard_areas.json (decision 84) is too: lib/publishedNotices.ts reads a 404 as no answer, and
+#: conditions/notice_states.json is too: lib/publishedNotices.ts reads a 404 as no states' shapes, and
+#: the planned-hike panel then shows no state-wide notice.
+#: conditions/hazard_areas.json is too: lib/publishedNotices.ts reads a 404 as no answer, and
 #: chrome/noticesPanel.tsx then draws the hazard areas from notices.json where that file has reached the phone.
-#: conditions/trail_closures.json (decisions 184 and 187) is too: lib/publishedNotices.ts reads a 404 as no answer,
+#: conditions/trail_closures.json is too: lib/publishedNotices.ts reads a 404 as no answer,
 #: keeping the copy the phone already holds, and the map draws no club closure it does not hold.
 DBT_ONLY_CLIENT_KEYS = {
     "conditions/notices.json",

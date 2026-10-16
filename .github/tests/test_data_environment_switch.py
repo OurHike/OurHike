@@ -1,9 +1,9 @@
-"""Decision 204's switch reaches every build that publishes, and no build that tests.
+"""The data-environment switch reaches every build that publishes, and no build that tests.
 
 The maintainer, 2026-10-15: "Every test should have both the warning and error thresholds. If an error like
 freshness would prevent building the model, then that should be enabled/disabled based on the environment. prod
-environment should ignore those, dev & ci should not." His poll answer the same day, "Build as proposed", made
-OURHIKE_DATA_ENV the one switch: pipeline/dbt/dbt_project.yml reads it for every test's severity, and
+environment should ignore those, dev & ci should not." OURHIKE_DATA_ENV is the one
+switch: pipeline/dbt/dbt_project.yml reads it for every test's severity, and
 pipeline/build_marts.py for whether a failure stops the build or holds what it reaches (its docstring, "EVERY TEST
 HAS TWO THRESHOLDS, AND THE ENVIRONMENT DECIDES WHO STOPS").
 

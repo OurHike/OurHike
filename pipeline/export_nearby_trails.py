@@ -360,7 +360,7 @@ TILES_MAX_ZOOM = 14
 TILES_CHUNK_VERTICES = 1_000
 
 # THE CONTEXT ZOOMS CARRY WHAT THE MAP READS THERE, AND EVERY LINE AT FULL
-# PRECISION (decision 202). GDAL's vector-tile writer has a per-tile budget,
+# PRECISION. GDAL's vector-tile writer has a per-tile budget,
 # MAX_SIZE, 500,000 bytes unless told otherwise, and it does not refuse a tile
 # over it. GDAL 3.8.5 - the version inside DuckDB 1.5.5's spatial extension -
 # re-encodes such a tile on a coarser grid, 4096 units across halving down to
@@ -600,9 +600,8 @@ def _miles_all(geoms: np.ndarray) -> list[float]:
 
 def _geodesic_miles_all(geoms: np.ndarray) -> list[float]:
     """Each parsed lon/lat geometry's length in miles on the WGS84 ellipsoid:
-    the `length_miles` a published line carries (decision 97, the
-    maintainer's poll of 2026-10-06, as decision 90 measures the graph's
-    edges).
+    the `length_miles` a published line carries (the
+    maintainer, 2026-10-06, as the graph's edges are measured).
 
     Not `_miles_all`, whose EPSG:5070 is equal-area for the lower 48 only and
     whose metre is not the ground's: five miles due north read 4.44 miles at
@@ -833,8 +832,8 @@ def _above_the_seam_floor(records: list[dict]) -> list[dict]:
     record under `_THROUGH_ROUTE_KEY`.
 
     In EPSG:5070 metres, like every other distance this export decides on
-    (only the published `length_miles` is measured on the WGS84 ellipsoid,
-    decision 97), which is equal-area rather than conformal - so a "pixel"
+    (only the published `length_miles` is measured on the WGS84 ellipsoid),
+    which is equal-area rather than conformal - so a "pixel"
     here is a few percent off a screen pixel across CONUS. Consistency with
     `simplify_records`' own tolerance is worth more than that, since the two
     are compared.
@@ -1393,7 +1392,7 @@ def load_closure_areas(sources: list[dict]) -> list[dict]:
     return areas
 
 
-#: Decision 213, rule 6 (the maintainer's poll of 2026-10-15, "Only inside closes"): a piece of a trail inside a
+#: The maintainer, 2026-10-15, "Only inside closes": a piece of a trail inside a
 #: closed area closes only if some part of it lies more than this many metres in from the area's outline, measured in
 #: EPSG:5070 (`_TO_METRIC`); one lying wholly within that band, along the edge, stays open. The same number is
 #: dbt_project.yml's `area_closure_edge_m`, which both of dbt's area cuts read and the network parity test holds to
@@ -1449,8 +1448,7 @@ def apply_area_closures(records: list[dict], areas: list[dict]) -> tuple[list[di
     grazing trail stays open. The opposite reading - closing anything that
     intersects at all - is what produces the Suffern-Bear Mountain case. And
     a piece inside that lies wholly within AREA_EDGE_M of the outline runs
-    along the edge rather than inside, so it stays open too (decision 213,
-    rule 6).
+    along the edge rather than inside, so it stays open too.
 
     WHAT IT DOES NOT DO: invent a date. OPRHP publishes none per feature
     ("Closed Until 2027" is prose inside the reason, not a field), so a closed
@@ -1471,8 +1469,8 @@ def apply_area_closures(records: list[dict], areas: list[dict]) -> tuple[list[di
             out.append(record)
             continue
 
-        # A piece lying wholly within AREA_EDGE_M of the outline runs along the edge, not inside (decision 213, rule
-        # 6): it stays open, after the pieces outside.
+        # A piece lying wholly within AREA_EDGE_M of the outline runs along the edge, not inside: it
+        # stays open, after the pieces outside.
         pieces = _line_parts(geometry.intersection(closed_union))
         on_edge = [edge_band.covers(shapely_transform(_TO_METRIC, piece)) for piece in pieces]
         inside = [piece for piece, along in zip(pieces, on_edge, strict=True) if not along]
@@ -1644,8 +1642,8 @@ def records_to_geojson(records: list[dict]) -> dict:
                     # present it as one.
                     #
                     # MEASURED ON THE WGS84 ELLIPSOID (_geodesic_miles_all;
-                    # decision 97, the maintainer's poll of 2026-10-06), as the
-                    # graph's edges are since decision 90, so the edges
+                    # the maintainer, 2026-10-06), as the graph's edges are,
+                    # so the edges
                     # lineClimb sums and the line they are held against are
                     # one measure. It was export_trails.py's EPSG:5070 length
                     # (`_miles`) until then, which read five miles due north
@@ -1655,7 +1653,7 @@ def records_to_geojson(records: list[dict]) -> dict:
                     # a north-south trail would print its climb as the whole
                     # trail's, and one holding all of an east-west trail,
                     # whose kilometre EPSG:5070 reads as 1,126.4 m there
-                    # (decision 90's measured scale), would be told it holds
+                    # (the graph's measured scale), would be told it holds
                     # part (Reasoned from those figures). A trail is still
                     # named and merged on `_miles`.
                     "length_miles": round(length_miles, 2),
@@ -2243,7 +2241,7 @@ def write_tiles(geojson_path: Path, concurrent_path: Path | None = None) -> dict
     tileset the map never asks the right zooms of, and the failure on the
     phone is an empty map with no error anywhere.
 
-    TWO CUTS, ONE ARCHIVE (decision 202). z5 to TILES_CONTEXT_MAX_ZOOM are cut
+    TWO CUTS, ONE ARCHIVE. z5 to TILES_CONTEXT_MAX_ZOOM are cut
     from the lines file alone through context_lines_sql - TILES_CONTEXT_PROPERTIES
     only, lines sharing them merged - and the zooms above from tile_input_sql
     over the lines and the shared-ground pairs exactly as before; the

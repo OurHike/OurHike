@@ -8,8 +8,7 @@ served copy's `manifest.json` and a load's as-landed `index.json`
 `elementary.json` (row_history.py). A run of this repository wrote each of
 them, and so could anyone else with the key. Before this module those names
 went into SQL and local paths as they were read, so a crafted name could run
-SQL in a build job or write a file outside the directory it was meant for
-(review finding of PR #1805 — dlt → dbt re-platform as one go/no-go change).
+SQL in a build job or write a file outside the directory it was meant for.
 Measured 2026-10-09 on duckdb 1.5.5, the version every requirements file
 pins: load_pinned()'s own f-string, given a pin whose table name was
 `x" AS SELECT 1 AS a; COPY (SELECT 'smuggled' AS b) TO '<path>'; --`, wrote

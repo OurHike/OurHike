@@ -86,7 +86,7 @@ data a phone is pinned to.
 
 | prefix | holds | mutable | hiker-facing |
 |---|---|---|---|
-| *(root)* | today's flat keys, plus `latest.json` | frozen; `latest.json` is the one mutable pointer | yes |
+| *(root)* | today's flat keys, plus `latest.json`, `channels.json` and `channels_history.json` | frozen; `latest.json` and `channels.json` are mutable pointers, and `channels_history.json` is appended to by `channels.py` on each move of `channels.json` | yes |
 | `releases/` | one immutable folder per dated release, plus `index.json` and `pinned.json` | written once, never overwritten | yes |
 | `_internal/` | build intermediates, keyed by release | rewritten per build | no |
 | `photos/` | POI photos, one object per image, content-addressed | mutable: objects are added and deleted, never rewritten | yes |

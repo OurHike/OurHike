@@ -800,9 +800,10 @@ export const V2_PHONE_FILE_KEYS: ReadonlySet<string> = new Set([
  * A BUILD READS v2 ONLY WHEN DATA_SCHEMA_VERSION SAYS SO, and today it says
  * v1, so every key here is v1's and no phone fetches a v2 file. That is
  * deliberate rather than unfinished: DATA_SCHEMA_VERSION is also the entry
- * the build takes from channels.json, and pages.yml and ua.yml refuse to
- * deploy a build whose entry does not resolve, so it moves to 'v2' only once
- * a v2 release has been published and channels.json names it. Until then
+ * the build takes from channels.json, and a v2 build with no v2 entry to
+ * read starts every phone on its compiled floor, so it moves to 'v2' only
+ * once a v2 release has been published and each environment's channels.json
+ * names it (pipeline/channels.py). Until then
  * the readers above simply never see a v2 file, and a phone that cannot read
  * v2 (every installed one) keeps reading v1, which keeps being written.
  */

@@ -584,7 +584,8 @@ export function useTrailData(
     // The pointer (channels.json), read here because this is
     // the check that runs on launch when online. What it names is this
     // phone's release from the NEXT launch, never this one (lib/dataRelease.ts
-    // says why), so nothing below waits on it. It never rejects; the import
+    // says why; a first run took it before rendering, in main.tsx), so
+    // nothing below waits on it. It never rejects; the import
     // can, when its chunk cannot be fetched, and that costs only this read.
     // Loaded here rather than imported, to keep it out of the eager bundle
     // (lib/dataChannel.ts says why).

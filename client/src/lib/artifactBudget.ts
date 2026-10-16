@@ -65,9 +65,11 @@
 // through. Until 2026-10-15 that gate was the only one, and UA's release
 // 2026-10-03-2 reached every UA phone with a 41,216,145-byte
 // network_overview.geojson, which each declined (review 5528343443 on
-// PR #1805). Still not weighed: a folder staged before then, reached through
-// an uploaded channels.json (publish.py --channels checks only that its
-// manifest exists), and an entry with no size_bytes, which oversized() below
+// PR #1805). The deploy guards weigh the release the uploaded channels.json
+// names too, but pipeline/channels.py, which moves it, checks only that the
+// release's manifest exists, so a pointer moved to a folder staged before
+// 2026-10-15 is weighed at the next deploy and not before. Still not weighed:
+// an entry with no size_bytes, which oversized() below
 // leaves to the weigh after the body arrives. The literal below is the
 // contract: keep it a number, not an expression.
 

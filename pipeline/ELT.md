@@ -42,8 +42,8 @@ Every dlt resource, dbt source and exposure carries `meta.cadence`: `hourly`, `d
 
 - `refresh-reference.yml` takes no input, and `build-reference.yml` takes no environment; both publish with the literal `ua`.
 - `publish.py` scopes every key by `OURHIKE_DATA_ENV`, so a UA run cannot write production's keys.
-- Phones read the release that the committed `channels.json` names for their environment. Moving it is a reviewed commit plus a dispatch, done by the release train (`.claude/skills/release-train/SKILL.md`).
-- Production data is never dispatched from pull-request follow-up. A promotion rebuilds from the **same `raw_run`** UA was built from, so what is promoted is what was checked.
+- Phones read the release their environment's `channels.json`, in the bucket, names. `build-reference.yml`'s last job moves UA's, and only UA's, once every check in that run has passed. Production's moves only by `promote-data.yml`, a dispatch the `production` environment's reviewer approves.
+- Production data is never dispatched from pull-request follow-up. A promotion copies the release folder UA was tested on, byte for byte, so what is promoted is what was checked.
 
 ### Rebuilding from a pin
 
@@ -153,8 +153,8 @@ Publishing is the reverse-ETL step: it loads marts into the downstream system, w
 A release id used to mean two things at once, a file's shape and the build a phone reads. They are split.
 
 - **The shape is a dbt model version.** Each contracted mart that feeds a phone file declares `versions:`. v1 is the shape installed apps read, at today's keys. An added column is not a new version: phones ignore fields they do not know, and an absent field means unknown. A removed, renamed or retyped column is, and v1 keeps being written beside v2 until its `deprecation_date`. v2 files go under a `v2/` segment. `check_contract_versions.py` fails a pull request that breaks a version's shape without adding one.
-- **The build is a pointer.** The committed `channels.json` names, per environment and schema version, the release a phone reads. On launch with signal the app reads it (`client/src/lib/dataChannel.ts`); offline it uses the release it last read; on a first run with nothing recorded it uses the compiled `DATA_RELEASE`. A recorded release whose own manifest answers exactly 404 is forgotten, so a bucket move cannot strand a phone. Any other failure keeps it.
-- **Promotion and rollback** are a reviewed one-line commit to `channels.json` plus a dispatch. `.github/scripts/check_pin_matches_channels.py` refuses a deploy whose `DATA_RELEASE` disagrees with its environment's entry.
+- **The build is a pointer.** Each environment's `channels.json`, in the bucket beside its `latest.json`, names per schema version the release its phones read; no copy is committed. `pipeline/channels.py` writes it, refuses a release whose manifest is not in that environment's tree, and appends each move to `channels_history.json`. A first run reads it before rendering and takes its release (`client/src/lib/dataChannel.ts`); offline, or with a pointer it cannot use within 4 seconds, it reads the compiled `DATA_RELEASE`, the known-good floor. Later launches read it and follow it from the next launch; offline a phone uses the release it last read. A recorded release whose own manifest answers exactly 404 is forgotten, so a bucket move cannot strand a phone. Any other failure keeps it.
+- **Promotion and rollback.** UA's pointer moves when a monthly build (`build-reference.yml`) passes every check it runs. `promote-data.yml` copies a UA release into production, verifies it, and moves production's pointer; rollback is the same workflow with an older release. `DATA_RELEASE` moves only with the schema version. The deploy guards check that the floor and the pointed-to release each resolve at their own base.
 - The update row (`chrome/TrailDataUpdate.tsx`) offers the pointed-to build: "Newer trail data", or "Changed trail data" when the pointer moved back.
 
 ### What a phone downloads

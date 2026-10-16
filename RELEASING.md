@@ -340,8 +340,8 @@ A generator walks `v(previous)..v(next)` and emits:
 2. **What changed in the repository** — every merged pull request, its issue, grouped
    by the `client` / `backend` / `pipeline` / `data` / `ops` / `docs` labels.
 3. **Which data release this build pins**, and whether that moved. Since §10's
-   amendment that is two answers: the release `channels.json` names for
-   production, and the build's compiled fallback, `DATA_RELEASE`.
+   amendments that is two answers: the release production's `channels.json` names
+   in the bucket, and the build's compiled floor, `DATA_RELEASE`.
 4. **What is knowingly not validated** — §8d. This section is never empty, and a
    release whose author believes it is has not looked.
 5. **Compatibility** — anything a hiker must do, or the sentence saying nothing.
@@ -621,28 +621,34 @@ as the compiled fallback a first run reads before it has reached the pointer, an
 phone also goes back to it when
 the release it recorded answers 404 for its own manifest: the phone forgets that
 release, and its next launch reads `DATA_RELEASE` and then the pointer.
-[pipeline/DATA_RELEASES.md](pipeline/DATA_RELEASES.md) §4 has the rest. Which
-dispatch runs the upload is the release train's to wire, and none does yet.
+[pipeline/DATA_RELEASES.md](pipeline/DATA_RELEASES.md) §4 has the rest.
 
-**A deploy also refuses when the two name
-different releases.** A phone reads `DATA_RELEASE` on its first launch and
-`channels.json`'s entry from the launch after it reads the pointer, so a build
-whose two values disagree changes release under a new install.
-`.github/scripts/check_pin_matches_channels.py` compares them from the commit
-alone, for the environment read off the build's data base, and `pages.yml` and
-`ua.yml` run it before they deploy, as the step "Confirm DATA_RELEASE and
-channels.json name the same release". **When it fails, move `DATA_RELEASE` and
-that environment's entry to one release the environment holds, in one commit, and
-deploy that commit.** UA deploys every push to `main`, so a commit moving UA's
-entry moves `DATA_RELEASE` with it, and a tag cut from `main` needs production's
-entry moved to the same release first. A tag refused here cannot be redeployed as
-it stands, because the fix is a new commit and so a new version (§4); that is why
-`pages.yml` runs the check on a `draft_only` dispatch too. Pull request previews
-do not run it: their data environment is chosen at run time and they go when the
-pull request closes. Nor can it see a production promotion, which deploys nothing
-(a `channels.json` commit and a `publish.py --channels` dispatch): after one, a
-new install of the production build starts on its older `DATA_RELEASE` and moves
-on its second launch, until the next tag ships a build that names the new one.
+**Amended 2026-10-16** (the maintainer's decision: a code pin moves only when the
+data format does). The pointer left the repository. Each environment's
+`channels.json` lives only in the bucket, at that environment's root, and
+`pipeline/channels.py` is its only writer, appending every move to
+`channels_history.json` beside it:
+
+- **UA** moves itself: `build-reference.yml`'s last job, `pointer`, points UA at the
+  release the monthly build staged once every check in that run has passed.
+- **Production** moves by promotion: dispatch **Promote a data release**
+  (`promote-data.yml`) with `confirm: promote to production`, and approve it at the
+  `production` environment's gate (§12). It copies the release UA's pointer names
+  (or the `release` given) into production's tree, checks every object, and moves
+  production's pointer. No tag and no app release are involved.
+- **Rollback** is the same workflow with an older `release`; one production
+  already holds is checked rather than copied. `target: ua` rolls UA back.
+
+`DATA_RELEASE` is now the known-good floor: a first run reads the pointer before it
+renders and takes its release, and reads the floor only when it cannot (offline, or a
+pointer missing, malformed, slow or naming a release that does not resolve). So the
+constant moves with a new schema version, or when the folder it names stops being
+usable, and in no other commit. `pages.yml` and `ua.yml` check, against their own
+base, that the floor resolves and fits a launch, and the same of the release the
+uploaded pointer names where one is uploaded (the step "Confirm the uploaded
+pointer's release exists"). **When that step fails, move the pointer to a release
+that resolves there with Promote a data release, then redeploy.** The two are not
+compared: differing is the design. Pull request previews run neither pointer check.
 
 **Since 2026-10-15 a deploy also weighs the release it pins.** In the step "Confirm
 the pinned data release exists", `pages.yml` and `ua.yml` run
@@ -651,8 +657,9 @@ the pinned data release exists", `pages.yml` and `ua.yml` run
 fetches whole over `client/src/lib/artifactBudget.ts`'s launch budget. UA's release
 2026-10-03-2 resolved, and still drew no network sketch on any UA phone: its
 41,216,145-byte `network_overview.geojson` was over the 33,554,432-byte budget, so
-each phone declined it (review 5528343443 on PR #1805). **When it fails, pin a
-release whose files fit**, moving `channels.json` with it as above. `publish.py`
+each phone declined it (review 5528343443 on PR #1805). **When it fails on the
+floor, pin a release whose files fit; when it fails on the pointer's release, point
+at one that fits.** `publish.py`
 refuses to stage a release that does not fit, so only a folder staged before then
 can be one. A pull request preview runs the same weigh as a warning that leads its
 comment.
@@ -710,10 +717,10 @@ than a hope:
   written once and never overwritten, and retention keeps a superseded release 90 days
   past being superseded with a floor of three (DATA_RELEASES.md, Retention). Rolling
   back the tag rolls back the pinned constant with it. Since §10's
-  amendment the constant is only a first run's fallback, and the data a phone reads
-  rolls back on its own: revert the `channels.json` commit and dispatch
-  `publish.py --channels`, with no tag involved. A phone follows the reverted entry
-  from its next launch after reading it.
+  amendments the constant is only a first run's floor, and the data a phone reads
+  rolls back on its own: dispatch **Promote a data release** with the older
+  `release`, with no tag involved. A phone follows it from its next launch after
+  reading it, and a phone holding data is asked first.
 - **A migration must not have burned the bridge.** §8c's expand-and-contract rule is
   what keeps the previous release able to run against the current schema. It is a
   rollback rule as much as a compatibility one.

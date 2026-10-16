@@ -75,7 +75,7 @@ SERVED: which raw_run each environment's data was built from, kept with everythi
       them needs the Actions API in a job holding the raw store's key; and that check reads runs on main only, while
       UA's current release came from build-reference.yml run 2, dispatched, as run 1 was, on the branch of PR #1805 —
       dlt → dbt re-platform as one go/no-go change (the Actions API's run list, read 2026-10-15);
-    - channels.json names release ids, not raw_runs, and only the release train uploads it.
+    - channels.json names release ids, not raw_runs (channels.py moves it).
   UA MUST BE KNOWN: with no raw_run in UA's latest.json and no --keep-raw-run ua=..., --delete deletes nothing.
   Production's latest.json naming none is read as serving no pin, because no publish to production has been built from
   one: build-reference.yml publishes only to UA, and the release train's promotion still re-fetches (ELT.md, "Why a

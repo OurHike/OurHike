@@ -1,8 +1,7 @@
-"""The trail_lines family's SQL answers what today's Python answers, on the same rows (#1793, stage 3).
+"""The trail_lines family's SQL answers what today's Python answers, on the same rows.
 
-The A.T. mile axis moved to SQL (pipeline/ELT.md's ledger rows EL01-EL04, built
-by the trail_lines family because every A.T. mile comes off it). Until stage 5
-deletes the Python, export_elevation.calibrated_trail_axis still builds the
+The A.T. mile axis moved to SQL, built by the trail_lines family because
+every A.T. mile comes off it. Until the Python is deleted, export_elevation.calibrated_trail_axis still builds the
 axis that export_poi.py, export_spurs.py and export_trails.py publish miles
 from, so the two copies are held together here:
 
@@ -417,7 +416,7 @@ DELIBERATE: dict[tuple[str, str], str] = {
         "int_trail_lines__at_features_answers_what_resolve_feature_id_answers",
         "test_export_spurs::test_a_null_global_id_resolves_to_the_same_id_on_both_sides",
     ): (
-        "TL05: the extract lands a feature's properties and not its GeoJSON id, so the SQL reads the OBJECTID in its "
+        "The extract lands a feature's properties and not its GeoJSON id, so the SQL reads the OBJECTID in its "
         "place, equal to it on 3,025 of 3,025 centerline and 1,197 of 1,197 side-trail features (measured "
         "2026-10-02). This case builds the one shape ArcGIS never serves, an OBJECTID with no id, which the Python "
         "numbers by its place; both files still key the spur alike, since int_trail_lines__spurs reads "
@@ -473,14 +472,14 @@ DELIBERATE: dict[tuple[str, str], str] = {
     (
         "int_trail_lines__at_published_cuts_every_coordinate_and_never_degenerates_a_line",
         "centerline:chain:0",
-    ): "Decision 8: trails.geojson's coordinates at 6 decimals, where export_trails.py writes GDAL's digits.",
+    ): "trails.geojson's coordinates are cut to 6 decimals, where export_trails.py writes GDAL's digits.",
     (
         "int_trail_lines__at_published_cuts_every_coordinate_and_never_degenerates_a_line",
         "side_trails:sql::every_coordinate_is_cut_to_six_decimals_as_round_cuts_it",
-    ): "Decision 8 (as above).",
+    ): "Coordinates cut to 6 decimals (as above).",
     ("parity.py trail_miles", "trails_sha256"): (
         "Derived: trail_miles.json's trails_sha256 is the hash of the trails.geojson written beside it, and "
-        "decision 8 changes that file's bytes, so parity.py asks each file what the phone asks "
+        "cutting coordinates to 6 decimals changes that file's bytes, so parity.py asks each file what the phone asks "
         "(client/src/lib/trailData.ts refuses miles whose hash is not the trails.geojson it holds) instead of "
         "comparing the two hashes."
     ),
@@ -538,9 +537,8 @@ def _axis(test: dict) -> list:
 
 # --- which pytest cases the unit tests stand for -------------------------------------
 
-#: The pytest files pipeline/ELT.md's trail_lines ledger lists against tl-at's
-#: rows. export_nearby_trails
-#: is the network's (tl-net), and lib_arcgis the live domain call TL02's var
+#: The pytest files of the A.T. half of the trail_lines family. export_nearby_trails
+#: is the network half's, and lib_arcgis the live domain call a dbt var
 #: replaces in SQL, which stays at the edge for every other caller.
 LEDGER_FILES = (
     "test_export_trails",
@@ -552,7 +550,7 @@ LEDGER_FILES = (
     "test_lib_spurs",
     "test_export_spurs",
 )
-CORRIDOR_NETWORK = "lib/corridor.py's network ring (#1016), which the POI clip reads (the poi family), not TL14's A.T. corridor"
+CORRIDOR_NETWORK = "lib/corridor.py's network ring (#1016), which the POI clip reads (the poi family), not the A.T. corridor"
 NOT_SOURCE_EDITED = (
     "source_edited: int_sources__data_edited's and pub_club_sections' unit tests, held to edited_day() and "
     "source_edit_dates() below; parity.py's club_sections family on every build"
@@ -1066,7 +1064,7 @@ def test_spurs_json_holds_only_the_spurs_trails_geojson_draws():
 
 def test_the_at_published_rows_are_rounded_geometrys_answers():
     """Every line is _rounded_geometry()'s cut, the never-degenerate rule included; where that is not the line
-    export_trails.py writes, DELIBERATE says decision 8. Chains first, then side trails in the layer's order."""
+    export_trails.py writes, DELIBERATE says so. Chains first, then side trails in the layer's order."""
     test = _at_test("int_trail_lines__at_published_cuts_every_coordinate_and_never_degenerates_a_line")
     lines = {row["trail_line_id"]: row for row in _at_given(test, "int_trail_lines__at_chain_miles")}
     lines |= {row["trail_line_id"]: row for row in _at_given(test, "int_trail_lines__at_side_trails")}

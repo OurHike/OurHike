@@ -81,7 +81,7 @@ def _dbt_tree(pipeline: Path) -> dict[str, bytes]:
 
 
 def test_both_generators_write_the_same_bytes_from_an_empty_tree_in_either_order_and_again_over_their_own(tmp_path):
-    """Decision 91 regenerates on every run, so a model's bytes must be a function of the registry and the extract's
+    """The generated models are rewritten on every run, so a model's bytes must be a function of the registry and the extract's
     folders alone. Each generator also reads the tree it writes into (make_dbt_staging.py's hand-written raw tables,
     generate_notice_models.py's hand-staged ones), so the order they run in, and a run over an earlier run's output,
     must not change a byte either. Measured 2026-10-06 at 24da1f07: 1,637 files, the same in all three runs."""
@@ -143,8 +143,8 @@ def test_every_staged_types_arcgis_layer_has_a_model_reading_its_raw_table():
 def test_a_table_read_off_a_pdf_is_measured_from_the_run_log_as_every_other_and_keeps_no_evaluator_exception():
     """CI's `dbt source freshness` once failed on the PDF tables the fixture warehouse never holds (run 37218932289,
     2026-10-04: ata_water_cache_boxes, bmta_access_points, rmc_recommended_hikes), when it read `_loaded_at` off the
-    missing table, so they carried `freshness: null` and an evaluator exception each. Since decision 203 every
-    generated table reads make_dbt_staging.py's LOADED_AT_QUERY, which queries the run log and never the table (a PDF
+    missing table, so they carried `freshness: null` and an evaluator exception each. Every generated
+    table now reads make_dbt_staging.py's LOADED_AT_QUERY, which queries the run log and never the table (a PDF
     with no raw table was measured so in tests/test_dbt_notice_source_freshness_runs.py), so a PDF's table carries its
     block's freshness like any other, and no generated table keeps a fct_sources_without_freshness row."""
     import csv
@@ -165,7 +165,7 @@ def test_a_table_read_off_a_pdf_is_measured_from_the_run_log_as_every_other_and_
 
 
 def test_every_generated_sources_block_warns_after_35_days_unread_and_errors_after_62():
-    """Decision 203: every monthly source carries both thresholds, make_dbt_staging.py's MONTHLY_FRESHNESS_DAYS, and
+    """Every monthly source carries both thresholds, make_dbt_staging.py's MONTHLY_FRESHNESS_DAYS, and
     every table the generator stages is monthly."""
     import yaml
 
@@ -189,7 +189,7 @@ def test_a_generated_block_of_another_cadence_stops_the_run_rather_than_guessing
 
 
 def test_every_generated_raw_table_carries_elementarys_checks(written):
-    """Decision 102: the generator writes raw_table_checks() on every raw table it declares, so one edit of that list
+    """The generator writes raw_table_checks() on every raw table it declares, so one edit of that list
     reaches every generated layer, a PDF's included (build_marts.py leaves a check out where the warehouse lacks the
     table). tests/test_elementary_checks.py holds the hand-written raw tables to the same list."""
     import yaml
@@ -219,7 +219,7 @@ def test_the_checks_the_generator_writes_as_text_are_the_list_it_names_and_no_fr
 
 
 def test_there_are_layers_to_stage():
-    """The wave 1 on this branch: 83 places, 6 elevation, 98 trail-line and 69 point layers at least."""
+    """The club layers generated today: 83 places, 6 elevation, 98 trail-line and 69 point layers at least."""
     by_type = {}
     for table in make_dbt_staging.tables():
         by_type[table.type] = by_type.get(table.type, 0) + 1
@@ -262,7 +262,7 @@ def test_the_key_is_the_registry_key_then_the_measured_fields_as_dlt_names_them(
     ],
 )
 def test_a_row_with_no_measured_key_or_a_server_row_id_in_it_is_refused(entry):
-    """Decision 40: never a server row id, which a reload mints again; and no table staged without a key."""
+    """Never a server row id, which a reload mints again; and no table staged without a key."""
     with pytest.raises(KeyRefused):
         _table(entry).key_inputs()
 
@@ -371,7 +371,7 @@ def test_a_region_set_by_hand_in_the_macro_is_not_generated_again():
     files = make_dbt_staging.render()
     generated = set(re.findall(r"= '([a-z0-9_]+)' then", files[make_dbt_staging.REGIONS_MACRO]))
     assert not generated & make_dbt_staging.hand_set_regions()
-    # A content type's rows carry no geometry (section C, decision 54 wave 3), so no box is drawn for them.
+    # A content type's rows carry no geometry , so no box is drawn for them.
     undecided = {
         table.key
         for table in make_dbt_staging.tables()
@@ -383,7 +383,7 @@ def test_a_region_set_by_hand_in_the_macro_is_not_generated_again():
     assert not generated & decided
 
 
-# --- section C's content types (decision 54 wave 3, 2026-10-04) ---------------------------------------------------
+# --- content types -------------------------------------------------------------------------------------------------
 
 
 def _content(type_: str, reader: str, entry: dict, table: str | None = None) -> Table:

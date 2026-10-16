@@ -1053,7 +1053,7 @@ def test_a_null_rates_last_point_is_its_entrys_own_value(files):
 
 
 def test_each_sources_freshness_is_its_last_result_in_this_build_and_elementarys_learned_freshness_counts_nowhere(files):
-    """Decision 203 (the maintainer, 2026-10-15): freshness is OurHike's own last successful read of a source. dec,
+    """Freshness (the maintainer, 2026-10-15) is OurHike's own last successful read of a source. dec,
     measured twice, counts once, by its pass; the build before's result, the held secret layer's and a source
     Elementary does not describe count nowhere and are named nowhere. Elementary's freshness_anomalies result and the
     closures table check's freshness metric are neither counted, nor an entry, nor a series."""

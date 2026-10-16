@@ -1,8 +1,7 @@
-"""The network's SQL answers what export_nearby_trails.py answers, on the same rows (#1793, stage 3).
+"""The network's SQL answers what export_nearby_trails.py answers, on the same rows.
 
 The network half of trail_lines moved to SQL (pipeline/ELT.md's trail_lines
-rule table, the TL rows for export_nearby_trails.py), and until stage 5
-deletes the Python both are live. parity.py compares the two writers' files on
+rule table, the TL rows for export_nearby_trails.py), and until the Python is deleted both are live. parity.py compares the two writers' files on
 the fixture warehouse in CI; this holds the branches the fixtures never reach,
 by running the Python over each dbt unit test's own rows, one test per model:
 
@@ -11,8 +10,7 @@ by running the Python over each dbt unit test's own rows, one test per model:
   missing_declared_fields(), name_constant_conflicts() and dlt's own
   normalize_identifier();
 - int_trail_lines__network_judged: keep_reason(), declared_name(),
-  load_boundary() and lib/feature_id.py's id, `published_id` (TL04-TL07,
-  TL10), where DELIBERATE_IDS holds the two id rows that
+  load_boundary() and lib/feature_id.py's id, `published_id`, where DELIBERATE_IDS holds the two id rows that
   differ on purpose and parity.py's NETWORK_ID_REASONS has to name the same
   two cases;
 - int_trail_lines__network_counts: count_problems();
@@ -22,8 +20,7 @@ by running the Python over each dbt unit test's own rows, one test per model:
 - int_trail_lines__network_navigation: simplify_records() at 1 m;
 - int_trail_lines__network_published: _rounded_geometry();
 - the overview's three models: _through_routes(), _above_the_seam_floor(),
-  both passes' _simplified_part_by_part() and write_overview() itself (TL12,
-  TL20);
+  both passes' _simplified_part_by_part() and write_overview() itself;
 - the network's dbt_project.yml vars are the Python's constants.
 
 dbt runs the other half: each unit test holds the SQL to those expectations.
@@ -285,7 +282,7 @@ def test_the_registry_checks_answer_what_the_python_answers():
                 source["key"],
                 field,
             )
-        # TL05's two fields: each one's column, the GeoJSON id's column (Socrata's row id, else the object id), and
+        # The two id fields: each one's column, the GeoJSON id's column (Socrata's row id, else the object id), and
         # each declared one the layer did not land, global id first.
         spelling, object_id = source.get("global_id_field"), source.get("object_id_field")
         assert want["global_id_column"] == (naming.normalize_identifier(spelling) if spelling else None), source["key"]
@@ -314,7 +311,7 @@ def test_a_source_both_junior_and_senior_is_flagged_where_the_python_would_chain
 
 # --- the two fields lib/feature_id.py reads, as sources.json declares them ---
 
-#: The names ArcGIS gives a layer's object id field on the registered line layers (pipeline/ELT.md's TL05: OBJECTID
+#: The names ArcGIS gives a layer's object id field on the registered line layers (OBJECTID
 #: on 20 of the 24 network layers read 2026-10-08, FID on 3, OBJECTID_1 on pasda_dcnr_trails).
 OBJECT_ID_FIELDS = {"OBJECTID", "FID", "OBJECTID_1"}
 
@@ -654,7 +651,7 @@ GEODESIC = "int_trail_lines__network_published_measures_both_lengths_on_the_wgs8
 
 
 def test_length_miles_and_published_length_m_are_both_pyprojs_wgs84_geodesic():
-    """Decision 97: on that unit test's rows, records_to_geojson()'s `length_miles` is the expected
+    """On that unit test's rows, records_to_geojson()'s `length_miles` is the expected
     published_length_m in miles at 2 decimals, as pub_nearby_trails rounds it, and the expected metres are pyproj's
     Geod(ellps='WGS84') length, records_to_geojson()'s and macros/geodesic_length_m.sql's, each to a micrometre.
     dbt holds the model to the expected metres only to 0.05 m (a 2.0.6 unit test compares a double at one decimal);
@@ -1035,8 +1032,8 @@ def test_parity_compares_a_sketch_features_parts_as_a_set():
     assert parity.differences(sketch(one, two), sketch(one), family) != []
 
 
-def test_parity_explains_a_club_line_as_decision_64s_new_data_and_nothing_else():
-    """Decision 64 draws the clubs' own lines in nearby_trails.geojson, each marked `line_kind` 'club'. Parity explains
+def test_parity_explains_a_club_line_as_new_data_and_nothing_else():
+    """nearby_trails.geojson draws the clubs' own lines, each marked `line_kind` 'club'. Parity explains
     a club line the new file adds, and never a network line it adds."""
     family = parity.FAMILIES["nearby_trails"]
     network = _line("s:1", "A", [[0.0, 0.0], [1.0, 1.0]])

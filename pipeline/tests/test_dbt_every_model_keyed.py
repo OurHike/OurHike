@@ -16,7 +16,7 @@ on its own:
 "Unfiltered at error" is a test that fails the build on its first failing row: dbt's own
 `unique` or `not_null` generic test (macro.dbt.test_unique, macro.dbt.test_not_null), no
 `where`, severity error, dbt's default `fail_calc`, and no tolerance in either threshold: dbt's
-default `!= 0`, or `>0`, which dbt_project.yml declares for every test since decision 204. A
+default `!= 0`, or `>0`, which dbt_project.yml declares for every test. A
 `where` or a threshold above that lets some duplicates through, which is no key. The severity
 is read as dev and CI parse it, with OURHIKE_DATA_ENV unset, where the switch makes
 it error; in production and UA the same switch makes a failing key test a warning that
@@ -26,8 +26,8 @@ WHY dbt_project_evaluator IS NOT ENOUGH. Its fct_missing_primary_key_tests reads
 severity nor its `where` (int_model_test_summary.sql, 1.4.0), and its default
 primary_key_test_macros counts unique_combination_of_columns as a key. dbt_project.yml's
 `primary_key_test_macros` now names only the unique and not_null pair, which closes the second;
-this file closes the first. Measured on ad932107's manifest (2026-10-15, before decision 197 was
-built): of 1,593 models, 1,579 met this rule, 12 were keyed only by a combination test, and 2 had
+this file closes the first. Measured on ad932107's manifest (2026-10-15, before every model had
+a key): of 1,593 models, 1,579 met this rule, 12 were keyed only by a combination test, and 2 had
 their key at warn. The 12 now carry a generate_surrogate_key column; the 2 are the exceptions.
 
 THE EXCEPTIONS are rows of dbt/seeds/model_key_exceptions.csv: the maintainer's, in the same poll,
@@ -128,7 +128,7 @@ def _columns_keyed_at(node: dict, tests: dict, severity: str) -> set[str]:
 
 
 def check(manifest: dict, rows: list[dict]) -> dict[str, list[str]]:
-    """Decision 197 over a parsed manifest and the exceptions seed's rows: every list empty means it holds.
+    """The one-key rule over a parsed manifest and the exceptions seed's rows: every list empty means it holds.
 
     - `unkeyed`: a model with no key and no row;
     - `unknown`: a row naming no model of the project;
@@ -179,7 +179,7 @@ def test_every_exceptions_row_is_filled_with_a_severity_a_sentence_and_a_date():
 
 
 def test_the_evaluator_counts_only_unique_and_not_null_as_a_key():
-    """dbt_project_evaluator's own reading of decision 197: its default also counts
+    """dbt_project_evaluator's own reading of the one-key rule: its default also counts
     dbt_utils.unique_combination_of_columns, which the maintainer's rule does not."""
     project = yaml.safe_load((DBT_DIR / "dbt_project.yml").read_text(encoding="utf-8"))
     assert project["vars"]["dbt_project_evaluator"]["primary_key_test_macros"] == [["dbt.test_unique", "dbt.test_not_null"]]
@@ -247,7 +247,7 @@ def test_a_threshold_that_lets_failing_rows_through_makes_no_key():
     assert check(_manifest(model, *tests), [])["unkeyed"] == ["pub_example"]
 
 
-def test_decision_204s_declared_zero_tolerance_is_still_a_key():
+def test_the_declared_zero_tolerance_is_still_a_key():
     """dbt_project.yml writes every test's thresholds as `>0`, which fails on the first row as dbt's `!= 0` does."""
     model = _model("pub_example")
     tests = [

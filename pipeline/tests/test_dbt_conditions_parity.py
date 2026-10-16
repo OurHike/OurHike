@@ -1,8 +1,7 @@
-"""The closures and warnings family's SQL refuses and reads what today's Python does, on the same rows (#1793, stage 3).
+"""The closures and warnings family's SQL refuses and reads what today's Python does, on the same rows.
 
 ATC's reviewed Trail Updates, NYNJTC's Trail Alerts and NWS's relay moved to
-SQL (pipeline/ELT.md's ledger), and until stage 5
-deletes the Python both are live. parity.py compares the phone files in CI,
+SQL, and until the Python is deleted both are live. parity.py compares the phone files in CI,
 on the real reference/atc_updates.json and on fixture mode's answers for the
 rest; this holds what those inputs never exercise, because almost all of it
 is a refusal:
@@ -64,8 +63,8 @@ UNESCAPE = DBT / "macros" / "python_html_unescape.sql"
 # with a leading space. urlparse() strips it before reading the scheme, and
 # the phone would then open the link with the space still in it, so the SQL
 # reads the scheme as written, as int_podcasts__checked reads a link. Rows
-# 39-42, a source_url back into the app (macros/link_into_the_app.sql,
-# decision 94): the app's own site, no host, a sign-in token, and the app's
+# 39-42, a source_url back into the app (macros/link_into_the_app.sql):
+# the app's own site, no host, a sign-in token, and the app's
 # host in capitals; lib/atc_updates.py reads only the scheme, and the client
 # refuses all four at the sink (lib/safeLink.ts).
 DELIBERATE_ATC_ROWS = {36, 39, 40, 41, 42}
@@ -78,8 +77,8 @@ DELIBERATE_ATC_ROWS = {36, 39, 40, 41, 42}
 #        than drop one;
 #   n16  a title that is not a string: _text_of() publishes str(5), and the
 #        SQL refuses it as a payload whose shape has changed;
-#   n17-n19  a link back into the app (macros/link_into_the_app.sql,
-#        decision 94), which parse_alert() reads as any link starting "http".
+#   n17-n19  a link back into the app (macros/link_into_the_app.sql),
+#        which parse_alert() reads as any link starting "http".
 DELIBERATE_NYNJTC_POSTS = {"n09", "n14", "n15", "n16", "n17", "n18", "n19"}
 
 # ATC pages the SQL refuses and auto_publish_refusal() publishes: u19, a

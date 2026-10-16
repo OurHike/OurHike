@@ -1,7 +1,6 @@
-"""int_podcasts__checked finds what lib/podcasts.py's validate() finds, on the same rows (#1793, stage 3).
+"""int_podcasts__checked finds what lib/podcasts.py's validate() finds, on the same rows.
 
-The podcasts gate moved to SQL (pipeline/ELT.md's podcasts rule table,
-PC01-PC12), and until stage 5 deletes the Python both are live: export_podcasts.py
+The podcasts gate moved to SQL, and until the Python is deleted both are live: export_podcasts.py
 still uploads, and the dbt writer's file is compared with its output by
 parity.py. Two copies of one rule drift unless something holds them
 together, and this is that something, in three parts:

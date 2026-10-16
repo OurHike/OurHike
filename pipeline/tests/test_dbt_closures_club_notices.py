@@ -5,7 +5,7 @@ stop doing org by org customization." seeds/notice_words.csv is that vocabulary,
 the one value no shared word can read. The model's unit tests mock both; this holds each mock to its file, so a test
 cannot pass on a vocabulary the build does not use, and holds that no rule of the model names a source.
 
-It also holds the maintainer's answers of 2026-10-11 on how wave 6's statuses read (pages 01 and 02 of that review)
+It also holds the maintainer's answers of 2026-10-11 on how club statuses read
 to the shared words, where a later edit would otherwise move one without a word: Missouri's Archived alone is not
 current (P1), Michigan's '-1' rows are nothing for a hiker by their own category, 'Motorized' (P4), a closed Florida
 park closes its trails (P5) and is placed by its own boundary (seeds/notice_steward_areas.csv), the Great
@@ -126,7 +126,7 @@ def test_no_hazard_seed_row_lists_a_category_that_says_the_hazard_is_absent():
 
 
 def test_no_rule_of_the_model_names_a_source():
-    """Decision 190: what a word means is the same for every source. The model's SQL compares no source_key to a
+    """What a word means is the same for every source. The model's SQL compares no source_key to a
     literal, and quotes no registered notice source's key; a value no word can read is a row of
     notice_word_overrides, never a branch of the SQL."""
     sql = MODEL.read_text()
@@ -223,7 +223,7 @@ def test_every_closed_value_of_a_florida_parks_day_use_status_closes_and_open_an
 
 
 def test_a_florida_parks_day_use_point_is_placed_by_its_own_boundary_and_a_campground_by_none():
-    """Q3 (poll of 2026-10-11, "Its own boundary"): a park's day-use status point inside exactly one of FDEP's own park
+    """The maintainer's poll of 2026-10-11, "Its own boundary": a park's day-use status point inside exactly one of FDEP's own park
     boundaries takes that boundary as its place (int_closures__club_notices' rule 4), so the trails a closed park
     closes are the ones inside it. A campground's status is about the campground, not the park around it, so the
     campground layer keeps its own points."""
@@ -243,7 +243,7 @@ def test_the_gap_alerts_hidden_and_cleared_are_both_not_current_and_fully_obstru
 
 
 def test_netts_damaged_bridges_and_vtranss_active_closure_close_by_their_own_words():
-    """P11, frame A, and decision 190 with the maintainer's fixes of 2026-10-15: neither layer's own name says
+    """With the maintainer's fixes of 2026-10-15, a row closes by its own words: neither layer's own name says
     closures ('NET_KML_DAMAGED_BRIDGES', 'Notice Line'), so each row closes by its own words. NETT's bridges are
     'collapsed' or a 'burned bridge'; VTrans's active row is titled 'Closure', its isActive 1 a flag's yes that says
     nothing of the trail; its isActive 0 holds the row."""
@@ -371,7 +371,7 @@ def test_a_categorys_closure_is_a_kind_of_notice_that_closes_only_beside_its_tit
         assert expected[notice_id]["read_from"].startswith("category '"), notice_id
 
 
-def test_idprs_named_orders_read_as_the_brief_and_decision_190_say():
+def test_idprs_named_orders_read_by_their_own_words():
     """IDPR 2232 (any use, beside a note calling the trail non-motorized), 3018 (weekdays) and 2245 (possibly
     closed) close; the three motorized-only shapes are nothing for a hiker; a foot-only basin and a seasonal parking
     restriction stay notices; a fire closure barring public entry beside an OHV ban closes."""

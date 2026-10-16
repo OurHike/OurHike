@@ -1,9 +1,6 @@
 """The suggested_hikes family's SQL answers what today's Python answers, on the same rows.
 
-Stage 3 of #1793 — Rebuild the data platform as dlt → dbt: seven contracted
-marts, a monthly refresh, published docs, and lighter phone downloads. The
-Hike Finder hikes and the curated highlights moved to SQL (pipeline/ELT.md's
-ledger), and until stage 5 deletes the Python both are
+The Hike Finder hikes and the curated highlights moved to SQL, and until the Python is deleted both are
 live: parity.py compares the files the two write on the fixture warehouse in
 CI. The fixture reaches few of the rules, because most of them are refusals,
 so this holds the rest, model by model:
@@ -133,7 +130,7 @@ def test_every_mocked_difficulty_seed_is_the_seed_file():
         assert _given(test, "suggested_hike_difficulty_slugs") == _seed(), test["name"]
 
 
-# --- int_suggested_hikes__hike_finder: SH02 and SH07 ------------------------------
+# --- int_suggested_hikes__hike_finder ---
 
 
 def _parsed(row: dict) -> SimpleNamespace:
@@ -168,7 +165,7 @@ def test_hike_finder_answers_what_hike_problems_and_difficulty_slug_answer():
                 )
 
 
-# --- int_suggested_hikes__photos: SH09 --------------------------------------------
+# --- int_suggested_hikes__photos ---
 
 
 def _python_photos(rows: list[dict], tmp_path: Path) -> dict[str, dict | str]:
@@ -211,7 +208,7 @@ def test_photos_confirms_what_confirmed_photos_and_photo_for_confirm(tmp_path):
             assert answer == {"url": row["photo_url"], "credit": row["photo_credit"], "licence": row["photo_licence"]}, key
 
 
-# --- int_suggested_hikes__graded: SH04 and published_route()'s checks -------------
+# --- int_suggested_hikes__graded ---
 
 
 def _python_grade(formed: dict, hike: dict, monkeypatch) -> tuple[str, list[str]]:
@@ -262,7 +259,7 @@ def test_graded_grades_what_grade_and_published_route_grade(monkeypatch):
             assert (row["grade"], row["route_notes_json"]) == (grade, compact(problems)), (test["name"], row["hike_number"])
 
 
-# --- int_suggested_hikes__routed: SH05, SH06's tolerance, SH08 ----------------------
+# --- int_suggested_hikes__routed ---
 
 
 def _python_routed(rows: list[dict], monkeypatch, tmp_path: Path) -> dict[int, dict]:
@@ -337,7 +334,7 @@ def test_routed_ships_what_build_document_ships(monkeypatch, tmp_path):
             )
 
 
-# --- int_suggested_hikes__highlights: SH12 and SH13 -------------------------------
+# --- int_suggested_hikes__highlights ---
 
 
 def _club_runs(rows: list[dict]) -> list[dict]:
@@ -401,7 +398,7 @@ def test_highlights_resolves_what_resolve_resolves():
         assert [{name: row.get(name) for name in columns} for row in expected] == python, test["name"]
 
 
-# --- int_suggested_hikes__records: SH10 and SH11 ----------------------------------
+# --- int_suggested_hikes__records ---
 
 
 def _hike(row: dict) -> dict:

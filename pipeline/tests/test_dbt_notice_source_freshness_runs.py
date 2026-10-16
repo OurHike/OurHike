@@ -1,6 +1,6 @@
 """Real `dbt source freshness` runs on the notice sources and the monthly ones, against a warehouse of run log.
 
-Decision 100 (the maintainer's poll of 2026-10-07, on round-2 finding ARC-5:
+The maintainer's poll of 2026-10-07:
 "Red after 24h. But this should be Red in the data source freshness feature of
 dbt. Not blocking a datasource pipeline"): a notice source the extract cannot
 read stays a warning on the extract run, and dbt's source freshness turns red
@@ -17,10 +17,9 @@ writes. A source with no such row counts from the first row the log holds for
 it, the first time the extract asked, and a source the log never mentions from
 the log's newest row: the extract has not run the code that reads it yet.
 
-DECISION 203 (the maintainer, 2026-10-15) PUTS EVERY SOURCE ON THE SAME BASIS:
+EVERY SOURCE IS MEASURED THE SAME WAY (the maintainer, 2026-10-15):
 the monthly sources too, warning 35 days unread and red at 62
-(make_dbt_staging.py's MONTHLY_FRESHNESS_DAYS). And the case the decision came
-from: Elementary's event freshness warned on all 97 quiet notice sources at
+(make_dbt_staging.py's MONTHLY_FRESHNESS_DAYS). And the case that prompted it: Elementary's event freshness warned on all 97 quiet notice sources at
 once when OurHike's own hourly runs paused for 70.8 hours, because it scored
 how long since the club last edited a notice. A quiet source the first run
 after such a pause confirms unchanged reads as read an hour ago here, however
@@ -360,7 +359,7 @@ def test_nws_alerts_refused_for_3_hours_are_stale(freshness):
 
 
 def test_a_quiet_source_across_a_70_hour_gap_between_our_runs_does_not_warn(freshness):
-    """The review of 2026-10-15, thread 4279328326, and decision 203: on UA's hourly page of 2026-10-15 04:38 UTC
+    """The review of 2026-10-15, thread 4279328326: on UA's hourly page of 2026-10-15 04:38 UTC
     all 97 freshness warnings were Elementary's event freshness on quiet notice sources, each first flagged by the
     first build after OurHike's own hourly runs paused for 70.8 hours. Measured from the last read, the club's 239
     quiet days and the pause count for nothing once a run has confirmed the source unchanged."""
@@ -381,6 +380,6 @@ def test_a_monthly_source_last_read_70_days_ago_is_red_past_62(freshness):
 
 
 def test_a_monthly_file_nobody_edited_for_a_year_is_fresh_when_the_last_refresh_confirmed_it(freshness):
-    """A reviewed file's `_loaded_at` moves only when its bytes do, which is why it carried no freshness before
-    decision 203; confirmed unchanged, it is read."""
+    """A reviewed file's `_loaded_at` moves only when its bytes do, so it is measured from the run log;
+    confirmed unchanged, it is read."""
     assert freshness["monthly, unchanged for a year and confirmed at the last refresh"] == "pass"

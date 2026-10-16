@@ -1,7 +1,7 @@
-"""The int_challenges__ models find what export_challenges.py and lib/challenges.py find, on the same rows (#1793, stage 3).
+"""The int_challenges__ models find what export_challenges.py and lib/challenges.py find, on the same rows.
 
-The challenges family moved to SQL (pipeline/ELT.md's ledger rows CH01-CH13),
-and until stage 5 deletes the Python both are live: export_challenges.py
+The challenges family moved to SQL, and until the Python is deleted both are
+live: export_challenges.py
 still uploads, and parity.py compares the dbt writer's challenges.json with
 its output. Two copies of one rule drift unless something holds them
 together, and this is that something, in three parts:
@@ -65,12 +65,12 @@ DELIBERATE = {
         "the id, newline and all, as the key every tag of it is stored under; challenges_id_ok() refuses it"
     ),
     (ITEMS, "ch04::a_place_beside_a_sparse_stretch_is_measured_to_the_line:1"): (
-        "CH04: a place 100 m from the line and 224 m from its nearest vertex, beside a 0.006-degree gap between "
+        "a place 100 m from the line and 224 m from its nearest vertex, beside a 0.006-degree gap between "
         "vertices. trail_distance_index() measures to the nearest vertex and refuses it at 150 m; the SQL "
         "measures to the line as well and admits it"
     ),
     (ITEMS, f"{LIB}::TestTrailDistanceIndex::test_a_point_more_than_a_cell_from_every_vertex_is_infinitely_far:1"): (
-        "CH04: a place a degree from every vertex. Both refuse it; trail_distance_index() reads it as infinitely "
+        "a place a degree from every vertex. Both refuse it; trail_distance_index() reads it as infinitely "
         "far, past its 3x3 grid search, so the Python's message prints 'inf m', where the SQL prints its distance "
         "to the line"
     ),

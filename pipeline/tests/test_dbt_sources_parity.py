@@ -1,7 +1,7 @@
-"""The sources family's SQL refuses what export_sources.py refuses, on the same rows (#1793, stage 3).
+"""The sources family's SQL refuses what export_sources.py refuses, on the same rows.
 
 stewards.json and registry.json moved to SQL (pipeline/ELT.md's sources rule
-table), and until stage 5 deletes the Python both are live. parity.py
+table), and until the Python is deleted both are live. parity.py
 compares the two files on the real registry in CI; this holds the parts the
 real registry never exercises, because every one of them is a refusal:
 

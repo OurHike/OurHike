@@ -1,4 +1,4 @@
-"""Rule 5's two seeds, held without a warehouse (pipeline/ELT.md, "Who may publish", rule 5; the phase C).
+"""The publication rule's two restriction seeds, held without a warehouse (pipeline/ELT.md, "Who may publish").
 
 int_sources__publication reads licence_restriction_phrases and
 licence_restriction_answers to hold back a source whose quoted words carry a
@@ -82,11 +82,11 @@ def test_every_phrase_written_for_a_row_finds_its_words_in_that_row():
         assert found, f"{row['pattern']} does not match the words {key} quotes"
 
 
-def test_no_answer_row_answers_what_decision_38_holds_or_the_backstop():
+def test_no_answer_row_answers_a_condition_that_cannot_be_met_or_the_backstop():
     """No answers row answers `cannot_be_met` or `unclassified`, so neither is answered by a wording's class.
 
     The one other answer is a basis that rules on the dataset itself (publishable_licence_bases'
-    `covers_own_words_named_by`, decision 213, Q25), which still leaves `cannot_be_met` holding its row.
+    `covers_own_words_named_by`), which still leaves `cannot_be_met` holding its row.
     """
     restrictions = {row["restriction"] for row in _seed("licence_restriction_answers")}
     assert not restrictions & {"cannot_be_met", "unclassified", "not_a_restriction"}

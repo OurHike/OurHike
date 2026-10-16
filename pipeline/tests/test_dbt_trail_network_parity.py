@@ -1,10 +1,9 @@
-"""The trail_network family's SQL answers what build_trail_graph.py answers, on the same rows (#1793, stage 3).
+"""The trail_network family's SQL answers what build_trail_graph.py answers, on the same rows.
 
-trail_graph.json and trail_graph_geometry.json moved to dbt (pipeline/ELT.md's
-ledger rows TN01-TN08): the routable lines, the cuts, the node grid, the welds
+trail_graph.json and trail_graph_geometry.json moved to dbt: the routable lines, the cuts, the node grid, the welds
 and the edges to the int_trail_network__ models, and the cutting itself to the
 Python step step_node_lines.py, which cuts with build_trail_graph's own
-_split_all. Until stage 5 deletes the Python, build_trail_graph.py still writes
+_split_all. Until the Python is deleted, build_trail_graph.py still writes
 the files publish-vector-data.yml uploads, so the two are held together here:
 
 - the trail_network_ vars the models read are build_trail_graph.py's

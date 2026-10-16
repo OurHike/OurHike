@@ -14,7 +14,7 @@ proposed", took the shape dbt/dbt_project.yml's comment above `data_tests:` desc
 - `severity` is the switch: dbt_project.yml's expression on OURHIKE_DATA_ENV, warn in production and UA and error
   everywhere else. A test may set its own only to `error` (a pub_ writer's test, through the publish folder; a test
   of the six marts a hiker's safety reads, through the `marts:` gates, or in a singular test's own config(); a test
-  of int_closures__gate or int_closures__nynjtc_checked, in its own YAML or config(), under decision 208; an
+  of int_closures__gate or int_closures__nynjtc_checked, in its own YAML or config(), so a failure holds the conditions files; an
   Elementary check), to the switch itself (a hold of the inside a gated folder), to the row dates'
   expression, which also warns with the history off, or to `warn` with `meta.stays_at_warn` saying whose decision
   that is (the four closures key tests).
@@ -50,7 +50,7 @@ import make_dbt_staging
 
 DBT_DIR = Path(__file__).resolve().parent.parent / "dbt"
 DBT = os.environ.get("OURHIKE_DBT")
-#: A threshold as decision 204 writes it.
+#: A threshold in the `>N` form every test declares.
 DECLARED = re.compile(r">\s*[0-9]+")
 #: The six marts whose tests dbt_project.yml gates at error in every environment, CLAUDE.md's four harms.
 SAFETY_MARTS = ("closures", "warnings", "points_of_interest", "elevation", "trail_lines", "trail_network")
@@ -66,8 +66,8 @@ CONFIG_CALL = re.compile(r"\{\{\s*config\((.*?)\)\s*\}\}", re.S)
 #: config() (a gate on intermediate/closures/ in dbt_project.yml would also catch models no writer reads).
 GATED_MODELS = ("int_closures__gate", "int_closures__nynjtc_checked")
 #: The two exceptions, which keep the project's switch: a held source is what each reports, and at error in
-#: production one held source would hold every conditions file. The held share (a rows_named level) and decision 81's
-#: hold (`holds_a_source`).
+#: production one held source would hold every conditions file. The held share (a rows_named level) and the
+#: per-source hold (`holds_a_source`).
 ON_THE_SWITCH = ("int_closures__gate_holds_no_source", "assert_every_held_notice_source_with_notices_has_rows_to_carry")
 #: The writers below int_closures__gate, whose files a failing test of either model holds at their last good copy.
 #: Measured on the parse (test_decision_208s_gate_holds_the_nine_hourly_writers_below_it): seven read the gate, and
@@ -165,7 +165,7 @@ def test_every_threshold_a_yaml_test_writes_is_in_the_declared_form():
 
 
 def test_every_severity_a_yaml_test_writes_is_error_the_switch_the_row_dates_or_a_recorded_warn():
-    """A test's own `severity: warn` would never stop dev or CI, which is the one thing decision 204 asks of them."""
+    """A test's own `severity: warn` would never stop dev or CI, which is the one thing the two thresholds ask of them."""
     stray = []
     for where, name, body in YAML_TESTS:
         config = body.get("config") or {}
@@ -429,7 +429,7 @@ def _descendants(manifest: dict, unique_id: str) -> set[str]:
 def test_decision_208s_gate_holds_the_nine_hourly_writers_below_it(manifests):
     """Measured on the parse, not assumed: the pub_ writers below int_closures__gate, whose files build_marts.py's
     failure_holds() holds when a test of the gate fails (it leaves out the gate and everything below it), are exactly
-    WRITERS_BELOW_THE_GATE, so a new one changes what decision 208 holds and is named here. Seven read the gate itself
+    WRITERS_BELOW_THE_GATE, so a new one changes what a failing gate test holds and is named here. Seven read the gate itself
     and READ_THROUGH_NOTICES read pub_conditions_notices; int_closures__nynjtc_checked, above the gate through
     int_closures__unioned and read by pub_conditions_notices, reaches the same nine."""
     manifest = manifests["production"]

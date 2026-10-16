@@ -1,13 +1,12 @@
-"""The elevation family's network half answers what export_network_elevation.py and export_network_profile.py answer (#1793, stage 3).
+"""The elevation family's network half answers what export_network_elevation.py and export_network_profile.py answer .
 
-trail_graph_elevation.json and trail_graph_profile.json moved to dbt
-(pipeline/ELT.md's ledger rows EL10-EL13): each junction-graph edge's samples
+trail_graph_elevation.json and trail_graph_profile.json moved to dbt: each junction-graph edge's samples
 to int_elevation__edge_sample_points, their DEM answers in whole feet to
 int_elevation__edge_samples, the climb to int_elevation__edge_climbs over
 macros/dead_band_gain.sql, the seam measurement to int_elevation__seam_nodes
 and int_elevation__seam_measurement, and the two files to
 pub_trail_graph_elevation and pub_trail_graph_profile. The DEM read stays the
-Python step step_dem_sampling.py. Until stage 5 deletes the Python, today's
+Python step step_dem_sampling.py. Until the Python is deleted, today's
 exporters still write the files publish.py uploads, so the two are held
 together here:
 
@@ -19,7 +18,7 @@ together here:
   measurement);
 - today's own functions, run over each unit test's given rows, give every
   expected row: edge_sample_points, edge_climb (each figure rounded up
-  rather than to the nearest foot since decision 194, the one difference,
+  rather than to the nearest foot, the one difference,
   which parity.CLIMB_ROUNDED_UP_REASON explains), edge_profile's rounding,
   measure_seams and its _percentile, and write_artifact's json.dumps;
 - SQL_ONLY names the unit test the Python has no counterpart for, and holds

@@ -19,8 +19,8 @@ deleted, as a warehouse with only the hourly store's tables has them. Then:
 (d) no club notice reaches the closures or warnings mart;
 (e) conditions/notices.json is not written: with no row history there is no
     held club's last good rows to carry, so its writer keeps the phone's
-    last file whole rather than publishing every club as having no notices
-    (phase D); nor is conditions/hazard_areas.json, whose
+    last file whole rather than publishing every club as having no notices;
+    nor is conditions/hazard_areas.json, whose
     writer reads that one's rows, so the phone keeps its last
     hazard areas rather than reading an empty list as none; nor is
     conditions/trail_closures.json, whose writer reads them

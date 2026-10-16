@@ -579,7 +579,7 @@ For whoever next edits `reference/trail_orgs.json`, `org_channels.json` or
 | row | fix | from |
 |---|---|---|
 | `nysdec` | `licence_basis: public_domain` → `maintainer_clearinghouse`, dated 2026-10-01 (the clearinghouse ruling). No state work is public domain by default | b3 |
-| `nysparks` | the same; `type` is a state agency, not a clearinghouse. b4 also suggested the folder slug `oprhp`; the folder is `nysparks`, because a club folder takes its catalogue row's slug (`pipeline/ELT.md`, "Folder name = `trail_orgs.json` slug") | b4 |
+| `nysparks` | the same; `type` is a state agency, not a clearinghouse. b4 also suggested the folder slug `oprhp`; the folder is `nysparks`, because a club folder takes its catalogue row's slug (`pipeline/ELT.md`, "Extract and load (dlt)") | b4 |
 | `usgs-tnm` | The hold reason ("no URL to fetch on a schedule") is contradicted: the MapServer answers, 607,202 segments, `MAX(loaddate)` 2026-09-14 | c14 |
 | `nps` | "21 NHT stewards … point here" is false for 16 unit codes (§3c) | c11 |
 | `smd` | `licence: unstated` should say the terms forbid automated access | c6 |

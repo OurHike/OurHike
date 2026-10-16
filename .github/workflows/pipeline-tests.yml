@@ -1034,10 +1034,17 @@ jobs:
       # Every source but the PDF notices, which fixture mode never lands (no
       # pypdf here) and so would read as never read: generate_notice_models.py's
       # PDF_NOTICE_TAG says why, and publish-conditions.yml measures them.
+      # And but derived.section_closures, which the fixtures leave empty on
+      # purpose (no fixture notice closes a line, so the exporter parity
+      # families keep comparing like with like): an empty table has no
+      # _loaded_at, so dbt reads it as stale. It keeps the derived source's
+      # two thresholds (decision 204); build_marts.py's own freshness runs
+      # leave every derived table out (FRESHNESS_LEFT_OUT), and a failed step
+      # fails the build there.
       - name: dbt source freshness
         if: steps.scope.outputs.run == 'true'
         working-directory: pipeline/dbt
-        run: dbt source freshness --profiles-dir . --exclude tag:pdf_notice
+        run: dbt source freshness --profiles-dir . --exclude tag:pdf_notice source:derived.section_closures
 
       # v2's docs are a directory: index.html, assets/ and the Parquet files
       # the page reads with DuckDB-WASM (measured 2026-10-01 on dbt 2.0.6: 315

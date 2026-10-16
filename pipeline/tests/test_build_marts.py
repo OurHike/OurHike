@@ -212,7 +212,7 @@ def test_with_two_steps_the_first_steps_build_leaves_the_second_tables_descendan
 
 
 def test_elementary_s_own_tables_build_before_the_seeds_and_stage_a_leaves_the_package_out():
-    """With Elementary on and its tables missing, a dbt command records nothing (decision 102, measured on dbt
+    """With Elementary on and its tables missing, a dbt command records nothing (measured on dbt
     2.0.6), the seeds' included, so its tables come first."""
     for lane in (None, "monthly", "hourly"):
         runs = plan([DEM_SAMPLING], dbt="dbt", python="python", paths=PATHS, fixtures=False, lane=lane)
@@ -447,7 +447,7 @@ def test_main_runs_the_plan_in_order_with_one_warehouse_for_dbt_and_the_steps(mo
 
 
 def test_every_command_runs_with_elementary_on(monkeypatch, tmp_path):
-    """dbt_project.yml's switch (decision 102): on for everything build_marts.py runs, off for the pytest suites."""
+    """dbt_project.yml's switch: on for everything build_marts.py runs, off for the pytest suites."""
     _, recorder = _main(monkeypatch, tmp_path, _manifest(*STEP_TABLES))
 
     assert {env.get("OURHIKE_ELEMENTARY") for _, _, env in recorder.calls} == {"true"}
@@ -1848,7 +1848,7 @@ def test_a_test_that_holds_a_source_warned_so_the_build_names_its_rows_publishes
             "attached_node": "model.ourhike.leaks",
             "test_metadata": {"name": "expression_is_true", "kwargs": {"expression": "false"}},
         },
-        # The gate's own review aid, a level test below its error threshold (decision 204).
+        # The gate's own review aid, a level test below its error threshold.
         quiet: {"config": {"meta": {}, "error_if": ">1"}},
         "model.ourhike.leaks": {"relation_name": '"warehouse"."intermediate"."leaks"'},
     }
@@ -3120,7 +3120,7 @@ def _publish_conditions_freshness_step() -> dict:
 
 
 def test_the_hourly_lanes_freshness_is_publish_conditions_freshness_steps_own_selection():
-    """Decision 203: the page's hourly freshness is the run that turns an hour red, read again (decision 100). That
+    """Decision 203: the page's hourly freshness is the run that turns an hour red, read again. That
     step measures `tag:conditions_job` every run and adds `tag:notices_job` when step 2b read a notices copy (`latest`
     or `older`); add-served writes OURHIKE_NOTICES_READ_AT exactly then, so the build record's notices_read_at decides
     the same."""
@@ -3190,7 +3190,7 @@ def test_a_source_past_its_error_limit_is_logged_and_changes_neither_the_builds_
 ):
     """dbt exits 1 for a source past its error limit (measured on 2.0.6). The run is never retried and never stops the
     build: the data-quality file is written after it and counts it, the history is saved, and nothing is annotated,
-    because publish-conditions.yml's own freshness step is the one that turns an hour red (decision 100)."""
+    because publish-conditions.yml's own freshness step is the one that turns an hour red."""
     sources = {
         "results": [
             {"unique_id": "source.ourhike.nws.raw_nws__alerts", "status": "Error", "max_loaded_at_time_ago_in_s": 11250.0},
@@ -3228,7 +3228,7 @@ def test_a_freshness_run_that_left_no_sources_json_says_the_file_counts_none(tmp
     )
 
 
-# --- Every test has two thresholds, and the environment decides who stops (decision 204; build_marts.py's docstring,
+# --- Every test has two thresholds, and the environment decides who stops (build_marts.py's docstring,
 # "EVERY TEST HAS TWO THRESHOLDS, AND THE ENVIRONMENT DECIDES WHO STOPS") ---
 
 

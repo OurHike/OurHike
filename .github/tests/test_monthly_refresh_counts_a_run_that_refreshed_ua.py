@@ -242,7 +242,7 @@ def test_a_build_whose_title_names_no_raw_run_could_not_be_checked_and_is_never_
     assert "since" not in answer
 
 
-#: build-reference.yml's run-name: the retention step's title under retention_only, else the build's (decision 205).
+#: build-reference.yml's run-name: the retention step's title under retention_only, else the build's.
 RUN_NAME = re.compile(
     r"\$\{\{ inputs\.retention_only && format\('([^']*)', inputs\.raw_run\) "
     r"\|\| format\('([^']*)', inputs\.raw_run\) \}\}"

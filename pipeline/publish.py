@@ -1636,7 +1636,7 @@ def _collect_cells(family: str, artifacts: dict[str, dict]) -> None:
 #: that writer's file and drops the exporter's entry for it, so each key has
 #: one owner per run; keys no exposure names (the cells, the archives, the
 #: weather and field note files) stay the exporters'. An environment variable,
-#: so the UA soak (decision 30) can run the dbt path while production stays on
+#: so the UA soak can run the dbt path while production stays on
 #: the exporters; any other value refuses, so a typo cannot quietly pick one.
 PHONE_FILES_ENV_VAR = "OURHIKE_PHONE_FILES"
 PHONE_FILES_FROM_EXPORTERS = "exporters"
@@ -1709,7 +1709,7 @@ DETAIL_FAMILY_KEY = "suggested_hikes_detail_{number}.json"
 DETAIL_FAMILY_PATTERN = re.compile(r"^suggested_hikes_detail_\d+\.json$")
 #: The exposure `meta` key that makes a dbt writer's file build metadata, a
 #: sidecar as SIDECARS' are, rather than a phone file: the data-quality page's
-#: two files (decision 102, models/publish/_publish__data_quality.yml says
+#: two files (models/publish/_publish__data_quality.yml says
 #: why). A sidecar never causes a version and is uploaded only beside one, so
 #: a file whose bytes change every build (its `built_at`) cannot stage a
 #: release folder on its own, and it is in no manifest's `artifacts`, which
@@ -1741,7 +1741,7 @@ def phone_files_source(value: str | None = None) -> str:
     return raw
 
 
-#: THE PIN THIS BUILD READ (decision 205, pipeline/ELT.md). build-reference.yml's "Publish to UA" sets it to the
+#: THE PIN THIS BUILD READ (pipeline/ELT.md). build-reference.yml's "Publish to UA" sets it to the
 #: raw_run it built from, and publish() records it as latest.json's `raw_run` (lib/releases.RAW_RUN_FIELD) in the
 #: version it writes, and so in the release folder that version stages. Unset, a version carries the field forward
 #: from the manifest it replaces, so a weather, conditions or basemap publish leaves it naming the pin the monthly
@@ -3009,7 +3009,7 @@ def publish_sidecar(
     return {"environment": environment, "uploaded": uploaded, "kept": sorted(set(keys) - set(uploaded))}
 
 
-#: The committed pointer (decision 44; pipeline/ELT.md, "Versions and
+#: The committed pointer (pipeline/ELT.md, "Versions and
 #: channels"): which release folder a phone reads, per data environment and
 #: schema version, e.g. {"production": {"v1": "2026-09-24-2"}, "ua": {...}}.
 #: client/src/lib/dataRelease.ts reads the uploaded copy at each
@@ -3053,7 +3053,7 @@ def publish_channels(
 ) -> dict:
     """Upload the committed channels.json to this environment's root.
 
-    THE PROMOTION AND THE ROLLBACK (decision 44): a reviewed commit moves an
+    THE PROMOTION AND THE ROLLBACK: a reviewed commit moves an
     entry, and this, run by a dispatch, is what puts it where phones read it.
     Never part of publish(), so no scheduled run - the hourly conditions bake
     included - can move what a phone reads; and never by a push, which no
@@ -3243,11 +3243,11 @@ def main(argv: list[str] | None = None) -> dict:
         if result["sidecars"]:
             print(f"Build metadata published alongside it: {result['sidecars']}.")
     if raw_run and result["version_written"]:
-        print(f"latest.json records raw_run {raw_run}, the pin this build read (decision 205).")
+        print(f"latest.json records raw_run {raw_run}, the pin this build read.")
     elif raw_run:
         print(
             f"No version written, so latest.json still names raw_run {result.get('raw_run') or 'none'} rather than "
-            f"this build's {raw_run}: what it serves is already these bytes (decision 205)."
+            f"this build's {raw_run}: what it serves is already these bytes."
         )
     if result["photos_uploaded"]:
         # Reported whether or not a version was written: photos are outside

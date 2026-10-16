@@ -17,7 +17,7 @@ constant in fetch_trail_water.py, and that file stays the one home of all four.
 WHY A STEP, AND WHY THE GATES STAY IN IT (decision 23 sends a rule to SQL
 first). What is not arithmetic here cannot be SQL in this build: the
 hydrography is 21 NHD GeoPackages of about 270 MB, downloaded and deleted in
-turn, which stay files (decision 4), and fourteen Geofabrik state extracts
+turn, which stay files, and fourteen Geofabrik state extracts
 (#1652 — Download OSM's Geofabrik extracts at most once a month, into a
 private raw bucket that outlives the 7-day Actions cache); and EPQS answers
 one point at a time, at about 1.9 s a point, which is why it is asked only

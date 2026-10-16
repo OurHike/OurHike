@@ -23,7 +23,7 @@
 #     raw_run. Both of its publish steps ("Publish to UA" and "Put the podcast
 #     list in place on UA") set OURHIKE_DATA_ENV to the literal `ua`.
 #     publish.py scopes every key it writes by that value (lib/data_env.py).
-#   - Phones follow channels.json (decision 44), which only the release
+#   - Phones follow channels.json, which only the release
 #     train uploads (`publish.py --channels`).
 #   - Promotion is the release train's, built from this run's pinned inputs
 #     (steps/raw_inputs/<raw_run>/), so what is promoted is what UA showed.
@@ -359,7 +359,7 @@ jobs:
       # (data/processed/nearby_trails.geojson, which export_nearby_trails.py
       # writes first, as publish-vector-data.yml does; used for the cell list
       # only), and fetch_trail_water.py --derive reads ATC's shelters and
-      # campsites from them. DEM tiles are read in place (decision 35), so the
+      # campsites from them. DEM tiles are read in place, so the
       # pin freezes which tiles, not their bytes.
       - name: Today's fetchers' files for this raw_run, and the DEM tile index
         if: steps.pinned.outputs.pinned != 'true'

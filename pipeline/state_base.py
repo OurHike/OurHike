@@ -1,4 +1,4 @@
-"""state_base: whether CI's dbt job builds a pull request from main's last build, by dbt state (decision 210).
+"""state_base: whether CI's dbt job builds a pull request from main's last build, by dbt state.
 
     python state_base.py --matched-key KEY --base-dir DIR --head-manifest dbt/target/manifest.json \\
         --warehouse data/warehouse.duckdb [--github-output "$GITHUB_OUTPUT"]

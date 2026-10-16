@@ -262,7 +262,7 @@ jobs:
         run: python publish.py
 
   # PRODUCTION'S TRAIL LINES, FOR publish-conditions.yml'S PRODUCTION LEG
-  # (decision 213, Q11, the maintainer's poll of 2026-10-15, "Now, in this
+  # (Q11, the maintainer's poll of 2026-10-15, "Now, in this
   # PR"). The build job above prepares UA's release alone, so the
   # conditions job's production leg found no entry and cut no area: once
   # production publishes conditions/trail_closures.json from dbt, every one

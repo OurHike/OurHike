@@ -18,7 +18,7 @@ import publish
 from lib import fetch_receipts
 
 #: One file each dbt generator writes on every run (pipeline/generate_dbt.py): make_dbt_staging.py's ignore list and
-#: generate_notice_models.py's readers seed. Neither is committed (decision 91).
+#: generate_notice_models.py's readers seed. Neither is committed.
 GENERATED_TREE = (
     Path(__file__).resolve().parent.parent / "dbt" / "models" / ".gitignore",
     Path(__file__).resolve().parent.parent / "dbt" / "seeds" / "notice_readers.csv",

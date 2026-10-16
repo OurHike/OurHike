@@ -1,9 +1,9 @@
-"""A pull request's contracted dbt models, version by version, against main's (decision 44).
+"""A pull request's contracted dbt models, version by version, against main's.
 
     python check_contract_versions.py --head dbt/target/manifest.json --base <main>/pipeline/dbt/target/manifest.json
     python check_contract_versions.py --head dbt/target/manifest.json
 
-pipeline/ELT.md, "Versions and channels (decision 44), as stage 4 builds them":
+pipeline/ELT.md, "Versions and channels, as stage 4 builds them":
 a phone file's shape is a dbt model version, and v1 is today's shape.
 Removing, renaming or retyping a column is breaking, so the change ships as a
 new version written beside the old one until the old one's

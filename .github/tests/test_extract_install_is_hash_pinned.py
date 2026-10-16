@@ -26,7 +26,7 @@ INSTALLS_EXTRACT = re.compile(r"\bpip3?\"?\s+install\b[^\n]*\brequirements-extra
 #: Every file under .github that installs requirements-extract.txt today, with how many times. A new install must join
 #: this list, so a scan that stops matching fails rather than passing on nothing.
 INSTALL_SITES = {
-    # The build and parity jobs, and the retention step (decision 205, pipeline/prune_raw_store.py).
+    # The build and parity jobs, and the retention step (pipeline/prune_raw_store.py).
     "workflows/build-reference.yml": 3,
     "workflows/check-conditions.yml": 2,
     "workflows/extract-notices.yml": 1,

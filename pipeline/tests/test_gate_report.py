@@ -450,7 +450,7 @@ def test_two_files_with_no_records_are_not_compared_unless_the_family_may_be_emp
 
 def test_only_the_poi_types_export_poi_may_publish_empty_and_three_conditions_families_may_compare_no_records():
     """One home for the POI types: lib/poi_schema.ALLOWED_EMPTY_POI_TYPES. Work projects is the maintainer's own
-    (decision 162), and so are closures and reports (decision 199); highlights is not on it."""
+    choice, and so are closures and reports; highlights is not on it."""
     from lib.poi_schema import ALLOWED_EMPTY_POI_TYPES
 
     expected = {f"poi_{kind}{version}" for kind in ALLOWED_EMPTY_POI_TYPES for version in ("", "_v2")}
@@ -623,7 +623,7 @@ def test_main_writes_both_files_and_exits_2_without_results(tmp_path, capsys):
     assert gate_report.main([*arguments, "--summary", str(summary)]) == 0
     report = json.loads((tmp_path / "out" / "gate_report.json").read_text())
     page = summary.read_text()
-    assert page.startswith("| family | status |\n### The gate's per-key report (decision 30)\n")
+    assert page.startswith("| family | status |\n### The gate's per-key report\n")
     assert f"- {len(report['keys'])} keys today's pipeline publishes: 1 differs, 0 not_compared, " in page
     assert "- **1 block go** on this report's own reading of decision 30, for the maintainer to confirm." in page
 

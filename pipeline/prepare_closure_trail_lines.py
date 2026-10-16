@@ -24,7 +24,7 @@ trails and spurs, which a phone draws the A.T. from
 (client/src/lib/config.ts's TRAILS_KEY). So a crossed-out stretch is cut from
 the very line the phone draws under it.
 
-THE A.T. IS CUT LIKE ANY TRAIL (decision 192, the maintainer's poll of
+THE A.T. IS CUT LIKE ANY TRAIL (the maintainer's poll of
 2026-10-14, "Yes, like any trail"; the recommendation had been that only ATC
 closes the A.T.): decision 187's "an area's trails are crossed out where they
 run inside it" includes the A.T., and the sheet names the closing
@@ -117,7 +117,7 @@ OUT_DIR = ROOT / "data" / "raw" / "closure_trail_lines"
 REUSE_DIR = ROOT / "data" / "raw" / "weather" / "release"
 #: The nearby trail lines' release artifact, by its key in latest.json.
 NEARBY_KEY = "nearby_trails.geojson"
-#: The A.T.'s own lines' release artifact (decision 192).
+#: The A.T.'s own lines' release artifact.
 AT_KEY = "trails.geojson"
 #: Every release artifact this reads: every trail line a phone draws.
 SOURCE_KEYS = (NEARBY_KEY, AT_KEY)
@@ -125,7 +125,7 @@ LINES_FILE = "lines.parquet"
 RELEASE_FILE = "release.json"
 #: RELEASE_FILE's schema, and what a prepared file holds: a reader refuses one it does not know rather than guessing at
 #: its fields, and the cache key carries it (the docstring's "THE CACHE KEY CARRIES SCHEMA"). 1: nearby_trails.geojson
-#: alone. 2: trails.geojson's lines too (decision 192).
+#: alone. 2: trails.geojson's lines too.
 SCHEMA = 2
 #: The phone file's grid, 5 decimal places (pub_conditions_notices' header), which every line is rounded to here.
 PRECISION = 0.00001

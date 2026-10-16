@@ -405,7 +405,7 @@ jobs:
       # the bucket it was published to, so after a bucket move it vouches for
       # bytes that are not there. Run 164 (37000311109, 2026-10-02), the first
       # vector publish after the public bucket moved to `our-hike` with no
-      # copy (pipeline/ELT.md decision 43), restored the cached outcomes, and
+      # copy, restored the cached outcomes, and
       # publish.py's verify_photo_promises rightly refused the release,
       # uploading nothing: 3,033 photo keys the POI files referenced were
       # neither local nor in the bucket. Starting cold makes the fetchers

@@ -1,4 +1,4 @@
-"""CI's dbt job builds a pull request from main's last build when it safely can, and everything otherwise (decision 210).
+"""CI's dbt job builds a pull request from main's last build when it safely can, and everything otherwise.
 
 The maintainer's poll of 2026-10-15 ("In this PR anyway"): the build step took 16 min 7 s on 2a826f01 (Pipeline tests
 run 38773605297), on every pull request. pipeline/state_base.py's docstring has the design; what is held here is the

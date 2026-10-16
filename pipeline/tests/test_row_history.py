@@ -886,7 +886,7 @@ def test_the_default_keep_days_is_the_longest_any_lane_keeps_and_the_exit_codes_
     assert build_marts.ELEMENTARY_DEGRADED_EXIT not in (0, 1, 2, *build_marts.PUBLISHABLE_EXITS)
 
 
-# --- ELEMENTARY'S HISTORY ALONE: the hourly lane's checks run after its build (decision 110) ------------------------
+# --- ELEMENTARY'S HISTORY ALONE: the hourly lane's checks run after its build ------------------------
 
 CHECKS_AT = BUILD_2.replace(hour=7)
 

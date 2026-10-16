@@ -194,7 +194,7 @@ def test_publishes_the_six_properties_the_client_draws_from(tmp_path, monkeypatc
     """`length_miles` is the sixth, added by #1516 so a phone can tell a whole
     trail from part of one. It is asserted separately from the exact-equality
     check below because its value is the WGS84 ellipsoid's rather than this
-    writer's (decision 97), and pinning the literal would turn a test of what
+    writer's, and pinning the literal would turn a test of what
     gets published into a test of the geodesic.
     test_length_miles_is_the_lines_wgs84_geodesic_not_its_epsg5070_length pins
     the measure."""
@@ -2566,7 +2566,7 @@ def test_a_long_line_still_cuts_a_tile_archive_the_client_can_read(tmp_path, mon
     assert (header["min_zoom"], header["max_zoom"]) == (ex.TILES_MIN_ZOOM, ex.TILES_MAX_ZOOM)
 
 
-# --- The context zooms carry what the map reads there (decision 202) -------
+# --- The context zooms carry what the map reads there -------
 #
 # z5-z8 used to be cut with every line's every property, which filled a
 # dense tile past GDAL's MAX_SIZE and had GDAL redraw it on a coarser grid:

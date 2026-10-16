@@ -39,7 +39,7 @@ Springer Mountain's summit, on ATC's marker scale and not the centerline's
 own length, within 0.122 mi of ATC's axis at six on-trail named places to
 mile 38.3 and 0.18 to 0.33 mi short of it at the shelters north of Low Gap.
 dbt's int_points_of_interest__gatc_water carries the whole measurement and
-places each row from it (decision 75); this parser still only reads text.
+places each row from it; this parser still only reads text.
 """
 
 from __future__ import annotations

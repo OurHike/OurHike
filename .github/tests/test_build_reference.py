@@ -75,7 +75,7 @@ def refresh() -> dict:
 
 def test_it_runs_only_on_a_dispatch_whose_inputs_are_the_raw_run_and_the_retention_steps_two_switches(workflow):
     """No schedule (the lane's clock is refresh-reference.yml's) and no input that could name an environment. The
-    retention step's two (decision 205) have defaults, so refresh-reference.yml's dispatch, which passes the raw_run
+    retention step's two have defaults, so refresh-reference.yml's dispatch, which passes the raw_run
     alone, builds and then deletes what the raw store no longer needs: decision 207, the maintainer's poll of
     2026-10-15, "Yes, delete each month". `retention: list` is how a person asks for the list alone."""
     triggers = _triggers(workflow)
@@ -339,7 +339,7 @@ def test_the_build_runs_through_build_marts_monthly_lane_and_no_dbt_command_of_i
 
     assert "python build_marts.py --lane monthly" in runs
     assert not re.search(r"\bdbt (build|run|seed|test|source)\b", runs), "the build order is build_marts.py's alone"
-    # The monthly sources' freshness too (decision 203): build_marts.py runs it before the data-quality file, which
+    # The monthly sources' freshness too: build_marts.py runs it before the data-quality file, which
     # records it, and its exit never becomes the build's (pipeline/tests/test_build_marts.py).
     assert "source freshness" not in runs
 
@@ -427,7 +427,7 @@ def test_the_publish_job_stages_the_dbt_writers_files_on_ua_inside_publish_data(
     step = next(step for step in job["steps"] if step.get("run") == "python publish.py")
 
     assert step["env"]["OURHIKE_PHONE_FILES"] == "dbt" and step["env"]["OURHIKE_DATA_ENV"] == "ua"
-    # The pin it was built from, which latest.json records and the retention step keeps (decision 205).
+    # The pin it was built from, which latest.json records and the retention step keeps.
     assert step["env"]["OURHIKE_RAW_RUN"] == "${{ inputs.raw_run }}"
     assert job["concurrency"] == {"group": "publish-data", "cancel-in-progress": False}
     assert job["needs"] == "build"
@@ -504,11 +504,11 @@ def test_the_weekly_planner_gives_way_on_its_schedule_only_once_the_monthly_lane
     assert workflow["jobs"]["plan"]["if"] == "needs.give-way.outputs.plan == 'true'"
     # Which runs count is test_monthly_refresh_counts_a_run_that_refreshed_ua.py's, against a stand-in API.
     assert '"schedule"' in script and f"{NAME}/runs?branch=main&status=completed" in script and CONFIRM in script
-    assert "workflow_dispatch" in _triggers(workflow), "the dispatch stays (decision 28a)"
+    assert "workflow_dispatch" in _triggers(workflow), "the dispatch stays"
     assert not _secrets(give_way) and not _secrets(workflow["jobs"]["plan"])
 
 
-# --- The retention step (decision 205): pipeline/prune_raw_store.py ---
+# --- The retention step: pipeline/prune_raw_store.py ---
 
 
 def _prune_step(workflow: dict) -> dict:

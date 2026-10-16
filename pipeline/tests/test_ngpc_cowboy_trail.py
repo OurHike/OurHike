@@ -90,7 +90,7 @@ LIVE_VALUES = {
 
 def test_a_line_closes_on_exactly_the_values_its_closures_read_as_closing_the_trail():
     """For each layer the layer_rules seed closes lines on: of the layer's live values, the ones the shared vocabulary
-    (seeds/notice_words.csv, decision 190) reads as closing the trail in the role that field fills for its notices are
+    (seeds/notice_words.csv) reads as closing the trail in the role that field fills for its notices are
     exactly the closed_where values, field by field (dlt's names), so the line and the closures list close the same
     sections. NGPC's is the one today."""
     fields = {row["source_key"]: row for row in _seed("notice_source_fields")}

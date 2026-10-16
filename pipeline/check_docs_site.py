@@ -1,4 +1,4 @@
-"""Check the dbt docs site before ourhike.org/data/ serves it (pipeline/ELT.md decision 10).
+"""Check the dbt docs site before ourhike.org/data/ serves it.
 
     python check_docs_site.py <site dir> [--project dbt] [--served]
 
@@ -54,7 +54,7 @@ day: the page still held all 244).
 WITH --served, for the copy pages.yml and pr-preview.yml are about to publish
 at /data/, one more:
 
-5. CODE FROM ANOTHER ORIGIN (pipeline/ELT.md decision 93, SEC-1 of PR #1805's
+5. CODE FROM ANOTHER ORIGIN (SEC-1 of PR #1805's
    second review). The page runs on the app's own origin, where a signed-in
    hiker's session is kept, so every script, worker and WASM file it loads
    must be a file of this site. Fails:

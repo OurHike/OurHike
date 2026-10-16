@@ -189,7 +189,7 @@ jobs:
   #
   # Cheapest failure first: `dbt parse` and `dbt lint` need no warehouse, so
   # a YAML shape v2 refuses fails in seconds, once the extract's venv and the
-  # dbt generators it runs have written the generated models (decision 91).
+  # dbt generators it runs have written the generated models.
   # SQLFluff, no longer cheap, runs last (its step says why).
   dbt:
     runs-on: ubuntu-latest
@@ -373,7 +373,7 @@ jobs:
       # 2026-10-06) logged "Using cached dbt-2.0.6-cp311-abi3-manylinux_2_28_
       # x86_64.whl" and built nothing.
       #
-      # --require-hashes (ELT.md decision 144): every file is checked against
+      # --require-hashes: every file is checked against
       # the sha256 requirements-dbt.txt lists for it, and a pin with none is
       # refused (requirements-dbt.in says how the file is compiled). A warm
       # cache still skips the build: pip writes the sdist's sha256 beside the
@@ -412,7 +412,7 @@ jobs:
           python -m venv "$RUNNER_TEMP/extract"
           "$RUNNER_TEMP/extract/bin/pip" install --require-hashes -r requirements-extract.txt
 
-      # THE dbt GENERATORS' OUTPUT (pipeline/ELT.md decision 91): nothing
+      # THE dbt GENERATORS' OUTPUT: nothing
       # make_dbt_staging.py or generate_notice_models.py writes is committed,
       # so they write it here, before dbt reads the project. Without it `dbt
       # parse` fails on the first hand-written model that refs a generated one.
@@ -451,7 +451,7 @@ jobs:
         working-directory: pipeline/dbt
         run: dbt deps --profiles-dir .
 
-      # THE PACKAGES' OWN FILES, HASH-PINNED (decision 144): packages.yml and
+      # THE PACKAGES' OWN FILES, HASH-PINNED: packages.yml and
       # package-lock.yml pin versions, and nothing checked what a version's
       # tarball holds. Restored from the cache or written by deps just now,
       # every file under dbt_packages/ must match dbt/packages.sha256 before
@@ -484,7 +484,7 @@ jobs:
         working-directory: pipeline/dbt
         run: dbt parse --profiles-dir .
 
-      # dbt's own linter, beside SQLFluff and not instead of it (decision 33):
+      # dbt's own linter, beside SQLFluff and not instead of it:
       # it reads pipeline/.sqlfluff but warns it supports only SQLFluff's
       # `dbt` templater ("Continuing anyway"), and misses some of what
       # SQLFluff reports. Measured 2026-10-01 on dbt 2.0.6: the 32 files in
@@ -496,7 +496,7 @@ jobs:
         working-directory: pipeline/dbt
         run: dbt lint --profiles-dir .
 
-      # BREAKING CONTRACT CHANGES FAIL HERE (ELT.md decision 44), because dbt
+      # BREAKING CONTRACT CHANGES FAIL HERE, because dbt
       # 2.0.6 does not refuse them: measured 2026-10-02 in a throwaway
       # project, `-s state:modified --state` built a dropped v1 column and a
       # retyped v2 key green, where dbt Core raises
@@ -547,7 +547,7 @@ jobs:
           (cd "$base/pipeline/dbt" && dbt parse --profiles-dir .)
           python check_contract_versions.py --head dbt/target/manifest.json --base "$base/pipeline/dbt/target/manifest.json"
 
-      # THE BASE AGAIN, WITH ELEMENTARY'S CHECKS IN IT (decision 111, the
+      # THE BASE AGAIN, WITH ELEMENTARY'S CHECKS IN IT (the
       # maintainer's poll of 2026-10-08: "Run all of them that have been
       # modified, and downstream models"). On a pull request the build below
       # runs only the checks `state:modified+` reaches from the base, which
@@ -636,7 +636,7 @@ jobs:
       # 2026-10-15 on dbt 2.0.6: a comment in a staging model, a character in
       # a seed and a comment inside a macro a mart calls each made
       # state:modified select what they touched; but dispatched overrides were
-      # measured unseen (decision 111), so macros are compared by content.
+      # measured unseen, so macros are compared by content.
       # Anything else, the fixture generator, the extract, sources.json,
       # reference/, a Python step, build_marts.py, dbt_project.yml or a
       # requirements file among it, builds everything as before, and the
@@ -717,17 +717,17 @@ jobs:
           elif [ "$EVENT" = "pull_request" ]; then
             echo "::notice title=Every Elementary check::No base manifest holding the checks (the step before says why), so every check runs."
           else
-            echo "::notice title=Every Elementary check::A $EVENT runs every check: only a pull request compares with its base (decision 111)."
+            echo "::notice title=Every Elementary check::A $EVENT runs every check: only a pull request compares with its base."
           fi
           state=()
           if [ -n "$STATE_BASE" ]; then
             state=(--state-base "$STATE_BASE")
           elif [ "$EVENT" != "pull_request" ]; then
-            echo "::notice title=Full fixture build::A $EVENT builds every node: only a pull request starts from main's last build (decision 210)."
+            echo "::notice title=Full fixture build::A $EVENT builds every node: only a pull request starts from main's last build."
           fi
           python build_marts.py --fixtures --python "$RUNNER_TEMP/pipeline/bin/python" "${base[@]}" "${state[@]}"
 
-      # MAIN KEEPS THIS BUILD FOR PULL REQUESTS TO START FROM (decision 210):
+      # MAIN KEEPS THIS BUILD FOR PULL REQUESTS TO START FROM:
       # on a push to main whose build passed, the warehouse and the manifest it
       # was built with, copied before any later step writes to either (the
       # evaluator builds into the warehouse, and every dbt command below
@@ -760,7 +760,7 @@ jobs:
           path: ${{ runner.temp }}/dbt-ci-base
           key: dbt-ci-base-${{ github.sha }}
 
-      # ROW DATES ACROSS BUILDS (decision 57): the podcasts mart built three
+      # ROW DATES ACROSS BUILDS: the podcasts mart built three
       # times in fresh warehouses, with row_history.py's store restored
       # between them, as every production run starts. The third build runs
       # as a conditions leg whose restore failed, with its snapshots left
@@ -777,7 +777,7 @@ jobs:
           OURHIKE_DBT="$(command -v dbt)" "$RUNNER_TEMP/pipeline/bin/python" -m pytest -o addopts="" -q -p no:cacheprovider tests/test_dbt_row_dates_builds.py
 
       # A conditions build on a warehouse with no club notice table
-      # (decision 61): the hourly warehouse takes the 4-hourly notices store's
+      #: the hourly warehouse takes the 4-hourly notices store's
       # newest served copy, so a notice table can be absent, and the build
       # must hold that club's source rather than fail or publish "no
       # notices". The test builds its own fixture warehouse and drops every
@@ -790,7 +790,7 @@ jobs:
           OURHIKE_DBT="$(command -v dbt)" OURHIKE_EXTRACT_PYTHON="$RUNNER_TEMP/extract/bin/python" "$RUNNER_TEMP/pipeline/bin/python" -m pytest -o addopts="" -q -p no:cacheprovider tests/test_dbt_notice_tables_absent_builds.py
 
       # One club's row that leaks its wording and another's outside its region
-      # box (decision 81): two conditions builds in one warehouse, the history
+      # box: two conditions builds in one warehouse, the history
       # on, the second after those two invented edits. Both sources are held
       # with their reasons and carry their last good rows, and every
       # conditions writer still writes, where until decision 81 the build
@@ -835,7 +835,7 @@ jobs:
         if: steps.scope.outputs.run == 'true'
         run: OURHIKE_DBT="$(command -v dbt)" "$RUNNER_TEMP/pipeline/bin/python" -m pytest -o addopts="" -q -p no:cacheprovider tests/test_dbt_notice_source_freshness_runs.py
 
-      # The data-quality page's two files (decision 102): both writers built
+      # The data-quality page's two files: both writers built
       # with Elementary on over a warehouse of Elementary-shaped tables,
       # three builds of one lane's history, and each file read field by
       # field, a held source's checks neither named nor counted, and nothing
@@ -930,7 +930,7 @@ jobs:
           # temporary folder, over make_dbt_fixtures.py's stand-in for
           # reference/work_projects.json (lib/work_projects.FIXTURE_STAND_IN),
           # which fixture mode landed for the writer too: invented rows, since
-          # the reviewed file's are empty (decisions 162 and 199).
+          # the reviewed file's are empty.
           "$RUNNER_TEMP/pipeline/bin/python" parity.py --json-dir data/processed/parity work_projects --new data/processed/dbt/conditions_work_projects.json
           # The trail lines network, whose input is the fixture warehouse, not
           # a file in git.
@@ -979,7 +979,7 @@ jobs:
           "$RUNNER_TEMP/pipeline/bin/python" parity.py --json-dir data/processed/parity highlights --new data/processed/dbt/highlights.json --raw-dir data/raw
           # places.json, on the same fixture warehouse: OPRHP's park layer and
           # ATC's Communities, measured over today's nearby_trails.geojson and
-          # trails.geojson (cut to 6 dp, decision 8), listing today's
+          # trails.geojson (cut to 6 dp), listing today's
           # trailhead, parking and resupply POIs, each built as its own line
           # above builds it. Its old side imports export_nearby_trails.py and
           # export_poi.py, so it runs on the pipeline's pins, and nothing it
@@ -999,7 +999,7 @@ jobs:
           # phone joins a cell's edges to a tile's lines by it.
           "$RUNNER_TEMP/pipeline/bin/python" parity.py --json-dir data/processed/parity trail_graph --new data/processed/dbt/trail_graph.json
           "$RUNNER_TEMP/pipeline/bin/python" parity.py --json-dir data/processed/parity trail_graph_geometry --new data/processed/dbt/trail_graph_geometry.json
-          # Stage 6's v2 files (decision 44), each against the v1 file this
+          # Stage 6's v2 files, each against the v1 file this
           # same run wrote beside it, which the lines above hold to today's
           # exporters: every elevation, mile and coordinate a v2 decodes to
           # must be v1's, at decision 8's 6 decimals for a coordinate.
@@ -1038,7 +1038,7 @@ jobs:
       # purpose (no fixture notice closes a line, so the exporter parity
       # families keep comparing like with like): an empty table has no
       # _loaded_at, so dbt reads it as stale. It keeps the derived source's
-      # two thresholds (decision 204); build_marts.py's own freshness runs
+      # two thresholds; build_marts.py's own freshness runs
       # leave every derived table out (FRESHNESS_LEFT_OUT), and a failed step
       # fails the build there.
       - name: dbt source freshness
@@ -1078,11 +1078,11 @@ jobs:
           DBT_PROJECT_EVALUATOR_SEVERITY: error
         run: dbt build -s package:dbt_project_evaluator --profiles-dir .
 
-      # SQLFLUFF, LAST AND ON EVERY CORE (WF7 of the PR #1805 review). The
+      # SQLFLUFF, LAST AND ON EVERY CORE. The
       # jinja templater (pipeline/.sqlfluff says why not the dbt one) needs no
       # warehouse, but it does need the packages: dbt_utils' macros render
       # from dbt_packages/ (dbt/sqlfluff_libs/dbt_utils.py). The enforced lint
-      # (decision 33): 0 violations.
+      # holds 0 violations.
       #
       # It used to run first, from when it took 3.8 s serial on the 32 files
       # of 2026-10-01. On the 1,446 SQL files of 2026-10-05 it took 19 m 31 s

@@ -787,7 +787,7 @@ def test_a_point_the_prefetch_got_no_answer_for_is_declined_this_run_without_ask
     assert not cache_path.exists() or _stored(cache_path) == {}
 
 
-# --- the elevation cache keys each point exactly (decision 131) -------------
+# --- the elevation cache keys each point exactly -------------
 
 # Two points 4.4 mm apart, which the 6-decimal key wrote as one: "41.000000,-74.000000".
 POINT_A = (41.0, -74.0)

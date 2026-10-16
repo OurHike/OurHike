@@ -876,7 +876,7 @@ class TestTheRegistryTheConsoleReads:
 
     def test_names_the_sources_that_reach_no_hiker(self):
         """The whole reason for a second artifact. GATC's news feed (held for
-        its mix of news and notices since its water list shipped, decision 75)
+        its mix of news and notices since its water list shipped)
         and the held-back OPRHP layer are registrations somebody has to be able
         to see."""
         keys = {row["key"] for row in self.real()["sources"]}
@@ -1136,7 +1136,7 @@ class TestTheRegistryTheConsoleReads:
             "org:tahoepyramid",
             "org:vtrans",
             "org:nyscanal",
-            # Review page 02 (decision 122, 2026-10-09): 7 more candidate stewards, every layer held.
+            # Review page 02 (2026-10-09): 7 more candidate stewards, every layer held.
             "org:ildnr",
             "org:nett",
             "org:easterntrail",

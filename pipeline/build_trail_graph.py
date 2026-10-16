@@ -170,7 +170,7 @@ SWEEP_TOLERANCES_M = (0.0, 2.0, 5.0, 8.0, 12.0, 20.0, 35.0, 60.0, 100.0)
 
 CLOSED_STATUS = "closed"
 
-#: The `line_kind` a club's own line carries in nearby_trails.geojson (decision 64, the maintainer's poll of
+#: The `line_kind` a club's own line carries in nearby_trails.geojson (the maintainer's poll of
 #: 2026-10-04: "draw now, route later"). A club line draws on the map and is never an edge: many repeat a line already
 #: in the network (FLTC's and NCTA's shared stretch, three copies of the Superior Hiking Trail), and a route could jump
 #: between two copies, until a dedupe step checks each against the lines already there. dbt's junction graph reads
@@ -534,7 +534,7 @@ def _geographic_vertices(lines: list[LineString], to_geographic: Transformer) ->
 
 
 def _geodesic_lengths(lons: np.ndarray, lats: np.ndarray, counts: list[int]) -> list[float]:
-    """Each line's length in metres on the WGS84 ellipsoid (decision 90), from
+    """Each line's length in metres on the WGS84 ellipsoid, from
     its unrounded WGS84 vertices: the sum of its segments' geodesics, which is
     what `WGS84.line_length` sums. The `inv` runs over every pair of
     consecutive vertices at once, so the pairs that join one line's last

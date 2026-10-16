@@ -15,15 +15,15 @@
 #   /data/    pipeline/dbt/           - the data platform's dbt docs, built
 #                                       against an empty warehouse
 #                                       (.github/actions/dbt-docs-site;
-#                                       pipeline/ELT.md, decision 10). Never
+#                                       pipeline/ELT.md). Never
 #                                       under /app/, the app's PWA scope
 #   /data/quality/                    - the data-quality page, built by Astro
 #             site/src/pages/data/      from site/src like the rest of the
-#                                       site and pointed at the bucket below
-#                                       (decision 102); the one path under
+#                                       site and pointed at the bucket below;
+#                                       the one path under
 #                                       /data/ that is the site's, not the docs'
 #
-# /data/ IS ON ITS WAY TO A HOST OF ITS OWN (pipeline/ELT.md decision 144).
+# /data/ IS ON ITS WAY TO A HOST OF ITS OWN.
 # The same /data/ is uploaded to docs.ourhike.org by the docs-host job, and
 # once that host serves it, ourhike.org/data/ holds a page at each old address
 # sending a visitor to the same address there, and the site's data links
@@ -116,7 +116,7 @@ concurrency:
   cancel-in-progress: true
 
 # The data docs' own host and the Cloudflare Pages project that serves it
-# (pipeline/ELT.md decision 144, the maintainer's poll of 2026-10-10), named
+# (the maintainer's poll of 2026-10-10), named
 # here once for every job below and for .github/scripts/docs_host.py, which
 # reads both from the environment. The maintainer creates the project and
 # attaches the domain in Cloudflare's dashboard (LAUNCH_CHECKLIST.md 3c).
@@ -129,7 +129,7 @@ env:
 jobs:
   # The dbt docs page at /data/ (pipeline/ELT.md, "Docs and charts at
   # https://ourhike.org/data/"), served from docs.ourhike.org once the
-  # docs-host job below has put it there (decision 144); the action says why
+  # docs-host job below has put it there; the action says why
   # an empty warehouse, and it reads no secret. A job of its own, holding a
   # token that can read and not push (SEC-8 of PR #1805's second review): it
   # installs dbt, fetches dbt's packages by tag and may download a native
@@ -493,7 +493,7 @@ jobs:
 
       # channels.json's entry for this build's data environment and schema
       # version must resolve against the same base (pipeline/ELT.md,
-      # "Versions and channels", decision 44). The client already refuses an
+      # "Versions and channels"). The client already refuses an
       # entry whose manifest does not resolve and keeps its last release
       # (lib/dataChannel.ts's readDataChannel); this is the louder, earlier
       # check, a red deploy rather than phones that quietly never move. Both
@@ -647,7 +647,7 @@ jobs:
           # The dbt docs at /data/, beside the app and never under it: /app/
           # is the PWA's scope, and an installed app would claim the docs.
           # TWO PATHS UNDER IT ARE THE SITE'S: data/quality/, the data-quality
-          # page (pipeline/ELT.md decision 102), and data/how/, the plain "How
+          # page, and data/how/, the plain "How
           # the data is built" page in front of the docs (Q24 of #1805), which
           # site/dist brings. So the site may hold those and nothing else
           # under data/, and the docs may not bring a quality/ or how/ of
@@ -713,7 +713,7 @@ jobs:
           # and fails when the page no longer holds its placeholders.
           python .github/scripts/configure_quality_page.py _site/data/quality/index.html
 
-          # THE DOCS HOST'S FILES (pipeline/ELT.md decision 144): data/ exactly
+          # THE DOCS HOST'S FILES: data/ exactly
           # as assembled, configured and checked above, what its pages ask for
           # beside it, and a front page naming this commit, for the docs-host
           # job to upload to docs.ourhike.org. Then, only when that host

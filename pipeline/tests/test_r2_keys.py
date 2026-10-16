@@ -94,7 +94,7 @@ def test_every_artifact_name_publish_can_produce_is_a_legal_key():
 
 def test_every_key_a_dbt_writers_exposure_names_is_a_legal_key():
     """publish.collect_dbt_phone_files() publishes each writer's file under the key its exposure names, the
-    data-quality page's two (decision 102) among them, so each is held to the layout here rather than at the first
+    data-quality page's two among them, so each is held to the layout here rather than at the first
     upload that tries it. A release-only key is checked where it lands, inside a release folder, and the hike
     details' family key as one object of it, as publish.cut_suggested_hike_details() names them. An exposure with no
     pub_ writer documents a file Python writes, such as the cells' `<cell>` families, and is that file's to check."""

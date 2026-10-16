@@ -2,7 +2,7 @@
 # mart from the raw inputs refresh-reference.yml pinned for one extract run
 # (steps/raw_inputs/<raw_run>/), the dbt writers' files are staged as a UA
 # release, UA is read back, and today's exporters are compared with the dbt
-# writers on the same pin (decision 30). Cut out of refresh-reference.yml by
+# writers on the same pin. Cut out of refresh-reference.yml by
 # the maintainer's choice B (poll, 2026-10-08), and that file's header says
 # why. Its dispatch job starts this one after each pin, and a person can
 # start it on any raw_run that has a pin, so a fix is tried on real monthly
@@ -25,7 +25,7 @@
 #     publish steps ("Publish to UA" and "Put the podcast list in place on
 #     UA") set OURHIKE_DATA_ENV to the literal `ua`. publish.py scopes every
 #     key it writes by that value (lib/data_env.py).
-#   - Phones follow channels.json (decision 44), which only the release
+#   - Phones follow channels.json, which only the release
 #     train uploads (`publish.py --channels`).
 #   - Promotion is the release train's, built from the same pinned inputs,
 #     so what is promoted is what UA showed.
@@ -41,7 +41,7 @@
 #            alarm and build-data-release.yml's give-way count a run on main
 #            whose "Confirm UA serves what the build wrote" passed.
 #   parity   R2_RAW_* to read the pin; writes nothing. Today's exporters
-#            against the dbt writers on the pinned inputs (decision 30), one
+#            against the dbt writers on the pinned inputs, one
 #            group of families per runner (pipeline/parity_lane.py).
 #   parity-report  No credential. Joins the groups' answers into the one
 #            `monthly-parity` artifact and writes the gate's per-key report,
@@ -81,7 +81,7 @@ on:
         type: string
         required: true
       retention:
-        description: "The retention step (decisions 205 and 207): delete, the default, deletes what the raw store no longer needs, after the confirm job or alone under retention_only; list lists it and deletes nothing, for a person who wants to read the list first"
+        description: "The retention step: delete, the default, deletes what the raw store no longer needs, after the confirm job or alone under retention_only; list lists it and deletes nothing, for a person who wants to read the list first"
         type: choice
         options: [list, delete]
         default: delete
@@ -135,7 +135,7 @@ jobs:
     # publish, confirm, parity and parity-report jobs.
     if: ${{ !inputs.retention_only }}
     runs-on: ubuntu-latest
-    # "true" when build_marts.py exited PARTIAL_EXIT (decision 204): the build
+    # "true" when build_marts.py exited PARTIAL_EXIT: the build
     # step's own comment says what that is, and the publish and the last job
     # read it.
     outputs:
@@ -288,7 +288,7 @@ jobs:
         working-directory: pipeline/dbt
         run: dbt deps --profiles-dir .
 
-      # The packages' own files, hash-pinned (decision 144): pipeline-tests.yml's
+      # The packages' own files, hash-pinned: pipeline-tests.yml's
       # dbt job says why. Checked on a hit too, and before the save.
       - name: Check dbt's packages against their pinned hashes
         id: packages-pinned
@@ -420,7 +420,7 @@ jobs:
         env:
           OURHIKE_DATA_ENV: ua
           # step_section_closures reads UA's published conditions/notices.json
-          # from here (decisions 212 and 213); unset, it closes no section.
+          # from here; unset, it closes no section.
           DATA_BASE_URL: ${{ vars.DATA_BASE_URL }}
           R2_RAW_BUCKET: ${{ secrets.R2_RAW_BUCKET }}
           DESTINATION__FILESYSTEM__CREDENTIALS__AWS_ACCESS_KEY_ID: ${{ secrets.R2_RAW_ACCESS_KEY_ID }}
@@ -584,7 +584,7 @@ jobs:
       # OURHIKE_RAW_RUN: the version this writes records the pin it was
       # built from as latest.json's `raw_run` (publish.py's RAW_RUN_ENV_VAR),
       # which every later publish carries forward and the retention step
-      # reads to keep that pin (decision 205).
+      # reads to keep that pin.
       - name: Publish to UA
         id: publish
         env:
@@ -594,7 +594,7 @@ jobs:
           OURHIKE_RAW_RUN: ${{ inputs.raw_run }}
           # "true" when the build exited PARTIAL_EXIT: publish.py then keeps a
           # failed writer's key at the bucket's last copy, its file never
-          # read, rather than refusing the whole publish (decisions 81 and 204).
+          # read, rather than refusing the whole publish.
           OURHIKE_BUILD_PARTIAL: ${{ needs.build.outputs.partial }}
           R2_ENDPOINT_URL: ${{ secrets.R2_ENDPOINT_URL }}
           R2_BUCKET: ${{ secrets.R2_BUCKET }}
@@ -690,7 +690,7 @@ jobs:
     steps:
       - name: Fail the run if the build held part of itself back
         run: |
-          echo "::error title=Part of the monthly build held back::build_marts.py exited 5: a test past its error threshold, a source the gate held, a failed writer, or a failure that held what it reaches (decision 204), and everything else was published to UA. The build step's log and the run summary name each one; a held writer's file keeps its last published copy."
+          echo "::error title=Part of the monthly build held back::build_marts.py exited 5: a test past its error threshold, a source the gate held, a failed writer, or a failure that held what it reaches, and everything else was published to UA. The build step's log and the run summary name each one; a held writer's file keeps its last published copy."
           exit 1
 
   parity:
@@ -960,10 +960,9 @@ jobs:
   # It keeps what each environment serves and what the next build reads:
   # UA's pin and stored warehouse, one pin back, every pin newer than the
   # served one, the as-landed files the kept pins were copied from and each
-  # table's current one, and the monthly row-history store's newest 3 saves
-  # (decision 206). It lists the rest with its bytes and what the bucket
-  # costs before and after. `retention: delete`, the default since decision
-  # 207 (the maintainer's poll, 2026-10-15, "Yes, delete each month"),
+  # table's current one, and the monthly row-history store's newest 3 saves.
+  # It lists the rest with its bytes and what the bucket costs before and
+  # after. `retention: delete`, the default (the maintainer, 2026-10-15),
   # deletes what the list names, each unit whole and its record first, then
   # lists the bucket again and checks every key gone; `retention: list`
   # deletes nothing.
@@ -985,12 +984,12 @@ jobs:
   #
   # IN raw-lake-monthly, as every job here (the workflow's group), so no run
   # of this file, refresh-reference.yml or purge-person-fields.yml can be
-  # writing or reading a pin while it deletes. The raw store's key only
-  # (decision 43), never the public bucket's: UA's latest.json, which names
+  # writing or reading a pin while it deletes. The raw store's key only,
+  # never the public bucket's: UA's latest.json, which names
   # the pin UA serves once a build has published since publish.py began
   # recording it, is read over public HTTPS, as the confirm job reads it.
   maintain:
-    name: Retention step - keep what is served and one pin back, delete the rest or list it (decisions 205 and 207)
+    name: Retention step - keep what is served and one pin back, delete the rest or list it
     needs: [build, publish, confirm]
     if: ${{ !cancelled() && (inputs.retention_only || needs.confirm.result == 'success') }}
     runs-on: ubuntu-latest

@@ -121,7 +121,7 @@ def test_each_environment_has_one_line_and_the_cutover_is_productions():
     the cutover is changing PRODUCTION_PHONE_FILES to `dbt`, and extract-notices.yml reads that same line
     (test_notices_job.py). `inputs.phone_files` has four readers: the matrix and the bash lock, which keep a
     dispatched dbt path off the production leg, the step that chooses, and the `checks` job, which starts
-    check-conditions.yml on the legs the matrix ran (decision 110) by the matrix's own rule."""
+    check-conditions.yml on the legs the matrix ran by the matrix's own rule."""
     text = WORKFLOW.read_text(encoding="utf-8")
     for name, value in SETTINGS.values():
         assert re.findall(rf"^  {name}: (\S+)$", text, re.M) == [value], name
@@ -153,7 +153,7 @@ def test_a_line_that_names_neither_path_stops_its_leg_before_either_path_runs(tm
 
 
 def test_a_scheduled_production_leg_on_the_exporters_never_reads_a_notices_copy_so_no_notices_step_turns_it_red(tmp_path):
-    """extract-notices.yml skips its production leg while production is on the exporters (decision 92), so production's
+    """extract-notices.yml skips its production leg while production is on the exporters, so production's
     notices store has no copy, which decision 96 counts as overdue. The production leg must not go red for a copy it
     never reads: on the exporters path the notices read is skipped, a skipped step has no outputs, and every step that
     reads them, the red ones among them, evaluates false."""

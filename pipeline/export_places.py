@@ -402,7 +402,7 @@ def _bbox(west: float, south: float, east: float, north: float) -> list[float]:
 def _geodesic_metres(projected: str) -> str:
     """SQL for the length in metres on the WGS84 ellipsoid of `projected`, a
     geometry in PROJECTED_CRS: every `trailMiles` this artifact prints
-    (decision 97, the maintainer's poll of 2026-10-06, as decision 90
+    (the maintainer's poll of 2026-10-06, as decision 90
     measures the graph's edges).
 
     PROJECTED_CRS, EPSG:5070, is equal-area for the lower 48 only and its

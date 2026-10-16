@@ -97,7 +97,7 @@ def test_a_build_that_runs_to_its_cap_still_publishes_beside_a_restore_stalled_t
 
 
 def test_the_build_the_restore_and_the_freshness_step_all_at_their_caps_still_end_inside_the_jobs_cap():
-    """The freshness step (decision 100) runs after "Publish to R2", so it can never cost a publish, but a check that
+    """The freshness step runs after "Publish to R2", so it can never cost a publish, but a check that
     ran into the job's cap would end the run cancelled rather than with its own answer. The hand-off between them yields
     the freshness step its cap (the next test), so the build's cap, the restore's and this one's are added to the rest:
     933 s, which the 900 s job decision 201 raised could not hold."""
@@ -146,7 +146,7 @@ def test_the_jobs_clock_is_read_before_anything_that_takes_time():
 
 def test_the_clients_same_build_window_is_the_jobs_cap():
     """client/src/lib/noticeSelection.ts's SAME_BUILD_MS is "publish-conditions.yml's cap on the whole job, which one
-    build's snapshots cannot outlast" (decision 87), and moved with it at decisions 103 and 201. Read from its text, so
+    build's snapshots cannot outlast", and moved with it at decisions 103 and 201. Read from its text, so
     neither can move without the other."""
     source = (WORKFLOW.parents[2] / "client" / "src" / "lib" / "noticeSelection.ts").read_text(encoding="utf-8")
     (minutes,) = re.findall(r"^export const SAME_BUILD_MS = (\d+) \* 60 \* 1000$", source, re.MULTILINE)

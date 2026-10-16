@@ -72,7 +72,7 @@ def test_each_row_is_an_agency_notice_source_the_registry_holds(row):
     assert entry is not None, f"{row['source_key']} is not a sources.json key"
     assert entry["kind"] == "published_notices"
     assert kinds().get(row["source_key"]) == "agency", (
-        "a club's unplaced notice already shows to a hike on its trails (decision 68); the seed is for agencies"
+        "a club's unplaced notice already shows to a hike on its trails; the seed is for agencies"
     )
 
 

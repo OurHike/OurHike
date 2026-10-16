@@ -761,7 +761,7 @@ def elevation_ft(lat: float, lon: float) -> float | None:
 
 
 # What an epqs_elevations.json key is, written into the file as its `keys`
-# field: the point itself (decision 131, the maintainer's poll of 2026-10-09,
+# field: the point itself (the maintainer's poll of 2026-10-09,
 # the rule decision 115 gave export_elevation.py's DEM sample cache in
 # ffea5e31). Each coordinate is written as Python's repr writes a double, the
 # shortest text that reads back to that same double, so two points share a key

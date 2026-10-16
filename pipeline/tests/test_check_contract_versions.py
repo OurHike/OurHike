@@ -1,4 +1,4 @@
-"""check_contract_versions.py: the refusal dbt 2.0.6 does not make (decision 44).
+"""check_contract_versions.py: the refusal dbt 2.0.6 does not make.
 
 The manifests here are written in the shape dbt 2.0.6 gives a versioned model,
 read off a scratch copy of this project on 2026-10-02 with the podcasts mart

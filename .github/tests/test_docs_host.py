@@ -1,4 +1,4 @@
-"""`.github/scripts/docs_host.py`: the data docs on docs.ourhike.org (pipeline/ELT.md decision 144).
+"""`.github/scripts/docs_host.py`: the data docs on docs.ourhike.org.
 
 Two promises are held here, and the rest serves them. ourhike.org never sends
 a visitor to a host with nothing on it: `live` says the docs host serves the

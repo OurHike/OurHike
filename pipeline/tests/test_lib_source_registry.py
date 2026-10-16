@@ -475,7 +475,7 @@ def test_the_greenway_layer_never_ships_an_on_street_bike_lane():
     assert entry["where"] == "status='Current' AND grnwy='Greenway' AND onoffst='OFF'"
 
 
-# --- club_arcgis_layer: read by pipeline/extract/ alone (decision 54) -------
+# --- club_arcgis_layer: read by pipeline/extract/ alone -------
 
 # A club layer shaped the way decision 54's wave 1 registers one: an ArcGIS
 # URL, a type field, and `reaches_hikers` true, so that no reader skips it on

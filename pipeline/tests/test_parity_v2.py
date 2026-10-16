@@ -1,4 +1,4 @@
-"""parity.py's v2 families: a v2 phone file decodes to exactly the values its v1 carries (decision 44, stage 6 of #1793).
+"""parity.py's v2 families: a v2 phone file decodes to exactly the values its v1 carries (stage 6 of #1793).
 
 Elevation, miles and coordinates are safety fields (pipeline/ELT.md, "The
 eleven marts"), so these hold the Python decoders, which CI's parity step

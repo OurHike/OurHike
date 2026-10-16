@@ -645,7 +645,7 @@ SAMPLE_CACHE_NAME = "samples.json"
 SAMPLE_CACHE_PATH = ELEVATION_INDEX_PATH.parent / SAMPLE_CACHE_NAME
 
 # What a samples.json key is, written into the file as its `keys` field: the
-# point itself (decision 115, the maintainer's poll of 2026-10-09). Each
+# point itself (the maintainer's poll of 2026-10-09). Each
 # coordinate is written as Python's repr writes a double, the shortest text
 # that reads back to that same double, so two points share a key only when
 # they are one point, and a lookup can only ever answer the point that was

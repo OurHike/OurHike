@@ -1,4 +1,4 @@
-"""hand_off: hand an hourly build's warehouse to the run that checks it, through the leg's history store (decision 110).
+"""hand_off: hand an hourly build's warehouse to the run that checks it, through the leg's history store.
 
     python hand_off.py put --url URL --warehouse W --run RUN [--attempt N] [--commit SHA]
     python hand_off.py take --url URL --warehouse W --run RUN [--commit SHA]
@@ -108,7 +108,7 @@ none of the eight soak runs 666 to 676 put one while it came second; the
 warehouse then gets what the job has left (publish-conditions.yml's "Hand this
 build's warehouse to its checks" has the figures). A bundle is text alone, and a
 path in it that is absolute or climbs out of the directory is refused rather
-than written. It holds rows, so purge_person_fields.py (decision 56) unpacks
+than written. It holds rows, so purge_person_fields.py unpacks
 it and reads each of its files' keys (read_bundle()), as it reads the
 warehouse beside it, and deletes the two together.
 """
@@ -398,7 +398,7 @@ def nothing_or_stale(nothing: NotHandedOff, max_age_hours: float | None, what: s
     print(
         f"::error title=No {what} handed off for over {max_age_hours:g} h::the leg's history store has had no {what} "
         f"put in the last {max_age_hours:g} hours: {said}. Each hour without one alone is a warning; this many in a "
-        "row is a soak that compares or checks nothing, so this run goes red (decision 200).",
+        "row is a soak that compares or checks nothing, so this run goes red.",
         flush=True,
     )
     return STALE

@@ -360,7 +360,7 @@ TILES_MAX_ZOOM = 14
 TILES_CHUNK_VERTICES = 1_000
 
 # THE CONTEXT ZOOMS CARRY WHAT THE MAP READS THERE, AND EVERY LINE AT FULL
-# PRECISION (decision 202). GDAL's vector-tile writer has a per-tile budget,
+# PRECISION. GDAL's vector-tile writer has a per-tile budget,
 # MAX_SIZE, 500,000 bytes unless told otherwise, and it does not refuse a tile
 # over it. GDAL 3.8.5 - the version inside DuckDB 1.5.5's spatial extension -
 # re-encodes such a tile on a coarser grid, 4096 units across halving down to
@@ -600,7 +600,7 @@ def _miles_all(geoms: np.ndarray) -> list[float]:
 
 def _geodesic_miles_all(geoms: np.ndarray) -> list[float]:
     """Each parsed lon/lat geometry's length in miles on the WGS84 ellipsoid:
-    the `length_miles` a published line carries (decision 97, the
+    the `length_miles` a published line carries (the
     maintainer's poll of 2026-10-06, as decision 90 measures the graph's
     edges).
 
@@ -1471,7 +1471,7 @@ def apply_area_closures(records: list[dict], areas: list[dict]) -> tuple[list[di
             out.append(record)
             continue
 
-        # A piece lying wholly within AREA_EDGE_M of the outline runs along the edge, not inside (decision 213, rule
+        # A piece lying wholly within AREA_EDGE_M of the outline runs along the edge, not inside (rule
         # 6): it stays open, after the pieces outside.
         pieces = _line_parts(geometry.intersection(closed_union))
         on_edge = [edge_band.covers(shapely_transform(_TO_METRIC, piece)) for piece in pieces]
@@ -2243,7 +2243,7 @@ def write_tiles(geojson_path: Path, concurrent_path: Path | None = None) -> dict
     tileset the map never asks the right zooms of, and the failure on the
     phone is an empty map with no error anywhere.
 
-    TWO CUTS, ONE ARCHIVE (decision 202). z5 to TILES_CONTEXT_MAX_ZOOM are cut
+    TWO CUTS, ONE ARCHIVE. z5 to TILES_CONTEXT_MAX_ZOOM are cut
     from the lines file alone through context_lines_sql - TILES_CONTEXT_PROPERTIES
     only, lines sharing them merged - and the zooms above from tile_input_sql
     over the lines and the shared-ground pairs exactly as before; the

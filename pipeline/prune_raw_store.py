@@ -4,7 +4,7 @@ and with --delete delete exactly that.
     python prune_raw_store.py --raw-bucket NAME --data-base-url URL --keep-raw-run ua=RAW_RUN [--delete] [--summary FILE]
     python prune_raw_store.py --bucket-url file:///a/local/store --data-base-url file:///a/public/bucket [--delete]
 
-build-reference.yml's `maintain` job runs it with the raw store's key only (decision 43), inside raw-lake-monthly: after
+build-reference.yml's `maintain` job runs it with the raw store's key only, inside raw-lake-monthly: after
 each build whose confirm job found UA serving what it wrote, and alone when dispatched with retention_only. Its
 `retention` input is `delete`, the default since decision 207 (which passes --delete), or `list`. It runs on the
 extract's own venv, as purge_person_fields.py does, whose bucket listing, units and delete it shares. The tests run it
@@ -51,7 +51,7 @@ WHAT IS KEPT, kind by kind. No rule is a date alone: each names the reader that 
     newest keep_saves(<store>) of each folder, by save id, which sorts in the order the saves were made, and every save
     the store's own pointer names (history.json's or elementary.json's save_id and previous_save_id), as row_history.py's
     _prune() keeps them. row_history_stores.toml's [keep_saves] holds the count, read through keep_saves() here as there:
-    3 for the monthly store (decision 206), KEEP_SAVES (24) for every other. Deleted here only in PRUNED_STORES, whose
+    3 for the monthly store, KEEP_SAVES (24) for every other. Deleted here only in PRUNED_STORES, whose
     one writer is build-reference.yml's build job, inside raw-lake-monthly. The hourly stores' writers,
     publish-conditions.yml and check-conditions.yml, run outside that group and prune their own stores on each save, so
     their saves are listed and left: a folder deleted here between one of their saves listing it and removing it would
@@ -324,8 +324,7 @@ def decide_pins(store: Store, served: dict[str, Served], problems: list[str]) ->
             unit.why = f"one step back: the newest finished pin before {MUST_KNOW}'s"
         elif newest is not None and unit.name > newest:
             unit.why = (
-                "newer than every served pin: no environment has been built from it yet, and a rebuild after a fix "
-                "starts from it (decision 105)"
+                "newer than every served pin: no environment has been built from it yet, and a rebuild after a fix starts from it"
             )
         else:
             unit.keep = False
@@ -663,7 +662,7 @@ def listing(plan: Plan, deleting: bool) -> list[str]:
 
 def summary(plan: Plan, deleting: bool, verdict: str, deleted: list[str]) -> str:
     """The plan as Markdown for the run's summary page ($GITHUB_STEP_SUMMARY): a row per unit, never a key list."""
-    text = ["## Retention step (decision 205)", "", f"**{verdict}**", "", "### What each environment serves", ""]
+    text = ["## Retention step", "", f"**{verdict}**", "", "### What each environment serves", ""]
     text += ["| environment | release | latest.json's raw_run | --keep-raw-run | kept as served |", "|---|---|---|---|---|"]
     for found in plan.served.values():
         if found.error:

@@ -181,7 +181,7 @@ def refuse_what_it_must_not_hold(document, denied_people: frozenset[str], path: 
 def _tables(con) -> dict[tuple[str, str], set[str]]:
     """{(schema, table): its columns}, for every table and view in the warehouse, a mart's versions aside.
 
-    A versioned mart (decision 44) is a table per version, `closures_v1`, and
+    A versioned mart is a table per version, `closures_v1`, and
     a view under the mart's own name over the latest; counting both would
     count each row twice, so a `<mart>_v<n>` beside a `<mart>` is left out
     and the mart is counted under its own name."""
@@ -272,7 +272,7 @@ def layers(con, tables: dict) -> list[dict]:
 
 
 def todays_exporter_compared(family: str) -> bool:
-    """Whether a parity family's old side is today's exporter. A v2 family's (decision 44) is the v1 file the same dbt
+    """Whether a parity family's old side is today's exporter. A v2 family's is the v1 file the same dbt
     build wrote beside it (parity.Family.v1_beside), so a source it names is the new path's, not today's: counting it
     would read a wave 1 layer's first records as published today."""
     from parity import FAMILIES
@@ -381,7 +381,7 @@ def headline(report: dict) -> list[str]:
 
 def summary_markdown(report: dict) -> str:
     """The headline under a heading of its own, for a run's step summary: the line-by-line list stays in the files."""
-    return "\n".join(["### New-data review (decision 31)", "", *headline(report), ""]) + "\n"
+    return "\n".join(["### New-data review", "", *headline(report), ""]) + "\n"
 
 
 def render_markdown(report: dict) -> str:

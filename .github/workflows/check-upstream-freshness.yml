@@ -170,7 +170,7 @@ jobs:
       # REFRESHED UA, NOT GREEN (WF3 of the PR #1805 review). A run can
       # refresh UA and still conclude `failure`: monthly runs 16 and 17 did,
       # when one workflow still extracted and built and its last job failed
-      # the run for a layer left out (decision 49), and a build-reference.yml
+      # the run for a layer left out, and a build-reference.yml
       # run does when a parity group fails after its confirm passed. So a run
       # counts when its job "Confirm UA serves what the build wrote" succeeded,
       # whatever the run concluded, and only a run of main counts: a pull

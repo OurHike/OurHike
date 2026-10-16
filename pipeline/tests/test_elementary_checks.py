@@ -1,5 +1,5 @@
-"""Elementary's checks (decision 102) are where pipeline/ELT.md's "The checks, and where each goes" puts them, each
-with its two thresholds (decision 204).
+"""Elementary's checks are where pipeline/ELT.md's "The checks, and where each goes" puts them, each
+with its two thresholds.
 
 Read from the project's YAML as it stands, the generated tree included (tests/conftest.py refuses to start without
 it), so nothing here runs dbt:
@@ -9,7 +9,7 @@ it), so nothing here runs dbt:
   tag, and the checks' own switch alone, and no other test carries the tag, because build_marts.py leaves it out of
   every dbt build and runs it in a pass of its own after the writers;
 - every raw table, generated or hand-written, carries exactly make_dbt_staging.py's raw_table_checks(), the one home
-  of them, and no Elementary freshness check runs anywhere (decision 203);
+  of them, and no Elementary freshness check runs anywhere;
 - no pub_ writer carries one (ELT.md: each is one row holding a whole phone file);
 - every mart carries its own, the safety columns theirs, and exposure_schema_validity sits exactly where
   Elementary 0.26.0 can check something on dbt 2.0.6: a mart one phone file reads, whose exposure names the columns
@@ -116,7 +116,7 @@ def test_no_elementary_freshness_check_is_declared_anywhere():
 def test_every_elementary_check_has_its_kinds_two_thresholds_and_carries_the_tag_and_no_other_test_carries_it():
     """build_marts.py runs exactly the tagged tests in its checks pass and leaves them out of every build: a check that
     lost the tag would run inside a build and could fail it, and a dbt test that gained it would stop blocking. Each
-    check's severity, level and thresholds are elementary_check_config()'s for its kind (decision 204), enabled with
+    check's severity, level and thresholds are elementary_check_config()'s for its kind, enabled with
     the checks' own switch alone (make_dbt_staging.ELEMENTARY_ENABLED says why and when)."""
     untagged, tagged_other = [], []
     keys = ("severity", "fail_calc", "warn_if", "error_if", "tags", "enabled")

@@ -315,7 +315,7 @@ jobs:
               exit 1 ;;
           esac
 
-      # pages.yml's step of the same name (decision 145), against the entry
+      # pages.yml's step of the same name, against the entry
       # for the environment read off UA's base: `ua`, or production's for a
       # UA_DATA_BASE_URL override pointing there. `main` deploys here on
       # every push, so a commit that moves UA's channels.json entry without

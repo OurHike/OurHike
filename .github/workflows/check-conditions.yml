@@ -43,7 +43,7 @@
 #      selection (decision 203: how long since the extract last read each
 #      source or confirmed it unchanged, against its own limits), recorded
 #      on the page and never turning this run red, since that step is the
-#      one that does (decision 100); the lane's data-quality file, counting
+#      one that does; the lane's data-quality file, counting
 #      the build's results, the checks' and the freshness; and Elementary's
 #      history saved back, so the next hour's checks learn from this one;
 #   3. puts conditions/data_quality.json in place under the leg's prefix
@@ -81,7 +81,7 @@
 # old it is. A dispatch by hand is safe whenever it is made.
 #
 # BUILD PLUS CHECKS FITS THE HOUR. The caps add to 46 minutes: the publish
-# job's 16 (decision 201), its `checks` job's 5 and this job's 25, against
+# job's 16, its `checks` job's 5 and this job's 25, against
 # the 60 between two hourly runs, so even a run whose every job ran to its
 # cap leaves 14 (Reasoned from the caps; .github/tests/test_check_conditions.py
 # holds the sum). A usual hour takes about 17 to 25 of them and leaves about
@@ -321,7 +321,7 @@ jobs:
           "$RUNNER_TEMP/dbt/bin/pip" install --quiet --require-hashes -r requirements-dbt-build.txt
           "$RUNNER_TEMP/dbt/bin/pip" install --quiet --require-hashes --no-build-isolation -r requirements-dbt.txt
 
-      # The generators' output is never committed (decision 91), and the
+      # The generators' output is never committed, and the
       # checks parse the project as the build did.
       - name: Generate the dbt models
         if: steps.wanted.outputs.run == 'true'
@@ -335,7 +335,7 @@ jobs:
         working-directory: pipeline/dbt
         run: '"$RUNNER_TEMP/dbt/bin/dbt" deps --profiles-dir .'
 
-      # The packages' own files, hash-pinned (decision 144): pipeline-tests.yml's
+      # The packages' own files, hash-pinned: pipeline-tests.yml's
       # dbt job says why. Checked on a hit too, and before the save.
       - name: Check dbt's packages against their pinned hashes
         id: packages-pinned
@@ -359,7 +359,7 @@ jobs:
       # cannot be read, or a torn upload, is red.
       #
       # AND RED WHEN THE STORE HAS HAD NO WAREHOUSE FOR MAX_AGE_HOURS
-      # (decision 200, the maintainer's poll of 2026-10-15, "Red if none in
+      # (the maintainer's poll of 2026-10-15, "Red if none in
       # 2.5 h"): hand_off.py then exits 5 in place of 4, which ends the leg
       # here, red. One hour without one stays the warning above; this many
       # in a row is a soak that checks nothing, and its routine reads only
@@ -600,7 +600,7 @@ jobs:
       # comparison and nothing else: the compare step, which runs after a
       # failed take too, then says every family was not compared, and goes
       # red only for a difference. Except exit 5: the store has had no
-      # bundle for MAX_AGE_HOURS, or holds none (decision 200, the
+      # bundle for MAX_AGE_HOURS, or holds none (the
       # maintainer's poll of 2026-10-15, "Red if none in 2.5 h"), which the
       # last step turns red once this hour's comparison, every file not
       # compared, has been written and uploaded. MAX_AGE_HOURS is the
@@ -692,5 +692,5 @@ jobs:
         env:
           LEG: ${{ matrix.data_environment }}
         run: |
-          echo "::error title=No comparison bundle in the store for over ${MAX_AGE_HOURS} h::The $LEG leg's history store holds no comparison bundle put in the last ${MAX_AGE_HOURS} hours (the take step's line says when the newest was put), so this hour, like those before it, compared nothing. This run is red so the soak shows it (decision 200)."
+          echo "::error title=No comparison bundle in the store for over ${MAX_AGE_HOURS} h::The $LEG leg's history store holds no comparison bundle put in the last ${MAX_AGE_HOURS} hours (the take step's line says when the newest was put), so this hour, like those before it, compared nothing. This run is red so the soak shows it."
           exit 1

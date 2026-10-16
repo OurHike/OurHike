@@ -136,7 +136,7 @@ def test_listing_only_deletes_nothing_and_names_every_unit_with_why(months, caps
     assert "production: release 2026-09-24-2, latest.json names no raw_run: serves no pin" in out
     assert "Listing only, nothing deleted. A dispatch with retention=delete deletes the" in out
     page = summary.read_text()
-    assert "## Retention step (decision 205)" in page and "### Pins: would delete" in page
+    assert "## Retention step" in page and "### Pins: would delete" in page
     assert "| before |" in page and "| after |" in page
 
 

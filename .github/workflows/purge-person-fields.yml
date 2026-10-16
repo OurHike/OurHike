@@ -6,7 +6,7 @@
 # (Reasoned from those runs in ELT.md's ledger; step 1 below is the first
 # read of the tables themselves), and the maintainer decided the purge runs
 # after that re-read. It lives here because only a workflow holds the raw
-# store's key (decision 43).
+# store's key.
 #
 #   gh workflow run purge-person-fields.yml --ref <branch> -f delete=false
 #

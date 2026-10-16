@@ -329,9 +329,9 @@ def test_comparisons_of_two_empty_files_count_only_for_a_family_the_monthly_rule
 
 
 def test_a_soak_whose_closures_and_reports_hold_no_record_on_either_side_covers_both_and_says_why(tmp_path):
-    """Decision 199: UA's own database holds no verified public closure or report, so each hour compares two empty
-    files (check-conditions.yml runs 31 and 48, 2026-10-11), and the soak counts those hours as it counts work_projects'
-    (decision 162). Each key still lists that only the files' top-level fields were compared, and why."""
+    """UA's own database holds no verified public closure or report, so each hour compares two empty
+    files (check-conditions.yml runs 31 and 48, 2026-10-11), and the soak counts those hours as it counts work_projects'.
+    Each key still lists that only the files' top-level fields were compared, and why."""
     reports = DbtKey(
         "conditions/reports.json", "conditions_reports_json", "model.ourhike.pub_conditions_reports", "conditions_reports.json"
     )

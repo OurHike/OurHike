@@ -268,7 +268,7 @@ def _run_a_step(tmp_path: Path, step: dict, env: dict[str, str], program: str, c
 def test_a_bundle_that_cannot_be_taken_is_an_hour_not_compared_never_a_red_step(tmp_path, code, output):
     """take-bundle's exit 4 is another run's bundle, or another commit's, or none; 1 is a store that could not be
     read or a torn upload. Either costs this hour its comparison, which the compare step then says, and nothing else.
-    5 is the store with no bundle for MAX_AGE_HOURS (decision 200): the same here, and `stale` for the last step."""
+    5 is the store with no bundle for MAX_AGE_HOURS: the same here, and `stale` for the last step."""
     env = {"ENVIRONMENT": "ua", "BUILD_RUN": BUILD_RUN, "COMMIT": "e49ca601", "R2_RAW_BUCKET": "raw"}
     env["MAX_AGE_HOURS"] = _workflow(CHECKS)["env"]["MAX_AGE_HOURS"]
     status, calls, written = _run_a_step(tmp_path, _step(CHECKS, "parity", TAKE), env, "python", code)

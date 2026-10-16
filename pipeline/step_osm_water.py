@@ -9,7 +9,7 @@ outside dbt".
 THE POINTS ARE A SCAN OF THE EXTRACTS THE MONTHLY LANE KEEPS (#1652 —
 Download OSM's Geofabrik extracts at most once a month, into a private raw
 bucket that outlives the 7-day Actions cache). The fourteen state extracts
-are fetched data, and fetched data is the extract's to land (decision 4):
+are fetched data, and fetched data is the extract's to land:
 extract/_shared/osm/geofabrik.py keeps them in the raw store, monthly, with
 one manifest row each, and never hands their bytes to dlt. They are files, so
 the water in them is read in refresh-reference.yml's pin job:

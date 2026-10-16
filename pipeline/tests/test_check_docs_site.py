@@ -1,4 +1,4 @@
-"""check_docs_site.py: what the docs site at ourhike.org/data/ must hold, and must not (decision 10).
+"""check_docs_site.py: what the docs site at ourhike.org/data/ must hold, and must not.
 
 The sites here are small copies of the shape dbt 2.0.6's `dbt docs generate`
 wrote for this project on 2026-10-03: `index.html`, `assets/`, and Parquet
@@ -297,7 +297,7 @@ def test_a_singular_tests_number_its_own_file_does_not_hold_fails(tmp_path, caps
     assert "with 2 number(s) not in tests/singular/assert_a_made_up_area.sql" in out
 
 
-# --- --served: the copy a workflow publishes loads no code from another origin (decision 93) ---
+# --- --served: the copy a workflow publishes loads no code from another origin ---
 
 SELF_HOSTED = INDEX.replace("https://cdn.jsdelivr.net/npm/@duckdb/duckdb-wasm@1.32.0", "/data/duckdb/duckdb.js?")
 

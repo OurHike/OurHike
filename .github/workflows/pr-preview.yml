@@ -51,7 +51,7 @@
 # (.github/actions/dbt-docs-site) in a job of its own that holds no secret, so
 # a pull request that changes the dbt project shows its docs page before a tag
 # publishes it. Production serves them from docs.ourhike.org, a host of their
-# own (pipeline/ELT.md decision 144; pages.yml's docs-host job), under the
+# own (pages.yml's docs-host job), under the
 # same /data/ path; a preview keeps them on its own hostname, beside its app,
 # so the site it builds is given no PUBLIC_DOCS_ORIGIN and its data links
 # stay on the preview.

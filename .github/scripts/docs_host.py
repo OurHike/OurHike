@@ -1,4 +1,4 @@
-"""The data docs on a host of their own, docs.ourhike.org (pipeline/ELT.md decision 144).
+"""The data docs on a host of their own, docs.ourhike.org.
 
     python3 .github/scripts/docs_host.py live <origin>
     python3 .github/scripts/docs_host.py bundle <site dir> <out dir> --build <sha>

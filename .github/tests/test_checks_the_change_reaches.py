@@ -1,4 +1,4 @@
-"""CI's dbt job runs the Elementary checks a pull request reaches, and every one otherwise (decision 111).
+"""CI's dbt job runs the Elementary checks a pull request reaches, and every one otherwise.
 
 The maintainer's poll of 2026-10-08: "Run all of them that have been modified, and downstream models." On a pull
 request, pipeline-tests.yml's dbt job parses its base once more with Elementary's two switches on, and build_marts.py

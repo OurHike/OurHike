@@ -745,7 +745,7 @@ def test_a_writer_whose_exposure_says_sidecar_is_build_metadata_and_never_a_phon
 
 
 def test_the_data_quality_files_go_up_beside_a_new_version_and_only_the_monthly_one_into_its_release(project, s3_client):
-    """The page reads releases/<DATA_RELEASE>/data_quality.json and conditions/data_quality.json (decision 102). As
+    """The page reads releases/<DATA_RELEASE>/data_quality.json and conditions/data_quality.json. As
     build metadata, neither is in latest.json's or a release manifest's artifacts, the lists check_deployment.py,
     smoke_published.py, verify_release.py and the phone walk; latest.json's `sidecars` names both."""
     _write_quality(project, "2026-10-08T07:12:00Z")
@@ -802,7 +802,7 @@ def test_with_the_switch_on_main_uploads_the_writers_build_metadata_beside_the_v
     assert f"releases/{result['release']}/data_quality.json" in _keys(s3_client)
 
 
-# --- the hourly lane's data-quality file, put in place by its checks run (decision 110) ------------------------------
+# --- the hourly lane's data-quality file, put in place by its checks run ------------------------------
 
 #: The checks run's one dbt writer: build_marts.py --checks-only builds pub_conditions_data_quality and nothing else.
 CHECKS_RUN = ["model.ourhike.pub_conditions_data_quality"]

@@ -1,4 +1,4 @@
-"""check_dbt_packages.py holds dbt_packages/ to dbt/packages.sha256 (decision 144): any file changed, missing or added
+"""check_dbt_packages.py holds dbt_packages/ to dbt/packages.sha256: any file changed, missing or added
 fails, and a package's own .git is never part of the comparison."""
 
 from __future__ import annotations

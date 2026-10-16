@@ -481,7 +481,7 @@ fi
 # The docs site is checked by pipeline/check_docs_site.py, as the workflow
 # step checks it; that script is the home of what the site must contain.
 #
-# ELEMENTARY'S CHECKS, AS CI'S PULL REQUEST RUNS THEM (decision 111): only
+# ELEMENTARY'S CHECKS, AS CI'S PULL REQUEST RUNS THEM: only
 # those on what this branch changed and below it, against the merge base
 # with the base this script compares with (origin/main, or --since), which
 # is what a pull request's merge commit changes against its base. That base
@@ -565,28 +565,28 @@ if selected_has dbt; then
     # carries requirements.txt's rasterio as CI's pipeline venv does. Its
     # Elementary checks are the ones CI's pull request runs (above).
     checks_base_for_dbt_suite
-    # Unset OURHIKE_DATA_ENV, as CI builds (decision 204): a failing test stops this build.
+    # Unset OURHIKE_DATA_ENV, as CI builds: a failing test stops this build.
     step "dbt build_marts"       env -C pipeline -u OURHIKE_DATA_ENV DBT_ENGINE_SEND_ANONYMOUS_USAGE_STATS=false "$PY" build_marts.py --fixtures --dbt "$DBT_DIR/dbt" --warehouse "$dbt_tmp/warehouse.duckdb" --processed-dir "$dbt_tmp/processed" --raw-dir "$dbt_tmp/raw" "${checks_base[@]}"
-    # Row dates across builds, as CI's dbt job runs it (decision 57): three
+    # Row dates across builds, as CI's dbt job runs it: three
     # podcasts builds in fresh warehouses, the history restored between them.
     step "dbt row dates builds"  env -C pipeline OURHIKE_DBT="$DBT_DIR/dbt" "$PY" -m pytest -o addopts="" -q -p no:cacheprovider tests/test_dbt_row_dates_builds.py
-    # A conditions build with no club notice table in the warehouse (decision 61), as CI's dbt job runs it.
+    # A conditions build with no club notice table in the warehouse, as CI's dbt job runs it.
     step "dbt notices absent"    env -C pipeline OURHIKE_DBT="$DBT_DIR/dbt" "$PY" -m pytest -o addopts="" -q -p no:cacheprovider tests/test_dbt_notice_tables_absent_builds.py
-    # A club held for its rows, the rest published (decision 81), as CI's dbt job runs it.
+    # A club held for its rows, the rest published, as CI's dbt job runs it.
     step "dbt held for its rows" env -C pipeline OURHIKE_DBT="$DBT_DIR/dbt" "$PY" -m pytest -o addopts="" -q -p no:cacheprovider tests/test_dbt_notice_source_held_for_its_rows_builds.py
     # A monthly build with no generated club layer in the warehouse (raw_or_empty()), as CI's dbt job runs it.
     step "dbt club layers absent" env -C pipeline OURHIKE_DBT="$DBT_DIR/dbt" "$PY" -m pytest -o addopts="" -q -p no:cacheprovider tests/test_dbt_club_tables_absent_builds.py
-    # Notice source freshness from the run log (decision 100), as CI's dbt job runs it.
+    # Notice source freshness from the run log, as CI's dbt job runs it.
     step "dbt notice freshness"  env -C pipeline OURHIKE_DBT="$DBT_DIR/dbt" "$PY" -m pytest -o addopts="" -q -p no:cacheprovider tests/test_dbt_notice_source_freshness_runs.py
-    # The data-quality page's two files from Elementary-shaped tables (decision 102), as CI's dbt job runs it.
+    # The data-quality page's two files from Elementary-shaped tables, as CI's dbt job runs it.
     step "dbt data-quality files" env -C pipeline OURHIKE_DBT="$DBT_DIR/dbt" "$PY" -m pytest -o addopts="" -q -p no:cacheprovider tests/test_dbt_data_quality_builds.py
     # Every exceptions-seed row names a resource the parsed project has, as CI's dbt job checks it.
     step "dbt exceptions live"   env -C pipeline OURHIKE_DBT="$DBT_DIR/dbt" "$PY" -m pytest -o addopts="" -q -p no:cacheprovider tests/test_dbt_evaluator_exceptions.py
-    # Every model has one column unique and not null, at error, or a recorded exception (decision 197), as CI's dbt job checks it.
+    # Every model has one column unique and not null, at error, or a recorded exception, as CI's dbt job checks it.
     step "dbt every model keyed" env -C pipeline OURHIKE_DBT="$DBT_DIR/dbt" "$PY" -m pytest -o addopts="" -q -p no:cacheprovider tests/test_dbt_every_model_keyed.py
-    # Every test's two thresholds, and who stops on an error (decision 204), as CI's dbt job checks it.
+    # Every test's two thresholds, and who stops on an error, as CI's dbt job checks it.
     step "dbt two thresholds"    env -C pipeline OURHIKE_DBT="$DBT_DIR/dbt" "$PY" -m pytest -o addopts="" -q -p no:cacheprovider tests/test_dbt_test_thresholds.py
-    # One failing test built as CI builds it and as production does (decision 204), as CI's dbt job runs it.
+    # One failing test built as CI builds it and as production does, as CI's dbt job runs it.
     step "dbt thresholds builds" env -C pipeline OURHIKE_DBT="$DBT_DIR/dbt" "$PY" -m pytest -o addopts="" -q -p no:cacheprovider tests/test_dbt_thresholds_builds.py
     for family in podcasts:podcasts_episodes stewards:stewards registry:registry; do
       step "dbt parity ${family%%:*}" env -C pipeline "$PY" parity.py "${family%%:*}" --new "$dbt_tmp/processed/${family#*:}.json"

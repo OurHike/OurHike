@@ -69,7 +69,7 @@ STATUS_RELEASED = "released"
 # docstring - this is a rule about mutability, not about size or importance.
 CONDITIONS_PREFIX = "conditions/"
 
-# THE PIN BEHIND AN ENVIRONMENT'S DATA (decision 205, pipeline/ELT.md). A
+# THE PIN BEHIND AN ENVIRONMENT'S DATA (pipeline/ELT.md). A
 # top-level `raw_run` in `latest.json`, and so in every release folder's
 # manifest staged from it: the extract run whose pin, `steps/raw_inputs/
 # <raw_run>/` in the private raw store, the newest build from a pin that

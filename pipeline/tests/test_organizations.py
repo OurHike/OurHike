@@ -333,7 +333,7 @@ def test_most_of_this_registry_ships_on_the_maintainers_own_word():
 
     DECISION 54'S PLACES WAVE, STATE AND CITY (2026-10-03): 34 layers, 9
     `stated_by_org` (CC0, CC BY 4.0, NJDEP's Data Distribution Agreement) and
-    25 `public_gis` (decision 21(a)), each at `reaches_hikers: false`.
+    25 `public_gis`, each at `reaches_hikers: false`.
 
     DECISION 54'S PLACES WAVE, CLUBS (2026-10-03): 30 layers, 28 `public_gis`,
     CDTC's CC BY sections `stated_by_org`, and one `unresolved`: the Buckeye
@@ -345,7 +345,7 @@ def test_most_of_this_registry_ships_on_the_maintainers_own_word():
     false`: the Park Service's, BLM's and USFS Region 6's 27. 23 are federal
     works on section 105's reading (`stated_by_org`), and 4 are NPS-hosted
     layers whose own items say a county, a university, an intern or a
-    contractor made them (`public_gis`, decision 21a).
+    contractor made them (`public_gis`).
 
     DECISION 54'S TRAIL-LINE ROWS, CLUBS AND AGENCIES (2026-10-03), all
     `reaches_hikers: false`: 71 more. 70 rest on decision 21a's presumption
@@ -395,8 +395,8 @@ def test_most_of_this_registry_ships_on_the_maintainers_own_word():
     DECISION 54'S WAVES 2 AND 3, GIS FILES AND GEOGRAPHIC APIS (2026-10-04): 30 rows, registered at
     `reaches_hikers: false`, one of them (Forest Park's trailheads) flipped once its rules were in dbt.
     26 `public_gis`: the clubs' own KML, KMZ, GPX, GeoJSON and CSV files and Google My Maps, and
-    MTSG's map-location route, which state no licence or only a copyright line (decision 21a; OTA's
-    and NC High Peaks' restrictive site text quoted on each row, decision 37). 4 `stated_by_org`: 3
+    MTSG's map-location route, which state no licence or only a copyright line (OTA's
+    and NC High Peaks' restrictive site text quoted on each row). 4 `stated_by_org`: 3
     federal works on 17 U.S.C. 105, the Forest Service's Nez Perce NHT My Map and the NPS Data API's
     places and campgrounds, and FMST's trailheads sheet, whose own first line says it "can be used or
     adapted as you like", an act of consent like PCTA's.
@@ -474,9 +474,9 @@ def test_most_of_this_registry_ships_on_the_maintainers_own_word():
     # under IDOT's own trail_orgs.json row (review page 02, P10), whose item states a disclaimer and no terms of use.
     # P12's page reader (2026-10-11) adds 1 `public_gis`: Maine Huts & Trails' 4 hut pages (maine_huts_huts), the
     # points a club prints on its own pages, which decision 69 reads as decision 21a's presumption; held with its row.
-    # Q3's answer (decision 185, 2026-10-11) adds 1 `public_gis`: FDEP's park boundaries
+    # Q3's answer (2026-10-11) adds 1 `public_gis`: FDEP's park boundaries
     # (fl_state_parks_park_boundaries), which place Florida's closed parks; its item's reliance disclaimer is a scope
-    # note under S7 (decision 188).
+    # note under S7.
     # Decision 193 (the maintainer's poll, 2026-10-14) moves 1 row from `public_gis` to `stated_by_org`: Oregon
     # Metro's RLIS trails (oregon_metro_trails), whose item names the RLIS Open Database End User License Agreement,
     # read in full that day: Metro's own licence, granting reuse on conditions, so 282 -> 281 and 208 -> 209.

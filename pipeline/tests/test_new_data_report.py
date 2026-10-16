@@ -163,7 +163,7 @@ def test_licence_basis_and_may_publish_come_from_int_sources__publication(wareho
 
 def test_a_v2_familys_old_side_is_the_new_path_and_never_counts_as_today(warehouse, parity_dir):
     """nearby_poi_v2's old side is the v1 file the same dbt build wrote, so a source only it names is not published
-    today: a wave 1 layer's first records read as new, not as today's (decision 31)."""
+    today: a wave 1 layer's first records read as new, not as today's."""
     v2 = {
         "format": parity.RESULT_FORMAT,
         "family": "nearby_poi_v2",
@@ -250,7 +250,7 @@ def test_summary_appends_the_headline_counts_after_what_the_page_already_held(wa
     assert new_data_report.main([*report, "--summary", str(summary)]) == 0
 
     page = summary.read_text()
-    assert page.startswith("| family | status |\n### New-data review (decision 31)\n")
+    assert page.startswith("| family | status |\n### New-data review\n")
     assert "- 11 mart rows across 5 marts." in page  # 4 points, 1 closure, 1 warning, 1 line, 4 sources rows
     assert "- 4 layers in `int_sources__publication`: 3 may publish, 1 may not." in page
     assert "- 5 closure, warning, water and shelter sources; **4 not seen in today's compared files**." in page

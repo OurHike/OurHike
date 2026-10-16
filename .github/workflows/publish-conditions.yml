@@ -32,7 +32,7 @@
 # club's notices hourly, at the age that job last read them.
 #
 # THE dbt PATH'S ELEMENTARY CHECKS RUN AFTERWARDS, IN check-conditions.yml
-# (decision 110, 2026-10-08). Each leg hands its build's warehouse over
+# (2026-10-08). Each leg hands its build's warehouse over
 # through its history store once it has published, and the `checks` job at
 # the end of this file starts check-conditions.yml, which runs every check
 # of the lane and writes conditions/data_quality.json. Nothing here waits
@@ -364,9 +364,8 @@ jobs:
     # with bash's case-sensitive comparison if it is ever there anyway. Both
     # are held by .github/tests/test_conditions_production_leg_needs_main.py.
     #
-    # NOR FOR A DISPATCH THAT PICKS THE dbt PATH. It has soaked on UA only
-    # (decision 30), and decision 92 keeps production on the exporters until
-    # the cutover. So `phone_files: dbt` runs the UA leg alone, by the same
+    # NOR FOR A DISPATCH THAT PICKS THE dbt PATH. It has soaked on UA only,
+    # and production stays on the exporters until the cutover. So `phone_files: dbt` runs the UA leg alone, by the same
     # two locks. The schedule passes no input, so each of its legs takes its
     # own line above.
     strategy:
@@ -406,7 +405,7 @@ jobs:
           ASKED_PHONE_FILES: ${{ inputs.phone_files }}
         run: |
           if [ "$LEG" = "production" ] && [ "${ASKED_PHONE_FILES,,}" = "dbt" ]; then
-            echo "::error title=Production leg refused::phone_files=dbt was dispatched, and the dbt path has soaked on UA only (pipeline/ELT.md, decision 92). Nothing was read or published for production."
+            echo "::error title=Production leg refused::phone_files=dbt was dispatched, and the dbt path has soaked on UA only. Nothing was read or published for production."
             exit 1
           fi
           if [ "$LEG" = "ua" ] && [ "${ASKED_PHONE_FILES,,}" = "dbt" ] && [ "$ASKED" != "ua" ]; then
@@ -424,7 +423,7 @@ jobs:
         working-directory: .
         run: echo "PUBLISH_JOB_STARTED_AT=$(date +%s)" >> "$GITHUB_ENV"
 
-      # THE SWITCH, READ FOR THIS LEG (decision 92). A dispatch's
+      # THE SWITCH, READ FOR THIS LEG. A dispatch's
       # `phone_files` wins for this run; `scheduled`, and a schedule, which
       # carries no inputs, take this leg's own line at the top of this file.
       # Written to $GITHUB_ENV as PHONE_FILES, which every later step's `if:`
@@ -640,7 +639,7 @@ jobs:
           "$RUNNER_TEMP/dbt/bin/dbt" deps --profiles-dir .
           printf -- '- dbt deps, on a cache miss: %s s\n\n' "$((SECONDS - started))" >> "$GITHUB_STEP_SUMMARY"
 
-      # The packages' own files, hash-pinned (decision 144; pipeline-tests.yml's
+      # The packages' own files, hash-pinned (pipeline-tests.yml's
       # dbt job says why and what was measured): a cache hit is checked as well
       # as a fresh deps, before any dbt command reads a macro in a job holding
       # the raw store's and the bucket's write keys, and the save below waits
@@ -1356,7 +1355,7 @@ jobs:
       # 676 (2026-10-15) restored release 2026-10-10-2's entry, which was UA's
       # current release that morning (Measured: its log, and UA's
       # latest.json read the same day). Production's entries come from
-      # publish-weather.yml's `production-lines` job (decision 213, Q11),
+      # publish-weather.yml's `production-lines` job (Q11),
       # which prepares nothing while production's latest.json names no
       # release (none did on 2026-10-15). With no entry at all (the first
       # hours after this lands, or production before its first release) it
@@ -1422,7 +1421,7 @@ jobs:
       # below then turns the run red so the store gets fixed. Any other
       # failure stops here, as before.
       #
-      # ONE SOURCE OR ONE WRITER NEVER STOPS THE REST (decision 81, the
+      # ONE SOURCE OR ONE WRITER NEVER STOPS THE REST (the
       # maintainer's poll of 2026-10-05: "Hold that source and publish the
       # rest"; review finding ARCH-1 of PR #1805 — dlt → dbt re-platform as
       # one go/no-go change). Five of the soak's first ten runs published
@@ -1468,11 +1467,11 @@ jobs:
       # Six was about twice the slowest build, and a build at its full cap
       # plus run 536's 179 s outside it was 539 s, inside the job's 600.
       #
-      # TEN MINUTES SINCE ELEMENTARY (decision 103; the maintainer,
+      # TEN MINUTES SINCE ELEMENTARY (the maintainer,
       # 2026-10-08: "Boosting the budget to 10 mins should be fine, if you
       # think we can keep it that low"). build_marts.py now builds
       # Elementary's tables first and its end-of-run hook records each dbt
-      # command (decision 102). On the fixtures in a sandbox the same day,
+      # command. On the fixtures in a sandbox the same day,
       # this lane's build took 128 s with Elementary and 68 s without (132 s
       # and 74 s on a second machine), about 33 s of it Elementary's tables
       # and 18 s the hook after stage A (Measured). CI's dbt job suggests a
@@ -1589,7 +1588,7 @@ jobs:
           OURHIKE_PHONE_FILES: ${{ env.PHONE_FILES }}
           # "true" when the build exited PARTIAL_EXIT: publish.py then keeps a
           # failed writer's key at the bucket's last copy, its file never
-          # read, rather than refusing the whole publish (decision 81).
+          # read, rather than refusing the whole publish.
           OURHIKE_BUILD_PARTIAL: ${{ steps.build.outputs.partial }}
         # publish.py collects whatever data/processed/ holds, which in this
         # job is the conditions manifest and nothing else - a fresh checkout
@@ -1604,7 +1603,7 @@ jobs:
           python publish.py
           printf -- '- publish.py (OURHIKE_PHONE_FILES=%s): %s s\n\n' "$OURHIKE_PHONE_FILES" "$((SECONDS - started))" >> "$GITHUB_STEP_SUMMARY"
 
-      # THE WAREHOUSE, HANDED TO THE CHECKS (decision 110; pipeline/hand_off.py):
+      # THE WAREHOUSE, HANDED TO THE CHECKS (pipeline/hand_off.py):
       # every Elementary check of this lane runs in check-conditions.yml, which
       # the `checks` job below starts once every leg has got here, over this
       # build's warehouse. It goes to this leg's history store, beside the
@@ -1641,7 +1640,7 @@ jobs:
       # warehouse. A bundle that does not move leaves the store's last one,
       # another run's, which take-bundle refuses, and check-conditions.yml's
       # `parity` job says the hour was not compared, and goes red once the
-      # store has had no bundle for 2.5 hours (decision 200). The
+      # store has had no bundle for 2.5 hours. The
       # warehouse's exit alone decides this step's outcome.
       #
       # THEN THE WAREHOUSE, WITH WHAT THIS JOB HAS LEFT. On the same 39 runs
@@ -1673,7 +1672,7 @@ jobs:
       # build says so first. A put that runs out of time is stopped, says so,
       # and leaves the last build's warehouse and pointer in the store, so
       # this run's checks find nothing to check, a warning, or red once the
-      # store has had no warehouse for 2.5 hours (decision 200); an
+      # store has had no warehouse for 2.5 hours; an
       # upload stopped part-way leaves an incomplete multipart upload in the
       # raw store until a lifecycle rule removes it (@unvalidated: R2's
       # default rule, not checked on this bucket).
@@ -1761,14 +1760,14 @@ jobs:
         run: |
           echo "::warning title=A source was refused::This leg left at least one upstream out of its extract, and its last committed table stood in for it. The run summary names it and the reason; everything else was published. Its dbt source freshness, the last step, turns red once it has gone 24 hours unread, 2 hours for NWS's alerts."
 
-      # Last for the same reason: what the build held back (decision 81) did
+      # Last for the same reason: what the build held back did
       # not hold back the files that were written, and the run still goes red
       # for it. The build step's log names each held source with its rows, or
       # each failed writer, whose key kept the bucket's last copy.
       - name: Fail the run if the build held a source or a writer back (dbt path)
         if: steps.build.outputs.partial == 'true'
         run: |
-          echo "::error title=Part of the build held back::The build held back a source for its rows or its own failed model, a writer that failed, a table the extract withdrew, Elementary's history, which failed to restore or save while the row history did not (decision 102), a test past its error threshold, or a failure that held what it reaches (decision 204), and published everything else. The build step's log and the run summary name each one and why; a held source carries its last good rows and a held or failed writer's file keeps its last published copy."
+          echo "::error title=Part of the build held back::The build held back a source for its rows or its own failed model, a writer that failed, a table the extract withdrew, Elementary's history, which failed to restore or save while the row history did not, a test past its error threshold, or a failure that held what it reaches, and published everything else. The build step's log and the run summary name each one and why; a held source carries its last good rows and a held or failed writer's file keeps its last published copy."
           exit 1
 
       # Last for the same reason: the closures and warnings files published
@@ -1930,7 +1929,7 @@ jobs:
   # and this run as `build_run`, on this run's ref. Each of its legs takes
   # the warehouse its leg handed off above, runs every Elementary check of
   # the lane and, on this file's own freshness selection, each source's
-  # freshness (decision 203), and puts conditions/data_quality.json in
+  # freshness, and puts conditions/data_quality.json in
   # place; one whose leg
   # handed off nothing (the exporters path, or a build that failed) says so
   # and checks nothing. Beside them, its `parity` job takes the leg's

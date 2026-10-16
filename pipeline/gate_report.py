@@ -1241,7 +1241,7 @@ def render_markdown(rows: list[KeyRow], unmatched: list[dict], new_keys: list[Db
         lines += [
             f"## Keys a dbt exposure names that today's pipeline does not publish ({len(new_keys)})",
             "",
-            "Parity cannot check a key that did not exist before (decision 31): these are new_data_report.py's to review.",
+            "Parity cannot check a key that did not exist before: these are new_data_report.py's to review.",
             "",
             *(f"- `{entry.key}` (exposure {entry.exposure}, writer {entry.writer or 'none'})" for entry in new_keys),
             "",
@@ -1307,7 +1307,7 @@ def summary_markdown(report: dict) -> str:
     return (
         "\n".join(
             [
-                "### The gate's per-key report (decision 30)",
+                "### The gate's per-key report",
                 "",
                 f"- {sum(report['counts'].values())} keys today's pipeline publishes: {counts}.",
                 f"- **{len(report['blocking'])} block go** on this report's own reading of decision 30, for the "

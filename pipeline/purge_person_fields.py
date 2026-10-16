@@ -5,7 +5,7 @@ other stored object that still holds one, and with --delete delete exactly those
     python purge_person_fields.py --bucket-url file:///a/local/store [--delete]
 
 purge-person-fields.yml runs it on the extract's own venv (requirements-extract.txt: dlt with s3fs, pyarrow and
-duckdb), with the raw store's key, which only a workflow holds (pipeline/ELT.md, decision 43). The tests run it on a
+duckdb), with the raw store's key, which only a workflow holds. The tests run it on a
 local `file://` store (tests/test_purge_person_fields.py).
 
 WHY. pipeline/ELT.md, decision 56: 15 loaded layers carried staff names in `Creator`, `Editor`, `created_user` and
@@ -955,7 +955,7 @@ def summary(answer: Answer, deleting: bool, verdict: str, deleted: list[str]) ->
     found = [f"- `{unit}` ({_unit_name(unit)}, whole)" for unit in sorted(answer.held)]
     found += [f"- `{stored.key}`" for stored in doomed if stored.unit is None]
     text = [
-        "## Purge of person fields (decision 56)",
+        "## Purge of person fields",
         "",
         f"**{verdict}**",
         "",

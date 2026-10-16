@@ -42,7 +42,7 @@ pipeline ships it. Decision 54's club layers, files, pages and PDFs, decision
 production's phone files come from this pipeline's Python exporters until the
 cutover: publish-vector-data.yml runs them, dbt's monthly lane
 (build-reference.yml) publishes to UA only, and publish-conditions.yml's
-PRODUCTION_PHONE_FILES keeps production's hourly leg on them (decision 92). Counted
+PRODUCTION_PHONE_FILES keeps production's hourly leg on them. Counted
 over every shipping row, production's sources screen would have named 111
 stewards while its files carry 28 stewards' data (build_output() in memory on
 2026-10-14, over this branch's registry at dd5f57f7 and main's at e61373be).

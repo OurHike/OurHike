@@ -33,7 +33,7 @@ dbt_valid_from: a row first seen then was already upstream when history
 began). The newest keep_saves() folders are kept, so a save that recorded a bad
 load can be undone by pointing history.json at the one before: KEEP_SAVES (24)
 unless row_history_stores.toml's [keep_saves] names the store, which it does
-for `monthly`, 3 (decision 206; prune_raw_store.py reads the same row).
+for `monthly`, 3 (prune_raw_store.py reads the same row).
 
 s3:// goes through s3fs, with the credentials the workflows already give the
 raw store's key for dlt (DESTINATION__FILESYSTEM__CREDENTIALS__AWS_ACCESS_KEY_ID,
@@ -86,7 +86,7 @@ naming its table `../<…>/escaped` made a restore write escaped.parquet
 outside the temporary directory it downloads into, and report success (review
 finding of PR #1805 — dlt → dbt re-platform as one go/no-go change).
 
-ELEMENTARY'S HISTORY (decision 102, pipeline/ELT.md "Memory between runs").
+ELEMENTARY'S HISTORY (pipeline/ELT.md "Memory between runs").
 Each lane builds its warehouse from nothing, so without it an anomaly check
 would never see an earlier build and a schema check never an earlier column.
 `restore` puts it into the warehouse's `elementary` schema before
@@ -204,7 +204,7 @@ store saved before decision 102 holds a history.json and no elementary.json,
 and that is Elementary's first build there, not a loss. Once a store is
 listed, an absent elementary.json is refused (exit 2) as lost history.
 
-ELEMENTARY'S HISTORY ALONE (--elementary-only, decision 110). The hourly
+ELEMENTARY'S HISTORY ALONE (--elementary-only). The hourly
 lane's checks run in a run of their own after its build has published
 (build_marts.py --checks-only, check-conditions.yml), over the warehouse the
 build left. The build restored and saved both parts; the checks run then
@@ -307,7 +307,7 @@ FORMAT = 1
 #: names the store (keep_saves()). Elementary's folders keep the same number. The hourly stores keep this:
 #: @unvalidated, a day of hourly saves, a round number, and how long a bad load goes unnoticed before someone points
 #: history.json back, which nobody has measured, would settle it. The monthly store keeps 3, the newest and two
-#: back (decision 206, the maintainer's poll of 2026-10-15, "3 saves"), asked when its 6 saves held about 16 GB
+#: back (the maintainer's poll of 2026-10-15, "3 saves"), asked when its 6 saves held about 16 GB
 #: (Reasoned from Actions logs and two listings of the bucket, not a listing of the store itself).
 KEEP_SAVES = 24
 #: The fewest a store may keep: the current save and the one it was built on, the way back (keep_saves() refuses

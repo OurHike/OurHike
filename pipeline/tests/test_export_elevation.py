@@ -954,7 +954,7 @@ def test_the_same_point_asked_for_twice_in_one_run_is_read_once(tmp_path, monkey
     assert len(windows) == 1
 
 
-# --- The key is the point itself (decision 115) ------------------------------
+# --- The key is the point itself ------------------------------
 #
 # Until decision 115 the cache keyed a point to 6 decimals and answered a key
 # with whoever asked it first, so a point a hair across a 3DEP pixel edge from

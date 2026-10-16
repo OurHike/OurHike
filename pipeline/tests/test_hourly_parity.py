@@ -228,9 +228,7 @@ def test_a_writer_the_build_held_back_is_not_compared_rather_than_a_difference(t
         out,
     )
 
-    assert "held part of itself back (exit 5, decision 81)" in hourly_parity.why_not(
-        hourly_parity.FAMILIES["closures"], document, out
-    )
+    assert "held part of itself back (exit 5)" in hourly_parity.why_not(hourly_parity.FAMILIES["closures"], document, out)
     assert hourly_parity.why_not(hourly_parity.FAMILIES["reports"], document, out) is None
 
 
@@ -342,7 +340,7 @@ def test_no_bundle_reads_as_every_family_not_compared_and_the_run_stays_green(tm
     page = summary.read_text()
     first = page.split("\n\n")[1]
     assert first.startswith("**Nothing was compared this hour: none of the 6 files.** On its own an hour like this is")
-    assert "goes red only once the leg's store has had no bundle for 2.5 hours (decision 200)" in first
+    assert "goes red only once the leg's store has had no bundle for 2.5 hours" in first
     assert first.endswith("Why: no bundle: nothing was handed on")
     assert "**0 file(s) turn this run red**: none; **6 not compared**." in page
     out = capsys.readouterr().out.splitlines()

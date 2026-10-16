@@ -1,6 +1,6 @@
 """extract-notices.yml runs its production leg only from main, whatever a dispatch asks for.
 
-The notices job (decision 61) fills each environment's notices store, and
+The notices job fills each environment's notices store, and
 production's is the one publish-conditions.yml's production leg will build
 hikers' closures and warnings from once the dbt path is cut over. A schedule
 fires from main alone, but `workflow_dispatch` runs any ref, with that ref's

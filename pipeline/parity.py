@@ -14,7 +14,7 @@
     python parity.py elevation_v2 --new data/processed/dbt/elevation_profile_v2.json
     python parity.py poi_water_v2 --new data/processed/dbt/poi_water_v2.geojson
 
-A v2 family (decision 44, stage 6) compares a v2 file with the v1 file its
+A v2 family (stage 6) compares a v2 file with the v1 file its
 own build wrote beside it, decoded as a phone would decode it (the last
 section below).
 
@@ -123,7 +123,7 @@ class Family:
     # nearby_trails.geojson and trails.geojson, and reading the dbt writers'
     # copies puts both paths on one input.
     reads_new_dir: bool = False
-    # A v2 file (decision 44; stage 6 of #1793) is compared with the v1 file of
+    # A v2 file (stage 6 of #1793) is compared with the v1 file of
     # this name beside --new, whose path `old` takes: the v1 writer's own
     # parity line holds v1 to today's exporter, and this holds v2 to v1.
     v1_beside: str | None = None
@@ -968,7 +968,7 @@ def _places_old() -> dict:
     - OPRHP's park layer and ATC's Communities, as fixture mode landed them;
     - nearby_trails.geojson from export_nearby_trails.main() (_published_network(), which the POI exporters read too);
     - trails.geojson from export_trails.main() (_export_trails_run()), cut to six decimals (_cut_trails()),
-      because the dbt side measures the trail_lines mart's geometry, which is the cut file's (decision 8). Measured
+      because the dbt side measures the trail_lines mart's geometry, which is the cut file's. Measured
       2026-10-02 on 1,546 real places: the cut moves one lot's trailMiles by a tenth, 17.8 to 17.9, and nothing else;
     - the trailhead, parking and resupply poi_<type>.geojson files from export_poi.main(), as _poi_by_type_old() runs it;
     - nearby_poi.geojson, as _nearby_poi_old() builds it.
@@ -1595,7 +1595,7 @@ def _poi_id(feature: dict) -> str:
 NEW_DATA_REASON = "expected by decision 31 ('Publish new data in this PR')"
 
 #: Why a club's own line is in the dbt writers' nearby_trails.geojson and network_overview.geojson and in neither of
-#: today's (decision 64, the maintainer's poll of 2026-10-04: "draw now, route later"). Starts with NEW_DATA_REASON:
+#: today's (the maintainer's poll of 2026-10-04: "draw now, route later"). Starts with NEW_DATA_REASON:
 #: no exporter reads a club's trail-line layer, so there is no old record to compare it with.
 CLUB_LINE_REASON = (
     f"{NEW_DATA_REASON}, and drawn by decision 64: a line from one of decision 54's wave 1 trail-line layers "
@@ -1630,7 +1630,7 @@ POI_REASONS = {
         "expected by decision 65 (the maintainer's poll of 2026-10-04): a plumbed tap or fountain whose layer records "
         "no shutoff season, which export_nearby_poi.py holds back as a water holdback (sources.json's "
         "oprhp_water_holdback), ships as unconfirmed water carrying water_caution 'no_shutoff_season' "
-        "(int_points_of_interest__cautioned), where its steward's own public flag shows it (decision 195); only a "
+        "(int_points_of_interest__cautioned), where its steward's own public flag shows it; only a "
         "record today's file lacks, of a layer whose taps layer_rules names plumbed_water, at low confidence with "
         "that caution"
     ),

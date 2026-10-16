@@ -2294,7 +2294,76 @@ def _resolved(value: Path | str | None, variable: str, default: Path) -> Path:
     return default
 
 
-def main(argv: list[str] | None = None) -> int:
+def _run_env(files: dict[str, str], record: dict, fixtures: bool) -> dict[str, str]:
+    """The environment every command of this build runs with: this process's, the warehouse and processed paths,
+    TZ=UTC, the build's identity and start, and Elementary's switch, less what each Run gives itself."""
+    env = {
+        **os.environ,
+        **files,
+        "TZ": "UTC",
+        "OURHIKE_BUILT_BY": built_by(os.environ),
+        "OURHIKE_BUILD_STARTED_AT": record.get("started_at") or build_started_at(),
+        **ELEMENTARY_SWITCH,
+    }
+    for name, _ in CHECKS_SWITCH:
+        env.pop(name, None)  # the checks' switch is each Run's own to give (Run.env), never inherited by every command
+    # Fixture mode's own A.T. profile null share, and no other build's (FIXTURE_PROFILE_MAX_NULL_SHARE says why).
+    env.pop(PROFILE_NULL_SHARE_VARIABLE, None)
+    if fixtures:
+        env[PROFILE_NULL_SHARE_VARIABLE] = FIXTURE_PROFILE_MAX_NULL_SHARE
+        print(f"-- build_marts: {PROFILE_NULL_SHARE_VARIABLE}={FIXTURE_PROFILE_MAX_NULL_SHARE} (the fixture profile's gaps)")
+    if record.get("row_history") == "off":
+        env["OURHIKE_ROW_HISTORY"] = "off"  # as the build's dbt commands ran, so the project renders as it did there
+    return env
+
+
+def _report_warnings(
+    results: dict | None,
+    warehouse: Path,
+    results_since: float,
+    *,
+    environment: str,
+    history_off: bool,
+    relabelled: dict[str, str],
+    summary: list[str],
+    partial: list[str],
+) -> None:
+    """After a dbt build that passed, or that a build going on past failures ran: name each test that warned past its
+    own error_if as an error, and each test that held a source for its rows, adding to `relabelled`, `summary` and
+    `partial` (the module docstring, "EVERY TEST HAS TWO THRESHOLDS" and "ONE SOURCE OR ONE WRITER NEVER STOPS THE
+    REST"). A test already named by an earlier build is not named again."""
+    if results is None:
+        return
+    # A warning past its own error_if is an error, reported here and red after the publish.
+    if errors := relabelled_errors(results, _read_manifest(), history_off=history_off):
+        errors = {test: why for test, why in errors.items() if test not in relabelled}
+        relabelled.update(errors)
+        for line in failed_test_rows(warehouse, results_since, statuses=("warn",), only=set(errors)):
+            print(line, flush=True)
+        for test, why in sorted(errors.items()):
+            print(
+                f"::error title=A test past its error threshold::{_name(test)} warned with {why}, so it is "
+                f"an error. {data_env.ENVIRONMENT_VAR}={environment} builds on past it, "
+                "and the run goes red after the publish.",
+                flush=True,
+            )
+            summary.append(f"- error past its threshold: `{_name(test)}`, {why}")
+        if errors:
+            partial.append(f"{len(errors)} test(s) past their error threshold")
+    if holds := source_holds(results, _read_manifest()):
+        for line in failed_test_rows(warehouse, results_since, statuses=("warn",), only=holds):
+            print(line, flush=True)
+        for test in sorted(holds):
+            print(
+                f"::error title=A source held for its rows::{test} warned: int_closures__gate holds the source "
+                "of each row it names, which carries its last good rows while every other source publishes. "
+                "The run goes red afterwards.",
+                flush=True,
+            )
+        partial.append(f"{len(holds)} test(s) holding a source")
+
+
+def _parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(description=__doc__.split("\n", 1)[0])
     parser.add_argument("--fixtures", action="store_true", help="point every step at make_dbt_fixtures.py's inputs")
     parser.add_argument("--dbt", default="dbt", help="the dbt executable (default: dbt, from PATH)")
@@ -2358,6 +2427,11 @@ def main(argv: list[str] | None = None) -> int:
         "only what changed since, and what it reaches, is built again",
     )
     parser.add_argument("--dry-run", action="store_true", help="print the commands and run none")
+    return parser
+
+
+def main(argv: list[str] | None = None) -> int:
+    parser = _parser()
     args = parser.parse_args(argv)
 
     paths = Paths(
@@ -2432,23 +2506,7 @@ def main(argv: list[str] | None = None) -> int:
     files = {"OURHIKE_WAREHOUSE": str(paths.warehouse), "OURHIKE_PROCESSED_DIR": str(paths.processed_dir)}
     # TZ=UTC and OURHIKE_BUILT_BY: the module docstring, "THE ROW HISTORY IS RESTORED FIRST AND SAVED LAST";
     # OURHIKE_BUILD_STARTED_AT: "THE DATA-QUALITY FILE IS WRITTEN LAST", the build's own in its checks run.
-    env = {
-        **os.environ,
-        **files,
-        "TZ": "UTC",
-        "OURHIKE_BUILT_BY": built_by(os.environ),
-        "OURHIKE_BUILD_STARTED_AT": record.get("started_at") or build_started_at(),
-        **ELEMENTARY_SWITCH,
-    }
-    for name, _ in CHECKS_SWITCH:
-        env.pop(name, None)  # the checks' switch is each Run's own to give (Run.env), never inherited by every command
-    # Fixture mode's own A.T. profile null share, and no other build's (FIXTURE_PROFILE_MAX_NULL_SHARE says why).
-    env.pop(PROFILE_NULL_SHARE_VARIABLE, None)
-    if args.fixtures:
-        env[PROFILE_NULL_SHARE_VARIABLE] = FIXTURE_PROFILE_MAX_NULL_SHARE
-        print(f"-- build_marts: {PROFILE_NULL_SHARE_VARIABLE}={FIXTURE_PROFILE_MAX_NULL_SHARE} (the fixture profile's gaps)")
-    if record.get("row_history") == "off":
-        env["OURHIKE_ROW_HISTORY"] = "off"  # as the build's dbt commands ran, so the project renders as it did there
+    env = _run_env(files, record, fixtures=args.fixtures)
     print("-- build_marts: " + " ".join(f"{name}={value}" for name, value in files.items()), flush=True)
     print(f"-- build_marts: OURHIKE_BUILT_BY={env['OURHIKE_BUILT_BY']}", flush=True)
     # The module docstring, "EVERY TEST HAS TWO THRESHOLDS, AND THE ENVIRONMENT DECIDES WHO STOPS".
@@ -2662,35 +2720,16 @@ def main(argv: list[str] | None = None) -> int:
             if not goes_on:
                 return completed.returncode
         if is_build and (completed.returncode == 0 or goes_on):
-            results = read_run_results(results_since)
-            # A warning past its own error_if is an error, reported here and red after the publish.
-            history_off = env.get("OURHIKE_ROW_HISTORY") == "off"
-            if results is not None and (errors := relabelled_errors(results, _read_manifest(), history_off=history_off)):
-                errors = {test: why for test, why in errors.items() if test not in relabelled}
-                relabelled.update(errors)
-                for line in failed_test_rows(paths.warehouse, results_since, statuses=("warn",), only=set(errors)):
-                    print(line, flush=True)
-                for test, why in sorted(errors.items()):
-                    print(
-                        f"::error title=A test past its error threshold::{_name(test)} warned with {why}, so it is "
-                        f"an error. {data_env.ENVIRONMENT_VAR}={environment} builds on past it, "
-                        "and the run goes red after the publish.",
-                        flush=True,
-                    )
-                    summary.append(f"- error past its threshold: `{_name(test)}`, {why}")
-                if errors:
-                    partial.append(f"{len(errors)} test(s) past their error threshold")
-            if results is not None and (holds := source_holds(results, _read_manifest())):
-                for line in failed_test_rows(paths.warehouse, results_since, statuses=("warn",), only=holds):
-                    print(line, flush=True)
-                for test in sorted(holds):
-                    print(
-                        f"::error title=A source held for its rows::{test} warned: int_closures__gate holds the source "
-                        "of each row it names, which carries its last good rows while every other source publishes. "
-                        "The run goes red afterwards.",
-                        flush=True,
-                    )
-                partial.append(f"{len(holds)} test(s) holding a source")
+            _report_warnings(
+                read_run_results(results_since),
+                paths.warehouse,
+                results_since,
+                environment=environment,
+                history_off=env.get("OURHIKE_ROW_HISTORY") == "off",
+                relabelled=relabelled,
+                summary=summary,
+                partial=partial,
+            )
         if completed.returncode != 0 and goes_on and (is_build or run.label in step_names):
             # The module docstring, "EVERY TEST HAS TWO THRESHOLDS, AND THE ENVIRONMENT DECIDES WHO STOPS": hold what
             # failed and everything it reaches, a failed writer's file removed, and build the rest.

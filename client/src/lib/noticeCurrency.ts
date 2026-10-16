@@ -193,6 +193,18 @@ export const NOT_CURRENT_LINES = {
 } as const
 
 /**
+ * The line under standing closed land (decision 213, rule 14, the maintainer's
+ * poll of 2026-10-15): "Closed until <steward> says otherwise." where the
+ * file marks the notice `standing`, else null. Such a notice carries no
+ * `current_until`, so `notCurrent` never greys it; this line says why it
+ * reads at full voice without a date, in place of the date line it would
+ * otherwise lack. `org` is the name the row already prints for its steward.
+ */
+export function standingLine(notice: TrailNotice, org: string): string | null {
+  return notice.standing === true ? `Closed until ${org} says otherwise.` : null
+}
+
+/**
  * Null while the notice reads as current on `today` (or its file carries no
  * verdict), and otherwise the line it is shown with, greyed.
  *

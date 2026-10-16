@@ -108,6 +108,17 @@
 -- area is in the file while USFS's layer lists it: a full listing, so an area
 -- USFS drops leaves on the next read (only a held read carries it, as every
 -- notice is carried).
+-- STANDING CLOSED LAND CARRIES NO `current_until` KEY EITHER, and carries
+-- `standing` true (decision 213, rule 14, the maintainer's poll of
+-- 2026-10-15): decision 156's reading made general, by the row's own words
+-- rather than by its layer. int_closures__club_notices' rule 7 says which
+-- rows: an area a full listing serves, closed by its own status or its
+-- layer's own name, stating no date of any kind. Midpen's 133 closed areas,
+-- edited 2026-07-21 in one bulk reload, would otherwise all grey on
+-- 2026-10-20 though Midpen serves them closed on every read. The phone reads
+-- `standing` as "Closed until <steward> says otherwise." (client/src/lib/
+-- noticeCurrency.ts). Both read from the marts, so a carried row keeps
+-- them as the history saved them (int_closures__held_carried).
 -- A hazard area carries NO `current_until` key, so it never greys (decision
 -- 156, the maintainer's poll of 2026-10-11, "Stay current while served"). It
 -- is a standing designation the agency's live layer serves again on every
@@ -116,6 +127,12 @@
 -- every one, "It may no longer apply" beside "Wear blaze orange in season".
 -- While its layer is served it is current as of that read; once the layer
 -- stops answering, the carried row says so in its own line (`carried_since`).
+--
+-- `issuer` IS ON A COMPILED LAYER'S ROWS ONLY (decision 213, rule 21): the
+-- agency that issued an order its publisher compiles, as
+-- int_closures__club_notices reads it ('Bureau of Land Management' on a Utah
+-- FFSL row). The phone's sheet reads "<issuer> order, via <publisher>". No
+-- other row carries the key.
 --
 -- NEVER A CLUB EMPTIED BY ONE FAILED READ. A held source's rows are its last
 -- good ones, from the marts. In a build without the row history
@@ -219,7 +236,9 @@ marts as (
         geom_geojson,
         _first_seen_at,
         _changed_at,
-        carried_since
+        carried_since,
+        stands_until_lifted,
+        issuer
     from {{ ref('closures', v=1) }}
     union all by name
     select
@@ -243,7 +262,9 @@ marts as (
         geom_geojson,
         _first_seen_at,
         _changed_at,
-        carried_since
+        carried_since,
+        false as stands_until_lifted,
+        issuer
     from {{ ref('warnings', v=1) }}
     where warning_kind = 'org_notice'
 ),
@@ -378,6 +399,9 @@ notice_rows as (
     select
         club_notices.source_key,
         club_notices.notice_id,
+        coalesce(club_notices.stands_until_lifted, false)
+            as stands_until_lifted,
+        club_notices.issuer,
         json_object(
             'notice_id', club_notices.notice_id,
             'source_key', club_notices.source_key,
@@ -459,7 +483,9 @@ notice_rows as (
             and club_notices.carried_since = carried_checks.carried_since
 ),
 
--- Decision 156: a standing hazard area carries no `current_until` (above).
+-- Decision 156: a standing hazard area carries no `current_until` (above),
+-- and decision 213's rule 14 gives standing closed land none either, with
+-- `standing` true for the phone's "Closed until <steward> says otherwise".
 -- json_merge_patch is RFC 7386's merge patch, where a null in the patch
 -- removes the key, so only these rows lose it; every other row keeps its
 -- key, null included.
@@ -468,29 +494,52 @@ dated_rows as (
         notice_rows.source_key,
         notice_rows.notice_id,
         case
-            when json_extract_string(notice_rows.notice, '$.hazard') is null
-                then notice_rows.notice
-            else json_merge_patch(notice_rows.notice, '{"current_until": null}')
-        end as notice
+            when json_extract_string(notice_rows.notice, '$.hazard') is not null
+                then
+                    json_merge_patch(
+                        notice_rows.notice, '{"current_until": null}'
+                    )
+            when notice_rows.stands_until_lifted
+                then
+                    json_merge_patch(
+                        notice_rows.notice,
+                        '{"current_until": null, "standing": true}'
+                    )
+            else notice_rows.notice
+        end as notice,
+        notice_rows.issuer
     from notice_rows
+),
+
+-- Decision 213's rule 21: `issuer` on a compiled layer's rows only, so no
+-- other row carries a null for it.
+issued_rows as (
+    select
+        source_key,
+        notice_id,
+        case
+            when issuer is null then notice
+            else json_merge_patch(notice, json_object('issuer', issuer))
+        end as notice
+    from dated_rows
 ),
 
 -- Decision 76's `states` (seeds/notice_states.csv), on a state-wide source's
 -- rows only, so no other row carries a null for it.
 stated_rows as (
     select
-        dated_rows.source_key,
-        dated_rows.notice_id,
+        issued_rows.source_key,
+        issued_rows.notice_id,
         case
-            when named_states.states is null then dated_rows.notice
+            when named_states.states is null then issued_rows.notice
             else
                 json_merge_patch(
-                    dated_rows.notice,
+                    issued_rows.notice,
                     json_object('states', named_states.states)
                 )
         end as notice
-    from dated_rows
-    left join named_states on dated_rows.source_key = named_states.source_key
+    from issued_rows
+    left join named_states on issued_rows.source_key = named_states.source_key
 ),
 
 -- Whether a notice source that may publish is held this build: in a build

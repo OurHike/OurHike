@@ -105,6 +105,8 @@ select  -- noqa: AM07
     notices.end_lat,
     notices.end_lon,
     notices.source_row_key,
+    notices.stands_until_lifted,
+    notices.issuer,
     cast(null as timestamptz) as carried_since
 from notices
 inner join gate on notices.source_key = gate.source_key
@@ -170,5 +172,7 @@ select
     held_carried.closure_place,
     held_carried.geom_geojson,
     held_carried.source_row_key,
+    held_carried.stands_until_lifted,
+    held_carried.issuer,
     held_carried.carried_since
 from held_carried

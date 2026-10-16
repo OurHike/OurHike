@@ -308,6 +308,11 @@ export function validNotice(value: unknown): OrgNotice | null {
     // not a real ISO day is no date, which never reads as current - absent
     // means unknown, never "still fine".
     ...('current_until' in row ? { current_until: isoDayOrNull(row.current_until) } : {}),
+    // Only a literal true: anything else is no claim that the land stands closed.
+    ...(row.standing === true ? { standing: true } : {}),
+    ...(typeof row.issuer === 'string' && row.issuer.trim() !== ''
+      ? { issuer: row.issuer.trim() }
+      : {}),
     checked_at: textOrNull(row.checked_at),
     first_seen_at: textOrNull(row.first_seen_at),
     changed_at: textOrNull(row.changed_at),

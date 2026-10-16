@@ -483,6 +483,18 @@ export interface OrgNotice {
    * as it always did.
    */
   current_until?: string | null
+  /** True on standing closed land (decision 213, rule 14): land its steward
+   *  serves as closed on every read, stating no date of any kind, which the
+   *  pipeline gives no `current_until` (pipeline/dbt's
+   *  int_closures__club_notices, rule 7). lib/noticeCurrency.ts's
+   *  `standingLine` is what a hiker reads under it. Absent on every other row. */
+  standing?: boolean
+  /** Decision 213, rule 21: the agency that issued an order its publisher
+   *  compiles ('Bureau of Land Management' on a Utah FFSL row), from the
+   *  row's own issuer field (pipeline/dbt/seeds/notice_issuers.csv). The
+   *  sheet reads "<issuer> order, via <publisher>". Absent on every other
+   *  row. */
+  issuer?: string
   /** When OurHike last read the source and found this, ISO UTC: the run
    *  log's latest read that loaded it or found it unchanged. */
   checked_at?: string | null

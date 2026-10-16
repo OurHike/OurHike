@@ -4451,6 +4451,7 @@ NOTICE_LAYERS = {
             "globalid": "{fixture-iata-trail-conditions-1}",
             "heading": "Fixture reroute",
             "segment_name": "Fixture Segment",
+            "description": "Fixture description",
             "posted": "yes",
             "date_posted": FIXTURE_DATE_MS,
             "date_updated": FIXTURE_DATE_MS,

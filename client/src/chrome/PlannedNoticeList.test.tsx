@@ -544,6 +544,43 @@ describe('PlannedNoticeList', () => {
       ).toBeTruthy()
     })
 
+    it('says "Closed until Green Mountain Club says otherwise." under standing closed land, never greyed (decision 213, rule 14)', () => {
+      // The pipeline writes such a row no current_until and `standing` true.
+      renderRows(
+        notice({
+          notice_id: 'gmc:standing',
+          title: 'Fixture Preserve (standing)',
+          obstructs_trail: true,
+          updated_at: '2026-07-21T14:39:07Z',
+          standing: true,
+        }),
+      )
+      const standing = row('Fixture Preserve (standing)')
+      expect(standing.className).not.toContain('notice--not-current')
+      expect(
+        within(standing).getByText('Closed until Green Mountain Club says otherwise.'),
+      ).toBeTruthy()
+      expect(screen.queryByText(/may no longer apply/)).toBeNull()
+    })
+
+    it('names a compiled order "Bureau of Land Management order, via Green Mountain Club" (decision 213, rule 21)', () => {
+      renderRows(
+        notice({
+          notice_id: 'gmc:compiled',
+          title: 'Fixture compiled order',
+          obstructs_trail: false,
+          updated_at: null,
+          current_until: '2027-01-06',
+          issuer: 'Bureau of Land Management',
+        }),
+      )
+      expect(
+        within(row('Fixture compiled order')).getByText(
+          'Bureau of Land Management order, via Green Mountain Club',
+        ).className,
+      ).toBe('closure-sheet__meta')
+    })
+
     it('greys nothing in a file that carries no current_until at all', () => {
       // A copy of notices.json kept from before the field: no verdict.
       renderRows(notice({ notice_id: 'gmc:old-file', title: 'Fixture old file row' }))

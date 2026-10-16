@@ -70,6 +70,16 @@
 --    the plain reading of COTREX's own words, its layer is the one it
 --    overwrote in October 2025 ('SCs_All_COTREX_Oct2025_…'), and nobody has
 --    asked COTREX whether each closure is set again this season.
+--    ONE WHOSE OWN TITLE STATES ITS END ENDS THEN, or on its own end date
+--    where that is later (decision 213, rule 13, the maintainer's poll of
+--    2026-10-15): 'Closed Until 2027', '(2026-2027)', 'Sept. 8, 2026 through
+--    June 2027' (macros/notice_title_end_day.sql, which says what it reads
+--    and what it refuses). A month alone is its last day and a year alone
+--    its December 31, toward caution. `ends_on` is that later day, so rule 3
+--    and `current_until` read it as they read any end: a title that names a
+--    passed end greys its row, one that names a later end keeps it current
+--    past its edit date's 90 days. Until then only a duration a title states
+--    ('closed for 3 to 6 months', macros/notice_current_until.sql) was read.
 --    ONE WHOSE OWN DATES CONTRADICT EACH OTHER CLOSES NO TRAIL (status rule
 --    1's contradiction test, for the shape the review of 2026-10-15 found,
 --    S2-5): an end before its own start, or a start or an end before 1900
@@ -163,10 +173,30 @@
 --           'Closure for Resource Protection' whatever they bar ('Forest
 --           Wide - Alcohol', 'Reckless Driving'; read live 2026-10-14), so
 --           only an order's title says whether it closes an area or a trail.
+--           A CATEGORY THAT IS A CLOSING WORD ALONE ('Closure', 'Closed')
+--           is no kind beside others but the row's whole statement, so on a
+--           placed row it closes by itself (decision 213, rule 1, the
+--           maintainer's poll of 2026-10-15): CDTC's 18 current alerts typed
+--           'Closure' and titled by place ('Camp Creek Fire') close, where
+--           until then they were notices. Placed, as c2 is, because an
+--           unplaced row is a page or a feed item whose category files a
+--           headline ('DCR park alerts and advisories', typed 'Closure').
 --           It speaks unless the row is a site (A CLOSED SITE, below);
 --       c2. where its status says nothing and its category holds no word of
 --           the vocabulary, a placed row's title holds such an unqualified
---           closing word, and the row is no site. A START STATED IN THE
+--           closing word, and the row is no site. A CATEGORY'S RESTRICTION
+--           WORD KEEPS NO TITLE QUIET (decision 213, rule 2): a category whose
+--           words are a kind of order the seed marks `category_needs_title`
+--           ('restriction', 'restrictions'), beside nothing but a place
+--           ('area', 'trail', 'road'), lets the title speak, so USFS R04's
+--           'Roaring River & William Pogue NRT Trail Closure', typed 'Other
+--           Restriction', closes. A LAYER NAMED FOR A WAY AROUND, its own
+--           name holding an `a_way_around` word and no closing word, draws
+--           the way around, so its title's closing word names what the line
+--           avoids and closes nothing (decision 213, rule 5's reading of a
+--           layer's name as every row's words): CDTC's 'Reroutes' line
+--           'Hopewell Lake Construction Closure', which decision 213's rule 8
+--           would otherwise cross out. A START STATED IN THE
 --           TITLE: a `states_a_start` word there qualifies the closing word
 --           only where no day follows it. Where one does ('Hunting Closure
 --           beginning 9/1', 'Closed (Beginning Oct. 28, 2026)'), that day is
@@ -233,7 +263,32 @@
 --       notice ('Seasonal Road Closures on the Evanston/Mt. View Ranger
 --       Districts'), where 'Area and Road Closures …' names the area and
 --       closes; a line or a point that names a road still closes its own
---       place (IDPR's road orders, as the maintainer chose).
+--       place (IDPR's road orders, as the maintainer chose). A LAYER'S OWN
+--       NAME COUNTS AS WORDS OF EVERY ROW IN IT here (decision 213, rule 5):
+--       Santa Clara's 'Areas Closed to the Public' names an area, so its
+--       polygon titled 'Summit Road' is a closed area like its 64 siblings.
+--       A ROAD IN A WARNINGS LAYER IS A ROAD EVENT (decision 213's rule 8
+--       refined, the poll of 2026-10-15, "Roads stay notices"): a row its
+--       source files under warnings whose title, category or status names
+--       a road ('road', 'hwy', a status's 'all-lanes-closed') and none of
+--       them an area, a trail, a hiker's use or entry reads as a notice,
+--       whatever its shape: NPS's 16 road lines ('Road Closed', 'Road
+--       Closures in New Jersey', 'Akers Ferry Closure', all
+--       'all-lanes-closed'; UA's notices.json of 2026-10-15 21:26 UTC and
+--       the NPS feed read the same day). A closures-filed road line still
+--       closes, as above.
+--       AN ACTIVITY'S CLOSURE IS NOT THE TRAIL'S (the poll of 2026-10-15,
+--       "Activity closures don't close"): a closing word directly after a
+--       `names_an_activity` word (collection, collecting, fires, hunting,
+--       shooting) in the same field closes that activity, so it is no
+--       closing word at all: USFS R04's 'Spring Mountains National
+--       Recreation Area Butterfly Collection Closure Area' is a notice. It
+--       speaks again where the row's own narrative holds a closing word
+--       that follows no activity: IATA's four 'Hunting Closure beginning …'
+--       titles beside 'The Trail section … is closed Sept. 1 - Jan. 5 for
+--       private hunting' still close (decision 213's rule 15). 'Camping'
+--       is not listed: the seed reads it as a site already, to the same end
+--       ('Tanque Verde Fall Camping Closure').
 --       A STATUS SAYS NOTHING where it holds no word of the vocabulary but a
 --       `stands` word (an on/off flag's yes: Active, Yes, 1) or an
 --       `unspecified` one (-1, unknown), an empty status included. A value
@@ -246,19 +301,20 @@
 --       (S1-1) a status no word read, and a blank status on a source that
 --       states one on other rows (Missouri's, decision 164; 5 of
 --       Yellowstone's bear management areas), kept the title from speaking.
---       A category holding any word of the vocabulary still keeps the title
---       from speaking: USFS R04's 'Roaring River & William Pogue NRT Trail
---       Closure' typed 'Other Restriction' is a notice, a question the
---       review left for the maintainer.
+--       A category holding any other word of the vocabulary still keeps the
+--       title from speaking ('Alert', 'Planned', 'Partial'); until decision
+--       213's rule 2 a restriction word did too, and USFS R04's 'Roaring
+--       River & William Pogue NRT Trail Closure' was a notice.
 --    d. A NOTICE nobody reviewed, otherwise (decision 7: miss rather than
 --       cry wolf).
 --    A HAZARD AREA (rule 6) is read by its hazard category alone, never by
 --    the vocabulary: 'Open' on a shooting range is the hazard, not its
 --    absence.
--- 3. A NOTICE CLOSES THE TRAIL ONLY IN A CLOSURES FILE, AND NEVER ONCE ITS
---    OWN END HAS PASSED. `obstructs_trail` is true only where rule 2 reads
---    `closes_trail`, the source files the notice under closures (its club's
---    closures.py), nothing holds it, its own dates do not contradict each
+-- 3. A NOTICE CLOSES THE TRAIL BY ITS OWN WORDS, WHATEVER FILE ITS SOURCE IS
+--    REGISTERED UNDER, AND NEVER ONCE ITS OWN END HAS PASSED (decision 213,
+--    rule 8, the maintainer's poll of 2026-10-15: "a row's own words decide
+--    whether it closes"). `obstructs_trail` is true only where rule 2 reads
+--    `closes_trail`, nothing holds it, its own dates do not contradict each
 --    other (rule 1, notice_dates_contradict()), and its own end day, a
 --    season's where rule 1 reads one, is not more than
 --    one day behind the build's UTC date (macros/notice_date_holds.sql's
@@ -349,6 +405,26 @@
 --    (seeds/notice_source_fields.csv), so their dates are null, never a
 --    season OurHike supplied.
 --
+-- 7. STANDING CLOSED LAND HAS NO CLOCK (decision 213, rule 14, the
+--    maintainer's poll of 2026-10-15; decision 156's reading of hazard areas
+--    made general). `stands_until_lifted` is true on a row that closes the
+--    trail (rule 3) where its own words say it is land closed until its
+--    steward says otherwise rather than a dated event: an area (a Polygon or
+--    a MultiPolygon, a point placed by its steward's area included) of a
+--    full listing, served whole on every read, that closes by a state word
+--    in its own status or category ('Closed', c1, never a category's
+--    'closure', which names an event) or by its layer's own name (c3), and
+--    that states no start, no end, no season and no end in its title.
+--    pub_conditions_notices writes it no `current_until` and `standing` true,
+--    and the phone reads "Closed until <steward> says otherwise." Midpen's
+--    133 closed areas (status 'Closed', edited 2026-07-21 in one bulk
+--    reload) and Santa Clara's 64 'Areas Closed to the Public' are such rows
+--    on UA's notices.json of 2026-10-15 21:26 UTC, which greyed the 64 and
+--    would have greyed the 133 on 2026-10-20. @unvalidated that a status
+--    layer's 'Closed' stays true for as long as its steward serves it: a
+--    steward who forgets a row leaves it closed on the phone, the side a
+--    hiker is safer on.
+--
 -- `key_versions` is how many different raw rows share the notice's key (its
 -- base model counts them); int_closures__gate holds a source with any over
 -- one.
@@ -371,6 +447,15 @@
 -- else on the row says what it is, and a layer's own name often says less
 -- ('Locations').
 --
+-- `issuer` IS THE AGENCY THAT ISSUED A COMPILED LAYER'S ORDER (decision 213,
+-- rule 21, the maintainer's poll of 2026-10-15), where the layer's rows name
+-- it: the field seeds/notice_issuers.csv names, staged as `issuer` on that
+-- source alone, shown by the label the layer's own domain gives its code
+-- ('3-BLM' is 'Bureau of Land Management'), else as the row writes it
+-- ('Boise National Forest'). Null on every other source. The phone's sheet
+-- reads "<issuer> order, via <publisher>", so Utah FFSL keeps the credit its
+-- terms ask for and the hiker learns whose order it is.
+--
 -- `updated_at` is the source's own edit stamp, in ISO 8601 UTC, and null
 -- where it gives none: never the load time. `notice_id` is
 -- `<source key>:<the source's own id>` (features/ORG_NOTICES.md section 2).
@@ -386,6 +471,17 @@ category_labels as (
         code,
         label
     from {{ ref('notice_category_labels') }}
+),
+
+-- The label a compiled layer's own coded-value domain gives the code its
+-- issuer field holds (seeds/notice_issuers.csv; decision 213, rule 21).
+issuer_labels as (
+    select
+        source_key,
+        code,
+        label
+    from {{ ref('notice_issuers') }}
+    where coalesce(trim(code), '') != ''
 ),
 
 -- Rule 4's areas, each parsed once, its outline as drawn.
@@ -474,6 +570,41 @@ unqualifying as (
     group by field
 ),
 
+-- AN ACTIVITY'S CLOSURE, one pattern per field (decision 213, the
+-- maintainer's poll of 2026-10-15, "Activity closures don't close"): a
+-- `names_an_activity` word directly before a `words` closing word ('Butterfly
+-- Collection Closure', 'Hunting Closure') closes that activity, not the
+-- trail. `activity_pattern` takes the closing word out and keeps the
+-- activity; `phrase_pattern` finds the phrase, for `read_from`.
+activity_words as (
+    select
+        field,
+        string_agg(word, '|' order by word) as alternatives
+    from words
+    where reads_as = 'names_an_activity' and matches = 'words'
+    group by field
+),
+
+closing_words as (
+    select
+        field,
+        string_agg(word, '|' order by word) as alternatives
+    from words
+    where reads_as = 'closes_trail' and matches = 'words'
+    group by field
+),
+
+activity_closures as (
+    select
+        activity_words.field,
+        ' ((?:' || activity_words.alternatives || ') )(?:'
+        || closing_words.alternatives || ') ' as activity_pattern,
+        ' ((?:' || activity_words.alternatives || ') (?:'
+        || closing_words.alternatives || ')) ' as phrase_pattern
+    from activity_words
+    inner join closing_words on activity_words.field = closing_words.field
+),
+
 -- Each notice's own fields, as rule 2 compares them: the whole value, case
 -- and surrounding space aside, and its words padded with a space each side,
 -- every run of characters that are not letters or digits one space, 'non'
@@ -546,7 +677,9 @@ field_words as (
 ),
 
 -- `qualifier_value` is the padded value with its field's `not_a_qualifier`
--- phrases taken out, the value a qualifying word is looked for in.
+-- phrases taken out, the value a qualifying word is looked for in;
+-- `activity_value` the padded value with each activity's closing word taken
+-- out, and `activity_phrase` the first such phrase ('collection closure').
 field_text as (
     select
         field_words.*,
@@ -556,9 +689,30 @@ field_text as (
                 regexp_replace(
                     field_words.padded_value, unqualifying.pattern, ' ', 'g'
                 )
-        end as qualifier_value
+        end as qualifier_value,
+        case
+            when activity_closures.activity_pattern is null
+                then field_words.padded_value
+            else
+                regexp_replace(
+                    field_words.padded_value,
+                    activity_closures.activity_pattern,
+                    ' \1',
+                    'g'
+                )
+        end as activity_value,
+        nullif(
+            regexp_extract(
+                field_words.padded_value,
+                coalesce(activity_closures.phrase_pattern, '$^'),
+                1
+            ),
+            ''
+        ) as activity_phrase
     from field_words
     left join unqualifying on field_words.field = unqualifying.field
+    left join activity_closures
+        on field_words.field = activity_closures.field
 ),
 
 -- A CLOSED SITE's title reading: each thing a title lists, the parts between
@@ -668,6 +822,15 @@ hits as (
         words.reads_as,
         words.outranks_status,
         words.category_needs_title,
+        field_text.whole_value = words.word as is_whole_value,
+        coalesce(
+            words.reads_as = 'closes_trail'
+            and words.matches = 'words'
+            and not contains(
+                field_text.activity_value, ' ' || words.word || ' '
+            ),
+            false
+        ) as after_an_activity,
         case
             when words.matches = 'words'
                 then
@@ -713,6 +876,48 @@ hits as (
         )
 ),
 
+-- A ROW WHOSE OWN NARRATIVE CLOSES SOMETHING beyond an activity: there an
+-- activity's closure in its title is the trail's too, IATA's 'Hunting
+-- Closure beginning 9/1' beside 'The Trail section … is closed Sept. 1 -
+-- Jan. 5 for private hunting' (live 2026-10-15). A narrative is prose, so
+-- any closing word in it counts, whatever qualifies it.
+narrative_closes as (
+    select distinct notice_key
+    from hits
+    where
+        field = 'narrative'
+        and reads_as = 'closes_trail'
+        and not after_an_activity
+),
+
+-- Every hit but an activity's closing word, unless the narrative closes.
+kept_hits as (
+    select hits.*
+    from hits
+    left join narrative_closes
+        on hits.notice_key = narrative_closes.notice_key
+    where not (hits.after_an_activity and narrative_closes.notice_key is null)
+),
+
+-- The activity's closure a row's words hold and kept from closing, for
+-- `read_from`: its field and phrase.
+activity_held as (
+    select
+        field_text.notice_key,
+        min(
+            field_text.field || ' ''' || trim(field_text.activity_phrase)
+            || ''''
+        ) as activity_from
+    from field_text
+    left join narrative_closes
+        on field_text.notice_key = narrative_closes.notice_key
+    where
+        field_text.activity_phrase is not null
+        and field_text.field != 'narrative'
+        and narrative_closes.notice_key is null
+    group by field_text.notice_key
+),
+
 -- What each field says, once per notice and field. A `partly`,
 -- `a_way_around`, `not_a_closure` or `states_a_start` word qualifies a
 -- closing word in the same field (`is_qualified`); in a title a start word
@@ -738,6 +943,17 @@ field_readings as (
         min(word) filter (
             where reads_as = 'closes_trail' and not category_needs_title
         ) as closing_state_word,
+        min(word) filter (
+            where reads_as = 'closes_trail' and is_whole_value
+        ) as whole_closing_word,
+        bool_or(category_needs_title and reads_as = 'not_a_closure')
+            as names_a_kind,
+        bool_or(
+            not category_needs_title
+            and reads_as not in (
+                'names_a_trail', 'names_a_road', 'names_an_area'
+            )
+        ) as says_more_than_a_kind,
         coalesce(
             bool_or(outranks_status) filter (where reads_as = 'closes_trail'),
             false
@@ -755,7 +971,7 @@ field_readings as (
         bool_or(reads_as = 'names_an_area') as names_an_area,
         bool_or(reads_as = 'stands') as stands,
         bool_or(reads_as = 'unspecified') as unspecified
-    from hits
+    from kept_hits
     group by notice_key, field
 ),
 
@@ -795,8 +1011,15 @@ said as (
         min(field || ' ''' || road_word || '''')
         filter (where field in ('title', 'category')) as road_from,
         coalesce(
+            min('title ''' || road_word || '''') filter (where field = 'title'),
+            min('category ''' || road_word || '''')
+            filter (where field = 'category'),
+            min('status ''' || road_word || '''')
+            filter (where field = 'status')
+        ) as any_road_from,
+        coalesce(
             bool_or(names_an_area)
-            filter (where field in ('title', 'category')),
+            filter (where field in ('title', 'category', 'layer')),
             false
         ) as names_an_area,
         min('layer ''' || closing_word || '''')
@@ -811,6 +1034,8 @@ said as (
         min('category ''' || closing_word || '''')
         filter (where field = 'category' and not is_qualified)
             as category_kind_from,
+        min('category ''' || whole_closing_word || '''')
+        filter (where field = 'category') as category_whole_closes_from,
         coalesce(
             bool_or(closing_outranks) filter (
                 where field in ('status', 'category') and not is_qualified
@@ -827,6 +1052,11 @@ said as (
             false
         ) as title_says_not_a_closure,
         coalesce(
+            bool_or(names_a_way_around and closing_word is null)
+            filter (where field = 'layer'),
+            false
+        ) as layer_is_a_way_around,
+        coalesce(
             bool_or(says_something) filter (where field = 'status'), false
         ) as status_says_something,
         coalesce(bool_or(stands) filter (where field = 'status'), false)
@@ -838,7 +1068,12 @@ said as (
             filter (where field = 'status'),
             false
         ) as status_names_a_use_hikers_are_not,
-        coalesce(bool_or(field = 'category'), false) as category_holds_a_word
+        coalesce(bool_or(field = 'category'), false) as category_holds_a_word,
+        coalesce(
+            bool_or(says_more_than_a_kind or not names_a_kind)
+            filter (where field = 'category'),
+            false
+        ) as category_keeps_the_title_quiet
     from field_readings
     group by notice_key
 ),
@@ -986,7 +1221,8 @@ dated as (
             'said.title_start_word',
             "coalesce(cast(timezone('UTC', notices.starts_at) as date), "
             ~ "cast(timezone('UTC', notices.source_edited_at) as date))"
-        ) }} as title_starts_on
+        ) }} as title_starts_on,
+        {{ notice_title_end_day('notices.title') }} as title_ends_on
     from notices
     left join said on notices.notice_key = said.notice_key
 ),
@@ -1038,18 +1274,21 @@ read_words as (
                 then seasons.season_starts_on
             else seasons.own_starts_on
         end as stated_starts_on,
-        case
-            when
-                seasons.season_starts_on is not null
-                and (
-                    seasons.own_ends_on is null
-                    or {{ notice_has_ended(
-                        'seasons.own_ends_on', 'seasons.build_date'
-                    ) }}
-                )
-                then seasons.season_ends_on
-            else seasons.own_ends_on
-        end as ends_on,
+        greatest(
+            case
+                when
+                    seasons.season_starts_on is not null
+                    and (
+                        seasons.own_ends_on is null
+                        or {{ notice_has_ended(
+                            'seasons.own_ends_on', 'seasons.build_date'
+                        ) }}
+                    )
+                    then seasons.season_ends_on
+                else seasons.own_ends_on
+            end,
+            seasons.title_ends_on
+        ) as ends_on,
         said.not_current_from,
         said.not_a_hikers_use_from,
         -- A title's closing word, where no start word qualifies it or the
@@ -1090,9 +1329,24 @@ read_words as (
             false
         ) as area_names_only_a_road,
         said.road_from,
+        -- Decision 213's rule 8 refined (the poll of 2026-10-15, "Roads stay
+        -- notices"): a warnings-filed row whose title, category or status
+        -- names a road and none of them an area, a trail, a hiker's use or
+        -- entry is a road event, never the trail, whatever its shape.
+        coalesce(
+            seasons.notice_type = 'warnings'
+            and said.any_road_from is not null
+            and not said.names_an_area
+            and not said.names_a_trail
+            and not said.bars_every_use,
+            false
+        ) as warning_names_only_a_road,
+        said.any_road_from,
+        activity_held.activity_from,
         said.layer_closes_from,
         said.closes_from as status_closes_from,
         said.category_kind_from,
+        said.category_whole_closes_from,
         coalesce(said.closing_outranks, false) as closing_outranks,
         coalesce(said.title_says_not_a_closure, false)
         or (
@@ -1100,10 +1354,13 @@ read_words as (
             and seasons.title_starts_on is null
         ) as title_says_not_a_closure,
         coalesce(said.status_says_something, false) as status_says_something,
+        coalesce(said.layer_is_a_way_around, false) as layer_is_a_way_around,
         coalesce(said.status_stands, false) as status_stands,
         coalesce(said.status_names_a_use_hikers_are_not, false)
             as status_names_a_use_hikers_are_not,
         coalesce(said.category_holds_a_word, false) as category_holds_a_word,
+        coalesce(said.category_keeps_the_title_quiet, false)
+            as category_keeps_the_title_quiet,
         (
             trim(coalesce(seasons.status, '')) = ''
             or coalesce(said.status_unspecified, false)
@@ -1117,6 +1374,7 @@ read_words as (
     from seasons
     left join said on seasons.notice_key = said.notice_key
     left join titles_named on seasons.notice_key = titles_named.notice_key
+    left join activity_held on seasons.notice_key = activity_held.notice_key
     left join hazard_sources
         on seasons.source_key = hazard_sources.source_key
     left join hazard_categories
@@ -1131,6 +1389,7 @@ closing as (
         *,
         coalesce(
             status_closes_from,
+            case when is_placed then category_whole_closes_from end,
             case
                 when title_closes_from is not null
                     then category_kind_from || ' with its ' || title_closes_from
@@ -1171,15 +1430,23 @@ ruled as (
             when closes_from is not null then 'c1'
             when
                 not status_says_something
-                and not category_holds_a_word
+                and not category_keeps_the_title_quiet
                 and is_placed
+                and title_closes_from is not null
                 and site_from is not null
                 then 'site'
             when
                 not status_says_something
                 and not category_holds_a_word
                 and is_placed
+                and site_from is not null
+                then 'site'
+            when
+                not status_says_something
+                and not category_keeps_the_title_quiet
+                and is_placed
                 and title_closes_from is not null
+                and not layer_is_a_way_around
                 then 'c2'
             when
                 not status_says_something
@@ -1226,7 +1493,8 @@ judged as (
             when reading_rule = 'a' then 'not_current'
             when reading_rule = 'b' then 'nothing_for_a_hiker'
             when
-                reading_rule in ('c1', 'c2', 'c3') and area_names_only_a_road
+                reading_rule in ('c1', 'c2', 'c3')
+                and (area_names_only_a_road or warning_names_only_a_road)
                 then 'notice'
             when reading_rule in ('c1', 'c2', 'c3') then 'closes_trail'
             else 'notice'
@@ -1237,11 +1505,18 @@ judged as (
             when
                 reading_rule in ('c1', 'c2', 'c3') and area_names_only_a_road
                 then road_from || ', an area that names only a road'
+            when
+                reading_rule in ('c1', 'c2', 'c3') and warning_names_only_a_road
+                then any_road_from || ', a road and not the trail'
             when reading_rule = 'c1' then closes_from
             when reading_rule = 'c2' then title_closes_from
             when reading_rule = 'c3' then layer_closes_from
             when reading_rule = 'site'
                 then site_from || ', a site and not the trail'
+            when reading_rule = 'd' and activity_from is not null
+                then
+                    activity_from
+                    || ', an activity''s closure and not the trail'
         end as read_from,
         case
             when reading_rule = 'a'
@@ -1281,16 +1556,55 @@ judged as (
     from started
 ),
 
--- What a row shows as its category: its layer's own label for the code.
+-- Rule 3's verdict, for every notice whatever file its source is filed
+-- under (decision 213, rule 8); then rule 7's standing closed land.
+closes as (
+    select
+        *,
+        coalesce(
+            reads_as = 'closes_trail'
+            and held_because is null
+            and not has_ended
+            and not dates_contradict,
+            false
+        ) as closes_the_trail
+    from judged
+),
+
+stands as (
+    select
+        *,
+        closes_the_trail
+        and listing = 'full'
+        and json_extract_string(geom_geojson, '$.type')
+        in ('Polygon', 'MultiPolygon')
+        and (
+            (reading_rule = 'c1' and status_closes_from is not null)
+            or reading_rule = 'c3'
+        )
+        and starts_on is null
+        and ends_on is null
+        and season_starts_on is null as stands_until_lifted
+    from closes
+),
+
+-- What a row shows as its category: its layer's own label for the code;
+-- and who issued it, where its layer compiles other agencies' orders.
 shown as (
     select
-        judged.*,
-        coalesce(category_labels.label, judged.category) as category_label
-    from judged
+        stands.*,
+        coalesce(category_labels.label, stands.category) as category_label,
+        coalesce(issuer_labels.label, nullif(trim(stands.issuer), ''))
+            as issued_by
+    from stands
     left join category_labels
         on
-            judged.source_key = category_labels.source_key
-            and judged.category = category_labels.code
+            stands.source_key = category_labels.source_key
+            and stands.category = category_labels.code
+    left join issuer_labels
+        on
+            stands.source_key = issuer_labels.source_key
+            and stands.issuer = issuer_labels.code
 )
 
 select
@@ -1301,25 +1615,11 @@ select
     source_key,
     notice_type,
     listing,
+    case when closes_the_trail then true end as obstructs_trail,
     case
-        when
-            notice_type = 'closures'
-            and reads_as = 'closes_trail'
-            and held_because is null
-            and not has_ended
-            and not dates_contradict
-            then true
-    end as obstructs_trail,
-    case
-        when
-            notice_type = 'closures'
-            and reads_as = 'closes_trail'
-            and held_because is null
-            and not has_ended
-            and not dates_contradict
-            then 'org_published'
-        else 'not_reviewed'
+        when closes_the_trail then 'org_published' else 'not_reviewed'
     end as review_state,
+    stands_until_lifted,
     case
         when
             regexp_full_match(trim(title), '\S*[0-9]\S*')
@@ -1329,6 +1629,7 @@ select
         else {{ python_html_unescape('title') }}
     end as title,
     category_label as category,
+    issued_by as issuer,
     status,
     reads_as,
     read_from,

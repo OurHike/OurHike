@@ -135,6 +135,11 @@ WARNINGS_DIR = DBT_DIR / "models" / "intermediate" / "warnings"
 SEEDS_DIR = DBT_DIR / "seeds"
 FIELDS_SEED = SEEDS_DIR / "notice_source_fields.csv"
 READERS_SEED = SEEDS_DIR / "notice_readers.csv"
+#: THE ISSUER OF A COMPILED LAYER'S ROWS (decision 213, rule 21): where a publisher compiles other agencies' orders and
+#: each row names the agency that issued it, the field that names it, staged as `issuer` on that source alone (a
+#: source with no row stages no such column, which the unions read as null). int_closures__club_notices shows the
+#: label this seed gives a coded value, and the phone's sheet reads "<issuer> order, via <publisher>".
+ISSUERS_SEED = SEEDS_DIR / "notice_issuers.csv"
 #: Where each club folder's organization type is recorded (stewards_kinds()).
 TRAIL_ORGS = PIPELINE_DIR / "reference" / "trail_orgs.json"
 #: trail_orgs.json's `type`s that are a club: an organization of hikers that
@@ -432,7 +437,11 @@ def _registry() -> dict[str, dict]:
 
 def _fields_seed() -> dict[str, dict]:
     with FIELDS_SEED.open(newline="") as handle:
-        return {row["source_key"]: row for row in csv.DictReader(handle)}
+        fields = {row["source_key"]: row for row in csv.DictReader(handle)}
+    with ISSUERS_SEED.open(newline="") as handle:
+        for row in csv.DictReader(handle):
+            fields.setdefault(row["source_key"], {"source_key": row["source_key"]})["issuer"] = row["field"]
+    return fields
 
 
 def hand_staged_tables(root: Path = STAGING_DIR) -> set[str]:
@@ -925,6 +934,9 @@ def render_stg(source: NoticeSource, fields: dict[str, dict]) -> str:
         else:
             lines += _column_lines(_text_expression(spec, source.reader.lists), name)
     lines += _layer_title_lines(fields.get(source.key, {}).get("layer_title") or "")
+    issuer = fields.get(source.key, {}).get("issuer")
+    if issuer:
+        lines += _column_lines(_text_expression(issuer, source.reader.lists), "issuer")
     if source.reader.spatial:
         lines += [
             "    case",
@@ -1326,6 +1338,9 @@ def _fact_columns(source: NoticeSource, fields: dict[str, dict]) -> list[str]:
     columns.update(
         _column(spec)[0] for role, spec in _roles(source, fields).items() if _literal(spec) is None and role not in PROSE_ROLES
     )
+    issuer = fields.get(source.key, {}).get("issuer")
+    if issuer:
+        columns.add(_column(issuer)[0])
     return sorted(columns)
 
 

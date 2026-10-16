@@ -152,6 +152,16 @@ read_back as (
         json_extract_string(row_json, '$.closure_place') as closure_place,
         json_extract_string(row_json, '$.geom_geojson') as geom_geojson,
         json_extract_string(row_json, '$.source_row_key') as source_row_key,
+        -- Decision 213's rules 14 and 21, as the mart saved them: a row saved
+        -- before they existed reads false and null.
+        coalesce(
+            try_cast(
+                json_extract_string(row_json, '$.stands_until_lifted')
+                as boolean
+            ),
+            false
+        ) as stands_until_lifted,
+        json_extract_string(row_json, '$.issuer') as issuer,
         coalesce(
             try_cast(
                 json_extract_string(row_json, '$.carried_since') as timestamptz

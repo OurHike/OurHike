@@ -401,6 +401,14 @@ models:
       - name: source_row_key
         description: The row's key in its staging model, for lineage.
         data_type: varchar
+      - name: issuer
+        description: >
+          The agency that issued the order, where its publisher compiles
+          other agencies' orders and its rows name the issuer (decision 213,
+          rule 21; seeds/notice_issuers.csv): 'Bureau of Land Management' on
+          a Utah FFSL row. Null on every other row. Not prose: a name, from
+          the field the source names its issuer in.
+        data_type: varchar
       - name: carried_since
         description: >
           Null on a row this build read from its source. Set on a row of a

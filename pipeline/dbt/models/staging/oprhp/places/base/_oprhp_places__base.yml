@@ -5,7 +5,7 @@ models:
     data_tests:
       # Warns when the dedupe dropped any row, each an exact copy
       # (duplicates_are_exact on the raw table), and is an error once the
-      # copies are half the raw table (decision 204, the generic test's).
+      # copies are half the raw table (the generic test's).
       - equal_rowcount_to_raw:
           arguments:
             compare_model: source('oprhp', 'raw_nysparks__oprhp_park_polygons')
@@ -16,7 +16,7 @@ models:
     columns:
       - name: park_polygon_key
         description: >
-          The row's key (decision 40): dbt_utils.generate_surrogate_key over
+          The row's key: dbt_utils.generate_surrogate_key over
           oprhp_park_polygons, globalid, the registry key first and then the
           column measured unique for this layer (858 of 858 live rows,
           2026-10-02).

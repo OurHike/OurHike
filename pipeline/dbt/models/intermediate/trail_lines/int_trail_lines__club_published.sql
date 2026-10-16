@@ -2,7 +2,7 @@
 {%- set decimals = var('trail_lines_network_coordinate_decimals') %}
 -- The clubs' own trail lines as the trail_lines mart draws them, one row per
 -- line that may draw, in the mart's 23 columns, with `line_kind` 'club'
--- (decision 64, the maintainer's poll of 2026-10-04: "draw now, route
+-- (the maintainer's poll of 2026-10-04: "draw now, route
 -- later"). int_trail_lines__final unions it with the A.T.'s half and the
 -- network's, and its publication join keeps only a line whose source may
 -- publish.
@@ -25,7 +25,7 @@
 -- has nothing to draw.
 --
 -- THE GEOMETRY, as the network's: Douglas-Peucker at 1 m in EPSG:5070
--- (var trail_lines_network_navigation_tolerance_m, TL15), keeping the line
+-- (var trail_lines_network_navigation_tolerance_m), keeping the line
 -- whole where the pass would leave a part with fewer than two distinct
 -- vertices (simplify_records()' never-drop rule), then every vertex cut to
 -- six decimals as Python's round() cuts it, keeping full precision where
@@ -53,7 +53,7 @@
 -- its own order, then the club lines by source and id.
 --
 -- BOTH LENGTHS ARE ON THE WGS84 ELLIPSOID, as the network's are
--- (int_trail_lines__network_published's header; decision 97, the
+-- (int_trail_lines__network_published's header, the
 -- maintainer's poll of 2026-10-06): `length_m` of the line before the pass
 -- and `published_length_m` of the 1 m line, which nearby_trails.geojson's
 -- `length_miles` is rounded from, each by macros/geodesic_length_m.sql.
@@ -102,23 +102,7 @@ navigation as (
         *,
         case
             when
-                coalesce(
-                    not st_isempty(reduced)
-                    and list_bool_and(
-                        list_transform(
-                            st_dump(reduced),
-                            lambda part: (
-                                st_xmin(struct_extract(part, 'geom'))
-                                < st_xmax(struct_extract(part, 'geom'))
-                            )
-                            or (
-                                st_ymin(struct_extract(part, 'geom'))
-                                < st_ymax(struct_extract(part, 'geom'))
-                            )
-                        )
-                    ),
-                    false
-                )
+                {{ every_part_has_extent('reduced') }}
                 then reduced
             else geom
         end as navigation_line
@@ -188,7 +172,7 @@ chosen as (
 
 select
     chosen.source_key || ':' || chosen.trail_segment_key as trail_line_id,
-    -- No exporter publishes a club's own line (decision 64), so no phone
+    -- No exporter publishes a club's own line, so no phone
     -- holds another id for it: its published id is its key.
     chosen.source_key || ':' || chosen.trail_segment_key as published_id,
     chosen.club,

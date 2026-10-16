@@ -1,5 +1,5 @@
 {{ config(materialized='table') }}
--- THE LON/LAT SWAP TEST, BEFORE THE GATE (decision 81; review finding
+-- THE LON/LAT SWAP TEST, BEFORE THE GATE (review finding
 -- ARCH-1 of PR #1805 — dlt → dbt re-platform as one go/no-go change): one
 -- row per notice, alert or closed area whose geometry reaches outside the
 -- box its source publishes in, read from the two unions every closures and

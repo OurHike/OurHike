@@ -1,11 +1,9 @@
-"""Every monthly source's dbt freshness reads the extract's run log, and both warns and errors (decision 203).
+"""Every monthly source's dbt freshness reads the extract's run log, and both warns and errors.
 
-Decision 203 (the maintainer, 2026-10-15: "Maybe we should use the date of the
-last successful data uppdate? Having that many warnings seems like a false
-positive."): freshness is measured from OurHike's own last successful read of a
+The maintainer, 2026-10-15: freshness is measured from OurHike's own last successful read of a
 source, read or confirmed unchanged, in every lane, and every freshness check
 carries a warning and an error. tests/test_notice_source_freshness.py holds the
-hourly and daily sources to decisions 100 and 101; this file holds, without
+hourly and daily sources; this file holds, without
 dbt, every source the monthly lane builds from:
 
 - it measures from macros/last_read_or_confirmed_at.sql (make_dbt_staging.py's
@@ -13,8 +11,7 @@ dbt, every source the monthly lane builds from:
   source unchanged leaves at its last load, and never from a date of the
   source's own;
 - it warns after 35 days unread and errors after 62 (MONTHLY_FRESHNESS_DAYS),
-  a reviewed file, a PDF's and a workbook's tables included, which until
-  decision 203 carried no freshness at all;
+  a reviewed file, a PDF's and a workbook's tables included;
 - the Python steps' own tables are the one exception to the basis: no run log
   row names them, so they keep `_loaded_at`, which a step stamps in the build
   that reads it.

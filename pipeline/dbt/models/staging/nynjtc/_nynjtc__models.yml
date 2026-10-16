@@ -1,6 +1,6 @@
 version: 2
 
-# Each trail model's key is `trail_segment_key` (decision 40), tested
+# Each trail model's key is `trail_segment_key`, tested
 # not_null and unique. Each also carries the layer's object id (`fid` on the
 # Long Path, `objectid` on the Highlands Trail), which is the id
 # export_nearby_trails.py publishes for its lines; it is tested the same
@@ -15,7 +15,7 @@ models:
     data_tests:
       # Warns when the dedupe dropped any row, each an exact copy
       # (duplicates_are_exact on the raw table), and is an error once the
-      # copies are half the raw table (decision 204, the generic test's).
+      # copies are half the raw table (the generic test's).
       - equal_rowcount_to_raw:
           arguments:
             compare_model: source('nynjtc', 'raw_nynjtc__nynjtc_long_path')
@@ -27,7 +27,7 @@ models:
     columns:
       - name: trail_segment_key
         description: >
-          The row's key (decision 40): dbt_utils.generate_surrogate_key over
+          The row's key: dbt_utils.generate_surrogate_key over
           nynjtc_long_path, lp_section, mileage,
           the registry key first and then the columns measured unique for
           this layer.
@@ -38,7 +38,7 @@ models:
           ArcGIS writes as each GeoJSON feature's `id` (43 of 43 equal, read
           live 2026-10-09). export_nearby_trails.py publishes it as
           `nynjtc_long_path:<FID>`, and int_trail_lines__network_judged
-          publishes the same. Not the key: decision 40 never keys on an
+          publishes the same. Not the key: a key never rests on an
           object id alone.
         data_tests: [not_null, unique]
       - name: loaded_at
@@ -56,7 +56,7 @@ models:
     data_tests:
       # Warns when the dedupe dropped any row, each an exact copy
       # (duplicates_are_exact on the raw table), and is an error once the
-      # copies are half the raw table (decision 204, the generic test's).
+      # copies are half the raw table (the generic test's).
       - equal_rowcount_to_raw:
           arguments:
             compare_model: source('nynjtc', 'raw_nynjtc__nynjtc_highlands_trail')
@@ -68,7 +68,7 @@ models:
     columns:
       - name: trail_segment_key
         description: >
-          The row's key (decision 40): dbt_utils.generate_surrogate_key over
+          The row's key: dbt_utils.generate_surrogate_key over
           nynjtc_highlands_trail, section_name,
           the registry key first and then the columns measured unique for
           this layer.
@@ -80,7 +80,7 @@ models:
           read live 2026-10-09). export_nearby_trails.py publishes it as
           `nynjtc_highlands_trail:<OBJECTID>`, and
           int_trail_lines__network_judged publishes the same. Not the key:
-          decision 40 never keys on an object id alone.
+          a key never rests on an object id alone.
         data_tests: [not_null, unique]
       - name: loaded_at
         description: The extract's `_loaded_at` for the read this row came from, naive UTC.
@@ -99,11 +99,11 @@ models:
       NYNJTC's Long Path guide, one row per section page, as the guide_pages
       kind parsed it: the section's number, title and stated distance, and
       its Parking, Camping and Detailed Trail Description entries as JSON.
-      Read by step_long_path_guide, which places them (PO36).
+      Read by step_long_path_guide, which places them.
     columns:
       - name: guide_section_key
         description: >
-          The row's key (decision 40): dbt_utils.generate_surrogate_key over
+          The row's key: dbt_utils.generate_surrogate_key over
           nynjtc_long_path_guide and the section's number.
         data_tests: [not_null, unique]
       - name: section_number

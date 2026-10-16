@@ -1,6 +1,6 @@
 {{ config(materialized='table') }}
 -- The typed rows that may ship, and the confidence each ships at: the one
--- home of the organizations' own public flags (PO27, PO28, PO29) and of
+-- home of the organizations' own public flags and of
 -- may_publish for every POI, before anything is deduplicated or merged, so
 -- a row that may not ship can never win a merge and vanish, taking the
 -- place with it (pipeline/ELT.md, "Publication filters run before dedup").
@@ -18,7 +18,7 @@
 -- all ship low. A floor that is not 'low' fails the build at this model's
 -- test, as confidence_for() raises, rather than shipping the layer high.
 --
--- A PIN CLAIMS NO MORE THAN ITS STEWARD (decision 195, the maintainer's poll
+-- A PIN CLAIMS NO MORE THAN ITS STEWARD (the maintainer's poll
 -- of 2026-10-14, and its follow-up the same day, "Taps only"): a water point
 -- whose steward's own public flag does not show it is held, whatever the
 -- layer's flag otherwise does, so `public_flag_sets_confidence` lowers only

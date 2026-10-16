@@ -4,18 +4,18 @@
 -- publish without a person, NYNJTC's Trail Alerts, NYS Parks' temporary
 -- closed areas, OurHike's own verified closures, and every other club's
 -- notice its club files under closures or whose own words close the trail
--- (int_closures__club_notices, decision 53's phase C and decision 213's rule
--- 8; a club's other warnings.py notices are int_warnings__unioned's).
+-- (int_closures__club_notices; a club's other warnings.py notices are
+-- int_warnings__unioned's).
 -- Nothing is filtered here but ATC's refused automatic rows (their branch
 -- says why). Each branch keeps
 -- its source's own words and adds what the split needs:
 --
 --   obstructs_trail  whether a hiker is stopped from walking through, as the
 --                    source says: ATC's reviewed boolean; false, forced, for
---                    an automatic ATC row (CL09); true for a closed area;
+--                    an automatic ATC row; true for a closed area;
 --                    OurHike's status read as closureBanner.ts reads it;
 --                    NULL for every NYNJTC alert, which nobody has classified
---                    (decision 7: unknown lands in warnings, never dropped).
+--                    (unknown lands in warnings, never dropped).
 --   review_state     who stands behind it: `reviewed` (a person read ATC's
 --                    page), `auto` (ATC's mechanical gate published it, and
 --                    nobody here has read it), `org_published` (NYS Parks'
@@ -39,7 +39,7 @@
 --
 -- Miles are A.T. miles from Springer, ATC's and OurHike's, and null for a
 -- notice nobody has placed. Dates are each source's own and null where it
--- gives none: NYS Parks publishes none, and none is invented (CL13).
+-- gives none: NYS Parks publishes none, and none is invented.
 with atc as (
     select * from {{ ref('int_closures__atc_checked') }}
 ),
@@ -61,7 +61,7 @@ ourhike as (
 ),
 
 -- A club notice whose own words close the trail is a closure whatever file
--- its source is registered under (decision 213, rule 8, the maintainer's poll
+-- its source is registered under (the maintainer's poll
 -- of 2026-10-15: "a row's own words decide whether it closes"); every other
 -- notice its source files under warnings is int_warnings__unioned's.
 club_notices as (
@@ -105,10 +105,10 @@ from atc
 union all by name
 
 -- The updates ATC posted since the review that int_closures__atc_automatic
--- publishes without a person (CL07-CL10), and only those: a refused update is
+-- publishes without a person, and only those: a refused update is
 -- the steady state, every hour, for every reviewed or older notice, and is
 -- no problem of the file's, so it stays in that model for the job log and the
--- proposer (CL12). Each has a slug the reviewed file does not, so its id
+-- proposer. Each has a slug the reviewed file does not, so its id
 -- never meets a reviewed row's. `list_position` is its place in slug order,
 -- which pub_conditions_atc_updates writes after every reviewed row, as
 -- export_atc_updates.py's automatic_rows() sorts them.
@@ -212,10 +212,10 @@ from ourhike
 
 union all by name
 
--- Every generated club notice source's closures-type notices (decision 53,
--- phase C): `obstructs_trail` is true only where the source's own status or
+-- Every generated club notice source's closures-type notices:
+-- `obstructs_trail` is true only where the source's own status or
 -- category says closed and its own end has not passed, and null otherwise,
--- so most land in warnings as not reviewed (decision 7).
+-- so most land in warnings as not reviewed.
 select
     notice_id,
     source_row_key,

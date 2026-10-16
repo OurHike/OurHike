@@ -8,7 +8,7 @@
 -- against the line its steward published, and before simplify_records(),
 -- which makes the geometry final.
 --
--- WHY THIS IS STILL HERE (decision 44): #1152 — Move OPRHP's temporary
+-- WHY THIS IS STILL HERE: #1152 — Move OPRHP's temporary
 -- closures onto the conditions clock, where a safety layer belongs — is to
 -- publish the areas on the hourly conditions files, and the closures mart
 -- already carries them (int_closures__oprhp_areas). But a phone in the field
@@ -36,8 +36,8 @@
 --   its one id, so no two features share an id; the open part keeps every
 --   property of its line. A part of several pieces stays a MultiLineString
 --   (_merge()), never merged across the gap the closure made.
--- - ONLY A PIECE INSIDE THE GROUND CLOSES, NOT ONE ALONG ITS EDGE (decision
---   213, rule 6, the maintainer's poll of 2026-10-15, "Only inside closes",
+-- - ONLY A PIECE INSIDE THE GROUND CLOSES, NOT ONE ALONG ITS EDGE (rule 6, the
+-- maintainer's poll of 2026-10-15, "Only inside closes",
 --   applied to both cuts of an area closure onto lines, this one and the
 --   hourly int_closures__area_trail_cuts): an `inside` piece closes only if
 --   some part of it lies more than `area_closure_edge_m` (2 m) in from the
@@ -84,6 +84,8 @@ publication as (
     where source_key = 'oprhp_trail_closures' and may_publish
 ),
 
+-- An area whose stated end has passed closes nothing, as
+-- int_closures__unioned reads the same areas.
 areas as (
     select
         oprhp_areas.source_row,
@@ -91,6 +93,7 @@ areas as (
         st_geomfromgeojson(oprhp_areas.geom_geojson) as geom
     from {{ ref('int_closures__oprhp_areas') }} as oprhp_areas
     cross join publication
+    where not {{ notice_has_ended('oprhp_areas.ends_on', notice_build_date()) }}
 ),
 
 -- No row at all in a week with nothing closed, rather than the empty
@@ -106,7 +109,7 @@ closed_ground as (
 ),
 
 -- The band within `area_closure_edge_m` of the closed ground's outline, in
--- EPSG:5070 (decision 213, rule 6, above).
+-- EPSG:5070 (rule 6, above).
 edged_ground as (
     select
         geom,

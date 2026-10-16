@@ -1,5 +1,5 @@
 -- Each relayed NWS alert's area, as int_warnings__nws_placed places it on
--- the weather squares (WN03): the polygon NWS drew, in NOAA's NBM grid units
+-- the weather squares: the polygon NWS drew, in NOAA's NBM grid units
 -- (macro nbm_grid_units(), the transform lib/nbm_grid.py's overlapping()
 -- applies), as WKT text, and the zones the alert names. x is a column and y
 -- a row, so square (row, col) is the box (col, row) to (col + 1, row + 1).

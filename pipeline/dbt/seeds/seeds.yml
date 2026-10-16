@@ -34,8 +34,7 @@ seeds:
         description: Why, what ends it, and the issue by number and title.
   - name: model_key_exceptions
     description: >
-      The models excepted from decision 197, the maintainer's rule of
-      2026-10-15 that every model has one id: a column carrying an
+      The models excepted from the maintainer's rule of 2026-10-15 that every model has one id: a column carrying an
       unfiltered `unique` test and an unfiltered `not_null` (a test, or a
       not_null constraint under an enforced contract), both at error. A
       multi-column key counts only as a dbt_utils.generate_surrogate_key
@@ -82,7 +81,7 @@ seeds:
       and those Python constants drift apart (DBT.md's duplication-risk
       note).
 
-      THE `dec` ROWS ARRIVED WITH PHASE D (#100) AND MIRROR A DIFFERENT
+      THE `dec` ROWS ARRIVED WITH #100 AND MIRROR A DIFFERENT
       AUTHORITY: sources.json itself. Six NYS DEC layers declare a
       layer-wide `poi_type` in the registry, and those six declarations are
       transcribed here verbatim; the confidence is not a fresh call either,
@@ -113,9 +112,8 @@ seeds:
         data_tests:
           - not_null
           - accepted_values:
-              # WIDENED BY PHASE D (#100), and worth recording that it needed
-              # widening: a two-value closed domain was the one place the
-              # Phase A slice really had baked in "the A.T." where "a trail"
+              # WIDENED FOR #100, and worth recording that it needed
+              # widening: a two-value closed domain was the one place the first slice really had baked in "the A.T." where "a trail"
               # was meant. It is still a closed list on purpose - a
               # source_system nobody added a row for is a typo, not a new
               # organization - but adding one is now a one-line change here
@@ -191,9 +189,7 @@ seeds:
       - name: covers_own_words_named_by
         description: >
           Set only where the basis is a maintainer's ruling on the dataset
-          itself rather than on any wording of it (decision 213, Q25:
-          decisions 20 and 22 cover a clearinghouse dataset's own restrictive
-          words). A case-insensitive RE2 expression a row's `licence` must
+          itself rather than on any wording of it (the clearinghouse ruling covers a clearinghouse dataset's own restrictive words). A case-insensitive RE2 expression a row's `licence` must
           match to name that ruling; where it does, int_sources__publication
           answers every restriction class in the row's quoted words except
           `cannot_be_met`. Empty for every other basis.

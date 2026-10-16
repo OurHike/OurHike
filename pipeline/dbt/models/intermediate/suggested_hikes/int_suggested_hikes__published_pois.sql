@@ -1,4 +1,4 @@
--- The POIs a highlight's legs resolve against (SH12): every POI
+-- The POIs a highlight's legs resolve against: every POI
 -- export_poi.py publishes in its eight poi_<type>.geojson files, with its
 -- published `id` and `mile`, as export_highlights.py's load_published_pois()
 -- and lib/highlights.py's poi_miles() read them: the points_of_interest

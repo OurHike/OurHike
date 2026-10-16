@@ -1,11 +1,11 @@
--- TN11 and TN12. trail_graph_geometry.json and every companion beside it
+-- trail_graph_geometry.json and every companion beside it
 -- (trail_graph_elevation.json, trail_graph_profile.json) are aligned to
 -- trail_graph.json's `edges` by position alone, so the edges are numbered
 -- 0..n-1 with no gap; cut_trail_graph.py refuses a misaligned companion as
 -- well. And an empty graph is not published, because an empty family "would
 -- read as coverage" (cut_trail_graph.py). Returns a row naming whichever is
 -- wrong.
--- A gate on a mart a hiker's safety reads (decision 204, dbt_project.yml's
+-- A gate on a mart a hiker's safety reads (dbt_project.yml's
 -- `marts:` gates): an error in every environment, so in production a
 -- failure holds the files below at their last good copy.
 {{ config(severity='error') }}
@@ -14,7 +14,7 @@ with numbered as (
         count(*) as edges,
         coalesce(max(edge_index), -1) as last_index,
         count(distinct edge_index) as distinct_indexes
-    from {{ ref('trail_network') }}
+    from {{ ref('trail_network', v=1) }}
 )
 
 select

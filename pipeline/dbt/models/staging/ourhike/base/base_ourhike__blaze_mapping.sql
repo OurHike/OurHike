@@ -1,5 +1,5 @@
 -- reference/blaze_mapping.json, landed by _shared/ourhike/: the reviewed
--- file as its one row, keyed (decision 40), with nothing filtered and
+-- file as its one row, keyed, with nothing filtered and
 -- nothing joined. The document is still the JSON a person reviewed in;
 -- staging models read its parts.
 --

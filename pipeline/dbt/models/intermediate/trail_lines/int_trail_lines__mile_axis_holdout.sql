@@ -1,6 +1,6 @@
 {{ config(materialized='table') }}
 -- How well the mile axis reproduces ATC's own miles on markers it never
--- saw: export_elevation.measure_marker_agreement (pipeline/ELT.md's EL04),
+-- saw: export_elevation.measure_marker_agreement,
 -- one row. Each piece with four or more snapped markers is calibrated again
 -- from its even-numbered markers alone and scored on the odd-numbered ones,
 -- because "scoring the fit on its own control points would measure nothing -

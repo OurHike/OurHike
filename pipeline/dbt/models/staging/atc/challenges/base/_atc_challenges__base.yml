@@ -14,7 +14,7 @@ models:
     columns:
       - name: challenge_file_key
         description: >
-          The file's key (decision 40): dbt_utils.generate_surrogate_key over
+          The file's key: dbt_utils.generate_surrogate_key over
           the folder's claim and the file's path.
         data_tests: [not_null, unique]
       - name: file_path

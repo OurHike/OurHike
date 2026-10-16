@@ -2,9 +2,9 @@
 -- Every staged row of every layer a POI file publishes from, one row each,
 -- unfiltered and unclassified: the A.T. family export_poi.py writes as the
 -- eight poi_<type>.geojson files, the other organizations' layers
--- export_nearby_poi.py writes as nearby_poi.geojson, decision 54's wave 1
+-- export_nearby_poi.py writes as nearby_poi.geojson, the generated club
 -- point layers, which no exporter reads, and GATC's water list placed from
--- its miles (decision 75; the last two branches). A row here is
+-- its miles (the last two branches). A row here is
 -- not a publishable POI; int_points_of_interest__classified and
 -- int_points_of_interest__publishable decide that.
 --
@@ -26,8 +26,8 @@
 -- branch list to the staging models it reads, row for row.
 --
 -- The last branch is not a staged layer: it is fetch_trail_water.py's site
--- water, which step_site_water.py derives into derived.site_water (PO07,
--- PO17), one point per shelter or campsite whose water the gates passed.
+-- water, which step_site_water.py derives into derived.site_water, one point
+-- per shelter or campsite whose water the gates passed.
 -- Its properties are the six load_trail_water() writes, under the same
 -- names, and the poi_sources seed reads its id from `site_global_id`, so the
 -- stream point publishes as `nhd_stream:<site GlobalID>` exactly as
@@ -77,7 +77,7 @@ select
 from {{ ref(model) }} as staged
 union all by name
 {% endfor %}
--- OSM's water points (PO03): export_poi.py's unify_all_sources() reading
+-- OSM's water points: export_poi.py's unify_all_sources() reading
 -- data/raw/osm_water.geojson, here step_osm_water's rows. The properties are
 -- the file's own JSON, so `kind` and the reliability tags reach the
 -- describer as describe_water() reads them, and a tag OSM does not carry is
@@ -96,7 +96,7 @@ select
     osm._loaded_at
 from {{ ref('stg_derived__osm_water') }} as osm
 union all by name
--- NYNJTC's Long Path guide (PO36): export_nearby_poi.py's guide_records(),
+-- NYNJTC's Long Path guide: export_nearby_poi.py's guide_records(),
 -- the records step_long_path_guide's build_records() made of the guide's
 -- pages, whole, which the classifier reads as already unified (the
 -- poi_sources seed's `unified`): their own type, confidence, id and name.
@@ -109,7 +109,7 @@ select
     guide._loaded_at
 from {{ ref('stg_derived__long_path_guide') }} as guide
 union all by name
--- fetch_trail_water.py's site water (PO07, PO17), the step's verdicts, of
+-- fetch_trail_water.py's site water, the step's verdicts, of
 -- which only a site that has water publishes a point: export_poi.py's
 -- load_trail_water(), reading data/raw/trail_water.json's `sites`. Its
 -- properties are the ones that function hands unify_poi(), so the id is the
@@ -131,7 +131,7 @@ select
 from {{ ref('stg_derived__site_water') }} as site
 where site.has_water
 union all by name
--- Decision 54's wave 1 point layers, every row of the clubs' registered
+-- The generated club point layers, every row of the clubs' registered
 -- ArcGIS point layers that no exporter reads: int_points_of_interest__
 -- club_points, which types each row from the club_poi_types seed and holds
 -- it back by the layer_rules seed. Each is a record already typed, as the
@@ -159,11 +159,12 @@ select
     club._loaded_at
 from {{ ref('int_points_of_interest__club_points') }} as club
 union all by name
--- GATC's water list (decision 75), int_points_of_interest__gatc_water's
+-- GATC's water list, int_points_of_interest__gatc_water's
 -- records: each A.T. source placed on ATC's mile axis from GATC's own mile,
 -- typed water at low confidence there, with its hold reason where one holds
 -- it (the approach trail, a mile no piece carries, GATC's own "dry", a
--- namesake past the bound), read as the wave 1 records above are. A held
+-- namesake past the bound), read as the generated club records above are. A
+-- held
 -- source with no point arrives with a null geom; the classifier reads its
 -- rule_drop_reason first.
 select

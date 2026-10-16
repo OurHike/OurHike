@@ -9,6 +9,7 @@ models:
       processed_dir/suggested_hikes.json as one JSON document. No row, and so
       no file, when no hike ships. parity.py compares it with
       export_suggested_hikes.py's shelf, record by record.
+      Refreshed monthly, with its lane's build.
     config:
       access: public
       contract:
@@ -32,6 +33,7 @@ models:
       this file outside dbt by publish.py's cut_suggested_hike_details(). No
       row, and so no file, when no hike ships. parity.py compares each detail
       with export_suggested_hikes.py's.
+      Refreshed monthly, with its lane's build.
     config:
       access: public
       contract:
@@ -47,6 +49,7 @@ models:
       row, `source` and `highlights`, always, `highlights` empty when nothing
       resolved. parity.py compares it with export_highlights.py's file,
       record by record.
+      Refreshed monthly, with its lane's build.
     config:
       access: public
       contract:
@@ -75,13 +78,10 @@ exposures:
       than trimming it. Every hike's ends are what the phone routes a day
       hike between, so a wrong end is a hiker sent somewhere the write-up
       does not go: which ships is int_suggested_hikes__graded's and
-      __routed's (SH04-SH06). Published in the release folder by
-      publish-vector-data.yml from export_suggested_hikes.py's file until
-      stage 4 of #1793 — Rebuild the data platform as dlt → dbt: seven
-      contracted marts, a monthly refresh, published docs, and lighter phone
-      downloads moves it to this writer's.
+      __routed's. Published in the release folder by
+      publish-vector-data.yml from export_suggested_hikes.py's file until the cutover moves it to this writer's.
     depends_on:
-      - ref('suggested_hikes')
+      - ref('suggested_hikes', v=1)
       - ref('pub_suggested_hikes')
     config:
       meta:
@@ -104,7 +104,7 @@ exposures:
       exporter's own write_detail_objects()), so the key below names a family:
       `{number}` is each hike's number.
     depends_on:
-      - ref('suggested_hikes')
+      - ref('suggested_hikes', v=1)
       - ref('pub_suggested_hikes_detail')
     config:
       meta:
@@ -123,12 +123,10 @@ exposures:
       explore, because "popular" has no source behind it yet), each with its
       basis and its A.T. mile range from the published POIs at its ends.
       Published in the release folder by publish-vector-data.yml from
-      export_highlights.py's file until stage 4 of #1793 — Rebuild the data
-      platform as dlt → dbt: seven contracted marts, a monthly refresh,
-      published docs, and lighter phone downloads — moves it to this
+      export_highlights.py's file until the cutover — moves it to this
       writer's.
     depends_on:
-      - ref('suggested_hikes')
+      - ref('suggested_hikes', v=1)
       - ref('pub_highlights')
     config:
       meta:

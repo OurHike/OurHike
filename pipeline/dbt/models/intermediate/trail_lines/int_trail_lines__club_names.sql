@@ -1,5 +1,5 @@
 {{ config(materialized='table') }}
--- lib/club_sections.canonical_clubs() (TL26): each club's name and region,
+-- lib/club_sections.canonical_clubs(): each club's name and region,
 -- by acronym, from the trail_club_sections polygons, which spell a club's
 -- name and give its region and never decide a stretch
 -- (CANONICAL_FROM_POLYGONS). Only polygons from a layer that may publish.

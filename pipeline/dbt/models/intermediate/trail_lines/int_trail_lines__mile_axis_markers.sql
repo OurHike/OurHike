@@ -1,6 +1,6 @@
 {{ config(materialized='table') }}
 -- Which of ATC's half-mile markers calibrates which centerline piece, and
--- where along it: the snap of the mile axis (pipeline/ELT.md's EL03),
+-- where along it: the snap of the mile axis,
 -- export_elevation._snap_markers_to_parts and the fallback in
 -- calibrate_parts_to_markers. One row per (piece, marker) pair.
 --

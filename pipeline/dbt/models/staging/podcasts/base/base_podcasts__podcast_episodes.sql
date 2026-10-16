@@ -1,5 +1,5 @@
 -- reference/podcast_episodes.json (_shared/podcasts/episodes.py): every row
--- of the file, keyed (decision 40), with nothing filtered and nothing joined.
+-- of the file, keyed, with nothing filtered and nothing joined.
 -- Each row is still the JSON its reviewer wrote: reading its fields is the
 -- gate's work (int_podcasts__checked), because a field's JSON type is one of
 -- the things the gate checks.

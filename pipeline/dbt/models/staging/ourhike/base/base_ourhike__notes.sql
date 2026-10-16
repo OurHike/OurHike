@@ -4,9 +4,9 @@
 -- dbt_project_evaluator's fct_exposure_parents_materializations asks that an
 -- exposure read a table.
 -- OurHike's visible field notes (extract/_shared/ourhike/field_notes.py,
--- export_conditions.py's PUBLIC_NOTES_SQL run whole), keyed (decision 40).
+-- export_conditions.py's PUBLIC_NOTES_SQL run whole), keyed.
 -- No mart reads them: conditions/notes.json stays export_conditions.py's to
--- write (WN11), and this model is what that file's exposure names, so its
+-- write, and this model is what that file's exposure names, so its
 -- lineage and cadence are checked like any other phone file's.
 --
 -- Key: the note's UUID primary key.

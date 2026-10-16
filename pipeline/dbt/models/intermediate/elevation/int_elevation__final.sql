@@ -1,6 +1,5 @@
 -- int_elevation__final: the elevation mart's rows before their row dates, every
--- contracted column but _first_seen_at and _changed_at. This is what
--- models/marts/elevation/elevation.sql held until decision 57;
+-- contracted column but _first_seen_at and _changed_at. The
 -- int_elevation__history snapshots it, and the mart reads that snapshot.
 --
 -- The elevation mart: one sample per row on a profiled line, keyed by
@@ -32,7 +31,7 @@
 -- own line's source. A source the registry does not list may not publish.
 --
 -- THE KEY, line_sample_key, is dbt_utils.generate_surrogate_key over
--- (line_id, seq), the mart's grain (decision 197: every model has one column
+-- (line_id, seq), the mart's grain (every model has one column
 -- that is unique and not null). int_elevation__history snapshots it with the
 -- rest of the row and the mart carries it; no phone file prints it, because
 -- every pub_ writer that reads the mart names its columns.

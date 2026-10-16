@@ -8,7 +8,7 @@ sources:
     schema: raw
     config:
       # When the extract last read each table or confirmed it unchanged, from
-      # its run log, never `_loaded_at` (decision 203): make_dbt_staging.py's
+      # its run log, never `_loaded_at`: make_dbt_staging.py's
       # LOADED_AT_QUERY and MONTHLY_FRESHNESS_DAYS say why, and
       # tests/test_source_freshness.py holds every monthly source to them.
       loaded_at_query: "{{ last_read_or_confirmed_at(this) }}"
@@ -20,11 +20,11 @@ sources:
     tables:
       - name: raw_ourhike__poi_identity
         data_tests:
-          # Rows sharing base_ourhike__poi_identity's key must be exact copies (decision 40).
+          # Rows sharing base_ourhike__poi_identity's key must be exact copies.
           - duplicates_are_exact:
               arguments:
                 key_columns: ["'reference/poi_identity.json'", "poi_id"]
-          # Elementary's checks (make_dbt_staging.py's raw_table_checks(), decision 102), each with its two thresholds (decision 204).
+          # Elementary's checks (make_dbt_staging.py's raw_table_checks()), each with its two thresholds.
           - elementary.volume_anomalies:
               config:
                 severity: error
@@ -53,11 +53,11 @@ sources:
             data_tests: [not_null, unique]
       - name: raw_ourhike__blaze_mapping
         data_tests:
-          # Rows sharing base_ourhike__blaze_mapping's key must be exact copies (decision 40).
+          # Rows sharing base_ourhike__blaze_mapping's key must be exact copies.
           - duplicates_are_exact:
               arguments:
                 key_columns: ["'reference/blaze_mapping.json'", "_path"]
-          # Elementary's checks (make_dbt_staging.py's raw_table_checks(), decision 102), each with its two thresholds (decision 204).
+          # Elementary's checks (make_dbt_staging.py's raw_table_checks()), each with its two thresholds.
           - elementary.volume_anomalies:
               config:
                 severity: error
@@ -78,11 +78,11 @@ sources:
           reference/blaze_mapping.json, the reviewed blaze mapping (#782, features/NEARBY_TRAILS.md section 4): per-source tables of what a raw value is as paint, each row somebody's decision. One row, the whole document, verbatim.
       - name: raw_ourhike__trail_name_aliases
         data_tests:
-          # Rows sharing base_ourhike__trail_name_aliases's key must be exact copies (decision 40).
+          # Rows sharing base_ourhike__trail_name_aliases's key must be exact copies.
           - duplicates_are_exact:
               arguments:
                 key_columns: ["'reference/trail_name_aliases.json'", "_path"]
-          # Elementary's checks (make_dbt_staging.py's raw_table_checks(), decision 102), each with its two thresholds (decision 204).
+          # Elementary's checks (make_dbt_staging.py's raw_table_checks()), each with its two thresholds.
           - elementary.volume_anomalies:
               config:
                 severity: error
@@ -103,11 +103,11 @@ sources:
           reference/trail_name_aliases.json, the reviewed trail-name aliases: each through route's names by publisher, with the rejected and removed candidates. One row, the whole document, verbatim.
       - name: raw_ourhike__work_projects
         data_tests:
-          # Rows sharing base_ourhike__work_projects's key must be exact copies (decision 40).
+          # Rows sharing base_ourhike__work_projects's key must be exact copies.
           - duplicates_are_exact:
               arguments:
                 key_columns: ["'reference/work_projects.json'", "_path"]
-          # Elementary's checks (make_dbt_staging.py's raw_table_checks(), decision 102), each with its two thresholds (decision 204).
+          # Elementary's checks (make_dbt_staging.py's raw_table_checks()), each with its two thresholds.
           - elementary.volume_anomalies:
               config:
                 severity: error
@@ -127,12 +127,11 @@ sources:
         config:
           # Read on the hourly conditions lane (its folder file's TYPE is
           # closures), because a cancelled workday must clear with the next
-          # bake (CL18). Its `_loaded_at` moves only when the file's bytes do,
+          # bake. Its `_loaded_at` moves only when the file's bytes do,
           # so freshness reads the run log instead
           # (macros/last_read_or_confirmed_at.sql), where every run that finds
           # it unchanged writes `skipped`. A read the leg refuses on its own is
-          # a warning on the hourly run since decision 100 (the maintainer's
-          # poll of 2026-10-07), and red here after 24 hours unread: the
+          # a warning on the hourly run (the maintainer's poll of 2026-10-07), and red here after 24 hours unread: the
           # thresholds are generate_notice_models.py's FRESHNESS_HOURS, graded
           # there, and tests/test_notice_source_freshness.py holds these to
           # them. publish-conditions.yml's freshness step selects

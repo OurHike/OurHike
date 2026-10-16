@@ -1,6 +1,6 @@
 {{ config(materialized='table') }}
 -- The tombstones: every POI id the identity ledger has ever retired, where
--- it was and what happened to it (PO26, export_retired_poi.py's
+-- it was and what happened to it (export_retired_poi.py's
 -- retired_rows() and tombstone(), #673). One row per retired ledger row.
 --
 -- Every retired row, whenever it was retired, never pruned by age:

@@ -1,5 +1,5 @@
 -- Every field the club_poi_types and layer_rules seeds name for one of
--- decision 54's wave 1 point layers is a column that layer landed. A rule
+-- the generated club point layers is a column that layer landed. A rule
 -- whose field is missing never fires: a planned trailhead, a staff residence
 -- or a water type that is not water would reach the type map unread, and a
 -- typo in a seed would look like a quiet layer. Read off the layer's own

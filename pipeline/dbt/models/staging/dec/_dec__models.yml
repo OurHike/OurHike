@@ -1,23 +1,22 @@
 version: 2
 
 models:
-  # --- Phase D: the non-A.T. organizations (#100) --------------------------
+  # --- The non-A.T. organizations (#100) ------------------------------------
   #
   # Four providers, fourteen models, and the thing worth noticing is how
   # little had to change to hold them: the column shape, the naming, the
-  # seed and the reconciliation tests all generalized as designed. What did
-  # NOT generalize is recorded in DBT.md's Phase D section.
+  # seed and the reconciliation tests all generalized as designed. What did not generalize is recorded in git history.
   #
   # This was a section header in the one staging.yml every org shared. That
   # file is now one _<org>__models.yml per org directory, so each test sits
   # beside its model, which dbt_project_evaluator's fct_test_directories
-  # enforces; the other three Phase D providers are in nynjtc/, mohonk/ and
+  # enforces; the other three hand-staged providers are in nynjtc/, mohonk/ and
   # oprhp/.
   - name: stg_dec__lean_tos
     data_tests:
       # Warns when the dedupe dropped any row, each an exact copy
       # (duplicates_are_exact on the raw table), and is an error once the
-      # copies are half the raw table (decision 204, the generic test's).
+      # copies are half the raw table (the generic test's).
       - equal_rowcount_to_raw:
           arguments:
             compare_model: source('dec', 'raw_nysdec__dec_lean_tos')
@@ -30,7 +29,7 @@ models:
     columns:
       - name: poi_key
         description: >
-          The row's key (decision 40): dbt_utils.generate_surrogate_key over
+          The row's key: dbt_utils.generate_surrogate_key over
           dec_lean_tos, asset_uid,
           the registry key first and then the columns measured unique for
           this layer.
@@ -42,7 +41,7 @@ models:
     data_tests:
       # Warns when the dedupe dropped any row, each an exact copy
       # (duplicates_are_exact on the raw table), and is an error once the
-      # copies are half the raw table (decision 204, the generic test's).
+      # copies are half the raw table (the generic test's).
       - equal_rowcount_to_raw:
           arguments:
             compare_model: source('dec', 'raw_nysdec__dec_primitive_campsites')
@@ -53,7 +52,7 @@ models:
     columns:
       - name: poi_key
         description: >
-          The row's key (decision 40): dbt_utils.generate_surrogate_key over
+          The row's key: dbt_utils.generate_surrogate_key over
           dec_primitive_campsites, asset_uid, geometry_key('geom'),
           the registry key first and then the columns measured unique for
           this layer.
@@ -65,7 +64,7 @@ models:
     data_tests:
       # Warns when the dedupe dropped any row, each an exact copy
       # (duplicates_are_exact on the raw table), and is an error once the
-      # copies are half the raw table (decision 204, the generic test's).
+      # copies are half the raw table (the generic test's).
       - equal_rowcount_to_raw:
           arguments:
             compare_model: source('dec', 'raw_nysdec__dec_scenic_vistas')
@@ -75,7 +74,7 @@ models:
     columns:
       - name: poi_key
         description: >
-          The row's key (decision 40): dbt_utils.generate_surrogate_key over
+          The row's key: dbt_utils.generate_surrogate_key over
           dec_scenic_vistas, asset_uid,
           the registry key first and then the columns measured unique for
           this layer.
@@ -87,7 +86,7 @@ models:
     data_tests:
       # Warns when the dedupe dropped any row, each an exact copy
       # (duplicates_are_exact on the raw table), and is an error once the
-      # copies are half the raw table (decision 204, the generic test's).
+      # copies are half the raw table (the generic test's).
       - equal_rowcount_to_raw:
           arguments:
             compare_model: source('dec', 'raw_nysdec__dec_firetowers')
@@ -99,7 +98,7 @@ models:
     columns:
       - name: poi_key
         description: >
-          The row's key (decision 40): dbt_utils.generate_surrogate_key over
+          The row's key: dbt_utils.generate_surrogate_key over
           dec_firetowers, asset_uid,
           the registry key first and then the columns measured unique for
           this layer.
@@ -111,7 +110,7 @@ models:
     data_tests:
       # Warns when the dedupe dropped any row, each an exact copy
       # (duplicates_are_exact on the raw table), and is an error once the
-      # copies are half the raw table (decision 204, the generic test's).
+      # copies are half the raw table (the generic test's).
       - equal_rowcount_to_raw:
           arguments:
             compare_model: source('dec', 'raw_nysdec__dec_viewing_areas')
@@ -120,7 +119,7 @@ models:
     columns:
       - name: poi_key
         description: >
-          The row's key (decision 40): dbt_utils.generate_surrogate_key over
+          The row's key: dbt_utils.generate_surrogate_key over
           dec_viewing_areas, asset_uid,
           the registry key first and then the columns measured unique for
           this layer.
@@ -132,7 +131,7 @@ models:
     data_tests:
       # Warns when the dedupe dropped any row, each an exact copy
       # (duplicates_are_exact on the raw table), and is an error once the
-      # copies are half the raw table (decision 204, the generic test's).
+      # copies are half the raw table (the generic test's).
       - equal_rowcount_to_raw:
           arguments:
             compare_model: source('dec', 'raw_nysdec__dec_parking_areas')
@@ -143,7 +142,7 @@ models:
     columns:
       - name: poi_key
         description: >
-          The row's key (decision 40): dbt_utils.generate_surrogate_key over
+          The row's key: dbt_utils.generate_surrogate_key over
           dec_parking_areas, asset_uid, geometry_key('geom'),
           the registry key first and then the columns measured unique for
           this layer.
@@ -155,7 +154,7 @@ models:
     data_tests:
       # Warns when the dedupe dropped any row, each an exact copy
       # (duplicates_are_exact on the raw table), and is an error once the
-      # copies are half the raw table (decision 204, the generic test's).
+      # copies are half the raw table (the generic test's).
       - equal_rowcount_to_raw:
           arguments:
             compare_model: source('dec', 'raw_nysdec__dec_hiking_trails')
@@ -170,7 +169,7 @@ models:
     columns:
       - name: trail_segment_key
         description: >
-          The row's key (decision 40): dbt_utils.generate_surrogate_key over
+          The row's key: dbt_utils.generate_surrogate_key over
           dec_hiking_trails, globalid,
           the registry key first and then the columns measured unique for
           this layer.
@@ -181,7 +180,7 @@ models:
     data_tests:
       # Warns when the dedupe dropped any row, each an exact copy
       # (duplicates_are_exact on the raw table), and is an error once the
-      # copies are half the raw table (decision 204, the generic test's).
+      # copies are half the raw table (the generic test's).
       - equal_rowcount_to_raw:
           arguments:
             compare_model: source('dec', 'raw_nysdec__dec_backcountry_features')
@@ -195,7 +194,7 @@ models:
     columns:
       - name: poi_key
         description: >
-          The row's key (decision 40): dbt_utils.generate_surrogate_key over
+          The row's key: dbt_utils.generate_surrogate_key over
           dec_backcountry_features, asset_uid, name, geometry_key('geom'),
           the registry key first and then the columns measured unique for
           this layer.

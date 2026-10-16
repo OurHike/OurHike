@@ -1,6 +1,6 @@
 -- The U.S. Census Bureau's TIGER/Line states (sources.json
 -- `census_tiger_states`, extract/_shared/census/states.py): every row, keyed
--- and deduped (decision 40), with nothing filtered and nothing joined.
+-- and deduped, with nothing filtered and nothing joined.
 --
 -- Key: `stusps`, the state's two-letter code, unique and non-null on 56 of 56
 -- records read 2026-10-04.

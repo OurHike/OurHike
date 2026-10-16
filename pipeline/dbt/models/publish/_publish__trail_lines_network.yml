@@ -1,8 +1,6 @@
 version: 2
 
-# The network half of the trail_lines family's phone files (stage 3 of #1793
-# — Rebuild the data platform as dlt → dbt: seven contracted marts, a
-# monthly refresh, published docs, and lighter phone downloads): every other
+# The network half of the trail_lines family's phone files: every other
 # organization's trail lines, which export_nearby_trails.py and cut_cells.py
 # write today. parity.py compares each dbt-written file with the Python's.
 models:
@@ -14,6 +12,7 @@ models:
       processed_dir/nearby_trails.geojson as one GeoJSON FeatureCollection.
       parity.py compares it with export_nearby_trails.py's file, feature by
       feature, keyed on `properties.id`.
+      Refreshed monthly, with its lane's build.
     config:
       access: public
       contract:
@@ -38,6 +37,7 @@ models:
       with export_nearby_trails.py's file feature by feature, keyed on each
       feature's (source, name, blaze_color, trail_status), with a
       MultiLineString's parts compared as a set.
+      Refreshed monthly, with its lane's build.
     config:
       access: public
       contract:
@@ -67,7 +67,7 @@ exposures:
       can freeze or crash it; it is what nearby_trails.pmtiles is cut from,
       and build_trail_graph.py and fetch_trail_water.py read it. Published in
       the release folder by publish-vector-data.yml from
-      export_nearby_trails.py's file until stage 4 of #1793 moves it to this
+      export_nearby_trails.py's file until the cutover moves it to this
       writer's.
     depends_on:
       - ref('trail_lines', v=1)
@@ -86,11 +86,11 @@ exposures:
     description: >
       The same lines as vector tiles, z5 to z14, layer `trails`, which a
       phone reads by byte range above the pin seam (client/src/lib/config.ts's
-      NEARBY_TRAILS_TILES_KEY). Written outside dbt (TL30), because the
+      NEARBY_TRAILS_TILES_KEY). Written outside dbt, because the
       phone_file materialisation writes JSON only: export_nearby_trails.py's
       write_tiles() cuts it with GDAL's PMTiles driver from a written
       nearby_trails.geojson, with lib/concurrency.py's shared-ground pairs
-      (TL19) unioned in. Today that file is the Python's; stage 4 of #1793
+      unioned in. Today that file is the Python's; stage 4 of #1793
       points it at pub_nearby_trails'.
     # The lines it is cut from, not the writer: each writer is one
     # exposure's (tests/test_dbt_publish_writers.py), and this file's writer
@@ -112,7 +112,7 @@ exposures:
     description: >
       Those tiles cut into 1-degree coverage cells, so a stretch download
       carries the network (client/src/lib/config.ts's NEARBY_TRAILS_CELLS_KEY).
-      Written outside dbt (TL31): cut_cells.py cuts each cell from
+      Written outside dbt: cut_cells.py cuts each cell from
       nearby_trails.pmtiles, unchanged, because dbt has no per-cell model
       fan-out.
     depends_on:
@@ -138,7 +138,7 @@ exposures:
       NETWORK_OVERVIEW_KEY), fetched whole on launch: the through routes
       named and cased, everything else as haze. Published in the release
       folder by publish-vector-data.yml from export_nearby_trails.py's file
-      until stage 4 of #1793 moves it to this writer's.
+      until the cutover moves it to this writer's.
     depends_on:
       - ref('pub_network_overview')
     config:

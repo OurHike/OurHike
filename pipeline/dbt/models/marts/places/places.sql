@@ -1,4 +1,4 @@
--- The places mart (decision 57): int_places__final's rows as
+-- The places mart: int_places__final's rows as
 -- int_places__history holds them now, each with when it was first seen and when
 -- it last changed (macros/row_history.sql). A row that left the mart stays in
 -- the snapshot, closed, and is not here: how removed features merge back is a

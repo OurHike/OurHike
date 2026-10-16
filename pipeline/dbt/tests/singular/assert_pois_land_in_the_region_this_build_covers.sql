@@ -2,8 +2,8 @@
 -- with more than half its points, or more than 10 of them, outside the box it
 -- publishes in. One row per such source.
 --
--- THE HOLE THIS CLOSES WAS PROVEN, NOT SUSPECTED. During Phase D's review a
--- verifier swapped the `st_x`/`st_y` lines in one staging model and rebuilt:
+-- THE HOLE THIS CLOSES WAS PROVEN, NOT SUSPECTED. During a review a verifier
+-- swapped the `st_x`/`st_y` lines in one staging model and rebuilt:
 -- `PASS=145 WARN=0 ERROR=0`, a completely green run, with every DEC lean-to
 -- relocated to Antarctica. `dbt_utils.accepted_range` did not catch it,
 -- because a transposed pair is still inside +/-180 and +/-90, and the

@@ -1,5 +1,5 @@
 -- DEC's back-country asset inventory as the extract lands it, keyed and
--- deduplicated (decision 40), every column kept.
+-- deduplicated, every column kept.
 --
 -- THIS IS NOT A POI LAYER, and the name invites the opposite reading. DEC's
 -- own description calls it "point data locating and differentiating assets
@@ -21,7 +21,7 @@
 -- (measured 2026-10-01), so the key adds NAME.
 with source as (
     -- dlt lands geometry as GeoJSON text (extract/_kinds.py's JSON
-    -- hint); cast here, as decision 40 has staging do.
+    -- hint); cast here, as staging models do.
     select
         -- The row's place in the raw table, which extract/_warehouse.py fills
         -- in the order the upstream served it: the order a Python exporter

@@ -1,5 +1,5 @@
-{#- Elementary on dbt 2 and DuckDB (decision 102, pipeline/ELT.md "Data
-    quality (decision 102)").
+{#- Elementary on dbt 2 and DuckDB (pipeline/ELT.md "Data
+    quality").
 
     dbt 2 pools its connections, so a temporary table one statement creates is
     gone by the next. Elementary's own redshift__has_temp_table_support()

@@ -1,8 +1,8 @@
--- Every active NWS alert (extract/_shared/nws/alerts.py), keyed (decision
--- 40), with nothing filtered: Test messages and cancellations are still
--- here, and int_warnings__nws_relayed leaves them out (WN01).
+-- Every active NWS alert (extract/_shared/nws/alerts.py), keyed, with nothing
+-- filtered: Test messages and cancellations are still
+-- here, and int_warnings__nws_relayed leaves them out.
 --
--- NWS's words stay as NWS wrote them (WN02): the text fields are renamed and
+-- NWS's words stay as NWS wrote them: the text fields are renamed and
 -- never trimmed or re-cased, and the times stay text, offsets and all,
 -- because export_weather_alerts.py relays them exactly and a parse to a
 -- timestamp would turn "15:22:00-04:00" into "19:22:00+00". The JSON

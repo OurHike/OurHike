@@ -1,10 +1,5 @@
 -- DEC's statewide hiking-trail network, with its geometry. `geom` is
--- carried for int_trail_lines__network_unioned, which publishes these lines
--- from stage 3 of #1793 — Rebuild the data platform as dlt → dbt: seven
--- contracted marts, a monthly refresh, published docs, and lighter phone
--- downloads. Until then this model was attributes only, as
--- stg_atc__centerline_segments still is for the A.T., and the lines stayed
--- in the Python spatial scripts.
+-- carried for int_trail_lines__network_unioned, which publishes these lines.
 --
 -- 5,286 polyline segments, fetched whole and counted 2026-08-25 against the
 -- 5,277 the survey read on 2026-08-11, so this layer moves. Every column
@@ -47,7 +42,7 @@
 -- ASSET 'SNOWMOBILE TRAIL' and 456 are unpaved roads.
 with source as (
     -- dlt lands geometry as GeoJSON text (extract/_kinds.py's JSON
-    -- hint); cast here, as decision 40 has staging do.
+    -- hint); cast here, as staging models do.
     select
         * exclude (geometry),
         st_geomfromgeojson(cast(geometry as varchar)) as geom

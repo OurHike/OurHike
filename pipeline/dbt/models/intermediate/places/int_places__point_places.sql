@@ -1,9 +1,9 @@
 {{ config(materialized='table') }}
 -- The trailheads, parking and towns places.json lists, before anything is
 -- measured: export_places.py's load_point_places() and community_states() in
--- SQL (PL05, PL04), in their order.
+-- SQL, in their order.
 --
--- PL05, FROM THE PUBLISHED WAYPOINTS. A row is a waypoint a phone already
+-- FROM THE PUBLISHED WAYPOINTS. A row is a waypoint a phone already
 -- holds (int_places__waypoints, the points_of_interest mart's trailheads,
 -- parking and resupply), so a pick here opens a waypoint the app can find,
 -- and its published id rides as `poi_id`. In load_point_places()'s order:
@@ -15,7 +15,7 @@
 --   ship: most of OPRHP's pull-offs and DEC's lots have no name;
 -- - a published id two rows carry ships once, the first in waypoint order.
 --
--- PL04, A POSTAL CODE ONLY WHERE THE SOURCE OR ITS ORGANIZATION STATES ONE.
+-- A POSTAL CODE ONLY WHERE THE SOURCE OR ITS ORGANIZATION STATES ONE.
 -- Every row takes the state its source's organization declares (`state` on
 -- the organization in sources.json: NYS OPRHP and NYS DEC publish New York).
 -- A town takes the state ATC's Communities layer writes for it, matched by

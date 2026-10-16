@@ -1,9 +1,9 @@
 {{ config(materialized='table') }}
--- Each POI's card photo and gallery (PO24, PO38): export_poi.py's main()
+-- Each POI's card photo and gallery: export_poi.py's main()
 -- from load_photo_records() to attach_photos(), one row per POI with a photo
 -- to show.
 --
--- THE FACE GATE (PO38, lib/photo_screen.py's gate_photos(), #836 — Run a
+-- THE FACE GATE (lib/photo_screen.py's gate_photos(), #836 — Run a
 -- face-and-nudity check over the Commons fetch, where a stranger's
 -- self-portrait can become a town's illustration) covers the Commons photos
 -- and not ATC's own inventory shoot, as export_poi.py applies it. A photo a

@@ -1,6 +1,6 @@
 {{ config(materialized='table') }}
 -- How ATC's half-mile markers orient and scale each centerline piece: the
--- calibration of the mile axis (pipeline/ELT.md's EL03),
+-- calibration of the mile axis,
 -- export_elevation._calibrated_part and the end of
 -- calibrate_parts_to_markers, on the pieces of
 -- int_trail_lines__mile_axis_pieces and the pairs of
@@ -35,7 +35,7 @@
 -- - The pieces are sorted by the mile at their start, ties kept in the
 --   straight-axis order: piece_id.
 --
--- SQL, WITH `spatial`, AND NOTHING LEFT IN PYTHON (decision 23). Measured
+-- SQL, WITH `spatial`, AND NOTHING LEFT IN PYTHON. Measured
 -- 2026-10-02 on dbt 2.0.6's DuckDB 1.5.4 against ATC's live centerline (3,025
 -- segments) and half-mile markers (4,395), read that day and loaded through
 -- extract fixture mode, with the Python run on the same files beside it: the

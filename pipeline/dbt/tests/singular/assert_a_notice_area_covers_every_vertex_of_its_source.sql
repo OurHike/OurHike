@@ -1,4 +1,4 @@
--- Decision 77's one promise about an area in conditions/notices.json: the
+-- The one promise about an area in conditions/notices.json: the
 -- published area covers the source's, every vertex and every edge, as the
 -- phone reads it (the GeoJSON text the writer prints, edges straight in
 -- longitude and latitude), so a route that met the source's area meets the

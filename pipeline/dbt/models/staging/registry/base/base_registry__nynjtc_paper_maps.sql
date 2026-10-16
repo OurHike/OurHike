@@ -1,5 +1,5 @@
 -- reference/nynjtc_paper_maps.json (_shared/registry/): NYNJTC's paper-map
--- table, as its one row, keyed (decision 40), with nothing filtered and
+-- table, as its one row, keyed, with nothing filtered and
 -- nothing joined. The document is still the JSON a person reviewed in; the
 -- staging models read its parts.
 --

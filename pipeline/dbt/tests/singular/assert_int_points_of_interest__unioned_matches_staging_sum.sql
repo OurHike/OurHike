@@ -8,12 +8,9 @@
 -- which is the duplication that makes the test worth having: a branch
 -- dropped from the union without being dropped here fails immediately, and
 -- a branch added to the union without being added here does too. Twenty-one
--- branches since stage 3 of #1793 — Rebuild the data platform as dlt → dbt:
--- seven contracted marts, a monthly refresh, published docs, and lighter
--- phone downloads (thirteen before it, as assert_int_pois_unioned_matches_
--- staging_sum), a twenty-second for decision 54's wave 1 point layers,
+-- hand-staged branches, a twenty-second for the generated club point layers,
 -- which reads every one of them through int_points_of_interest__club_points,
--- and a twenty-third for GATC's water list (decision 75).
+-- and a twenty-third for GATC's water list.
 with expected as (
     select
         (select count(*) from {{ ref('stg_atc__shelters') }})
@@ -45,12 +42,12 @@ with expected as (
             select count(*) from {{ ref('stg_derived__site_water') }}
             where has_water
         )
-        -- Decision 54's wave 1 point layers, one branch for all of them.
+        -- The generated club point layers, one branch for all of them.
         + (
             select count(*)
             from {{ ref('int_points_of_interest__club_points') }}
         )
-        -- GATC's water list, held rows included (decision 75).
+        -- GATC's water list, held rows included.
         + (
             select count(*)
             from {{ ref('int_points_of_interest__gatc_water') }}

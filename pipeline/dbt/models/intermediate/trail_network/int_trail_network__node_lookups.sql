@@ -2,8 +2,8 @@
 {%- set quant_m = var('trail_network_node_quant_m') %}
 {%- set rounds = [var('trail_network_node_rounds') | int, 1] | max %}
 -- Every question build_graph() asks its node grid, in the order it asks
--- them, and the node each answer is (build_trail_graph.py's _node_id(), TN06
--- of pipeline/ELT.md's ledger): each piece's start and end, piece by piece
+-- them, and the node each answer is (build_trail_graph.py's _node_id()):
+-- each piece's start and end, piece by piece
 -- in routable_lines()' part order and step_node_lines' piece order, then the
 -- two points of each weld (a joined line end and where it lands), in the
 -- order node_lines() makes the welds: each landing's weld_rank, which

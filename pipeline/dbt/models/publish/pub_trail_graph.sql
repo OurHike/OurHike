@@ -1,6 +1,6 @@
 {{ config(format='json_document', location='trail_graph.json') }}
 -- trail_graph.json, the routing half of the junction graph, in the shape
--- build_trail_graph.py's write_artifact() writes (decision 44's v1): one
+-- build_trail_graph.py's write_artifact() writes (the v1): one
 -- object, `nodes` then `edges`. A phone reads it at launch to say whether a
 -- day hike is on offer (PlanKindSheet), and client/src/lib/trailGraph.ts
 -- paths over it.
@@ -11,7 +11,7 @@
 --   `name`, `blaze_color`, every one present and null where unknown, as the
 --   Python writes None. `trail_id` is the line's `published_id` in the
 --   trail_lines mart, the `id` nearby_trails.geojson publishes, which a
---   phone joins each edge to its tile's line by (TL05).
+--   phone joins each edge to its tile's line by.
 -- No vertices: those are trail_graph_geometry.json's, index-aligned with
 -- `edges` (pub_trail_graph_geometry), because the geometry is by far the
 -- heavier half and is only needed once the builder opens.
@@ -59,7 +59,7 @@ edges as (
             || ']',
             '[]'
         ) as edges
-    from {{ ref('trail_network') }}
+    from {{ ref('trail_network', v=1) }}
 )
 
 select

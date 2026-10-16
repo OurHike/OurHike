@@ -1,6 +1,6 @@
 """Every mart carries when each row was first seen and when it last changed, from a snapshot of its own.
 
-Decision 57 (the maintainer, poll, 2026-10-03, amending decision 52): one
+The maintainer's poll of 2026-10-03: one
 snapshot per mart, built in the intermediate layer, holding every contracted
 column; the mart reads its current rows and their two dates from it. Only
 marts carry `_first_seen_at` and `_changed_at`; intermediates are not asked
@@ -16,7 +16,7 @@ tests/test_dbt_row_dates_builds.py drives dbt through builds and a restore.
 - every mart's contract is enforced and declares both `timestamptz`, each
   with a not_null test that warns rather than fails when OURHIKE_ROW_HISTORY
   is off (a conditions leg built without its history, build_marts.py's
-  --history-on-failure degrade), and, as every test does since decision 204,
+  --history-on-failure degrade), and, as every test does,
   when OURHIKE_DATA_ENV is production or ua (dbt_project.yml's switch);
 - every mart reads int_<mart>__history and int_<mart>__final under its own
   key, the snapshot's body is row_history_snapshot('int_<mart>__final')
@@ -46,7 +46,7 @@ SNAPSHOT_BODY = re.compile(
     re.S,
 )
 #: What the not_null tests on the two dates must say, so a degraded conditions leg's null dates warn, and production's
-#: and UA's do, as dbt_project.yml's switch makes every other test's (decision 204).
+#: and UA's do, as dbt_project.yml's switch makes every other test's.
 SEVERITY = "{{ 'warn' if env_var('OURHIKE_ROW_HISTORY', 'on') == 'off' or env_var('OURHIKE_DATA_ENV', 'dev') in ['production', 'ua'] else 'error' }}"
 
 
@@ -160,7 +160,7 @@ def test_there_are_marts_to_check():
 
 @pytest.mark.parametrize("path", MART_FILES, ids=[path.stem for path in MART_FILES])
 def test_each_mart_carries_both_row_dates_in_its_contract(path):
-    assert problems(path, MODELS_YAML) == [], f"{path.stem} must carry _first_seen_at and _changed_at (decision 57)"
+    assert problems(path, MODELS_YAML) == [], f"{path.stem} must carry _first_seen_at and _changed_at"
 
 
 @pytest.mark.parametrize("path", MART_FILES, ids=[path.stem for path in MART_FILES])
@@ -214,5 +214,5 @@ def test_a_versions_columns_follow_its_include_and_exclude():
 
 
 def test_the_hook_for_removed_features_is_there_for_the_later_decision():
-    """Decision 57 leaves how removed features merge back to a later decision; row_history_removed() is where."""
+    """How removed features merge back is still to be decided; row_history_removed() is where."""
     assert "macro row_history_removed(history_name, key)" in (DBT / "macros" / "row_history.sql").read_text()

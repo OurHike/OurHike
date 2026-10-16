@@ -5,7 +5,7 @@ models:
     data_tests:
       # Warns when the dedupe dropped any row, each an exact copy
       # (duplicates_are_exact on the raw table), and is an error once the
-      # copies are half the raw table (decision 204, the generic test's).
+      # copies are half the raw table (the generic test's).
       - equal_rowcount_to_raw:
           arguments:
             compare_model: source('alaska_trails', 'raw_alaska_trails__alaska_trails')
@@ -15,7 +15,7 @@ models:
     columns:
       - name: trail_segment_key
         description: >
-          The row's key (decision 40): dbt_utils.generate_surrogate_key over
+          The row's key: dbt_utils.generate_surrogate_key over
           alaska_trails, trailname, trailtype, geometry_key(geom), the
           registry key first and then the columns measured unique for this
           layer.

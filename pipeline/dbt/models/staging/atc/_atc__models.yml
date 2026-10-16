@@ -5,7 +5,7 @@ models:
     data_tests:
       # Warns when the dedupe dropped any row, each an exact copy
       # (duplicates_are_exact on the raw table), and is an error once the
-      # copies are half the raw table (decision 204, the generic test's).
+      # copies are half the raw table (the generic test's).
       - equal_rowcount_to_raw:
           arguments:
             compare_model: source('atc', 'raw_atc__shelters')
@@ -13,12 +13,11 @@ models:
       ATC shelters, one row per shelter, keyed and deduplicated, with every
       upstream column the extract lands. Their poi_type ('shelter') and
       confidence ('high') are the poi_type_mapping seed's, joined in
-      int_points_of_interest__classified: decision 40 keeps classification
-      out of staging.
+      int_points_of_interest__classified: classification stays out of staging.
     columns:
       - name: poi_key
         description: >
-          The row's key (decision 40): dbt_utils.generate_surrogate_key over
+          The row's key: dbt_utils.generate_surrogate_key over
           shelters, globalid,
           the registry key first and then the columns measured unique for
           this layer.
@@ -30,7 +29,7 @@ models:
     data_tests:
       # Warns when the dedupe dropped any row, each an exact copy
       # (duplicates_are_exact on the raw table), and is an error once the
-      # copies are half the raw table (decision 204, the generic test's).
+      # copies are half the raw table (the generic test's).
       - equal_rowcount_to_raw:
           arguments:
             compare_model: source('atc', 'raw_atc__campsites')
@@ -39,7 +38,7 @@ models:
     columns:
       - name: poi_key
         description: >
-          The row's key (decision 40): dbt_utils.generate_surrogate_key over
+          The row's key: dbt_utils.generate_surrogate_key over
           campsites, globalid,
           the registry key first and then the columns measured unique for
           this layer.
@@ -51,7 +50,7 @@ models:
     data_tests:
       # Warns when the dedupe dropped any row, each an exact copy
       # (duplicates_are_exact on the raw table), and is an error once the
-      # copies are half the raw table (decision 204, the generic test's).
+      # copies are half the raw table (the generic test's).
       - equal_rowcount_to_raw:
           arguments:
             compare_model: source('atc', 'raw_atc__viewpoints')
@@ -60,7 +59,7 @@ models:
     columns:
       - name: poi_key
         description: >
-          The row's key (decision 40): dbt_utils.generate_surrogate_key over
+          The row's key: dbt_utils.generate_surrogate_key over
           viewpoints, globalid,
           the registry key first and then the columns measured unique for
           this layer.
@@ -72,7 +71,7 @@ models:
     data_tests:
       # Warns when the dedupe dropped any row, each an exact copy
       # (duplicates_are_exact on the raw table), and is an error once the
-      # copies are half the raw table (decision 204, the generic test's).
+      # copies are half the raw table (the generic test's).
       - equal_rowcount_to_raw:
           arguments:
             compare_model: source('atc', 'raw_atc__parking')
@@ -81,7 +80,7 @@ models:
     columns:
       - name: poi_key
         description: >
-          The row's key (decision 40): dbt_utils.generate_surrogate_key over
+          The row's key: dbt_utils.generate_surrogate_key over
           parking, globalid,
           the registry key first and then the columns measured unique for
           this layer.
@@ -93,7 +92,7 @@ models:
     data_tests:
       # Warns when the dedupe dropped any row, each an exact copy
       # (duplicates_are_exact on the raw table), and is an error once the
-      # copies are half the raw table (decision 204, the generic test's).
+      # copies are half the raw table (the generic test's).
       - equal_rowcount_to_raw:
           arguments:
             compare_model: source('atc', 'raw_atc__privies')
@@ -102,7 +101,7 @@ models:
     columns:
       - name: poi_key
         description: >
-          The row's key (decision 40): dbt_utils.generate_surrogate_key over
+          The row's key: dbt_utils.generate_surrogate_key over
           privies, globalid,
           the registry key first and then the columns measured unique for
           this layer.
@@ -114,7 +113,7 @@ models:
     data_tests:
       # Warns when the dedupe dropped any row, each an exact copy
       # (duplicates_are_exact on the raw table), and is an error once the
-      # copies are half the raw table (decision 204, the generic test's).
+      # copies are half the raw table (the generic test's).
       - equal_rowcount_to_raw:
           arguments:
             compare_model: source('atc', 'raw_atc__communities')
@@ -127,7 +126,7 @@ models:
     columns:
       - name: poi_key
         description: >
-          The row's key (decision 40): dbt_utils.generate_surrogate_key over
+          The row's key: dbt_utils.generate_surrogate_key over
           communities, globalid,
           the registry key first and then the columns measured unique for
           this layer.
@@ -139,7 +138,7 @@ models:
     data_tests:
       # Warns when the dedupe dropped any row, each an exact copy
       # (duplicates_are_exact on the raw table), and is an error once the
-      # copies are half the raw table (decision 204, the generic test's).
+      # copies are half the raw table (the generic test's).
       - equal_rowcount_to_raw:
           arguments:
             compare_model: source('atc', 'raw_atc__bridges')
@@ -151,7 +150,7 @@ models:
     columns:
       - name: poi_key
         description: >
-          The row's key (decision 40): dbt_utils.generate_surrogate_key over
+          The row's key: dbt_utils.generate_surrogate_key over
           bridges, globalid,
           the registry key first and then the columns measured unique for
           this layer.
@@ -162,7 +161,7 @@ models:
     data_tests:
       # Warns when the dedupe dropped any row, each an exact copy
       # (duplicates_are_exact on the raw table), and is an error once the
-      # copies are half the raw table (decision 204, the generic test's).
+      # copies are half the raw table (the generic test's).
       - equal_rowcount_to_raw:
           arguments:
             compare_model: source('atc', 'raw_atc__centerline')
@@ -173,7 +172,7 @@ models:
     columns:
       - name: trail_segment_key
         description: >
-          The row's key (decision 40): dbt_utils.generate_surrogate_key over
+          The row's key: dbt_utils.generate_surrogate_key over
           centerline and the globalid, or the objectid where a row has no
           globalid, so rows without one never share a key.
         data_tests: [not_null, unique]
@@ -182,7 +181,7 @@ models:
         data_tests:
           # WARN: the key falls back to OBJECTID, so a missing GlobalID is
           # reported rather than fatal. An error when no segment has one
-          # (decision 204, tests/generic/rows_named.sql): the layer stopped
+          # (tests/generic/rows_named.sql): the layer stopped
           # serving the field, not one segment.
           - rows_named:
               name: stg_atc__centerline_segments_names_a_segment_with_no_globalid
@@ -203,7 +202,7 @@ models:
     data_tests:
       # Warns when the dedupe dropped any row, each an exact copy
       # (duplicates_are_exact on the raw table), and is an error once the
-      # copies are half the raw table (decision 204, the generic test's).
+      # copies are half the raw table (the generic test's).
       - equal_rowcount_to_raw:
           arguments:
             compare_model: source('atc', 'raw_atc__side_trails')
@@ -215,7 +214,7 @@ models:
     columns:
       - name: trail_segment_key
         description: >
-          The row's key (decision 40): dbt_utils.generate_surrogate_key over
+          The row's key: dbt_utils.generate_surrogate_key over
           side_trails and the globalid, or the objectid where a row has no
           globalid, so rows without one never share a key.
         data_tests: [not_null, unique]
@@ -224,7 +223,7 @@ models:
         data_tests:
           # WARN: the key falls back to OBJECTID, so a missing GlobalID is
           # reported rather than fatal. An error when no side trail has one
-          # (decision 204, tests/generic/rows_named.sql): the layer stopped
+          # (tests/generic/rows_named.sql): the layer stopped
           # serving the field, not one trail.
           - rows_named:
               name: stg_atc__side_trails_names_a_trail_with_no_globalid
@@ -251,7 +250,7 @@ models:
     data_tests:
       # Warns when the dedupe dropped any row, each an exact copy
       # (duplicates_are_exact on the raw table), and is an error once the
-      # copies are half the raw table (decision 204, the generic test's).
+      # copies are half the raw table (the generic test's).
       - equal_rowcount_to_raw:
           arguments:
             compare_model: source('atc', 'raw_atc__trail_club_sections')
@@ -261,7 +260,7 @@ models:
     columns:
       - name: club_section_key
         description: >
-          The row's key (decision 40): dbt_utils.generate_surrogate_key over
+          The row's key: dbt_utils.generate_surrogate_key over
           trail_club_sections, globalid,
           the registry key first and then the columns measured unique for
           this layer.
@@ -272,7 +271,7 @@ models:
     data_tests:
       # Warns when the dedupe dropped any row, each an exact copy
       # (duplicates_are_exact on the raw table), and is an error once the
-      # copies are half the raw table (decision 204, the generic test's).
+      # copies are half the raw table (the generic test's).
       - equal_rowcount_to_raw:
           arguments:
             compare_model: source('atc', 'raw_atc__half_mile_points_from_springer')
@@ -282,7 +281,7 @@ models:
     columns:
       - name: mile_marker_key
         description: >
-          The row's key (decision 40): dbt_utils.generate_surrogate_key over
+          The row's key: dbt_utils.generate_surrogate_key over
           half_mile_points_from_springer, point_id,
           the registry key first and then the columns measured unique for
           this layer.
@@ -300,7 +299,7 @@ models:
     data_tests:
       # Warns when the dedupe dropped any row, each an exact copy
       # (duplicates_are_exact on the raw table), and is an error once the
-      # copies are half the raw table (decision 204, the generic test's).
+      # copies are half the raw table (the generic test's).
       - equal_rowcount_to_raw:
           arguments:
             compare_model: source('atc', 'raw_atc__at_treadway')
@@ -309,7 +308,7 @@ models:
     columns:
       - name: trail_segment_key
         description: >
-          The row's key (decision 40): dbt_utils.generate_surrogate_key over
+          The row's key: dbt_utils.generate_surrogate_key over
           at_treadway, globalid,
           the registry key first and then the columns measured unique for
           this layer.

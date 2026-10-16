@@ -1,6 +1,6 @@
 {{ config(materialized='table') }}
 -- Every club notice that closes an AREA, as the source drew it: the areas
--- decision 187 (S6, poll of 2026-10-11) crosses out the trails of,
+-- whose trails are crossed out (the maintainer's poll of 2026-10-11),
 -- where they run inside, in conditions/trail_closures.json. One row per
 -- notice, with its own area made valid and its bounding box.
 -- step_closure_trail_lines (pipeline/step_closure_trail_lines.py) reads the
@@ -8,7 +8,7 @@
 -- one, and int_closures__area_trail_cuts cuts those lines against the areas.
 --
 -- THE SOURCE'S OWN AREA, NOT THE PHONE'S. conditions/notices.json carries an
--- area grown 100 m outward (decision 77) so that a route passing near it is
+-- area grown 100 m outward so that a route passing near it is
 -- shown the notice; that margin is for showing a notice rather than missing
 -- it, and it would cross out 100 m of open trail past the closure's edge. So
 -- the cut is against the area as the source drew it, as NYS Parks' areas are
@@ -20,8 +20,9 @@
 -- source seeds/notice_readers.csv names, whose own `obstructs_trail` is true,
 -- ATC's excepted (ATC's own band draws those, from
 -- conditions/atc_updates.json). That writer marks a row obstructing when the
--- mart's `obstructs_trail` is true and the source is not one of decision 67's
--- hazard areas, so every area it marks obstructing is a row here (Reasoned
+-- mart's `obstructs_trail` is true and the source is not a hazard area
+-- (seeds/notice_hazard_areas.csv), so every area it marks obstructing is a row
+-- here (Reasoned
 -- from its SQL), and pub_conditions_trail_closures, which takes its rows from
 -- that writer's file, never meets an obstructing area with no row here. A
 -- hazard source's rows never obstruct in the marts either

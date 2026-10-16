@@ -1,9 +1,9 @@
 {{ config(materialized='table') }}
 -- The trail stretches inside each area closure, or, where none runs inside,
--- the area itself as the map shades it. Decision 187 (S6, the maintainer's
--- poll of 2026-10-11): "an area closure's trails are crossed out where they
+-- the area itself as the map shades it. The maintainer's poll of
+-- 2026-10-11: "an area closure's trails are crossed out where they
 -- run inside it, cut by the hourly build as NYS Parks' areas already are
--- monthly". Decision 191 (the poll of 2026-10-14, "Shade them, no edge"): an
+-- monthly". The poll of 2026-10-14, "Shade them, no edge": an
 -- area closure with no mapped trail inside draws as a light hatch with no
 -- mark on its edge. One row per area of int_closures__trail_closure_areas in
 -- an hour that has lines to cut against: where a mapped trail runs inside,
@@ -24,17 +24,17 @@
 -- AN HOUR WITH NO LINES HAS NO ROW AT ALL. With nothing to cut against,
 -- nothing says which areas have a trail inside, so none is shaded either:
 -- the maintainer chose to shade only the areas with no trail inside, over
--- shading every area (decision 191's option B), and an area whose trails
+-- shading every area, and an area whose trails
 -- would have been crossed out must not be drawn as one with none. So that
--- hour every area closure is left out of the file, as all of them were in
--- such an hour before decision 191, and step_closure_trail_lines' warning
--- says so. The step lands a row whenever it read lines (its docstring, "THE
+-- hour every area closure is left out of the file, and
+-- step_closure_trail_lines' warning says so. The step lands a row whenever it
+-- read lines (its docstring, "THE
 -- TABLE IS EMPTY EXACTLY WHEN NO LINES WERE READ"), so an empty table means
 -- exactly that hour.
 --
 -- THE LINES are every trail line a phone draws, from the environment's
 -- current release (stg_derived__closure_trail_lines): its nearby trail lines
--- and, since decision 192 (the poll of 2026-10-14, "Yes, like any trail"),
+-- and (the poll of 2026-10-14, "Yes, like any trail")
 -- the A.T.'s own, so a stretch is cut from the line drawn under it, the
 -- A.T.'s included (prepare_closure_trail_lines.py says why).
 --
@@ -47,14 +47,14 @@
 -- edge is not a walkable section), so a line half inside keeps only its
 -- inside half.
 --
--- ONLY A STRETCH INSIDE THE AREA CLOSES, NOT ONE ALONG ITS EDGE (decision
--- 213, rule 6, the maintainer's poll of 2026-10-15, "Only inside closes",
+-- ONLY A STRETCH INSIDE THE AREA CLOSES, NOT ONE ALONG ITS EDGE (the
+-- maintainer's poll of 2026-10-15, "Only inside closes",
 -- for every source). The GEOS intersection of a line with a polygon keeps
 -- the part along its boundary, so a trail that forms an area's edge was
 -- crossed out, and in fragments: the lines are rounded to 5 decimal places
 -- before the cut and the areas are not, so such a trail weaves across the
--- edge and the cut keeps each piece on the inside. Decision 191 meant an
--- open trail along an edge never to read as closed. So a stretch closes
+-- edge and the cut keeps each piece on the inside. An open trail along
+-- an edge must never read as closed. So a stretch closes
 -- only if some part of it lies more than `area_closure_edge_m` (2 m,
 -- dbt_project.yml says whose number it is) in from the area's outline, a
 -- hole's edge included, measured in EPSG:5070 as the cuts' other distances
@@ -88,7 +88,7 @@
 -- once more, and what is left is collected as a MultiLineString whatever its
 -- count: one stretch is a MultiLineString of one, so a phone reads one type.
 -- Measured 2026-10-11 against the 193 areas of UA's conditions/notices.json of
--- 16:23 UTC (grown 100 m, decision 77, so a little more than these areas)
+-- 16:23 UTC (grown 100 m, so a little more than these areas)
 -- and release 2026-10-10-2's lines: 47 of the 193 held a mapped trail, in
 -- 1,311 stretches of 101,146 vertices, 2,203,651 bytes of GeoJSON at 5
 -- decimals unshaped and 1,247,769 shaped at 10 m.
@@ -123,7 +123,7 @@ with outlined as (
 ),
 
 -- Each area with the band within `area_closure_edge_m` of its outline, in
--- EPSG:5070 (rule 6 above).
+-- EPSG:5070 (above).
 areas as (
     select
         notice_id,
@@ -196,7 +196,7 @@ dumped as (
 ),
 
 -- Each walkable piece, and whether it lies wholly within the band along its
--- area's outline (rule 6): null where that could not be measured. The band
+-- area's outline: null where that could not be measured. The band
 -- is joined here rather than carried through the unnest above, so each
 -- area's band is not copied onto every piece's row.
 parts as (

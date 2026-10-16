@@ -1,4 +1,4 @@
--- Every OSM water point in the corridor has a reachability verdict (PO08).
+-- Every OSM water point in the corridor has a reachability verdict.
 -- int_points_of_interest__reached drops a point with none, which is the safe
 -- direction for one point; a build in which the verdicts and the points
 -- disagree is a broken build, and export_poi.py's read_sources() refuses to

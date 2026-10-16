@@ -1,4 +1,4 @@
-"""A real dbt build of the conditions files on a warehouse that holds no club notice table (decision 61).
+"""A real dbt build of the conditions files on a warehouse that holds no club notice table.
 
 The hourly warehouse adds the newest served copy of the 4-hourly notices
 store, so a notices table can be absent from it: one still waiting its turn
@@ -19,11 +19,11 @@ deleted, as a warehouse with only the hourly store's tables has them. Then:
 (d) no club notice reaches the closures or warnings mart;
 (e) conditions/notices.json is not written: with no row history there is no
     held club's last good rows to carry, so its writer keeps the phone's
-    last file whole rather than publishing every club as having no notices
-    (decision 53, phase D); nor is conditions/hazard_areas.json, whose
-    writer reads that one's rows (decision 84), so the phone keeps its last
+    last file whole rather than publishing every club as having no notices;
+    nor is conditions/hazard_areas.json, whose
+    writer reads that one's rows, so the phone keeps its last
     hazard areas rather than reading an empty list as none; nor is
-    conditions/trail_closures.json (decision 187), whose writer reads them
+    conditions/trail_closures.json, whose writer reads them
     too, so the phone keeps drawing its last closures rather than none. This
     build stands in for an hour with no trail lines to cut against, as
     step_closure_trail_lines leaves one: its table empty.
@@ -86,9 +86,9 @@ HOURLY_SOURCES = {
 WRITERS = ("pub_conditions_atc_updates", "pub_conditions_nynjtc_alerts", "pub_conditions_closures")
 #: conditions/notices.json's writer, which spans every club and so keeps its last file while one is held here.
 NOTICES_WRITER = "pub_conditions_notices"
-#: conditions/hazard_areas.json's writer (decision 84), which keeps its last file whenever that one does.
+#: conditions/hazard_areas.json's writer, which keeps its last file whenever that one does.
 HAZARD_WRITER = "pub_conditions_hazard_areas"
-#: conditions/trail_closures.json's writer (decision 187), which keeps its last file whenever that one does too.
+#: conditions/trail_closures.json's writer, which keeps its last file whenever that one does too.
 TRAIL_CLOSURES_WRITER = "pub_conditions_trail_closures"
 
 
@@ -150,9 +150,9 @@ def build(tmp_path_factory) -> dict:
         "OURHIKE_WAREHOUSE": str(warehouse),
         "OURHIKE_PROCESSED_DIR": str(processed),
         "DBT_ENGINE_SEND_ANONYMOUS_USAGE_STATS": "false",
-        # A conditions leg whose restore failed (decision 58): the marts build from their finals, no snapshot.
+        # A conditions leg whose restore failed: the marts build from their finals, no snapshot.
         "OURHIKE_ROW_HISTORY": "off",
-        # As a conditions leg builds (decision 204): a failing test warns, and build_marts.py reports one past its
+        # As a conditions leg builds: a failing test warns, and build_marts.py reports one past its
         # error threshold, which tests the gate's hold of every absent source rather than stopping on it.
         "OURHIKE_DATA_ENV": "ua",
     }

@@ -1,8 +1,7 @@
 {#-
     ROW HISTORY: when each mart row was first seen and when it last changed.
 
-    Decision 57 (the maintainer, poll, 2026-10-03, amending decision 52):
-    one snapshot per mart, built in the intermediate layer, holding every
+    The maintainer's poll of 2026-10-03: one snapshot per mart, built in the intermediate layer, holding every
     contracted column, so that a removed feature keeps its last content and
     a later decision can merge removed features back. Only marts carry
     `_first_seen_at` and `_changed_at`.
@@ -27,7 +26,7 @@
       later decision on how removed features merge back.
 
     dbt 2.0.6 behaviour this rests on, measured 2026-10-03 in a scratch
-    project on DuckDB (pipeline/ELT.md, "Row dates (decision 52)", has the
+    project on DuckDB (pipeline/ELT.md, "Row dates", has the
     list): a SQL snapshot block with strategy check, check_cols
     [_row_hash], unique_key (one column, or a list) and hard_deletes
     invalidate kept an unchanged row's one version across builds, opened a
@@ -179,8 +178,8 @@
 {#- THE HOOK FOR REMOVED FEATURES, read by no model today. The last version
     of every key the snapshot holds no current version of: a feature that
     left the mart, with the content it had when it left, `_removed_at`
-    (its dbt_valid_to) and `_first_seen_at`. Decision 57 leaves how removed
-    features merge back to a later decision. For A.T. POIs that decision
+    (its dbt_valid_to) and `_first_seen_at`. How removed features merge back
+    is still to be decided. For A.T. POIs that decision
     meets the identity ledger, reference/poi_identity.json, which already
     issues tombstones (retired_poi.geojson): the two must end with one home.
 
@@ -237,8 +236,7 @@
     timezone('UTC', now())
 {%- endmacro %}
 
-{#- `sql`, only in a build without the row history (OURHIKE_ROW_HISTORY=off,
-    decision 58), and nothing otherwise: for a writer that must not publish
+{#- `sql`, only in a build without the row history (OURHIKE_ROW_HISTORY=off), and nothing otherwise: for a writer that must not publish
     what a missing history would make it publish. pub_conditions_notices
     keeps the phone's last file while a notice source is held, because with
     no history a held club's last good rows cannot be carried. A macro, so

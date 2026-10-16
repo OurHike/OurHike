@@ -1,8 +1,7 @@
-"""The closures and warnings family's SQL refuses and reads what today's Python does, on the same rows (#1793, stage 3).
+"""The closures and warnings family's SQL refuses and reads what today's Python does, on the same rows.
 
 ATC's reviewed Trail Updates, NYNJTC's Trail Alerts and NWS's relay moved to
-SQL (pipeline/ELT.md's ledger, CL01-CL06, WN01-WN08), and until stage 5
-deletes the Python both are live. parity.py compares the phone files in CI,
+SQL, and until the Python is deleted both are live. parity.py compares the phone files in CI,
 on the real reference/atc_updates.json and on fixture mode's answers for the
 rest; this holds what those inputs never exercise, because almost all of it
 is a refusal:
@@ -20,16 +19,16 @@ is a refusal:
   int_warnings__nws_alert_shapes' unit-test polygons where the SQL does, to
   the last bit, and export_weather_alerts.py's bake(), over the squares and
   alerts int_warnings__nws_placed's unit tests stand for, places each alert
-  on the same squares and reports the same unknown zones (WN03);
+  on the same squares and reports the same unknown zones;
 - lib/work_projects.py's file_problems() and published_rows(), over
   int_closures__work_projects_checked's unit-test rows, refuse the same rows
-  in the same words and write the same rows (CL17);
+  in the same words and write the same rows;
 - export_atc_updates.py's main(), over the files int_closures__gate's unit
   tests stand for, publishes where the gate passes;
 - lib/atc_updates.py's auto_publish_refusal() and auto_row(), over
   int_closures__atc_automatic's unit-test pages, refuse the same updates in
-  the same words and write the same rows (CL07-CL10), and
-  propose_atc_updates.py's _actionable() keeps the same refusals (CL12);
+  the same words and write the same rows, and
+  propose_atc_updates.py's _actionable() keeps the same refusals;
 
 except where a DELIBERATE set below names a row the SQL treats otherwise on
 purpose. Each such row must still differ, so emptying a set turns its test red.
@@ -64,8 +63,8 @@ UNESCAPE = DBT / "macros" / "python_html_unescape.sql"
 # with a leading space. urlparse() strips it before reading the scheme, and
 # the phone would then open the link with the space still in it, so the SQL
 # reads the scheme as written, as int_podcasts__checked reads a link. Rows
-# 39-42, a source_url back into the app (macros/link_into_the_app.sql,
-# decision 94): the app's own site, no host, a sign-in token, and the app's
+# 39-42, a source_url back into the app (macros/link_into_the_app.sql):
+# the app's own site, no host, a sign-in token, and the app's
 # host in capitals; lib/atc_updates.py reads only the scheme, and the client
 # refuses all four at the sink (lib/safeLink.ts).
 DELIBERATE_ATC_ROWS = {36, 39, 40, 41, 42}
@@ -78,8 +77,8 @@ DELIBERATE_ATC_ROWS = {36, 39, 40, 41, 42}
 #        than drop one;
 #   n16  a title that is not a string: _text_of() publishes str(5), and the
 #        SQL refuses it as a payload whose shape has changed;
-#   n17-n19  a link back into the app (macros/link_into_the_app.sql,
-#        decision 94), which parse_alert() reads as any link starting "http".
+#   n17-n19  a link back into the app (macros/link_into_the_app.sql),
+#        which parse_alert() reads as any link starting "http".
 DELIBERATE_NYNJTC_POSTS = {"n09", "n14", "n15", "n16", "n17", "n18", "n19"}
 
 # ATC pages the SQL refuses and auto_publish_refusal() publishes: u19, a
@@ -218,7 +217,7 @@ def test_the_gate_holds_back_what_export_atc_updates_does_not_publish(name, tmp_
     assert python_publishes == atc["passed"], name
 
 
-# --- ATC's automatic rows (CL07-CL10, CL12) ---------------------------------------
+# --- ATC's automatic rows ---------------------------------------
 
 AUTOMATIC = "int_closures__atc_automatic_refuses_what_auto_publish_refusal_refuses"
 AUTOMATIC_ROWS = "int_closures__atc_automatic_writes_the_row_auto_row_writes"
@@ -265,12 +264,12 @@ def test_auto_publish_refusal_refuses_what_the_atc_automatic_unit_test_expects()
             assert python is None and sql["refusal"] is not None, f"{page.slug} is no longer a deliberate difference"
             continue
         assert _same_words(python) == _same_words(sql["refusal"]), f"{page.slug}: Python {python!r}, SQL {sql['refusal']!r}"
-        # CL12: the refusals propose_atc_updates.py proposes to a person.
+        # The refusals propose_atc_updates.py proposes to a person.
         assert (python is not None and propose_atc_updates._actionable(python)) == sql["actionable"], page.slug
 
 
 def test_auto_row_writes_what_the_atc_automatic_unit_test_expects():
-    """Field by field and type by type: a whole mile stays a float (1138.0), and obstructs_trail is False on every row (CL09)."""
+    """Field by field and type by type: a whole mile stays a float (1138.0), and obstructs_trail is False on every row."""
     test = _unit_tests(CLOSURES)[AUTOMATIC_ROWS]
     pages, reviewed, reviewed_at = _pages(test)
     expected = {row["slug"]: row["published_row"] for row in test["expect"]["rows"]}
@@ -358,7 +357,7 @@ def test_relayed_relays_what_the_nws_unit_test_expects():
     assert relayed == {row["notice_id"] for row in test["expect"]["rows"]}
 
 
-# --- NWS's placement on the weather squares (WN03) ---------------------------------
+# --- NWS's placement on the weather squares ---------------------------------
 
 PLACED_TESTS = [
     "int_warnings__nws_placed_places_each_alert_as_export_weather_alerts_bake_does",
@@ -496,7 +495,7 @@ def test_a_run_stamp_is_held_to_its_form_and_not_its_value():
     assert parity.differences(old, {"closures": []}, family) != []
 
 
-# --- Work projects (CL17) ----------------------------------------------------------
+# --- Work projects ----------------------------------------------------------
 
 WORK_PROJECTS = "int_closures__work_projects_checked_finds_what_file_problems_finds"
 WORK_PROJECTS_FILE = "int_closures__work_projects_checked_refuses_the_files_own_problems"

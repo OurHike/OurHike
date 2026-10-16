@@ -1,11 +1,8 @@
 """A real dbt build of the conditions files in which one club's row leaks its wording and another's lands outside its box.
 
-Decision 81 (the maintainer's poll, 2026-10-05: "Hold that source and
-publish the rest"; review finding ARCH-1 of PR #1805 — dlt → dbt re-platform
-as one go/no-go change). Until it, the wording-leak test and the closures and
-warnings marts' region tests failed the build at severity error, so one
-club's row stopped every hourly file: soak runs 525 to 527 and 530 published
-nothing for anyone. This builds the fixtures' conditions files twice in one
+The maintainer's poll, 2026-10-05: "Hold that source and publish the
+rest". A failing wording-leak or region test holds only its own source, so
+one club's bad row cannot stop every hourly file. This builds the fixtures' conditions files twice in one
 warehouse, with the row history on, as two hourly runs would:
 
 1. clean, so the history holds every club's rows;
@@ -20,8 +17,7 @@ warehouse, with the row history on, as two hourly runs would:
 
 Then, of the second build:
 
-(a) it succeeds, its tests included, where before decision 81 it failed on
-    those two tests and wrote no file;
+(a) it succeeds, its tests included;
 (b) int_closures__gate holds GRSM for its wording and CT DEEP for its region,
     each with that reason, and every other source that passed the first build
     passes again;
@@ -32,9 +28,9 @@ Then, of the second build:
 (e) the tests that hold a source warned, naming both, so the log has the
     rows and build_marts.py turns the run red after the publish.
 
-Both builds run as a conditions leg does, OURHIKE_DATA_ENV=ua (decision 204,
-dbt_project.yml's switch): there a failing test warns and the build goes on,
-which is what decision 81's hold needs; in dev and CI the two tests that hold
+Both builds run as a conditions leg does, OURHIKE_DATA_ENV=ua
+(dbt_project.yml's switch): there a failing test warns and the build goes on,
+which is what the hold needs; in dev and CI the two tests that hold
 a source are errors and stop the build. So (f) no test of the second build but
 those two is past its own error threshold, as build_marts.py's
 relabelled_errors() reads one, which would otherwise pass here unseen.
@@ -96,7 +92,7 @@ def _ok(arguments: list[str], cwd: Path, env: dict) -> None:
 
 
 def _query(warehouse: Path, sql: str) -> list[tuple] | None:
-    """The rows, or None for a relation this build does not have (a build before decision 81 has neither model the
+    """The rows, or None for a relation this build does not have (an older build has neither model the
     gate reads), so a red build reads as the tests' own failures rather than as the fixture's."""
     with duckdb.connect(str(warehouse), read_only=True) as con:
         try:
@@ -129,13 +125,12 @@ def builds(tmp_path_factory) -> dict:
         "OURHIKE_WAREHOUSE": str(warehouse),
         "OURHIKE_PROCESSED_DIR": str(processed),
         "DBT_ENGINE_SEND_ANONYMOUS_USAGE_STATS": "false",
-        # As a conditions leg builds (decision 204): a failing test warns, so the gate's hold is what is tested.
+        # As a conditions leg builds: a failing test warns, so the gate's hold is what is tested.
         "OURHIKE_DATA_ENV": "ua",
     }
     target = root / "target"
     paths = ["--profiles-dir", ".", "--target-path", str(target), "--log-path", str(root / "logs")]
-    # The wording-leak model by name as well: since decision 81 the gate reads it, and before, nothing a writer read
-    # did, so a build of the writers alone would not have run its test.
+    # The wording-leak model by name as well, so its test runs with the gate that reads it.
     selection = ["+closures", "+warnings", "+int_warnings__wording_leaks", *(f"+{writer}" for writer in WRITERS)]
     build = [DBT, "build", "-s", *selection, "--indirect-selection", "cautious", *paths]
     _ok([DBT, "seed", *paths], DBT_DIR, dbt_env)
@@ -216,7 +211,7 @@ def test_the_tests_that_hold_a_source_warn_and_name_both(builds):
 
 
 def test_no_other_test_of_the_second_build_is_past_its_error_threshold(builds):
-    """In UA every failing test warns (decision 204), so a failure this edit caused anywhere else would pass the
+    """In UA every failing test warns, so a failure this edit caused anywhere else would pass the
     build: build_marts.py would report it as an error, and so does this, unless it is one of the two holds."""
     errors = build_marts.relabelled_errors(list(builds["results"].values()), builds["manifest"])
     assert errors == {}

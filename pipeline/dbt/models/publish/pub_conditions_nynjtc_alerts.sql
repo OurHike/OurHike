@@ -11,11 +11,11 @@
 -- not happen.
 --
 -- WHICH ROWS: NYNJTC's notices in both marts. Today every one lands in the
--- warnings mart, because nobody has classified one (decision 7), and the
--- file's own fields stay as they are (decision 44): `place` unplaced,
+-- warnings mart, because nobody has classified one, and the
+-- file's own fields stay as they are: `place` unplaced,
 -- `category` null and `review_state` unreviewed, each lib/nynjtc_alerts.py's
 -- constant, "never a placeholder that a later change should quietly relax"
--- (WN06). `obstructs_trail` is false for an unclassified notice, as that
+-- `obstructs_trail` is false for an unclassified notice, as that
 -- file has always written it, and the mart's own value where one is known,
 -- so a notice classified as blocking can never go out as passable.
 --

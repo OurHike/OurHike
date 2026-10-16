@@ -8,7 +8,7 @@ version: 2
 unit_tests:
   - name: int_suggested_hikes__hike_finder_lists_what_hike_problems_lists
     description: >
-      SH02, a review aid and never a gate: lib/hikefinder.py's hike_problems(),
+      A review aid and never a gate: lib/hikefinder.py's hike_problems(),
       check for check in its order and its words, from test_lib_hikefinder.py's
       two cases and one row per check, each a page missing only that, with the
       two boundaries `is None` draws (a Length of 0 and an Author of '' are
@@ -65,7 +65,7 @@ unit_tests:
         - {hike_number: 12, problems_json: '[]'}
   - name: int_suggested_hikes__hike_finder_slugs_what_difficulty_slug_slugs
     description: >
-      SH07: export_suggested_hikes.py's difficulty_slug(), the label stripped
+      export_suggested_hikes.py's difficulty_slug(), the label stripped
       as str.strip() strips and lowercased, looked up in the seed; no slot is
       no slug, never a guessed one, and the publisher's own word stays beside
       it. From test_export_suggested_hikes.py's three difficulty cases, one row
@@ -119,7 +119,7 @@ unit_tests:
         - {hike_number: 31, difficulty: 'EASY', difficulty_slug: 'easy'}
   - name: int_suggested_hikes__photos_confirms_what_confirmed_photos_confirms
     description: >
-      SH09: a photograph only from the person-confirmed join, a row needing all
+      A photograph only from the person-confirmed join, a row needing all
       three of hike, digest and credit, each read for its own truth; both
       spellings of the hike id join, the first confirmed row for a number wins,
       and a credit is printed as the page carried it, with 'Photo by ' where it
@@ -198,7 +198,7 @@ unit_tests:
         - {hike_key: '67', file_row: 21, digest_is_valid: false, photo_url: null, photo_credit: 'Photo by Daniel Chazin', photo_licence: 'By permission of the New York-New Jersey Trail Conference'}
   - name: int_suggested_hikes__graded_grades_a_generated_route_as_grade_grades
     description: >
-      SH04: lib/hike_route_builder.py's _grade() over the step's measurements,
+      Lib/hike_route_builder.py's _grade() over the step's measurements,
       check for check in its order: the share of named trails walked, the
       length against the stated one, a closed walk's retrace, and the parking's
       distance from the line, each band's edge on both sides, the worst check
@@ -389,7 +389,7 @@ unit_tests:
         - {hike_number: 213, grade: 'strong', route_notes_json: '[]'}
   - name: int_suggested_hikes__routed_ships_what_build_document_ships
     description: >
-      SH05, SH06 and SH08: export_suggested_hikes.py's build_document() over
+      export_suggested_hikes.py's build_document() over
       the graded routes. A rejected or endless route ships nothing; a published
       track ships only where the phone's re-walk between its samples comes back
       within TRACK_REPRODUCTION_TOLERANCE of its own length, with the drift
@@ -409,9 +409,9 @@ unit_tests:
           - {hike_number: 302, provenance: 'generated', grade: 'fair', route_notes_json: '["walks 1 of the 2 trails the description names"]', route_closed: false, route_miles: 3.0, route_ends: '[[-74.2,41.5],[-74.19,41.51]]', walked_trails: '["Trail 1 (red)"]', climb_gain_ft: null, climb_loss_ft: null, rewalk_problem: null, rewalk_ends: null, rewalk_miles: null, rewalk_climb_gain_ft: null, rewalk_climb_loss_ft: null}
           # a closed walk whose last end is already its first gets no second copy
           - {hike_number: 303, provenance: 'generated', grade: 'strong', route_notes_json: '[]', route_closed: true, route_miles: 2.0, route_ends: '[[-74.25,41.55],[-74.24,41.56],[-74.25,41.55]]', walked_trails: '["Trail 1 (red)"]', climb_gain_ft: 10.0, climb_loss_ft: 10.0, rewalk_problem: null, rewalk_ends: null, rewalk_miles: null, rewalk_climb_gain_ft: null, rewalk_climb_loss_ft: null}
-          # test_a_rejected_route_ships_nothing_and_is_named_in_the_manifest (SH05)
+          # test_a_rejected_route_ships_nothing_and_is_named_in_the_manifest
           - {hike_number: 304, provenance: 'generated', grade: 'rejected', route_notes_json: '["walks 1 of the 3 trails the description names - it is not following the write-up"]', route_closed: true, route_miles: null, route_ends: '[]', walked_trails: '[]', climb_gain_ft: null, climb_loss_ft: null, rewalk_problem: null, rewalk_ends: null, rewalk_miles: null, rewalk_climb_gain_ft: null, rewalk_climb_loss_ft: null}
-          # SH05: an endless route ships nothing, whatever its grade
+          # An endless route ships nothing, whatever its grade
           - {hike_number: 305, provenance: 'generated', grade: 'fair', route_notes_json: '[]', route_closed: true, route_miles: null, route_ends: '[]', walked_trails: '[]', climb_gain_ft: null, climb_loss_ft: null, rewalk_problem: null, rewalk_ends: null, rewalk_miles: null, rewalk_climb_gain_ft: null, rewalk_climb_loss_ft: null}
           # test_a_track_that_re_walks_on_this_builds_lines_ships_with_its_drift_recorded; test_a_published_hikes_climb_is_priced_from_this_builds_graph
           - {hike_number: 306, provenance: 'published', grade: 'strong', route_notes_json: '[]', route_closed: false, route_miles: 2.0834, route_ends: '[[-74.31,41.6],[-74.305,41.605],[-74.3,41.61],[-74.295,41.615]]', walked_trails: null, climb_gain_ft: null, climb_loss_ft: null, rewalk_problem: null, rewalk_ends: '[[-74.3100004,41.6000004],[-74.3050001,41.6050002],[-74.2950003,41.6150001]]', rewalk_miles: 2.1659, rewalk_climb_gain_ft: 120.5, rewalk_climb_loss_ft: 33.5}
@@ -431,7 +431,7 @@ unit_tests:
           - {hike_number: 313, provenance: 'generated', grade: 'strong', route_notes_json: '[]', route_closed: false, route_miles: 1.5, route_ends: '[[-74.1234565,41.0000005],[-74.2000004999,41.1234567891]]', walked_trails: '["Trail 1 (red)"]', climb_gain_ft: null, climb_loss_ft: null, rewalk_problem: null, rewalk_ends: null, rewalk_miles: null, rewalk_climb_gain_ft: null, rewalk_climb_loss_ft: null}
           # a published track that closes repeats its re-walk's first end
           - {hike_number: 314, provenance: 'published', grade: 'strong', route_notes_json: '[]', route_closed: true, route_miles: 3.0, route_ends: '[[-74.91,41.6],[-74.9,41.61],[-74.91,41.6]]', walked_trails: null, climb_gain_ft: null, climb_loss_ft: null, rewalk_problem: null, rewalk_ends: '[[-74.9100001,41.6000002],[-74.9,41.61],[-74.9099,41.6001]]', rewalk_miles: 3.1, rewalk_climb_gain_ft: null, rewalk_climb_loss_ft: null}
-          # SH08: a re-walk never priced ships no climb
+          # A re-walk never priced ships no climb
           - {hike_number: 315, provenance: 'published', grade: 'strong', route_notes_json: '[]', route_closed: false, route_miles: 1.2, route_ends: '[[-75.01,41.6],[-75.0,41.61]]', walked_trails: null, climb_gain_ft: null, climb_loss_ft: null, rewalk_problem: null, rewalk_ends: '[[-75.01,41.6],[-75.0,41.61]]', rewalk_miles: 1.21, rewalk_climb_gain_ft: null, rewalk_climb_loss_ft: null}
     expect:
       rows:
@@ -446,7 +446,7 @@ unit_tests:
         - {hike_number: 315, miles_json: '1.2', segments_json: '[[{"coord":[-75.01,41.6],"poiId":null},{"coord":[-75.0,41.61],"poiId":null}]]', trails_json: '[]', climb_gain_ft: null, climb_loss_ft: null, track_reproduction: '0.8%'}
   - name: int_suggested_hikes__highlights_resolves_what_resolve_resolves
     description: >
-      SH12 and SH13: lib/highlights.py's resolve() and as_published(), every
+      Lib/highlights.py's resolve() and as_published(), every
       row in the file's order with the first rule it breaks in resolve()'s
       words. A leg's miles come from the published POIs and are ordered; an end
       with no published mile, both ends at one mile, a leg that is not a
@@ -594,7 +594,7 @@ unit_tests:
         - {file_row: 0, highlight_id: '<no id>', problem: 'not an object', legs_json: null, club: null, record_json: null}
   - name: int_suggested_hikes__records_writes_what_record_for_and_split_record_write
     description: >
-      SH10 and SH11: export_suggested_hikes.py's record_for(), split by
+      export_suggested_hikes.py's record_for(), split by
       split_record() into the shelf record and the detail, as JSON text in
       their key order. Absent, never empty: no photo, climb, publication or
       trackReproduction key where there is none, and no hikerNote at all; the

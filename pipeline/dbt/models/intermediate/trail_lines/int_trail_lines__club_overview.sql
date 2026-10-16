@@ -1,5 +1,5 @@
 {{ config(materialized='table') }}
--- The clubs' lines in network_overview.geojson's sketch (decision 64), one
+-- The clubs' lines in network_overview.geojson's sketch, one
 -- row per club line the sketch keeps, in int_trail_lines__network_overview_
 -- seam's columns, which int_trail_lines__network_overview_features groups
 -- after the network's own.
@@ -63,23 +63,7 @@ coarse as (
         *,
         case
             when
-                coalesce(
-                    not st_isempty(reduced)
-                    and list_bool_and(
-                        list_transform(
-                            st_dump(reduced),
-                            lambda part: (
-                                st_xmin(struct_extract(part, 'geom'))
-                                < st_xmax(struct_extract(part, 'geom'))
-                            )
-                            or (
-                                st_ymin(struct_extract(part, 'geom'))
-                                < st_ymax(struct_extract(part, 'geom'))
-                            )
-                        )
-                    ),
-                    false
-                )
+                {{ every_part_has_extent('reduced') }}
                 then reduced
             else navigation_line
         end as coarse_line
@@ -132,23 +116,7 @@ select
     st_astext(
         case
             when
-                coalesce(
-                    not st_isempty(seam_line)
-                    and list_bool_and(
-                        list_transform(
-                            st_dump(seam_line),
-                            lambda part: (
-                                st_xmin(struct_extract(part, 'geom'))
-                                < st_xmax(struct_extract(part, 'geom'))
-                            )
-                            or (
-                                st_ymin(struct_extract(part, 'geom'))
-                                < st_ymax(struct_extract(part, 'geom'))
-                            )
-                        )
-                    ),
-                    false
-                )
+                {{ every_part_has_extent('seam_line') }}
                 then seam_line
             else coarse_line
         end

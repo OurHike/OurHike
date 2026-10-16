@@ -5,11 +5,11 @@
 -- reads it: client/src/lib/closureBanner.ts says "A reopened closure is not
 -- a warning. A reroute is - having somewhere else to walk does not make the
 -- trail itself passable". So `closed` and `reroute_available` obstruct, and
--- `open` does not and lands in the warnings mart (decision 7). A status the
+-- `open` does not and lands in the warnings mart. A status the
 -- backend does not define (app/models/closure.py's ClosureStatus) is not
 -- classified, and lands there too, as unknown.
 --
--- THE MODERATION GATE IS CHECKED AGAIN (CL15, gate 4): the extract's query
+-- THE MODERATION GATE IS CHECKED AGAIN (gate 4): the extract's query
 -- already selects `moderation_status = 'verified'` only, and a row that is
 -- not is a problem here, so a query edited to let others through holds back
 -- OurHike's closures rather than publishing them. `verified_by` and

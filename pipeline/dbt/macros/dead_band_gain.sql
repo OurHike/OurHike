@@ -1,6 +1,6 @@
 {#-
     Confirmed ascent over a list of elevations, as lib/elevation_gain.py's
-    cumulative_gain_over_gaps counts it (EL10 of pipeline/ELT.md's ledger):
+    cumulative_gain_over_gaps counts it:
     the dead band `threshold`, in the elevations' own unit, and a null as a
     break, so each unbroken run is measured on its own and a gap adds
     nothing. `values` is a DOUBLE[] expression in walk order; the answer is a

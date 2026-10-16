@@ -5,7 +5,7 @@
 -- (int_trail_lines__mile_axis) and the published lines.
 with source as (
     -- dlt lands geometry as GeoJSON text (extract/_kinds.py's JSON
-    -- hint); cast here, as decision 40 has staging do.
+    -- hint); cast here, as staging models do.
     --
     -- `rowid` is the row's place in the raw table. extract/_warehouse.py
     -- fills that table in the order the ArcGIS pages served the features,

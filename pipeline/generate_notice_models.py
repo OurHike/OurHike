@@ -1,12 +1,11 @@
-"""Write the dbt base and staging models of every club notice source the extract declares (decision 53, phase C).
+"""Write the dbt base and staging models of every club notice source the extract declares.
 
     python generate_notice_models.py           # write every file below
     python generate_notice_models.py --check   # exit 1, naming each file, where what is on disk differs
 
-pipeline/ELT.md, "Every club's closures and alerts (decision 53)", phase C:
-"One base and staging model per source, generated from its reader's shape,
-keyed per decision 40." This is that generator. Its output is not committed
-(decision 91): every place that parses the dbt project runs it first, through
+One base and staging model per source, generated from its reader's shape,
+each keyed and deduped. Its output is not committed:
+every place that parses the dbt project runs it first, through
 generate_dbt.py, so a source registered in extract/ is staged by the next run.
 tests/test_generated_notice_models.py fails when the tree on disk is not what
 it writes.
@@ -29,8 +28,8 @@ ONE EXCEPTION TO A FIXED SHAPE: a source whose rows carry its status in
 fields of the site's own, beyond the reader's shape. The Great Allegheny
 Passage's trail alerts are WordPress posts whose status and visibility are
 Advanced Custom Fields, in the post's `acf` object (its sources.json notes,
-read 2026-10-09), and the maintainer's answer to wave 6's page 01, P6 (poll
-of 2026-10-11), reads them. Such a source has a notice_source_fields.csv row
+read 2026-10-09), and the maintainer chose to read them (poll of
+2026-10-11). Such a source has a notice_source_fields.csv row
 too, naming each of those fields as READERS names one (`acf.$.status`), and
 a role its row names replaces the reader's for that source alone (_roles());
 every role it leaves empty keeps the reader's.
@@ -39,7 +38,7 @@ the source's fixture rows, whose field names are the live ones.
 
 WHAT IT WRITES, per notice source (club folder C, raw table raw_C__K):
 - models/staging/C/notices/base/base_C__K.sql: every column, keyed and
-  deduped (decision 40), the geometry cast; nothing filtered or joined. The
+  deduped, the geometry cast; nothing filtered or joined. The
   raw table is read through notice_raw_table(), which reads an empty table
   of the same key columns where the raw table does not exist, because a
   conditions leg withdraws an unreadable table (extract/_warehouse.py) and
@@ -50,13 +49,13 @@ WHAT IT WRITES, per notice source (club folder C, raw table raw_C__K):
   JSON so that a field the layer renames reads as null rather than failing
   the build. Only facts cross: the id, title, category, status, the dates,
   the link, a place name and the source's own geometry. Prose stays in base
-  (decision 55), and int_warnings__notice_wording_unioned collects it so a
+  and int_warnings__notice_wording_unioned collects it so a
   test can tell if any of it reaches a mart. TWO PROSE FIELDS CROSS, AND
   ONLY TO BE READ (PROSE_ROLES): a source whose notice_source_fields.csv row
-  names a `narrative` stages it, because decision 190 reads a closure by its
+  names a `narrative` stages it, because a closure is read by its
   own words and IDPR's orders say what they bar only there, and one that
   names a `season` stages it, because COTREX states the period its closures
-  recur in only there (pipeline/ELT.md, status rule 4). Neither is ever a
+  recur in only there. Neither is ever a
   fact (_fact_columns()), so the wording union still collects them and the
   leak test still fails a mart that carries one; int_closures__club_notices
   reads them and passes them on to nothing.
@@ -65,18 +64,18 @@ WHAT IT WRITES, per notice source (club folder C, raw table raw_C__K):
   (macros/last_read_or_confirmed_at.sql: when the extract last read it or
   confirmed it unchanged, never `_loaded_at`, which a FRESH check leaves at
   the last load) and errors after FRESHNESS_HOURS for its cadence, 24 hours
-  for an hourly source (decision 100); one that reaches no hiker only warns.
+  for an hourly source; one that reaches no hiker only warns.
   The one monthly notice source warns and errors after make_dbt_staging.py's
-  MONTHLY_FRESHNESS_DAYS, as every monthly source does (decision 203).
+  MONTHLY_FRESHNESS_DAYS, as every monthly source does.
   Each the notices legs read is tagged NOTICES_JOB_TAG, which
   publish-conditions.yml's freshness step selects after it has published, and
   a PDF notice is tagged PDF_NOTICE_TAG as well, which CI's two freshness
   commands leave out (is_pdf_notice()).
-- Elementary's checks (decision 102), each at warn and tagged
+- Elementary's checks, each at warn and tagged
   `elementary_check`, which build_marts.py runs after the writers in CI's
   fixture build (on a pull request, only those its change reaches, decision
   111) and, for the hourly lane, in a run of their own after its build has
-  published (HOURLY_LANE_CHECKS, decision 110; check-conditions.yml):
+  published (HOURLY_LANE_CHECKS; check-conditions.yml):
   every raw table's from make_dbt_staging.py's raw_table_checks(). No staging
   model carries Elementary's event freshness any more: how long since a club
   last edited a notice is no measure of whether OurHike read it (decision
@@ -93,7 +92,7 @@ their own models, which the closures family reads branch by branch.
 A STEWARD'S OWN AREAS ARE NOT NOTICES. dbt/seeds/notice_steward_areas.csv
 names, for a notice source whose points sit inside its steward's own areas,
 the layer of those areas: int_closures__club_notices' rule 4 places such a
-point by the one area it lies inside (the maintainer's answer to Q3, poll of
+point by the one area it lies inside (the maintainer's poll of
 2026-10-11: "a status point inside exactly one of its steward's own areas
 takes that area"). Each such layer is a closures or warnings resource of the
 steward's own folder, so that a notices leg reads it and the hourly build
@@ -123,9 +122,9 @@ import yaml
 # quoted into a model's comment or description is published there.
 from check_docs_site import SHAPES as DOCS_SITE_SHAPES
 
-# Elementary's checks on a raw table (decision 102), and the freshness every source reads from the run log (decision
-# 203): one home for both generators.
-from make_dbt_staging import LOADED_AT_QUERY, MONTHLY_FRESHNESS_DAYS, raw_table_checks
+# Elementary's checks on a raw table, the freshness every source reads from the run log, and how a registry note
+# is quoted: one home for both generators.
+from make_dbt_staging import LOADED_AT_QUERY, MONTHLY_FRESHNESS_DAYS, raw_table_checks, registry_words
 
 PIPELINE_DIR = Path(__file__).resolve().parent
 DBT_DIR = PIPELINE_DIR / "dbt"
@@ -135,7 +134,7 @@ WARNINGS_DIR = DBT_DIR / "models" / "intermediate" / "warnings"
 SEEDS_DIR = DBT_DIR / "seeds"
 FIELDS_SEED = SEEDS_DIR / "notice_source_fields.csv"
 READERS_SEED = SEEDS_DIR / "notice_readers.csv"
-#: THE ISSUER OF A COMPILED LAYER'S ROWS (decision 213, rule 21): where a publisher compiles other agencies' orders and
+#: THE ISSUER OF A COMPILED LAYER'S ROWS (rule 21): where a publisher compiles other agencies' orders and
 #: each row names the agency that issued it, the field that names it, staged as `issuer` on that source alone (a
 #: source with no row stages no such column, which the unions read as null). int_closures__club_notices shows the
 #: label this seed gives a coded value, and the phone's sheet reads "<issuer> order, via <publisher>".
@@ -185,10 +184,10 @@ NOTICE_TYPES = ("closures", "warnings")
 MARKER = "GENERATED by pipeline/generate_notice_models.py"
 #: The roles a notice's fields fill, in the staged column order. `link` and `locality` are text as the source states them.
 #: `site_type` is the source's own field naming what kind of place a row is (USFS's recreation sites' markeractivity:
-#: Campground Camping, Trailhead, Day Hiking), which decision 190's site rule reads (the maintainer's poll of
-#: 2026-10-15) and which never replaces the category a row shows (decision 78). `season` is the source's own words
+#: Campground Camping, Trailhead, Day Hiking), which the site rule reads (the maintainer's poll of
+#: 2026-10-15) and which never replaces the category a row shows. `season` is the source's own words
 #: for a period its closures recur in every year (COTREX's Closure_Period, 'December 1 - April 30'), which
-#: int_closures__club_notices' rule 1 reads once a row's own end has passed (pipeline/ELT.md, status rule 4).
+#: int_closures__club_notices' rule 1 reads once a row's own end has passed.
 ROLES = (
     "title",
     "category",
@@ -205,7 +204,7 @@ ROLES = (
 )
 DATE_ROLES = frozenset({"starts", "ends", "rescinded", "edited"})
 #: THE TWO ROLES THAT ARE PROSE, NOT FACTS. `narrative`: the source's own wording of what a notice bars, which
-#: decision 190 (the maintainer's poll of 2026-10-14, "Do by their own words") reads through seeds/notice_words.csv.
+#: seeds/notice_words.csv reads (the maintainer's poll of 2026-10-14, "Do by their own words").
 #: IDPR's emergency route closures say that an order bars motorized use alone, or every use, only in their Narrative
 #: (read live 2026-10-14: 4 of the 5 motorized-only orders say so nowhere else). `season`: the source's own words for
 #: the period a closure recurs in, which COTREX writes as a sentence as often as a range ('December 1 - April 15. May
@@ -214,12 +213,12 @@ DATE_ROLES = frozenset({"starts", "ends", "rescinded", "edited"})
 #: int_warnings__wording_leaks still holds a source whose mart rows carry one.
 PROSE_ROLES = frozenset({"narrative", "season"})
 #: The roles notice_source_fields.csv may fill with words of its own, written in single quotes, where a layer's only
-#: field for the role holds a code a hiker cannot read: decision 95 (the maintainer's poll, 2026-10-06) titles CPW's
+#: field for the role holds a code a hiker cannot read: the maintainer's poll of 2026-10-06 titles CPW's
 #: conflict areas so, where ACTIVITYCO reads BBHCA or MLHCA. Every row of the layer carries the same words. A status,
 #: a date, a link or a place is the source's own or nothing: words OurHike supplied there would be a claim in the
 #: source's voice that the source never made.
 LITERAL_ROLES = frozenset({"title", "category"})
-#: ArcGIS's server row ids. Decision 40: never one of these alone, so the geometry joins them in the key.
+#: ArcGIS's server row ids. Never one of these alone, so the geometry joins them in the key.
 SERVER_ROW_IDS = frozenset({"objectid", "objectid_1", "fid", "oid"})
 #: THE SOURCES WHOSE BASE MODEL IS A TABLE, where every other one is a view. Each holds large polygons and keys them
 #: by their full text (geometry_key), and a view computes that key again for every test and union that reads it. The
@@ -237,7 +236,7 @@ TABLE_BASES = frozenset(
     {"usfs_baer_assessments", "usfs_r04_forest_orders", "nifc_wfigs_current_perimeters", "utah_ffsl_fire_restrictions"}
 )
 #: HOW LONG A NOTICE SOURCE MAY GO UNREAD BEFORE dbt's SOURCE FRESHNESS WARNS, AND THEN ERRORS, in hours, by cadence:
-#: decision 100, the maintainer's poll of 2026-10-07, "Red after 24h. But this should be Red in the data source
+#: the maintainer's poll of 2026-10-07, "Red after 24h. But this should be Red in the data source
 #: freshness feature of dbt. Not blocking a datasource pipeline". Unread means neither read nor confirmed unchanged,
 #: which macros/last_read_or_confirmed_at.sql measures from the extract's run log, because a FRESH check leaves
 #: `_loaded_at` at the last load.
@@ -254,15 +253,14 @@ TABLE_BASES = frozenset(
 #: a hiker sees waits on it. tests/test_notice_source_freshness.py holds the daily row to the hourly one plus
 #: DUE_AFTER, and the conditions job's hand-written sources to these.
 FRESHNESS_HOURS = {"hourly": (12, 24), "daily": (36, 48)}
-#: WHEN A NOTICE SOURCE NO HIKER SEES (sources.json's reaches_hikers false) TURNS RED, in days: decision 204 (the
-#: maintainer, 2026-10-15, "Every test should have both the warning and error thresholds"; his "Build as proposed"
-#: took this number) gave the warn-only sources of decision 100 an error. A week is long enough not to redden the
+#: WHEN A NOTICE SOURCE NO HIKER SEES (sources.json's reaches_hikers false) TURNS RED, in days. Every test has both a warning and an
+#: error threshold (the maintainer, 2026-10-15), so these sources warn first and then error. A week is long enough not to redden the
 #: hourly run for a host's bad day on a source nobody is shown, and short enough that a reader that stopped working
 #: shows red within the week, before the source is reviewed into shipping. @unvalidated: settled by how often a
 #: healthy unshipped source passes a week unread, from publish-conditions.yml's freshness step over a month.
 UNSHIPPED_ERROR_DAYS = 7
 #: NWS's active alerts, which the hourly conditions leg reads (nws/_nws__sources.yml, hand-written): red after 2 hours
-#: unread, the maintainer's poll of 2026-10-07 (decision 101, "Both, NWS red after 2 h"), and a warning at half that,
+#: unread, the maintainer's poll of 2026-10-07 ("Both, NWS red after 2 h"), and a warning at half that,
 #: as FRESHNESS_HOURS grades its own. A severe thunderstorm warning mostly lasts under 4 hours (Reasoned).
 NWS_FRESHNESS_HOURS = (1, 2)
 #: The tag publish-conditions.yml's freshness step selects the notices job's sources by: every generated source the
@@ -617,7 +615,7 @@ def _measured(source: NoticeSource) -> str:
     notes = (source.entry or {}).get("notes") or ""
     for sentence in re.split(r"(?<=\.)\s+", notes):
         if re.search(r"\b(distinct on|unique on)\b", sentence):
-            return _publishable(sentence.strip())
+            return _publishable(registry_words(sentence.strip()))
     return "no count is recorded on its sources.json row"
 
 
@@ -688,20 +686,20 @@ def render_base(source: NoticeSource, area: bool = False) -> str:
             f"{_title(source)} (sources.json `{source.key}`, landed by extract/{source.club}/{source.type}.py's "
             f"{source.reader_class}): a steward's own areas, which seeds/notice_steward_areas.csv names as the place of "
             "its notices' points (int_closures__club_notices' rule 4), not notices. Every row, keyed and deduped "
-            "(decision 40), with nothing filtered and nothing joined; the staging model beside it carries only the "
+            ", with nothing filtered and nothing joined; the staging model beside it carries only the "
             "key, the layer's own id and its outline."
         )
     else:
         lines += _wrap(
             f"{_title(source)} (sources.json `{source.key}`, landed by extract/{source.club}/{source.type}.py's "
-            f"{source.reader_class}): every row, keyed and deduped (decision 40), with nothing filtered and nothing "
-            "joined. Its words, prose included, stay here: the staging model beside it carries only facts (decision 55)."
+            f"{source.reader_class}): every row, keyed and deduped, with nothing filtered and nothing "
+            "joined. Its words, prose included, stay here: the staging model beside it carries only facts."
         )
     lines.append("--")
     key_text = f"Key: {', '.join(keys)}"
     if _uses_geometry_in_key(source):
         key_text += (
-            ", a server row id, so the geometry joins it (decision 40: never a server row id alone). A reload that "
+            ", a server row id, so the geometry joins it (never a server row id alone). A reload that "
             "mints the ids again reads as every notice removed and added, which moves a row's dates and never its "
             "presence. @unvalidated as the smallest set of current values: pipeline/spike_table_keys.py on the live "
             "layer settles it"
@@ -844,7 +842,7 @@ def render_stg(source: NoticeSource, fields: dict[str, dict]) -> str:
     if source.reader_class == "ArcgisLayer":
         lines += _wrap(
             "Its fields are the layer's own, named in seeds/notice_source_fields.csv from the field list the "
-            "decision 53 inventory read (2026-10-03); a role the layer has no field for is null, never filled in."
+            "inventory of 2026-10-03 read; a role the layer has no field for is null, never filled in."
         )
     elif source.key in fields:
         own = [role for role in ROLES if fields[source.key].get(role)]
@@ -863,7 +861,7 @@ def render_stg(source: NoticeSource, fields: dict[str, dict]) -> str:
     lines.append("--")
     lines += _wrap(
         "Only facts cross from base_: the source's id, title, category, status, dates, link, a place name, the "
-        "kind of place it names a row (site_type) and its own geometry (decision 55, and ORG_NOTICES.md section "
+        "kind of place it names a row (site_type) and its own geometry (and ORG_NOTICES.md section "
         "7). Classifying a status, holding back a "
         "rescinded order and placing a notice are int_closures__club_notices' work."
     )
@@ -872,14 +870,14 @@ def render_stg(source: NoticeSource, fields: dict[str, dict]) -> str:
         lines += _wrap(
             f"Its {' and '.join(prose)} {'crosses' if len(prose) == 1 else 'cross'} too, prose staged only to be "
             "read (PROSE_ROLES in pipeline/generate_notice_models.py): int_closures__club_notices reads a narrative "
-            "for decision 190's shared words (seeds/notice_words.csv) and a season for rule 1's recurring period, and "
+            "for the shared words (seeds/notice_words.csv) and a season for rule 1's recurring period, and "
             "passes neither on to anything."
         )
     layer_title = fields.get(source.key, {}).get("layer_title") or ""
     if layer_title:
         lines += _wrap(
             f"Its layer's own name, {layer_title!r} (seeds/notice_source_fields.csv's layer_title, the name its "
-            "service publishes), crosses as layer_title on every row: decision 190 reads whether the layer is "
+            "service publishes), crosses as layer_title on every row: the closure rules read whether the layer is "
             "named for closures or for a kind of site."
         )
     lines += ["with base as (", "    select *", f"    from {{{{ ref({_sql_string(source.base_model)}) }}}}", "),", ""]
@@ -1045,11 +1043,11 @@ def is_pdf_notice(source: NoticeSource) -> bool:
 
 
 def notice_freshness(source: NoticeSource) -> dict:
-    """A notice source's dbt freshness by its cadence, a PDF notice's included, always with both thresholds (decision
-    204): FRESHNESS_HOURS for the hourly and daily ones, and for a reaches_hikers false one the same warning and an
-    error after UNSHIPPED_ERROR_DAYS (decision 100 made it warn only); make_dbt_staging.py's MONTHLY_FRESHNESS_DAYS
+    """A notice source's dbt freshness by its cadence, a PDF notice's included, always with both thresholds:
+    FRESHNESS_HOURS for the hourly and daily ones, and for a reaches_hikers false one the same warning and an
+    error after UNSHIPPED_ERROR_DAYS; make_dbt_staging.py's MONTHLY_FRESHNESS_DAYS
     for the one monthly source, USFWS's hunt units (tests/test_generated_notice_models.py's ARC-1 test holds it the
-    only one), as for every monthly source (decision 203)."""
+    only one), as for every monthly source."""
     if source.cadence == "monthly":
         warn, error = MONTHLY_FRESHNESS_DAYS
         return {"warn_after": {"count": warn, "period": "day"}, "error_after": {"count": error, "period": "day"}}
@@ -1089,19 +1087,19 @@ def render_sources_yml(club: str, sources: list[NoticeSource], areas: frozenset[
                 "freshness": notice_freshness(source),
             },
             "data_tests": [
-                # No severity of its own (decision 204): the project's switch decides, and int_closures__gate
+                # No severity of its own: the project's switch decides, and int_closures__gate
                 # holds a conflicting source either way. The base model counts the different rows on each key
                 # itself (`key_versions`, macros/notices.sql's notice_row_version(), the hash
                 # duplicates_are_exact compares), and the gate holds a source with any key over one: its notices
                 # are held, never published as one arbitrary copy. A failing test on a raw table skips every
                 # model below it, which for a notice source is every club's closures and warnings and every
-                # conditions file with them (decision 61), so in production and UA the switch makes it a warning,
+                # conditions file with them, so in production and UA the switch makes it a warning,
                 # every other source still publishes, and build_marts.py reports it as an error, red after the
                 # publish. In dev and CI it is an error that stops the build, so a fixture that trips it is fixed
-                # before it merges. Until decision 204 it warned everywhere, and CI never stopped on it.
+                # before it merges.
                 # tests/test_generated_notice_models.py holds the test and the hold together.
                 {"duplicates_are_exact": {"arguments": {"key_columns": _duplicates_key(source)}}},
-                # Elementary's checks on every raw table (decision 102), from their one home.
+                # Elementary's checks on every raw table, from their one home.
                 *raw_table_checks(),
             ],
         }
@@ -1113,7 +1111,7 @@ def render_sources_yml(club: str, sources: list[NoticeSource], areas: frozenset[
                 "name": club,
                 "description": (
                     f"The {club}/ extract folder's closures and warnings sources, landed as raw_{club}__<key> "
-                    "and staged once each by a generated base model here (decision 53, phase C)."
+                    "and staged once each by a generated base model here."
                 ),
                 "schema": "raw",
                 # Each table's freshness is its own (notice_freshness()), measured from the run log
@@ -1132,7 +1130,7 @@ def render_base_yml(club: str, sources: list[NoticeSource], areas: frozenset[str
             "name": source.base_model,
             "description": (
                 f"{_title(source)} (sources.json `{source.key}`), every row of {source.table}, keyed and deduped "
-                "(decision 40). "
+                ". "
                 + (
                     "A steward's own areas, not notices: only the key, the id and the outline go further."
                     if source.key in areas
@@ -1176,7 +1174,7 @@ def render_models_yml(club: str, sources: list[NoticeSource], areas: list[Notice
             "name": source.stg_model,
             "description": (
                 f"{_title(source)} (sources.json `{source.key}`) in the shared club-notice shape: facts and a "
-                "link, never the source's paragraphs (decision 55)."
+                "link, never the source's paragraphs."
             ),
             "columns": [
                 {"name": "notice_key", "description": "The base model's key.", "data_tests": ["unique", "not_null"]},
@@ -1194,7 +1192,7 @@ def steward_kinds() -> dict[str, str]:
 
 
 def render_readers_seed(sources: list[NoticeSource]) -> str:
-    """The seed's rows. `steward_kind` is decision 66's "clubs only" (the maintainer's poll, 2026-10-04): the
+    """The seed's rows. `steward_kind` is the "clubs only" (the maintainer's poll, 2026-10-04): the
     phone's planned-hike panel shows a club's unplaced notice to a hike on that club's trails, and an agency's
     only where the notice is placed on or near the route (client/src/lib/plannedNotices.ts)."""
     kinds = steward_kinds()
@@ -1250,7 +1248,7 @@ def _union_of_parts(model: Path, sources: list[NoticeSource], what: str) -> str:
 
 UNION_WHAT = (
     "Every generated club notice source's staged rows, one row each, by name, nothing filtered "
-    "(decision 53, phase C): the union int_closures__club_notices reads. One branch per stg_ model this "
+    "(phase C): the union int_closures__club_notices reads. One branch per stg_ model this "
     "generator writes, in raw table order; seeds/notice_readers.csv lists the same sources with their "
     "readers, and the hand-staged ones (ATC, NYNJTC, NYS Parks, OurHike, NWS) are int_closures__unioned's "
     "own branches."
@@ -1345,7 +1343,7 @@ def _fact_columns(source: NoticeSource, fields: dict[str, dict]) -> list[str]:
 
 
 WORDING_WHAT = (
-    "Every generated club notice source's own wording (decision 55): each text value of a base model's "
+    "Every generated club notice source's own wording: each text value of a base model's "
     "columns that its staging model does not carry as a fact, that equals none of that row's facts, and "
     "that notice_is_wording() reads as wording rather than a short value. One row each. "
     "int_warnings__wording_leaks reads it, and its test fails the build when a closures or warnings row "
@@ -1513,7 +1511,7 @@ def render_wording_yml(sources: list[NoticeSource], fields: dict[str, dict]) -> 
     model = {
         "name": WORDING_MODEL.stem,
         "description": (
-            "Every generated club notice source's own wording (decision 55): each text value of a base model's "
+            "Every generated club notice source's own wording: each text value of a base model's "
             "columns that its staging model does not carry as a fact, one row each, read from its parts. "
             "int_warnings__wording_leaks reads it."
         ),

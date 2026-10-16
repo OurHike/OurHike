@@ -1,8 +1,8 @@
 {{ config(materialized='table') }}
 -- Each junction-graph edge's samples with the DEM's answer at each, in metres
 -- and in the whole feet trail_graph_profile.json publishes: one row per row of
--- int_elevation__edge_sample_points. EL12 of pipeline/ELT.md's ledger, the
--- SQL form of export_network_profile.edge_profile's rounding.
+-- int_elevation__edge_sample_points. The SQL form of
+-- export_network_profile.edge_profile's rounding.
 --
 -- WHOLE FEET, as the Python rounds them: the DEM's metres over
 -- elevation_metres_per_foot, rounded once, from the unrounded metres, as
@@ -23,7 +23,7 @@
 -- that point.
 --
 -- THE KEY, edge_sample_key, is dbt_utils.generate_surrogate_key over
--- (edge_id, sample_index) (decision 197: every model has one column that is
+-- (edge_id, sample_index) (every model has one column that is
 -- unique and not null).
 with points as (
     select * from {{ ref('int_elevation__edge_sample_points') }}

@@ -1,12 +1,12 @@
 {{ config(materialized='table') }}
--- The parks and towns of the clubs' registered places layers (decision 54's
--- wave 1, int_places__unioned) that places.json lists, one row per place,
+-- The parks and towns of the clubs' registered places layers
+-- (int_places__unioned) that places.json lists, one row per place,
 -- before anything is measured: int_places__resolved measures each as it
 -- measures NY Parks' parks and the waypoint towns, and the places mart lists
 -- them beside those.
 --
 -- WHICH LAYERS. Only a layer whose sources.json row gives a `place_kind`,
--- `park` or `town` (the places worker's read of each layer, 2026-10-03), and
+-- `park` or `town` (read from each layer, 2026-10-03), and
 -- only where int_sources__publication lets the layer publish. The filter
 -- comes FIRST, before any geometry is touched, because a held layer can be
 -- vast (GNIS's 176,566 populated places, MassGIS's 61,486 open-space

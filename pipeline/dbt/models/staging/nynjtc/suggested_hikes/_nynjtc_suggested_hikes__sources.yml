@@ -5,7 +5,7 @@ version: 2
 # the tables of one source across files (dbt 2.0.6, parsed 2026-10-02, as
 # _nynjtc_alerts__sources.yml found), and each block's own config applies to
 # its own tables. Read by the suggested_hikes family (pipeline/ELT.md's
-# ledger, SH01-SH14).
+# ledger).
 sources:
   - name: nynjtc
     description: >
@@ -17,7 +17,7 @@ sources:
     schema: raw
     config:
       # When the extract last read each table or confirmed it unchanged, from
-      # its run log, never `_loaded_at` (decision 203): make_dbt_staging.py's
+      # its run log, never `_loaded_at`: make_dbt_staging.py's
       # LOADED_AT_QUERY and MONTHLY_FRESHNESS_DAYS say why, and
       # tests/test_source_freshness.py holds every monthly source to them.
       loaded_at_query: "{{ last_read_or_confirmed_at(this) }}"
@@ -29,11 +29,11 @@ sources:
     tables:
       - name: raw_nynjtc__nynjtc_hike_finder
         data_tests:
-          # Rows sharing base_nynjtc__nynjtc_hike_finder's key must be exact copies (decision 40).
+          # Rows sharing base_nynjtc__nynjtc_hike_finder's key must be exact copies.
           - duplicates_are_exact:
               arguments:
                 key_columns: ["'nynjtc_hike_finder'", "id"]
-          # Elementary's checks (make_dbt_staging.py's raw_table_checks(), decision 102), each with its two thresholds (decision 204).
+          # Elementary's checks (make_dbt_staging.py's raw_table_checks()), each with its two thresholds.
           - elementary.volume_anomalies:
               config:
                 severity: error
@@ -65,14 +65,14 @@ sources:
             description: >
               The page's one coordinate as JSON, {lat, lon, label}, or null
               where the page carries none or one outside the NYNJTC box
-              lib/hikefinder.py's _in_range() refuses (SH01).
+              lib/hikefinder.py's _in_range() refuses.
       - name: raw_nynjtc__nynjtc_hike_photos
         data_tests:
-          # Rows sharing base_nynjtc__nynjtc_hike_photos's key must be exact copies (decision 40).
+          # Rows sharing base_nynjtc__nynjtc_hike_photos's key must be exact copies.
           - duplicates_are_exact:
               arguments:
                 key_columns: ["'reference/nynjtc_hike_photos.json'", "_row"]
-          # Elementary's checks (make_dbt_staging.py's raw_table_checks(), decision 102), each with its two thresholds (decision 204).
+          # Elementary's checks (make_dbt_staging.py's raw_table_checks()), each with its two thresholds.
           - elementary.volume_anomalies:
               config:
                 severity: error

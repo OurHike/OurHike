@@ -1,7 +1,6 @@
 {{ config(materialized='table') }}
 -- Each junction-graph edge's climb, [gain, loss] in whole feet, or nothing:
--- one row per edge of int_trail_network__edges. EL10 and EL11 of
--- pipeline/ELT.md's ledger, the SQL form of
+-- one row per edge of int_trail_network__edges. The SQL form of
 -- export_network_elevation.edge_climb over lib/elevation_gain.py's dead band
 -- (macros/dead_band_gain.sql). trail_graph_elevation.json is written from it
 -- (pub_trail_graph_elevation), and the trail_network mart is planned to carry
@@ -25,7 +24,7 @@
 -- against the tile index would settle it. Loss is the same dead
 -- band on the ground turned over, as a positive number.
 --
--- BOTH ROUND UP TO THE WHOLE FOOT, toward caution (decision 194, the
+-- BOTH ROUND UP TO THE WHOLE FOOT, toward caution (the
 -- maintainer's poll of 2026-10-14; CLAUDE.md: "Round toward caution, and say
 -- which way you rounded"). ceil(), so an edge's climb reads under one foot
 -- over its unrounded figure and never under it. The phone sums a route edge

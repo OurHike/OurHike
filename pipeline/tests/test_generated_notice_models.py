@@ -1,6 +1,6 @@
-"""The club notice sources' generated dbt models are what pipeline/generate_notice_models.py writes (decision 53, phase C).
+"""The club notice sources' generated dbt models are what pipeline/generate_notice_models.py writes.
 
-The generator's output is not committed (decision 91): every place that
+The generator's output is not committed: every place that
 parses the dbt project writes it first, through generate_dbt.py, so a closures
 or warnings resource registered in a club folder is staged by the next run.
 tests/test_dbt_generated_staging.py holds, for both generators, that a run
@@ -15,7 +15,7 @@ measured field list holds; every hand-staged notice table is one the closures
 family reads; no pub_ writer reads a club notice model except through the
 marts; and a key two different raw rows share holds that source in the gate
 rather than stopping every club's build. And for a steward's own areas
-(seeds/notice_steward_areas.csv, the maintainer's answer to Q3 of the poll of
+(seeds/notice_steward_areas.csv, the maintainer's poll of
 2026-10-11): each link joins a notice source to its own steward's layer, the
 layer rides a notices leg, and it is staged as areas, never as notices.
 """
@@ -73,7 +73,7 @@ def _seed(name: str) -> list[dict]:
 
 
 def test_every_arcgis_field_the_seed_names_is_in_the_layers_measured_field_list():
-    """make_dbt_fixtures.py's NOTICE_LAYERS rows carry each layer's field names as decision 53's inventory read them."""
+    """make_dbt_fixtures.py's NOTICE_LAYERS rows carry each layer's field names as the inventory read them."""
     generated = {source.key: source for source in generator.notice_sources() if not source.hand_staged}
     arcgis = {key for key, source in generated.items() if source.reader_class == "ArcgisLayer"}
     rows = {row["source_key"]: row for row in _seed("notice_source_fields")}
@@ -161,7 +161,7 @@ def _fixture_fields(**roles: str) -> dict[str, dict]:
 
 
 def test_a_seed_value_in_single_quotes_is_staged_as_those_words_on_every_row_and_never_read_as_a_field():
-    """Decision 95 (the maintainer's poll, 2026-10-06): a layer whose only title is a code a hiker cannot read (CPW's
+    """The maintainer's poll, 2026-10-06: a layer whose only title is a code a hiker cannot read (CPW's
     ACTIVITYCO, BBHCA or MLHCA) is titled in words the seed carries in single quotes. The staging model writes them
     as a SQL string, so every row of the layer carries them, and neither the wording union's fact columns nor a
     notice_field() call takes the words for a field the layer lands."""
@@ -199,7 +199,7 @@ def test_cpw_conflict_areas_are_titled_in_decision_95s_words_and_never_by_their_
 
 
 def test_a_narrative_is_staged_to_be_read_and_never_counted_as_a_fact(files):
-    """Decision 190 reads IDPR's orders by their own words, and 4 of its 5 motorized-only route orders say so only in
+    """IDPR's orders are read by their own words, and 4 of its 5 motorized-only route orders say so only in
     their Narrative (read live 2026-10-14), so the seed names that field and the generator stages it (PROSE_ROLES).
     It stays wording: _fact_columns() leaves it out, so int_warnings__notice_wording_unioned still collects it and
     int_warnings__wording_leaks still holds a source whose mart rows carry it. A source that names none stages a
@@ -258,9 +258,9 @@ def test_every_override_belongs_to_a_source_that_stages_the_field_it_names():
 
 
 def test_the_recreation_site_layer_stages_its_own_status_as_its_category(files):
-    """Decision 78: USFS's `openstatus` is the recreation-site layer's category as well as its status.
+    """USFS's `openstatus` is the recreation-site layer's category as well as its status.
 
-    Before it the seed row left `category` empty, so all 3,123 of the layer's rows in UA's
+    Before that the seed row left `category` empty, so all 3,123 of the layer's rows in UA's
     conditions/notices.json (soak run 536, 2026-10-05) read `category: null`, and the planned-hike
     panel showed a bare campground name. The value crosses as the Forest Service sends it, a field
     value and never wording; the phone decides its casing (chrome/PlannedNoticeList.tsx).
@@ -275,7 +275,7 @@ def test_a_layers_own_name_and_a_sites_own_type_are_staged_as_schema(files):
     """The maintainer's fixes of 2026-10-15 read a layer's own name (whether it says closures, or names a kind of
     site) and a site's own type. The name is the seed's `layer_title`, a constant on every row of every ArcGIS
     layer; the type is USFS's markeractivity, staged as `site_type` beside its category, which stays its openstatus
-    (decision 78). A source the seed names no layer for stages a null name."""
+    A source the seed names no layer for stages a null name."""
     fields = {row["source_key"]: row for row in _seed("notice_source_fields")}
     sources = {source.key: source for source in generator.notice_sources()}
     arcgis = [key for key, source in sources.items() if source.reader_class == "ArcgisLayer" and not source.hand_staged]
@@ -299,7 +299,7 @@ def test_a_layers_own_name_and_a_sites_own_type_are_staged_as_schema(files):
 
 def test_a_category_holds_a_status_or_a_reason_and_never_a_class_code():
     """The review of PR #1805 of 2026-10-15, thread 4279218690: a category prints under a notice's tag as "Listed as"
-    its value (decisions 78 and 137), so Midpen's CLOSETYPE printed 'Regular' under a Closure tag on 122 closed areas,
+    its value, so Midpen's CLOSETYPE printed 'Regular' under a Closure tag on 122 closed areas,
     which a hiker reads as open. The standard (seeds/_notices__seeds.yml): a category holds the row's own status, the
     kind of notice its source files it as, or the reason it was posted, and never a class along another axis. Every
     seed row and every fixed reader that stages a category says which it holds, so a field is checked against the
@@ -372,7 +372,7 @@ def test_a_conflicting_key_holds_its_source_and_stops_no_production_build(files)
 
 
 def test_no_pub_writer_reads_a_club_notice_model_except_through_the_marts():
-    """int_warnings__wording_leaks reads the club rows the marts are built from (before the gate since decision 81), so a
+    """int_warnings__wording_leaks reads the club rows the marts are built from (before the gate), so a
     writer that read a club notice model directly would go unchecked."""
     generated = {source.stg_model for source in generator.notice_sources() if not source.hand_staged}
     generated |= {source.base_model for source in generator.notice_sources() if not source.hand_staged}
@@ -388,7 +388,7 @@ def test_no_pub_writer_reads_a_club_notice_model_except_through_the_marts():
 
 
 def test_the_wording_union_reads_every_generated_notice_source(files):
-    """Decision 107 (the maintainer's poll, 2026-10-08): a club's closure post publishes as facts and a link, never the
+    """The maintainer's poll, 2026-10-08: a club's closure post publishes as facts and a link, never the
     post's words. int_warnings__wording_leaks is what holds a source whose published row carries its own words, and it
     knows a source's words only from int_warnings__notice_wording_unioned, so a notice source that union leaves out
     could publish its paragraphs unchecked. 264 generated sources and 264 read, on 2026-10-08 at 4ad88f3b."""
@@ -461,9 +461,9 @@ def test_every_pdf_notice_keeps_its_freshness_and_only_cis_two_freshness_command
 
 
 def test_every_notice_raw_table_carries_elementarys_checks_and_no_staging_model_carries_event_freshness(files):
-    """Decision 102, through the generator so one edit reaches every source: each raw table carries
+    """Through the generator so one edit reaches every source: each raw table carries
     make_dbt_staging.py's raw_table_checks(), the same two whatever its cadence. No staging model carries Elementary's
-    event_freshness_anomalies any more (decision 203, the maintainer, 2026-10-15): it scored how long since a club last
+    event_freshness_anomalies any more (the maintainer, 2026-10-15): it scored how long since a club last
     edited a notice, a ramp that a pause in OurHike's own runs moves for every quiet source at once, and on UA's page of
     2026-10-15 04:38 UTC it was all 97 freshness warnings. A notice source's freshness is dbt's, from the run log
     (tests/test_notice_source_freshness.py)."""
@@ -507,7 +507,7 @@ def test_a_reader_no_source_uses_yet_stages_only_columns_it_lands(reader_class, 
 
 def test_every_unit_test_input_on_a_generated_notice_model_is_sql_rows():
     """A generated notice base model reads its raw table through notice_raw_table(), so on a warehouse that lacks the
-    table (an hourly build with no served notices copy, decision 61) it has only the key columns. dbt checks dict or
+    table (an hourly build with no served notices copy) it has only the key columns. dbt checks dict or
     CSV fixture rows against the input's real columns and fails the whole build before a test runs, which stopped the
     soak run on ecc43d56 (publish-conditions.yml 37203308446). SQL rows carry their own columns."""
     import glob
@@ -549,13 +549,13 @@ def test_only_the_named_polygon_sources_base_models_are_tables(files):
 def test_every_notice_source_that_reaches_hikers_lands_in_the_warehouse_of_the_lane_that_builds_its_readers():
     """Review finding ARC-1 of PR #1805 — dlt → dbt re-platform as one go/no-go change: CPW's bear and mountain lion
     conflict areas (613 and 266 polygons, `reaches_hikers: true`) were extracted on the monthly lane, by a
-    `cadence_override="monthly"` from before decision 61 gave the notices job an hour to read. Their only readers are
+    `cadence_override="monthly"` left over from before the notices job had an hour to read. Their only readers are
     the unions this generator writes, which also read hourly sources, so they build on the hourly lane alone
     (build_marts.py's LANE_EXCLUDES keeps them out of the monthly build). The hourly build's warehouse holds a
     conditions leg's tables and a notices leg's served copy, never the monthly store, so int_closures__gate held both
     every hour as "not in this warehouse", and every run stayed green.
 
-    So every staged notice source's table must be one a leg reads: decision 61's two jobs (extract/_run.py's
+    So every staged notice source's table must be one a leg reads: the two jobs (extract/_run.py's
     leg_tables()). A source whose sources.json row says reaches_hikers false is let through, since the gate holds it
     either way: USFWS's hunt units today. Its row turning true turns this red, which is when its lane is decided."""
     from extract._contract import all_resources, discover, discover_shared
@@ -589,7 +589,7 @@ def test_every_stewards_areas_layer_lands_in_the_warehouse_of_the_hourly_build_t
 
 
 def test_each_link_joins_a_notice_source_to_a_layer_of_its_own_stewards_areas():
-    """The maintainer's answer to Q3 (poll of 2026-10-11): "a status point inside exactly one of its steward's own areas
+    """The maintainer's poll of 2026-10-11: "a status point inside exactly one of its steward's own areas
     takes that area". So a row of seeds/notice_steward_areas.csv links a generated notice source with a geometry to a
     layer the same steward publishes (sources.json's `steward`, extracted by the same folder), never another
     organization's areas, and links a notice source to one layer only."""

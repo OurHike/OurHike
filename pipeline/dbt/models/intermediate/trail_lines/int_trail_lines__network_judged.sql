@@ -5,18 +5,18 @@
 -- without a reason.
 --
 -- The tests, in order (the `reasoned` CTE); the first to fail names the
--- drop: no geometry (TL04), outside the named boundary (TL13), not a foot
--- trail (TL06), excluded use (TL07), status not shipped (TL10), route owned
--- by another source (TL11), unsupported geometry. Values match as text
+-- drop: no geometry, outside the named boundary, not a foot
+-- trail, excluded use, status not shipped, route owned
+-- by another source, unsupported geometry. Values match as text
 -- only, as the Python compares JSON values with the registry's strings: a
 -- number never reads as "1".
---
--- TL13 needs INSIDE_BOUNDARY_MIN_FRACTION (0.8) of the line's length inside
+-- The park-boundary rule needs INSIDE_BOUNDARY_MIN_FRACTION (0.8) of the
+-- line's length inside
 -- the named park polygons, in degrees as inside_boundary() measures it. 0.8
 -- is @unvalidated in the Python's own comment, which names what would
 -- settle it: a real drive between 0.8 and 1.0.
 --
--- `published_id` IS THE ID A PHONE JOINS ON (TL05): nearby_trails.geojson's
+-- `published_id` IS THE ID A PHONE JOINS ON: nearby_trails.geojson's
 -- `id` and each graph edge's `trail_id`, built as lib/feature_id.py builds
 -- it (macros/resolve_feature_id.sql): the GlobalID only where the layer
 -- spells it exactly `GlobalID`, then the feature's GeoJSON id, its object
@@ -52,7 +52,7 @@
 -- build where that column did not land.
 --
 -- THE STAGING KEY, THE LAST RESORT, where a row has none of the four ids
--- and its stg model keeps no raw-table order: decision 40's key, as every
+-- and its stg model keeps no raw-table order: the key, as every
 -- club line has (int_trail_lines__club_published), unique in its layer and
 -- the same for the same row next release. No line of run 30 reaches it.
 -- The two NYNJTC stg models carry their layer's object id, `fid` on the
@@ -63,9 +63,9 @@
 -- object id and the lines were numbered `generated-<n>` by place: UA's
 -- release 2026-10-08, written by this model's path, numbers all 55 NYNJTC
 -- lines so, where UA's 2026-10-03-2, today's exporter's, numbers all 55 by
--- object id (both read 2026-10-09; ELT.md, TL05).
+-- object id (both read 2026-10-09; ELT.md).
 --
--- `trail_status` (TL10) is 'open' or 'closed' from the status column, and
+-- `trail_status` is 'open' or 'closed' from the status column, and
 -- `closure_kind` 'long_term' where the steward marked a line closed. A
 -- layer with no status column ships open: export_nearby_trails.py's
 -- DEFAULT_STATUS, a default rather than a finding, since such a layer
@@ -409,7 +409,7 @@ select
     file_row,
     may_publish,
     -- The senior source this row's entry declares itself a duplicate of
-    -- (TL18), for int_trail_lines__network_deduplicated.
+    -- for int_trail_lines__network_deduplicated.
     duplicate_of,
     dropped_because,
     source_key || ':'

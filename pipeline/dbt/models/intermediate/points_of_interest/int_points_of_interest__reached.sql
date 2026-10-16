@@ -1,5 +1,5 @@
 {{ config(materialized='table') }}
--- The POIs in their file's ground that a hiker could reach (PO08, PO10):
+-- The POIs in their file's ground that a hiker could reach:
 -- export_poi.py's gate_osm_water_reach() and mark_off_trail_records(), in
 -- read_sources()' order, after the corridor clip. Every row that is not OSM
 -- water passes unchanged; nothing else is gated on reach.
@@ -19,7 +19,7 @@
 -- equivalent to port: build_marts.py runs the step before this model or not
 -- at all.
 --
--- THE MARK (PO10): a reachable OSM point whose nearest walk is another
+-- THE MARK: a reachable OSM point whose nearest walk is another
 -- organization's published trail carries that organization's key as
 -- `not_on_at`, which withholds its A.T. mile (int_points_of_interest__miles).
 -- load_osm_water_network_anchors() reads it off the verdicts' `nearest_source`

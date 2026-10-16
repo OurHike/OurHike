@@ -4,16 +4,16 @@
 -- any problem, as the Python's SystemExit does.
 --
 -- A steward is a `provider` with at least one source whose `reaches_hikers`
--- is true (SR01); a provider with none (today GATC and OPRHP) is not
+-- is true; a provider with none (today GATC and OPRHP) is not
 -- published at all. A `<x>_licence`, `_support` or `_store` block joins it
--- (SR02, SR03) when its `author`, or one of its `also_covers`, is a
+-- when its `author`, or one of its `also_covers`, is a
 -- `steward` the provider's shipping sources name; the first such block in
 -- the file wins, as in `_block`, so photo_licence, which comes first, is
 -- ATC's licence block. `steward`, `trust` and `attribution` come from the
--- sources only when every shipping source gives the same one (SR06,
--- `_unanimous`; a source that gives none breaks the agreement).
+-- sources only when every shipping source gives the same one (`_unanimous`; a
+-- source that gives none breaks the agreement).
 --
--- Problems (SR04, SR05) are `_support_record`'s and `_store_record`'s, in
+-- Problems are `_support_record`'s and `_store_record`'s, in
 -- their words, except for a paper-map table no resource lands: SQL sees
 -- the warehouse, not the checkout, so it names the folder that would land
 -- it.

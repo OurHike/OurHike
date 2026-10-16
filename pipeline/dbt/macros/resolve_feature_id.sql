@@ -15,8 +15,7 @@
     asking the bucket (client/src/map/networkTiles.ts), so its tiles can be
     from an older release than its graph, and a line must keep its id across
     the cutover. Whether it should ever move to its stable GlobalID is the
-    maintainer's question, with a plan for phones holding both
-    (pipeline/ELT.md's TL05).
+    maintainer's question, with a plan for phones holding both.
 
     THE CASE IS DECLARED, NOT READ. dlt's sql_ci_v1 naming lands `GlobalID`,
     `GLOBALID` and `globalid` as one lower-case column, so a layer's spelling
@@ -40,7 +39,7 @@
     - position: the feature's place in its layer, or null where its staging
       model keeps none;
     - last_resort: a step the Python does not have, for a row with none of
-      the three, such as decision 40's staging key, which stays unique and
+      the three, such as the staging key, which stays unique and
       stable where a place in a file the warehouse never saw cannot be.
 -#}
 {% macro resolve_feature_id(

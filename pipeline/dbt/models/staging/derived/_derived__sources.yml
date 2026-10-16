@@ -17,8 +17,7 @@ sources:
       # the one that reads it, so `_loaded_at` is OurHike's clock, and no
       # run log row names a derived table for last_read_or_confirmed_at to
       # read. A stale one is a build reading a table an earlier build left.
-      # The thresholds are every monthly source's (decision 203,
-      # make_dbt_staging.py's MONTHLY_FRESHNESS_DAYS), both @unvalidated;
+      # The thresholds are every monthly source's (make_dbt_staging.py's MONTHLY_FRESHNESS_DAYS), both @unvalidated;
       # build_marts.py's freshness runs leave this source out (its
       # FRESHNESS_LEFT_OUT), since it is no upstream read.
       loaded_at_field: _loaded_at
@@ -30,7 +29,7 @@ sources:
     tables:
       - name: dem_samples
         data_tests:
-          # Rows sharing stg_derived__dem_samples's key must be exact copies (decision 40).
+          # Rows sharing stg_derived__dem_samples's key must be exact copies.
           - duplicates_are_exact:
               arguments:
                 key_columns: ["'dem_samples'", "line_id", "sample_index"]
@@ -68,7 +67,7 @@ sources:
             data_tests: [not_null]
       - name: weather_squares
         data_tests:
-          # Rows sharing stg_derived__weather_squares's key must be exact copies (decision 40).
+          # Rows sharing stg_derived__weather_squares's key must be exact copies.
           - duplicates_are_exact:
               arguments:
                 key_columns: ["'weather_squares'", "release"]
@@ -80,7 +79,7 @@ sources:
           zone id in the zone files it pinned, and those files' names. The
           squares come from NOAA's rasters and NWS's shapefiles, which never
           enter the warehouse; only this answer does. Read by the NWS alerts'
-          placement (WN03).
+          placement.
         columns:
           - name: release
             description: The data release the squares were chosen for, as squares.json names it.
@@ -93,7 +92,7 @@ sources:
             data_tests: [not_null]
       - name: closure_trail_lines
         data_tests:
-          # Rows sharing stg_derived__closure_trail_lines's key must be exact copies (decision 40).
+          # Rows sharing stg_derived__closure_trail_lines's key must be exact copies.
           # prepare_closure_trail_lines.py writes one row per line id, so none share one.
           - duplicates_are_exact:
               arguments:
@@ -104,14 +103,13 @@ sources:
           (pipeline/step_closure_trail_lines.py) in the hourly lane: of the
           lines prepare_closure_trail_lines.py read once per release from the
           environment's current release, its nearby_trails.geojson and, since
-          decision 192, its trails.geojson (the A.T.'s own), those whose
+          Its trails.geojson (the A.T.'s own), those whose
           bounding box meets the box of a row of
           int_closures__trail_closure_areas; when none does, the file's first
           line alone. So the table is empty exactly when no release's lines
           were there to read, which leaves every area closure out of
           conditions/trail_closures.json that run, neither crossed out nor
-          shaded. Read by int_closures__area_trail_cuts (decisions 187 and
-          191).
+          shaded. Read by int_closures__area_trail_cuts.
         columns:
           - name: release
             description: The data release the lines were published in, as its latest.json named it.
@@ -134,7 +132,7 @@ sources:
             data_tests: [not_null]
       - name: section_closures
         data_tests:
-          # Rows sharing stg_derived__section_closures's key must be exact copies (decision 40). Two notices naming
+          # Rows sharing stg_derived__section_closures's key must be exact copies. Two notices naming
           # one section each name its lines, so a line can come twice with two notice ids; the staging dedupe keeps
           # the first by notice id, and this warns so the log names them.
           - duplicates_are_exact:
@@ -142,7 +140,7 @@ sources:
                 key_columns: ["'section_closures'", "trail_segment_key"]
         description: >
           The network lines an organization's own notice closes by naming
-          their section (decisions 212 and 213), written by
+          their section, written by
           step_section_closures (pipeline/step_section_closures.py) in the
           monthly lane from the conditions/notices.json the hourly lane
           published, one row per line, through lib/section_closures.py.
@@ -167,7 +165,7 @@ sources:
             data_tests: [not_null]
       - name: graph_pieces
         data_tests:
-          # Rows sharing stg_derived__graph_pieces's key must be exact copies (decision 40).
+          # Rows sharing stg_derived__graph_pieces's key must be exact copies.
           - duplicates_are_exact:
               arguments:
                 key_columns: ["'graph_pieces'", "row_kind", "part_id", "piece_index", "cut_key"]
@@ -175,7 +173,7 @@ sources:
           The junction graph's pieces, written by step_node_lines
           (pipeline/step_node_lines.py) with build_trail_graph.py's own
           _split_all: every routable part of int_trail_network__routable cut
-          where int_trail_network__cuts says (TN04), one `piece` row per
+          where int_trail_network__cuts says, one `piece` row per
           piece in its order along the part, and one `landing` row per line
           end the cuts join to another line, the point it lands on.
         columns:
@@ -217,7 +215,7 @@ sources:
             data_tests: [not_null]
       - name: site_water
         data_tests:
-          # Rows sharing stg_derived__site_water's key must be exact copies (decision 40).
+          # Rows sharing stg_derived__site_water's key must be exact copies.
           - duplicates_are_exact:
               arguments:
                 key_columns: ["'site_water'", "layer", "atc_global_id"]
@@ -228,8 +226,7 @@ sources:
           int_points_of_interest__water_sites, in the order fetch_trail_water.py
           writes data/raw/trail_water.json, each with the water it can reach
           or the reason it cannot. The hydrography's GeoPackages and extracts
-          and EPQS's answers never enter the warehouse; only these verdicts do
-          (pipeline/ELT.md's PO07 and PO17).
+          and EPQS's answers never enter the warehouse; only these verdicts do.
         columns:
           - name: site_row
             description: The record's place in the file's `sites` array, from 0.
@@ -257,7 +254,7 @@ sources:
             data_tests: [not_null]
       - name: osm_water
         data_tests:
-          # Rows sharing stg_derived__osm_water's key must be exact copies (decision 40).
+          # Rows sharing stg_derived__osm_water's key must be exact copies.
           - duplicates_are_exact:
               arguments:
                 key_columns: ["'osm_water'", "osm_id"]
@@ -269,8 +266,7 @@ sources:
           for the extract, which waits on #1652 — Download OSM's Geofabrik
           extracts at most once a month, into a private raw bucket that
           outlives the 7-day Actions cache. Until then only fixture mode
-          lands points here and a live build lands none (pipeline/ELT.md's
-          PO03).
+          lands points here and a live build lands none.
         columns:
           - name: feature_row
             description: The feature's place in the file, from 0.
@@ -295,7 +291,7 @@ sources:
             data_tests: [not_null]
       - name: osm_water_grade
         data_tests:
-          # Rows sharing stg_derived__osm_water_grade's key must be exact copies (decision 40).
+          # Rows sharing stg_derived__osm_water_grade's key must be exact copies.
           - duplicates_are_exact:
               arguments:
                 key_columns: ["'osm_water_grade'", "osm_id"]
@@ -305,7 +301,7 @@ sources:
           distance pass int_points_of_interest__osm_water_reach measured,
           and the grade build_osm_water_reach.apply_grade_gate() takes from
           USGS EPQS for a point that passed it. One row per row of that
-          model (pipeline/ELT.md's PO06 and PO07).
+          model.
         columns:
           - name: osm_id
             description: The OSM node id.
@@ -329,7 +325,7 @@ sources:
             data_tests: [not_null]
       - name: poi_photos
         data_tests:
-          # Rows sharing stg_derived__poi_photos's key must be exact copies (decision 40).
+          # Rows sharing stg_derived__poi_photos's key must be exact copies.
           - duplicates_are_exact:
               arguments:
                 key_columns: ["'poi_photos'", "source", "poi_id", "photo_index"]
@@ -340,8 +336,7 @@ sources:
           fetch_atc_photos.py's poi_images_atc.json (ATC), each with its bucket
           key's digest, its credit, the face screen's flag and the human
           decision on that digest from reference/photo_screen_decisions.json.
-          Manifest rows only: the bytes never enter the warehouse
-          (pipeline/ELT.md's PO24 and PO38).
+          Manifest rows only: the bytes never enter the warehouse.
         columns:
           - name: source
             description: commons or atc, the outcome file the photo came from.
@@ -385,7 +380,7 @@ sources:
             data_tests: [not_null]
       - name: long_path_guide
         data_tests:
-          # Rows sharing stg_derived__long_path_guide's key must be exact copies (decision 40).
+          # Rows sharing stg_derived__long_path_guide's key must be exact copies.
           - duplicates_are_exact:
               arguments:
                 key_columns: ["'long_path_guide'", "id"]
@@ -394,7 +389,7 @@ sources:
           (pipeline/step_long_path_guide.py) through
           lib/nynjtc_long_path_guide.py's build_records(): one row per record,
           each placed at NYNJTC's own coordinates or by the guide's mile
-          along its section's line, and de-duplicated (pipeline/ELT.md's PO36).
+          along its section's line, and de-duplicated.
         columns:
           - name: record_row
             description: The record's place in build_records()' output, from 0.

@@ -2,8 +2,8 @@
 -- guide_pages kind lands them: lib/nynjtc_long_path_guide.py's
 -- Section.to_dict() and the page's sha256. The three blocks' entries stay
 -- JSON, because step_long_path_guide hands them back to that module's
--- Section.from_dict() and build_records(), which classify and place them
--- (pipeline/ELT.md's PO36). Nothing is read out of the prose here.
+-- Section.from_dict() and build_records(), which classify and place them.
+-- Nothing is read out of the prose here.
 with source as (
     select * from {{ source('nynjtc', 'raw_nynjtc__nynjtc_long_path_guide') }}
 ),

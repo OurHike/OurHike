@@ -3,20 +3,20 @@
     location='conditions_hazard_areas.json',
     meta={'when_empty': 'keep_last_file'},
 ) }}
--- conditions/hazard_areas.json (decision 84, the maintainer's poll of
--- 2026-10-05, Q5: "Their own small file, read at launch"): the notices of
--- conditions/notices.json that carry decision 67's `hazard` (hunting,
--- shooting or burned_area), and no others. Decision 77 has a phone download
--- notices.json only once a hike is planned, and the map draws hunting areas,
+-- conditions/hazard_areas.json (the maintainer's poll of
+-- 2026-10-05: "Their own small file, read at launch"): the notices of
+-- conditions/notices.json that carry the `hazard` (hunting,
+-- shooting or burned_area), and no others. A phone downloads notices.json only
+-- once a hike is planned, and the map draws hunting areas,
 -- shooting sites and burned areas from these rows, so a phone with nothing
 -- planned drew none; client/src/lib/publishedNotices.ts reads this file at
 -- launch instead, whatever is planned.
 --
 -- ONE HOME FOR EVERY RULE: this writer selects from pub_conditions_notices'
 -- own table and keeps each hazard row exactly as that writer wrote it, so
--- the row shape (features/ORG_NOTICES.md section 2), decision 77's phone
+-- the row shape (features/ORG_NOTICES.md section 2), the phone
 -- geometry (macros/notice_phone_geometry.sql), the dates, the carried rows
--- of a held source and decision 76's `states` are that writer's and nothing
+-- of a held source and the `states` are that writer's and nothing
 -- here can drift from them. The rows keep that writer's order, by
 -- source_key then notice_id, and `generated_at` is that writer's stamp.
 --

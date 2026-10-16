@@ -1,7 +1,6 @@
 {#-
     Why a link a hiker will tap leads back into the app, or null when it does
-    not: decision 94 in pipeline/ELT.md, from SEC-3 of PR #1805's second
-    review. For a link that has already passed its model's scheme check
+    not, from a security finding in the second review of PR #1805. For a link that has already passed its model's scheme check
     (int_closures__atc_checked's http(s) regex, int_closures__nynjtc_checked's
     starts_with(link, 'http')), both of which pass `https:#access_token=…`.
 

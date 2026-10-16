@@ -1,8 +1,8 @@
 {{ config(materialized='table') }}
 {%- set bound_mi = 0.37 %}
 {%- set shown_bound_mi = '0.4' %}
--- GATC's water list placed on the A.T. from GATC's own mile points (decision
--- 75, the maintainer's poll of 2026-10-04: publish now, at low confidence,
+-- GATC's water list placed on the A.T. from GATC's own mile points (the
+-- maintainer's poll of 2026-10-04: publish now, at low confidence,
 -- placed from GATC's miles, with the document's date), each held where the
 -- placement cannot be stood behind. One row per row of
 -- stg_gatc__water_sources, typed as a record the POI family reads whole
@@ -71,7 +71,7 @@
 -- - its namesake reading more than the bound from GATC's mile.
 -- A spigot (Neel Gap's) carries `water_source_kind` 'spigot', which the
 -- layer_rules `plumbed_water` row reads in int_points_of_interest__cautioned
--- for decision 65's season caution.
+-- for the season caution.
 --
 -- A MILE TO A POINT: the piece whose calibrated range holds the mile (the
 -- lower piece_id where two overlap, as axis_mile breaks a tie), and the

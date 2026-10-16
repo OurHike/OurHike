@@ -1,25 +1,25 @@
 -- Every row of reference/atc_updates.json, checked field by field against
--- lib/atc_updates.py's file_problems() (CL01-CL06). `problems` lists every
+-- lib/atc_updates.py's file_problems(). `problems` lists every
 -- problem a row has, in row_problems()'s order; empty means the row is
 -- fine. int_closures__gate fails ATC's whole file on any problem, as
--- export_atc_updates.py refuses it (CL05): "a partial set of safety notices
+-- export_atc_updates.py refuses it: "a partial set of safety notices
 -- is worse than none". The review is the file's, and int_closures__gate
 -- reads it from base_atc__atc_updates.
 --
 -- The checks, each only for a field the row has (a null value counts as
 -- present):
---   every field present (REQUIRED_FIELDS)       CL06
+--   every field present (REQUIRED_FIELDS)
 --   atc_id, title: a string with something besides whitespace
---   category: one ATC publishes                 CL02, var atc_update_categories
+--   category: one ATC publishes (var atc_update_categories)
 --   states: a non-empty list of non-blank strings
---   each mile: a number, not a boolean, inside 0.5-2197.5     CL01
---   end before start: refused, never swapped    CL03
---   obstructs_trail: a real boolean             CL03
+--   each mile: a number, not a boolean, inside 0.5-2197.5
+--   end before start: refused, never swapped
+--   obstructs_trail: a real boolean
 --   updated_at: a string with something in it
---   source_url: an http or https URL            CL03
---   source_url: not back into the app (macros/link_into_the_app.sql,
---     decision 94), which file_problems() does not check
--- then an atc_id an earlier row already used (CL04). A field's JSON type is
+--   source_url: an http or https URL
+--   source_url: not back into the app (macros/link_into_the_app.sql),
+--     which file_problems() does not check
+-- then an atc_id an earlier row already used. A field's JSON type is
 -- checked as the Python checks a type: "476.6" is not a mile and "true" is
 -- not a boolean.
 --
@@ -295,7 +295,7 @@ checks as (
     from parsed
 ),
 
--- CL04: an atc_id an earlier row already used. file_problems() remembers
+-- An atc_id an earlier row already used. file_problems() remembers
 -- every string id it meets, whatever else is wrong with its row.
 repeats as (
     select

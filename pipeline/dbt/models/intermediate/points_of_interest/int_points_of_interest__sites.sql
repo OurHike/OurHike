@@ -4,7 +4,7 @@
 -- (features/POI_SITES.md), published as site_id, site_role and site_name.
 -- One row per POI; the three are null for a POI in no site, which is most.
 --
--- A.T. POIs: lib/poi_sites.py's group_sites() (PO18), the same two passes
+-- A.T. POIs: lib/poi_sites.py's group_sites(), the same two passes
 -- in the same order: each privy, campsite and water point folds into its
 -- best shelter, then the campsites no shelter claimed anchor what is left.
 -- The best anchor shares the member's base_name() within
@@ -15,7 +15,7 @@
 -- Distances are poi_distance_m(), the formula the radii were measured
 -- with.
 --
--- Other organizations: lib/poi_sites.py's group_place_sites() (PO35), for
+-- Other organizations: lib/poi_sites.py's group_place_sites(), for
 -- New York City's fountains and restrooms, where a shared park name means
 -- "same property", not "same place". Waypoints of one type sharing a
 -- normalised name fold single-link within `poi_place_site_radius_m`

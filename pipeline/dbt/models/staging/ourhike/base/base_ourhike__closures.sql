@@ -1,6 +1,6 @@
 -- OurHike's moderator-verified closures (extract/_shared/ourhike/closures.py,
--- export_conditions.py's PUBLIC_CLOSURES_SQL run whole), keyed (decision
--- 40), with nothing filtered: the query's own `moderation_status =
+-- export_conditions.py's PUBLIC_CLOSURES_SQL run whole), keyed, with nothing
+-- filtered: the query's own `moderation_status =
 -- 'verified'` is the gate (gate 4), and int_closures__ourhike_checked checks
 -- it again. Every column is the query's, so conditions/closures.json's
 -- writer can print each one as today. The times are TIMESTAMPTZ, UTC: the

@@ -1,4 +1,4 @@
--- Decision 67 (the maintainer, poll, 2026-10-04): a hunting area, a
+-- The maintainer's poll, 2026-10-04: a hunting area, a
 -- recreational shooting site or a burned area is an area a hiker walks into,
 -- with an advisory on the stretch inside it, and the trail stays open. So no
 -- row of a source seeds/notice_hazard_areas.csv lists may land in the
@@ -7,7 +7,7 @@
 -- a trail (int_warnings__unioned); this holds that for whatever source the
 -- seed lists next, and for a source a later change moves to closures.py.
 -- Returns one row per notice that breaks it.
--- A gate on a mart a hiker's safety reads (decision 204, dbt_project.yml's
+-- A gate on a mart a hiker's safety reads (dbt_project.yml's
 -- `marts:` gates): an error in every environment, so in production a
 -- failure holds the files below at their last good copy.
 {{ config(severity='error') }}

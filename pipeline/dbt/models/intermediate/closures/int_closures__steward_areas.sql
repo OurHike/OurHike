@@ -1,8 +1,8 @@
 -- The areas that may place a notice's point (int_closures__club_notices'
 -- rule 4): one row per notice source seeds/notice_steward_areas.csv links to
 -- a layer of its own steward's areas, and per area of that layer, carrying
--- the area's own outline as GeoJSON text. The maintainer's answer to Q3
--- (poll of 2026-10-11, decision 185): "a status point inside exactly one of
+-- the area's own outline as GeoJSON text. The maintainer's poll of
+-- 2026-10-11: "a status point inside exactly one of
 -- its steward's own areas takes that area". Which source names which layer
 -- is the seed's, never a key written here, so the rule is the same for
 -- every steward.
@@ -15,7 +15,7 @@
 --   places nothing.
 -- - Its key is held by one raw row (`key_versions` 1). Two different
 --   outlines under one key are a conflict the dedupe settles by keeping one
---   of them (decision 40 allows only exact copies), so neither places
+--   of them (a key allows only exact copies), so neither places
 --   anything.
 -- - It is an area: its GeoJSON's own `type` is Polygon or MultiPolygon. A
 --   line or a point in an areas layer has nothing inside it.

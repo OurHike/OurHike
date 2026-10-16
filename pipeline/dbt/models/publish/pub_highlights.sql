@@ -5,7 +5,7 @@
 -- export_highlights.py writes: the reviewed file the judgement lives in, and
 -- every curated row that resolved, in the file's order, each the mart's
 -- `highlight_record`, lib/highlights.py's as_published() (built in
--- int_suggested_hikes__highlights). Nothing derived is stored (SH14): no
+-- int_suggested_hikes__highlights). Nothing derived is stored: no
 -- length, no ascent, no Naismith time, which the phone derives from the
 -- profile it already holds.
 --
@@ -14,7 +14,7 @@
 -- be placed is dropped and named (int_suggested_hikes__highlights' warn
 -- test), never published with an end guessed.
 with highlights as (
-    select * from {{ ref('suggested_hikes') }}
+    select * from {{ ref('suggested_hikes', v=1) }}
     where phone_file = 'highlights'
 )
 

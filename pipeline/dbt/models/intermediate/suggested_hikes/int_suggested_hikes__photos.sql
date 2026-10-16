@@ -1,6 +1,6 @@
 -- The photographs a person confirmed, one row per hike number: the join
 -- export_suggested_hikes.py's confirmed_photos() and photo_for() read from
--- reference/nynjtc_hike_photos.json (SH09). Not the matcher's proposal, which
+-- reference/nynjtc_hike_photos.json. Not the matcher's proposal, which
 -- is a score about strings: this file is a reviewer's answer about the world,
 -- row by row, and no other input can put a photograph on a card.
 --

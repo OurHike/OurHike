@@ -1,5 +1,5 @@
 -- The published waypoints a trailhead, parking or town row of places.json
--- comes from (PL05): every record export_places.py's load_point_places()
+-- comes from: every record export_places.py's load_point_places()
 -- reads, which is poi_trailhead.geojson, poi_parking.geojson and
 -- poi_resupply.geojson (export_poi.py) and then nearby_poi.geojson
 -- (export_nearby_poi.py), here as the points_of_interest mart's rows those

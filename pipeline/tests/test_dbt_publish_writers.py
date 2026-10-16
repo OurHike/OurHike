@@ -8,7 +8,7 @@ So the rules that keep that safe are held here, from the files themselves:
 - nothing else in the project writes a file: no other model, macro or hook
   carries a `COPY ... TO`;
 - every writer is the dependency of exactly one exposure, whose meta names the
-  phone's key, the format and the cadence (decision 28), so a writer nobody
+  phone's key, the format and the cadence, so a writer nobody
   reads cannot be added, and every file a phone reads has a page in the docs.
 """
 

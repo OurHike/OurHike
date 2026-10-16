@@ -2,7 +2,7 @@
 {%- set at_sources = var('trail_network_at_sources') %}
 -- The trail lines a route may run on, one row per line part, and one row per
 -- refusal: build_trail_graph.py's routable_lines() over the collection
--- build() merges (TN01-TN03 of pipeline/ELT.md's ledger).
+-- build() merges.
 --
 -- THE INPUT is the trail_lines mart, the lines a phone draws, read as
 -- build_trail_graph.py reads the two files written from it: every network
@@ -10,7 +10,7 @@
 -- centerline and side trails WHOLE (trails.geojson, in its order, kept to
 -- the sources in trail_network_at_sources, load_at_lines()' AT_GRAPH_SOURCES).
 -- The A.T. is absent from the network half by design (the route owner's
--- line wins, TL11), so without its own lines a graph would refuse a tap on
+-- line wins), so without its own lines a graph would refuse a tap on
 -- the widest line on the map with a sentence that is false there;
 -- assert_the_at_routes_on_the_junction_graph says so loudly, as main()'s
 -- WARNING does.
@@ -29,14 +29,14 @@
 -- parts each on their own, in order. One count differs and no edge does: an
 -- A.T. line with no geometry is counted 'empty' here, where at_lines_of()
 -- drops it before routable_lines() counts anything. The counts are not
--- published yet (trail_graph_manifest.json's stats are stage 4's).
+-- published yet (trail_graph_manifest.json's stats are left to the cutover).
 --
 -- `trail_id` IS THE LINE'S PUBLISHED ID, the mart's `published_id`: the `id`
 -- nearby_trails.geojson and trails.geojson publish, which build_trail_graph.py
 -- copies onto every edge and a phone joins a graph cell's edges to a tile's
 -- lines by (client/src/lib/lineClimb.ts). `part_id`, and so every edge id
 -- after it, is built on `trail_line_id`, the mart's key, which stays as it
--- was (TL05).
+-- was.
 --
 -- `part_order` is the part's place in routable_lines()' list, which is the
 -- order every later model and step_node_lines reads the parts in. Geometry

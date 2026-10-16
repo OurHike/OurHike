@@ -1,7 +1,7 @@
 -- Each shipped Hike Finder hike as the phone reads it: every field
 -- export_suggested_hikes.py's record_for() gives it, as a typed column the
 -- mart carries, and the record itself, split by split_record() into its
--- shelf record and its detail (SH10, SH11), as JSON text. The mart takes the
+-- shelf record and its detail, as JSON text. The mart takes the
 -- columns and pub_suggested_hikes and pub_suggested_hikes_detail only gather
 -- the records, so the shape a phone reads is unit-tested here, record by
 -- record.
@@ -18,8 +18,8 @@
 -- split_record()'s key order.
 --
 -- ABSENT, NEVER EMPTY. A hike with no confirmed photograph has no `photo`,
--- one whose walk was never priced no `climb` (SH08), one whose page names no
--- author no `publication` (SH10: validPublication refuses a block with no
+-- one whose walk was never priced no `climb`, one whose page names no
+-- author no `publication` (validPublication refuses a block with no
 -- submittedBy), and a generated route no `trackReproduction`. Each is built
 -- in its place, and an absent one is removed by a json_merge_patch whose
 -- patch names only that key, as null: a patch of `{}` leaves the record

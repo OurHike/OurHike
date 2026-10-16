@@ -1,11 +1,11 @@
 -- Every gatc_water_atc_names row finds its GATC row and its ATC point, so
--- each check decision 75's measurement rests on still runs (the seed's
+-- each check the measurement rests on still runs (the seed's
 -- description). A row that finds neither checks nothing: a GATC republish
 -- that moved a mile or reworded a name, or an ATC renamed point, turns a
 -- checked source into an unchecked one with every other test green. Warns,
 -- because the source still ships on the measurement as a whole; the row is
--- for a person to re-pair or remove. An error when no row pairs (decision
--- 204, macros/test_levels.sql's named_rows_level(), over `total_rows`, the
+-- for a person to re-pair or remove. An error when no row pairs
+-- (macros/test_levels.sql's named_rows_level(), over `total_rows`, the
 -- seed's rows): a republish that moved everything, not a name to re-pair.
 -- Asked only of a build that holds GATC's rows: the fixture warehouse never
 -- does (its table is read off a PDF).

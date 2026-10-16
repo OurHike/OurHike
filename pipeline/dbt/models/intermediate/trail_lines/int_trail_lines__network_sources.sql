@@ -2,7 +2,7 @@
 -- export_nearby_trails.py exports, with every field its filters read, both
 -- as the registry spells it and as the column dlt landed it under.
 --
--- Which entries (TL01), network_line_sources(): an external organization's
+-- Which entries, network_line_sources(): an external organization's
 -- layer (kind `external_arcgis_layer` or `socrata_geojson_layer`,
 -- lib/source_registry.py's is_external_source) with a `blaze_field` or
 -- `blaze_default` key. That marker on an A.T. source belongs to
@@ -19,11 +19,11 @@
 --
 -- `may_publish` is int_sources__publication's (pipeline/ELT.md, "Who may
 -- publish"). Every network source is kept whatever it says, because
--- export_nearby_trails.py runs the build-stopping registry checks (TL08,
--- TL09) over held-back sources too.
+-- export_nearby_trails.py runs the build-stopping registry checks over
+-- held-back sources too.
 --
--- THE TWO FIELDS A LINE'S PUBLISHED ID IS READ FROM (TL05,
--- macros/resolve_feature_id.sql): `global_id_field`, the layer's GlobalID as
+-- THE TWO FIELDS A LINE'S PUBLISHED ID IS READ FROM
+-- (macros/resolve_feature_id.sql): `global_id_field`, the layer's GlobalID as
 -- the layer spells it, which lib/feature_id.py reads only where that is
 -- exactly `GlobalID`, and the GeoJSON id the Python falls back to, which
 -- ArcGIS sets to the object id the entry's `object_id_field` names and
@@ -148,8 +148,9 @@ field_names as (
         coalesce(name_field, 'Name') as field_name,
         0 as field_order
     from declared
-    -- The two id fields, at places below zero: no filter reads them, so TL08
-    -- never counts them, and `missing_id_fields` below does instead.
+    -- The two id fields, at places below zero: no filter reads them, so the
+    -- filter count never counts them, and `missing_id_fields` below does
+    -- instead.
     union all
     select
         source_key,
@@ -261,7 +262,7 @@ landed as (
     group by source_key
 ),
 
--- TL08, missing_declared_fields(): each declared field whose column the
+-- missing_declared_fields(): each declared field whose column the
 -- layer did not land, in declared order. Measured 2026-09-26: a renamed
 -- motorized column on NH GRANIT's layer made `excluded_when` match nothing,
 -- and 2,375 mi of motorized corridor shipped from a green run (#1646 — NH
@@ -325,7 +326,7 @@ select
     named_columns.foot_column,
     named_columns.blaze_column,
     named_columns.status_column,
-    -- TL09: `name_field` says where to read the name and `name_constant` says
+    -- `name_field` says where to read the name and `name_constant` says
     -- there is nowhere to read it, so an entry stating both has decided
     -- neither. name_constant_conflicts() stops the export on it; the test on
     -- this column stops the build.

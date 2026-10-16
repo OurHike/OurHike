@@ -1,22 +1,19 @@
 version: 2
 
-# The suggested_hikes family (stage 3 of #1793 — Rebuild the data platform as
-# dlt → dbt: seven contracted marts, a monthly refresh, published docs, and
-# lighter phone downloads): NYNJTC's Hike Finder hikes and OurHike's curated
+# The suggested_hikes family: NYNJTC's Hike Finder hikes and OurHike's curated
 # highlights, from their pages and reviewed files to the suggested_hikes
-# mart. The rules are pipeline/ELT.md's ledger rows SH01-SH14, applied in
-# today's order: export_suggested_hikes.py's over route_hikefinder.py's,
+# mart. The rules are applied in today's order: export_suggested_hikes.py's over route_hikefinder.py's,
 # lib/hike_route_builder.py's grade, and lib/highlights.py's resolve().
 models:
   - name: int_suggested_hikes__hike_finder
     description: >
       One row per Hike Finder hike, with the facts its record carries, the
-      client's slug for its difficulty (SH07) and hike_problems()'s review
-      notes (SH02). step_form_route reads it to form each route.
+      client's slug for its difficulty and hike_problems()'s review
+      notes. step_form_route reads it to form each route.
     data_tests:
-      # SH02, a review aid and never a gate: names every hike a person should
+      # A review aid and never a gate: names every hike a person should
       # read before trusting its route, and drops none. An error when every
-      # hike is named (decision 204, tests/generic/rows_named.sql): Hike
+      # hike is named (tests/generic/rows_named.sql): Hike
       # Finder's records or the reader broken, not some hikes to read.
       - rows_named:
           name: int_suggested_hikes__hike_finder_names_every_hike_missing_what_a_route_needs
@@ -30,7 +27,7 @@ models:
         description: The record id, `nynjtc_hike_finder:<number>`.
         data_tests: [not_null, unique]
       - name: difficulty_slug
-        description: The client's slug for the publisher's difficulty, or null where it has no slot (SH07).
+        description: The client's slug for the publisher's difficulty, or null where it has no slot.
       - name: problems_json
         description: >
           hike_problems()'s list, in its order and words: no coordinate, no
@@ -40,7 +37,7 @@ models:
   - name: int_suggested_hikes__photos
     description: >
       One row per hike number a person confirmed a photograph for, the first
-      confirmed row in the file's order winning (SH09): its bucket key, its
+      confirmed row in the file's order winning: its bucket key, its
       credit with "Photo by " where it did not say so, and its licence.
     columns:
       - name: hike_key
@@ -71,8 +68,8 @@ models:
   - name: int_suggested_hikes__graded
     description: >
       Each Hike Finder hike's route graded, with every check that is not clean
-      in a reviewer's order: _grade() over a generated route (SH04), and
-      published_route()'s checks over a published track, which SH04's row carries.
+      in a reviewer's order: _grade() over a generated route, and
+      published_route()'s checks over a published track.
     columns:
       - name: hike_number
         description: The export's hike id.
@@ -88,8 +85,8 @@ models:
         description: The checks that are not clean, as the record's routeNotes words them.
   - name: int_suggested_hikes__routed
     description: >
-      The Hike Finder hikes whose route ships (SH05, SH06), with the ends the
-      phone routes between, the miles and the climb (SH08), rounded as the
+      The Hike Finder hikes whose route ships, with the ends the
+      phone routes between, the miles and the climb, rounded as the
       two Python files round them.
     columns:
       - name: hike_number
@@ -104,7 +101,7 @@ models:
       Each shipped Hike Finder hike as the phone reads it: every field
       record_for() gives it, as the typed columns the mart carries, and the
       record split by split_record() into the shelf record and the detail
-      (SH10, SH11), as JSON text in split_record()'s key order. The writers
+      as JSON text in split_record()'s key order. The writers
       only gather the records.
     columns:
       - name: hike_number
@@ -121,7 +118,7 @@ models:
     description: >
       Every POI the eight poi_<type>.geojson files publish (the
       points_of_interest mart's `poi_by_type` rows), with its `id` and
-      `mile`, which a highlight's legs resolve against (SH12).
+      `mile`, which a highlight's legs resolve against.
     columns:
       - name: poi_id
         description: The POI's published id.
@@ -134,7 +131,7 @@ models:
     columns:
       - name: club_stretch_key
         description: >
-          The row's key (decision 197): dbt_utils.generate_surrogate_key over
+          The row's key: dbt_utils.generate_surrogate_key over
           club_order and stretch_order. Its unique test fails on any two rows
           sharing them, the combination test it replaced; never null by
           construction, so the two inputs' own not_null tests hold the values.
@@ -149,13 +146,13 @@ models:
     description: >
       Every row of reference/highlights.json resolved against the published
       POIs, in the file's order, with the first rule it breaks in
-      lib/highlights.py's words (SH12, SH13). The mart takes the rows with
+      lib/highlights.py's words. The mart takes the rows with
       none.
     data_tests:
       # A curated list quietly shrinking is the failure nobody notices: every
       # dropped row is named, as export_highlights.py prints them, and a
       # few never stop a build. When every curated row drops it is an error
-      # (decision 204, tests/generic/rows_named.sql): the published POIs it
+      # (tests/generic/rows_named.sql): the published POIs it
       # resolves against, not the list.
       - rows_named:
           name: int_suggested_hikes__highlights_names_every_curated_row_that_does_not_publish
@@ -183,7 +180,7 @@ models:
         description: The record highlights.json carries, as_published()'s, on a row that publishes.
   - name: int_suggested_hikes__final
     description: >
-      The suggested hikes mart's rows before their row dates (decision 57):
+      The suggested hikes mart's rows before their row dates:
       what models/marts/suggested_hikes/suggested_hikes.sql held until then, every
       contracted column but _first_seen_at and _changed_at.
       int_suggested_hikes__history snapshots it, and the mart reads that snapshot.
@@ -205,7 +202,7 @@ exposures:
       invocation that builds its inputs and the one that reads its answer
       back as source('derived', 'formed_routes'). It is Python because the
       route is a search over the graph and DuckDB 1.5.5 has no graph
-      extension (SH03, pipeline/ELT.md's ledger), and it searches with
+      extension (pipeline/ELT.md's ledger), and it searches with
       lib/hike_route_builder.py and lib/trail_graph_route.py, the twin of the
       phone's own router. Shown here so the docs draw both halves of the step.
       It also reads int_trail_network__edges, a view, which the evaluator's

@@ -1,7 +1,6 @@
-"""The places family's SQL answers what export_places.py answers, on the same rows (#1793, stage 3).
+"""The places family's SQL answers what export_places.py answers, on the same rows.
 
-places.json moved to SQL (pipeline/ELT.md's places rows, PL01-PL11), and until
-stage 5 deletes the Python both are live. parity.py compares the two files on
+places.json moved to SQL (pipeline/ELT.md's places rows), and until the Python is deleted both are live. parity.py compares the two files on
 the fixture warehouse in CI; this holds the cases the fixture never reaches,
 one dbt unit test per case of tests/test_export_places.py:
 
@@ -610,8 +609,8 @@ def test_the_writer_writes_what_record_writes(test):
         assert None not in record.values()
 
 
-def test_a_place_from_a_layer_no_exporter_reads_is_explained_as_decision_31s_new_data():
-    """places' parity explains a trailhead or parking lot from one of decision 54's wave 1 point layers as new data,
+def test_a_place_from_a_layer_no_exporter_reads_is_explained_as_new_data():
+    """places' parity explains a trailhead or parking lot from one of the generated club point layers as new data,
     and the order with those places left out. A place from a layer export_nearby_poi.py reads, or one with no source,
     is still a difference, and so is an order that differs once the new places are left out."""
     import parity
@@ -637,7 +636,7 @@ def test_a_place_from_a_layer_no_exporter_reads_is_explained_as_decision_31s_new
     assert "order" not in parity._places_reasons(old, {"places": [town, club, shared]})
 
 
-def test_a_park_from_a_club_places_layer_is_explained_as_decision_31s_new_data_by_its_own_reason():
+def test_a_park_from_a_club_places_layer_is_explained_as_new_data_by_its_own_reason():
     """A club places layer's park (int_places__club_units) is new data too, and parity names it as a places layer's
     rather than in the words it uses for a point layer's trailhead."""
     import parity
@@ -653,7 +652,9 @@ def test_a_park_from_a_club_places_layer_is_explained_as_decision_31s_new_data_b
     assert "usgs_gnis_populated_places" in parity._club_places_sources()
 
 
-def test_a_long_trail_whose_copied_line_today_measures_twice_is_explained_by_decision_40_and_nothing_else(tmp_path, monkeypatch):
+def test_a_long_trail_whose_copied_line_today_measures_twice_is_explained_by_the_one_key_rule_and_nothing_else(
+    tmp_path, monkeypatch
+):
     """Monthly run 30's trail:alaska_trails:Haessler-Norris Sled Dog: today's network file draws one of the trail's
     lines twice, and today's trailMiles counts it twice. Only a `trail:` place that differs in trailMiles alone, today's
     figure the miles over every line and the dbt writer's the miles over each geometry once, is explained."""
@@ -692,7 +693,7 @@ def test_a_long_trail_whose_copied_line_today_measures_twice_is_explained_by_dec
     assert parity._places_reasons(today, {"places": [place(once, lat=61.25)]}) == {}
 
 
-def test_a_parking_lot_whose_disc_holds_a_copied_line_is_explained_by_decision_40_and_nothing_else(tmp_path, monkeypatch):
+def test_a_parking_lot_whose_disc_holds_a_copied_line_is_explained_by_the_one_key_rule_and_nothing_else(tmp_path, monkeypatch):
     """Monthly run 31's three Long Path parking lots: today's network file draws a Bruckner Boulevard segment once per
     row NYC DOT lists it on, and a parking lot's 5-mile disc counts every copy. Only a place with no bbox that differs
     in trailMiles alone, today's figure the disc's miles over every line and the dbt writer's the miles over each
@@ -743,7 +744,7 @@ def test_a_parking_lot_whose_disc_holds_a_copied_line_is_explained_by_decision_4
     assert parity._places_reasons({"places": [place(every, **park)]}, {"places": [place(once, **park)]}) == {}
 
 
-# --- the measure both sides use (decision 97) ---------------------------------
+# --- the measure both sides use ---------------------------------
 
 
 def test_export_places_measures_with_the_macro_int_places_resolved_uses():
@@ -779,7 +780,7 @@ CUT_PIECES = {
 def test_a_piece_a_park_cuts_measures_pyprojs_geodesic_length(line_wkt, park_wkt):
     """The piece int_places__resolved and export_places.measure() take a park's miles from: the line cut against the
     park in EPSG:5070, then measured by the macro's expression. It reads pyproj's Geod(ellps='WGS84') length of the
-    same piece, taken back to lon/lat, to a micrometre, as decision 90's macro test holds the graph's edges."""
+    same piece, taken back to lon/lat, to a micrometre, as the macro test holds the graph's edges."""
     to_projected = Transformer.from_crs(exporter.GEOGRAPHIC_CRS, exporter.PROJECTED_CRS, always_xy=True).transform
     to_geographic = Transformer.from_crs(exporter.PROJECTED_CRS, exporter.GEOGRAPHIC_CRS, always_xy=True).transform
     projected = [shapely_transform(to_projected, shapely.wkt.loads(wkt)) for wkt in (line_wkt, park_wkt)]

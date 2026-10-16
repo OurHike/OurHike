@@ -6,7 +6,7 @@
 -- history reads every one of them as an edit, which is a version per
 -- sample in that build (Reasoned from the key; not measured on real data).
 --
--- line_sample_key (decision 197) is left out of the hash: it is
+-- line_sample_key is left out of the hash: it is
 -- generate_surrogate_key over this snapshot's own unique_key, so two
 -- versions of one key cannot differ in it. Hashed, it would have opened a
 -- second version of every sample in the first build that carried it

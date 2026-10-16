@@ -1,6 +1,5 @@
 -- int_podcasts__final: the podcasts mart's rows before their row dates, every
--- contracted column but _first_seen_at and _changed_at. This is what
--- models/marts/podcasts/podcasts.sql held until decision 57;
+-- contracted column but _first_seen_at and _changed_at. The
 -- int_podcasts__history snapshots it, and the mart reads that snapshot.
 --
 -- The podcast episodes picked for hikes (#1683): every row of
@@ -10,7 +9,7 @@
 -- row of the file: a dropped episode stops the list rather than shrinking
 -- it, as export_podcasts.py refuses to upload one that dropped anything.
 --
--- One row per episode, keyed by its Spotify id (PC01, PC06). What the
+-- One row per episode, keyed by its Spotify id. What the
 -- reviewer wrote only for the next reviewer (`places`, `note`, `reviewed`)
 -- stays out, as lib/podcasts.py's as_published() leaves it out.
 --

@@ -1,6 +1,6 @@
 {#-
     A line's length in metres along the WGS84 ellipsoid, for a line held in
-    EPSG:5070: the trail graph's published edge lengths (decision 90, the
+    EPSG:5070: the trail graph's published edge lengths (the
     maintainer's poll of 2026-10-06, answering DBT2-2: "geodesic length on
     WGS84 in the dbt model and in build_trail_graph.py").
 

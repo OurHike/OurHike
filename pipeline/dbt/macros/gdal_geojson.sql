@@ -2,9 +2,9 @@
     What GDAL's GeoJSON driver writes for a value, read back as json.loads
     reads it. export_poi.py writes the poi_<type>.geojson files with DuckDB's
     `COPY ... (FORMAT GDAL, DRIVER 'GeoJSON')`, and those files are the shape
-    a phone reads today (decision 44 makes it v1), so the dbt writer gives
+    a phone reads today (v1), so the dbt writer gives
     each value the one a phone parses out of GDAL's text. They go with the
-    6-decimal sibling key decision 8 plans for these files.
+    planned 6-decimal sibling key for these files.
 
     GDAL does not print a double exactly. Measured 2026-10-02 on 182,408
     doubles written through that COPY: 60,301 read back as a different double,

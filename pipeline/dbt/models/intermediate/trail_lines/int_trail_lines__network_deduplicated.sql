@@ -10,7 +10,7 @@
 {%- set name_tie_m = 0.01 %}
 -- The network's published lines: every row int_trail_lines__network_judged
 -- keeps whose source may publish, with each declared duplicate drawn once
--- (TL18, lib/duplicates.py, #1459 — Two New York City agencies draw the same
+-- (lib/duplicates.py, #1459 — Two New York City agencies draw the same
 -- tread and the map draws both lines, because nothing dedupes geometry
 -- across sources), and every line's blaze from int_trail_lines__blazes.
 --

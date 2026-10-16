@@ -1,17 +1,17 @@
-"""int_closures__club_notices reads every notice by its own words against one vocabulary (decision 190).
+"""int_closures__club_notices reads every notice by its own words against one vocabulary.
 
 The maintainer, poll of 2026-10-14: "Do by their own words. But make this logic that applies everywhere. we need to
 stop doing org by org customization." seeds/notice_words.csv is that vocabulary, and seeds/notice_word_overrides.csv
 the one value no shared word can read. The model's unit tests mock both; this holds each mock to its file, so a test
 cannot pass on a vocabulary the build does not use, and holds that no rule of the model names a source.
 
-It also holds the maintainer's answers of 2026-10-11 on how wave 6's statuses read (pages 01 and 02 of that review)
+It also holds the maintainer's answers of 2026-10-11 on how club statuses read
 to the shared words, where a later edit would otherwise move one without a word: Missouri's Archived alone is not
 current (P1), Michigan's '-1' rows are nothing for a hiker by their own category, 'Motorized' (P4), a closed Florida
-park closes its trails (P5) and is placed by its own boundary (Q3, seeds/notice_steward_areas.csv), the Great
+park closes its trails (P5) and is placed by its own boundary (seeds/notice_steward_areas.csv), the Great
 Allegheny Passage's Hidden and Cleared are both not current (P6), and NETT's damaged bridges close by their own
 words (P11). NGPC's sections read as their sources.json row settles: a Condition of 'Impassable' or 'Not
-Passable' closes the trail however Road_Status reads. And decision 190's own cases, by IDPR's live rows of
+Passable' closes the trail however Road_Status reads. And the own cases, by IDPR's live rows of
 2026-10-14: an order barring any use closes beside a note calling the trail non-motorized (2232), one barring the
 trail on weekdays closes (3018), one possibly closed closes (2245), and the three barring motorized use alone are
 nothing for a hiker. A category's 'closure' is the kind of notice, and closes only beside a title that names a
@@ -28,7 +28,7 @@ that has not ended (S1-3), and dates that contradict each other close no trail (
 facilities no site word named still crossed out (thread 4279221884): a dump station, a campground written 'CG', a
 district office and ten more now read as sites, and the site words say they are a deny-list.
 
-And decision 67's hazard areas (rule 6) are read by one standard for every hazard source: a category names its hazard
+And the hazard areas (rule 6) are read by one standard for every hazard source: a category names its hazard
 where its code, or its layer's label for the code, is a value seeds/notice_hazard_areas.csv lists, or holds one as
 whole words beside no negating word. Until 2026-10-15 IATA's coded parcels and NY Parks' worded hunting areas were
 held for want of an exact match.
@@ -113,7 +113,7 @@ def test_no_field_reads_a_word_twice():
 
 
 def test_the_unit_tests_mocked_hazard_seed_is_the_seed_file():
-    """Decision 67's hazard rule (rule 6) is tested on the categories the build reads."""
+    """The hazard rule (rule 6) is tested on the categories the build reads."""
     for name in (TEST, TEST_HAZARD):
         assert _given(_unit_tests()[name], "notice_hazard_areas") == seed("notice_hazard_areas"), name
 
@@ -126,7 +126,7 @@ def test_no_hazard_seed_row_lists_a_category_that_says_the_hazard_is_absent():
 
 
 def test_no_rule_of_the_model_names_a_source():
-    """Decision 190: what a word means is the same for every source. The model's SQL compares no source_key to a
+    """What a word means is the same for every source. The model's SQL compares no source_key to a
     literal, and quotes no registered notice source's key; a value no word can read is a row of
     notice_word_overrides, never a branch of the SQL."""
     sql = MODEL.read_text()
@@ -170,7 +170,7 @@ def test_nonmotorized_never_reads_as_motorized():
 
 
 def test_missouris_archived_is_its_only_status_read_as_not_current():
-    """P1: "ONLY 'Archived' reads as not current; a blank STATUS shows as current" (decision 164)."""
+    """P1: "ONLY 'Archived' reads as not current; a blank STATUS shows as current"."""
     assert reads_as("status", "Archived") == {"not_current"}
     assert "not_current" not in reads_as("status", "Caution")
     assert reads_as("status", "Closed") == {"closes_trail"}
@@ -223,7 +223,7 @@ def test_every_closed_value_of_a_florida_parks_day_use_status_closes_and_open_an
 
 
 def test_a_florida_parks_day_use_point_is_placed_by_its_own_boundary_and_a_campground_by_none():
-    """Q3 (poll of 2026-10-11, "Its own boundary"): a park's day-use status point inside exactly one of FDEP's own park
+    """The maintainer's poll of 2026-10-11, "Its own boundary": a park's day-use status point inside exactly one of FDEP's own park
     boundaries takes that boundary as its place (int_closures__club_notices' rule 4), so the trails a closed park
     closes are the ones inside it. A campground's status is about the campground, not the park around it, so the
     campground layer keeps its own points."""
@@ -243,7 +243,7 @@ def test_the_gap_alerts_hidden_and_cleared_are_both_not_current_and_fully_obstru
 
 
 def test_netts_damaged_bridges_and_vtranss_active_closure_close_by_their_own_words():
-    """P11, frame A, and decision 190 with the maintainer's fixes of 2026-10-15: neither layer's own name says
+    """With the maintainer's fixes of 2026-10-15, a row closes by its own words: neither layer's own name says
     closures ('NET_KML_DAMAGED_BRIDGES', 'Notice Line'), so each row closes by its own words. NETT's bridges are
     'collapsed' or a 'burned bridge'; VTrans's active row is titled 'Closure', its isActive 1 a flag's yes that says
     nothing of the trail; its isActive 0 holds the row."""
@@ -294,7 +294,7 @@ def test_a_layer_closes_by_its_own_name_only_where_that_name_says_closures():
 def test_a_closed_site_is_a_notice_and_a_row_that_names_a_trail_is_the_trail():
     """The maintainer's second fix of 2026-10-15: a site's own type is read wherever the source states it, its
     title's last-named thing, its type (USFS's recreation sites' markeractivity, staged as site_type, never as the
-    category, decision 78), its category or its layer's own name; a row whose title or type names a trail is the
+    category), its category or its layer's own name; a row whose title or type names a trail is the
     trail."""
     (rec,) = [row for row in seed("notice_source_fields") if row["source_key"] == "usfs_rec_opportunities_status"]
     assert (rec["site_type"], rec["category"]) == ("markeractivity", "openstatus")
@@ -353,8 +353,8 @@ def test_a_categorys_closure_is_a_kind_of_notice_that_closes_only_beside_its_tit
     'Safety Closure' whatever they bar, 'Forest Wide - Alcohol' among them (read live 2026-10-14). It is the one
     closing word that needs its title, the plural 'closures' agrees with it in a title (and names a layer's closures,
     never a category's topic), and a state ('closed', 'impassable', an exclusion) still closes from a category by
-    itself. So does 'Closure' as a placed row's whole category (decision 213, rule 1): CDTC's alerts so typed and
-    titled by place. 'restriction' is the other kind (decision 213, rule 2), which keeps no title from speaking."""
+    itself. So does 'Closure' as a placed row's whole category (rule 1): CDTC's alerts so typed and
+    titled by place. 'restriction' is the other kind (rule 2), which keeps no title from speaking."""
     words = {row["word"]: row for row in seed("notice_words")}
     kinds = [word for word, row in words.items() if row["category_needs_title"] == "true"]
     assert kinds == ["closure", "restriction", "restrictions"]
@@ -371,7 +371,7 @@ def test_a_categorys_closure_is_a_kind_of_notice_that_closes_only_beside_its_tit
         assert expected[notice_id]["read_from"].startswith("category '"), notice_id
 
 
-def test_idprs_named_orders_read_as_the_brief_and_decision_190_say():
+def test_idprs_named_orders_read_by_their_own_words():
     """IDPR 2232 (any use, beside a note calling the trail non-motorized), 3018 (weekdays) and 2245 (possibly
     closed) close; the three motorized-only shapes are nothing for a hiker; a foot-only basin and a seasonal parking
     restriction stay notices; a fire closure barring public entry beside an OHV ban closes."""
@@ -391,7 +391,7 @@ def test_idprs_named_orders_read_as_the_brief_and_decision_190_say():
 
 def test_a_status_no_word_reads_says_nothing_and_a_flags_coded_unknown_leaves_it_a_flag():
     """The review of 2026-10-15, S1-1 and S2-1: King County's AlertType 'Hazard' and FLTC's workflow 'Final' hold no
-    word of the vocabulary, so the row's own title speaks, as decision 190's "else a placed row's title" reads, and an
+    word of the vocabulary, so the row's own title speaks, as the "else a placed row's title" reads, and an
     empty status beside a stated one says nothing either; a status that holds a word still speaks. A flag's coded
     unknown (-1) is read as no status, so it never turns its source's 0 and 1 into a scale."""
     assert reads_as("status", "Hazard") == reads_as("status", "Final") == set()
@@ -427,7 +427,7 @@ def test_a_title_names_each_thing_it_lists_and_a_trail_among_them_is_the_trail()
 def test_a_start_a_title_states_with_a_day_closes_from_that_day():
     """The review of 2026-10-15, S1-4: IATA's 'Hunting Closure beginning 9/1' and 'beginning 10/15' close from their
     day (macros/notice_title_start_day.sql), their narrative saying the trail section is closed (an activity's
-    closure alone closes no trail, decision 213), where a start stated with no day ('Beginning Fall 2027') still keeps the
+    closure alone closes no trail), where a start stated with no day ('Beginning Fall 2027') still keeps the
     title a notice. A park's water systems are a site, so Wisconsin's 'Water Systems Closed (Beginning Oct. 13,
     2026)' stays a notice once its start no longer does it."""
     words = {(row["word"], row["matches"]): row for row in seed("notice_words")}
@@ -646,7 +646,7 @@ def test_an_activitys_closure_closes_the_trail_only_where_the_rows_narrative_clo
 
 
 def test_a_warnings_filed_row_that_names_only_a_road_stays_a_notice():
-    """The poll of 2026-10-15, "Roads stay notices": decision 213's rule 8 never crosses out a road event. NPS's road
+    """The poll of 2026-10-15, "Roads stay notices": the rule 8 never crosses out a road event. NPS's road
     lines say 'all-lanes-closed' in their status, read as a road; a closures-filed road line still closes."""
     assert "names_a_road" in reads_as("status", "all-lanes-closed")
     expected = _expected(DECISION_213)

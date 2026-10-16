@@ -1,6 +1,6 @@
--- The points_of_interest mart's v2 (decision 44), for the eight
--- v2/poi_<type>.geojson files and v2/nearby_poi.geojson (stage 6 of #1793;
--- pipeline/ELT.md, "Making the download smaller", tier (a): "6 decimals" and
+-- The points_of_interest mart's v2, for the eight
+-- v2/poi_<type>.geojson files and v2/nearby_poi.geojson (pipeline/ELT.md,
+-- "Making the download smaller", tier (a): "6 decimals" and
 -- "one copy of each coordinate"). The same rows as v1, every column as v1
 -- has it, except that a POI's position is held once, as `geom_geojson`, at 6
 -- decimals; v1's `lat` and `lon` columns are gone.
@@ -15,7 +15,7 @@
 -- or three, and where that straddles a half at the seventh decimal they
 -- would round apart.
 --
--- THE CUT IS PYTHON'S round(x, 6), as decision 8 cuts trails.geojson:
+-- THE CUT IS PYTHON'S round(x, 6), as trails.geojson is cut:
 -- cast(printf('%.6f', x) as double), which matched Python's round() on every
 -- one of 266,800 near-half doubles where DuckDB's round() missed 14,125
 -- (.claude/skills/dbt/SKILL.md, "Contracts, and the traps in them"). A
@@ -24,7 +24,7 @@
 -- coordinates to Python's round() of v1's properties.
 --
 -- Why a version: lat and lon are removed and geom_geojson's precision
--- changes, which decision 44 ships beside v1 (check_contract_versions.py).
+-- changes, so it ships as a new version beside v1 (check_contract_versions.py).
 -- v1 stays the latest version, so every unpinned ref still reads v1: the
 -- places, suggested_hikes and spur-destination models among them.
 with v1 as (
@@ -76,7 +76,7 @@ select
     water_distance_source,
     description,
     nearby,
-    -- PO36: the Long Path guide's own fields, on its waypoints, as v1's.
+    -- The Long Path guide's own fields, on its waypoints, as v1's.
     lp_section,
     section_mile,
     placement,
@@ -101,7 +101,7 @@ select
     club,
     source_key,
     _loaded_at,
-    -- v1's row dates (decision 57): v2's rows are v1's, printed for v2's
+    -- v1's row dates: v2's rows are v1's, printed for v2's
     -- files, so a change to a v1 column v2 drops moves them too.
     _first_seen_at,
     _changed_at

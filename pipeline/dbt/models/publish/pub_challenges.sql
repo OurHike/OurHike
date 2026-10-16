@@ -1,6 +1,6 @@
 {{ config(format='json', location='challenges.json') }}
 -- challenges.json, the list client/src's challenge screens read, in the
--- shape export_challenges.build_output() writes (decision 44 makes it v1):
+-- shape export_challenges.build_output() writes (v1):
 -- `source`, the literal naming where the judgement lives, and `challenges`,
 -- in the files' path order. No `generated_at`, for export_challenges.py's
 -- reason: a stamp moves the sha256 every run, and a run that changed no

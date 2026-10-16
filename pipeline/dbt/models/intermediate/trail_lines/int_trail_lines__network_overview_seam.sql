@@ -1,6 +1,6 @@
 {{ config(materialized='table') }}
 -- The second half of network_overview.geojson's sketch, write_overview()'s
--- steps after int_trail_lines__network_overview_routes (TL20): the floor,
+-- steps after int_trail_lines__network_overview_routes: the floor,
 -- then the seam's tolerance.
 --
 -- THE FLOOR, _above_the_seam_floor(): a coarse line whose whole bounding
@@ -69,23 +69,7 @@ reduced as (
 judged as (
     select
         *,
-        coalesce(
-            not st_isempty(reduced)
-            and list_bool_and(
-                list_transform(
-                    st_dump(reduced),
-                    lambda part: (
-                        st_xmin(struct_extract(part, 'geom'))
-                        < st_xmax(struct_extract(part, 'geom'))
-                    )
-                    or (
-                        st_ymin(struct_extract(part, 'geom'))
-                        < st_ymax(struct_extract(part, 'geom'))
-                    )
-                )
-            ),
-            false
-        ) as is_drawable
+        {{ every_part_has_extent('reduced') }} as is_drawable
     from reduced
 ),
 

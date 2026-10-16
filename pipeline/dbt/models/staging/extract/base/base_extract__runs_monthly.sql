@@ -1,7 +1,7 @@
 -- The extract's run log as the monthly lane's nodes read it: the lane copy
 -- of base_extract__runs, over the source table _extract_runs_monthly (its
 -- description in _extract__sources.yml says why there are two). One row per
--- resource per run, keyed (decision 40), with nothing filtered.
+-- resource per run, keyed, with nothing filtered.
 -- int_sources__data_edited dates each layer from it.
 --
 -- Key: the run and the resource, which write_run_log() logs once each, the

@@ -1,6 +1,5 @@
 -- int_challenges__final: the challenges mart's rows before their row dates,
--- every contracted column but _first_seen_at and _changed_at. This is what
--- models/marts/challenges/challenges.sql held until decision 57;
+-- every contracted column but _first_seen_at and _changed_at. The
 -- int_challenges__history snapshots it, and the mart reads that snapshot.
 --
 -- The challenges clubs put on their own trails (#1780 — Let a club publish a
@@ -14,19 +13,19 @@
 -- row per challenge, keyed by its id, because a challenge is what a hiker
 -- joins and what the file lists; its sections and items stay the published
 -- JSON they resolved to, each item's places carrying the published POI's
--- own mile, coordinate and name (CH01).
+-- own mile, coordinate and name.
 --
 -- PUBLICATION. A challenge's source is the claim its club's folder was
 -- landed under (`reference/challenges/<club>`). No sources.json row records
 -- one. The ATC's, reference/challenges/atc, publishes through its row of
--- unregistered_publishing_sources: pipeline/ELT.md decision 47, the
--- maintainer's authorisation as an ATC volunteer (2026-10-02), which is not
+-- unregistered_publishing_sources: the maintainer's authorisation as an ATC
+-- volunteer (2026-10-02), which is not
 -- a written grant from the ATC, and none is in this repository. PR #1798 —
 -- Challenges: a club's list of places on its own trails, joined and tagged
 -- at camp, starting with the ATC's Summer Bucket List asked for that
--- written permission; decision 47 is the maintainer's answer. Any other
--- club's folder, with no row, is held back under rule 6 of "Who may
--- publish" (page prose keeps its own licence row), and the warn test on
+-- written permission; the authorisation is the maintainer's answer. Any other
+-- club's folder, with no row, is held back (page prose needs its own licence
+-- row), and the warn test on
 -- int_challenges__resolved names every challenge so held back.
 with resolved as (
     select * from {{ ref('int_challenges__resolved') }}

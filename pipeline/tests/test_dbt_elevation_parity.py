@@ -1,10 +1,10 @@
-"""The elevation family's SQL answers what export_elevation.py answers, on the same rows (#1793, stage 3).
+"""The elevation family's SQL answers what export_elevation.py answers, on the same rows.
 
-elevation_profile.json moved to dbt (pipeline/ELT.md's ledger rows EL05-EL09):
+elevation_profile.json moved to dbt:
 the walk and its miles to int_elevation__sample_points, the clip, the seams
 and the rounding to int_elevation__profile, and the DEM read to the Python
 step step_dem_sampling.py, which reads through export_elevation's own
-sampler. Until stage 5 deletes the Python, export_elevation.py still writes
+sampler. Until the Python is deleted, export_elevation.py still writes
 the file publish.py uploads, so the two are held together here:
 
 - the elevation_* vars the models read are export_elevation.py's constants;
@@ -22,7 +22,7 @@ the file publish.py uploads, so the two are held together here:
   int_elevation__dem_points, in its ask_order, a gap as NULL and never as
   NaN, and refuses what it cannot write honestly;
 - it and today's sampler answer each point with that point's own pixel,
-  whatever samples.json holds from either of them (decision 115: the cache is
+  whatever samples.json holds from either of them (the cache is
   keyed on the point itself).
 
 The network half (the junction graph's edges) is held by
@@ -316,7 +316,7 @@ def test_step_dem_sampling_writes_the_samplers_own_answer_at_every_point(tmp_pat
 def test_step_dem_sampling_asks_in_int_elevation__dem_points_ask_order(tmp_path, fixtures, monkeypatch):
     """The step asks in the order int_elevation__dem_points sets (its unit test holds that the A.T.'s walk comes first
     and the edges follow by edge_index), not in the order the rows come back or their ids sort: 'A1' sorts before 'AT',
-    and asks after it. Since decision 115 the order decides no answer, each point being keyed exactly; it is held so the
+    and asks after it. The order decides no answer, each point being keyed exactly; it is held so the
     same rows ask the same questions in the same order, and a cold run writes the same samples.json."""
     other_line = [("A1", 0, -73.995, 41.005), ("A1", 1, -73.995, 41.0051)]
     points = STEP_POINTS + other_line
@@ -355,8 +355,8 @@ def test_step_dem_sampling_refuses_an_answer_that_is_not_an_elevation(tmp_path, 
         assert written.execute("select count(*) from information_schema.tables where table_schema = 'derived'").fetchone()[0] == 0
 
 
-# A column edge of the fixture tile and two points 1.5e-7 degrees either side of it, which every samples.json written
-# before decision 115 held as one point (one 6-decimal key) and a cold read finds in two pixels. And a point in the
+# A column edge of the fixture tile and two points 1.5e-7 degrees either side of it, which a samples.json keyed at
+# 6 decimals held as one point (one 6-decimal key) and a cold read finds in two pixels. And a point in the
 # middle of a pixel.
 EDGE_LON = make_dbt_fixtures.ELEVATION_FIXTURE_WEST + 10 * make_dbt_fixtures.ELEVATION_FIXTURE_PIXEL_DEG
 WEST_OF_EDGE, EAST_OF_EDGE = (EDGE_LON - 1.5e-7, 41.0), (EDGE_LON + 1.5e-7, 41.0)
@@ -402,7 +402,7 @@ def _today(index: Path, points: list[tuple[float, float]]) -> list:
 
 
 def test_the_edge_points_share_a_six_decimal_key_have_two_exact_ones_and_read_two_pixels(tmp_path, fixtures):
-    """What the tests below stand on: one point under the key samples.json held before decision 115, two under
+    """What the tests below stand on: one point under a 6-decimal key, two under
     SAMPLE_CACHE_KEYS, and two different DEM answers when each is read cold."""
     assert f"{WEST_OF_EDGE[0]:.6f},{WEST_OF_EDGE[1]:.6f}" == f"{EAST_OF_EDGE[0]:.6f},{EAST_OF_EDGE[1]:.6f}"
     assert export_elevation._cache_key(*WEST_OF_EDGE) != export_elevation._cache_key(*EAST_OF_EDGE)
@@ -413,7 +413,7 @@ def test_the_edge_points_share_a_six_decimal_key_have_two_exact_ones_and_read_tw
 def test_both_lanes_answer_a_point_across_a_pixel_edge_from_an_earlier_runs_point_with_its_own_pixel(tmp_path, fixtures):
     """Monthly run 30's 133 samples in small: an earlier run asked the point west of the edge and left it in
     samples.json, and this run asks the point east of it. step_dem_sampling and today's sampler both answer the east
-    pixel, through the cache alone; until decision 115 the cache answered the west one."""
+    pixel, through the cache alone, where a 6-decimal key would answer the west one."""
     index = _own_index(tmp_path, fixtures)
     west, east = _cold(index, [WEST_OF_EDGE, EAST_OF_EDGE])
     assert _step(tmp_path, index, "earlier", [WEST_OF_EDGE]) == [west]

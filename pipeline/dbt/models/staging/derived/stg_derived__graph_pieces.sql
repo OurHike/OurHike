@@ -5,7 +5,7 @@
 -- node.
 with source as (
     -- The step writes geometry as GeoJSON text in EPSG:5070 metres; cast
-    -- here, as decision 40 has staging do. No CRS is set: these are metres,
+    -- here, as staging models do. No CRS is set: these are metres,
     -- and only int_trail_network__ models, which know it, read them.
     select
         * exclude (geometry),

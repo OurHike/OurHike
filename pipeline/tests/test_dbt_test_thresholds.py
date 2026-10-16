@@ -1,6 +1,6 @@
 """Every dbt test has both a warning and an error threshold, and the data environment decides who stops on an error.
 
-Decision 204, the maintainer, 2026-10-15: "Every test should have both the warning and error thresholds. If an
+The maintainer, 2026-10-15: "Every test should have both the warning and error thresholds. If an
 error like freshness would prevent building the model, then that should be enabled/disabled based on the
 environment. prod environment should ignore those, dev & ci should not." His poll answer the same day, "Build as
 proposed", took the shape dbt/dbt_project.yml's comment above `data_tests:` describes:
@@ -14,12 +14,12 @@ proposed", took the shape dbt/dbt_project.yml's comment above `data_tests:` desc
 - `severity` is the switch: dbt_project.yml's expression on OURHIKE_DATA_ENV, warn in production and UA and error
   everywhere else. A test may set its own only to `error` (a pub_ writer's test, through the publish folder; a test
   of the six marts a hiker's safety reads, through the `marts:` gates, or in a singular test's own config(); a test
-  of int_closures__gate or int_closures__nynjtc_checked, in its own YAML or config(), under decision 208; an
-  Elementary check), to the switch itself (a hold of decision 81's inside a gated folder), to the row dates'
+  of int_closures__gate or int_closures__nynjtc_checked, in its own YAML or config(), so a failure holds the conditions files; an
+  Elementary check), to the switch itself (a hold of the inside a gated folder), to the row dates'
   expression, which also warns with the history off, or to `warn` with `meta.stays_at_warn` saying whose decision
-  that is (decision 197's four closures key tests).
+  that is (the four closures key tests).
 
-Decision 208, the maintainer's poll of 2026-10-15, "B: Hold at last good copy": every test of int_closures__gate and
+The maintainer's poll of 2026-10-15, "B: Hold at last good copy": every test of int_closures__gate and
 int_closures__nynjtc_checked is an error in every environment, but the two that report a held source and keep the
 switch (ON_THE_SWITCH), because the nine hourly writers below the gate (WRITERS_BELOW_THE_GATE) published what the
 gate had passed while one of those tests warned.
@@ -31,7 +31,7 @@ default nobody wrote down still counts; it runs only where OURHIKE_DBT names tha
 and scripts/test.sh's dbt suite).
 
 What has no threshold in dbt at all, a unit test, a contract or a constraint, and a test that cannot run, fails
-or passes; decision 204's answer for those is build_marts.py's, which in production and UA holds what such a
+or passes; the answer for those is build_marts.py's, which in production and UA holds what such a
 failure reaches and builds the rest (its docstring, "EVERY TEST HAS TWO THRESHOLDS").
 """
 
@@ -50,7 +50,7 @@ import make_dbt_staging
 
 DBT_DIR = Path(__file__).resolve().parent.parent / "dbt"
 DBT = os.environ.get("OURHIKE_DBT")
-#: A threshold as decision 204 writes it.
+#: A threshold in the `>N` form every test declares.
 DECLARED = re.compile(r">\s*[0-9]+")
 #: The six marts whose tests dbt_project.yml gates at error in every environment, CLAUDE.md's four harms.
 SAFETY_MARTS = ("closures", "warnings", "points_of_interest", "elevation", "trail_lines", "trail_network")
@@ -62,12 +62,12 @@ ROW_DATES = (
 )
 STAYS_AT_WARN = "stays_at_warn"
 CONFIG_CALL = re.compile(r"\{\{\s*config\((.*?)\)\s*\}\}", re.S)
-#: Decision 208: the two models whose tests are errors in every environment but ON_THE_SWITCH, each in its own YAML or
+#: The two models whose tests are errors in every environment but ON_THE_SWITCH, each in its own YAML or
 #: config() (a gate on intermediate/closures/ in dbt_project.yml would also catch models no writer reads).
 GATED_MODELS = ("int_closures__gate", "int_closures__nynjtc_checked")
-#: Decision 208's two exceptions, which keep the project's switch: a held source is what each reports, and at error in
-#: production one held source would hold every conditions file. The held share (a rows_named level) and decision 81's
-#: hold (`holds_a_source`).
+#: The two exceptions, which keep the project's switch: a held source is what each reports, and at error in
+#: production one held source would hold every conditions file. The held share (a rows_named level) and the
+#: per-source hold (`holds_a_source`).
 ON_THE_SWITCH = ("int_closures__gate_holds_no_source", "assert_every_held_notice_source_with_notices_has_rows_to_carry")
 #: The writers below int_closures__gate, whose files a failing test of either model holds at their last good copy.
 #: Measured on the parse (test_decision_208s_gate_holds_the_nine_hourly_writers_below_it): seven read the gate, and
@@ -165,7 +165,7 @@ def test_every_threshold_a_yaml_test_writes_is_in_the_declared_form():
 
 
 def test_every_severity_a_yaml_test_writes_is_error_the_switch_the_row_dates_or_a_recorded_warn():
-    """A test's own `severity: warn` would never stop dev or CI, which is the one thing decision 204 asks of them."""
+    """A test's own `severity: warn` would never stop dev or CI, which is the one thing the two thresholds ask of them."""
     stray = []
     for where, name, body in YAML_TESTS:
         config = body.get("config") or {}
@@ -351,9 +351,9 @@ def test_every_test_dbt_parses_has_both_thresholds_in_the_declared_form(manifest
 
 @pytest.mark.skipif(not DBT, reason="OURHIKE_DBT names no dbt (the dbt job and scripts/test.sh set it)")
 def test_dev_and_ci_stop_on_every_error_and_production_warns_on_all_but_its_gates(manifests):
-    """Unset (dev and CI), every test is an error but decision 197's four. In production every test the switch
+    """Unset (dev and CI), every test is an error but the four. In production every test the switch
     decides warns, and what stays an error is a pub_ writer's test, a test of a safety mart's folder, a test whose own
-    config says `error` (decision 208's twelve among them, which the test after this one names), and Elementary's
+    config says `error` (the twelve among them, which the test after this one names), and Elementary's
     checks, which never change a production run's exit (build_marts.py)."""
     dev, production = _test_nodes(manifests["dev"]), _test_nodes(manifests["production"])
     assert set(dev) == set(production)
@@ -429,7 +429,7 @@ def _descendants(manifest: dict, unique_id: str) -> set[str]:
 def test_decision_208s_gate_holds_the_nine_hourly_writers_below_it(manifests):
     """Measured on the parse, not assumed: the pub_ writers below int_closures__gate, whose files build_marts.py's
     failure_holds() holds when a test of the gate fails (it leaves out the gate and everything below it), are exactly
-    WRITERS_BELOW_THE_GATE, so a new one changes what decision 208 holds and is named here. Seven read the gate itself
+    WRITERS_BELOW_THE_GATE, so a new one changes what a failing gate test holds and is named here. Seven read the gate itself
     and READ_THROUGH_NOTICES read pub_conditions_notices; int_closures__nynjtc_checked, above the gate through
     int_closures__unioned and read by pub_conditions_notices, reaches the same nine."""
     manifest = manifests["production"]

@@ -1,7 +1,7 @@
 {#-
     A string with Python's html.unescape() applied: lib/nynjtc_alerts.py reads
     every WordPress title and place-term name through it, and the closures and
-    warnings family reads them in SQL (#1793, stage 3).
+    warnings family reads them in SQL.
 
     THE SAME MATCH AND THE SAME NUMERIC ANSWERS. References are found with
     Python's own `_charref` pattern, left to right, and every numeric one,

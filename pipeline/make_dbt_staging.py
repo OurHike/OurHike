@@ -1,9 +1,9 @@
 """Write the dbt staging layer for the clubs' registered layers from the registry, and check it.
 
-pipeline/ELT.md, "Loading everything the clubs publish (decision 54)": "dbt models are generated, not
+pipeline/ELT.md, "Loading everything the clubs publish": "dbt models are generated, not
 hand-written, wherever a layer has a measured key: a `base_<folder>__<key>` per raw table from one template,
 keyed and deduped on the key the live read found, and each mart's union reading the registry for its
-branches." This is that template. Its output is not committed (decision 91, the maintainer's poll of 2026-10-06):
+branches." This is that template. Its output is not committed (the maintainer's poll of 2026-10-06):
 every place that parses the dbt project runs it first, through generate_dbt.py, so a registry edit's models are
 whatever this writes from that edit. tests/test_dbt_generated_staging.py holds that two runs write the same bytes.
 
@@ -13,16 +13,15 @@ whatever this writes from that edit. tests/test_dbt_generated_staging.py holds t
 WHICH LAYERS (registry-driven, by kind, type and measured key). Every resource that a club folder's file for
 one of TYPES extracts as an ArcGIS layer (extract/_kinds.py's ArcgisLayer), a GIS file (extract/_gis_files.py's
 GisFile), a geographic API (extract/_ogc.py's OgcFeatures and JsonFeatures) or a club page's or PDF's points
-(extract/_pages_points.py's PagePoints and extract/_pdf_points.py's PdfPoints, decision 54's waves 4 and 5,
-section S), a sources.json row of a kind in KINDS, unless a hand-written model already reads its raw table: those keep their own (the registry tables
-staged before decision 54). So a layer registered later is staged by running this again, and by nothing else.
+(extract/_pages_points.py's PagePoints and extract/_pdf_points.py's PdfPoints), a sources.json row of a kind in KINDS, unless a hand-written model already reads its raw table: those keep their own (the registry tables
+staged by hand). So a layer registered later is staged by running this again, and by nothing else.
 A file that SHARES a sibling's resource (one upstream feeding two types, such as a My Map of trail lines and
 trailheads) gets a staging model of its own over the sibling's base model, and no second base or source: one
-raw table, staged once (decision 34). An elevation file shares only a row that names its `elevation_source`.
+raw table, staged once. An elevation file shares only a row that names its `elevation_source`.
 
 A LANE COPY is the one exception, for a geometric type that SHARES a closures or warnings resource (NOTICE_TYPES):
-NGPC's Cowboy Trail, whose 29-section status layer is both its closures and its line (the maintainer's P8, wave 6's
-page 01, 2026-10-11). The resource is still one extraction, on the hourly lane its type puts it on, and
+NGPC's Cowboy Trail, whose 29-section status layer is both its closures and its line (the maintainer's choice,
+2026-10-11). The resource is still one extraction, on the hourly lane its type puts it on, and
 generate_notice_models.py stages that hourly copy. But a dbt node's lane is the fastest cadence among the sources
 it reads (build_marts.py's docstring, "A LANE BUILDS ONLY ITS OWN NODES"), so a trail-line model reading the
 notices' hourly source would take every trail-line node it feeds off the monthly lane, and the monthly warehouse
@@ -39,7 +38,7 @@ never landed (one the monthly extract refused on its first run, or a keyed API, 
 lacks) reads as no rows with the columns its models name, and stops nothing else (Table.raw_columns()).
 
 WHAT EACH sources.json ROW GIVES IT:
-- THE KEY (decision 40): `key_fields`, else `id_fields`, else `id_field`, where `geometry` in a list stands for
+- THE KEY: `key_fields`, else `id_fields`, else `id_field`, where `geometry` in a list stands for
   the shape (macros/geometry_key.sql) and an empty `key_fields` is a one-row layer, keyed by the registry key
   and its shape (base_pcta__centerline's precedent: a key needs a column beside the registry key). A row with
   none of these, or whose key holds a server's row id (OBJECTID, FID: a reload mints them again), STOPS the
@@ -60,8 +59,8 @@ Column names are the registry's field names as dlt names them on landing (the `s
 
 WHAT IT WRITES, for each club folder <f> with such layers, under dbt/models/staging/<f>/:
 - `_<f>__generated__sources.yml`: each raw table, with its duplicates_are_exact test on the model's own key and
-  Elementary's checks (raw_table_checks(), decision 102), which generate_notice_models.py writes on its raw tables too,
-  and its freshness, read from the run log and held to MONTHLY_FRESHNESS_DAYS (LOADED_AT_QUERY, decision 203).
+  Elementary's checks (raw_table_checks()), which generate_notice_models.py writes on its raw tables too,
+  and its freshness, read from the run log and held to MONTHLY_FRESHNESS_DAYS (LOADED_AT_QUERY).
 - `base/base_<f>__<key>.sql` and `base/_<f>__generated__base.yml`: one base model per raw table.
 - `stg_<f>__<type>.sql` and `_<f>__generated__models.yml`: one staging model per type, every layer of that
   type in the folder conformed to its union's columns, the layer's own columns kept whole as `properties`.
@@ -73,7 +72,7 @@ each generated source's rows are held to (macros/lands_outside_its_region.sql).
 Every file it writes opens with GENERATED, which is how it knows which files are its own. And `models/.gitignore`,
 the list of every file it writes under models/, by exact path (IGNORE_LIST says why a list and not a pattern).
 
-SECTION C'S CONTENT TYPES (decision 54 wave 3, 2026-10-04): podcasts, suggested_hikes, challenges and photos, whose
+CONTENT TYPES: podcasts, suggested_hikes, challenges and photos, whose
 rows are episodes, write-ups, list items and photo manifest rows from feeds, APIs, WordPress and a wiki, not ArcGIS
 layers. Their shapes carry `geometry=False`: no geom, no CRS cast, no region box. The tables staged are those a club
 file's content reader extracts (CONTENT_COLUMNS' readers, and NPS's lists by endpoint in NPS_COLUMNS), each keyed on
@@ -81,7 +80,7 @@ its row's measured `key_fields`; a hike type's taxonomy terms (SiteTerms) are a 
 on (taxonomy, id). Each type's union is `int_<type>__club_unioned`, beside the path its mart reads today, and each
 staging model leaves the source's prose (CONTENT_PROSE) out of `properties`, so a body stops at the base model.
 
-SECTION K'S PAGES AND PDFS (decision 54 waves 4 and 5, 2026-10-04): the content types a club publishes as web
+PAGES AND PDFS: the content types a club publishes as web
 pages (extract/_pages_content.py's ContentPages) and as PDFs (extract/_pdf_content.py's ContentPdf) are staged the
 same way, keyed on each row's measured `key_fields`; their rows are facts by construction, so nothing is set aside
 as prose. A PDF's table lands only where pypdf is installed, which is the extract job's venv and not fixture mode's
@@ -117,7 +116,7 @@ SQL_MARK = f"-- {GENERATED} from sources.json\n-- and the extract's club folders
 YAML_MARK = f"# {GENERATED} from sources.json\n# and the extract's club folders; edit them or it, never this file.\n"
 JINJA_MARK = f"{{#- {GENERATED} from sources.json\n    and the extract's club folders; edit them or it, never this file. -#}}\n"
 
-#: The registry kinds an ArcgisLayer reads, then decision 54's waves 2 and 3: a GisFile, an OgcFeatures and a
+#: The registry kinds an ArcgisLayer reads, then the waves 2 and 3: a GisFile, an OgcFeatures and a
 #: JsonFeatures (lib/source_registry.py's GIS_FILE, OGC_FEATURES and JSON_FEATURES), then waves 4 and 5's
 #: PdfPoints and PagePoints (PDF_POINTS and PAGE_POINTS). Fixture mode cannot read a PDF, because the dbt job installs
 #: no pypdf (requirements.in's note), so CI's warehouse never holds a pdf_points table: its base model reads the
@@ -134,7 +133,7 @@ KINDS = (
     PDF_POINTS_KIND,
 )
 
-#: The server row ids a key may never hold (decision 40: a truncate-and-reload mints them again), as dlt names them.
+#: The server row ids a key may never hold (a truncate-and-reload mints them again), as dlt names them.
 #: `feature_index` is a feature's position in its file (extract/_gis_files.py), which a re-saved file renumbers.
 ROW_IDS = frozenset({"objectid", "objectid_1", "objectid_12", "fid", "oid", "esri_oid", "ogc_fid", "feature_index"})
 
@@ -160,8 +159,7 @@ FILE_KINDS = frozenset({"gis_file", "ogc_features"})
 #: The region every generated source's rows are held to. The widest of the three boxes
 #: macros/lands_outside_its_region.sql draws, and still one that catches a swapped United States point (its
 #: latitude would read -64 or less). @unvalidated as a fit: no generated layer's vertices had been read when
-#: this was set, and a server's own extent is never the evidence (ELT.md, "What wave 1's live reads found":
-#: USFWS's answered lat -24.99 to 90 for vertices at 13.64 to 63.20). What settles each is its row of
+#: this was set, and a server's own extent is never the evidence (USFWS's answered lat -24.99 to 90 for vertices at 13.64 to 63.20). What settles each is its row of
 #: int_<type>__source_extents on a live build, which names the narrowest box its vertices fit.
 DEFAULT_REGION = "us_and_territories"
 
@@ -182,18 +180,16 @@ NOTICE_TYPES = frozenset({"closures", "warnings"})
 
 LINE = 76  # SQL comment width: SQLFluff's LT05 holds every line to 80
 
-# --- Freshness, from the run log (decisions 100 and 203) --------------------------------------------------------
+# --- Freshness, from the run log --------------------------------------------------------
 
 #: Every extracted source's `loaded_at_query`, as dbt renders it: when OurHike's extract last read the table or
 #: confirmed it unchanged, from the run log (macros/last_read_or_confirmed_at.sql), never a date of the source's own
-#: and never `_loaded_at`, which a change check that finds the source unchanged leaves at the last load. Decision 100
-#: put the notice sources on it; decision 203 (the maintainer, 2026-10-15: "Maybe we should use the date of the last
-#: successful data uppdate? Having that many warnings seems like a false positive.") puts every source in every lane
-#: on it. generate_notice_models.py writes it from here, and tests/test_source_freshness.py holds the hand-written
+#: and never `_loaded_at`, which a change check that finds the source unchanged leaves at the last load. Every source
+#: in every lane uses it, so a quiet but healthy source does not read as stale. generate_notice_models.py writes it from here, and tests/test_source_freshness.py holds the hand-written
 #: sources blocks to it.
 LOADED_AT_QUERY = "{{ last_read_or_confirmed_at(this) }}"
-#: HOW MANY DAYS A MONTHLY SOURCE MAY GO UNREAD before dbt's source freshness warns, and then errors (decision 203:
-#: every freshness check carries both). Both @unvalidated: the lead's pick of two missed monthly refreshes against
+#: HOW MANY DAYS A MONTHLY SOURCE MAY GO UNREAD before dbt's source freshness warns, and then errors (every
+#: freshness check carries both). Both @unvalidated: the lead's pick of two missed monthly refreshes against
 #: refresh-reference.yml's cron, `15 5 3 * *`, settled by how often a healthy monthly source passes 35 days over the
 #: first season. What they do, Reasoned from that cron and from where the monthly lane measures them, once, in
 #: build_marts.py's freshness run right after the build of the extract it pins: a source the month's extract read is
@@ -204,7 +200,7 @@ LOADED_AT_QUERY = "{{ last_read_or_confirmed_at(this) }}"
 #: than a week after a read would warn about three weeks of every month.
 MONTHLY_FRESHNESS_DAYS = (35, 62)
 
-# --- Elementary's checks on raw tables (decision 102) -----------------------------------------------------------
+# --- Elementary's checks on raw tables -----------------------------------------------------------
 
 #: The tag every Elementary check carries, and no other test does: build_marts.py leaves the tagged tests out of
 #: every dbt build and runs them in a pass of their own after the writers (its docstring, "ELEMENTARY'S CHECKS RUN
@@ -223,7 +219,7 @@ ELEMENTARY_CHECK = "elementary_check"
 ELEMENTARY_ENABLED = "{{ env_var('OURHIKE_ELEMENTARY_CHECKS', 'false') == 'true' }}"
 
 
-#: ELEMENTARY'S CHECKS' TWO THRESHOLDS (decision 204, the maintainer, 2026-10-15: "Every test should have both the
+#: ELEMENTARY'S CHECKS' TWO THRESHOLDS (the maintainer, 2026-10-15: "Every test should have both the
 #: warning and error thresholds"; his "Build as proposed" took these). An anomaly check has one sensitivity, so its
 #: `fail_calc` scores the rows Elementary returns, each carrying `is_anomalous`, `anomaly_score`, `metric_value` and
 #: `training_avg` (0.26.0's get_read_anomaly_scores_query()), as a level: 1, a warning, where Elementary flagged a
@@ -238,7 +234,7 @@ ELEMENTARY_ENABLED = "{{ env_var('OURHIKE_ELEMENTARY_CHECKS', 'false') == 'true'
 #: then 2 with one removed, read off `test_sub_type`, the name 0.26.0's schema_changes gives the change in the rows it
 #: returns. Each check is an error by severity in every environment: the checks pass is a `dbt test` after the
 #: writers, where a failure skips nothing (measured the same day) and, in production and UA, never changes the run's
-#: exit (decisions 102 and 110), so a level 2 there is a red row on the data-quality page and an error on the run
+#: exit, so a level 2 there is a red row on the data-quality page and an error on the run
 #: summary, and nothing more; in dev and CI, build_marts.py fails the job at its end. @unvalidated: 6 deviations and 50%
 #: are the lead's picks, settled by the first season's errors. A lane whose window holds n builds cannot score past
 #: (n - 1) / sqrt(n) deviations (dbt_project.yml's ELEMENTARY'S TRAINING AND DETECTION), so the monthly lane's 13
@@ -276,7 +272,7 @@ def raw_table_checks() -> list[dict]:
       incremental), which would record 0 for each day before a reload. Reasoned from those two, not run.
     - schema_changes: a column added, dropped or retyped upstream, against the columns the last build recorded.
 
-    NO FRESHNESS CHECK OF ELEMENTARY'S (decision 203, the maintainer, 2026-10-15). freshness_anomalies on
+    NO FRESHNESS CHECK OF ELEMENTARY'S (the maintainer, 2026-10-15). freshness_anomalies on
     `_loaded_at` learned how long a source usually goes unchanged, since a change check that finds a source unchanged
     leaves its last load's stamp (ELT.md, "dlt configuration requirements"), and event_freshness_anomalies how long
     since a club last edited a notice: neither is how long since OurHike last read the source. On UA's hourly page of
@@ -313,11 +309,11 @@ def raw_table_checks_yaml(indent: int) -> list[str]:
 class Shape:
     """What one type's staging models conform to, and the union that reads them."""
 
-    key_column: str  # <what one row is>_key (decision 40)
+    key_column: str  # <what one row is>_key
     row: str  # what one row is, in words
     union: str
     columns: tuple[tuple[str, str], ...]  # (column, description) beside the key, source_key, club, geom, properties, _loaded_at
-    # False for a content type (section C, decision 54 wave 3): its rows are episodes, write-ups, list items and
+    # False for a content type: its rows are episodes, write-ups, list items and
     # photo manifest rows, with no geometry column, so no geom, no region box and no CRS cast.
     geometry: bool = True
     # True where the union clears a row landed as one point outside its source's box and marks it in
@@ -366,7 +362,7 @@ SHAPES = {
             ),
             (
                 "source_id",
-                "The id the point publishes under: the registry `id_field`'s value, as text, where that field is the layer's own id, and the base model's key where it is a server row id (decision 40: a reload mints OBJECTID and FID again).",
+                "The id the point publishes under: the registry `id_field`'s value, as text, where that field is the layer's own id, and the base model's key where it is a server row id (a reload mints OBJECTID and FID again).",
             ),
         ),
     ),
@@ -381,7 +377,7 @@ SHAPES = {
             ),
         ),
     ),
-    # Section C's content types (decision 54 wave 3, 2026-10-04). Each union is `__club_unioned`, as
+    # The content types. Each union is `__club_unioned`, as
     # points_of_interest's is, because the type's mart reads another path today (the podcasts mart reads
     # reference/podcast_episodes.json's editorial picks, suggested_hikes the Hike Finder and the highlights,
     # challenges the reviewed challenge files through int_challenges__unioned) and these rows are the clubs' own
@@ -427,7 +423,7 @@ SHAPES = {
         union="int_photos__club_unioned",
         columns=(
             ("title", "The photo's title as its source states it."),
-            ("image_url", "The image file's URL, linked and never fetched (bytes never enter DuckDB, decision 4)."),
+            ("image_url", "The image file's URL, linked and never fetched (bytes never enter DuckDB)."),
             ("credit", "The photo's own credit line, as its source states it for that photo."),
             (
                 "licence",
@@ -439,7 +435,7 @@ SHAPES = {
     ),
 }
 
-#: The content readers whose tables section C stages, by class name, and each type's conformed columns per
+#: The content readers whose tables this stages, by class name, and each type's conformed columns per
 #: reader: a raw field (written as the registry and the live answers name it, normalized as dlt lands it), a
 #: JSON path into one (`field $.path`), or None for a column the reader's rows never carry.
 CONTENT_COLUMNS = {
@@ -452,7 +448,7 @@ CONTENT_COLUMNS = {
     ("challenges", "NpsContent"): {},
     ("challenges", "MediawikiTemplatePages"): {"name": "title", "link": "fullurl"},
     ("photos", "NpsContent"): {},
-    # Section K's page reader (decision 54 wave 5, extract/_pages_content.py): every type's rows carry the type's own
+    # The page reader (extract/_pages_content.py): every type's rows carry the type's own
     # columns by these names (its TYPE_COLUMNS), whatever site they were read from.
     ("suggested_hikes", "ContentPages"): {"name": "name", "link": "link"},
     ("challenges", "ContentPages"): {"name": "name", "link": "link"},
@@ -464,17 +460,17 @@ CONTENT_COLUMNS = {
         "licence": "licence",
         "link": "link",
     },
-    # Section K's PDF reader (decision 54 wave 4, extract/_pdf_content.py): the same type columns as its page reader.
+    # The PDF reader (extract/_pdf_content.py): the same type columns as its page reader.
     ("suggested_hikes", "ContentPdf"): {"name": "name", "link": "link"},
     ("challenges", "ContentPdf"): {"name": "name", "link": "link"},
-    # Section K's hand-back, its workbook reader (extract/_sheet_content.py): the same type columns again.
+    # The workbook reader (extract/_sheet_content.py): the same type columns again.
     ("suggested_hikes", "ContentSheet"): {"name": "name", "link": "link"},
     ("challenges", "ContentSheet"): {"name": "name", "link": "link"},
     # A club page's points (extract/_pages_points.py's PagePoints) that a content file SHARES: one row per page, its
     # columns the ones the points row names for the type in `shared_page_rows` (page_rows_columns()), as NPS's are
     # its endpoint's. The Palmetto Trail's passages: the lead's ruling of 2026-10-04, one reader of its 33 pages.
     ("suggested_hikes", "PagePoints"): {},
-    # An ArcGIS layer whose rows each link one photograph (section K's hand-back: ATA's Scenic Resources and StoryMap
+    # An ArcGIS layer whose rows each link one photograph (ATA's Scenic Resources and StoryMap
     # layers, RCO's camping inventory). Each layer names its photo field its own way (`Link`, `pic_url`, `PhotoWeb`),
     # so its sources.json row's `photo_columns` names the fields, as a points row names its `name_field`
     # (photo_columns()). The row's position stays in `properties`, as the GeoJSON text dlt landed.
@@ -501,7 +497,7 @@ NPS_COLUMNS = {
     },
 }
 #: The prose each reader's rows carry, by the field names the live sources served on 2026-10-04. It lands in the
-#: private raw store and stops at `base_` (decision 55; the round brief's item 3: "a WordPress post's or an
+#: private raw store and stops at `base_` (the round brief's item 3: "a WordPress post's or an
 #: episode's body lands in the private raw store and stops at base_"), so a staging model's `properties` sets
 #: each to null, which json_merge_patch drops. A wiki page's wikitext is its prose and its template's fields
 #: at once: it stops at base_ too, so a later rule that reads a trail's distance from its template parses the
@@ -580,7 +576,7 @@ class Table:
     cadence: str
     entry: dict
     # The extract reader's class name: ArcgisLayer for every geographic layer (an ArcGIS layer, a GIS file or a
-    # geographic API), a content reader for section C's (CONTENT_COLUMNS), which decides how the staging model
+    # geographic API), a content reader (CONTENT_COLUMNS), which decides how the staging model
     # conforms the table's columns.
     reader: str = "ArcgisLayer"
     # The sibling type whose base model this staging reads, for a file that SHARES that sibling's resource.
@@ -634,7 +630,7 @@ class Table:
         or extract/_pdf_content.py's ContentPdf; or a workbook, extract/_sheet_content.py's ContentSheet. Fixture mode's
         Python need not have pypdf, and fixture mode serves no binary file, so the fixture warehouse never holds the
         table. Its freshness is every monthly table's all the same: LOADED_AT_QUERY reads the run log and never the
-        table, so a table the warehouse does not hold is measured as any other (decision 203). Until then it carried
+        table, so a table the warehouse does not hold is measured as any other. Until then it carried
         `freshness: null`, because `dbt source freshness` on `_loaded_at` failed on the missing table (CI's dbt job,
         2026-10-04, on ata_water_cache_boxes, bmta_access_points and rmc_recommended_hikes)."""
         return self.entry.get("kind") == PDF_POINTS_KIND or self.reader in ("ContentPdf", "ContentSheet")
@@ -665,7 +661,7 @@ class Table:
                 raise KeyRefused(f"{self.key}: {home} holds {field!r}, which is not one of the layer's fields")
             name = column(field)
             if name.strip('"') in ROW_IDS:
-                raise KeyRefused(f"{self.key}: {home} holds {field}, a server row id, which a reload mints again (decision 40)")
+                raise KeyRefused(f"{self.key}: {home} holds {field}, a server row id, which a reload mints again")
             inputs.append(name)
         return inputs
 
@@ -678,7 +674,7 @@ class Table:
             )
         text = entry.get("key_comment") or entry.get("id_comment")
         if text:
-            return text
+            return registry_words(text)
         home = "key_fields" if "key_fields" in entry else "id_fields" if entry.get("id_fields") else "id_field"
         return f"the registry's `{home}`; its row records no measurement of it."
 
@@ -803,8 +799,26 @@ def tables() -> list[Table]:
         except KeyRefused as error:
             refused.append(str(error))
     if refused:
-        raise KeyRefused("no staging without a measured key (decision 40):\n  " + "\n  ".join(refused))
+        raise KeyRefused("no staging without a measured key:\n  " + "\n  ".join(refused))
     return found
+
+
+#: A numbered decision, poll question or work wave as a registry note cites it ("decision 40", "decision 54's wave 1",
+#: "Q3"). A note copied into a model's description drops these: the docs say what the data is, and the decision log is
+#: git history. The publication rule reads a row's `licence` for its rulings and never these descriptions.
+_NUMBERED_REFERENCE = re.compile(
+    r"\s*\((?:decisions? \d+[a-z]?(?:\([a-z]\))?(?:(?:, | and | or )\d+[a-z]?)*|Q\d+)\)"
+    r"|\b[Dd]ecisions? \d+[a-z]?(?:''|')s (?:waves? \d+(?: and \d+)? )?"
+    r"|,? (?:per|under|by) decisions? \d+[a-z]?(?:\([a-z]\))?"
+)
+#: Any other mention, mid-sentence ("what decision 40 asks of a key"), reads as the rule it names.
+_OTHER_REFERENCE = re.compile(r"\b[Dd]ecisions? \d+[a-z]?(?:\([a-z]\))?\b")
+
+
+def registry_words(text: str) -> str:
+    """A registry note as a model's description quotes it, without the numbered references it cites."""
+    text = _NUMBERED_REFERENCE.sub(lambda match: "the " if "'s " in match.group(0) else "", text)
+    return _OTHER_REFERENCE.sub("the maintainer's rule", text)
 
 
 def _comment(text: str, indent: str = "") -> str:
@@ -844,7 +858,7 @@ def _lane_copy_note(table: Table) -> str:
         f"The {table.cadence} lane's own copy of {table.table}, a table the hourly lane lands for this folder's "
         f"closures or warnings, which extract/not_available.toml's [{table.folder}.{table.type}] row SHARES: "
         f"extract/_run.py's ALSO_READS lands it in the {table.cadence} lane's store too, still one extraction "
-        f"(decision 34). generate_notice_models.py stages the hourly copy as base_{table.folder}__{stem}; this one "
+        f". generate_notice_models.py stages the hourly copy as base_{table.folder}__{stem}; this one "
         f"is read only by stg_{table.folder}__{table.type}, so each lane's nodes read the copy that lane landed."
     )
 
@@ -855,11 +869,11 @@ def base_sql(table: Table) -> str:
     head = [
         _comment(
             f"{table.title} ({table.entry.get('provider') or table.folder}, sources.json `{table.key}`): every row, "
-            "keyed and deduped (decision 40), with nothing filtered and nothing joined. A base model, the one place "
-            "this dataset is staged (decision 34)."
+            "keyed and deduped, with nothing filtered and nothing joined. A base model, the one place "
+            "this dataset is staged."
             if not table.lane_copy
             else f"{table.title} ({table.entry.get('provider') or table.folder}, sources.json `{table.key}`): every "
-            "row, keyed and deduped (decision 40), with nothing filtered and nothing joined. " + _lane_copy_note(table)
+            "row, keyed and deduped, with nothing filtered and nothing joined. " + _lane_copy_note(table)
         ),
         "--",
         _comment(f"Key: {table.key_comment()}"),
@@ -891,7 +905,7 @@ def base_sql(table: Table) -> str:
     if table.shape.geometry:
         select_source = f"""    -- dlt lands geometry as GeoJSON text and an ArcGIS date as epoch
     -- milliseconds (extract/_kinds.py's ESRI_TYPES); both are cast here, as
-    -- decision 40 has staging do.
+    -- staging models do.
     select
         {exclude}
         st_geomfromgeojson(cast(geometry as varchar)) as geom{casts}
@@ -945,7 +959,7 @@ def sources_yaml(folder: str, folder_tables: list[Table]) -> str:
         ),
         "    schema: raw",
         "    config:",
-        "      # When the extract last read each table or confirmed it unchanged (decision 203):",
+        "      # When the extract last read each table or confirmed it unchanged:",
         "      # make_dbt_staging.py's LOADED_AT_QUERY and MONTHLY_FRESHNESS_DAYS say why.",
         f'      loaded_at_query: "{LOADED_AT_QUERY}"',
         "      meta:",
@@ -966,7 +980,7 @@ def sources_yaml(folder: str, folder_tables: list[Table]) -> str:
                 else []
             ),
             "        data_tests:",
-            f"          # Rows sharing {table.base}'s key must be exact copies (decision 40).",
+            f"          # Rows sharing {table.base}'s key must be exact copies.",
             "          - duplicates_are_exact:",
             "              arguments:",
             f"                key_columns: {_yaml_list(_raw_key_columns(table.key_inputs()))}",
@@ -986,8 +1000,8 @@ def sources_yaml(folder: str, folder_tables: list[Table]) -> str:
 
 def _freshness_lines(folder: str, cadence: str) -> list[str]:
     """A generated sources block's `freshness`, by its cadence: MONTHLY_FRESHNESS_DAYS, every table this writes being
-    on the monthly lane (decision 1: the types it stages are monthly). Any other cadence stops the run, naming the
-    folder, rather than guessing a threshold: an hourly or daily source's numbers are decisions 100's and 101's
+    on the monthly lane (the types it stages are monthly). Any other cadence stops the run, naming the
+    folder, rather than guessing a threshold: an hourly or daily source's numbers are the and 101's
     (generate_notice_models.py's FRESHNESS_HOURS), for the notice sources that generator stages."""
     if cadence != "monthly":
         raise ValueError(f"{folder}: a generated sources block is monthly, and this one is {cadence}; give it its thresholds")
@@ -1015,7 +1029,7 @@ def base_yaml(folder: str, folder_tables: list[Table]) -> str:
             "    data_tests:",
             "      # Warns when the dedupe dropped any row, each an exact copy",
             "      # (duplicates_are_exact on the raw table), and is an error once",
-            "      # the copies are half the raw table (decision 204; its two",
+            "      # the copies are half the raw table (its two",
             "      # thresholds are the generic test's). A raw table that never",
             "      # landed passes (tests/generic/equal_rowcount_to_raw.sql).",
             "      - equal_rowcount_to_raw:",
@@ -1023,7 +1037,7 @@ def base_yaml(folder: str, folder_tables: list[Table]) -> str:
             f"            compare_model: source('{folder}', '{table.source_table}')",
             "    description: >",
             _folded(
-                f"{table.title}, every row, keyed and deduped (decision 40), the layer's own columns under dlt's "
+                f"{table.title}, every row, keyed and deduped, the layer's own columns under dlt's "
                 f"names. {_held_back(table.entry)} "
                 + (
                     f"A lookup beside stg_{folder}__{table.type}'s rows, which carry its ids; no union reads it."
@@ -1037,7 +1051,7 @@ def base_yaml(folder: str, folder_tables: list[Table]) -> str:
             f"      - name: {table.key_column}",
             "        description: >",
             _folded(
-                f"The row's key (decision 40): dbt_utils.generate_surrogate_key over {inputs}, the registry key "
+                f"The row's key: dbt_utils.generate_surrogate_key over {inputs}, the registry key "
                 "first and then the fields measured unique for this layer.",
                 10,
             ),
@@ -1158,7 +1172,7 @@ def stg_sql(folder: str, type_: str, type_tables: list[Table]) -> str:
         return _content_stg_sql(folder, type_, type_tables)
     head = _comment(
         f"The {folder}/ folder's {type_.replace('_', ' ')} layers, conformed to {shape.union}'s columns: each "
-        "layer's rename to the union's names and its key, nothing filtered (decision 40; a club's review gate is "
+        "layer's rename to the union's names and its key, nothing filtered (a club's review gate is "
         "an intermediate's). The layer's own columns ride whole in `properties`, under dlt's names, so a rule "
         "downstream reads a field by the name its registry row gives it: json_merge_patch drops a member a "
         "patch sets to null, so `properties` is the base row without the geometry that travels beside it."
@@ -1208,16 +1222,16 @@ def _content_stg_sql(folder: str, type_: str, type_tables: list[Table]) -> str:
     shape = SHAPES[type_]
     head = _comment(
         f"The {folder}/ folder's {type_.replace('_', ' ')} sources, conformed to {shape.union}'s columns: each "
-        "source's rename to the union's names and its key, nothing filtered (decision 40; a club's review gate is "
+        "source's rename to the union's names and its key, nothing filtered (a club's review gate is "
         "an intermediate's). The source's own columns ride in `properties`, under dlt's names, all but its prose: "
         "json_merge_patch drops each member the patch sets to null, so a body, an episode's notes or a page's "
-        "wikitext stops at the base model (decision 55)."
+        "wikitext stops at the base model."
     )
     for table in type_tables:
         if table.page_rows:
             head += "\n" + _comment(
                 f"`{table.key}` is a page's points table this folder's {type_.replace('_', ' ')} file SHARES (one read "
-                "of each page, decision 34): it gives one row per page, grouped on `source_url` and the fields its "
+                "of each page): it gives one row per page, grouped on `source_url` and the fields its "
                 "row's `shared_page_rows` names, and only those fields ride in `properties`."
             )
     branches = []
@@ -1387,7 +1401,7 @@ def union_yaml(type_: str, type_tables: list[Table]) -> str:
     else:
         description = (
             f"Every {type_.replace('_', ' ')} row of the {len(type_tables)} registered sources "
-            f"pipeline/make_dbt_staging.py stages for this type (decision 54 wave 3), unioned by name: {shape.row}. "
+            f"pipeline/make_dbt_staging.py stages for this type, unioned by name: {shape.row}. "
             "Each row carries its source's registry key, the club folder that extracted it, the base model's key, "
             "the conformed columns below and its source's own columns, prose left out, as `properties`. No "
             "geometry: a row is placed, where it is placed at all, by its own fields in `properties`. Unfiltered: "
@@ -1452,7 +1466,7 @@ def union_yaml(type_: str, type_tables: list[Table]) -> str:
     else:
         lines += [
             "      - name: properties",
-            "        description: The base row's own columns, under dlt's names, as JSON, its prose left out (decision 55).",
+            "        description: The base row's own columns, under dlt's names, as JSON, its prose left out.",
         ]
     lines += [
         "      - name: _loaded_at",

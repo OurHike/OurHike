@@ -1,5 +1,5 @@
 -- The release's trail lines that may run inside an area closure, the A.T.'s
--- own among them (decision 192): step_closure_trail_lines's table
+-- own among them: step_closure_trail_lines's table
 -- (pipeline/step_closure_trail_lines.py), staged like any table a source
 -- lands. int_closures__area_trail_cuts cuts them against each area.
 --
@@ -10,7 +10,7 @@
 -- files, whatever the release holds.
 with source as (
     -- The step writes the line as GeoJSON text, as dlt lands every
-    -- geometry; cast here, as decision 40 has staging do.
+    -- geometry; cast here, as staging models do.
     select
         * exclude (geometry),
         st_geomfromgeojson(cast(geometry as varchar)) as geom

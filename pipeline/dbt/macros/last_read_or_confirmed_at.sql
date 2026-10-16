@@ -1,8 +1,8 @@
 {#- When the extract last read a source's raw table, or confirmed it unchanged:
-    the `loaded_at_query` of every source's freshness since decision 203 (the
+    the `loaded_at_query` of every source's freshness (the
     maintainer, 2026-10-15: freshness is OurHike's own last successful read,
     in every lane; make_dbt_staging.py's LOADED_AT_QUERY), and of every notice
-    source's before it (decision 100, the maintainer's poll of 2026-10-07: "Red
+    source's before it (the maintainer's poll of 2026-10-07: "Red
     after 24h. But this should be Red in the data source freshness feature of
     dbt. Not blocking a datasource pipeline"). The Python steps' own tables are
     the one exception: no run log row names them, so they keep `_loaded_at`.

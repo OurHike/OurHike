@@ -1,6 +1,6 @@
 {{ config(format='json_document', location='places.json') }}
 -- places.json, the places a hiker can name before anything is downloaded, in
--- the shape export_places.py's build_output() writes (decision 44's v1):
+-- the shape export_places.py's build_output() writes (the v1):
 -- `generated_at`, `trailRadiusMiles`, `trailMilesMeasured`, then `places`,
 -- one record per row of the places mart in its `place_order`.
 --
@@ -21,7 +21,7 @@
 {%- set run_stamp = "cast(" ~ python_run_stamp() ~ " as timestamptz)" %}
 {%- set stamp = python_utc_seconds(run_stamp) %}
 with places as (
-    select * from {{ ref('places') }}
+    select * from {{ ref('places', v=1) }}
 ),
 
 records as (

@@ -1,18 +1,15 @@
 version: 2
 
-# The places family's intermediates (stage 3 of #1793 — Rebuild the data
-# platform as dlt → dbt: seven contracted marts, a monthly refresh, published
-# docs, and lighter phone downloads): export_places.py's rules in SQL, PL01 to
-# PL11 in pipeline/ELT.md's ledger, in the order build_output() applies them.
+# The places family's intermediates: export_places.py's rules in SQL, in the order build_output() applies them.
 # Each model's header says which rule it holds and what it rests on.
 models:
   - name: int_places__park_units
     description: >
       The parks places.json lists, one row per park unit: load_parks() in
-      SQL. Only while oprhp_park_polygons may publish (PL01); every polygon
-      made valid first (PL03); grouped by the unit field the registry entry
+      SQL. Only while oprhp_park_polygons may publish; every polygon
+      made valid first; grouped by the unit field the registry entry
       declares, a polygon with no unit joining the one unit wearing its name,
-      a unit named by the name most of its polygons wear (PL02).
+      a unit named by the name most of its polygons wear.
     columns:
       - name: place_id
         description: "`oprhp_park_polygons:<unit>`, or `oprhp_park_polygons:<id>` for a polygon that stands alone."
@@ -45,7 +42,7 @@ models:
   - name: int_places__waypoints
     description: >
       The published trailheads, parking and resupply points places.json takes
-      its point places from (PL05): the points_of_interest mart's rows in
+      its point places from: the points_of_interest mart's rows in
       poi_trailhead.geojson, poi_parking.geojson, poi_resupply.geojson and
       nearby_poi.geojson, with the lon and lat each file prints, as a phone
       parses them, and their place in load_point_places()'s reading order.
@@ -80,9 +77,9 @@ models:
 
   - name: int_places__lines
     description: >
-      The published lines places.json measures (PL06): the network's lines
+      The published lines places.json measures: the network's lines
       whose source may publish and the A.T.'s centerline, with the name each
-      is summed under for the long trails (PL07). The A.T.'s side trails
+      is summed under for the long trails. The A.T.'s side trails
       measure nothing, as today; the header says why that is a finding.
     columns:
       - name: trail_line_id
@@ -111,10 +108,10 @@ models:
   - name: int_places__point_places
     description: >
       The trailheads, parking areas and towns places.json lists, before
-      anything is measured (PL05): published waypoints only, a town only
+      anything is measured: published waypoints only, a town only
       from a layer the registry calls a town layer, named rows only, each
       published id once. Each carries a postal code only where its source or
-      its organization states one (PL04).
+      its organization states one.
     columns:
       - name: place_id
         description: The published waypoint id, which is also the place's id.
@@ -152,10 +149,10 @@ models:
   - name: int_places__resolved
     description: >
       Every row places.json publishes, measured and in the file's order: the
-      long trails (PL07), the miles of published line inside each park and
-      within the radius of each waypoint (PL08), the park each waypoint sits
-      in (PL09), a trailhead or parking area with no line near it dropped
-      (PL10), and no miles anywhere when nothing was measured (PL11).
+      long trails, the miles of published line inside each park and
+      within the radius of each waypoint, the park each waypoint sits
+      in, a trailhead or parking area with no line near it dropped
+      and no miles anywhere when nothing was measured.
       Must-match numbers are JSON text, which the places mart casts back.
     config:
       # Logs each row holding text DuckDB could not store (macros/storable_text.sql).
@@ -163,8 +160,7 @@ models:
     data_tests:
       # Warns: dbt prints only a row count, so the model's post-hook logs
       # the rows, and int_places__final leaves them out (macros/storable_text.sql).
-      # An error when every row holds such text (decision 204,
-      # tests/generic/rows_named.sql): the reader, not one place's text.
+      # An error when every row holds such text (tests/generic/rows_named.sql): the reader, not one place's text.
       - rows_named:
           name: int_places__resolved_stores_its_text
           arguments:
@@ -201,7 +197,7 @@ models:
       - name: bbox
         description: A park's or a trail's [west, south, east, north], as JSON text.
       - name: trail_metres
-        description: The measured metres on the WGS84 ellipsoid (decision 97) the miles are rounded from, null when nothing was measured.
+        description: The measured metres on the WGS84 ellipsoid the miles are rounded from, null when nothing was measured.
       - name: trail_miles
         description: The miles of published trail to a tenth, as JSON number text; null when nothing was measured.
       - name: trail_miles_measured
@@ -223,7 +219,7 @@ models:
           and int_places__final leaves the place out.
   - name: int_places__final
     description: >
-      The places mart's rows before their row dates (decision 57):
+      The places mart's rows before their row dates:
       what models/marts/places/places.sql held until then, every
       contracted column but _first_seen_at and _changed_at.
       int_places__history snapshots it, and the mart reads that snapshot.

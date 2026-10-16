@@ -1,9 +1,9 @@
 -- DEC's lean-tos as the extract lands them (extract/nysdec/
--- points_of_interest.py), keyed and deduplicated (decision 40), with every
+-- points_of_interest.py), keyed and deduplicated, with every
 -- upstream column kept. The other five DEC per-type POI models have this
 -- shape and refer here.
 --
--- WHAT A ROW IS STAYS OUT OF STAGING, as decision 40 asks. sources.json
+-- WHAT A ROW IS STAYS OUT OF STAGING. sources.json
 -- declares this layer's poi_type ('shelter'), its id field (OBJECTID), its
 -- name field (NAME), its public flag (PUBLICUSE = 'Y') and the asset and
 -- facility fields a description is composed from; export_nearby_poi.py reads
@@ -18,7 +18,7 @@
 -- The whole field list was measured live 2026-08-27 (315 rows statewide).
 with source as (
     -- dlt lands geometry as GeoJSON text (extract/_kinds.py's JSON
-    -- hint); cast here, as decision 40 has staging do.
+    -- hint); cast here, as staging models do.
     select
         -- The row's place in the raw table, which extract/_warehouse.py fills
         -- in the order the upstream served it: the order a Python exporter

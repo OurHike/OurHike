@@ -1,4 +1,4 @@
--- The trail_lines mart's v2 (decision 44), for the packed trail_miles.json
+-- The trail_lines mart's v2, for the packed trail_miles.json
 -- that pub_trail_miles_v2 writes at v2/trail_miles.json (pipeline/ELT.md,
 -- "Making the download smaller", tier (a): "each vertex array as milli-mile
 -- deltas"). The same rows as v1, every column as v1 has it, except that a
@@ -53,7 +53,7 @@ select
     spur_destination_poi_id,
     spur_destination_distance_m,
     spur_junction_mile,
-    -- v1's row dates (decision 57): v2's rows are v1's, printed for v2's
+    -- v1's row dates: v2's rows are v1's, printed for v2's
     -- files, so a change to a v1 column v2 drops moves them too.
     _first_seen_at,
     _changed_at

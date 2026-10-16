@@ -7,17 +7,15 @@ version: 2
 # and selects no row while that source is held, so its last copy stays on the
 # phone while the others are written, and publish.py fails the run
 # afterwards. pub_conditions_notices spans every club, so a held club keeps
-# its last good rows inside the file instead (decision 53, phase D), and it
-# names no gate row; nor do pub_conditions_hazard_areas (decision 84) and
-# pub_conditions_trail_closures (decisions 184 and 187),
+# its last good rows inside the file instead, and it
+# names no gate row; nor do pub_conditions_hazard_areas and
+# pub_conditions_trail_closures,
 # which keep that writer's rows as it wrote them. Only those three and
-# pub_conditions_notice_states (decision 76's state shapes, a monthly node
+# pub_conditions_notice_states (the state shapes, a monthly node
 # that reads no notice source, so no gate row) are new data with no
 # exporter. None of them uploads
 # anything: publish-conditions.yml and publish-weather.yml still upload the
-# Python exporters' files until stage 4 of #1793 — Rebuild the data platform
-# as dlt → dbt: seven contracted marts, a monthly refresh, published docs,
-# and lighter phone downloads.
+# Python exporters' files until the cutover.
 
 models:
   - name: pub_conditions_atc_updates
@@ -30,6 +28,7 @@ models:
       int_closures__gate holds ATC back, for a bad row, an unreviewed file or
       int_sources__publication.
       parity.py compares it with export_atc_updates.py's build_document().
+      Refreshed hourly, with its lane's build.
     config:
       access: public
       contract:
@@ -47,20 +46,21 @@ models:
           Every reviewed row in the file's order, each as lib/atc_updates.py's
           published_rows() writes it, then every automatic row in slug order,
           each as auto_row() writes it, with obstructs_trail false and
-          review_state `unreviewed` (CL07-CL10, int_closures__atc_automatic).
+          review_state `unreviewed` (int_closures__atc_automatic).
         data_type: json[]
 
   - name: pub_conditions_weather_alerts
     description: >
       Writes conditions/weather_alerts.json, every relayed NWS alert that
       reaches a trail square, from the warnings mart's NWS rows placed by
-      int_warnings__nws_placed (WN03): one document, written verbatim by
+      int_warnings__nws_placed: one document, written verbatim by
       phone_file's json_document format to
       processed_dir/conditions_weather_alerts.json. Writes nothing while
       int_closures__gate holds NWS back (int_sources__publication, or no
       alert landed to say when NWS was asked), and fails without exactly one
       weather squares document. parity.py compares it with
       export_weather_alerts.py's bake().
+      Refreshed hourly, with its lane's build.
     config:
       access: public
       contract:
@@ -82,6 +82,7 @@ models:
       one row, `generated_at` and `nynjtc_alerts`. Writes nothing while
       int_closures__gate holds NYNJTC back.
       parity.py compares it with export_nynjtc_alerts.py's build_document().
+      Refreshed hourly, with its lane's build.
     config:
       access: public
       contract:
@@ -97,15 +98,13 @@ models:
 
   - name: pub_conditions_notices
     description: >
-      Writes conditions/notices.json (decision 53, phase D), every club's
+      Writes conditions/notices.json, every club's
       notices in one file: one OrgNotice (features/ORG_NOTICES.md section 2)
       per row of a notice source (seeds/notice_readers.csv) in the closures
-      and warnings marts, facts and a link only (decision 55), each with its
-      place (ATC's A.T. miles, the source's own geometry shaped for a phone
-      by decision 77, an area grown 100 m and simplified at 100 m and a line
+      and warnings marts, facts and a link only, each with its
+      place (ATC's A.T. miles, the source's own geometry shaped for a phone: an area grown 100 m and simplified at 100 m and a line
       or point simplified at 10 m, NYNJTC's trail and park terms, or
-      unplaced), decision
-      67's `hazard` where it is a hunting area, shooting site or burned area,
+      unplaced), the `hazard` where it is a hunting area, shooting site or burned area,
       the club's own `updated_at` and OurHike's `checked_at` (the run log's
       latest read that loaded the source or found it unchanged), and the
       marts' row dates. A source int_closures__gate holds keeps its last good
@@ -114,6 +113,7 @@ models:
       keeps its last file. No parity line: no exporter writes this file.
       conditions/atc_updates.json and conditions/nynjtc_alerts.json are
       written as before, by their own writers.
+      Refreshed hourly, with its lane's build.
     config:
       access: public
       contract:
@@ -131,27 +131,27 @@ models:
           obstructs_trail, starts_on, ends_on, updated_at, current_until,
           checked_at, first_seen_at, changed_at, carried_since, source_url
           and review_state, and `states` on the rows of a source
-          seeds/notice_states.csv names (decision 76). `current_until` is the
+          seeds/notice_states.csv names. `current_until` is the
           last day the notice reads as current, or null where it gives no
           date that bounds it (macros/notice_current_until.sql), and absent
-          on decision 67's standing hazard areas, which never grey while
-          their layer is served (decision 156). No other
+          on the standing hazard areas, which never grey while
+          their layer is served. No other
           field of a source, its person fields or its prose among them, can
           reach it.
         data_type: json
 
   - name: pub_conditions_hazard_areas
     description: >
-      Writes conditions/hazard_areas.json (decision 84): the notices of
-      pub_conditions_notices that carry decision 67's `hazard`, each exactly
+      Writes conditions/hazard_areas.json: the notices of
+      pub_conditions_notices that carry the `hazard`, each exactly
       as that writer wrote it, in its order, under its `generated_at`.
-      Decision 77 has a phone download notices.json only once a hike is
-      planned; the phone reads this file at launch whatever is planned, and
+      A phone downloads notices.json only once a hike is planned; the phone reads this file at launch whatever is planned, and
       draws hunting areas, shooting sites and burned areas from it. Writes
       nothing while that writer writes nothing (a build without the row
       history while a notice source is held), so the phone keeps its last
       copy; an empty list when no notice carries a hazard. No parity line:
       no exporter writes this file.
+      Refreshed hourly, with its lane's build.
     config:
       access: public
       contract:
@@ -171,17 +171,15 @@ models:
   - name: pub_conditions_trail_closures
     description: >
       Writes conditions/trail_closures.json, every club closure for the map
-      (decision 184: #1152's shape C for every club closure, drawn by
-      decision 187 with the crossed-out mark): the notices
+      (#1152's shape C for every club closure, drawn with the crossed-out mark): the notices
       of pub_conditions_notices whose `obstructs_trail` is true, ATC's
       excepted, each exactly as that writer wrote it, in its order, under its
       `generated_at`, with one key added, `shape` ("line", "area", "shade" or
       "point"), from the kind of the notice's own geometry. An "area"'s
       `place.geometry` is the MultiLineString of the mapped trail stretches
-      inside it (int_closures__area_trail_cuts, the A.T.'s included since
-      decision 192); a "shade" is an area no mapped trail runs inside, its
+      inside it (int_closures__area_trail_cuts, the A.T.'s included); a "shade" is an area no mapped trail runs inside, its
       `place.geometry` the area as its source drew it, which the phone
-      hatches with no mark on its edge (decision 191). In an hour with no
+      hatches with no mark on its edge. In an hour with no
       trail lines to cut against every area closure is left out, and so is a
       row with no geometry to draw; both stay in notices.json's list. Of two
       drawn areas of different sources that each cover at least 90% of the
@@ -191,11 +189,12 @@ models:
       the outline the cut carries, so an area drawn nowhere never hides a
       drawn copy. `areas_cut` says whether the hour's areas were cut and
       `uncut_areas` names each area closure not drawn for want of a cut, so
-      a phone keeps its last drawing of those (decision 213, Q11). The
+      a phone keeps its last drawing of those. The
       phone reads it at launch, whatever is planned. Writes nothing while
       that writer writes nothing, so the phone keeps its last copy; an empty
       list when no club closes a trail. No parity line: no exporter writes
       this file.
+      Refreshed hourly, with its lane's build.
     config:
       access: public
       contract:
@@ -218,7 +217,7 @@ models:
       - name: areas_cut
         description: >
           Whether this hour's area closures were cut against trail lines
-          (decision 213, Q11): false when the file holds an area closure and
+          false when the file holds an area closure and
           the cut has no row, an hour with no lines or one where every area's
           cut raised; true otherwise, an hour with no area closure included.
         data_type: boolean
@@ -234,7 +233,7 @@ models:
 
   - name: pub_conditions_notice_states
     description: >
-      Writes conditions/notice_states.json (decision 76): the shape of every
+      Writes conditions/notice_states.json: the shape of every
       state a state-wide agency notice names, from
       int_closures__notice_state_shapes, each with its code, its name and
       the margin the phone holds a route to. The phone reads it beside
@@ -243,6 +242,7 @@ models:
       file of its own so its bytes hold between builds; `generated_at` is
       when the extract landed TIGER's file. Writes nothing while no shape is
       built, and the phone keeps its last file. No map draws a shape.
+      Refreshed monthly, with its lane's build.
     config:
       access: public
       contract:
@@ -266,6 +266,7 @@ models:
       closures back, for a row, a number that is not finite or
       int_sources__publication. parity.py compares it with
       export_conditions.py's read_closures() and build_document().
+      Refreshed hourly, with its lane's build.
     config:
       access: public
       contract:
@@ -287,6 +288,7 @@ models:
       holds OurHike's reports back, for int_sources__publication or a number
       that is not finite. parity.py compares it with
       export_conditions.py's read_reports() and build_document().
+      Refreshed hourly, with its lane's build.
     config:
       access: public
       contract:
@@ -311,6 +313,7 @@ models:
       or lib/work_projects.py's file_problems() would find a problem. No mart
       owns work projects. parity.py compares it with
       export_work_projects.py's main().
+      Refreshed hourly, with its lane's build.
     config:
       access: public
       contract:
@@ -324,23 +327,23 @@ models:
         description: The reviewed file's `reviewed_at`, as written.
         data_type: varchar
       - name: work_projects
-        description: Every row of the file in its order, each as published_rows() writes it (CL17).
+        description: Every row of the file in its order, each as published_rows() writes it.
         data_type: json[]
 
 unit_tests:
   - name: pub_conditions_notices_writes_one_orgnotice_per_club_notice
     model: pub_conditions_notices
     description: >
-      Decision 53's phase D, with decisions 55 and 67: one OrgNotice per club
+      One OrgNotice per club
       notice in either mart, by source_key then notice_id, of exactly the
       documented keys. ATC's row is placed by its A.T. miles and named by its
       states; NYNJTC's carries its trail and park tags as `org_terms`, with
-      rule 19's `areas` (decision 213) only where seeds/notice_park_terms.csv
+      `areas` only where seeds/notice_park_terms.csv
       maps every park term, from that source's rows alone; a burned area
       carries its own geometry and `hazard`, never obstructs the trail,
       whatever its row says, and carries no `current_until`, so it never
-      greys while its layer is served (decision 156); OurHike's own closure and an NWS alert are not
-      club notices. A source seeds/notice_states.csv names (decision 76)
+      greys while its layer is served; OurHike's own closure and an NWS alert are not
+      club notices. A source seeds/notice_states.csv names
       carries its states as `states`, last, and no other row carries the key. `checked_at` is the oldest of a source's tables' latest
       loaded or unchanged reads (ATC's two), null where a table has none
       (BAER), and on a carried row the latest such read before carrying
@@ -457,7 +460,7 @@ unit_tests:
   - name: pub_conditions_notices_simplifies_an_area_for_a_phone
     model: pub_conditions_notices
     description: >
-      The geometry a phone needs (decision 77, the writer's header): a
+      The geometry a phone needs (the writer's header): a
       hunting parcel about 4 km by 1.1 km, with a vertex 3 m off its edge and
       two that lie on it, is grown 100 m outward and simplified at 100 m to
       four corners at 5 decimal places, the corners' curves cut by the
@@ -530,7 +533,7 @@ unit_tests:
   - name: pub_conditions_hazard_areas_keeps_only_the_hazard_rows_of_the_notices_file_as_written
     model: pub_conditions_hazard_areas
     description: >
-      Decision 84's file: of a notices file holding a club's unplaced
+      The file: of a notices file holding a club's unplaced
       notice, a hunting area, a shooting site and a burned area (the first
       two hazards out of order), the three hazard rows, each object exactly
       as notices.json carries it, by source_key then notice_id, under that
@@ -584,14 +587,14 @@ unit_tests:
   - name: pub_conditions_trail_closures_keeps_every_club_closure_shaped_for_the_map
     model: pub_conditions_trail_closures
     description: >
-      Decision 187's file, from a notices file holding one of each case, out
+      The file, from a notices file holding one of each case, out
       of order: a line closure, a point closure and an area closure are kept,
       each exactly as notices.json carries it with `shape` added last, the
       area's `place` its trail stretches, written again after the row's
-      other keys, `states` among them. Decision 191: an area no trail runs
+      other keys, `states` among them. An area no trail runs
       inside is kept as "shade", its `place` the area the cut shaped, never
       notices.json's grown outline. A closure whose start is still ahead
-      (decision 167) and one the list greys are kept at full strength: no
+      and one the list greys are kept at full strength: no
       date decides a row here. ATC's own closure, a hazard area, a notice
       that does not obstruct, an area with no row in the cut (its cut
       raised) and an unplaced closure are left out, and a cut for no closure
@@ -622,8 +625,7 @@ unit_tests:
       is left out, neither crossed out nor shaded, since nothing says which
       areas have a trail inside (int_closures__area_trail_cuts' header). The
       file says so: `areas_cut` false, and the area closure in
-      `uncut_areas`, so a phone keeps the area it last drew (decision 213,
-      Q11).
+      `uncut_areas`, so a phone keeps the area it last drew.
     given:
       - input: ref('pub_conditions_notices')
         format: sql
@@ -668,7 +670,7 @@ unit_tests:
     model: pub_conditions_trail_closures
     description: >
       The writer's half of the contract a MultiPoint closure keeps with the
-      phone (the review of 2026-10-15, S2-6, and the client review's F2):
+      phone (the reviews of 2026-10-15):
       a closure whose own geometry is a MultiPoint is written with `shape`
       "point" and its `place` exactly as notices.json carries it, both
       members kept, never cut to its first point and never left out.
@@ -769,7 +771,7 @@ unit_tests:
   - name: pub_conditions_notices_keeps_its_last_file_while_a_source_held_with_notices_has_none_to_carry
     model: pub_conditions_notices
     description: >
-      Review finding DBT-10, with decision 81's holds: a source the gate holds
+      Review finding DBT-10, with the holds: a source the gate holds
       although this build read 2 rows of it, and of which the marts hold no
       row to carry (a cold start, or no build of this history ever passed it),
       would read as a club with no notices. So the writer selects no row and
@@ -1130,7 +1132,7 @@ unit_tests:
       date alone bounds nothing, so a notice dated only by a fire's start
       has none either. The key is written null, never left out: a row
       without it reads as carrying no verdict, which only a file from
-      before the field and decision 156's standing hazard areas say.
+      before the field and the standing hazard areas say.
     overrides:
       macros:
         python_run_stamp: "'2026-10-10T12:00:00Z'"
@@ -1194,7 +1196,7 @@ unit_tests:
   - name: pub_conditions_notices_writes_standing_closed_land_no_clock_and_a_compiled_order_its_issuer
     model: pub_conditions_notices
     description: >
-      Decision 213's rules 14 and 21 on the file. A club notice
+      The rules 14 and 21 on the file. A club notice
       int_closures__club_notices reads as standing closed land carries no
       `current_until` and `standing` true, where its dated sibling keeps
       its edit date's 90 days; a compiled layer's order carries `issuer`,
@@ -1285,7 +1287,7 @@ unit_tests:
   - name: pub_conditions_notice_states_writes_each_shape_with_its_margin_and_the_files_own_date
     model: pub_conditions_notice_states
     description: >
-      Decision 76's file: one object per state, by code, with its name, the
+      The file: one object per state, by code, with its name, the
       margin the phone holds a route to and its shape, and `generated_at`
       the latest landing of TIGER's file, never the build's clock, so a
       build that changes nothing writes the same bytes.
@@ -1392,8 +1394,7 @@ exposures:
       unreviewed (#963 — Publish the mechanically unambiguous ATC updates
       hourly, without waiting for a person), which never obstruct the trail.
       Rewritten in place under conditions/, outside every release folder.
-      Uploaded by publish-conditions.yml from export_atc_updates.py's file
-      until stage 4 of #1793 moves the upload to this writer's.
+      Uploaded by publish-conditions.yml from export_atc_updates.py's file until the cutover moves the upload to this writer's.
     depends_on:
       - ref('closures', v=1)
       - ref('warnings', v=1)
@@ -1419,8 +1420,7 @@ exposures:
       refuses a document whose `payload` is not weather_alerts or whose
       `schema` is not 1. Rewritten in place under
       conditions/, outside every release folder. Uploaded by
-      publish-weather.yml from export_weather_alerts.py's file until stage 4
-      of #1793 moves it to the conditions job (decision 28a) and the upload to
+      publish-weather.yml from export_weather_alerts.py's file until the cutover moves it to the conditions job and the upload to
       this writer's.
     depends_on:
       - ref('warnings', v=1)
@@ -1429,8 +1429,8 @@ exposures:
       meta:
         r2_keys: [conditions/weather_alerts.json]
         format: json
-        # publish-weather.yml's cron, "55 * * * *", until decision 28a moves
-        # the alerts to the conditions job's hourly lane.
+        # publish-weather.yml's cron, "55 * * * *", until the alerts move to the
+        # conditions job's hourly lane.
         cadence: hourly
 
   - name: conditions_nynjtc_alerts_json
@@ -1442,8 +1442,7 @@ exposures:
     description: >
       NYNJTC's Trail Alerts, unplaced and unreviewed, read through
       publishedConditions.ts's PUBLISHED_NYNJTC_ALERTS_KEY. Uploaded by
-      publish-conditions.yml from export_nynjtc_alerts.py's file until stage
-      4 of #1793.
+      publish-conditions.yml from export_nynjtc_alerts.py's file until the cutover.
     depends_on:
       - ref('closures', v=1)
       - ref('warnings', v=1)
@@ -1461,12 +1460,11 @@ exposures:
     owner:
       name: OurHike
     description: >
-      Every club's notices in one file (decision 53, phase D: one OrgNotice
-      per club notice, decision 51's single notices file), read by
+      Every club's notices in one file (one OrgNotice per club notice, the single notices file), read by
       client/src/lib/publishedConditions.ts as PUBLISHED_NOTICES_KEY and
       chosen for a hiker by client/src/lib/plannedNotices.ts, which shows
       the ones that touch a hike planned to start in the next 7 days
-      (decision 66). Decision 67's hazard areas carry their geometry and draw
+      The hazard areas carry their geometry and draw
       where a downloaded trail crosses one. Rewritten in place under
       conditions/, outside every release folder. Published by the dbt path
       of publish-conditions.yml (publish.py with OURHIKE_PHONE_FILES=dbt);
@@ -1489,12 +1487,10 @@ exposures:
     owner:
       name: OurHike
     description: >
-      Decision 67's hunting areas, shooting sites and burned areas (decision
-      84): the hazard rows of conditions/notices.json in a file of their own,
+      The hunting areas, shooting sites and burned areas: the hazard rows of conditions/notices.json in a file of their own,
       read by client/src/lib/publishedNotices.ts as
       PUBLISHED_HAZARD_AREAS_KEY at launch, whatever the hiker has planned,
-      because decision 77 downloads notices.json only once a hike is
-      planned. The map draws an area where a downloaded trail crosses one,
+      because a phone downloads notices.json only once a hike is planned. The map draws an area where a downloaded trail crosses one,
       and a tapped stretch inside it carries the area's advisory. Rewritten
       in place under conditions/, outside every release folder. Published by
       the dbt path of publish-conditions.yml (publish.py with
@@ -1518,13 +1514,11 @@ exposures:
     owner:
       name: OurHike
     description: >
-      Every club closure for the map (decision 184:
-      #1152 — Move OPRHP's temporary closures onto the conditions clock,
-      where a safety layer belongs — in its shape C, for every club closure,
-      drawn by decision 187): the obstructing rows of conditions/notices.json but
+      Every club closure for the map (#1152 — Move OPRHP's temporary closures onto the conditions clock,
+      where a safety layer belongs — in its shape C, for every club closure): the obstructing rows of conditions/notices.json but
       ATC's, each with its `shape`, an area's place the trail stretches
-      inside it, the A.T.'s included (decision 192), or, where none runs
-      inside, the area itself (decision 191). Read at launch, whatever the
+      inside it, the A.T.'s included, or, where none runs
+      inside, the area itself. Read at launch, whatever the
       hiker has planned, and drawn with the crossed-out mark
       (client/src/lib/closureStyle.ts): a line along its own line, an area's
       trails where they run inside it, a point as one cross; an area with
@@ -1550,16 +1544,14 @@ exposures:
     owner:
       name: OurHike
     description: >
-      The shape of every state a state-wide agency notice names (decision
-      76), read by client/src/lib/publishedNotices.ts as
+      The shape of every state a state-wide agency notice names, read by client/src/lib/publishedNotices.ts as
       PUBLISHED_NOTICE_STATES_KEY beside conditions/notices.json, for
       client/src/lib/plannedNotices.ts's one question of it: is a planned
       route inside this state? Never drawn. Its bytes hold between builds,
       so its ETag does too. A monthly node (its upstream is the Census
       Bureau's TIGER/Line file), so the monthly lane's dbt build
       (build-reference.yml) writes it; the exporters' path has no writer for
-      it, and a phone without it shows no state-wide notice, as decision 68
-      left them.
+      it, and a phone without it shows no state-wide notice.
     depends_on:
       - ref('pub_conditions_notice_states')
     config:
@@ -1578,7 +1570,7 @@ exposures:
       OurHike's moderator-verified closures, the offline baseline of the live
       closures endpoint, read through publishedConditions.ts's
       PUBLISHED_CLOSURES_KEY. Uploaded by publish-conditions.yml from
-      export_conditions.py's file until stage 4 of #1793.
+      export_conditions.py's file until the cutover.
     depends_on:
       - ref('closures', v=1)
       - ref('warnings', v=1)
@@ -1600,7 +1592,7 @@ exposures:
       live reports endpoint, read through publishedConditions.ts's
       PUBLISHED_REPORTS_KEY. The serious ones are also in the warnings mart.
       Uploaded by publish-conditions.yml from export_conditions.py's file
-      until stage 4 of #1793.
+      until the cutover.
     depends_on:
       - ref('pub_conditions_reports')
     config:
@@ -1618,7 +1610,7 @@ exposures:
     owner:
       name: OurHike
     description: >
-      Each POI's most recent visible field notes (WN11), read by
+      Each POI's most recent visible field notes, read by
       client/src/lib/fieldNotes.ts. Baked by export_conditions.py as today;
       no mart owns field notes ("The eleven marts", what reaches a phone from
       no mart), so this reads the staging model of the query's own rows.
@@ -1638,7 +1630,7 @@ exposures:
       name: OurHike
     description: >
       The corroborated disputes, two or more accounts saying a POI is not
-      there (WN11), read through publishedConditions.ts's
+      there, read through publishedConditions.ts's
       PUBLISHED_DISPUTES_KEY. Baked by export_conditions.py as today, from
       no mart.
     depends_on:
@@ -1661,9 +1653,8 @@ exposures:
       gives way to an out-of-date notice after 48 h. The first data in the
       app that expires, so rewritten in place under conditions/, outside
       every release folder, and never in an offline package: a cancelled
-      workday clears with the next build (CL18). Uploaded by
-      publish-conditions.yml from export_work_projects.py's file until stage
-      4 of #1793 moves the upload to this writer's.
+      workday clears with the next build. Uploaded by
+      publish-conditions.yml from export_work_projects.py's file until the cutover moves the upload to this writer's.
     depends_on:
       - ref('pub_conditions_work_projects')
     config:
@@ -1672,6 +1663,6 @@ exposures:
         format: json
         cadence: hourly
 
-  # conditions/drought.json (WN12) has no exposure: its fetch is on hold
+  # conditions/drought.json has no exposure: its fetch is on hold
   # under #1804 — fetch_drought.py fetches droughtmonitor.unl.edu/data/, a
   # path the Drought Monitor's robots.txt disallows for every user agent.

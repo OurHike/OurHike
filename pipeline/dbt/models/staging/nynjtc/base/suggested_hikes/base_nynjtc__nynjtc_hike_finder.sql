@@ -1,7 +1,7 @@
 -- NYNJTC's Hike Finder export (extract/nynjtc/suggested_hikes.py), one row
 -- per hike as lib/hikefinder.py's parse_hike() reads its page, keyed
--- (decision 40), with nothing filtered and nothing joined. The parse runs at
--- the edge (SH01: an HTML parse is extraction), so a coordinate outside the
+-- with nothing filtered and nothing joined. The parse runs at
+-- the edge (an HTML parse is extraction), so a coordinate outside the
 -- NYNJTC box already arrives as a null `start`. Reading the hike is the work
 -- of int_suggested_hikes__hike_finder; forming its route is
 -- step_form_route.py's.

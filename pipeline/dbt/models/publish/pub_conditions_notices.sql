@@ -3,23 +3,23 @@
     location='conditions_notices.json',
     meta={'when_empty': 'keep_last_file'},
 ) }}
--- conditions/notices.json (decision 53, phase D; pipeline/ELT.md, "Phase D:
--- one notices file"): one OrgNotice (features/ORG_NOTICES.md section 2) per
+-- conditions/notices.json: one OrgNotice (features/ORG_NOTICES.md section 2)
+-- per
 -- club notice in the closures and warnings marts, every club in one file.
 -- A club notice is a row of a source the extract declares a notice resource
 -- for (seeds/notice_readers.csv): ATC's, NYNJTC's, NY Parks' closed areas and
--- every club's phase C notices. OurHike's own closures, its reports and
+-- every club's notices. OurHike's own closures, its reports and
 -- NWS's alerts have files of their own and are not here.
 --
--- FACTS AND A LINK, NO PROSE (decision 55): a title, the club, its category,
+-- FACTS AND A LINK, NO PROSE: a title, the club, its category,
 -- the dates, the place and a link. Each value is a mart column, and
 -- int_warnings__wording_leaks holds the marts to carrying none of a club's
 -- paragraphs; NY Parks' closed areas, which have no title, take their own
 -- `Name` (the mart's closure_reason), then the registry's title for the layer.
--- `steward_kind` is the readers seed's club or agency (decision 66's "clubs
+-- `steward_kind` is the readers seed's club or agency (the "clubs
 -- only": the phone shows an agency's notice to a planned hike only where it
 -- is placed on or near the route).
--- `states` is decision 76's: on the rows of a source seeds/notice_states.csv
+-- `states`: on the rows of a source seeds/notice_states.csv
 -- names, the two-letter codes of the states it speaks for, and absent on
 -- every other row. The phone shows such an agency notice to a hike planned
 -- in one of them that walks the agency's trails, reading the states' shapes
@@ -35,7 +35,7 @@
 --   geometry   a row with its source's own geometry, shaped for a phone
 --              (below);
 --   org_terms  NYNJTC's trail and park tags as `taxonomy:slug`
---              (int_closures__nynjtc_checked). Rule 19 (decision 213): where
+--              (int_closures__nynjtc_checked). Rule 19: where
 --              seeds/notice_park_terms.csv maps EVERY `park:` term of the
 --              notice, the place also carries `areas`, one
 --              {place_id, name, bbox} per mapped park, the bbox places.json's
@@ -46,7 +46,7 @@
 --              trail terms place nothing yet;
 --   unplaced   everything else.
 --
--- THE GEOMETRY A PHONE NEEDS (decision 77, the maintainer's poll of
+-- THE GEOMETRY A PHONE NEEDS (the maintainer's poll of
 -- 2026-10-05), macros/notice_phone_geometry.sql. The phone draws an area and
 -- asks whether a planned route meets it within NOTICE_REACH_FEET, 300 ft
 -- (lib/plannedNotices.ts); it never measures along it.
@@ -69,8 +69,7 @@
 --   11.45 m a phone's own fix is off under canopy (ELT.md, "Simplify
 --   geometries"), so the line moves less than the hiker's dot does
 --   (Reasoned).
---   Everything at 5 decimal places, 1.1 m of latitude, where decision 8's
---   files carry 6.
+--   Everything at 5 decimal places, 1.1 m of latitude, where the files carry 6.
 -- Measured 2026-10-05 on UA's live file (generated 2026-10-05T01:22:48Z,
 -- 7,392 notices, 1,063 of them areas), re-shaped by the macro as dbt
 -- compiles it, run on DuckDB 1.5.5 with spatial eb1e57c (dbt 2.0.6's own
@@ -89,8 +88,8 @@
 -- a carried row (a source int_closures__gate holds this build keeps its last
 -- good rows, int_closures__held_carried) it is the latest such read before
 -- carrying began, so it never claims a read this build did not use.
--- `first_seen_at` and `changed_at` are the marts' row dates (decisions 52 and
--- 57), null in a build without its history (decision 58). `starts_on` and
+-- `first_seen_at` and `changed_at` are the marts' row dates, null in a build
+-- without its history. `starts_on` and
 -- `ends_on` are the club's own, never filled in.
 --
 -- `current_until` IS THE LAST DAY THE NOTICE READS AS CURRENT, an ISO day,
@@ -105,19 +104,19 @@
 -- phone offline for days still greys a notice on its day. Every row carries
 -- the key, null included, but one kind: a row without it reads on the phone
 -- as carrying no verdict at all, which is what a file from before this field
--- says, and what decision 67's standing hazard areas say on purpose
+-- says, and what the standing hazard areas say on purpose
 -- (below). Measured on UA's file of 2026-10-10 17:24 UTC (8,305 notices),
 -- the key adds 203,133 bytes, 11,807,956 to 12,011,089, and 9,651 gzipped
 -- at level 6.
 --
--- DECISION 67'S HAZARD AREAS (seeds/notice_hazard_areas.csv) carry `hazard`
+-- THE HAZARD AREAS (seeds/notice_hazard_areas.csv) carry `hazard`
 -- (hunting, shooting or burned_area) and never obstruct the trail. A burned
 -- area is in the file while USFS's layer lists it: a full listing, so an area
 -- USFS drops leaves on the next read (only a held read carries it, as every
 -- notice is carried).
 -- STANDING CLOSED LAND CARRIES NO `current_until` KEY EITHER, and carries
--- `standing` true (decision 213, rule 14, the maintainer's poll of
--- 2026-10-15): decision 156's reading made general, by the row's own words
+-- `standing` true (rule 14, the maintainer's poll of
+-- 2026-10-15): the reading made general, by the row's own words
 -- rather than by its layer. int_closures__club_notices' rule 7 says which
 -- rows: an area a full listing serves, closed by its own status or its
 -- layer's own name, stating no date of any kind. Midpen's 133 closed areas,
@@ -126,8 +125,8 @@
 -- `standing` as "Closed until <steward> says otherwise." (client/src/lib/
 -- noticeCurrency.ts). Both read from the marts, so a carried row keeps
 -- them as the history saved them (int_closures__held_carried).
--- A hazard area carries NO `current_until` key, so it never greys (decision
--- 156, the maintainer's poll of 2026-10-11, "Stay current while served"). It
+-- A hazard area carries NO `current_until` key, so it never greys (the
+-- maintainer's poll of 2026-10-11, "Stay current while served"). It
 -- is a standing designation the agency's live layer serves again on every
 -- read, not an event with an end, and none of the 341 on UA's file of
 -- 2026-10-10 had an edit date (Measured), so the date rules would have greyed
@@ -135,7 +134,7 @@
 -- While its layer is served it is current as of that read; once the layer
 -- stops answering, the carried row says so in its own line (`carried_since`).
 --
--- `issuer` IS ON A COMPILED LAYER'S ROWS ONLY (decision 213, rule 21): the
+-- `issuer` IS ON A COMPILED LAYER'S ROWS ONLY (rule 21): the
 -- agency that issued an order its publisher compiles, as
 -- int_closures__club_notices reads it ('Bureau of Land Management' on a Utah
 -- FFSL row). The phone's sheet reads "<issuer> order, via <publisher>". No
@@ -148,7 +147,7 @@
 -- the phone keeps its last file whole; with every source passing, it writes,
 -- with the two row dates null.
 -- NEVER "NO NOTICES" FOR A CLUB WHOSE NOTICES WERE READ AND HELD (review
--- finding DBT-10, made more likely by decision 81's holds). A source the gate
+-- finding DBT-10, made more likely by the holds). A source the gate
 -- holds although this build read rows of it (a row leaking its wording, one
 -- outside its region box, a conflicting key, a row that cannot publish, an
 -- unreviewed ATC file), and of which the marts hold no row to carry (a cold
@@ -163,11 +162,11 @@
 -- (Reasoned: every build that saves its history writes this file from the
 -- same marts; a --no-history-save build is the exception), and holding the
 -- file for it would stop every club's notices for as long as one source is
--- never read, the outcome decision 81 rejected.
+-- never read, which the maintainer rejected (poll of 2026-10-05).
 --
 -- `conditions/atc_updates.json` and `conditions/nynjtc_alerts.json` are not
 -- touched: their writers, their parity lines and installed phones keep them
--- as they are (decision 51).
+-- as they are.
 with readers as (
     select
         source_key,
@@ -200,7 +199,7 @@ hazards as (
     group by source_key
 ),
 
--- Decision 76's state-wide sources and the states each speaks for.
+-- The state-wide sources and the states each speaks for.
 named_states as (
     select
         source_key,
@@ -216,7 +215,7 @@ nynjtc_terms as (
     where place_terms is not null
 ),
 
--- Rule 19's reviewed table (decision 213): a club's park term and the park
+-- Rule 19's reviewed table: a club's park term and the park
 -- areas places.json publishes for it.
 park_terms as (
     select * from {{ ref('notice_park_terms') }}
@@ -288,7 +287,7 @@ club_notices as (
     inner join notice_sources on marts.source_key = notice_sources.source_key
 ),
 
--- Rule 19 (decision 213): each `park:` term of an `org_terms` notice with
+-- Rule 19: each `park:` term of an `org_terms` notice with
 -- the areas seeds/notice_park_terms.csv maps it to, or one row with no area
 -- for a term the seed does not map.
 notice_terms as (
@@ -555,8 +554,8 @@ notice_rows as (
             and club_notices.carried_since = carried_checks.carried_since
 ),
 
--- Decision 156: a standing hazard area carries no `current_until` (above),
--- and decision 213's rule 14 gives standing closed land none either, with
+-- A standing hazard area carries no `current_until` (above),
+-- and the rule 14 gives standing closed land none either, with
 -- `standing` true for the phone's "Closed until <steward> says otherwise".
 -- json_merge_patch is RFC 7386's merge patch, where a null in the patch
 -- removes the key, so only these rows lose it; every other row keeps its
@@ -583,7 +582,7 @@ dated_rows as (
     from notice_rows
 ),
 
--- Decision 213's rule 21: `issuer` on a compiled layer's rows only, so no
+-- The rule 21: `issuer` on a compiled layer's rows only, so no
 -- other row carries a null for it.
 issued_rows as (
     select
@@ -596,7 +595,7 @@ issued_rows as (
     from dated_rows
 ),
 
--- Decision 76's `states` (seeds/notice_states.csv), on a state-wide source's
+-- The `states` (seeds/notice_states.csv), on a state-wide source's
 -- rows only, so no other row carries a null for it.
 stated_rows as (
     select

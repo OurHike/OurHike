@@ -1,8 +1,8 @@
 -- OurHike's public reports (extract/_shared/ourhike/reports.py,
--- export_conditions.py's PUBLIC_REPORTS_SQL run whole), keyed (decision 40),
+-- export_conditions.py's PUBLIC_REPORTS_SQL run whole), keyed,
 -- every severity and nothing filtered. conditions/reports.json carries every
 -- one of them (pub_conditions_reports), and int_warnings__serious_reports
--- takes the serious ones for the warnings mart (WN10). `type` and
+-- takes the serious ones for the warnings mart. `type` and
 -- `timestamp` are keywords, so they are renamed here and written back under
 -- their own names by the writer.
 --

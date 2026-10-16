@@ -7,8 +7,8 @@
 -- nothing anyone could draw.
 --
 -- NO DATES ARE INVENTED. OPRHP publishes none per feature, so the closures
--- mart carries the reason verbatim and no start (CL13). ITS END IS THE ONE
--- ITS OWN REASON STATES, read as every source's title is (decision 213, rule
+-- mart carries the reason verbatim and no start. ITS END IS THE ONE
+-- ITS OWN REASON STATES, read as every source's title is (rule
 -- 13; macros/notice_title_end_day.sql): "Closed Until 2027 due to
 -- construction" ends on 2027-12-31, a year alone read to its last day, so
 -- the phone says "Its source said it would end December 31, 2027" where it

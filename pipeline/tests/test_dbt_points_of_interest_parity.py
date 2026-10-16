@@ -1,7 +1,7 @@
-"""The points_of_interest family's SQL answers what today's three exporters answer, on the same rows (#1793, stage 3).
+"""The points_of_interest family's SQL answers what today's three exporters answer, on the same rows.
 
 export_poi.py, export_nearby_poi.py and export_retired_poi.py moved to SQL
-(pipeline/ELT.md's ledger rows PO01-PO38), and until stage 5 deletes the Python
+, and until the Python is deleted
 both are live. parity.py compares the ten phone files on the fixture warehouse
 in CI; this holds what the fixtures never reach, by running today's Python over
 each dbt unit test's own rows (models/intermediate/points_of_interest/
@@ -13,7 +13,7 @@ Python's answer:
 - the seeds and vars the rules read are the Python's constants;
 - every expected row is what the Python function the unit test is named after
   answers on the same rows, except where DELIBERATE says the SQL differs on
-  purpose and why, and except decision 65's typed taps (DECISION_65_VALUE_TYPES),
+  purpose and why, and except the typed taps (SEASONAL_TAP_VALUE_TYPES),
   which the Python is given before it answers;
 - the one kind of difference parity.py explains on the fixtures (an exact copy
   that staging removes) is named in DELIBERATE, so emptying it turns this red.
@@ -82,26 +82,26 @@ PHOTOS = "int_points_of_interest__photos_gates_and_attaches_like_export_poi"
 # because the difference is still there.
 DELIBERATE = {
     # parity.py's one explained difference on the fixture warehouse
-    # (POI_REASONS["exact_copy"], decision 40): dec_primitive_campsites' row
+    # (POI_REASONS["exact_copy"]): dec_primitive_campsites' row
     # with OBJECTID 103 is an exact copy of OBJECTID 102 in every column but
     # OBJECTID, and staging keeps one.
     "nearby_poi": {"properties.id dec_primitive_campsites:103": "exact_copy"},
     # The miles unit test's point on a junction, where two pieces tie at
     # distance 0.
     "miles": {"atc_shelters:m-04-on-the-junction": "junction_tie"},
-    # Decision 195's unit test: the taps OPRHP's ParksApp does not show (one
+    # The unit test: the taps OPRHP's ParksApp does not show (one
     # 'N', one with no ParksApp), which public_verdict() keeps at low
     # confidence and the SQL holds. Its lean-tos ship low in both.
     "publishable": {"s-01": "steward_hides", "s-08": "steward_hides"},
 }
 
 
-def _decision_65_value_types() -> dict[tuple[str, str], str]:
+def _seasonal_tap_value_types() -> dict[tuple[str, str], str]:
     """The value-map rows the dbt path adds to export_nearby_poi.py's, read from layer_rules' plumbed_water rows.
 
-    Decision 65 (2026-10-04) ships a plumbed tap whose layer records no shutoff season as unconfirmed water with a
+    A plumbed tap whose layer records no shutoff season ships as unconfirmed water with a
     season caution. For a layer typed per row by TYPED_LAYERS (NY Parks'), that means the poi_value_types seed types
-    the tap water, where today's exporter names it a water holdback. Read from the one home of the decision's rows, so
+    the tap water, where today's exporter names it a water holdback. Read from the one home of those rows, so
     the seed and the caution cannot name different taps.
     """
     with (DBT / "seeds" / "layer_rules.csv").open(newline="") as handle:
@@ -109,15 +109,17 @@ def _decision_65_value_types() -> dict[tuple[str, str], str]:
     return {(row["source_key"], row["matches"]): "water" for row in rules if row["source_key"] in export_nearby_poi.TYPED_LAYERS}
 
 
-DECISION_65_VALUE_TYPES = _decision_65_value_types()
+SEASONAL_TAP_VALUE_TYPES = _seasonal_tap_value_types()
 
 
 def _with_decision_65(key: str):
-    """export_nearby_poi.py's folded value maps with decision 65's rows for `key` added, for one build_records()."""
+    """export_nearby_poi.py's folded value maps with the rows for `key` added, for one build_records()."""
     field, folded = export_nearby_poi.TYPED_LAYERS_FOLDED.get(key, (None, None))
     if folded is None:
         return mock.patch.dict(export_nearby_poi.TYPED_LAYERS_FOLDED, {})
-    added = {value.casefold(): poi_type for (source_key, value), poi_type in DECISION_65_VALUE_TYPES.items() if source_key == key}
+    added = {
+        value.casefold(): poi_type for (source_key, value), poi_type in SEASONAL_TAP_VALUE_TYPES.items() if source_key == key
+    }
     return mock.patch.dict(export_nearby_poi.TYPED_LAYERS_FOLDED, {key: (field, {**folded, **added})})
 
 
@@ -276,7 +278,7 @@ AT_STEMS = (*(stem for stem, _, _, _ in export_poi.DIRECT_SOURCES), export_poi.O
 
 
 def described_answers(test: dict) -> dict[str, dict]:
-    """export_poi.attach_descriptions() and compose_description() on the given rows (PO19, PO20)."""
+    """export_poi.attach_descriptions() and compose_description() on the given rows."""
     rows = _given(test, "int_points_of_interest__enriched")
     guide = {row["id"]: row["description"] for row in _given_or_none(test, "stg_derived__long_path_guide") or []}
     answers = {}
@@ -303,7 +305,7 @@ def described_answers(test: dict) -> dict[str, dict]:
 
 
 def sites_answers(test: dict) -> dict[str, dict]:
-    """lib/poi_sites.py's group_sites() and group_place_sites(), in record order (PO18, PO35)."""
+    """lib/poi_sites.py's group_sites() and group_place_sites(), in record order."""
     rows = sorted(_given(test, "int_points_of_interest__identified"), key=lambda row: (row["file_order"], row["source_row"]))
     records = {
         files: [
@@ -322,7 +324,7 @@ def sites_answers(test: dict) -> dict[str, dict]:
 
 
 def classified_answers(test: dict, workdir: Path) -> dict[str, dict]:
-    """unify_all_sources() over raw files written from the A.T. rows, and build_records() on each other row (PO01-PO04, PO30-PO32, PO37).
+    """unify_all_sources() over raw files written from the A.T. rows, and build_records() on each other row.
 
     Only what the Python decides: the published id, type, confidence, name and
     trail id of a row that ships, and the reason one does not, where the Python
@@ -393,7 +395,7 @@ def classified_answers(test: dict, workdir: Path) -> dict[str, dict]:
 
 
 def publishable_answers(test: dict) -> dict[str, dict | None]:
-    """public_verdict() and confidence_for() on each other organization's row, then may_publish (PO27-PO29).
+    """public_verdict() and confidence_for() on each other organization's row, then may_publish.
 
     An A.T.-family row reads no public flag (export_poi.py), so it ships at the
     confidence classification gave it. may_publish is the SQL's own gate, which
@@ -416,7 +418,7 @@ def publishable_answers(test: dict) -> dict[str, dict | None]:
 
 
 def in_corridor_answers(test: dict, workdir: Path) -> dict[str, dict | None]:
-    """lib/corridor.py's build_corridor() and export_poi.clip_to_corridor() on the A.T. rows, clip_to_network() on the rest (PO05, PO33)."""
+    """lib/corridor.py's build_corridor() and export_poi.clip_to_corridor() on the A.T. rows, clip_to_network() on the rest."""
     workdir.mkdir(parents=True, exist_ok=True)
     rows = _given(test, "int_points_of_interest__publishable")
     centerline = _lines_file(workdir / "centerline.geojson", _given(test, "stg_atc__centerline_segments"))
@@ -450,7 +452,7 @@ def in_corridor_answers(test: dict, workdir: Path) -> dict[str, dict | None]:
 
 
 def trailheads_answers(test: dict, workdir: Path) -> dict[str, dict]:
-    """mark_closed_trailheads() against the unit test's network and A.T. lines (PO34).
+    """mark_closed_trailheads() against the unit test's network and A.T. lines.
 
     An A.T. layer the unit test gives no rows is a file the Python cannot find.
     """
@@ -490,7 +492,7 @@ def _axis(test: dict, con: duckdb.DuckDBPyConnection) -> list[export_elevation.C
 
 
 def miles_answers(test: dict) -> dict[str, dict]:
-    """export_poi.attach_miles() on the given POIs, the axis being the unit test's own (PO10, PO11)."""
+    """export_poi.attach_miles() on the given POIs, the axis being the unit test's own."""
     con = _spatial()
     axis = _axis(test, con)
     rows = [row for row in _given(test, "int_points_of_interest__enriched") if row["phone_files"] == "poi_by_type"]
@@ -520,7 +522,7 @@ def _ledger(rows: list[dict]) -> dict:
 
 
 def identified_answers(test: dict, workdir: Path) -> dict[str, dict]:
-    """apply_ledger_ids() on the A.T. rows; the other organizations' rows keep their derived ids, unledgered (PO23)."""
+    """apply_ledger_ids() on the A.T. rows; the other organizations' rows keep their derived ids, unledgered."""
     workdir.mkdir(parents=True, exist_ok=True)
     ledger = workdir / "poi_identity.json"
     ledger.write_text(json.dumps({"pois": _ledger(_given(test, "base_ourhike__poi_identity"))}))
@@ -550,7 +552,7 @@ def _point_collection(path: Path, rows: list[dict], properties) -> Path:
 
 
 def osm_water_reach_answers(test: dict, workdir: Path) -> dict[str, dict | None]:
-    """build_osm_water_reach.measure_distances() over the unit test's lines, sites and OSM points (PO06).
+    """build_osm_water_reach.measure_distances() over the unit test's lines, sites and OSM points.
 
     The script reads data/raw/ and the published network file, so the unit
     test's rows are written as those files in `workdir`. Its network keys are
@@ -608,7 +610,7 @@ def osm_water_reach_answers(test: dict, workdir: Path) -> dict[str, dict | None]
 
 
 def reached_answers(test: dict) -> dict[str, dict | None]:
-    """export_poi.py's gate_osm_water_reach() and mark_off_trail_records() on the corridor's rows (PO08, PO10)."""
+    """export_poi.py's gate_osm_water_reach() and mark_off_trail_records() on the corridor's rows."""
     rows = _given(test, "int_points_of_interest__in_corridor")
     judged = _given(test, "int_points_of_interest__osm_water_verdicts")
     # A row the step wrote no verdict for is absent from the Python's verdict file.
@@ -634,7 +636,7 @@ def reached_answers(test: dict) -> dict[str, dict | None]:
 
 
 def photos_answers(test: dict) -> dict[str, dict | None]:
-    """photo_screen.gate_photos() on the Commons rows, `{**commons, **atc}`, then export_poi.attach_photos() (PO24, PO38).
+    """photo_screen.gate_photos() on the Commons rows, `{**commons, **atc}`, then export_poi.attach_photos().
 
     Each row becomes the photo record its outcome file holds: the credit
     fields, the digest where the row has one, and a screen where the row was
@@ -663,7 +665,7 @@ def photos_answers(test: dict) -> dict[str, dict | None]:
 
 
 def deduplicated_answers(test: dict) -> dict[str, dict | None]:
-    """export_poi.py's dedupe_water() on the reached rows (PO09)."""
+    """export_poi.py's dedupe_water() on the reached rows."""
     rows = _given(test, "int_points_of_interest__reached")
     records = [
         {"id": row["poi_key"], "poi_type": row["poi_type"], "source": row["source"], "lat": row["lat"], "lon": row["lon"]}
@@ -674,7 +676,7 @@ def deduplicated_answers(test: dict) -> dict[str, dict | None]:
 
 
 def retired_answers(test: dict) -> dict[str, dict]:
-    """lib/poi_identity.py's retired_rows() and resolve() (PO26)."""
+    """lib/poi_identity.py's retired_rows() and resolve()."""
     pois = _ledger(_given(test, "base_ourhike__poi_identity"))
     return {
         poi_id: {"superseded_by": row.get("superseded_by"), "resolves_to": poi_identity.resolve(pois, poi_id)}
@@ -726,7 +728,7 @@ WATER_COLUMNS = (
 
 
 def _water_records(test: dict, workdir: Path) -> list[dict]:
-    """attach_water_distance(), synthesize_csi_water() and the ledger's second pass, as build_enriched_records() runs them (PO14-PO16): the records, the A.T.'s first."""
+    """attach_water_distance(), synthesize_csi_water() and the ledger's second pass, as build_enriched_records() runs them: the records, the A.T.'s first."""
     workdir.mkdir(parents=True, exist_ok=True)
     distances = workdir / "water_distance.json"
     distances.write_text(
@@ -752,7 +754,7 @@ def _water_records(test: dict, workdir: Path) -> list[dict]:
 
 
 def water_answers(test: dict, workdir: Path) -> dict[str, dict]:
-    """_water_records()' answer for each record, in the water model's columns (PO14-PO16)."""
+    """_water_records()' answer for each record, in the water model's columns."""
     answers = {}
     for record in _water_records(test, workdir):
         answer = {name: record.get(name) for name in WATER_COLUMNS}
@@ -763,7 +765,7 @@ def water_answers(test: dict, workdir: Path) -> dict[str, dict]:
 
 
 def enriched_answers(test: dict, workdir: Path) -> dict[str, dict]:
-    """load_capacities() and attach_capacity(), then attach_nearby(), on records in record order (PO13, PO21)."""
+    """load_capacities() and attach_capacity(), then attach_nearby(), on records in record order."""
     workdir.mkdir(parents=True, exist_ok=True)
     capacities = workdir / "shelter_capacity.json"
     capacities.write_text(
@@ -914,23 +916,23 @@ def test_the_poi_sources_seed_is_the_exporters_layer_list(tmp_path):
 
 
 def test_the_value_types_seed_is_the_three_type_maps():
-    """The three maps, plus decision 65's typed taps and nothing else."""
+    """The three maps, plus the typed taps and nothing else."""
     rows = {(r["source_key"], r["value"]): r["poi_type"] for r in _seed_file("poi_value_types")}
     expected = {
         (key, value): poi_type
         for key, (_, mapping) in export_nearby_poi.TYPED_LAYERS.items()
         for value, poi_type in mapping.items()
     }
-    assert rows == {**expected, **DECISION_65_VALUE_TYPES}
+    assert rows == {**expected, **SEASONAL_TAP_VALUE_TYPES}
 
 
-def test_decision_65_types_only_taps_todays_exporter_holds_back_by_name():
-    """Each tap decision 65 types is a value today's exporter names as a water holdback, never one it publishes."""
-    assert DECISION_65_VALUE_TYPES == {
+def test_the_seasonal_tap_rule_types_only_taps_todays_exporter_holds_back_by_name():
+    """Each tap the seasonal-tap rule types is a value today's exporter names as a water holdback, never one it publishes."""
+    assert SEASONAL_TAP_VALUE_TYPES == {
         ("oprhp_facilities", "Water Spigot"): "water",
         ("oprhp_facilities", "Drinking Fountain"): "water",
     }
-    for key, value in DECISION_65_VALUE_TYPES:
+    for key, value in SEASONAL_TAP_VALUE_TYPES:
         assert value not in export_nearby_poi.TYPED_LAYERS[key][1], (key, value)
         assert "oprhp_water_holdback" in export_nearby_poi.NAMED_EXCLUSIONS[value], (key, value)
 
@@ -1074,7 +1076,7 @@ def test_public_flags_keep_and_rate_as_public_verdict_does():
 
 
 def test_a_water_point_its_steward_does_not_show_is_held_where_public_verdict_keeps_it_low():
-    """Decision 195, water alone: the SQL holds exactly the taps DELIBERATE names, each one public_verdict() ships at
+    """A pin claims no more than its steward, for water alone: the SQL holds exactly the taps DELIBERATE names, each one public_verdict() ships at
     low confidence, and keeps and rates every other row as public_verdict() does, the unflagged lean-tos at low."""
     test = _unit_test(STEWARD_HIDES)
     answers, expected = publishable_answers(test), _expected(test, "poi_key")
@@ -1264,7 +1266,7 @@ def test_capacity_and_nearby_are_attached_as_export_poi_does(tmp_path):
 
 
 def _exact_copies_removed(features: list[dict], id_field: str) -> list[dict]:
-    """decision 40's staging dedupe: of the rows equal in every column but the server's row id, the lowest id."""
+    """the staging dedupe: of the rows equal in every column but the server's row id, the lowest id."""
 
     def body(feature: dict) -> str:
         properties = {name: value for name, value in feature["properties"].items() if name != id_field}
@@ -1283,7 +1285,7 @@ def test_every_deliberate_nearby_poi_difference_is_an_exact_copy_on_the_fixtures
     """The fixture warehouse's nearby_poi differences are exactly DELIBERATE's, each parity.py's explained reason.
 
     build_records() on every layer as the fixtures write it (today's file), and on
-    the same layers after decision 40's dedupe (what staging hands dbt): what
+    the same layers after the dedupe (what staging hands dbt): what
     parity._exact_copy_reasons() explains between the two is what DELIBERATE
     names, so a new exact copy in the fixtures, or an emptied list, is red.
     """
@@ -1314,8 +1316,8 @@ def _poi_feature(poi_id: str, source: str) -> dict:
     }
 
 
-def test_a_poi_from_a_layer_no_exporter_reads_is_explained_as_decision_31s_new_data():
-    """nearby_poi's parity explains a record from one of decision 54's wave 1 point layers as new data, never a record
+def test_a_poi_from_a_layer_no_exporter_reads_is_explained_as_new_data():
+    """nearby_poi's parity explains a record from one of the generated club point layers as new data, never a record
     of a layer export_nearby_poi.py reads, and never a record today's file already holds."""
     shared = _poi_feature("dec_lean_tos:1", "dec_lean_tos")
     old = {"features": [shared]}
@@ -1333,8 +1335,8 @@ def test_a_poi_from_a_layer_no_exporter_reads_is_explained_as_decision_31s_new_d
     assert parity.FAMILIES["nearby_poi"].explained is parity._nearby_poi_reasons
 
 
-def test_a_seasonal_tap_of_a_layer_todays_exporter_reads_is_explained_by_decision_65():
-    """nearby_poi's parity explains a NY Parks tap decision 65 ships, and only as decision 65 ships it: water, low
+def test_a_seasonal_tap_of_a_layer_todays_exporter_reads_is_explained_by_the_seasonal_tap_rule():
+    """nearby_poi's parity explains a NY Parks tap the seasonal-tap rule ships, and only as it ships it: water, low
     confidence, the season caution. The same layer's tap without the caution, or rated high, is still a difference."""
     shared = _poi_feature("dec_lean_tos:1", "dec_lean_tos")
 
@@ -1380,7 +1382,7 @@ def test_a_tap_its_steward_does_not_show_is_explained_by_decision_195_and_a_lean
     reasons = parity._nearby_poi_reasons(old, {"features": [shared]})
     assert reasons == {"properties.id oprhp_facilities:21": parity.POI_REASONS["steward_hides"]}
     # Water alone (dbt_project.yml's var), on the one layer whose flag sets confidence today: a new such layer is a new
-    # place decision 195 holds taps, which this line makes somebody look at.
+    # place the steward rule holds taps, which this line makes somebody look at.
     assert parity._held_when_steward_hides() == (frozenset({"water"}), frozenset({"oprhp_facilities"}))
 
 
@@ -1524,14 +1526,14 @@ def test_a_number_written_otherwise_is_explained_only_where_it_is_the_same_numbe
     assert parity._whole_number_reasons(old, renamed) == {}
 
 
-def test_no_wave_1_point_layer_is_one_export_nearby_poi_reads():
-    """The new-data reason reaches only layers today's exporter never reads: no wave 1 row carries `poi_type` or sits
+def test_no_generated_club_point_layer_is_one_export_nearby_poi_reads():
+    """The new-data reason reaches only layers today's exporter never reads: no generated club row carries `poi_type` or sits
     in TYPED_LAYERS, which is what would put it in export_nearby_poi.py's export."""
     import make_dbt_staging
 
-    wave_1 = {table.key for table in make_dbt_staging.tables() if table.type == "points_of_interest"}
-    assert wave_1, "no wave 1 point layer is staged"
-    assert not wave_1 & parity._today_poi_sources()
+    club_layers = {table.key for table in make_dbt_staging.tables() if table.type == "points_of_interest"}
+    assert club_layers, "no club point layer is staged"
+    assert not club_layers & parity._today_poi_sources()
 
 
 #: A ledger for the held-water explanation: GlobalID R's derived id retired (held); L's retired beside a live row

@@ -5,7 +5,7 @@ models:
     data_tests:
       # Warns when the dedupe dropped any row, each an exact copy
       # (duplicates_are_exact on the raw table), and is an error once the
-      # copies are half the raw table (decision 204, the generic test's).
+      # copies are half the raw table (the generic test's).
       - equal_rowcount_to_raw:
           arguments:
             compare_model: source('nynjtc', 'raw_nynjtc__nynjtc_hike_finder')
@@ -16,7 +16,7 @@ models:
     columns:
       - name: hike_finder_key
         description: >
-          The row's key (decision 40): dbt_utils.generate_surrogate_key over
+          The row's key: dbt_utils.generate_surrogate_key over
           `nynjtc_hike_finder` and the export's own hike id.
         data_tests: [not_null, unique]
       - name: hike_number
@@ -29,7 +29,7 @@ models:
         description: >
           The page's one coordinate, {lat, lon, label}, the label the
           export's own word for what it is ("Parking location"). Null where
-          the page carries none or one outside the NYNJTC box (SH01).
+          the page carries none or one outside the NYNJTC box.
       - name: gpx
         description: >
           The published GPX track as served, on a page that links one whose
@@ -51,7 +51,7 @@ models:
     columns:
       - name: photo_row_key
         description: >
-          The row's key (decision 40): dbt_utils.generate_surrogate_key over
+          The row's key: dbt_utils.generate_surrogate_key over
           the file's path and the row's place in it.
         data_tests: [not_null, unique]
       - name: file_row

@@ -1,9 +1,9 @@
 -- ATC's A.T. shelters as the extract lands them (extract/atc/
--- points_of_interest.py), keyed and deduplicated (decision 40), with every
+-- points_of_interest.py), keyed and deduplicated, with every
 -- upstream column kept: export_poi.py composes a shelter's description from
 -- its inventory columns, so they all travel on.
 --
--- What a row IS stays out of this model, as decision 40 asks of staging: its
+-- What a row IS stays out of this model, as staging must: its
 -- poi_type and confidence come from the poi_type_mapping seed, and the
 -- `atc_shelters` name its published id starts with from the poi_sources
 -- seed, both joined in int_points_of_interest__classified. A row with no
@@ -11,7 +11,7 @@
 -- export_poi.py's has_geometry() does.
 with source as (
     -- dlt lands geometry as GeoJSON text (extract/_kinds.py's JSON
-    -- hint); cast here, as decision 40 has staging do.
+    -- hint); cast here, as staging models do.
     select
         -- The row's place in the raw table, which extract/_warehouse.py fills
         -- in the order the upstream served it: the order a Python exporter

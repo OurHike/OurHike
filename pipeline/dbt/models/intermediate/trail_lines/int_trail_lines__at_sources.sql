@@ -1,4 +1,4 @@
--- The A.T. build's line sources (TL01), export_trails.load_line_sources():
+-- The A.T. build's line sources, export_trails.load_line_sources():
 -- every registry entry carrying blaze metadata, a `blaze_field` or a
 -- `blaze_default` key, that is not another organization's layer. Today that is
 -- centerline (blaze_default "White") and side_trails (blaze_field "Blaze"),
@@ -10,8 +10,8 @@
 -- (int_trail_lines__network_sources), clipped to their own ground.
 --
 -- `global_id_field` and `object_id_field` are the two fields
--- lib/feature_id.py's id reads, as sources.json names them (TL05,
--- macros/resolve_feature_id.sql): ATC spells its GlobalID `GlobalID`, so a
+-- lib/feature_id.py's id reads, as sources.json names them
+-- (macros/resolve_feature_id.sql): ATC spells its GlobalID `GlobalID`, so a
 -- side trail is published under it.
 --
 -- The Python finds a source's features at data/raw/<key>.geojson, so a new

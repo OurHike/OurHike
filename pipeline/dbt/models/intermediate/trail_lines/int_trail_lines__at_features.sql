@@ -3,13 +3,13 @@
 -- build_trail_records() makes them, before the corridor clip: one row per
 -- staged feature, in the registry's source order and then the layer's own.
 --
--- TL04, LINES ONLY: a feature whose geometry is a LineString or a
+-- LINES ONLY: a feature whose geometry is a LineString or a
 -- MultiLineString is kept, and anything else, a missing geometry included,
 -- is skipped. The Python warns per feature; `has_line_geometry` keeps the
 -- row so the warn test on it names each one, and the clip reads only the
 -- rows that have one. One live side trail has none (2026-10-02).
 --
--- TL05, THE ID: lib/feature_id.py's chain, the GlobalID, else the feature's
+-- THE ID: lib/feature_id.py's chain, the GlobalID, else the feature's
 -- own `id`, else `generated-<index>` with the feature's place in its layer.
 -- ArcGIS serves the OBJECTID as that `id` (stg_atc__side_trails' objectid
 -- says where that was measured), so the second step reads the OBJECTID, and

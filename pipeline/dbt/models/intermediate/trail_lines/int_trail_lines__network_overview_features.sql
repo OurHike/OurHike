@@ -20,7 +20,7 @@
 -- The properties and coordinates are JSON text, so a unit test can hold
 -- them (a 2.0.6 unit test refuses a list column).
 --
--- THE CLUBS' LINES COME LAST (decision 64): int_trail_lines__club_overview's
+-- THE CLUBS' LINES COME LAST: int_trail_lines__club_overview's
 -- rows, grouped the same way, after every network group, so the network's
 -- features keep their order. A club group carries `line_kind` 'club', the
 -- mark nearby_trails.geojson's club lines carry, and a `trail_status`

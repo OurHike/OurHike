@@ -7,14 +7,14 @@
 -- null where the edge was never measured. lib/trail_graph_route.py's
 -- route_climb() refuses a walk's climb whole when any edge on it is
 -- unmeasured, and load_graph() prices nothing from a sidecar whose length
--- is not the graph's: absent means unknown, never zero (SH08).
+-- is not the graph's: absent means unknown, never zero.
 --
 -- The same entries the writer publishes, so a hike is priced from exactly the
 -- file a phone would read: an edge whose source may not publish is null here
 -- as it is there, and pub_trail_graph_elevation's parity against
 -- export_network_elevation.py (no differences on 30,004 edges cut from ATC's
 -- live centerline, el, 2026-10-02) is what holds these values to today's,
--- apart from decision 194's rounding: each figure rounds up to the whole
+-- apart from the rounding: each figure rounds up to the whole
 -- foot here and to the nearest foot there (int_elevation__edge_climbs), so
 -- a walk's climb can only price higher than today's, never lower.
 select

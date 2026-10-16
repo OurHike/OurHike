@@ -1,6 +1,6 @@
 -- reference/challenges/publishers.json whole
 -- (extract/_shared/ourhike/challenge_publishers.py), as its one row, keyed
--- (decision 40), with nothing filtered. Its `publishers` are read and checked
+-- with nothing filtered. Its `publishers` are read and checked
 -- by int_challenges__publishers, as export_challenges.py's load_publishers()
 -- and publisher_scope() read them.
 --

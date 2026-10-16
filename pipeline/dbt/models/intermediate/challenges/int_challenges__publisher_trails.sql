@@ -1,5 +1,5 @@
 -- Each trail an accepted publishers.json row names, and whether the
--- organization may put a challenge on it (CH02, CH03): publisher_scope()'s
+-- organization may put a challenge on it: publisher_scope()'s
 -- last step. A trail is in scope when it is a string that at least one
 -- published POI carries as its `trail_id`. A trail nothing is placed on can
 -- hold no challenge place, and a trail id spelled differently from the POIs'

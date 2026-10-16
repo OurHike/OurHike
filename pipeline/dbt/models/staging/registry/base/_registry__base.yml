@@ -13,7 +13,7 @@ models:
     columns:
       - name: registry_document_key
         description: >
-          The row's key (decision 40): dbt_utils.generate_surrogate_key over
+          The row's key: dbt_utils.generate_surrogate_key over
           the file's name and its landed path.
         data_tests: [not_null, unique]
       - name: document_json
@@ -31,7 +31,7 @@ models:
     columns:
       - name: paper_map_table_key
         description: >
-          The row's key (decision 40): dbt_utils.generate_surrogate_key over
+          The row's key: dbt_utils.generate_surrogate_key over
           the file's name and its landed path.
         data_tests: [not_null, unique]
       - name: file_path

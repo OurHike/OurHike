@@ -1,5 +1,5 @@
 {{ config(materialized='table') }}
--- Every corridor OSM water point's verdict (PO06): the distance pass,
+-- Every corridor OSM water point's verdict: the distance pass,
 -- int_points_of_interest__osm_water_reach, beside the grade
 -- step_osm_water_grade took for it, as build_osm_water_reach.py's verdict
 -- file holds both halves in one record. `reachable` is the step's, both

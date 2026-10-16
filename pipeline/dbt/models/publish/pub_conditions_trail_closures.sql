@@ -7,13 +7,13 @@
 -- 184 (the maintainer's poll of 2026-10-11, "Build the map file now") builds
 -- #1152 — Move OPRHP's temporary closures onto the conditions clock, where a
 -- safety layer belongs — in its shape (C), an hourly file of closed
--- stretches, for every club closure in PR #1805, and decision 187 (S6) says
--- how each is drawn with the crossed-out mark (client/src/lib/closureStyle.ts):
+-- stretches, for every club closure in PR #1805, each drawn with the
+-- crossed-out mark (client/src/lib/closureStyle.ts):
 -- a line closure along its own line, an area closure's trails where they run
--- inside it, a point closure as one cross; decision 191 (2026-10-14) shades
--- an area closure no mapped trail runs inside. The phone reads this file at
--- launch, as it reads conditions/hazard_areas.json (decision 84), because
--- decision 77 downloads notices.json only once a hike is planned. Routes
+-- inside it, a point closure as one cross; the phone shades an area closure no
+-- mapped trail runs inside. The phone reads this file at
+-- launch, as it reads conditions/hazard_areas.json, because
+-- a phone downloads notices.json only once a hike is planned. Routes
 -- still go through a closure: this file changes what is drawn, not where a
 -- route may run.
 --
@@ -25,13 +25,13 @@
 -- here can drift from them. `generated_at` is that writer's stamp.
 --
 -- WHICH ROWS: every notice whose `obstructs_trail` is true, so never one of
--- decision 67's hazard areas, which that writer never marks obstructing; but
+-- the hazard areas, which that writer never marks obstructing; but
 -- not ATC's own (`atc_trail_updates`), whose band the phone already draws
 -- from conditions/atc_updates.json. No date decides it: a closure whose start
--- is still ahead is here (decision 167, "show it now, as upcoming";
+-- is still ahead is here ("show it now, as upcoming";
 -- int_closures__club_notices' rule 1 has it, and holds a recurring season
--- until 30 days before it, decision 213's rule 9), and so is one the list greys
--- (decisions 146 and 150), at full strength (decision 187's fork, answered
+-- until 30 days before it, the rule 9), and so is one the list greys
+-- at full strength (the fork, answered
 -- "same mark"). The phone draws each from the day before its `starts_on` and
 -- says on the sheet that a greyed one may no longer apply.
 --
@@ -44,10 +44,10 @@
 -- planned route (int_closures__area_trail_cuts), and comes after the row's
 -- other keys, just before `shape` (closure_rows says why):
 -- - "area", where a mapped trail runs inside: the MultiLineString of the
---   trail stretches inside it, crossed out (decision 187);
+--   trail stretches inside it, crossed out;
 -- - "shade", where none does: the area itself, a Polygon or MultiPolygon,
 --   which the phone draws as a light hatch with no mark on its edge
---   (decision 191, the maintainer's poll of 2026-10-14, "Shade them, no
+--   (the maintainer's poll of 2026-10-14, "Shade them, no
 --   edge"). Until that decision such an area was left out of this file and
 --   reached a hiker only through notices.json's list.
 -- In an hour with no trail lines to cut against the cut has no row, and every
@@ -96,7 +96,7 @@
 -- coarsely enough to fall below it. An intersection that raises compares
 -- nothing, so both rows stay drawn: a duplicate hatch is the safer failure.
 --
--- THE FILE SAYS WHETHER ITS AREAS WERE CUT THIS HOUR (decision 213, Q11, the
+-- THE FILE SAYS WHETHER ITS AREAS WERE CUT THIS HOUR (the
 -- maintainer's poll of 2026-10-15, "Now, in this PR"), because a phone keeps
 -- the last file it read as its offline copy, and one read in an hour with no
 -- lines drew none of the area closures until it next connected: on UA,
@@ -121,8 +121,9 @@
 --
 -- ORDER: by source_key, then notice_id, that writer's order.
 --
--- SIZE. UA's first published file, of 2026-10-14 18:15 UTC, built before
--- decisions 191 and 192: 1,198 closures (975 lines, 46 areas, 177 points),
+-- SIZE. UA's first published file, of 2026-10-14 18:15 UTC, built before areas
+-- were shaded and the A.T. cut: 1,198 closures (975 lines, 46 areas, 177
+-- points),
 -- 3,165,161 bytes, 633,700 on the wire as its latest.json lists it. The 156
 -- areas no mapped trail ran inside were left out of it. As shades they add
 -- 197,598 bytes and 32,244 gzipped at level 6 (publish.py's), 5.1%: Measured
@@ -131,7 +132,7 @@
 -- evening from the six layers (19,167 vertices, 4,486 after the 10 m step).
 -- The decision was shown +134,995 bytes and +16,651 gzipped, reasoned from
 -- notices.json's outlines, which are grown 100 m and simplified at 100 m.
--- Decision 192's A.T. stretches at Bear Mountain add about 600 bytes
+-- The A.T. stretches at Bear Mountain add about 600 bytes
 -- (prepare_closure_trail_lines.py has them). The fixture build's file of the
 -- same day: 25 closures (9 lines, 7 areas, 6 shades, 3 points), 17,499 bytes.
 --

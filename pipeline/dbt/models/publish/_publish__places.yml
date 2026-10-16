@@ -1,8 +1,6 @@
 version: 2
 
-# The places family's phone file (stage 3 of #1793 — Rebuild the data
-# platform as dlt → dbt: seven contracted marts, a monthly refresh, published
-# docs, and lighter phone downloads): places.json, which export_places.py
+# The places family's phone file: places.json, which export_places.py
 # writes today. parity.py compares the dbt-written file with the Python's.
 models:
   - name: pub_places
@@ -13,6 +11,7 @@ models:
       out a field it has no value for, which COPY's JSON format cannot do.
       parity.py compares it with export_places.py's file record by record,
       keyed on `id`, in order.
+      Refreshed monthly, with its lane's build.
     config:
       access: public
       contract:
@@ -41,10 +40,10 @@ exposures:
       (client/src/lib/places.ts, PLACES_KEY in client/src/lib/config.ts), and
       its answer becomes the map's fallback centre whenever GPS has no fix.
       Published in the release folder by publish-vector-data.yml from
-      export_places.py's file until stage 4 of #1793 moves it to this
+      export_places.py's file until the cutover moves it to this
       writer's.
     depends_on:
-      - ref('places')
+      - ref('places', v=1)
       - ref('pub_places')
     config:
       meta:
@@ -52,7 +51,7 @@ exposures:
         format: json
         cadence: monthly
         # The mart columns this file's writer reads, in Elementary's type words, which
-        # exposure_schema_validity checks on the mart (decision 102). It can only because this is
+        # exposure_schema_validity checks on the mart. It can only because this is
         # the one phone file reading that mart: with more, Elementary 0.26.0 needs
         # context["render"], which dbt 2.0.6 lacks.
         referenced_columns:
@@ -85,7 +84,7 @@ unit_tests:
       macros:
         python_run_stamp: "'2026-09-10T12:00:00Z'"
     given:
-      - input: ref('places')
+      - input: ref('places', v=1)
         format: sql
         rows: |
           select
@@ -128,7 +127,7 @@ unit_tests:
       macros:
         python_run_stamp: "'2026-09-10T12:00:00Z'"
     given:
-      - input: ref('places')
+      - input: ref('places', v=1)
         rows: []
       - input: ref('int_places__lines')
         rows: []
@@ -146,7 +145,7 @@ unit_tests:
       macros:
         python_run_stamp: "'2026-09-10T12:00:00Z'"
     given:
-      - input: ref('places')
+      - input: ref('places', v=1)
         rows: []
       - input: ref('int_places__lines')
         rows: []

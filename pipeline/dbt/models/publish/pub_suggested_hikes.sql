@@ -7,7 +7,7 @@
 -- reads, in the shape export_suggested_hikes.py writes it: the moment the
 -- run started, the source, and each shipped hike's shelf record in
 -- hike-number order. Each record is the mart's `shelf_record`, built and
--- unit-tested in int_suggested_hikes__records (SH10, SH11).
+-- unit-tested in int_suggested_hikes__records.
 --
 -- NOTHING IS WRITTEN WHEN NO HIKE SHIPS (when_empty: keep_last_file).
 -- "Nothing passed grading" and "there are no suggested hikes" are different
@@ -16,7 +16,7 @@
 -- stays: the same for a registry entry that does not reach hikers, an export
 -- the fetch did not reach, and a graph that routes nothing.
 with hikes as (
-    select * from {{ ref('suggested_hikes') }}
+    select * from {{ ref('suggested_hikes', v=1) }}
     where phone_file = 'suggested_hikes'
 )
 

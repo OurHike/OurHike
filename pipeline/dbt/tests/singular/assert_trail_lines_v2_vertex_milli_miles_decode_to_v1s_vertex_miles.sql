@@ -1,13 +1,13 @@
 -- trail_lines v2's whole thousandths of a mile, each divided back by 1,000,
--- are v1's vertex miles exactly, double for double, on every line (stage 6
--- of #1793). That division is what client/src/lib/trailMiles.ts does to
+-- are v1's vertex miles exactly, double for double, on every line. That
+-- division is what client/src/lib/trailMiles.ts does to
 -- v2/trail_miles.json, and IEEE 754 rounds it to the double nearest the
 -- quotient; v1's file prints each mile so that JSON.parse reads back the
 -- same double. So a row here is a vertex whose mile a v2 phone would hold
 -- differently from a v1 phone: a mile not rounded at 3 decimals, which
 -- thousandths cannot carry. A mile is a safety field (pipeline/ELT.md, "The
 -- eleven marts"), so any row fails the build. Returns no rows.
--- A gate on a mart a hiker's safety reads (decision 204, dbt_project.yml's
+-- A gate on a mart a hiker's safety reads (dbt_project.yml's
 -- `marts:` gates): an error in every environment, so in production a
 -- failure holds the files below at their last good copy.
 {{ config(severity='error') }}

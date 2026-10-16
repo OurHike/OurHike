@@ -15,7 +15,7 @@ models:
     columns:
       - name: poi_identity_key
         description: >
-          The row's key (decision 40): dbt_utils.generate_surrogate_key over
+          The row's key: dbt_utils.generate_surrogate_key over
           the file's path and poi_id.
         data_tests: [not_null, unique]
       - name: poi_id
@@ -40,11 +40,11 @@ models:
           arguments:
             compare_model: source('ourhike', 'raw_ourhike__blaze_mapping')
     description: >
-      pipeline/reference/blaze_mapping.json as its one row, keyed: the per-source blaze tables (#782), read by the trail-line models for TL03.
+      pipeline/reference/blaze_mapping.json as its one row, keyed: the per-source blaze tables (#782), read by the trail-line models.
     columns:
       - name: blaze_mapping_document_key
         description: >
-          The row's key (decision 40): dbt_utils.generate_surrogate_key over
+          The row's key: dbt_utils.generate_surrogate_key over
           the file's name and its landed path.
         data_tests: [not_null, unique]
       - name: document_json
@@ -57,11 +57,11 @@ models:
           arguments:
             compare_model: source('ourhike', 'raw_ourhike__trail_name_aliases')
     description: >
-      pipeline/reference/trail_name_aliases.json as its one row, keyed: each through route's names by publisher, read by the network overview for TL21.
+      pipeline/reference/trail_name_aliases.json as its one row, keyed: each through route's names by publisher, read by the network overview.
     columns:
       - name: trail_name_aliases_document_key
         description: >
-          The row's key (decision 40): dbt_utils.generate_surrogate_key over
+          The row's key: dbt_utils.generate_surrogate_key over
           the file's name and its landed path.
         data_tests: [not_null, unique]
       - name: document_json
@@ -76,11 +76,11 @@ models:
     description: >
       pipeline/reference/work_projects.json as its one row, keyed: the
       reviewed club workdays (#760), read by int_closures__work_projects_checked
-      for CL17 whatever `rows` holds, since the review is the file's.
+      whatever `rows` holds, since the review is the file's.
     columns:
       - name: work_projects_document_key
         description: >
-          The row's key (decision 40): dbt_utils.generate_surrogate_key over
+          The row's key: dbt_utils.generate_surrogate_key over
           the file's name and its landed path.
         data_tests: [not_null, unique]
       - name: document_json

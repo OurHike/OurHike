@@ -1,6 +1,6 @@
 version: 2
 
-# Which POI type each of decision 54's wave 1 point layers publishes a row as
+# Which POI type each of the generated club point layers publishes a row as
 # (pipeline/ELT.md, "Loading everything the clubs publish"), one row per value
 # that maps. An allowlist: a value no row names publishes nothing, so a type a
 # person has not read never reaches a phone. A judgement somebody reviews row
@@ -10,7 +10,7 @@ version: 2
 seeds:
   - name: club_poi_types
     description: >
-      One row per value of a wave 1 point layer's own field that maps to a POI type:
+      One row per value of a generated club point layer's own field that maps to a POI type:
       int_points_of_interest__club_points types a row by the rows here whose `field` (dlt's name,
       read from the row's `properties`) equals `value`, case-insensitively and trimmed, or by the
       layer's one row with neither, which types every row of a layer that is one kind of thing.

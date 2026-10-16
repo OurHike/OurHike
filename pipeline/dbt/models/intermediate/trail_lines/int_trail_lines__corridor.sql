@@ -2,7 +2,7 @@
 -- The A.T.'s corridor, lib/corridor.build_corridor(): every centerline
 -- segment buffered by 30 miles in EPSG:5070 metres, unioned, and taken back to
 -- lon/lat, always_xy on both legs (that module's docstring says what dropping
--- it did). One row. export_trails.py keeps a line that touches it (TL14), and
+-- it did). One row. export_trails.py keeps a line that touches it, and
 -- export_poi.py clips points to the same polygon.
 --
 -- The widening for other organizations' lines (build_corridor's

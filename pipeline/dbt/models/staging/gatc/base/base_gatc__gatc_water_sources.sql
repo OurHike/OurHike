@@ -1,7 +1,7 @@
 -- GATC's water-sources PDF (sources.json `gatc_water_sources`, landed by
 -- extract/gatc/points_of_interest.py's ClubPdf): every row, keyed and deduped
--- (decision 40), with nothing filtered and nothing joined. A base model, the
--- one place this dataset is staged (decision 34).
+-- with nothing filtered and nothing joined. A base model, the
+-- one place this dataset is staged.
 --
 -- Key: (`trail`, `mile`): unique on 65 of 65 (measured 2026-10-04 on the
 -- live PDF, parsed as lib/club_pdfs.py parses it). `mile` alone is 65 of 65

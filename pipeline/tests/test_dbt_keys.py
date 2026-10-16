@@ -1,4 +1,4 @@
-"""Decision 40 of #1793, held without a warehouse: every staging model keys and dedupes its rows the same way.
+"""Held without a warehouse: every staging model keys and dedupes its rows the same way.
 
 The maintainer, 2026-10-01: "every table needs a unique id. Use the dbt_utils
 package in dbt, and call the generate_surrogate_key() macro to create the key
@@ -34,7 +34,7 @@ DEDUPE = re.compile(
 # keep within SQLFluff's line length (pipeline/generate_notice_models.py's).
 SOURCE = re.compile(r"source\(\s*'([a-z0-9_]+)',\s*'([a-z0-9_]+)'\s*\)")
 # Every model that keys and dedupes a raw table, which is every staging model that reads a
-# source() (decision 40): the stg_ models of the first 28, and the base_ models stage 3 adds
+# source(): the stg_ models of the first 28, and the base_ models added later
 # for the rest (ELT.md, "The dbt project"). A stg_ model that reads a base model, as the
 # registry's do, has its key from that base model.
 MODELS = sorted(path for path in [*STAGING.rglob("stg_*.sql"), *STAGING.rglob("base_*.sql")] if SOURCE.search(path.read_text()))
@@ -57,7 +57,7 @@ def model_key(path: Path) -> tuple[str, list[str]]:
     return match.group(2), ast.literal_eval(items)
 
 
-# Read once: every parametrized case below asks, and there are hundreds (decisions 53's and 54's generated
+# Read once: every parametrized case below asks, and there are hundreds (the and 54's generated
 # models).
 @cache
 def models_yaml() -> dict:
@@ -123,7 +123,7 @@ def _row_tables() -> frozenset[str]:
     resources = all_resources(discover() + discover_shared())
     kinds = WordpressPosts | WordpressTerms | ConditionsQuery | PublishedHikes | AtcTrailUpdatePages | GuidePages
     kinds |= ClubPdf
-    # Decision 53's notice readers whose rows carry no geometry (pipeline/generate_notice_models.py's READERS).
+    # The notice readers whose rows carry no geometry (pipeline/generate_notice_models.py's READERS).
     kinds |= FeedNotices | PageNotice | NpsAlerts | DcnrParkAdvisories | UsgsElevatedVolcanoes | MediawikiAnnouncements
     kinds |= SheetCsvSegments
     return frozenset(resource.table for resource in resources if isinstance(resource, kinds)) - _content_tables()
@@ -131,7 +131,7 @@ def _row_tables() -> frozenset[str]:
 
 @cache
 def _content_tables() -> frozenset[str]:
-    """Section C's content tables (decision 54 wave 3): the raw tables pipeline/make_dbt_staging.py stages for a type
+    """The content tables: the raw tables pipeline/make_dbt_staging.py stages for a type
     whose shape carries no geometry (podcast episodes, write-ups, list items, photo manifest rows). A club page's points
     table a content type SHARES (Table.page_rows, the Palmetto Trail's passages) is not one: it is the points' own raw
     table, geometry and all, and its base model is the points'."""
@@ -187,8 +187,7 @@ def test_the_run_log_table_is_the_one_extract_run_writes():
     }
 
 
-#: The closures and warnings marts' own snapshots, read back as sources (staging/row_history/, decision 53's
-#: phase C): rows of int_<mart>__final, whose geometry is GeoJSON text already, never a raw geometry column.
+#: The closures and warnings marts' own snapshots, read back as sources (staging/row_history/): rows of int_<mart>__final, whose geometry is GeoJSON text already, never a raw geometry column.
 ROW_HISTORY_TABLES = {"int_closures__history", "int_warnings__history"}
 
 

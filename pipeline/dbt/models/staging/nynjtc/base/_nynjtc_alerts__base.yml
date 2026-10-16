@@ -5,7 +5,7 @@ models:
     data_tests:
       # Warns when the dedupe dropped any row, each an exact copy
       # (duplicates_are_exact on the raw table), and is an error once the
-      # copies are half the raw table (decision 204, the generic test's).
+      # copies are half the raw table (the generic test's).
       - equal_rowcount_to_raw:
           arguments:
             compare_model: source('nynjtc', 'raw_nynjtc__nynjtc_trail_alerts')
@@ -16,7 +16,7 @@ models:
     columns:
       - name: trail_alert_key
         description: >
-          The row's key (decision 40): dbt_utils.generate_surrogate_key over
+          The row's key: dbt_utils.generate_surrogate_key over
           `nynjtc_trail_alerts` and the post's WordPress id.
         data_tests: [not_null, unique]
       - name: slug
@@ -28,7 +28,7 @@ models:
       - name: modified_at
         description: >
           NYNJTC's own last edit of the alert, site-local time read as UTC
-          (a known error of a few hours, WN08).
+          (a known error of a few hours).
   - name: base_nynjtc__nynjtc_trail_alerts_terms
     data_tests:
       - equal_rowcount_to_raw:
@@ -40,7 +40,7 @@ models:
     columns:
       - name: place_term_key
         description: >
-          The row's key (decision 40): dbt_utils.generate_surrogate_key over
+          The row's key: dbt_utils.generate_surrogate_key over
           `nynjtc_trail_alerts_terms`, the taxonomy and the term's id.
         data_tests: [not_null, unique]
       - name: taxonomy

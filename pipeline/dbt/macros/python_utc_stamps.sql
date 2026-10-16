@@ -1,6 +1,6 @@
 {#-
     The two ways today's conditions exporters write a UTC timestamp as text,
-    so a pub_ writer prints the same characters (#1793, stage 3). Both read a
+    so a pub_ writer prints the same characters. Both read a
     TIMESTAMPTZ in UTC whatever the session's time zone, through
     timezone('UTC', ...), and both are null for a null.
 -#}

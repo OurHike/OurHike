@@ -1,4 +1,4 @@
--- The elevation mart (decision 57): int_elevation__final's rows as
+-- The elevation mart: int_elevation__final's rows as
 -- int_elevation__history holds them now, each with when it was first seen and
 -- when it last changed (macros/row_history.sql). A row that left the mart stays
 -- in the snapshot, closed, and is not here: how removed features merge back is

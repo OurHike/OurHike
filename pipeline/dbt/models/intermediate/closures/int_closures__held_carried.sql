@@ -1,6 +1,6 @@
 {{ config(materialized='table') }}
--- A NOTICE SOURCE THE GATE HOLDS KEEPS ITS LAST GOOD ROWS (decision 53, phase
--- D; pipeline/ELT.md, "Phase D: one notices file"): one row per notice the
+-- A NOTICE SOURCE THE GATE HOLDS KEEPS ITS LAST GOOD ROWS: one row per notice
+-- the
 -- previous build's row history held as current, of a source
 -- int_closures__gate holds back this build, with every column the mart had,
 -- in the mart it was in. int_closures__final and int_warnings__final add them
@@ -30,15 +30,15 @@
 -- says what else moves a hash).
 --
 -- ITS OWN END DATE PASSING ENDS NOTHING, as for a row read this build (the
--- maintainer's frame A, 2026-10-10; int_closures__club_notices' rule 1). A
+-- maintainer, 2026-10-10; int_closures__club_notices' rule 1). A
 -- carried notice whose own end day is more than a day behind the build's UTC
 -- date stays carried, and rule 3 reads it again: it no longer closes the
 -- trail, so it lands in warnings as not reviewed, as a fresh read of it
 -- would. conditions/notices.json's `current_until` is its end date, and the
 -- phone greys it. NOR DOES ITS OWN START: a carried notice whose start is
 -- still ahead stays carried, closing the trail as it did, as a fresh read of
--- it would publish it (the maintainer's frame B for wave 6's page 01, P3,
--- poll of 2026-10-11; int_closures__club_notices' rule 1). Rule 1's one
+-- it would publish it (the maintainer's poll of
+-- 2026-10-11; int_closures__club_notices' rule 1). Rule 1's one
 -- date hold left, a rescinded order (macros/notice_date_holds.sql), cannot
 -- fire on a carried row: rescinded_on does not reach the marts, so the
 -- history holds none to carry.
@@ -152,7 +152,7 @@ read_back as (
         json_extract_string(row_json, '$.closure_place') as closure_place,
         json_extract_string(row_json, '$.geom_geojson') as geom_geojson,
         json_extract_string(row_json, '$.source_row_key') as source_row_key,
-        -- Decision 213's rules 14 and 21, as the mart saved them: a row saved
+        -- The rules 14 and 21, as the mart saved them: a row saved
         -- before they existed reads false and null.
         coalesce(
             try_cast(
@@ -183,10 +183,5 @@ judged as (
     from read_back
 )
 
-select
-    case when has_ended then 'warnings' else mart end as mart,
-    case when has_ended then null else obstructs_trail end as obstructs_trail,
-    case when has_ended then 'not_reviewed' else review_state end
-        as review_state,
-    * exclude (mart, obstructs_trail, review_state, has_ended)
+select {{ notice_carried_as_judged() }}
 from judged

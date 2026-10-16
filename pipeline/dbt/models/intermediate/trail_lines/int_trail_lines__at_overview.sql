@@ -1,5 +1,5 @@
 {{ config(materialized='table') }}
--- The corridor-view sketch of the centerline (TL17; PR #872 — Publish a
+-- The corridor-view sketch of the centerline (PR #872 — Publish a
 -- corridor-view centerline, and ask for it before the app has booted),
 -- export_trails.write_overview(): one row per line of the one
 -- MultiLineString trails_overview.geojson draws before the real line

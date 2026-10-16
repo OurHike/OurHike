@@ -15,7 +15,7 @@ models:
     columns:
       - name: publishers_document_key
         description: >
-          The row's key (decision 40): dbt_utils.generate_surrogate_key over
+          The row's key: dbt_utils.generate_surrogate_key over
           the file's path and its landed path.
         data_tests: [not_null, unique]
       - name: file_json

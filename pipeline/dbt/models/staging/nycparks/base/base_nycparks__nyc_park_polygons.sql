@@ -1,7 +1,7 @@
 -- NYC Parks Properties (park boundaries) (NYC Parks, sources.json
--- `nyc_park_polygons`): every row, keyed and deduped (decision 40), with
+-- `nyc_park_polygons`): every row, keyed and deduped, with
 -- nothing filtered and nothing joined. A base model, the one place this
--- dataset is staged (decision 34), for the stewardship and staging models of
+-- dataset is staged, for the stewardship and staging models of
 -- every club whose portion it holds.
 --
 -- Key: gispropnum, the registry's `id_field`, unique and non-null on 2,061 of
@@ -12,7 +12,7 @@
 -- `system` among them.
 with source as (
     -- dlt lands geometry as GeoJSON text (extract/_kinds.py's JSON
-    -- hint); cast here, as decision 40 has staging do.
+    -- hint); cast here, as staging models do.
     select
         * exclude (geometry),
         st_geomfromgeojson(cast(geometry as varchar)) as geom

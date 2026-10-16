@@ -5,7 +5,7 @@ models:
     data_tests:
       # Warns when the dedupe dropped any row, each an exact copy
       # (duplicates_are_exact on the raw table), and is an error once the
-      # copies are half the raw table (decision 204, the generic test's).
+      # copies are half the raw table (the generic test's).
       - equal_rowcount_to_raw:
           arguments:
             compare_model: source('ourhike', 'raw_ourhike__closures')
@@ -15,7 +15,7 @@ models:
     columns:
       - name: ourhike_closure_key
         description: >
-          The row's key (decision 40): dbt_utils.generate_surrogate_key over
+          The row's key: dbt_utils.generate_surrogate_key over
           `ourhike_closures` and the closure's UUID.
         data_tests: [not_null, unique]
       - name: closure_uuid
@@ -38,7 +38,7 @@ models:
     columns:
       - name: ourhike_report_key
         description: >
-          The row's key (decision 40): dbt_utils.generate_surrogate_key over
+          The row's key: dbt_utils.generate_surrogate_key over
           `ourhike_reports` and the report's UUID.
         data_tests: [not_null, unique]
       - name: report_uuid
@@ -58,7 +58,7 @@ models:
     description: >
       OurHike's visible field notes, keyed. Public because the
       conditions/notes.json exposure names it: export_conditions.py still
-      writes that file (WN11), and no mart reads these rows.
+      writes that file, and no mart reads these rows.
     config:
       access: public
       contract:
@@ -66,7 +66,7 @@ models:
     columns:
       - name: ourhike_note_key
         description: >
-          The row's key (decision 40): dbt_utils.generate_surrogate_key over
+          The row's key: dbt_utils.generate_surrogate_key over
           `ourhike_notes` and the note's UUID.
         data_type: varchar
         data_tests: [not_null, unique]
@@ -111,7 +111,7 @@ models:
     description: >
       The places field notes say are gone, as account counts, keyed. Public
       because the conditions/disputes.json exposure names it:
-      export_conditions.py still writes that file (WN11).
+      export_conditions.py still writes that file.
     config:
       access: public
       contract:
@@ -119,7 +119,7 @@ models:
     columns:
       - name: ourhike_dispute_key
         description: >
-          The row's key (decision 40): dbt_utils.generate_surrogate_key over
+          The row's key: dbt_utils.generate_surrogate_key over
           `ourhike_disputes` and the place's POI id.
         data_type: varchar
         data_tests: [not_null, unique]

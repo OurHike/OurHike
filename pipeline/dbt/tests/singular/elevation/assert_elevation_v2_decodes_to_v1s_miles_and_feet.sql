@@ -1,13 +1,13 @@
 -- elevation v2's whole thousandths of a mile and tenths of a foot, each
 -- divided back by 1,000 or 10, are the doubles a phone reads out of v1's
--- elevation_profile.json, on every sample (stage 6 of #1793): what
+-- elevation_profile.json, on every sample: what
 -- client/src/lib/elevationProfile.ts does to v2/elevation_profile.json, and
 -- IEEE 754 rounds the division to the double nearest the quotient, as
 -- JSON.parse rounds v1's decimal text. An elevation is null in v2 exactly
 -- where it is in v1, so a DEM gap stays unknown and never becomes 0.
 -- Elevation and miles are safety fields (pipeline/ELT.md, "The eleven
 -- marts"), so any row fails the build. Returns no rows.
--- A gate on a mart a hiker's safety reads (decision 204, dbt_project.yml's
+-- A gate on a mart a hiker's safety reads (dbt_project.yml's
 -- `marts:` gates): an error in every environment, so in production a
 -- failure holds the files below at their last good copy.
 {{ config(severity='error') }}

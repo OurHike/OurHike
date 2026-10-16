@@ -1,7 +1,6 @@
 version: 2
 
-# GATC's water list on its way into the points_of_interest family (decision 75,
-# the maintainer's poll of 2026-10-04): int_points_of_interest__gatc_water places
+# GATC's water list on its way into the points_of_interest family (the maintainer's poll of 2026-10-04): int_points_of_interest__gatc_water places
 # each A.T. source on ATC's mile axis from GATC's own mile, holds what it cannot
 # stand behind, and types the rest water at low confidence, as a record
 # int_points_of_interest__unioned reads whole. Its rules are unit tests below;
@@ -15,7 +14,7 @@ models:
     columns:
       - name: namesake_key
         description: >
-          The row's key (decision 197): dbt_utils.generate_surrogate_key over the seed row
+          The row's key: dbt_utils.generate_surrogate_key over the seed row
           (gatc_mile, entry_starts, atc_layer) and atc_global_id, one row per seed row per ATC
           point. Its unique test fails on any two rows sharing the four, the combination test it
           replaced; never null by construction, so the four inputs' own not_null tests hold the
@@ -67,7 +66,7 @@ models:
               or abs(cast(placed_mile as double) - cast(gatc_mile as double)) <= 0.005
     columns:
       - name: poi_key
-        description: The base model's key (decision 40), carried.
+        description: The base model's key, carried.
         data_tests: [not_null, unique]
       - name: source_key
         description: "`gatc_water_sources`."
@@ -142,7 +141,7 @@ models:
 unit_tests:
   - name: gatc_water_places_each_mile_on_the_axis_and_holds_what_it_cannot_stand_behind
     description: >
-      Decision 75 on three axis pieces in EPSG:5070 metres (the miles unit test's): a mile between
+      GATC's water list on three axis pieces in EPSG:5070 metres (the miles unit test's): a mile between
       two anchors, before the first and past the last on piece 0, and on piece 1's one anchor,
       each placed and read back at its own mile; the start of piece 2. Held: an approach-trail
       row, a mile in the gap between pieces 0 and 1 (never moved to the nearer), an entry that

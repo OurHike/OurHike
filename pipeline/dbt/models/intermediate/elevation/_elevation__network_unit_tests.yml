@@ -234,7 +234,7 @@ unit_tests:
       Ports TestEdgeClimb.test_gain_and_loss_are_both_positive_numbers: a
       hill 100 m up and back down is 328.08 ft of gain and of loss, each a
       magnitude, since the phone prints its own signs, and each rounded up to
-      329 (decision 194), where edge_climb's nearest foot is 328.
+      329, where edge_climb's nearest foot is 328.
     model: int_elevation__edge_climbs
     given:
       - input: ref('int_trail_network__edges')
@@ -308,7 +308,7 @@ unit_tests:
     description: >
       Ports TestBuild.test_the_same_edge_reversed_is_all_loss_and_no_gain:
       a 40 m ramp is 131.23 ft of gain walked up it and of loss walked down
-      it, each rounded up to 132 (decision 194).
+      it, each rounded up to 132.
     model: int_elevation__edge_climbs
     given:
       - input: ref('int_trail_network__edges')
@@ -338,7 +338,7 @@ unit_tests:
 
   - name: int_elevation__edge_climbs_rounds_each_figure_up_to_the_whole_foot
     description: >
-      Decision 194, toward caution: gain and loss round UP to the whole foot,
+      Toward caution: gain and loss round UP to the whole foot,
       so a route the phone sums edge by edge is never priced short by the
       rounding. 100 m is 328.08 ft and reads 329, where
       export_network_elevation.edge_climb's nearest foot reads 328

@@ -1,7 +1,7 @@
 {{ config(format='json', location='nearby_trails.geojson') }}
 -- nearby_trails.geojson, every other organization's trail lines, in the
--- shape export_nearby_trails.py's records_to_geojson() writes (decision 44's
--- v1): one Feature per line, its properties in that function's order, then
+-- shape export_nearby_trails.py's records_to_geojson() writes (the v1): one
+-- Feature per line, its properties in that function's order, then
 -- the geometry. No phone reads this file since #1257
 -- (client/src/lib/config.ts's NEARBY_TRAILS_TILES_KEY says why); it is what
 -- nearby_trails.pmtiles is cut from, and build_trail_graph.py,
@@ -10,16 +10,16 @@
 --
 -- Reads the trail_lines mart's network rows (`line_kind = 'network'`),
 -- which int_trail_lines__network_published gives it, then its club rows
--- (`line_kind = 'club'`, decision 64: int_trail_lines__club_published).
+-- (`line_kind = 'club'`: int_trail_lines__club_published).
 --
 -- THE PROPERTIES, records_to_geojson()'s:
 -- - `id`, `source`, `name` (null where nothing names the line, never left
 --   out), `blaze_color`, `trail_status`. `id` is the mart's `published_id`,
---   today's exporter's id for the same feature (TL05), which the tiles cut
+--   today's exporter's id for the same feature, which the tiles cut
 --   from this file carry and a phone joins each graph edge's `trail_id` to;
 --   never `trail_line_id`, the row's key, which reads a GlobalID in any case;
 -- - `length_miles`, the 1 m line's own length in miles on the WGS84
---   ellipsoid (`published_length_m`, decision 97), rounded to 2 decimals as
+--   ellipsoid (`published_length_m`), rounded to 2 decimals as
 --   Python's round() does (the printf cast, which the published model's
 --   header measures);
 -- - `closure_kind` only on a closed line; `closure_reason` and

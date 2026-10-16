@@ -1,10 +1,9 @@
-"""The trail_network family's SQL answers what build_trail_graph.py answers, on the same rows (#1793, stage 3).
+"""The trail_network family's SQL answers what build_trail_graph.py answers, on the same rows.
 
-trail_graph.json and trail_graph_geometry.json moved to dbt (pipeline/ELT.md's
-ledger rows TN01-TN08): the routable lines, the cuts, the node grid, the welds
+trail_graph.json and trail_graph_geometry.json moved to dbt: the routable lines, the cuts, the node grid, the welds
 and the edges to the int_trail_network__ models, and the cutting itself to the
 Python step step_node_lines.py, which cuts with build_trail_graph's own
-_split_all. Until stage 5 deletes the Python, build_trail_graph.py still writes
+_split_all. Until the Python is deleted, build_trail_graph.py still writes
 the files publish-vector-data.yml uploads, so the two are held together here:
 
 - the trail_network_ vars the models read are build_trail_graph.py's
@@ -92,7 +91,7 @@ def test_every_unit_test_is_on_a_model_this_file_holds_to_the_python():
 
 def _features(rows: list[dict]) -> list[dict]:
     """The mart's rows as the features nearby_trails.geojson and trails.geojson carry, in feature order: each under its
-    `published_id`, the `id` both files publish (TL05)."""
+    `published_id`, the `id` both files publish."""
     return [
         {
             "type": "Feature",
@@ -291,7 +290,7 @@ def test_each_raw_edges_unit_test_is_build_graph(con, test):
     ]
     # dbt compares a double to 0.1, so the expected length is held here to the
     # centimetre the file publishes: both sides measure the WGS84 geodesic and
-    # round it to 2 decimals (decision 90).
+    # round it to 2 decimals.
     for row, edge in zip(published, graph["edges"]):
         if "length_m" in row:
             assert row["length_m"] == edge["length_m"], "length_m, at 2 decimals"

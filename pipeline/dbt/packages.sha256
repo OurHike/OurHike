@@ -1,5 +1,5 @@
 # sha256 of every file under pipeline/dbt/dbt_packages/, checked by pipeline/check_dbt_packages.py
-# (decision 144). Rewrite only with `python check_dbt_packages.py --write`, after reviewing the upgrade.
+# Rewrite only with `python check_dbt_packages.py --write`, after reviewing the upgrade.
 e2d67bf63b2030d4380d9758d86e894a854e61c2f3f70fb6fc968398ea10294f  codegen/.circleci/config.yml
 06ec63aa3a1b8678a2a3416a92fcce1d5d7203a5707755cd045416f0a469a8ca  codegen/.github/CODEOWNERS
 efedfa991b074fb503aeb49924e3a123cda29317574ab699ad6b4a494bda1a3b  codegen/.github/ISSUE_TEMPLATE/bug_report.md

@@ -1,5 +1,5 @@
--- The A.T. centerline every challenge place is measured against (CH04,
--- CH13), as export_challenges.load_centerline() reads it: the features of
+-- The A.T. centerline every challenge place is measured against, as
+-- export_challenges.load_centerline() reads it: the features of
 -- trails.geojson whose `source` is `centerline`, LineString or
 -- MultiLineString. trails.geojson is the trail_lines mart's rows that are
 -- not `network` or `club` (pub_trails_geojson), and it publishes source_key as
@@ -7,8 +7,8 @@
 -- own chains. Not a side trail: a place beside a side trail is not a place
 -- on the A.T.
 --
--- The geometry is the mart's, cut to 6 decimals (decision 8), where
--- export_trails.py prints every digit: at most 0.056 m (decision 8's own
+-- The geometry is the mart's, cut to 6 decimals, where
+-- export_trails.py prints every digit: at most 0.056 m (the own
 -- bound), which moves a place's measured distance by no more than that.
 --
 -- With no rows the distance check is skipped, which export_challenges.py

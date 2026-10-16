@@ -1,6 +1,6 @@
 -- One row per entry of reference/work_projects.json's `rows`, in file
 -- order, with what lib/work_projects.py's file_problems() finds wrong with
--- it (CL17, in its order and words) and the row as published_rows() writes
+-- it (in its order and words) and the row as published_rows() writes
 -- it; plus one row for the file itself (row_position null) with its review
 -- and its own problems. pub_conditions_work_projects writes nothing when
 -- any row has a problem: "a partial set is worse than none because the gap

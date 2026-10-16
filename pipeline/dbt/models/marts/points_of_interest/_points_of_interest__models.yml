@@ -3,25 +3,34 @@ version: 2
 models:
   - name: points_of_interest
     description: >
-      Every POI a phone is given, one row each, keyed by the id it publishes
-      under: the A.T. family's (the eight poi_<type>.geojson files), the
-      other organizations' (nearby_poi.geojson) and the tombstones of every
-      POI the identity ledger has retired (retired_poi.geojson). Only rows
-      whose source may publish (int_sources__publication). Geometry is
-      `geom_geojson` text at the precision each file prints. The safety
-      fields are each a test here, and pipeline/ELT.md's "The eleven marts"
-      says why each one.
+      One row per published POI. Key: `poi_id` (and `poi_key`). Refreshed
+      monthly. Phone files: the eight poi_<type>.geojson files
+      (pub_poi_<type>), nearby_poi.geojson (pub_nearby_poi) and
+      retired_poi.geojson (pub_retired_poi); v2 of each beside v1.
+
+      Every POI a phone is given, keyed by the id it publishes under: the A.T.
+      family's (the eight poi_<type>.geojson files), the other organizations'
+      (nearby_poi.geojson) and the tombstones of every POI the identity ledger
+      has retired (retired_poi.geojson). Only rows whose source may publish
+      (int_sources__publication). Geometry is `geom_geojson` text at the
+      precision each file prints. The safety fields (capacity, water distance
+      and its source, elevation) are each held by a test: absent means
+      unknown, never zero.
+
+      Versioned: phones read v1. A removed, renamed or retyped column ships as
+      a new version beside v1, never as a change to it; an added column is not
+      breaking.
     config:
       access: public
       contract:
         enforced: true
-    # Decision 44: a phone file's shape is a version of the mart it is
+    # A phone file's shape is a version of the mart it is
     # written from. v1 is today's shape at today's keys, and every pub_ writer
     # reading this mart pins it, ref('points_of_interest', v=1). v2
     # (points_of_interest_v2.sql) holds each POI's position once, as
     # geom_geojson at 6 decimals, for the v2/poi_<type>.geojson and
     # v2/nearby_poi.geojson files the pub_poi_<type>_v2 and pub_nearby_poi_v2
-    # writers write beside v1 (stage 6 of #1793; pipeline/ELT.md, "Making the
+    # writers write beside v1 (pipeline/ELT.md, "Making the
     # download smaller"). v1 stays the latest version, so an unpinned ref
     # reads v1; v2 is a version ahead of it until a v2 release ships. dbt
     # 2.0.6 builds points_of_interest_v1 and points_of_interest_v2 and keeps
@@ -110,8 +119,8 @@ models:
                 tags: [elementary_check]
                 enabled: "{{ env_var('OURHIKE_ELEMENTARY_CHECKS', 'false') == 'true' }}"
     data_tests:
-      # Elementary's checks (decision 102; pipeline/ELT.md, "The checks, and
-      # where each goes"), each with its two thresholds (decision 204) and run by build_marts.py after the
+      # Elementary's checks (pipeline/ELT.md, "The checks, and
+      # where each goes"), each with its two thresholds and run by build_marts.py after the
       # writers: the rows at each build; the rows per club and source, so one
       # club's layer vanishing cannot hide inside the national total; and each
       # column's null rate, the geometry and the long text (a description, the
@@ -158,7 +167,7 @@ models:
           name: points_of_interest_land_in_the_region_their_source_publishes_in
           arguments:
             geometry: st_geomfromgeojson(geom_geojson)
-      # mile only on an A.T. POI that is on the A.T. (PO10, PO11):
+      # mile only on an A.T. POI that is on the A.T. 
       # attach_miles() "always succeeds - there is no distance at which it
       # declines", so a mile anywhere else is a perfectly formed wrong one.
       - dbt_utils.expression_is_true:
@@ -166,7 +175,7 @@ models:
             expression: "mile is null or (trail_id = 'AT' and not_on_at is null)"
           config:
             severity: error
-      # Absent is unknown, never zero (PO13).
+      # Absent is unknown, never zero.
       - dbt_utils.expression_is_true:
           arguments:
             expression: "capacity is null or capacity >= 1"
@@ -174,7 +183,7 @@ models:
             severity: error
       # CSI's 0 and negative distances are refused upstream
       # (build_water_distance.py), and a distance never ships without the
-      # source the phone prints its tilde from (PO14, PO15).
+      # source the phone prints its tilde from.
       - dbt_utils.expression_is_true:
           arguments:
             expression: "water_distance_ft is null or water_distance_ft > 0"
@@ -191,7 +200,7 @@ models:
             expression: "phone_files = 'retired_poi' or confidence in ('high', 'low')"
           config:
             severity: error
-      # Decision 65's season caution rides only on unconfirmed water: a
+      # The season caution rides only on unconfirmed water: a
       # caution on a confirmed source, or on a shelter, would be a display
       # outrunning its source.
       - dbt_utils.expression_is_true:
@@ -259,7 +268,7 @@ models:
                 to: ref('poi_types')
                 field: poi_type
       - name: trail_id
-        description: "`AT` for the A.T. family, the organization's own trail id for the others (PO37); null on a tombstone."
+        description: "`AT` for the A.T. family, the organization's own trail id for the others; null on a tombstone."
         data_type: varchar
       - name: source
         description: What the POI's derived id starts with, e.g. `atc_shelters`, `atc_csi`, `NYSDEC`.
@@ -324,8 +333,8 @@ models:
         description: CSI's distance to the nearest water in ATC's feet, on a shelter, a campsite or a synthesized water point.
         data_type: integer
         data_tests:
-          # A safety column (decision 102): its null rate, shortest and
-          # longest distance against the builds before, with its two thresholds (decision 204).
+          # A safety column: its null rate, shortest and
+          # longest distance against the builds before, with its two thresholds.
           - elementary.column_anomalies:
               arguments:
                 column_anomalies: [null_percent, min, max]
@@ -371,7 +380,7 @@ models:
         data_type: varchar
       - name: water_caution
         description: >
-          Decision 65: 'no_shutoff_season' on a plumbed tap or fountain whose layer records no
+          'no_shutoff_season' on a plumbed tap or fountain whose layer records no
           shutoff season (int_points_of_interest__cautioned), which the waypoint card reads to
           say taps like it are often off out of season. Only ever on low-confidence water; null on
           every other POI, and on a tap whose layer's own winter status says it is open in winter.
@@ -382,9 +391,9 @@ models:
                 values: ['no_shutoff_season']
       - name: photo_key
         description: >
-          The card photo's bucket key, photos/<digest>.jpg (PO24); null where the
+          The card photo's bucket key, photos/<digest>.jpg; null where the
           POI has no photo to show, including a Commons photo the face screen
-          flagged and nobody has cleared (PO38).
+          flagged and nobody has cleared.
         data_type: varchar
       - name: photo_page_url
         description: The card photo's page, the credit link.
@@ -463,7 +472,7 @@ models:
                 # warn on a leg build_marts.py built without its history,
                 # where both dates are null and the run is red already, and
                 # in production and UA, where build_marts.py reports a
-                # failure as an error unless the history is off (decision 204).
+                # failure as an error unless the history is off.
                 severity: "{{ 'warn' if env_var('OURHIKE_ROW_HISTORY', 'on') == 'off' or env_var('OURHIKE_DATA_ENV', 'dev') in ['production', 'ua'] else 'error' }}"
       - name: _changed_at
         description: "{{ doc('row_changed_at') }}"

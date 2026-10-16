@@ -1,7 +1,7 @@
 {{ config(materialized='table') }}
 {%- set decimals = var('trail_lines_network_coordinate_decimals') %}
 -- The network's half of the trail_lines mart: one row per network line that
--- ships, in the mart's 23 columns, by name and type (tl-at's contract,
+-- ships, in the mart's 23 columns, by name and type (the contract,
 -- models/marts/trail_lines/_trail_lines__models.yml). The mart unions it
 -- with the A.T.'s half. closure_reason and closure_source are set only on a
 -- section inside one of NYS Parks' closed areas
@@ -9,7 +9,7 @@
 --
 -- THE GEOMETRY IS THE ONE A PHONE DRAWS, as the mart's contract has it: the
 -- 1 m line from int_trail_lines__network_navigation, every vertex cut to six
--- decimals (TL23, NEARBY_COORDINATE_DECIMALS) as Python's round() cuts it.
+-- decimals (NEARBY_COORDINATE_DECIMALS) as Python's round() cuts it.
 -- That is not DuckDB's round(): measured 2026-10-02 on 266,800 doubles built
 -- to sit on, or an ulp either side of, a half at 6, 3 and 2 decimals,
 -- round(x, n) answered differently from Python on 14,125 and
@@ -20,13 +20,13 @@
 -- `type` first.
 --
 -- TWO LENGTHS, both in metres on the WGS84 ellipsoid: `length_m` on the line
--- as its steward published it, before any simplification (decision 8:
--- Douglas-Peucker only shortens a line, so a length taken after it
+-- as its steward published it, before any simplification (Douglas-Peucker only
+-- shortens a line, so a length taken after it
 -- under-reports a day hike), and `published_length_m` on the 1 m line before
 -- the cut, which is what records_to_geojson()'s `length_miles` is rounded
--- from. Each is macros/geodesic_length_m.sql's (decision 97, the
--- maintainer's poll of 2026-10-06, as decision 90 measures the graph's
--- edges), handed the line projected to EPSG:5070 as the macro takes it. The
+-- from. Each is macros/geodesic_length_m.sql's (the maintainer's poll of
+-- 2026-10-06, as the graph's edges are measured), handed the line projected to
+-- EPSG:5070 as the macro takes it. The
 -- trip there and back changed no line's length by more than 7.3e-7 m against
 -- the lon/lat line's own (measured 2026-10-06 on UA's 329,446 routable
 -- lines, with the macro's ST_Length_Spheroid). They were EPSG:5070 metres
@@ -40,7 +40,7 @@
 -- within a layer is the fetched file's, which the warehouse does not land.
 --
 -- The A.T.'s columns are null on every network row: `vertex_miles` and
--- `monotonic_breaks` (the calibrated mile axis, TL22) and the four spur_
+-- `monotonic_breaks` (the calibrated mile axis) and the four spur_
 -- fields (spurs.json's).
 with navigation as (
     select * from {{ ref('int_trail_lines__network_navigation') }}

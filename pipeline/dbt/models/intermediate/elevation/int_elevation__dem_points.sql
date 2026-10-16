@@ -1,15 +1,13 @@
 {{ config(materialized='table') }}
 -- Every point step_dem_sampling asks the DEM about, in the order today's
--- exporters ask (EL06 of pipeline/ELT.md's ledger): the A.T.'s walk first,
+-- exporters ask: the A.T.'s walk first,
 -- every sample of it, then each junction-graph edge by its place in
 -- trail_graph.json (edge_index), each edge's samples from its start.
 --
--- THE ORDER DECIDES NO ANSWER. Since decision 115 the sampler's cache keys
+-- THE ORDER DECIDES NO ANSWER. The sampler's cache keys
 -- each point on its exact coordinates (export_elevation.SAMPLE_CACHE_KEYS),
--- so every point is answered at its own pixel whoever asked first. Until
--- then a 6-decimal key gave a point the pixel of whichever point within
--- about 0.11 m was asked first, and this order was what made the dbt lane's
--- first asker today's. ask_order stays the order step_dem_sampling reads
+-- so every point is answered at its own pixel whoever asked first. ask_order
+-- stays the order step_dem_sampling reads
 -- the rows in, so the same rows ask the same questions in the same order
 -- and a cold run writes the same cache file.
 --

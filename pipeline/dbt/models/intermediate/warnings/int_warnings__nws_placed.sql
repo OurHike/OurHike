@@ -1,4 +1,4 @@
--- Where each relayed NWS alert lands on the weather squares (WN03):
+-- Where each relayed NWS alert lands on the weather squares:
 -- export_weather_alerts.py's bake() and lib/nbm_grid.py's overlapping(), in
 -- SQL. One row per relayed alert, with the trail squares it reaches; one that
 -- reaches none is kept here with `reaches_trail` false, and

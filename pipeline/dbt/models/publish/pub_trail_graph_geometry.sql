@@ -1,6 +1,6 @@
 {{ config(format='json_document', location='trail_graph_geometry.json') }}
 -- trail_graph_geometry.json, the geometry half of the junction graph, in the
--- shape build_trail_graph.py's write_artifact() writes (decision 44's v1): a
+-- shape build_trail_graph.py's write_artifact() writes (the v1): a
 -- bare array, one entry per edge in edge_index order, each the edge's
 -- vertices as [lon, lat] pairs at 6 decimals, from its `from` node to its
 -- `to`. INDEX-ALIGNED with trail_graph.json's `edges`, because both are read
@@ -23,4 +23,4 @@ select
         ),
         '[]'
     ) as geometry_json
-from {{ ref('trail_network') }}
+from {{ ref('trail_network', v=1) }}

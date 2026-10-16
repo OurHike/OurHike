@@ -1,5 +1,5 @@
 {{ config(materialized='table') }}
--- The A.T.'s published lines at the 1 m pass (TL15),
+-- The A.T.'s published lines at the 1 m pass,
 -- export_trails.simplify_records(), by the simplified_in_metres macro: each
 -- line taken to EPSG:5070, where a metre is a metre on both axes,
 -- Douglas-Peucker'd at trail_lines_simplify_tolerance_m (1 m; that

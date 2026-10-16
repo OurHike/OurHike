@@ -1,5 +1,5 @@
 -- A CLUB NOTICE SOURCE WHOSE RAW TABLE IS ABSENT IS HELD, WITH A REASON
--- (decision 61; pipeline/ELT.md, Phase F, "What this does not settle"). The
+-- (pipeline/ELT.md, Phase F, "What this does not settle"). The
 -- hourly warehouse can lack a notices table: one still waiting its turn in
 -- the 4-hourly notices legs (a table with no hints is never created empty),
 -- one the served copy of the notices store left out, or every one when the
@@ -22,7 +22,7 @@
 -- raw_trustees__trustees_hunting_designations).
 -- tests/test_dbt_notice_tables_absent_builds.py builds with every one gone.
 --
--- An error in every environment (decision 208, the maintainer's poll of
+-- An error in every environment (the maintainer's poll of
 -- 2026-10-15, "Hold at last good copy"), as every test of int_closures__gate
 -- is but two: a gate that passes a source with no raw table would publish it
 -- as having no notices, so in production and UA a failure holds all nine

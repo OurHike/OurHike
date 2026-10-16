@@ -1,5 +1,5 @@
 -- The network lines an organization's own notice closes by naming their
--- section (decisions 212 and 213): step_section_closures's table
+-- section: step_section_closures's table
 -- (pipeline/step_section_closures.py), staged like any table a source lands.
 -- int_trail_lines__network_section_closures closes them.
 --

@@ -1,4 +1,4 @@
-"""One failing test, built as CI builds it and as production does: decision 204 on a real dbt build.
+"""One failing test, built as CI builds it and as production does: both thresholds on a real dbt build.
 
 The maintainer, 2026-10-15: "Every test should have both the warning and error thresholds. If an error like
 freshness would prevent building the model, then that should be enabled/disabled based on the environment. prod

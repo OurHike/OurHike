@@ -1,5 +1,5 @@
--- NYNJTC's Trail Alerts posts (extract/nynjtc/closures.py), keyed (decision
--- 40), with nothing filtered and nothing joined. Reading a post is the
+-- NYNJTC's Trail Alerts posts (extract/nynjtc/closures.py), keyed, with
+-- nothing filtered and nothing joined. Reading a post is the
 -- work of int_closures__nynjtc_checked, which does what lib/nynjtc_alerts.py's
 -- parse_alert() does: unescape the title, resolve the place-term ids.
 --
@@ -9,7 +9,7 @@
 -- (lib/nynjtc_alerts.py's ParsedAlert: NYNJTC edits alerts in place).
 -- WordPress writes it site-local with no offset, and dlt read it as UTC,
 -- which is what lib/nynjtc_alerts.py's _as_utc_stamp() does with it too:
--- the same known error of a few hours, carried rather than hidden (WN08).
+-- the same known error of a few hours, carried rather than hidden.
 --
 -- Key: the post's WordPress id.
 with source as (

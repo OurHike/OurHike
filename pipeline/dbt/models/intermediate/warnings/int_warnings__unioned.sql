@@ -1,7 +1,7 @@
 -- The warnings that are not notices a club files under closures (pipeline/
--- ELT.md's warnings mart, decision 2): NWS's relayed alerts, OurHike's
+-- ELT.md's warnings mart): NWS's relayed alerts, OurHike's
 -- serious reports, and every club's notice its club files under warnings
--- (int_closures__club_notices, decision 53's phase C), one row each, by
+-- (int_closures__club_notices), one row each, by
 -- name, nothing filtered. The warnings mart adds the notices
 -- int_closures__unioned holds that do not block the trail.
 -- No hazard POI branch: ELT.md's ledger, "No hazard POI exists to port".
@@ -27,7 +27,7 @@ select * from reports
 union all by name
 
 -- A club's warnings.py notice whose own words close the trail is a closure
--- (decision 213, rule 8) and int_closures__unioned's, so `obstructs_trail` is
+-- (rule 8) and int_closures__unioned's, so `obstructs_trail` is
 -- null on every one here, and the warnings mart reads it as not reviewed.
 -- `notice_held_because` is set where it may not publish as current;
 -- int_warnings__final leaves such a row out.

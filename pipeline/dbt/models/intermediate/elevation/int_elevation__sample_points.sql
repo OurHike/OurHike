@@ -1,7 +1,7 @@
 {{ config(materialized='table') }}
 -- Where the A.T. elevation profile reads the DEM: one row per 25 m sample
 -- along the mile axis, in the order the walk meets them, with the published
--- mile of each. EL05 of pipeline/ELT.md's ledger, the SQL form of
+-- mile of each. The SQL form of
 -- export_elevation.sample_points_along_parts and the mile half of
 -- build_profile's loop. step_dem_sampling (pipeline/step_dem_sampling.py)
 -- reads every row of this model and writes the DEM's answer at each point to
@@ -62,7 +62,7 @@
 -- int_elevation__profile casts it.
 --
 -- THE KEY, sample_point_key, is dbt_utils.generate_surrogate_key over
--- (line_id, sample_index), the walk position (decision 197: every model has
+-- (line_id, sample_index), the walk position (every model has
 -- one column that is unique and not null).
 with recursive pieces as (
     select

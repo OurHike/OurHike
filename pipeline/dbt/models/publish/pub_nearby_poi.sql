@@ -12,7 +12,7 @@
 -- section_mile, placement, source_url, and position_error_m,
 -- off_trail_miles and water_reliability where the record has them. A
 -- plumbed tap or fountain whose layer records no shutoff season carries
--- `water_caution` 'no_shutoff_season' (decision 65), which the waypoint card
+-- `water_caution` 'no_shutoff_season', which the waypoint card
 -- reads; no other POI carries the member at all.
 with pois as (
     select * from {{ ref('points_of_interest', v=1) }}

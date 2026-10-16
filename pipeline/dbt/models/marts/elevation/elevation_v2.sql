@@ -1,4 +1,4 @@
--- The elevation mart's v2 (decision 44), for the packed
+-- The elevation mart's v2, for the packed
 -- elevation_profile.json that pub_elevation_profile_v2 writes at
 -- v2/elevation_profile.json (pipeline/ELT.md, "Making the download
 -- smaller", tier (a): "columnar delta-coded integers"). The same rows as v1,
@@ -28,7 +28,7 @@ with v1 as (
 )
 
 select
-    -- v1's key, the same row's (decision 197).
+    -- v1's key, the same row's.
     line_sample_key,
     line_id,
     seq,
@@ -40,7 +40,7 @@ select
     club,
     source_key,
     _loaded_at,
-    -- v1's row dates (decision 57): v2's rows are v1's, printed for v2's
+    -- v1's row dates: v2's rows are v1's, printed for v2's
     -- files, so a change to a v1 column v2 drops moves them too.
     _first_seen_at,
     _changed_at

@@ -18,12 +18,12 @@ clean-targets: [target, dbt_packages]
 models:
   ourhike:
     staging:
-      # Renames, casts, the key and the dedupe only (decision 40), as views.
+      # Renames, casts, the key and the dedupe only, as views.
       # No staging model joins another relation: counted 2026-10-09, 64 stg_
       # models union several base models and every other one reads a single
-      # relation. Decision 40 moved stg_opentrail__waypoints's seed
-      # lookup, once the sanctioned exception, to
-      # int_points_of_interest__classified. Seven base models are tables by
+      # relation. stg_opentrail__waypoints's seed lookup lives in
+      # int_points_of_interest__classified, so staging joins nothing. Seven base models are tables
+      # by
       # their own config: generate_notice_models.py's TABLE_BASES,
       # base_ourhike__disputes, base_ourhike__notes, and since 2026-10-11 the
       # one steward's areas layer the same generator stages
@@ -52,7 +52,7 @@ models:
       # would otherwise write its file before the tests upstream of it fail.
       +materialized: phone_file
       +schema: publish
-  # Elementary's own tables (decision 102), in a schema of their own. Off
+  # Elementary's own tables, in a schema of their own. Off
   # unless OURHIKE_ELEMENTARY is `true`, which only build_marts.py sets, so
   # the docs site, the evaluator and the pytest suites' builds never carry
   # its 30 models (Reasoned: a disabled model is no node of the manifest).
@@ -70,9 +70,8 @@ models:
     +schema: elementary
     +enabled: "{{ env_var('OURHIKE_ELEMENTARY', 'false') == 'true' }}"
 
-# The row-history snapshots, one per mart (macros/row_history.sql):
-# decision 57, which amends decision 52, puts them in the intermediate layer,
-# so they build into the `intermediate` schema as int_<mart>__history. Each
+# The row-history snapshots, one per mart (macros/row_history.sql), in the
+# intermediate layer, so they build into the `intermediate` schema as int_<mart>__history. Each
 # holds the mart's whole row and `_row_hash`, so `check` on that one column
 # opens a new version exactly when the hash moves, and `invalidate` sets
 # dbt_valid_to on a key that leaves the mart, keeping its last content.
@@ -111,7 +110,7 @@ seeds:
 # Not a global --warn-error, which would also escalate dbt's deprecation
 # warnings and every deliberate `warn`, such as source freshness.
 #
-# EVERY TEST'S TWO THRESHOLDS, AND WHO STOPS ON AN ERROR (decision 204, the
+# EVERY TEST'S TWO THRESHOLDS, AND WHO STOPS ON AN ERROR (the
 # maintainer, 2026-10-15: "Every test should have both the warning and error
 # thresholds. If an error like freshness would prevent building the model,
 # then that should be enabled/disabled based on the environment. prod
@@ -135,14 +134,14 @@ seeds:
 #   run_results.json; under warn, error_if is not evaluated.
 # - The pub_ writers' tests stay errors everywhere (`publish:` below): a
 #   writer is built before its tests run, and a failure removes that one
-#   phone file, which keeps the bucket's last copy (decision 81), where the
+#   phone file, which keeps the bucket's last copy, where the
 #   switch would publish it.
 # - So do the tests outside publish/ whose own YAML or config() sets
 #   `severity: error`: 40 YAML entries and 15 singular tests (counted
-#   2026-10-15 with decision 208 built: YAML tests under models/, seeds/ and
+#   2026-10-15: YAML tests under models/, seeds/ and
 #   snapshots/ but models/publish/, Elementary's checks left out, and
-#   tests/singular/ files whose config() says so; 30 and 14 before it added
-#   10 and 1), most of them the invariants a hiker's safety turns on
+#   tests/singular/ files whose config() says so), most of them the invariants a hiker's safety
+#   turns on
 #   in the points_of_interest, places, trail_lines and elevation marts (a
 #   mile only on the A.T., a capacity absent or at least 1, a water
 #   distance never without its source) and the tests of the conditions
@@ -157,17 +156,17 @@ seeds:
 #   points of interest (out of water), elevation (whether a hiker beats the
 #   dark), and the trail lines and network (lost), CLAUDE.md's four harms.
 #   That is the maintainer's "the safety writers get tests of their own"
-#   (decision 204's poll, "Build as proposed"), built as gates rather than as
+#   (the poll, "Build as proposed"), built as gates rather than as
 #   tests of the writers' JSON: the switch lets a failing test publish what
 #   is below it, and below these marts are phone files whose values a
 #   hiker's safety turns on, so a failure here holds those files at their
 #   last good copy (build_marts.py) and every other file publishes. A test
-#   there that holds a source (decision 81's region tests) keeps the switch
+#   there that holds a source (the region tests) keeps the switch
 #   in its own YAML, as its hold needs a warning. Counted 2026-10-15: 13
 #   singular tests read those marts at zero tolerance, each gated in its own
 #   config().
 # - So do the tests of int_closures__gate and int_closures__nynjtc_checked
-#   (decision 208, the maintainer's poll of 2026-10-15, "Hold at last good
+#   (the maintainer's poll of 2026-10-15, "Hold at last good
 #   copy"), each in its own YAML or config(), since a gate on
 #   intermediate/closures/ here would also catch models no writer reads.
 #   Nine hourly writers sit below the gate, seven reading it and two
@@ -210,7 +209,7 @@ data_tests:
 vars:
   # Elementary keeps up to 5 failing rows per test by default (0.26.0's
   # get_config_var.sql); none here, because the hourly lane carries hikers'
-  # own reports and no row ever leaves the warehouse (decision 102). It limits
+  # own reports and no row ever leaves the warehouse. It limits
   # a dbt test's failing rows alone (handle_dbt_test()): an anomaly check
   # stores its scored buckets whatever it says (store_anomaly_test_results()),
   # and did at 0 (measured 2026-10-08 in a scratch project on dbt 2.0.6). On
@@ -227,15 +226,16 @@ vars:
   # here the hook skips it: one `dbt seed` against the fixture warehouse spent
   # 17.07 s in the hook with it and 0.22 s without (measured 2026-10-08), and
   # a fixture build runs 16 dbt commands, Elementary's checks pass among them
-  # (18 at 3133c11a and 19 since decision 203's freshness run, counted
-  # 2026-10-15 in two fixture builds' logs). The hook still writes a `dbt source freshness` run's results with
+  # (18 at 3133c11a and 19 since the freshness run, counted
+  # 2026-10-15 in two fixture builds' logs). The hook still writes a `dbt source freshness` run's
+  # results with
   # this set, a row a source into dbt_source_freshness_results, with
   # max_loaded_at_time_ago_in_s left null (measured 2026-10-15 on dbt 2.0.6
   # and Elementary 0.26.0): macros/data_quality.sql counts those rows as each
-  # source's freshness (decision 203) and works the age out itself.
+  # source's freshness and works the age out itself.
   disable_dbt_artifacts_autoupload: true
   # ELEMENTARY'S TRAINING AND DETECTION, which every check's warning rests on
-  # (decision 102): 0.26.0's own defaults (get_config_var.sql), written here
+  # 0.26.0's own defaults (get_config_var.sql), written here
   # so they are read in one place. Each is @unvalidated, a default and not a
   # finding, settled by counting each lane's false alarms over the first
   # season (pipeline/ELT.md, "Memory between runs").
@@ -268,7 +268,7 @@ vars:
   days_back: 14
   backfill_days: 2
   anomaly_sensitivity: 3
-  # ELEMENTARY'S CHECKS' TWO THRESHOLDS (decision 204), the `fail_calc` of
+  # ELEMENTARY'S CHECKS' TWO THRESHOLDS, the `fail_calc` of
   # every check, written here once because a YAML config renders var() and no
   # project macro (make_dbt_staging.py's ELEMENTARY_ANOMALY_LEVEL says what
   # each level is and what it was measured on). With `warn_if: ">0"` and
@@ -297,7 +297,7 @@ vars:
 
   # lib/podcasts.py's two scalar rules, read by int_podcasts__checked.
   # tests/test_dbt_podcasts_parity.py holds them to the Python constants
-  # until stage 5 of #1793 deletes the Python, when these become the one home.
+  # until the Python is deleted, when these become the one home.
   podcast_spotify_id_pattern: "^[0-9A-Za-z]{22}$"
   podcast_max_at_mile: 2300
 
@@ -329,11 +329,11 @@ vars:
     - Relocation
     - Water
   # The app's own host, which macros/link_into_the_app.sql refuses a link to
-  # (decision 94). site/CNAME is its one home, the hostname GitHub Pages
+  # site/CNAME is its one home, the hostname GitHub Pages
   # serves the app at; .github/tests/test_pages_publish.py holds this to it.
   app_host: ourhike.org
   # lib/work_projects.py's TRAIL_MILE_MIN and TRAIL_MILE_MAX, which
-  # int_closures__work_projects_checked holds a workday's mile to (CL17),
+  # int_closures__work_projects_checked holds a workday's mile to,
   # held to the Python by tests/test_dbt_conditions_parity.py. That module
   # calls them lib/atc_updates.py's extent, whose minimum is 0.5 (ATC's
   # half-mile markers); 0.0 is kept here as the Python has it, and the
@@ -341,7 +341,7 @@ vars:
   work_project_mile_min: 0.0
   work_project_mile_max: 2197.5
   # NOAA's NBM CONUS grid, lib/nbm_grid.py's pinned constants, which
-  # int_warnings__nws_alert_shapes places NWS alerts on (WN03), held to that
+  # int_warnings__nws_alert_shapes places NWS alerts on, held to that
   # module by tests/test_dbt_conditions_parity.py. Read off a live NBM v5.0
   # GeoTIFF on 2026-09-24 (that module's docstring); `+R=6371200` is the
   # sphere GRIB's shape-of-the-earth code 6 means, as NBM is not on WGS84.
@@ -349,10 +349,10 @@ vars:
   nbm_grid_origin_x: -3272421.4573371694
   nbm_grid_origin_y: 3790842.106035436
   nbm_grid_square_m: 2539.703
-  # The trail_lines network's constants (tl-net), read by the
+  # The trail_lines network's constants, read by the
   # int_trail_lines__network_* models and held to the Python's own by
-  # tests/test_dbt_trail_lines_network_parity.py until stage 5 of #1793
-  # deletes the Python: export_trails.py's DEFAULT_SIMPLIFY_TOLERANCE_M and
+  # tests/test_dbt_trail_lines_network_parity.py until the Python is deleted: export_trails.py's
+  # DEFAULT_SIMPLIFY_TOLERANCE_M and
   # OVERVIEW_SIMPLIFY_TOLERANCE_M, lib/duplicates.py's two, and
   # export_nearby_trails.py's others under their own names. Each one's
   # evidence is beside it in the Python.
@@ -367,7 +367,7 @@ vars:
   trail_lines_network_overview_min_feature_m: 1873.7331444281513
   trail_lines_network_overview_seam_tolerance_m: 936.8665722140756
   trail_lines_network_overview_seam_decimals: 3
-  # Decision 213, rule 6 (the maintainer's poll of 2026-10-15, "Only inside
+  # Rule 6 (the maintainer's poll of 2026-10-15, "Only inside
   # closes"): when an area is closed, a trail stretch the cut finds inside it
   # closes only if it reaches more than this far in from the area's outline.
   # One lying wholly within it, along the edge, stays open. Read by both cuts
@@ -384,10 +384,10 @@ vars:
   # 3,554.09 miles; int_closures__area_trail_cuts' header has how).
   area_closure_edge_m: 2.0
 
-  # The trail_lines family (stage 3 of #1793). First, export_elevation.py's
+  # The trail_lines family. First, export_elevation.py's
   # marker calibration of the A.T. mile axis, read by the
   # int_trail_lines__mile_axis_* models and held to the Python constants by
-  # tests/test_dbt_trail_lines_parity.py until stage 5 deletes the Python,
+  # tests/test_dbt_trail_lines_parity.py until the Python is deleted,
   # when these become the one home.
   #
   # SPRINGER_LONLAT and KATAHDIN_LONLAT: the straight axis the merged pieces
@@ -409,15 +409,15 @@ vars:
   mile_axis_holdout_max_p95_mi: 0.25
   mile_axis_holdout_max_mi: 1.0
 
-  # points_of_interest (#1793, stage 3): the constants the POI rules read,
+  # points_of_interest: the constants the POI rules read,
   # each the Python's own, held to it by
-  # tests/test_dbt_points_of_interest_parity.py until stage 5 deletes the
-  # Python and these become the one home. The measurement behind each is on
+  # tests/test_dbt_points_of_interest_parity.py until the Python is deleted and these become the
+  # one home. The measurement behind each is on
   # the Python constant it names.
   poi_corridor_buffer_miles: 30            # lib/corridor.py BUFFER_MILES
   poi_metres_per_degree: 111320.0          # lib/spurs.py METERS_PER_DEGREE, distance_m()'s scale
   poi_metres_per_foot: 0.3048              # export_poi.py M_PER_FT
-  # Decision 76's state shapes (int_closures__notice_state_shapes, published
+  # The state shapes (int_closures__notice_state_shapes, published
   # as conditions/notice_states.json): how far Douglas-Peucker may move a
   # state's edge, and how far inside its shape a route's vertex must be
   # before the phone counts it as in that state. The model's header has the
@@ -425,14 +425,14 @@ vars:
   # this is its one home.
   notice_state_simplify_tolerance_m: 250.0
   notice_state_edge_margin_m: 500.0
-  # Decision 77 (the maintainer's poll, 2026-10-05: "Grow and simplify areas
-  # at 100 m"): how far conditions/notices.json's areas are grown outward,
+  # The maintainer's poll, 2026-10-05: "Grow and simplify areas at 100 m": how far
+  # conditions/notices.json's areas are grown outward,
   # and then how far the simplifier may move their edges
   # (macros/notice_phone_geometry.sql). The maintainer's number, chosen for
   # the file's size. pipeline/ELT.md's row 77 measured soak run 536's file,
   # 24,966,662 bytes and 6,203,870 gzipped at 10 m, at 9,706,068 and
   # 1,692,475 re-simplified at 100 m, its lines at 100 m too. With the lines
-  # left at 10 m, as decision 77 has them, UA's file of 2026-10-05
+  # left at 10 m, UA's file of 2026-10-05
   # (24,966,875 bytes) came to 10,832,088 and 2,008,557 gzipped (measured;
   # pub_conditions_notices' header has how).
   notice_area_m: 100.0
@@ -461,12 +461,12 @@ vars:
   # (`_changed_at`, and when a key leaves), never a number picked by hand for
   # one source or one closure.
   notice_freshness_limit_days: 90
-  # Decision 213, rule 9 (the maintainer's poll of 2026-10-15, "Hold until a
+  # Rule 9 (the maintainer's poll of 2026-10-15, "Hold until a
   # month before"): a recurring season a source states in words
   # (int_closures__club_notices' rule 1, macros/notice_season.sql) publishes
   # only from this many days before its `starts_on`, for every source with a
   # season field; a notice that states no season is not held for its start
-  # (decision 167). @unvalidated: the maintainer's number, not a measurement.
+  # @unvalidated: the maintainer's number, not a measurement.
   # What would settle it is how far ahead hikers plan the trips a seasonal
   # closure would change, which nothing records.
   notice_season_lead_days: 30
@@ -490,7 +490,7 @@ vars:
   # export_nearby_poi.py's NETWORK_RING_EXEMPT_TYPES: the types the ring
   # never drops, because a hiker drives to them.
   poi_network_ring_exempt_types: ['parking', 'trailhead']
-  # Decision 195, "A pin claims no more than its steward" (the maintainer's
+  # "A pin claims no more than its steward" (the maintainer's
   # poll of 2026-10-14): a point of these types that its steward's own public
   # flag does not show is held (int_points_of_interest__publishable), where a
   # layer whose flag sets confidence keeps its other types at low. Water
@@ -535,7 +535,7 @@ vars:
     - '\bnot\s+(?:on|in)\b[^.;]{0,30}\blist\b'
     - '\bneed\s+to\s+determine\b'
     - '\bsocked\b'
-  # OSM water's reach (PO06) and dedupe (PO09), each the Python's constant:
+  # OSM water's reach and dedupe, each the Python's constant:
   # the radius is fetch_trail_water.py's, which build_osm_water_reach.py
   # imports so both water gates move together; the ceiling is a reporting
   # limit and the range join's radius, not a gate.
@@ -585,7 +585,7 @@ vars:
   # TRAIL_MILE_DECIMALS: matches every POI's `mile` and the elevation
   # profile's distance_mi, digit for digit.
   trail_lines_mile_decimals: 3
-  # Decision 8's six decimals for trails.geojson, which
+  # The six decimals for trails.geojson, which
   # export_nearby_trails.py's NEARBY_COORDINATE_DECIMALS already cuts the
   # network's lines to.
   trail_lines_published_decimals: 6
@@ -619,10 +619,10 @@ vars:
   trail_lines_club_milepost_half_width_mi: 0.25
   trail_lines_club_springer_mile: 0.0
 
-  # The elevation family, the A.T. half (stage 3 of #1793):
+  # The elevation family, the A.T. half:
   # export_elevation.py's two constants, read by int_elevation__sample_points
   # and int_elevation__profile and held to the Python by
-  # tests/test_dbt_elevation_parity.py until stage 5 deletes the Python.
+  # tests/test_dbt_elevation_parity.py until the Python is deleted.
   #
   # SAMPLE_INTERVAL_METERS: one DEM read every 25 m of trail. Kept, not
   # thinned: thinning to 50 m cut the measured 520,757 ft of total gain by
@@ -632,7 +632,7 @@ vars:
   # METERS_PER_FOOT, the international foot: a DEM metre over this is a foot.
   elevation_metres_per_foot: 0.3048
   # The largest share of the A.T. profile's samples that may have no height
-  # (decision 194, the maintainer's poll of 2026-10-14, "Toward caution"):
+  # (the maintainer's poll of 2026-10-14, "Toward caution"):
   # above it, the error-level test on pub_elevation_profile and on
   # pub_elevation_profile_v2 fails each writer, so the bucket's last good
   # copy stays (_publish__elevation.yml says how). 0.01 is 1%. @unvalidated:
@@ -647,14 +647,14 @@ vars:
   elevation_profile_max_null_share: "{{ env_var('OURHIKE_ELEVATION_PROFILE_MAX_NULL_SHARE', '0.01') }}"
   # The places family (pl), read by int_places__resolved and the pub_places
   # writer, and held to export_places.py's PLACE_TRAIL_RADIUS_MILES by
-  # tests/test_dbt_places_parity.py until stage 5 of #1793 deletes the
-  # Python. @unvalidated, as the Python says: five miles is a round number
+  # tests/test_dbt_places_parity.py until the Python is deleted. @unvalidated, as the Python says:
+  # five miles is a round number
   # chosen so a Community at the foot of a ridge counts the trail on the
   # ridge, and what would settle it is the median distance from a published
   # trailhead or Community to its nearest published line, measurable from
   # the same two tables int_places__resolved joins. places.json prints it as
   # `trailRadiusMiles`, so a screen says what was measured rather than
-  # "nearby". The long-trail threshold is TL12's,
+  # "nearby". The long-trail threshold is
   # trail_lines_network_named_trail_threshold_miles above.
   places_trail_radius_miles: 5.0
   # The most vertices one piece of a park polygon holds when
@@ -671,10 +671,8 @@ vars:
 
   # The suggested_hikes family (sh), read by the int_suggested_hikes__ models
   # and the pub_suggested_hikes and pub_highlights writers, and held to the
-  # Python by tests/test_dbt_suggested_hikes_parity.py until stage 5 of #1793
-  # — Rebuild the data platform as dlt → dbt: seven contracted marts, a
-  # monthly refresh, published docs, and lighter phone downloads — deletes
-  # it. Each is export_suggested_hikes.py's, lib/hike_route_builder.py's,
+  # Python by tests/test_dbt_suggested_hikes_parity.py until the cutover deletes it. Each is
+  # export_suggested_hikes.py's, lib/hike_route_builder.py's,
   # lib/trail_graph_route.py's or lib/highlights.py's constant under its own
   # name, and its evidence is beside it there: every grading band is
   # @unvalidated or calibrated against the 113 published tracks, as its own
@@ -712,8 +710,8 @@ vars:
 
   # The challenges family (ch): lib/challenges.py's and export_challenges.py's
   # constants, read by the int_challenges__ models and held to the Python's
-  # own by tests/test_dbt_challenges_parity.py until stage 5 of #1793 deletes
-  # the Python. Lists keep the Python's order, because a refusal message
+  # own by tests/test_dbt_challenges_parity.py until the Python is deleted. Lists keep the Python's
+  # order, because a refusal message
   # prints them in it.
   challenges_match_kinds:
     - place
@@ -768,20 +766,17 @@ vars:
     - parking
     - privy
     - trailhead
-  # The day mystery titles are sealed against (CH07): a title ships as
+  # The day mystery titles are sealed against: a title ships as
   # sealed_title through its reveal_on, and in the clear from the next day.
   # Unset, it is the build's UTC date, as export_challenges.main() defaults
   # `today`; a run that must reproduce a file sets it, `--vars
   # '{challenges_build_date: 2027-07-20}'`, and the unit tests set it.
   challenges_build_date: null
 
-  # The trail_network family (tl-net), the junction graph a day hike routes
+  # The trail_network family, the junction graph a day hike routes
   # over: build_trail_graph.py's constants, read by the int_trail_network__
   # models and held to the Python's own by
-  # tests/test_dbt_trail_network_parity.py until stage 5 of #1793 — Rebuild
-  # the data platform as dlt → dbt: seven contracted marts, a monthly
-  # refresh, published docs, and lighter phone downloads — deletes the
-  # Python.
+  # tests/test_dbt_trail_network_parity.py until the cutover deletes the Python.
   #
   # AT_GRAPH_SOURCES: the trails.geojson sources that become edges, the
   # centerline and the blue-blazed side trails; road approaches and anything
@@ -858,7 +853,7 @@ vars:
     # not_null constraint for the second, enforced contract or not (its
     # "mixed method", int_model_test_summary.sql and base_node_columns.sql,
     # 1.4.0). Its default also counts dbt_utils.unique_combination_of_columns,
-    # which decision 197 does not: the maintainer, 2026-10-15, "Every dbt
+    # which the one-key rule does not: the maintainer, 2026-10-15, "Every dbt
     # model should have a unique id that is unique and not null", and of a
     # key over several columns, "Multi column is fine if it is based on the
     # dbt generate surrogate key macro". The evaluator reads neither a test's

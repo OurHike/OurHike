@@ -5,7 +5,7 @@ models:
     data_tests:
       # Warns when the dedupe dropped any row, each an exact copy
       # (duplicates_are_exact on the raw table), and is an error once the
-      # copies are half the raw table (decision 204, the generic test's).
+      # copies are half the raw table (the generic test's).
       - equal_rowcount_to_raw:
           arguments:
             compare_model: source('opentrail', 'raw_opentrail__at')
@@ -13,12 +13,11 @@ models:
       opentrail waypoints, one row per waypoint, keyed and deduplicated, with
       every column the extract lands. What a waypoint is (its poi_type and
       confidence, from its `icon` through the poi_type_mapping seed) is
-      int_points_of_interest__classified's to say: decision 40 moved the seed
-      join out of staging.
+      int_points_of_interest__classified's to say: staging joins nothing.
     columns:
       - name: poi_key
         description: >
-          The row's key (decision 40): dbt_utils.generate_surrogate_key over
+          The row's key: dbt_utils.generate_surrogate_key over
           opentrail_at, dbid,
           the registry key first and then the columns measured unique for
           this layer.

@@ -1,5 +1,5 @@
 -- The vertical step at every junction two or more edge-ends meet at: one row
--- per such node. EL13 of pipeline/ELT.md's ledger, the per-node half of
+-- per such node. The per-node half of
 -- export_network_profile.measure_seams; int_elevation__seam_measurement
 -- sums it into the numbers trail_graph_profile_manifest.json reports.
 --

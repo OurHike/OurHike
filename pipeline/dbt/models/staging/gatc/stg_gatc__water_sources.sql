@@ -1,7 +1,7 @@
 -- GATC's water list, one row per source it prints, renamed for
 -- int_points_of_interest__gatc_water: the mile, the entry, which list it is
 -- in, and the document's own dates out of its manifest. Nothing filtered and
--- nothing placed (decision 40; the review gate is the intermediate's).
+-- nothing placed (the review gate is the intermediate's).
 --
 -- `entry` is GATC's "Source Name" and "Distance Off AT" columns as the PDF's
 -- text layer fuses them, kept whole: lib/club_pdfs.py measured that the

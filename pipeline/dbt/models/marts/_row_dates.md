@@ -20,7 +20,7 @@ start. Null only in a build whose history could not be restored.
 {% enddocs %}
 
 {% docs row_history_snapshot %}
-The mart's row history (decision 57): every version of every row of
+The mart's row history: every version of every row of
 int_<mart>__final, whole, with `_row_hash` (what the check strategy
 compares), `_built_by` (the commit and workflow run that wrote the version,
 never hashed) and dbt's validity columns. A row that leaves the mart keeps

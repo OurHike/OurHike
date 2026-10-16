@@ -1,5 +1,5 @@
 -- reference/challenges/publishers.json, row by row, through
--- export_challenges.py's publisher_scope() (CH02): which organizations may
+-- export_challenges.py's publisher_scope(): which organizations may
 -- put a challenge on which trails, and why each row that may not was
 -- refused. One row per row of the file, in its order. A row that is
 -- `accepted` is the organization's scope; its trails are checked one by one

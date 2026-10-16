@@ -1,10 +1,6 @@
 -- The Long Path's segments - the first trail in this warehouse that is not
--- the A.T., and the model Phase D exists to make ordinary (#100). `geom` is
--- carried for int_trail_lines__network_unioned, which publishes these lines
--- from stage 3 of #1793 — Rebuild the data platform as dlt → dbt: seven
--- contracted marts, a monthly refresh, published docs, and lighter phone
--- downloads. Until then this model was attributes only, and the lines
--- stayed in the Python spatial scripts.
+-- the A.T. (#100). `geom` is
+-- carried for int_trail_lines__network_unioned, which publishes these lines.
 --
 -- 43 polyline segments, measured live 2026-08-24 - the same count and the
 -- same field list the survey read on 2026-08-18, so the shelf has not moved
@@ -21,9 +17,9 @@
 -- UA's release 2026-10-03-2, which it built, holds exactly the 43 live
 -- FIDs (read 2026-10-09). int_trail_lines__network_judged reads `fid` from
 -- this model and publishes the same id, so no line's id changes at cutover
--- (ELT.md, TL05).
+-- (ELT.md).
 --
--- FID IS NOT THE KEY. Decision 40 keys a row on current values and never
+-- FID IS NOT THE KEY. A row is keyed on current values and never
 -- on an object id alone, because a reload mints object ids again. Whether
 -- NYNJTC's seasonal republish in place keeps FIDs is @unvalidated: the live
 -- ids run from 1 to 85 over 43 rows (2026-10-09), which reads as features
@@ -43,7 +39,7 @@
 -- has already taken the word.
 with layer as (
     -- dlt lands geometry as GeoJSON text (extract/_kinds.py's JSON
-    -- hint); cast here, as decision 40 has staging do.
+    -- hint); cast here, as staging models do.
     --
     -- `rowid` is the row's place in the raw table, which extract/_warehouse.py
     -- fills in the order the layer's pages served the features: the order

@@ -1,4 +1,4 @@
--- Decision 7's split is a partition: every notice from a source that passed
+-- The split is a partition: every notice from a source that passed
 -- int_closures__gate and may publish lands in exactly one of the closures and
 -- warnings marts, by its `obstructs_trail` (true to closures; false and null
 -- to warnings, never dropped), and nothing else lands in either as a notice
@@ -8,12 +8,12 @@
 -- build's rows in either mart by design, and counting them here would fail
 -- the build for the very case the gate exists to contain. The test reads the
 -- union joined to the passing sources, not the whole union. What a held
--- source does land is its last good rows (int_closures__held_carried,
--- decision 53's phase D), each once, in the mart the history had it in, so
+-- source does land is its last good rows (int_closures__held_carried), each
+-- once, in the mart the history had it in, so
 -- those are counted as the window's carried rows are. Returns one row per
 -- notice that lands in no mart, in both, or in a mart it should not.
 --
--- THE CLUB NOTICES (decision 53, phase C) are counted as they land: a
+-- THE CLUB NOTICES are counted as they land: a
 -- closures-type one through int_closures__unioned like any notice, unless
 -- its own status or dates hold it back (`notice_held_because`: a status
 -- read as not current, or a rescinded order), which lands it in neither;
@@ -21,10 +21,10 @@
 -- warnings-type one through int_warnings__unioned, which only the warnings
 -- mart takes; and one a feed's window aged out
 -- (int_closures__window_carried) in the mart it was in.
--- A gate on a mart a hiker's safety reads (decision 204, dbt_project.yml's
+-- A gate on a mart a hiker's safety reads (dbt_project.yml's
 -- `marts:` gates): an error in every environment, so in production a
 -- failure holds the files below at their last good copy. It reads
--- int_closures__gate too, whose tests decision 208 gates the same way.
+-- int_closures__gate too, whose tests are gated the same way.
 {{ config(severity='error') }}
 with passing as (
     select gate.source_key

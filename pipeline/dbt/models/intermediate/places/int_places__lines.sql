@@ -1,9 +1,9 @@
 {{ config(materialized='table') }}
 -- The lines places.json measures, one row per published line:
--- export_places.py's load_lines() in SQL (PL06), with the name each line is
--- summed under for the long trails (PL07).
+-- export_places.py's load_lines() in SQL, with the name each line is
+-- summed under for the long trails.
 --
--- PL06, ONLY LINES THAT SHIP, PLUS THE A.T. load_lines() keeps a line from
+-- ONLY LINES THAT SHIP, PLUS THE A.T. load_lines() keeps a line from
 -- nearby_trails.geojson or trails.geojson only where its `source` is one of
 -- shipped_line_source_keys() (a network line source whose reaches_hikers is
 -- true) or `centerline`, so a park never prints miles of a line no phone
@@ -11,8 +11,8 @@
 -- are written from, and of those:
 -- - every `network` line (nearby_trails.geojson's), kept where its source may
 --   publish (int_sources__publication). The mart already holds a source that
---   may not publish out, so the join changes nothing today; it keeps PL06's
---   rule in this family, where its unit test is, should the mart ever carry
+--   may not publish out, so the join changes nothing today; it keeps the rule
+--   in this family, where its unit test is, should the mart ever carry
 --   a held-back line for review. may_publish equals reaches_hikers on all 64
 --   registered sources, measured 2026-10-02, and every network line comes
 --   from a network line source;
@@ -30,13 +30,13 @@
 -- maintainer's question (the places ledger rows in pipeline/ELT.md).
 --
 -- THE A.T. IS MEASURED AT SIX DECIMALS, the mart's geom_geojson, which is
--- the line trails.geojson draws once decision 8 cuts it, where
+-- the line trails.geojson draws once cut to six decimals, where
 -- export_places.py measures today's full-precision file. parity.py feeds the
 -- Python the cut file, as the trails family's parity does. Measured
 -- 2026-10-02 on 1,546 real places: the cut moves one lot's trailMiles by a
 -- tenth, 17.8 to 17.9, and nothing else.
 --
--- PL07's NAME. load_named_trails() sums the centerline under the one route
+-- the NAME. load_named_trails() sums the centerline under the one route
 -- name its source owns (`owns_route_names`, read through owned_route_names():
 -- the later registry entry wins a name two claim, and the first such name in
 -- the order the names were first claimed is the one used), because

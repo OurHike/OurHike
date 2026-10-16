@@ -1,38 +1,36 @@
 -- int_warnings__final: the warnings mart's rows before their row dates, every
--- contracted column but _first_seen_at and _changed_at. This is what
--- models/marts/warnings/warnings.sql held until decision 57;
+-- contracted column but _first_seen_at and _changed_at. The
 -- int_warnings__history snapshots it, and the mart reads that snapshot.
 --
 -- What a hiker should know that does not block the trail (pipeline/ELT.md,
--- "The eleven marts", decision 2): organization notices that do not
+-- "The eleven marts"): organization notices that do not
 -- obstruct it or that nobody has classified, NWS's relayed alerts, and
 -- OurHike's serious reports. No hazard POIs: ELT.md's warnings ledger, "No
 -- hazard POI exists to port". Every row's source may publish
 -- (int_sources__publication), and a notice's source passed
 -- int_closures__gate.
 --
--- DECISION 7'S SPLIT, WARNINGS' HALF: every notice whose `obstructs_trail` is
+-- THE SPLIT, WARNINGS' HALF: every notice whose `obstructs_trail` is
 -- false or null, never dropped. A null means nobody has classified it, so it
 -- reads `not_reviewed` whatever its source says, and is never drawn as a
 -- block. assert_every_notice_lands_in_exactly_one_of_closures_or_warnings
 -- holds the partition.
 --
 -- EVERY CLUB'S WARNINGS-TYPE NOTICES too (int_warnings__unioned's club
--- branch, decision 53's phase C), through the same gate and publication
+-- branch), through the same gate and publication
 -- check as the notices above. A club notice whose own status or category
 -- says it is not current, or an order its source says was rescinded, is left
 -- out, from either branch. One whose own end date has passed lands here,
--- kept and no longer closing the trail (the maintainer's frame A,
+-- kept and no longer closing the trail (the maintainer,
 -- 2026-10-10), and one whose own start is still ahead is published now
--- (frame B for wave 6's page 01, P3, 2026-10-11; int_closures__club_notices'
--- rules 1 and 2).
+-- (the maintainer, 2026-10-11; int_closures__club_notices' rules 1 and 2).
 --
 -- REBUILT WHOLE EACH RUN, as int_closures__final is, so a lifted notice
 -- leaves both, and both marts, in the same run.
 --
 -- A NOTICE SOURCE THE GATE HOLDS KEEPS ITS LAST GOOD ROWS, as
--- int_closures__final says (int_closures__held_carried, decision 53's phase
--- D). A closures-type club notice that does not close the trail lands here
+-- int_closures__final says (int_closures__held_carried). A closures-type club
+-- notice that does not close the trail lands here
 -- with its own geometry, as a warnings-type one does, so a phone can place it.
 with notices as (
     select * from {{ ref('int_closures__unioned') }}
@@ -106,7 +104,7 @@ org_notices as (
 ),
 
 -- A feed's notices that aged out of its window, never lifted by absence
--- (int_closures__window_carried, decision 53's phase C).
+-- (int_closures__window_carried).
 carried as (
     select
         carried.notice_id as warning_id,

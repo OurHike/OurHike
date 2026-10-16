@@ -1,7 +1,7 @@
 {{ config(materialized='table') }}
 -- How far ATC says water is from each A.T. shelter and campsite, and the
 -- water point export_poi.py synthesizes where that distance is all anyone
--- knows (PO14, PO15, PO16). One row per POI, plus one per synthesized water
+-- knows. One row per POI, plus one per synthesized water
 -- point.
 --
 -- The distance and its source travel together or not at all.

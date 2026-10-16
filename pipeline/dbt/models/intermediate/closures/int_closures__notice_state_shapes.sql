@@ -1,5 +1,5 @@
 {{ config(materialized='table') }}
--- The shape of every state a state-wide notice names (decision 76, the
+-- The shape of every state a state-wide notice names (the
 -- maintainer's poll of 2026-10-04): seeds/notice_states.csv's states, from
 -- the Census Bureau's TIGER/Line file (stg_census__states), simplified for a
 -- phone. pub_conditions_notice_states writes them to

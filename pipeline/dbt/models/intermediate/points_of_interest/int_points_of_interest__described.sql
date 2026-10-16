@@ -2,7 +2,7 @@
 -- Every published POI with its one-sentence `description`, or null where
 -- nothing usable is stated. One row per POI.
 --
--- A.T. POIs: lib/poi_description.py's describers (PO19), picked by poi_type
+-- A.T. POIs: lib/poi_description.py's describers, picked by poi_type
 -- as export_poi.py's DESCRIBERS does, built only from ATC's own inventory
 -- columns. A clause whose column is blank, or holds a code the
 -- poi_description_terms seed does not know, is dropped rather than guessed:
@@ -14,14 +14,14 @@
 -- and the osm_ CTEs' (describe_water()) for OSM water; opentrail's water
 -- composes nothing, in the Python either. Each sentence ends with ATC's
 -- own `Comments` as "ATC notes: ...", cleaned by lib/atc_notes.py's
--- clean_note() (PO20). A sentence that only repeats the card's type line
+-- clean_note(). A sentence that only repeats the card's type line
 -- ("Shelter.", "Privy.") becomes null.
 --
 -- Other organizations: export_nearby_poi.py's compose_description(), the
 -- asset (title-cased when written all in capitals) "in" the facility, or
 -- nothing without an asset; the Long Path guide's records carry their own
 -- sentence (the `guide` CTE). A club's sheet that dates itself (FMST's
--- trailheads, decision 72) says so instead: "From the club's sheet, which
+-- trailheads) says so instead: "From the club's sheet, which
 -- says it is current as of <its date>.", its date as the sheet writes it.
 {%- set p = 'noted.properties' -%}
 {%- set rounding = var('poi_vista_arc_rounding_degrees') %}
@@ -588,7 +588,7 @@ guide as (
 ),
 
 gatc as (
-    -- GATC's water list (decision 75): the sentence
+    -- GATC's water list: the sentence
     -- int_points_of_interest__gatc_water writes, which says the point is
     -- placed from GATC's mile and not surveyed, how far off it can be, and
     -- the document's own date and title; and the fields that say how it was
@@ -634,7 +634,7 @@ described as (
                                 end
                                 || coalesce(' in ' || facility, '')
                                 || '.'
-                        -- A club sheet's own date (decision 72): the cell
+                        -- A club sheet's own date: the cell
                         -- extract/_gis_files.py lands as `source_as_of`,
                         -- quoted as the sheet writes it and said to be the
                         -- sheet's claim, never OurHike's.

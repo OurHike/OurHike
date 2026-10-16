@@ -1,5 +1,5 @@
 -- The ATC's challenge files in the shape every club's challenges take
--- (stg_<club>__challenges, CH01): the folder that extracted them, the claim
+-- (stg_<club>__challenges): the folder that extracted them, the claim
 -- they were landed under, and the file's folder and name, which
 -- export_challenges.py checks against the file's own `org` and `id`.
 -- Renames only: the gate is int_challenges__files.

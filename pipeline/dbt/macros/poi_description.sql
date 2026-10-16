@@ -1,6 +1,6 @@
 {#-
     The pieces lib/poi_description.py composes an A.T. POI's one sentence
-    from (PO19), and lib/atc_notes.py's clean_note() (PO20), for
+    from, and lib/atc_notes.py's clean_note(), for
     int_points_of_interest__described. Each macro names the Python function
     it is, and reads the staged row's JSON (`properties`), where dlt's
     sql_ci_v1 naming has lower-cased ATC's field names: `Exterior_M` is

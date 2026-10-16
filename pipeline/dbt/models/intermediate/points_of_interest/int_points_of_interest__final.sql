@@ -1,7 +1,6 @@
 -- int_points_of_interest__final: the points of interest mart's rows before
 -- their row dates, every contracted column but _first_seen_at and _changed_at.
--- This is what models/marts/points_of_interest/points_of_interest.sql held
--- until decision 57; int_points_of_interest__history snapshots it, and the mart
+-- The int_points_of_interest__history snapshots it, and the mart
 -- reads that snapshot.
 --
 -- Every POI a phone is given, one row each, keyed by the id it publishes
@@ -28,7 +27,7 @@
 --   the phone prints its tilde from (42 of the 305 published distances are
 --   OSA_Field_Estimate);
 -- - `confidence` high or low on every live POI;
--- - `water_caution` only on low-confidence water (decision 65): a plumbed
+-- - `water_caution` only on low-confidence water: a plumbed
 --   tap or fountain whose layer records no shutoff season
 --   (int_points_of_interest__cautioned) ships low whatever its layer's
 --   own public flag says, and carries 'no_shutoff_season' unless the layer's
@@ -46,7 +45,7 @@
 -- re-derive it. `lat` and `lon` are the source's own doubles.
 --
 -- Described's rows arrive through int_points_of_interest__cautioned, which
--- carries every one of them and adds decision 65's caution.
+-- carries every one of them and adds the caution.
 with described as (
     select * from {{ ref('int_points_of_interest__cautioned') }}
 ),
@@ -87,7 +86,7 @@ live as (
         cast(miles.mile as double) as mile,
         described.not_on_at,
         -- Low on a plumbed tap, whatever its layer's own public flag rated
-        -- it (decision 65, int_points_of_interest__cautioned).
+        -- it (int_points_of_interest__cautioned).
         described.confidence,
         cast(described.capacity as integer) as capacity,
         cast(described.water_distance_ft as integer) as water_distance_ft,
@@ -198,7 +197,7 @@ select
     unioned.water_distance_source,
     unioned.description,
     unioned.nearby,
-    -- PO36: the Long Path guide's own fields, on its waypoints only.
+    -- The Long Path guide's own fields, on its waypoints only.
     unioned.lp_section,
     unioned.section_mile,
     unioned.placement,
@@ -206,9 +205,9 @@ select
     unioned.position_error_m,
     unioned.off_trail_miles,
     unioned.water_reliability,
-    -- Decision 65's season caution, on a plumbed tap only.
+    -- The season caution, on a plumbed tap only.
     unioned.water_caution,
-    -- PO24 and PO38: the card photo and gallery through the face gate
+    -- The card photo and gallery through the face gate
     -- (int_points_of_interest__photos), on the A.T. family's POIs, which are
     -- the only ones export_poi.py attaches photos to. Null is "no photo",
     -- which is what a phone shows for every POI that has none to show.
@@ -221,7 +220,7 @@ select
     unioned.site_id,
     unioned.site_role,
     unioned.site_name,
-    -- PO34: set on a trailhead whose every trail line within 100 m is
+    -- Set on a trailhead whose every trail line within 100 m is
     -- closed (int_points_of_interest__trailheads); null is "not marked".
     trailheads.trails_closed_within_m,
     unioned.retired,

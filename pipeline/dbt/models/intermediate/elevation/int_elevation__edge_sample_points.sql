@@ -2,8 +2,7 @@
 -- Where each junction-graph edge reads the DEM: one row per sample along an
 -- edge, both ends included. The SQL form of
 -- export_network_elevation.edge_sample_points, which export_network_profile.py
--- imports so that the climb and the profile are measured at the same points
--- (EL11 and EL12 of pipeline/ELT.md's ledger read these rows).
+-- imports so that the climb and the profile are measured at the same points.
 -- step_dem_sampling reads them through int_elevation__dem_points, after the
 -- A.T.'s.
 --
@@ -32,7 +31,7 @@
 -- same count on every edge, at the same lon/lat to the bit.
 --
 -- THE KEY, edge_sample_point_key, is dbt_utils.generate_surrogate_key over
--- (edge_id, sample_index) (decision 197: every model has one column that is
+-- (edge_id, sample_index) (every model has one column that is
 -- unique and not null).
 with edges as (
     select

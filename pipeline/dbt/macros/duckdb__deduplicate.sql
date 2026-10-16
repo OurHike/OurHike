@@ -3,9 +3,7 @@
     dbt_project.yml (dbt_utils has no DuckDB version, and its default drops
     every row holding a NULL; the measurement is in that block).
 
-    Staging's dedupe (decision 40 of #1793 — Rebuild the data platform as
-    dlt → dbt: seven contracted marts, a monthly refresh, published docs, and
-    lighter phone downloads; pipeline/ELT.md, "One key per table") calls
+    Staging's dedupe (pipeline/ELT.md, "One key per table") calls
     `dbt_utils.deduplicate(relation='renamed', partition_by=<key>,
     order_by=...)`. QUALIFY keeps the row whole and follows a CTE.
 

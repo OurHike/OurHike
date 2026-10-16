@@ -3,7 +3,7 @@
     "cast(" ~ var('poi_water_match_radius_ft') ~ " as double) * "
     ~ var('poi_metres_per_foot') %}
 {%- set ceiling_m = var('poi_osm_water_measure_ceiling_m') %}
--- The distance half of OSM water's reach (PO06): for every OSM water point
+-- The distance half of OSM water's reach: for every OSM water point
 -- inside the corridor, the nearest thing a hiker could be walking from, and
 -- whether it is within MATCH_RADIUS_FT of it. build_osm_water_reach.py's
 -- measure_distances(), and its constants: the radius is
@@ -35,8 +35,8 @@
 -- what measure_distances() records and the grade's run is read from;
 -- `walk_key` is the other end of the walk as "lat,lon" at 6 dp, the
 -- precision make_dbt_fixtures.py keys its EPQS answers at, so a unit test
--- can hold both exactly (fetch_trail_water.py's cache has keyed each point
--- exactly since decision 131). The grade is step_osm_water_grade's.
+-- can hold both exactly (fetch_trail_water.py's cache keys each point
+-- exactly). The grade is step_osm_water_grade's.
 with water as (
     select
         poi_key,

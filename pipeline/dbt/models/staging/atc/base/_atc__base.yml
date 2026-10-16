@@ -15,7 +15,7 @@ models:
     columns:
       - name: atc_update_row_key
         description: >
-          The row's key (decision 40): dbt_utils.generate_surrogate_key over
+          The row's key: dbt_utils.generate_surrogate_key over
           the file's path and the row's place in it.
         data_tests: [not_null, unique]
       - name: file_row
@@ -42,7 +42,7 @@ models:
     columns:
       - name: atc_updates_document_key
         description: >
-          The row's key (decision 40): dbt_utils.generate_surrogate_key over
+          The row's key: dbt_utils.generate_surrogate_key over
           the file's path and its landed path.
         data_tests: [not_null, unique]
       - name: document_json
@@ -59,11 +59,11 @@ models:
       ATC's Trail Updates as their website shows them: one row per update
       the trail-updates sitemap lists, as lib/atc_scrape.py parses its page,
       keyed. Read by int_closures__atc_automatic, which decides which rows
-      may publish without a person (CL07-CL10).
+      may publish without a person.
     columns:
       - name: atc_trail_update_page_key
         description: >
-          The row's key (decision 40): dbt_utils.generate_surrogate_key over
+          The row's key: dbt_utils.generate_surrogate_key over
           the registry key and ATC's slug.
         data_tests: [not_null, unique]
       - name: slug
@@ -105,7 +105,7 @@ models:
     columns:
       - name: water_distance_key
         description: >
-          The row's key (decision 40): dbt_utils.generate_surrogate_key over
+          The row's key: dbt_utils.generate_surrogate_key over
           the file's path and atc_global_id.
         data_tests: [not_null, unique]
       - name: layer

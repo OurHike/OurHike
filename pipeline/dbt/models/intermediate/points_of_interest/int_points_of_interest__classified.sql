@@ -4,7 +4,7 @@
 -- (`drop_reason`; null on a row that goes on to
 -- int_points_of_interest__publishable). One row per unioned row.
 --
--- A.T. POIs, export_poi.py's unify_all_sources() (PO01, PO02, PO04): the
+-- A.T. POIs, export_poi.py's unify_all_sources(): the
 -- poi_type_mapping seed types ATC's six layers whole (Communities at low
 -- confidence: a town is a proxy for resupply) and opentrail's rows by
 -- `icon` (an icon it does not list publishes nothing). OSM water and
@@ -16,14 +16,14 @@
 -- because that is a wiring mistake, not a gap upstream.
 --
 -- Other organizations, export_nearby_poi.py's build_records() and
--- classify() (PO30-PO32, PO37): a layer with a sources.json `poi_type` is
+-- classify(): a layer with a sources.json `poi_type` is
 -- typed whole by it; the three TYPED_LAYERS read one field per row through
 -- the poi_value_types seed, and a value that maps to nothing is dropped,
 -- with the poi_named_exclusions seed's reason where it has one. A name or
 -- asset that is one of DEC's null sentinels (var `poi_null_sentinels`) is
 -- no name.
 --
--- Decision 54's wave 1 point layers (int_points_of_interest__club_points)
+-- The generated club point layers (int_points_of_interest__club_points)
 -- arrive as unified records too: their type, confidence, id and name were
 -- set there from the club_poi_types and layer_rules seeds, and a row a rule
 -- held back carries its reason as `rule_drop_reason`, which is the first
@@ -31,7 +31,7 @@
 -- int_points_of_interest__sources' rows after the seed's.
 --
 -- Ids are `{source}:{id field's value}`, as lib/poi_schema.py's unify_poi()
--- mints them (PO04): the poi_sources seed's id field for A.T. POIs, the
+-- mints them: the poi_sources seed's id field for A.T. POIs, the
 -- sources.json `id_field` (default OBJECTID) for the others.
 with unioned as (
     select * from {{ ref('int_points_of_interest__unioned') }}
@@ -259,7 +259,7 @@ select
     cleaned.properties,
     cleaned.entry as registry_entry,
     case
-        -- A wave 1 point a layer_rules row holds back
+        -- A generated club point a layer_rules row holds back
         -- (int_points_of_interest__club_points).
         when
             cleaned.is_unified

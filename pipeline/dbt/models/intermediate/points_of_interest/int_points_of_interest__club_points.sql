@@ -1,8 +1,8 @@
 {{ config(materialized='table') }}
--- Every point of decision 54's wave 1 point layers
+-- Every point of the generated club point layers
 -- (int_points_of_interest__club_unioned) with its POI type and the rules
--- pipeline/ELT.md's "What wave 1's live reads found that phase C must
--- honour" gives points of interest, read from two seeds that quote the
+-- the live reads of 2026-10-03 found for points of interest, read from two
+-- seeds that quote the
 -- evidence each row rests on: club_poi_types says what a layer's own field
 -- values are, and layer_rules what holds a row back whatever it maps to.
 -- One row per unioned row. int_points_of_interest__unioned reads it as a
@@ -27,12 +27,11 @@
 --   its Potability code says so (1 Potable, 2 Treatment required; never 0
 --   No water, 5 Undrinkable or 9 Unknown). Plumbed water whose shutoff
 --   season no layer records (fountains, pumps, BLM's, NPS's and CPW's
---   potable-water types) was held the same way until decision 65
---   (2026-10-04): club_poi_types now types it water, and its layer_rules
+--   potable-water types) is typed water by club_poi_types, and its layer_rules
 --   `plumbed_water` row gives it a season caution downstream
 --   (int_points_of_interest__cautioned), which this model does not
 --   read. A tap CPW marks closed in winter is still not_water. Every water
---   row that does map is low confidence: no wave 1 layer reports flow.
+--   row that does map is low confidence: no generated club layer reports flow.
 -- - PLANNED AND PROPOSED POINTS ARE NOT BUILT: `drop_where` on NPS's
 --   POISTATUS 'Planned', Alaska Trails' Status 'Proposed', the Cumberland
 --   Trail's 'Trailhead Proposed' and CFPA's future campsites, and
@@ -44,7 +43,7 @@
 -- - NOTICES HIDE IN POI LAYERS: FLTC's hunting closures and high-water
 --   advisories, the 2018 fire closure in PCTA's Halfmile water popups, and
 --   the warning types of NCTA's and Tennessee State Parks' layers never
---   publish as POIs (decision 53's notices are their home).
+--   publish as POIs (the notices are their home).
 -- - Closed sites in a layer's own words, and dispersed camping, which
 --   usfs_dispersed_camping_holdback holds back, drop the same way.
 -- - A POINT LISTED TWICE IS ONE POINT: of a layer's rows that share a name

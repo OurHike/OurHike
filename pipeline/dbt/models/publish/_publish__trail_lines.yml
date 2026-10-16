@@ -7,10 +7,11 @@ models:
       the trail_lines mart's A.T. rows: one row, the FeatureCollection's
       `type`, `name` and `features`, which the phone_file materialisation
       copies to processed_dir/trails.geojson. Coordinates at 6 decimals
-      (decision 8), where export_trails.py writes GDAL's digits. parity.py
+      where export_trails.py writes GDAL's digits. parity.py
       compares it with export_trails.py's file, feature by feature, after
       cutting the Python's coordinates to 6 decimals as
       export_nearby_trails._rounded_geometry does.
+      Refreshed monthly, with its lane's build.
     config:
       access: public
       contract:
@@ -38,6 +39,7 @@ models:
       of the trails.geojson bytes pub_trails_geojson wrote, read back from the
       file. parity.py compares the miles with export_trails.py's, vertex by
       vertex, and holds trails_sha256 to the hash of the dbt trails.geojson.
+      Refreshed monthly, with its lane's build.
     config:
       access: public
       contract:
@@ -71,12 +73,13 @@ models:
         data_type: json
   - name: pub_trail_miles_v2
     description: >
-      Writes v2/trail_miles.json (stage 6 of #1793): v1's trail_miles.json
+      Writes v2/trail_miles.json: v1's trail_miles.json
       with each chain's vertex miles delta-coded in whole thousandths of a
       mile, from v2 of the trail_lines mart, to
       processed_dir/trail_miles_v2.json. trails_sha256 names the same
       trails.geojson v1's does. parity.py's trail_miles_v2 family decodes it
       and compares every vertex's mile with v1's file.
+      Refreshed monthly, with its lane's build.
     config:
       access: public
       contract:
@@ -127,6 +130,7 @@ models:
       it before the app has booted), from int_trail_lines__at_overview, in
       export_trails.write_overview()'s shape: one Feature and one
       MultiLineString. parity.py compares it with export_trails.py's file.
+      Refreshed monthly, with its lane's build.
     config:
       access: public
       contract:
@@ -148,6 +152,7 @@ models:
       sorted at both levels as export_spurs.py's json.dumps(sort_keys=True)
       sorts them, written verbatim by phone_file's json_document format.
       parity.py compares it with export_spurs.py's file, spur by spur.
+      Refreshed monthly, with its lane's build.
     config:
       access: public
       contract:
@@ -166,6 +171,7 @@ models:
       own editingInfo.dataLastEditDate as the extract logged it (the
       writer's header says which). parity.py compares it with
       export_club_sections.py's file.
+      Refreshed monthly, with its lane's build.
     config:
       access: public
       contract:
@@ -203,9 +209,7 @@ exposures:
       A.T. screen draws, held offline whole (tier (a), the safety core, in
       pipeline/ELT.md's "Four kinds of phone file"). Read by
       client/src/lib/trailData.ts, which hands it to MapLibre. Published by
-      publish-vector-data.yml from export_trails.py's file until stage 4 of
-      #1793 — Rebuild the data platform as dlt → dbt: seven contracted marts,
-      a monthly refresh, published docs, and lighter phone downloads moves
+      publish-vector-data.yml from export_trails.py's file until the cutover moves
       it to this writer's.
     depends_on:
       - ref('trail_lines', v=1)
@@ -235,7 +239,7 @@ exposures:
       client/src/lib/trailMiles.ts beside trails.geojson. Optional on the
       phone: a mismatched or missing file means the phone measures the line
       itself. Published beside trails.geojson by publish-vector-data.yml
-      until stage 4 of #1793 — Rebuild the data platform as dlt → dbt: seven contracted marts, a monthly refresh, published docs, and lighter phone downloads moves it to this writer's.
+      until the cutover moves it to this writer's.
     depends_on:
       - ref('trail_lines', v=1)
       - ref('pub_trail_miles')
@@ -252,10 +256,10 @@ exposures:
     owner:
       name: OurHike
     description: >
-      v2 of trail_miles.json (decision 44): the same mile for every
+      v2 of trail_miles.json: the same mile for every
       centerline vertex of trails.geojson, delta-coded in whole thousandths
       of a mile, published beside v1 at v2/trail_miles.json under the release
-      folder (stage 6 of #1793; pipeline/ELT.md, "Making the download
+      folder (pipeline/ELT.md, "Making the download
       smaller"). A phone reads it only once its build reads schema version
       v2 and channels.json names a v2 release; every other phone keeps
       reading v1's trail_miles.json, which is still written. Optional on the
@@ -275,7 +279,7 @@ exposures:
         size_budget_bytes: 179522
         cadence: monthly
         # The mart columns this file's writer reads, in Elementary's type words, which
-        # exposure_schema_validity checks on the mart (decision 102). It can only because this is
+        # exposure_schema_validity checks on the mart. It can only because this is
         # the one phone file reading that mart: with more, Elementary 0.26.0 needs
         # context["render"], which dbt 2.0.6 lacks.
         referenced_columns:
@@ -294,7 +298,7 @@ exposures:
       corridor-view centerline, and ask for it before the app has booted),
       drawn at low zoom until the real line lands and dropped above the pin
       seam (client/src/map/style.ts). Published by publish-vector-data.yml
-      from export_trails.py's file until stage 4 of #1793 — Rebuild the data platform as dlt → dbt: seven contracted marts, a monthly refresh, published docs, and lighter phone downloads moves it to this
+      from export_trails.py's file until the cutover moves it to this
       writer's.
     depends_on:
       - ref('pub_trails_overview')
@@ -315,8 +319,7 @@ exposures:
       (features/SPUR_TRAILS.md), read by client/src/lib/lineDetail.ts for a
       tapped side trail. Optional on the phone: a release without it draws
       every spur and cannot say where one goes. Published by
-      publish-vector-data.yml from export_spurs.py's file until stage 4 of
-      #1793 — Rebuild the data platform as dlt → dbt: seven contracted marts, a monthly refresh, published docs, and lighter phone downloads moves it to this writer's.
+      publish-vector-data.yml from export_spurs.py's file until the cutover moves it to this writer's.
     depends_on:
       - ref('trail_lines', v=1)
       - ref('pub_spurs')
@@ -335,9 +338,7 @@ exposures:
       Which of the thirty clubs maintains which stretch of the A.T., and the
       miles no club is named for, read by client/src/lib/clubSections.ts for
       the corridor view and the waypoint card. Published by
-      publish-vector-data.yml from export_club_sections.py's file until stage
-      4 of #1793 — Rebuild the data platform as dlt → dbt: seven contracted
-      marts, a monthly refresh, published docs, and lighter phone downloads
+      publish-vector-data.yml from export_club_sections.py's file until the cutover
       moves it to this writer's.
     depends_on:
       - ref('pub_club_sections')

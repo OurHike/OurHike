@@ -1,25 +1,24 @@
 -- int_closures__final: the closures mart's rows before their row dates, every
--- contracted column but _first_seen_at and _changed_at. This is what
--- models/marts/closures/closures.sql held until decision 57;
+-- contracted column but _first_seen_at and _changed_at. The
 -- int_closures__history snapshots it, and the mart reads that snapshot.
 --
 -- What blocks the trail, from every source that says so (pipeline/ELT.md,
--- "The eleven marts", decision 6): one row per notice, closed area or
+-- "The eleven marts"): one row per notice, closed area or
 -- closure that obstructs it, from a source that passed int_closures__gate
 -- and may publish (int_sources__publication).
 --
 -- A CLUB NOTICE ITS OWN STATUS OR DATES HOLD BACK IS LEFT OUT: one whose own
 -- status or category says it is not current, or an order its source says was
--- rescinded (int_closures__club_notices' `held_because`, decision 53's phase
--- C). One whose own end date has passed is not held back (the maintainer's
--- frame A, 2026-10-10): it no longer closes the trail, so it lands in the
+-- rescinded (int_closures__club_notices' `held_because`). One whose own end
+-- date has passed is not held back (the maintainer,
+-- 2026-10-10): it no longer closes the trail, so it lands in the
 -- warnings mart, and conditions/notices.json's `current_until` lets the phone
--- grey it. Nor is one whose own start is still ahead (frame B for wave 6's
--- page 01, P3, 2026-10-11): it lands here today if its status closes the
+-- grey it. Nor is one whose own start is still ahead (the maintainer,
+-- 2026-10-11): it lands here today if its status closes the
 -- trail, with its `starts_on`, and the phone closes the trail from the day
 -- before that day.
 --
--- DECISION 7'S SPLIT, CLOSURES' HALF: only rows whose `obstructs_trail` is
+-- THE SPLIT, CLOSURES' HALF: only rows whose `obstructs_trail` is
 -- true. A null (nobody has classified it, every NYNJTC alert today) and a
 -- false go to the warnings mart, never dropped, and the partition is held by
 -- assert_every_notice_lands_in_exactly_one_of_closures_or_warnings.
@@ -28,8 +27,8 @@
 -- answer, so it leaves this model and int_warnings__final in the same run;
 -- the snapshot then closes its version, and it leaves both marts.
 --
--- A NOTICE SOURCE THE GATE HOLDS KEEPS ITS LAST GOOD ROWS (decision 53,
--- phase D): the rows the previous build's history held as current, with
+-- A NOTICE SOURCE THE GATE HOLDS KEEPS ITS LAST GOOD ROWS: the
+-- rows the previous build's history held as current, with
 -- `carried_since`, from int_closures__held_carried, until a build passes the
 -- source again. Every other row's `carried_since` is null.
 --
@@ -49,7 +48,7 @@ publication as (
 ),
 
 -- A feed's notices that aged out of its window, never lifted by absence
--- (int_closures__window_carried, decision 53's phase C), through the same
+-- (int_closures__window_carried), through the same
 -- publication check as every row.
 carried as (
     select * from {{ ref('int_closures__window_carried') }}

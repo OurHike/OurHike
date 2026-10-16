@@ -122,7 +122,7 @@ def build(tmp_path_factory) -> dict:
         "OURHIKE_PROCESSED_DIR": str(processed),
         "DBT_ENGINE_SEND_ANONYMOUS_USAGE_STATS": "false",
         "OURHIKE_ROW_HISTORY": "off",
-        # As the monthly lane builds on UA (decision 204): a failing test warns, and build_marts.py reports one past
+        # As the monthly lane builds on UA: a failing test warns, and build_marts.py reports one past
         # its error threshold, which tests what an absent layer does to the build rather than stopping on it.
         "OURHIKE_DATA_ENV": "ua",
     }

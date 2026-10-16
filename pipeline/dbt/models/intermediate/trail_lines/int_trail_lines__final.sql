@@ -1,6 +1,5 @@
 -- int_trail_lines__final: the trail lines mart's rows before their row dates,
--- every contracted column but _first_seen_at and _changed_at. This is what
--- models/marts/trail_lines/trail_lines.sql held until decision 57;
+-- every contracted column but _first_seen_at and _changed_at. The
 -- int_trail_lines__history snapshots it, and the mart reads that snapshot.
 --
 -- Every line a phone draws from a trail file, one row per published line
@@ -10,9 +9,9 @@
 -- (export_nearby_trails.py today). Keyed by the `id` both files publish.
 --
 -- Three halves, each already in the mart's columns:
--- int_trail_lines__at_published (the A.T.'s, tl-at),
--- int_trail_lines__network_published (the network's, tl-net) and
--- int_trail_lines__club_published (the clubs' own lines, decision 64: drawn
+-- int_trail_lines__at_published (the A.T.'s),
+-- int_trail_lines__network_published (the network's) and
+-- int_trail_lines__club_published (the clubs' own lines: drawn
 -- in nearby_trails.geojson with `line_kind` 'club', and never read by the
 -- routable network, int_trail_network__routable). Each branch
 -- names every column, in the mart's order, so a half that drops or renames a

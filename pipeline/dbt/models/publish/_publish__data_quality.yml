@@ -1,7 +1,7 @@
 version: 2
 
-# The data-quality page's two files (decision 102; pipeline/ELT.md, "Data
-# quality (decision 102)"): one per lane, each every check that lane's build
+# The data-quality page's two files (pipeline/ELT.md, "Data
+# quality"): one per lane, each every check that lane's build
 # ran, as counts and names, published sources only. macros/data_quality.sql
 # holds the SQL of both and says what each field holds and why.
 #
@@ -81,7 +81,7 @@ models:
       - name: last_posts
         description: >
           Each published source's last post, the newest edit date its own layer states, as source, title and
-          edited_on: information only, no check (decision 213's rule 23, macros/data_quality.sql).
+          edited_on: information only, no check (the rule 23, macros/data_quality.sql).
         data_type: json
 
   - name: pub_conditions_data_quality

@@ -11,9 +11,9 @@
     `geometry` is a SQL expression for the row's GEOMETRY. Its bounding box
     must sit inside the box `regions` gives its `source_key_column`, or else
     the box macros/generated_regions.sql gives it (every source
-    pipeline/make_dbt_staging.py stages, decision 54), or else the one
+    pipeline/make_dbt_staging.py stages), or else the one
     macros/generated_notice_regions.sql gives it (every club notice source
-    pipeline/generate_notice_models.py stages, decision 53), and a key none
+    pipeline/generate_notice_models.py stages), and a key none
     lists gets `eastern`.
 
     THE BOXES, and what each rests on (extents measured 2026-10-03 from each
@@ -35,7 +35,7 @@
       (USFS, lat 18.27) among them, and an alert there reaches the south
       coast below lat 18.
 
-    DECISION 54'S TRAIL-LINE ROWS (2026-10-03) are listed after
+    THE TRAIL-LINE ROWS (2026-10-03) are listed after
     wi_ice_age_trail, each by the extent on its own sources.json row: the
     layer's returnExtentOnly in EPSG:4326, or, for usfws_trail_segments, whose
     returnExtentOnly answer (lat -24.99 to 90) no vertex bears out, every
@@ -43,7 +43,7 @@
     the outliers). A row whose extent sits inside the eastern box has no
     entry.
 
-    DECISION 54'S POINT-OF-INTEREST ROWS (2026-10-03) are listed after
+    THE POINT-OF-INTEREST ROWS (2026-10-03) are listed after
     nws_alerts, each by its vertices: every point of the layer, read that
     day with outSR 4326 and geometry only, never the server's extent. A
     point row whose points all sit inside the eastern box has no entry, as
@@ -59,7 +59,7 @@
     Pacific refuges either side of the antimeridian), and TDEC's three
     Tennessee State Parks layers reach lon -90.13 near Memphis.
 
-    DECISION 54'S WAVES 2 AND 3 (2026-10-04) follow tn_state_parks_campsites,
+    THE WAVES 2 AND 3 (2026-10-04) follow tn_state_parks_campsites,
     each by every vertex of its live file or API read that day: the Nez
     Perce NHT map lat 43.99 to 48.59 and lon -118.09 to -108.47, OTA's map
     lon -92.17 to -90.34, OHTA's lon -94.12 to -92.22, Condor's California
@@ -72,7 +72,7 @@
     otherwise widen its points' too. The other GIS files sit inside the
     eastern box and have no entry.
 
-    DECISION 54'S WAVES 4 AND 5, POINTS READ OFF CLUB PAGES AND PDFS
+    THE WAVES 4 AND 5, POINTS READ OFF CLUB PAGES AND PDFS
     (2026-10-04), each by every point its parser read off the live page or
     PDF that day: MDHTA's trail guide lon -103.674 to -103.242 in North
     Dakota, FoOT's shelters lon -94.863 to -93.540 in Arkansas and Oklahoma,
@@ -84,7 +84,7 @@
     Palmetto Trail's markers and lines (lon -83.125 to -79.561, lat 33.030
     to 35.215) sit inside the eastern box and have no entry.
 
-    WAVE 6'S STEWARDS (2026-10-11) follow ohta_major_trailheads: the point
+    THE STEWARDS REGISTERED 2026-10-11 follow ohta_major_trailheads: the point
     layers make_dbt_staging.py stages once their stewards' trail_orgs.json
     rows gave them club folders, each by every point read that day with
     outSR 4326 and geometry only, and IDOT's bicycle inventory, a trail-line
@@ -123,7 +123,7 @@
     `id_column`, where given, is a SQL expression for the row's own id,
     carried as `row_id`, so a caller can name the row as well as its source
     (int_closures__rows_outside_region, which holds the source in
-    int_closures__gate, decision 81).
+    int_closures__gate).
 -#}
 {% macro lands_outside_its_region(
     relation, geometry, source_key_column='source_key', id_column=none
@@ -432,8 +432,7 @@ coalesce(
     from (macros/generated_regions.sql), read off the rows a build landed,
     never off a server's returnExtentOnly answer, which can lie: USFWS's
     trail segments answered lat -24.99 to 90 for vertices at 13.64 to 63.20
-    (pipeline/ELT.md, "What wave 1's live reads found that phase C must
-    honour", 2026-10-03).
+    (read 2026-10-03).
 
     With `cleared_column`, a column of `relation` marking a row whose point
     was cleared as outside its box (point_outside_its_region), it also

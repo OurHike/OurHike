@@ -1,5 +1,5 @@
 -- Every NWS zone the weather squares know, one row each, as
--- export_weather_alerts.py's bake() reads squares.json (WN03):
+-- export_weather_alerts.py's bake() reads squares.json:
 --   squares     the trail squares the zone's outline overlaps (its `zones`
 --               entry, `by_zone`), [] for a zone that reaches no trail
 --   is_known    the zone is in the zone files build_weather_squares.py

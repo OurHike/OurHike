@@ -1,11 +1,11 @@
 {{ config(materialized='table') }}
 -- The A.T. centerline merged into as few pieces as touch, oriented and put
 -- in order along a straight Springer->Katahdin line: the first two steps of
--- the mile axis (pipeline/ELT.md's EL01 and EL02), before ATC's half-mile
+-- the mile axis, before ATC's half-mile
 -- markers calibrate it in int_trail_lines__mile_axis. One row per piece, in
 -- the order export_elevation.ordered_oriented_parts returns them.
 --
--- EL01, export_elevation.load_merged_trail_line:
+-- export_elevation.load_merged_trail_line:
 -- ST_LineMerge(ST_Union_Agg(geom)) over every segment, read in the order the
 -- layer's pages served them (stg_atc__centerline_segments' source_row), the
 -- order the Python's ST_Read scan hands them to the same two functions.
@@ -13,7 +13,7 @@
 -- ~10 m, because real segment ends do not always touch (the Python's
 -- docstring, 2026-07-28); 562 on the layer read 2026-10-02.
 --
--- EL02, ordered_oriented_parts: a piece is reversed when its first vertex
+-- ordered_oriented_parts: a piece is reversed when its first vertex
 -- projects further along the straight axis than its last, and the pieces are
 -- sorted by their first vertex's projection, ties kept in merge order. The
 -- projection is only a first guess at the order: #652 measured it misplacing

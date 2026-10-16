@@ -1,8 +1,7 @@
-"""The trail_lines family's SQL answers what today's Python answers, on the same rows (#1793, stage 3).
+"""The trail_lines family's SQL answers what today's Python answers, on the same rows.
 
-The A.T. mile axis moved to SQL (pipeline/ELT.md's ledger rows EL01-EL04, built
-by the trail_lines family because every A.T. mile comes off it). Until stage 5
-deletes the Python, export_elevation.calibrated_trail_axis still builds the
+The A.T. mile axis moved to SQL, built by the trail_lines family because
+every A.T. mile comes off it. Until the Python is deleted, export_elevation.calibrated_trail_axis still builds the
 axis that export_poi.py, export_spurs.py and export_trails.py publish miles
 from, so the two copies are held together here:
 
@@ -25,8 +24,7 @@ and this file holds that frozen copy to the domains those exporters' own tests
 decode with, so a typo in the var fails a test rather than a hiker's blaze.
 
 The rest of the A.T.'s models have their unit tests in
-_trail_lines__unit_tests.yml, one row or one test per pytest case of the files
-pipeline/ELT.md's ledger lists for tl-at's rows. Below, today's functions run
+_trail_lines__unit_tests.yml, one row or one test per pytest case of the A.T. half's test files. Below, today's functions run
 over each test's given rows (resolve_feature_id, load_line_sources,
 simplify_records, merge_chain_records, vertex_miles, write_overview,
 build_spur_records with attach_junction_miles, _rounded_geometry,
@@ -112,7 +110,7 @@ def test_the_at_line_vars_are_export_trails_constants():
     assert variables["trail_lines_overview_tolerance_m"] == export_trails.OVERVIEW_SIMPLIFY_TOLERANCE_M
     assert variables["trail_lines_overview_decimals"] == export_trails.OVERVIEW_COORDINATE_DECIMALS
     assert variables["trail_lines_mile_decimals"] == export_trails.TRAIL_MILE_DECIMALS
-    # Decision 8's six decimals for trails.geojson, the network file's own cut.
+    # The six decimals for trails.geojson, the network file's own cut.
     assert variables["trail_lines_published_decimals"] == export_nearby_trails.NEARBY_COORDINATE_DECIMALS
 
 
@@ -417,7 +415,7 @@ DELIBERATE: dict[tuple[str, str], str] = {
         "int_trail_lines__at_features_answers_what_resolve_feature_id_answers",
         "test_export_spurs::test_a_null_global_id_resolves_to_the_same_id_on_both_sides",
     ): (
-        "TL05: the extract lands a feature's properties and not its GeoJSON id, so the SQL reads the OBJECTID in its "
+        "The extract lands a feature's properties and not its GeoJSON id, so the SQL reads the OBJECTID in its "
         "place, equal to it on 3,025 of 3,025 centerline and 1,197 of 1,197 side-trail features (measured "
         "2026-10-02). This case builds the one shape ArcGIS never serves, an OBJECTID with no id, which the Python "
         "numbers by its place; both files still key the spur alike, since int_trail_lines__spurs reads "
@@ -473,14 +471,14 @@ DELIBERATE: dict[tuple[str, str], str] = {
     (
         "int_trail_lines__at_published_cuts_every_coordinate_and_never_degenerates_a_line",
         "centerline:chain:0",
-    ): "Decision 8: trails.geojson's coordinates at 6 decimals, where export_trails.py writes GDAL's digits.",
+    ): "trails.geojson's coordinates are cut to 6 decimals, where export_trails.py writes GDAL's digits.",
     (
         "int_trail_lines__at_published_cuts_every_coordinate_and_never_degenerates_a_line",
         "side_trails:sql::every_coordinate_is_cut_to_six_decimals_as_round_cuts_it",
-    ): "Decision 8 (as above).",
+    ): "Coordinates cut to 6 decimals (as above).",
     ("parity.py trail_miles", "trails_sha256"): (
         "Derived: trail_miles.json's trails_sha256 is the hash of the trails.geojson written beside it, and "
-        "decision 8 changes that file's bytes, so parity.py asks each file what the phone asks "
+        "cutting coordinates to 6 decimals changes that file's bytes, so parity.py asks each file what the phone asks "
         "(client/src/lib/trailData.ts refuses miles whose hash is not the trails.geojson it holds) instead of "
         "comparing the two hashes."
     ),
@@ -538,9 +536,8 @@ def _axis(test: dict) -> list:
 
 # --- which pytest cases the unit tests stand for -------------------------------------
 
-#: The pytest files pipeline/ELT.md's trail_lines ledger lists against tl-at's
-#: rows (TL01, TL04, TL05, TL14-TL17, TL22, TL24-TL29). export_nearby_trails
-#: is the network's (tl-net), and lib_arcgis the live domain call TL02's var
+#: The pytest files of the A.T. half of the trail_lines family. export_nearby_trails
+#: is the network half's, and lib_arcgis the live domain call a dbt var
 #: replaces in SQL, which stays at the edge for every other caller.
 LEDGER_FILES = (
     "test_export_trails",
@@ -552,7 +549,7 @@ LEDGER_FILES = (
     "test_lib_spurs",
     "test_export_spurs",
 )
-CORRIDOR_NETWORK = "lib/corridor.py's network ring (#1016), which the POI clip reads (the poi family), not TL14's A.T. corridor"
+CORRIDOR_NETWORK = "lib/corridor.py's network ring (#1016), which the POI clip reads (the poi family), not the A.T. corridor"
 NOT_SOURCE_EDITED = (
     "source_edited: int_sources__data_edited's and pub_club_sections' unit tests, held to edited_day() and "
     "source_edit_dates() below; parity.py's club_sections family on every build"
@@ -560,16 +557,16 @@ NOT_SOURCE_EDITED = (
 #: Every ledger-listed case no unit test names, and where its rule went instead.
 ELSEWHERE: dict[str, str] = {
     "test_export_trails::test_export_trails_decodes_side_trails_blaze_field_via_the_real_coded_domain": (
-        "int_trail_lines__blazes (tl-net): its unit test decodes against int_trail_lines__coded_domains"
+        "int_trail_lines__blazes: its unit test decodes against int_trail_lines__coded_domains"
     ),
     "test_export_trails::test_export_trails_applies_centerlines_flat_default_with_no_blaze_field": (
-        "int_trail_lines__blazes (tl-net): the centerline's blaze_default row of its unit test"
+        "int_trail_lines__blazes: the centerline's blaze_default row of its unit test"
     ),
     "test_export_trails::test_export_trails_warns_on_a_feature_that_fails_to_decode": (
-        "int_trail_lines__blazes (tl-net): its unit test's undecoded rows, and its warn test"
+        "int_trail_lines__blazes: its unit test's undecoded rows, and its warn test"
     ),
     "test_export_trails::test_export_trails_writes_a_sha256_hash_for_the_trails_artifact": (
-        "stage 4: a file's hash is publish's; trail_miles.json's trails_sha256 is pub_trail_miles' (DELIBERATE)"
+        "the cutover: a file's hash is publish's; trail_miles.json's trails_sha256 is pub_trail_miles' (DELIBERATE)"
     ),
     "test_export_trails::test_export_trails_exits_nonzero_when_a_source_returns_zero_features": (
         "data test: int_trail_lines__at_sources' relationships_where test (fail_if_incomplete) stops the build"
@@ -578,10 +575,10 @@ ELSEWHERE: dict[str, str] = {
         "a warning's words: dbt lists a warn test's failing rows, the decode warning's with trail_segment_key"
     ),
     "test_export_trails::test_the_manifest_records_the_pre_merge_segment_count": (
-        "int_trail_lines__at_chains' part_count, 2 in its touching-segments unit test; the manifest is stage 4's"
+        "int_trail_lines__at_chains' part_count, 2 in its touching-segments unit test; the manifest is the cutover's"
     ),
     "test_export_trails::test_the_export_publishes_the_overview_beside_the_full_line": (
-        "pub_trails_overview and its exposure trails_overview_geojson; the manifest entry is stage 4's"
+        "pub_trails_overview and its exposure trails_overview_geojson; the manifest entry is the cutover's"
     ),
     "test_export_trails::test_a_vertex_mile_is_the_same_measurement_a_poi_gets": (
         "by construction: every A.T. mile, a POI's included, comes off the one axis_mile macro"
@@ -642,7 +639,7 @@ ELSEWHERE: dict[str, str] = {
         "stays: the constant's own test, with the var pinned to it by test_the_club_vars_are_lib_club_sections_constants"
     ),
     "test_export_club_sections::test_the_manifest_path_resolves_from_any_cwd_and_main_returns_the_manifest": (
-        "stays: the exporter's manifest, stage 4's in the dbt path"
+        "stays: the exporter's manifest, the cutover's in the dbt path"
     ),
     **{
         f"test_export_club_sections::{case}": NOT_SOURCE_EDITED
@@ -788,7 +785,7 @@ def test_the_at_clipped_rows_are_clip_to_corridors_answers():
     assert {row["trail_segment_key"]: row["geom_wkt"] for row in test["expect"]["rows"]} == kept
 
 
-# --- int_trail_lines__at_simplified (TL15) -------------------------------------------
+# --- int_trail_lines__at_simplified -------------------------------------------
 
 
 def _simplified_tests() -> list[dict]:
@@ -884,7 +881,7 @@ def test_the_simplify_macro_refuses_a_negative_tolerance():
     con.close()
 
 
-# --- int_trail_lines__at_chains, __at_chain_miles (TL16, TL22) -----------------------
+# --- int_trail_lines__at_chains, __at_chain_miles -----------------------
 
 
 def test_the_at_chains_rows_are_merge_chain_records_answers():
@@ -927,7 +924,7 @@ def test_the_at_chain_miles_rows_are_vertex_miles_answers(monkeypatch):
             assert row["monotonic_breaks"] == export_trails._monotonic_breaks(np.array(json.loads(row["vertex_miles_json"]))), key
 
 
-# --- int_trail_lines__at_overview (TL17) ---------------------------------------------
+# --- int_trail_lines__at_overview ---------------------------------------------
 
 
 def test_the_at_overview_rows_are_write_overviews_answers(tmp_path, monkeypatch):
@@ -965,7 +962,7 @@ def test_the_at_overview_rows_are_write_overviews_answers(tmp_path, monkeypatch)
     assert len(json.loads(sketch["coordinates_json"])) < len(_coords(line["geom_wkt"])) / 4
 
 
-# --- int_trail_lines__spurs, __at_side_trails (TL27-TL29) ----------------------------
+# --- int_trail_lines__spurs, __at_side_trails ----------------------------
 
 
 def _spur_python(test: dict, monkeypatch) -> dict[str, dict]:
@@ -1061,12 +1058,12 @@ def test_spurs_json_holds_only_the_spurs_trails_geojson_draws():
         _compare(test["name"], key, key in python, key in sql)
 
 
-# --- int_trail_lines__at_published (decision 8) --------------------------------------
+# --- int_trail_lines__at_published --------------------------------------
 
 
 def test_the_at_published_rows_are_rounded_geometrys_answers():
     """Every line is _rounded_geometry()'s cut, the never-degenerate rule included; where that is not the line
-    export_trails.py writes, DELIBERATE says decision 8. Chains first, then side trails in the layer's order."""
+    export_trails.py writes, DELIBERATE says so. Chains first, then side trails in the layer's order."""
     test = _at_test("int_trail_lines__at_published_cuts_every_coordinate_and_never_degenerates_a_line")
     lines = {row["trail_line_id"]: row for row in _at_given(test, "int_trail_lines__at_chain_miles")}
     lines |= {row["trail_line_id"]: row for row in _at_given(test, "int_trail_lines__at_side_trails")}
@@ -1087,7 +1084,7 @@ def test_the_at_published_rows_are_rounded_geometrys_answers():
         )
 
 
-# --- the club sections (TL24-TL26) ---------------------------------------------------
+# --- the club sections ---------------------------------------------------
 
 
 def _club_python(test: dict) -> list[tuple[float, float, str | None]]:

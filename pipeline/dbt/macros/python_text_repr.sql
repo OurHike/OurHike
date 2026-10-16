@@ -2,7 +2,7 @@
     Python's repr() of a str, or `None` for a null, as a Python message
     prints a value with `!r`: single quotes, or double quotes when the text
     holds a single quote and no double one, with the backslash, tab, newline,
-    carriage return and the chosen quote escaped (#1793, stage 3, for
+    carriage return and the chosen quote escaped (for
     lib/atc_updates.py's auto_publish_refusal() messages).
 
     NOT NAMED python_repr, which macros/challenges/python_repr.sql defines

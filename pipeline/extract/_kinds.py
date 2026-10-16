@@ -68,7 +68,6 @@ from psycopg.rows import dict_row
 import export_conditions
 from check_freshness import CORRIDOR_PROBES
 from extract._contract import (
-    EXTRACT_DIR,
     PIPELINE_DIR,
     TRAIL_ORGS_PATH,
     Carried,
@@ -76,7 +75,7 @@ from extract._contract import (
     Proofs,
     Resource,
     Unavailable,
-    read_club_file,
+    registry_claims,
     slug_for_folder,
 )
 
@@ -2479,12 +2478,11 @@ class CatalogueRow(Resource):
         if org is None:
             raise KeyError(f"{self.club}/ has no trail_orgs.json row with slug {slug!r}")
         claims = []
-        # A club with no resource file has no folder (decision 88), and so claims nothing.
-        for path in sorted((EXTRACT_DIR / self.club).glob("*.py")):
-            club_file = read_club_file(path)
-            for key in club_file.claims:
-                entry = _registry(REGISTRY_PATH).get(key, {})
-                claims.append({"key": key, "type": club_file.type, **{name: entry.get(name) for name in CLAIM_FIELDS}})
+        # By type, then in the registry's order: the order the claims have always come in.
+        mine = [(type_, key) for org, type_, key in registry_claims(REGISTRY_PATH, TRAIL_ORGS_PATH) if org == self.club]
+        for type_, key in sorted(mine, key=lambda claim: f"{claim[0]}.py"):
+            entry = _registry(REGISTRY_PATH).get(key, {})
+            claims.append({"key": key, "type": type_, **{name: entry.get(name) for name in CLAIM_FIELDS}})
         yield {**{name: org.get(name) for name in ORG_FIELDS}, "claims": claims}
 
 

@@ -173,6 +173,7 @@ seeds:
         licence_basis: varchar
         applies_to: varchar
         admitted_by: varchar
+        covers_own_words_named_by: varchar
     columns:
       - name: licence_basis
         description: The value sources.json or trail_orgs.json records.
@@ -187,6 +188,15 @@ seeds:
                 values: [any, federal, nys_clearinghouse, gis]
       - name: admitted_by
         description: The rule of "Who may publish", or the decision, that admits it.
+      - name: covers_own_words_named_by
+        description: >
+          Set only where the basis is a maintainer's ruling on the dataset
+          itself rather than on any wording of it (decision 213, Q25:
+          decisions 20 and 22 cover a clearinghouse dataset's own restrictive
+          words). A case-insensitive RE2 expression a row's `licence` must
+          match to name that ruling; where it does, int_sources__publication
+          answers every restriction class in the row's quoted words except
+          `cannot_be_met`. Empty for every other basis.
   - name: registry_surfaces
     description: >
       Where on the phone an organization may grant each of its two kinds of

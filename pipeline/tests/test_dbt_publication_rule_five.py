@@ -56,7 +56,11 @@ def test_each_unit_tests_mocked_seed_is_the_seed_file(test_name, seed):
 
 @pytest.mark.parametrize(
     ("seed", "column"),
-    [("licence_restriction_phrases", "pattern"), ("licence_restriction_answers", "named_by")],
+    [
+        ("licence_restriction_phrases", "pattern"),
+        ("licence_restriction_answers", "named_by"),
+        ("publishable_licence_bases", "covers_own_words_named_by"),
+    ],
 )
 def test_every_pattern_compiles_as_duckdb_reads_it(seed, column):
     con = duckdb.connect()
@@ -79,7 +83,11 @@ def test_every_phrase_written_for_a_row_finds_its_words_in_that_row():
 
 
 def test_no_answer_row_answers_what_decision_38_holds_or_the_backstop():
-    """`cannot_be_met` and `unclassified` hold their row whatever its licence says, so neither has an answer."""
+    """No answers row answers `cannot_be_met` or `unclassified`, so neither is answered by a wording's class.
+
+    The one other answer is a basis that rules on the dataset itself (publishable_licence_bases'
+    `covers_own_words_named_by`, decision 213, Q25), which still leaves `cannot_be_met` holding its row.
+    """
     restrictions = {row["restriction"] for row in _seed("licence_restriction_answers")}
     assert not restrictions & {"cannot_be_met", "unclassified", "not_a_restriction"}
 

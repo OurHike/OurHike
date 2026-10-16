@@ -105,6 +105,16 @@ PUBLICATION = [
     ("osm_water", True),
 ]
 NOTICE_READERS = [("club_notices", "raw_club__club_news")]
+#: Decision 213's rule 23 (the maintainer's poll, 2026-10-15): each published source's last post, its own layer's
+#: newest edit date, as int_sources__final and int_sources__data_edited give it. secret_layer is held, so its title
+#: and day never reach the file; osm_water publishes and its layer states no date, so it has no entry.
+FINAL_SOURCES = [
+    ("dec_hiking_trails", "DEC hiking trails", True),
+    ("oprhp_trail_closures", "OPRHP temporary trail closures", True),
+    ("secret_layer", "SECRET-HELD-TITLE", False),
+    ("osm_water", "OSM water", True),
+]
+DATA_EDITED = [("dec_hiking_trails", "2026-09-18"), ("oprhp_trail_closures", "2026-10-07"), ("secret_layer", "2001-01-01")]
 
 MART = "model.ourhike.trail_lines.v1"
 # A second mart, whose table check warns on both of its metrics.
@@ -672,6 +682,10 @@ def _warehouse(path: Path, *, empty: bool = False) -> None:
         con.executemany("insert into intermediate.int_sources__publication values (?, ?)", PUBLICATION)
         con.execute("create table seeds.notice_readers (source_key varchar, raw_table varchar)")
         con.executemany("insert into seeds.notice_readers values (?, ?)", NOTICE_READERS)
+        con.execute("create table intermediate.int_sources__final (source_key varchar, title varchar, may_publish boolean)")
+        con.executemany("insert into intermediate.int_sources__final values (?, ?, ?)", FINAL_SOURCES)
+        con.execute("create table intermediate.int_sources__data_edited (source_key varchar, data_edited_on varchar)")
+        con.executemany("insert into intermediate.int_sources__data_edited values (?, ?)", DATA_EDITED)
 
 
 def _build(root: Path, *, empty: bool = False) -> dict[str, dict]:
@@ -733,12 +747,14 @@ def test_each_lanes_file_names_its_format_lane_and_when_it_was_built(files):
             "needs_a_look",
             "series",
             "by_mart",
+            "last_posts",
         ]
         assert (document["format"], document["lane"]) == ("ourhike-data-quality/1", lane)
         assert re.fullmatch(r"\d{4}-\d\d-\d\dT\d\d:\d\d:\d\dZ", document["built_at"]), document["built_at"]
-    assert {key: value for key, value in files["monthly"].items() if key not in ("lane", "built_at")} == {
-        key: value for key, value in files["hourly"].items() if key not in ("lane", "built_at")
-    }, "both read the same tables; only the lane and the stamp differ"
+    differ = ("lane", "built_at", "last_posts")
+    assert {key: value for key, value in files["monthly"].items() if key not in differ} == {
+        key: value for key, value in files["hourly"].items() if key not in differ
+    }, "both read the same tables; only the lane, the stamp and the monthly lane's last posts differ"
 
 
 def test_this_builds_counted_checks_by_kind_a_held_source_neither_named_nor_counted(files):
@@ -1008,7 +1024,8 @@ def test_nothing_but_counts_and_names_leaves_the_warehouse(files):
             yield value
 
     for lane in ("monthly", "hourly"):
-        for leaf in leaves(files[lane]):
+        # last_posts names published sources by key and title, and dates them; its own test below holds it.
+        for leaf in leaves({key: value for key, value in files[lane].items() if key != "last_posts"}):
             if isinstance(leaf, str):
                 assert leaf in names or re.fullmatch(r"\d{4}-\d\d-\d\dT\d\d:\d\d:\d\dZ", leaf), leaf
             else:
@@ -1053,3 +1070,20 @@ def test_each_sources_freshness_is_its_last_result_in_this_build_and_elementarys
     assert not [item for item in document["needs_a_look"] if item["metric"] in learned or item["test"] in learned]
     assert not [item for item in document["series"] if item["metric"] in learned]
     assert "raw_ghost__layer" not in files["raw"] and "raw_secret__secret_layer" not in files["raw"]
+
+
+def test_last_posts_date_each_published_source_by_its_own_layer_and_warn_about_none(files, empty_files):
+    """Decision 213's rule 23 (the maintainer's poll, 2026-10-15, "Not now, show last post"): no gap-based freshness
+    warning, each source's last post shown as information instead. The monthly file lists every published source
+    whose layer states an edit date, by title; a held source is neither named nor dated; nothing about it is counted,
+    so totals and needs_a_look are what they were; the hourly lane reads no layer's date and lists none."""
+    assert files["monthly"]["last_posts"] == [
+        {"source": "dec_hiking_trails", "title": "DEC hiking trails", "edited_on": "2026-09-18"},
+        {"source": "oprhp_trail_closures", "title": "OPRHP temporary trail closures", "edited_on": "2026-10-07"},
+    ]
+    assert files["hourly"]["last_posts"] == []
+    assert "SECRET-HELD-TITLE" not in files["raw"] and "2001-01-01" not in files["raw"]
+    assert not [
+        item for item in files["monthly"]["needs_a_look"] if item["table"] in ("dec_hiking_trails", "oprhp_trail_closures")
+    ]
+    assert empty_files["hourly"]["last_posts"] == []

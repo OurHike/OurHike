@@ -409,3 +409,23 @@ describe("the flagged point's label (the review of 2026-10-15, thread 4279330043
     expect(flaggedLabel(chart, chartLayout(chart, 200), flagged).text).toBe("Flagged as high");
   });
 });
+
+describe("each source's last post, as markup", () => {
+  const POSTS = [{ source: "dec_hiking_trails", title: "DEC hiking trails", edited_on: "2026-09-18" }];
+
+  it("is a plain table of titles and days after the finished tables, with no pill, icon or colour", () => {
+    const body = renderBody(view(lane({ ...examples.monthlyAllGreen(), last_posts: POSTS }, "monthly"), MISSING));
+    expect(body).toContain('<h2 id="dq-posts-title">Each source\'s last post</h2>');
+    expect(body).toContain(
+      "The newest edit date each source's own layer gives, as the monthly build read it. Shown for information: how long a source goes between posts is not checked.",
+    );
+    expect(body).toContain("<td>DEC hiking trails</td><td>18 Sep 2026</td>");
+    const section = body.slice(body.indexOf('aria-labelledby="dq-posts-title"'));
+    for (const toned of ["dq-pill", "dq-i-", "dq-quiet"]) expect(section).not.toContain(toned);
+    expect(body.indexOf("By finished table")).toBeLessThan(body.indexOf("Each source's last post"));
+  });
+
+  it("is left out when the file lists no last post", () => {
+    expect(renderBody(view(lane(examples.monthlyAllGreen(), "monthly"), MISSING))).not.toContain("dq-posts-title");
+  });
+});

@@ -485,10 +485,23 @@ def test_most_of_this_registry_ships_on_the_maintainers_own_word():
     # `maintainer_authorisation` (the hiking trails and six land-asset layers), 4 DEC layers from `public_gis` (lands,
     # easements, wildlife management areas, the Catskill Park boundary) and 2 OPRHP layers from `stated_by_org` (the
     # trails and the parks' property), so 260 -> 253, 281 -> 277 and 209 -> 207.
+    # Decision 213, Q25 (the maintainer's poll, 2026-10-15): a publisher that states nothing is decision 21a's case,
+    # so the 14 rows that said so on another basis move to `public_gis`: the 11 written on the assume-open decision of
+    # 2026-09-17 from `stated_by_org` (cotrex_trails, wa_rco_trails, wa_rco_trailhead_status, utah_sgid_trails,
+    # pasda_dcnr_trails, ct_deep_blue_blazed, nc_mst_trail, azgeo_arizona_trail, duluth_superior_hiking_trail,
+    # massgis_long_distance_trails, wi_ice_age_trail) and the 3 the same decision recorded as
+    # `maintainer_authorisation` (ncta_trail, alaska_trails, cdtc_centerline), so 207 -> 196, 253 -> 250 and
+    # 277 -> 291.
+    # The same poll registers the 15 layers trail_orgs.json rows name that had no row, each with its terms read and
+    # held: 13 `public_gis` (IATA's official sections, FTA's whole FNST line, the Montour Trail's route, the Rachel
+    # Carson Trail's GeoJSON, and the trail layers of Missouri State Parks, IDPR's Centennial Trail, Michigan DNR's
+    # Iron Belle Trail, VTrans' LVRT, Florida State Parks, OPRD, the Canal Corporation, Maricopa County and
+    # Washington State Parks) and 2 `stated_by_org` (NETT's segments, 'Public Domain', and IDPR's Idaho Routes, whose
+    # item states terms), so 291 -> 304 and 196 -> 198.
     assert counts == {
-        "maintainer_authorisation": 253,
-        "public_gis": 277,
-        "stated_by_org": 207,
+        "maintainer_authorisation": 250,
+        "public_gis": 304,
+        "stated_by_org": 198,
         "unresolved": 32,
         "maintainer_clearinghouse": 13,
     }

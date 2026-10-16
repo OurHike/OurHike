@@ -137,7 +137,7 @@ def _club_sections_layer():
 #: the one at its start, so that one piece of the mile axis carries the four
 #: snapped markers int_trail_lines__mile_axis_holdout needs to score any:
 #: its test int_trail_lines__mile_axis_holdout_warns_when_it_scored_nothing
-#: is an error in CI since decision 204 (the maintainer, 2026-10-15, "Every
+#: is an error in CI (the maintainer, 2026-10-15, "Every
 #: test should have both the warning and error thresholds"). Each `Measure`
 #: is the marker's own distance along that piece in EPSG:5070, in miles, as
 #: int_trail_lines__mile_axis_markers computes it (st_linelocatepoint times
@@ -176,7 +176,7 @@ def _half_mile_layer():
     )
 
 
-# --- elevation, the A.T. half (#1793, stage 3) -------------------------------
+# --- elevation, the A.T. half -------------------------------
 #
 # step_dem_sampling.py and today's export_elevation.py both read the DEM
 # through a tile index (fetch_elevation.py's data/raw/elevation/
@@ -1457,7 +1457,7 @@ def _registered_trail_lines_layer(key: str, name_field: str | None):
 
 
 #: A field named like an object id that is not the layer's: pasda_dcnr_trails' esriFieldTypeOID field is
-#: OBJECTID_1, beside an OBJECTID that is not its object id (pipeline/ELT.md's TL05, read 2026-10-08;
+#: OBJECTID_1, beside an OBJECTID that is not its object id (read 2026-10-08;
 #: tests/test_extract_pin.py), so a model reading OBJECTID there publishes the wrong id.
 NOT_THE_OBJECT_ID = {"pasda_dcnr_trails": "OBJECTID"}
 
@@ -1517,7 +1517,7 @@ def _with_key_fields(collection: dict, fields: dict) -> dict:
     return collection
 
 
-# --- The points_of_interest family (#1793, stage 3) ------------------------
+# --- The points_of_interest family ------------------------
 #
 # What the POI family's shadow-run parity needs from these fixtures, added to
 # the layers above rather than written into their builders, so no other
@@ -1728,7 +1728,7 @@ def _site_water_fixtures(sites: list[dict]) -> dict[str, str]:
 # fetch_osm_water.py's feature() shape, and the EPQS answers
 # step_osm_water_grade.py reads in place of the network, keyed "lat,lon" at
 # 6 dp as step_site_water.offline_elevations() reads them (fetch_trail_water.
-# py's own cache has keyed each point exactly since decision 131; that
+# py's own cache has keyed each point exactly; that
 # function says why the stand-in does not). They live under osm_water/
 # rather than at data/raw/osm_water.geojson, where export_poi.py would read
 # them and then refuse to run without build_osm_water_reach.py's verdicts.
@@ -2173,7 +2173,7 @@ def _points_of_interest_fixtures(files: dict) -> dict:
 
 
 # --------------------------------------------------------------------------
-# The closures and warnings family (#1793, stage 3): the hourly lane's three
+# The closures and warnings family: the hourly lane's three
 # upstreams that are not layer files. extract/_fixtures.py serves each the way
 # its upstream answers: NWS's /alerts/active body, NYNJTC's WordPress routes,
 # and the rows OurHike's Postgres returns for each of export_conditions.py's
@@ -2691,7 +2691,7 @@ def _work_projects_stand_in() -> dict:
     }
 
 
-# --- ATC's Trail Updates, as their website serves them (#1793, stage 3) -------
+# --- ATC's Trail Updates, as their website serves them -------
 #
 # extract/_kinds.py's AtcTrailUpdatePages reads ATC's trail-updates sitemap and
 # each update's page from this file, and parity.py serves the same file's
@@ -2878,12 +2878,12 @@ def _atc_trail_updates() -> dict:
     return {"answers": answers}
 
 
-# --- the JSON API notice sources (extract/_json_apis.py, decision 53 phase B) --
+# --- the JSON API notice sources (extract/_json_apis.py) ---------------------
 #
 # One file per registry key under conditions/json_apis/, each a list of the
 # answers its upstream gives: a URL without its query, the query parameters
 # that answer needs, and the body as served. Every field name is one the
-# decision 53 inventory read off the live answer on 2026-10-03 (sources.json's
+# notice inventory read off the live answer on 2026-10-03 (sources.json's
 # `notes` for each key); every value is invented, and no real alert, advisory,
 # page or segment is copied. The person fields a live answer carries are here
 # with invented values, so the readers' rules that keep them out are run.
@@ -3160,7 +3160,7 @@ def _json_api_fixtures() -> dict[str, str]:
     }
 
 
-# --- the clubs' notice pages, feeds and WordPress posts (decision 53 phase B) ------
+# --- the clubs' notice pages, feeds and WordPress posts -------------------------
 #
 # PAGES AND FEEDS. One file per registry key under conditions/notices/, each the answers the key's
 # reader asks for: `{"answers": {url: {"content_type", "body"}}, "rows": n}`, served by exact URL
@@ -3169,10 +3169,10 @@ def _json_api_fixtures() -> dict[str, str]:
 # REST, `/wp-json/wp/v2/pages/<id>` at its origin. THE SHAPES ARE MEASURED: each page's region, its
 # title's place and its stated date's wording, WordPress's REST page and post (`title.rendered`,
 # `content.rendered`, `modified_gmt`), and RSS 2.0 as WordPress, Drupal and Weebly serve it, are what
-# the inventory and phase B's live reads found on 2026-10-03 (each row's sources.json `notes`
+# the inventory and its live reads found on 2026-10-03 (each row's sources.json `notes`
 # says which). EVERY VALUE IS INVENTED and starts with 'Fixture': no real notice, name, title, post or
 # number is copied. Each feed item carries a `dc:creator` and a `description`, so the reader's rule
-# that neither lands is run. The two phase B batches wrote their halves separately: folders a to m in
+# that neither lands is run. The fixtures come in two halves: folders a to m in
 # NOTICE_FIXTURES (numbered pages, feeds and REST pages), folders n to z and _shared/ in
 # _notice_pages_n_to_z() (each page shaped like its own live one).
 #
@@ -3437,7 +3437,7 @@ def _notice_pages_n_to_z() -> dict[str, tuple[str, str, str]]:
     rest.update({key: ("https://ozarktrail.com", page_id) for key, page_id in OTA_SECTION_PAGES.items()})
     for key, (origin, page_id) in rest.items():
         pages[key] = (f"{origin}/wp-json/wp/v2/pages/{page_id}", NOTICE_REST, _wp_rest_page(page_id, f"Fixture {key}"))
-    # Decision 122 (2026-10-09), tahoe_pyramid/ and montour_trail/ since their rows (2026-10-11): each page's own title, which
+    # tahoe_pyramid/ and montour_trail/ (registered 2026-10-11): each page's own title, which
     # its expect_title holds.
     pages["tahoe_pyramid_trail_alerts"] = (
         "https://tahoepyramidtrail.org/wp-json/wp/v2/pages/20392",
@@ -3539,7 +3539,7 @@ WP_CATEGORY_POSTS = {
     "pnta_trail_conditions_posts": ("https://www.pnt.org", 188, "trail-conditions"),
     "tehcc_at_posts": ("https://tehcc.org", 3, "appalachian-trail"),
     "tko_oct_trail_conditions": ("https://trailkeepersoforegon.org", 10, "trail-conditions"),
-    # Decision 122 (2026-10-09): the River to River Trail Society's 'Trail Conditions', category 4, r2r/ since its row (2026-10-11).
+    # The River to River Trail Society's 'Trail Conditions', category 4, r2r/ since its row (2026-10-11).
     "r2r_trail_conditions": ("https://rivertorivertrail.net", 4, "trail-conditions"),
     # The drafted rows for RATC, registered 2026-10-10 once its robots.txt answered 200.
     "ratc_closures_posts": ("https://www.ratc.org", 78, "closures"),
@@ -3548,7 +3548,7 @@ WP_CATEGORY_POSTS = {
 
 
 def _notice_fixtures_n_to_z() -> dict[str, str]:
-    """Decision 53 phase B's page notices and WordPress posts for folders n to z and _shared/ (the comment above)."""
+    """The page notices and WordPress posts for folders n to z and _shared/ (the comment above)."""
     files = {
         f"conditions/notices/{key}.json": json.dumps({"answers": {url: {"content_type": content_type, "body": body}}, "rows": 1})
         for key, (url, content_type, body) in _notice_pages_n_to_z().items()
@@ -3820,14 +3820,14 @@ def _gap_alert_post(post_id: int, status: str) -> dict:
 
 
 def _club_wordpress_fixtures() -> dict[str, str]:
-    """The category lookup and posts of the three club WordPress sources phase B registered, GMC's `alert` type and
+    """The category lookup and posts of the three club WordPress sources registered, GMC's `alert` type and
     Land Between The Lakes' `alerts` type.
 
     Field names are the ones each site's posts route served on 2026-10-03
     (sources.json's `notes`); ATA's category 251 carries a passage term beside
     it, as its live posts do; MATC's category is 157; GMC's posts sit in no
     category and carry `alert-category` terms. Land Between The Lakes' were
-    read on 2026-10-08 (the wave 6): its alert category 57 is
+    read on 2026-10-08: its alert category 57 is
     'Trails'. The Great Allegheny Passage's `trail-alerts` type was read on
     2026-10-09: its posts carry their status in ACF fields.
     """
@@ -3883,12 +3883,12 @@ def closures_and_warnings_fixtures() -> dict[str, str]:
     }
 
 
-# --- closures and warnings: the ArcGIS layers decision 53 registers (phase B) ---------
+# --- closures and warnings: the ArcGIS layers registered for notices ----------
 #
 # One file per layer under external/, where extract/_fixtures.py's fixture_file() finds it
 # by registry key, so fixture mode runs each layer through ArcgisLayer's own change check,
 # pager, hints and count proof. THE NAMES ARE MEASURED: every property is a field name the
-# layer's live ?f=json lists, read in the phase A inventory on 2026-10-03 (the
+# layer's live ?f=json lists, read in the notice inventory on 2026-10-03 (the
 # session's scratchpad, never committed). THE VALUES ARE INVENTED and start with 'Fixture'
 # wherever they are text. Fixture mode answers every query with every row, whatever its
 # `where`, so each row carries a status value the layer's own filter keeps. No person field
@@ -4637,7 +4637,7 @@ NOTICE_LAYERS = {
             "last_edited_date": FIXTURE_DATE_MS,
         },
     ),
-    # The wave 6 (2026-10-08): the Empire State Trail's closed sections and its work zones, each
+    # Read 2026-10-08: the Empire State Trail's closed sections and its work zones, each
     # field list the one its live ?f=json gave that day. The closures view serves no GlobalID.
     "ptny_est_closures": (
         _line,
@@ -4814,7 +4814,7 @@ NOTICE_LAYERS = {
             "GlobalID": "{fixture-cpw-lion-conflict-areas-1}",
         },
     ),
-    # Decision 122 (the maintainer's poll, 2026-10-09): batch 01's candidate stewards, every layer held in
+    # Candidate stewards (the maintainer's poll, 2026-10-09), every layer held in
     # extract/_shared/. Each field list is the one its live ?f=json gave on 2026-10-09; the geometry, person and
     # system area or length fields are left out of these rows.
     "mo_state_parks_trail_advisories": (
@@ -5170,7 +5170,7 @@ def notice_layers_fixtures() -> dict[str, dict]:
     return {f"external/{key}.geojson": _features([row], geometry) for key, (geometry, row) in layers.items()}
 
 
-# --- trail_lines, the network half (#1793, stage 3) --------------------------
+# --- trail_lines, the network half --------------------------
 #
 # The network's dbt models (pipeline/dbt/models/intermediate/trail_lines/
 # int_trail_lines__network_*) and today's export_nearby_trails.py both read
@@ -5250,7 +5250,7 @@ CLOSURE_TRAIL_LINES = [
 ]
 
 #: The release's own A.T. lines as step_closure_trail_lines reads them under --fixtures
-#: (closure_trail_lines/trails.geojson, in trails.geojson's own shape), for decision 192: a club's area closure
+#: (closure_trail_lines/trails.geojson, in trails.geojson's own shape): a club's area closure
 #: crosses out the A.T. where it runs inside, like any trail. As (id, name, source, geometry):
 #: - a centerline chain running north through the first area ("bridge washed out", lon -73.975 to -73.965), east of
 #:   the lon -73.97 line, so that area's cut gains a second stretch, along the A.T.;
@@ -5594,7 +5594,7 @@ def _trail_lines_network_fixtures(files: dict[str, dict | str | bytes]) -> dict[
       phones hold for them.
     - the layer's GlobalID, spelled as its row's `global_id_field` names it,
       where a builder carries none: pasda_dcnr_trails' GLOBALID (read
-      2026-10-08, pipeline/ELT.md's TL05), so CI's parity reaches a GlobalID
+      2026-10-08), so CI's parity reaches a GlobalID
       spelled otherwise beside an object id that is not named OBJECTID.
 
     The extract lands none of these ids as an `id` (its rows are a feature's
@@ -5794,9 +5794,7 @@ def _trail_lines_at_fixtures(files: dict[str, dict | str | bytes]) -> dict[str, 
 
 # --- suggested_hikes, NYNJTC's Hike Finder export -----------------------------
 #
-# The suggested_hikes family's models (pipeline/dbt/models/**/suggested_hikes/,
-# stage 3 of #1793 — Rebuild the data platform as dlt → dbt: seven contracted
-# marts, a monthly refresh, published docs, and lighter phone downloads)
+# The suggested_hikes family's models (pipeline/dbt/models/**/suggested_hikes/)
 # read raw_nynjtc__nynjtc_hike_finder, which the extract's PublishedHikes
 # resource lands from a listing, one page per hike and a GPX per routed hike.
 # extract/_fixtures.py serves the files below at those three URLs, so every
@@ -6010,7 +6008,7 @@ def suggested_hikes_fixtures() -> dict[str, str]:
     return files
 
 
-# --- places (#1793, stage 3) -------------------------------------------------
+# --- places -------------------------------------------------
 #
 # The places family's dbt models (pipeline/dbt/models/intermediate/places/) and
 # today's export_places.py both read NYS OPRHP's park polygons, and parity.py
@@ -6092,7 +6090,7 @@ def _places_fixtures(files: dict[str, dict | str | bytes]) -> dict[str, dict | s
     return {**files, "external/oprhp_park_polygons.geojson": _feature_collection(parks)}
 
 
-# --- Decision 54, wave 1: the clubs' elevation products ----------------------
+# --- the clubs' elevation products ----------------------
 #
 # Six layers registered 2026-10-03 (pipeline/ELT.md, "Loading everything the
 # clubs publish"). The FIELD NAMES are each live layer's own, read off its
@@ -6232,7 +6230,7 @@ ELEVATION_PRODUCT_FIXTURES = {
 }
 
 
-# The wave 1 places layers (pipeline/ELT.md, "Loading everything the
+# The club places layers (pipeline/ELT.md, "Loading everything the
 # clubs publish"): every `club_arcgis_layer` row a club's places.py claims,
 # registered 2026-10-03. Each fixture carries what its sources.json row
 # declares as read off the live layer that day - the key (`id_field`, or
@@ -6325,7 +6323,7 @@ CLUB_PLACES_KEYS = (
     "patc_lands_compilation",
     "buckeye_retail_map_outlines",
     "usgs_gnis_populated_places",
-    # Decision 126 (2026-10-09): TPL's ParkServe, held in extract/_shared/tpl/, landed raw only.
+    # TPL's ParkServe, held in extract/_shared/tpl/, landed raw only.
     "tpl_parkserve_parks",
 )
 # The keys the live layers type as numbers (read 2026-10-03), so the fixture's
@@ -6356,7 +6354,7 @@ CLUB_PLACES_GEOMETRY = {"polygon": _polygon, "point": _point, "line": _line, "mu
 def _club_places_fixtures() -> dict[str, dict]:
     """One `<key>.geojson` per CLUB_PLACES_KEYS row, with the columns its registry row declares.
 
-    The key's columns are `id_fields` (or `id_field`) and, where phase C measured a key the row did not
+    The key's columns are `id_fields` (or `id_field`) and, where a key was measured that the row did not
     have, the attribute columns of its `key_fields` (`geometry` there is the shape, which every fixture
     feature has). Each `date_fields` column carries an epoch-millisecond date.
     """
@@ -6385,7 +6383,7 @@ def _club_places_fixtures() -> dict[str, dict]:
     return files
 
 
-# --- Decision 54, wave 1: the clubs' trail lines ------------------------------
+# --- the clubs' trail lines ------------------------------
 #
 # 98 layers registered 2026-10-03 (pipeline/ELT.md, "Loading everything the
 # clubs publish"). Each entry is the live layer's own field list, in its own
@@ -6682,7 +6680,7 @@ CLUB_TRAIL_LINE_FIELDS = {
         "creator:s stroke_opacity:i stroke_width:i title:s fill:s class:s updated:d stroke:s fill_opacity:d "
         "folderId:s gpstype:s ObjectId:o Shape__Length:d"
     ),
-    # The wave 6 (2026-10-08): the Empire State Trail's segments and connector trails, the field lists
+    # Read 2026-10-08: the Empire State Trail's segments and connector trails, the field lists
     # their live ?f=json gave that day.
     "oprhp_est_segments": "OBJECTID:o Type:s Surface:s Miles:d ParentLegName:s ParentLegID:s UID:s GlobalID:g Shape__Length:d",
     "oprhp_est_connectors": "OBJECTID:o Name:s UID:s GlobalID:g Shape__Length:d",
@@ -6744,7 +6742,7 @@ CLUB_TRAIL_LINE_FIELDS = {
         "BICYCLES:s DOGS:s DATAACCESS:s PUBLICDISPLAY:s SEASONAL:s SEASONALDESC:s NOTES:s CREATEUSER:s "
         "CREATEDATE:t EDITUSER:s EDITDATE:t GlobalID:g RelateGUID:g Shape__Length:d"
     ),
-    # Wave 6, 2026-10-11: IDOT's Bicycle Facility Inventory System, registered under IDOT's own trail_orgs.json row
+    # Read 2026-10-11: IDOT's Bicycle Facility Inventory System, registered under IDOT's own trail_orgs.json row
     # (review page 02, P10), its 39 fields read off the live layer's metadata that day.
     "idot_bike_inventory": (
         "OBJECTID:o BRID:s NAME:s FACTYPE:s APPROVALSTATUS:s COMMENT:s MATERIAL:s WIDTH:d BUFWIDTH:d SEPARATORTYPE:s "
@@ -6769,7 +6767,7 @@ def _club_value(key: str, name: str, code: str, i: int):
 
 
 def _club_trail_lines_fixtures() -> dict[str, dict]:
-    """One fixture per decision 54 trail-line layer, from CLUB_TRAIL_LINE_FIELDS."""
+    """One fixture per generated trail-line layer, from CLUB_TRAIL_LINE_FIELDS."""
     files = {}
     for key, spec in CLUB_TRAIL_LINE_FIELDS.items():
         columns = [tuple(item.rsplit(":", 1)) for item in spec.split()]
@@ -6782,7 +6780,7 @@ def _club_trail_lines_fixtures() -> dict[str, dict]:
     return files
 
 
-# --- Decision 54, wave 1: the clubs' point layers ---------------------------
+# --- the clubs' point layers ---------------------------
 #
 # The points_of_interest layers registered 2026-10-03 as club_arcgis_layer
 # (pipeline/ELT.md, "Loading everything the clubs publish"), one fixture each.
@@ -6792,7 +6790,7 @@ def _club_trail_lines_fixtures() -> dict[str, dict]:
 # grouping found, and every other column null, so nothing is claimed about a
 # column nobody profiled. Each person field the row or PERSON_FIELDS names
 # carries an invented value, so CI's fixture build shows it never lands. No
-# staging model reads these tables yet; phase C adds them.
+# staging model reads these tables yet.
 
 
 def _club_point_layer(fields: tuple[str, ...], values: dict[str, tuple]) -> dict:
@@ -7520,7 +7518,7 @@ CLUB_POINT_FIXTURES = {
             "OBJECTID": (1, 2),
             "GEOMETRYID": ("fixture-nps_points_of_interest-0", "fixture-nps_points_of_interest-1"),
             "POINAME": ("Fixture nps points of interest 0", "Fixture nps points of interest 1"),
-            # The second row is a tap decision 65 ships unconfirmed with a season
+            # The second row is a tap that ships unconfirmed with a season
             # caution, so the fixture build carries one end to end.
             "POITYPE": ("Parking Lot", "Potable Water"),
         },
@@ -8534,7 +8532,7 @@ CLUB_POINT_FIXTURES = {
         ("OBJECTID", "LOCATION"),
         {"OBJECTID": (1, 2), "LOCATION": ("Fixture black hills parking 0", "Fixture black hills parking 1")},
     ),
-    # The wave 6 (2026-10-08): the Empire State Trail's TrailFeature layer, the field list
+    # Read 2026-10-08: the Empire State Trail's TrailFeature layer, the field list
     # its live metadata gave that day. Row 0 carries the '<Null>' name the live layer gives 18
     # restrooms, so CI's build shows int_points_of_interest__club_points reading it as no name.
     "external/oprhp_est_trail_features.geojson": (
@@ -8563,7 +8561,7 @@ CLUB_POINT_FIXTURES = {
             "Address": ("fixture person", "fixture person"),
         },
     ),
-    # Decision 122 (the maintainer's poll, 2026-10-09): batch 01's candidate stewards' point layers, held in
+    # Candidate stewards' point layers (the maintainer's poll, 2026-10-09), held in
     # extract/_shared/ and landed raw only. Each field list is the one its live metadata gave on 2026-10-09, less
     # the geometry; every person field the row lists carries an invented value, so CI's build shows none lands.
     "external/mo_state_parks_trail_pois.geojson": (
@@ -8901,7 +8899,7 @@ CLUB_POINT_FIXTURES = {
 }
 
 
-# --- decision 54 wave 3, section C: the clubs' content feeds and APIs (2026-10-04) --------------------
+# --- the clubs' content feeds and APIs (2026-10-04) --------------------
 #
 # Podcast feeds (extract/_content.py's PodcastEpisodes), NPS's content lists (NpsContent) and the TEHCC wiki's
 # hike and challenge templates (MediawikiTemplatePages) are answered from conditions/json_apis/<key>.json, as
@@ -9302,7 +9300,7 @@ def content_fixtures(files: dict) -> dict:
     return _content_wordpress_fixtures(files)
 
 
-# --- decision 54, waves 2 and 3: GIS files and the geographic APIs (extract/_gis_files.py, extract/_ogc.py) ---
+# --- GIS files and the geographic APIs (extract/_gis_files.py, extract/_ogc.py) ---
 #
 # One answers document per registry key under conditions/json_apis/, the shape the JSON API notice sources use,
 # because fixture mode serves extract/_gis_files.py's GisFile and extract/_ogc.py's JsonFeatures and OgcFeatures
@@ -9942,7 +9940,7 @@ def gis_file_and_geo_api_fixtures() -> dict[str, str]:
     return {f"conditions/json_apis/{key}.json": json.dumps(document) for key, document in documents.items()}
 
 
-# --- decision 54, waves 4 and 5, section S: the points read off club pages (extract/_pages_points.py) -------------
+# --- the points read off club pages (extract/_pages_points.py) -------------
 #
 # One document per registry key under conditions/page_points/, `{"answers": {url: {"content_type", "body"}},
 # "rows": n}`, served by exact URL (extract/_fixtures.py's PAGE_POINTS_DIR), so each page's own parser reads a
@@ -9962,7 +9960,7 @@ def gis_file_and_geo_api_fixtures() -> dict[str, str]:
 # the same URL, so the notices document for that key is written here too, with this body: one page, as the site
 # serves it, for both of its readers. Its <h1> is the page notice's title.
 #
-# Not here: wave 4's PDFs (extract/_pdf_points.py), which need pypdf, and the pipeline and dbt jobs install none
+# Not here: club PDFs (extract/_pdf_points.py), which need pypdf, and the pipeline and dbt jobs install none
 # (requirements.in's note): fixture mode leaves them out, as it leaves GATC's water PDF and the notice PDFs out.
 
 PAGE_HTML = "text/html; charset=UTF-8"
@@ -10316,7 +10314,7 @@ def page_points_fixtures() -> dict[str, str]:
     return files
 
 
-# --- decision 54, waves 4 and 5: the content types' pages and posts (section K, extract/_pages_content.py) ---
+# --- the content types' pages and posts (extract/_pages_content.py) ---
 #
 # One answers document per registry key under conditions/json_apis/, as section C's and G's are, because fixture
 # mode serves extract/_pages_content.py's ContentPages from that folder (extract/_fixtures.py's JSON_API_KINDS): each

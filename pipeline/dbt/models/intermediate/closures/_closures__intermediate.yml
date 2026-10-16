@@ -4475,6 +4475,68 @@ unit_tests:
         - {mart: closures, notice_id: 'feed_a:item-1', title: 'Fixture Trail closed', obstructs_trail: true, starts_on: '2026-09-21', ends_on: null}
         - {mart: warnings, notice_id: 'feed_a:item-6', title: 'Fixture water carry', obstructs_trail: null, starts_on: '2026-09-28', ends_on: '2026-10-12'}
 
+  - name: int_closures__window_carried_moves_a_carried_closure_whose_own_end_has_passed_to_warnings
+    description: >
+      A feed notice carried out of its window is judged against its own end
+      date, as int_closures__held_carried judges a held one: a closure that
+      ended two days ago stays carried but moves to the warnings mart,
+      closes nothing and is not reviewed; one that ended yesterday still
+      closes for the margin's day; one with no end stays as it was. The
+      dates are relative to the build, so the margin is what is tested.
+    model: int_closures__window_carried
+    given:
+      - input: ref('stg_row_history__closures')
+        format: sql
+        rows: |
+          select
+              closure_id,
+              closure_id as history_row_key,
+              closure_id as dbt_scd_id,
+              'a' as club,
+              'feed_a' as source_key,
+              'club_feed_notices' as notice_kind,
+              true as obstructs_trail,
+              'org_published' as review_state,
+              closure_id as title,
+              cast(null as timestamp) as dbt_valid_to,
+              json_object('ends_on', cast(ends_on as varchar)) as row_json
+          from (
+              values
+              ('feed_a:ended_two_days_ago', cast(timezone('UTC', now()) as date) - 2),
+              ('feed_a:ended_yesterday', cast(timezone('UTC', now()) as date) - 1),
+              ('feed_a:no_end', cast(null as date))
+          ) as saved (closure_id, ends_on)
+      - input: ref('stg_row_history__warnings')
+        format: sql
+        rows: |
+          select
+              cast(null as varchar) as warning_id,
+              cast(null as varchar) as warning_kind,
+              cast(null as varchar) as history_row_key,
+              cast(null as varchar) as dbt_scd_id,
+              cast(null as varchar) as source_key,
+              cast(null as timestamp) as dbt_valid_to,
+              cast(null as json) as row_json
+          where false
+      - input: ref('notice_readers')
+        rows:
+          - {source_key: feed_a, club: a, notice_type: closures, reader: feed_notices, listing: window, raw_table: raw_a__feed_a, staged_by: stg_a__feed_a}
+      - input: ref('int_closures__unioned')
+        format: sql
+        rows: |
+          select 'feed_a:still_read' as notice_id
+      - input: ref('int_warnings__unioned')
+        format: sql
+        rows: |
+          select 'nws_alerts:y' as notice_id
+      - input: ref('notice_marks')
+        rows: []
+    expect:
+      rows:
+        - {notice_id: 'feed_a:ended_two_days_ago', mart: warnings, obstructs_trail: null, review_state: not_reviewed}
+        - {notice_id: 'feed_a:ended_yesterday', mart: closures, obstructs_trail: true, review_state: org_published}
+        - {notice_id: 'feed_a:no_end', mart: closures, obstructs_trail: true, review_state: org_published}
+
   - name: int_closures__held_carried_keeps_the_last_good_rows_of_a_source_the_gate_holds
     description: >
       The phase D: a source the gate holds this build keeps the

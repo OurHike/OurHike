@@ -12,9 +12,10 @@
 -- IT STAYS UNTIL, per phase C:
 -- - a person marks it lifted (seeds/notice_marks.csv);
 -- - nothing about its own end date: a notice past it is kept, greyed on the
---   phone (the maintainer's frame A, 2026-10-10), and a feed item states
---   none anyway (extract/_notices.py's FEED_COLUMNS), so the mart rows this
---   reads keep none either;
+--   phone (the maintainer's choice, 2026-10-10). A feed item states no end
+--   (extract/_notices.py's FEED_COLUMNS), but a closure that carries one
+--   and has passed it is moved to the warnings mart and closes nothing, as
+--   int_closures__held_carried does;
 -- - the club's own full listing omits it: where a club publishes the full
 --   list, that list is registered as the source and the feed is not
 --   (FeedNotices' docstring), so no window source here has one.
@@ -93,11 +94,26 @@ marks as (
     select notice_id
     from {{ ref('notice_marks') }}
     where mark = 'lifted'
+),
+
+carried as (
+    select
+        held.*,
+        {{ notice_has_ended('held.ends_on', notice_build_date()) }} as has_ended
+    from held
+    inner join windows on held.source_key = windows.source_key
+    left join present on held.notice_id = present.notice_id
+    left join marks on held.notice_id = marks.notice_id
+    where present.notice_id is null and marks.notice_id is null
 )
 
-select held.*
-from held
-inner join windows on held.source_key = windows.source_key
-left join present on held.notice_id = present.notice_id
-left join marks on held.notice_id = marks.notice_id
-where present.notice_id is null and marks.notice_id is null
+-- A carried closure whose own end has passed since it was read no longer
+-- closes the trail: it moves to the warnings mart with `obstructs_trail`
+-- null and `not_reviewed`, as int_closures__held_carried judges a held one.
+select
+    case when has_ended then 'warnings' else mart end as mart,
+    case when has_ended then null else obstructs_trail end as obstructs_trail,
+    case when has_ended then 'not_reviewed' else review_state end
+        as review_state,
+    * exclude (mart, obstructs_trail, review_state, has_ended)
+from carried

@@ -170,8 +170,8 @@ it into a second production, and then there is no free place to break things.
 
 Production's data docs, the dbt docs and the data-quality page, are served from
 **`docs.ourhike.org`**, a Cloudflare Pages project named `ourhike-docs`, and not from
-the app's origin, where any script of theirs could read a signed-in hiker's session
-([pipeline/ELT.md](pipeline/ELT.md) decision 144). The tag deploys them: `pages.yml`'s
+the app's origin, where any script of theirs could read a signed-in hiker's session.
+The tag deploys them: `pages.yml`'s
 **Deploy the data docs to docs.ourhike.org** job runs after the build job has
 published `ourhike.org`, and uploads the same `/data/` that job assembled. For a
 release that means three things.
@@ -339,8 +339,8 @@ A generator walks `v(previous)..v(next)` and emits:
    No PR numbers in this half.
 2. **What changed in the repository** — every merged pull request, its issue, grouped
    by the `client` / `backend` / `pipeline` / `data` / `ops` / `docs` labels.
-3. **Which data release this build pins**, and whether that moved. Since decision 44
-   (§10's amendment) that is two answers: the release `channels.json` names for
+3. **Which data release this build pins**, and whether that moved. Since §10's
+   amendment that is two answers: the release `channels.json` names for
    production, and the build's compiled fallback, `DATA_RELEASE`.
 4. **What is knowingly not validated** — §8d. This section is never empty, and a
    release whose author believes it is has not looked.
@@ -607,8 +607,8 @@ The change is an improvement rather than a delay: it gives a data release the on
 thing its own verification battery cannot provide, which is a real client fetching it
 through a real browser before anyone depends on it.
 
-**Amended 2026-10-02 by decision 44** ([pipeline/ELT.md](pipeline/ELT.md), "Versions
-and channels"; stage 4 of **#1793 — Rebuild the data platform as dlt → dbt: seven
+**Amended 2026-10-02** ([pipeline/ELT.md](pipeline/ELT.md), "Versions
+and channels"; built under **#1793 — Rebuild the data platform as dlt → dbt: seven
 contracted marts, a monthly refresh, published docs, and lighter phone downloads**).
 The constant above was built (#1333), and the trains now meet at a committed file
 instead: `channels.json`, at the repository root, names per data environment and
@@ -617,14 +617,14 @@ it plus a dispatch of `publish.py --channels`, which uploads it beside `latest.j
 no tag and no app release are needed, so a monthly refresh reaches installed phones.
 Rolling it back is reverting that commit and dispatching again. `DATA_RELEASE` stays,
 as the compiled fallback a first run reads before it has reached the pointer, and
-`pages.yml` and `ua.yml` assert that both resolve against their own base. Since
-decision 211 of [pipeline/ELT.md](pipeline/ELT.md) a phone also goes back to it when
+`pages.yml` and `ua.yml` assert that both resolve against their own base. A
+phone also goes back to it when
 the release it recorded answers 404 for its own manifest: the phone forgets that
 release, and its next launch reads `DATA_RELEASE` and then the pointer.
 [pipeline/DATA_RELEASES.md](pipeline/DATA_RELEASES.md) §4 has the rest. Which
 dispatch runs the upload is the release train's to wire, and none does yet.
 
-**Since decision 145 (poll, 2026-10-09) a deploy also refuses when the two name
+**A deploy also refuses when the two name
 different releases.** A phone reads `DATA_RELEASE` on its first launch and
 `channels.json`'s entry from the launch after it reads the pointer, so a build
 whose two values disagree changes release under a new install.
@@ -709,8 +709,8 @@ than a hope:
 - **The data release must be rollable too.** It is: folders under `releases/` are
   written once and never overwritten, and retention keeps a superseded release 90 days
   past being superseded with a floor of three (DATA_RELEASES.md, Retention). Rolling
-  back the tag rolls back the pinned constant with it. Since decision 44 (§10's
-  amendment) the constant is only a first run's fallback, and the data a phone reads
+  back the tag rolls back the pinned constant with it. Since §10's
+  amendment the constant is only a first run's fallback, and the data a phone reads
   rolls back on its own: revert the `channels.json` commit and dispatch
   `publish.py --channels`, with no tag involved. A phone follows the reverted entry
   from its next launch after reading it.
@@ -719,7 +719,7 @@ than a hope:
   rollback rule as much as a compatibility one.
 
 Re-deploying a tag re-deploys its data docs to `docs.ourhike.org` too (§3e). A tag from
-before decision 144's move, one whose `pages.yml` has no docs-host job, serves the docs
+before the docs moved host, one whose `pages.yml` has no docs-host job, serves the docs
 at `ourhike.org/data/` again and leaves `docs.ourhike.org` serving the newer ones until
 the next tag; nothing then links to a host with nothing on it, but dbt's page is back
 on the app's origin for as long as that tag is production.

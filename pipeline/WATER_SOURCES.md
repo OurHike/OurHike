@@ -202,8 +202,8 @@ either). That search does not need repeating.
   and distance-off columns arrive fused — the PDF's text layer holds no boundary).
   Publication still waits on the email this bullet asks for; the registry entry's
   `licence` field records that gate.
-  *Amended 2026-10-04:* the maintainer published it without the email (decision 75,
-  card Q5's option C): low confidence, each source placed on ATC's mile axis from
+  *Amended 2026-10-04:* the maintainer published it without the email (poll,
+  2026-10-04): low confidence, each source placed on ATC's mile axis from
   GATC's own mile and checked against ATC's same-named shelter, campsite or road
   gap. Measured that day: GATC's A.T. miles count from Springer on ATC's marker
   scale, within 0.122 mi at six on-trail named places to mile 38.3 and 0.18 to

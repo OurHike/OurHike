@@ -26,7 +26,7 @@ This is ordered so that each step unblocks the next. Steps 1–3 get a working m
 
 Everything downstream needs this. Without it the app has no data to fetch.
 
-**1.1 Create the bucket.** ✅ **Done** — bucket `our-hike` created 2026-10-02. It replaced `your-hike` (created 2026-07-31), whose contents were not copied: `our-hike` is filled by fresh publishes, and `your-hike` is deleted on 2026-10-05 (decision 43 in `pipeline/ELT.md`). (Cloudflare dashboard → R2 → Create bucket, for reference.)
+**1.1 Create the bucket.** ✅ **Done** — bucket `our-hike` created 2026-10-02. It replaced `your-hike` (created 2026-07-31), whose contents were not copied: `our-hike` is filled by fresh publishes, and `your-hike` is deleted on 2026-10-05. (Cloudflare dashboard → R2 → Create bucket, for reference.)
 
 **1.2 Create an API token.** Still manual — dashboard-only, since minting credentials isn't something to automate. R2 → Manage API Tokens → Create → **Object Read & Write**, scoped to `our-hike`. You get an Access Key ID and a Secret Access Key. The secret is shown **once**.
 
@@ -212,9 +212,9 @@ Two things to check after that redeploy:
 
 **After step 3 you have a working offline map.** Steps 4–6 are only needed for contributions — reporting, closures, accounts.
 
-### 3c. The data docs' own host: `docs.ourhike.org` (decision 144)
+### 3c. The data docs' own host: `docs.ourhike.org`
 
-**Why.** The dbt docs and the data-quality page were served at `ourhike.org/data/`, the same origin as the app at `/app/`, where a signed-in hiker's session lives in browser storage — so any script on `/data/` (dbt's own page, DuckDB-WASM) could read it. Decision 144 in [pipeline/ELT.md](pipeline/ELT.md) hash-pinned those scripts, and the maintainer's poll of 2026-10-10 moves them to **`docs.ourhike.org`**, served by a Cloudflare Pages project named **`ourhike-docs`**. `pages.yml` already deploys there on every tag, in its **Deploy the data docs to docs.ourhike.org** job; what no workflow can do is create the project or attach the domain.
+**Why.** The dbt docs and the data-quality page were served at `ourhike.org/data/`, the same origin as the app at `/app/`, where a signed-in hiker's session lives in browser storage — so any script on `/data/` (dbt's own page, DuckDB-WASM) could read it. Those scripts are hash-pinned, and the maintainer's poll of 2026-10-10 moves them to **`docs.ourhike.org`**, served by a Cloudflare Pages project named **`ourhike-docs`**. `pages.yml` already deploys there on every tag, in its **Deploy the data docs to docs.ourhike.org** job; what no workflow can do is create the project or attach the domain.
 
 **Status, 2026-10-10: steps 1 and 2 are done.** The maintainer created `ourhike-docs`, deployed a one-file placeholder to it and attached `docs.ourhike.org`; at 21:07 UTC both `https://docs.ourhike.org/` and `https://ourhike-docs.pages.dev/` answered 200 with valid TLS, and at 21:15 UTC the deploy's own probe read the placeholder as not yet the docs, as it should. Steps 3 and 6 remain.
 

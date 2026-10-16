@@ -84,6 +84,8 @@ publication as (
     where source_key = 'oprhp_trail_closures' and may_publish
 ),
 
+-- An area whose stated end has passed closes nothing, as
+-- int_closures__unioned reads the same areas.
 areas as (
     select
         oprhp_areas.source_row,
@@ -91,6 +93,7 @@ areas as (
         st_geomfromgeojson(oprhp_areas.geom_geojson) as geom
     from {{ ref('int_closures__oprhp_areas') }} as oprhp_areas
     cross join publication
+    where not {{ notice_has_ended('oprhp_areas.ends_on', notice_build_date()) }}
 ),
 
 -- No row at all in a week with nothing closed, rather than the empty

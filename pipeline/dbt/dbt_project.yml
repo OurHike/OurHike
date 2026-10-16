@@ -349,7 +349,7 @@ vars:
   nbm_grid_origin_x: -3272421.4573371694
   nbm_grid_origin_y: 3790842.106035436
   nbm_grid_square_m: 2539.703
-  # The trail_lines network's constants (tl-net), read by the
+  # The trail_lines network's constants, read by the
   # int_trail_lines__network_* models and held to the Python's own by
   # tests/test_dbt_trail_lines_network_parity.py until the Python is deleted: export_trails.py's
   # DEFAULT_SIMPLIFY_TOLERANCE_M and
@@ -773,7 +773,7 @@ vars:
   # '{challenges_build_date: 2027-07-20}'`, and the unit tests set it.
   challenges_build_date: null
 
-  # The trail_network family (tl-net), the junction graph a day hike routes
+  # The trail_network family, the junction graph a day hike routes
   # over: build_trail_graph.py's constants, read by the int_trail_network__
   # models and held to the Python's own by
   # tests/test_dbt_trail_network_parity.py until the cutover deletes the Python.

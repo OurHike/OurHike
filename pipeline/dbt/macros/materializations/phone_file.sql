@@ -19,8 +19,8 @@
     whole file as JSON text under any name, and it is written verbatim:
     COPY's CSV format with no header, no quoting and no escaping, which
     writes the text as it is plus one newline (measured 2026-10-02 on DuckDB
-    1.5.5 by the tl-at worker: `{"side_trails:a":{"name":"x"},"side_trails:b":1}`
-    came out byte for byte; and by the el worker through dbt 2.0.6 with the
+    1.5.5: `{"side_trails:a":{"name":"x"},"side_trails:b":1}`
+    came out byte for byte; and through dbt 2.0.6 with the
     6,982,130-byte elevation_profile.json, every comma and quote as
     written). The delimiter is \x01, which no DuckDB JSON text holds raw,
     because JSON escapes every control character, and with one column none

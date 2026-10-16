@@ -29,8 +29,8 @@
 -- leaves both, and both marts, in the same run.
 --
 -- A NOTICE SOURCE THE GATE HOLDS KEEPS ITS LAST GOOD ROWS, as
--- int_closures__final says (int_closures__held_carried, the phase
--- D). A closures-type club notice that does not close the trail lands here
+-- int_closures__final says (int_closures__held_carried). A closures-type club
+-- notice that does not close the trail lands here
 -- with its own geometry, as a warnings-type one does, so a phone can place it.
 with notices as (
     select * from {{ ref('int_closures__unioned') }}

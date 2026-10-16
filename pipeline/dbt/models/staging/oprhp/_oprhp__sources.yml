@@ -186,7 +186,6 @@ sources:
           it; the entry has since declared name_field Name, id_field GlobalID
           and unit_field MasterAreaID (#1371 — First run's "where do you
           hike" has nothing to search until the waypoints land, and no park
-          is on any phone: publish a places index), and the field-metadata read
-          that DBT.md's Phase D section asked for was made on 2026-10-02:
+          is on any phone: publish a places index), and the field-metadata read was made on 2026-10-02:
           GlobalID unique on all 858 rows, MasterAreaID a small integer null
           on one.

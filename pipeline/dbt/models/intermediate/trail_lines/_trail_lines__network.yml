@@ -309,8 +309,7 @@ models:
       side_trails) and the network's, as lib/blaze.py answers it for that
       source's exporter: export_trails.py's decode-then-map for the
       A.T., export_nearby_trails.py's resolve_blaze() for the network. One
-      row per feature, keyed on its staging key; tl-at's A.T. models read the
-      A.T. rows.
+      row per feature, keyed on its staging key; the A.T. models read the A.T. rows.
     columns:
       - name: trail_segment_key
         description: The feature's staging key, the A.T. staging models' or int_trail_lines__network_unioned's.
@@ -502,8 +501,7 @@ models:
   - name: int_trail_lines__network_published
     description: >
       The network's half of the trail_lines mart: one row per network line
-      that ships, in the mart's 23 columns by name and type (tl-at's
-      contract, models/marts/trail_lines/_trail_lines__models.yml), the
+      that ships, in the mart's 23 columns by name and type (the contract, models/marts/trail_lines/_trail_lines__models.yml), the
       geometry the one a phone draws. The mart unions it with the A.T.'s
       half, and pub_nearby_trails reads the mart's network rows. Public,
       with an enforced contract, because it is that interface.

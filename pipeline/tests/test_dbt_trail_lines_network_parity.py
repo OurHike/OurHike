@@ -107,8 +107,8 @@ def test_the_at_rows_decode_and_map_as_export_trails_does(monkeypatch):
     registry = {row["source_key"]: json.loads(row["entry"]) for row in _given(test, "stg_registry__sources")}
     (document,) = _given(test, "base_ourhike__blaze_mapping")
     mapping = json.loads(document["document_json"])["sources"]
-    # side_trails' Blaze is esriFieldTypeString with codes '0' to '9' (tl-at,
-    # 2026-10-02, from the live layer's domain), so the codes and the values
+    # side_trails' Blaze is esriFieldTypeString with codes '0' to '9' (read
+    # 2026-10-02 from the live layer's domain), so the codes and the values
     # are both strings, as the unit test's rows hold them.
     domain = {row["code"]: row["label"] for row in _given(test, "int_trail_lines__coded_domains")}
     monkeypatch.setattr(export_trails, "get_field_coded_domain", lambda url, field: domain)

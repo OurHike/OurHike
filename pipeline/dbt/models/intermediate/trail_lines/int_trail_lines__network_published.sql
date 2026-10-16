@@ -1,7 +1,7 @@
 {{ config(materialized='table') }}
 {%- set decimals = var('trail_lines_network_coordinate_decimals') %}
 -- The network's half of the trail_lines mart: one row per network line that
--- ships, in the mart's 23 columns, by name and type (tl-at's contract,
+-- ships, in the mart's 23 columns, by name and type (the contract,
 -- models/marts/trail_lines/_trail_lines__models.yml). The mart unions it
 -- with the A.T.'s half. closure_reason and closure_source are set only on a
 -- section inside one of NYS Parks' closed areas

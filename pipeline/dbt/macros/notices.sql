@@ -1,5 +1,5 @@
 {#-
-    The club notice sources' shared pieces (phase C): what every
+    The club notice sources' shared pieces: what every
     generated base and staging model calls (pipeline/generate_notice_models.py
     writes them), and int_closures__club_notices reads.
 -#}

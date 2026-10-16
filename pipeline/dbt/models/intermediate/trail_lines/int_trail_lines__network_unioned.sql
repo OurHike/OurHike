@@ -21,8 +21,8 @@
 -- SyntaxInvalid (dbt0101) on it (measured 2026-10-02), though DuckDB runs it.
 --
 -- FIVE LAYERS COME THROUGH stg_ MODELS AND NOT base_ MODELS: OPRHP's, DEC's,
--- the two NYNJTC layers and Mohonk's, staged in Phase D (#100 — Build the
--- dbt ELT transform layer before NYNJTC's own trail network arrives) before
+-- the two NYNJTC layers and Mohonk's, staged by hand for #100 — Build the
+-- dbt ELT transform layer before NYNJTC's own trail network arrives, before
 -- base models existed. Their `properties` carry the stg column names, which
 -- for some columns are not the raw ones (stg_oprhp__trails' `public_flag`
 -- is the raw `public`); every column a filter reads keeps its raw name in

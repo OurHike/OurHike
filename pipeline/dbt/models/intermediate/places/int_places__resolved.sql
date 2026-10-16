@@ -276,8 +276,8 @@ club_town_shapes as (
 -- valid whole, because tests/test_dbt_places_parity.py holds it to
 -- export_places.py: given the second unit test's shape as a NY Parks park,
 -- export_places.py also reads 0.0 miles, and on the first it raises GEOS's
--- TopologyException (measured by round-2 fix worker C of PR #1805,
--- 2026-10-06, through that test's own harness). The club parks
+-- TopologyException (measured in the review of PR #1805, 2026-10-06, through
+-- that test's own harness). The club parks
 -- are not export_places.py's. Whether NY Parks should change with them is
 -- left to #1811 — Fast follows after PR #1805's dlt → dbt re-platform: the
 -- hiker's own download choice, the cutover, and what the port found in

@@ -42,7 +42,7 @@ models:
             compare_model: source('oprhp', 'raw_nysparks__oprhp_trail_closures')
     description: >
       OPRHP's temporary closure polygons - a safety surface, and the layer
-      whose freshness matters most of anything Phase D stages. TWO COLUMNS
+      whose freshness matters most of anything staged by hand. TWO COLUMNS
       ONLY: no full field list was ever measured, and a closure model with
       invented columns is the worst place for one. No row-count floor test
       either: an honest count of zero is the expected answer in a good week.

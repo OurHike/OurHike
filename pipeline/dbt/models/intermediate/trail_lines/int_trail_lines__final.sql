@@ -9,8 +9,8 @@
 -- (export_nearby_trails.py today). Keyed by the `id` both files publish.
 --
 -- Three halves, each already in the mart's columns:
--- int_trail_lines__at_published (the A.T.'s, tl-at),
--- int_trail_lines__network_published (the network's, tl-net) and
+-- int_trail_lines__at_published (the A.T.'s),
+-- int_trail_lines__network_published (the network's) and
 -- int_trail_lines__club_published (the clubs' own lines: drawn
 -- in nearby_trails.geojson with `line_kind` 'club', and never read by the
 -- routable network, int_trail_network__routable). Each branch

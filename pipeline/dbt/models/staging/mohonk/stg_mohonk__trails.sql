@@ -10,8 +10,8 @@
 --
 -- `blaze` HERE IS A GENUINE CODED FIELD, unlike the Long Path's plain string
 -- and unlike the Highlands Trail's absent one - three organizations, three
--- different answers to the same question, which is the variety Phase D was
--- meant to surface. Still no accepted_values test: the values actually
+-- different answers to the same question, which is the variety a second
+-- organization surfaces. Still no accepted_values test: the values actually
 -- present on the fetched 304 rows (not the domain's declared possibilities)
 -- are N/A 124, Blue 61, Red 49, Other 33, Yellow 30, plus 7 rows with no
 -- Blaze value at all. The literal string 'N/A' on 41% of rows is exactly the

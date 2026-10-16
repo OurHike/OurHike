@@ -1,6 +1,6 @@
 version: 2
 
-# Rule 5 of pipeline/ELT.md's "Who may publish", mechanised (the phase C): restrictive words that no decision answers keep `may_publish`
+# pipeline/ELT.md's "Who may publish": restrictive words that no ruling answers keep `may_publish`
 # false. int_sources__publication reads both seeds, and its header says how.
 # tests/test_dbt_publication_rule_five.py holds each unit test's mocked seed
 # to these files row for row.

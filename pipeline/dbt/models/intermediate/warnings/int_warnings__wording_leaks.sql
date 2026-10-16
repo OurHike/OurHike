@@ -1,5 +1,5 @@
 {{ config(materialized='table') }}
--- NO PROSE IS PUBLISHED (pipeline/ELT.md, phase C). One row per
+-- NO PROSE IS PUBLISHED. One row per
 -- text value of a club notice that holds its source's own wording: a value
 -- int_warnings__notice_wording_unioned collected from that source's base
 -- model, which its staging model does not carry. Each row holds that source

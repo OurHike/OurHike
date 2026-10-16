@@ -24,8 +24,7 @@ and this file holds that frozen copy to the domains those exporters' own tests
 decode with, so a typo in the var fails a test rather than a hiker's blaze.
 
 The rest of the A.T.'s models have their unit tests in
-_trail_lines__unit_tests.yml, one row or one test per pytest case of the files
-pipeline/ELT.md's ledger lists for tl-at's rows. Below, today's functions run
+_trail_lines__unit_tests.yml, one row or one test per pytest case of the A.T. half's test files. Below, today's functions run
 over each test's given rows (resolve_feature_id, load_line_sources,
 simplify_records, merge_chain_records, vertex_miles, write_overview,
 build_spur_records with attach_junction_miles, _rounded_geometry,
@@ -558,16 +557,16 @@ NOT_SOURCE_EDITED = (
 #: Every ledger-listed case no unit test names, and where its rule went instead.
 ELSEWHERE: dict[str, str] = {
     "test_export_trails::test_export_trails_decodes_side_trails_blaze_field_via_the_real_coded_domain": (
-        "int_trail_lines__blazes (tl-net): its unit test decodes against int_trail_lines__coded_domains"
+        "int_trail_lines__blazes: its unit test decodes against int_trail_lines__coded_domains"
     ),
     "test_export_trails::test_export_trails_applies_centerlines_flat_default_with_no_blaze_field": (
-        "int_trail_lines__blazes (tl-net): the centerline's blaze_default row of its unit test"
+        "int_trail_lines__blazes: the centerline's blaze_default row of its unit test"
     ),
     "test_export_trails::test_export_trails_warns_on_a_feature_that_fails_to_decode": (
-        "int_trail_lines__blazes (tl-net): its unit test's undecoded rows, and its warn test"
+        "int_trail_lines__blazes: its unit test's undecoded rows, and its warn test"
     ),
     "test_export_trails::test_export_trails_writes_a_sha256_hash_for_the_trails_artifact": (
-        "stage 4: a file's hash is publish's; trail_miles.json's trails_sha256 is pub_trail_miles' (DELIBERATE)"
+        "the cutover: a file's hash is publish's; trail_miles.json's trails_sha256 is pub_trail_miles' (DELIBERATE)"
     ),
     "test_export_trails::test_export_trails_exits_nonzero_when_a_source_returns_zero_features": (
         "data test: int_trail_lines__at_sources' relationships_where test (fail_if_incomplete) stops the build"
@@ -576,10 +575,10 @@ ELSEWHERE: dict[str, str] = {
         "a warning's words: dbt lists a warn test's failing rows, the decode warning's with trail_segment_key"
     ),
     "test_export_trails::test_the_manifest_records_the_pre_merge_segment_count": (
-        "int_trail_lines__at_chains' part_count, 2 in its touching-segments unit test; the manifest is stage 4's"
+        "int_trail_lines__at_chains' part_count, 2 in its touching-segments unit test; the manifest is the cutover's"
     ),
     "test_export_trails::test_the_export_publishes_the_overview_beside_the_full_line": (
-        "pub_trails_overview and its exposure trails_overview_geojson; the manifest entry is stage 4's"
+        "pub_trails_overview and its exposure trails_overview_geojson; the manifest entry is the cutover's"
     ),
     "test_export_trails::test_a_vertex_mile_is_the_same_measurement_a_poi_gets": (
         "by construction: every A.T. mile, a POI's included, comes off the one axis_mile macro"
@@ -640,7 +639,7 @@ ELSEWHERE: dict[str, str] = {
         "stays: the constant's own test, with the var pinned to it by test_the_club_vars_are_lib_club_sections_constants"
     ),
     "test_export_club_sections::test_the_manifest_path_resolves_from_any_cwd_and_main_returns_the_manifest": (
-        "stays: the exporter's manifest, stage 4's in the dbt path"
+        "stays: the exporter's manifest, the cutover's in the dbt path"
     ),
     **{
         f"test_export_club_sections::{case}": NOT_SOURCE_EDITED

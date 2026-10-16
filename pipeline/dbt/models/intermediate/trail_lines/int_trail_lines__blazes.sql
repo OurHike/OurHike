@@ -12,7 +12,7 @@
 -- domain and the value is one of its codes; else the registry's
 -- `blaze_default` when the row has no value; else 'Unknown', undecoded.
 -- Neither A.T. source has a table today, so for both it is the decode alone.
--- The domains come from int_trail_lines__coded_domains (tl-at's),
+-- The domains come from int_trail_lines__coded_domains,
 -- which reads them as rows where the Python makes a live ArcGIS call.
 --
 -- THE NETWORK'S SOURCES, export_nearby_trails.py's resolve_blaze(). There
@@ -134,7 +134,7 @@ at_rows as (
 -- The decode compares a raw value with a domain's codes as text, where
 -- normalize_blaze_color()'s `raw_value in coded_domain` compares them typed.
 -- They agree on side_trails: its Blaze field is esriFieldTypeString with
--- codes '0' to '9' (tl-at, 2026-10-02, read from the live layer's domain),
+-- codes '0' to '9' (read 2026-10-02 from the live layer's domain),
 -- so both sides are strings. They would part only on a future
 -- integer-coded field whose values landed as text, where the Python's
 -- '5' in {5: ...} misses and this join's '5' = '5' matches.

@@ -3,12 +3,12 @@
     location='conditions_notices.json',
     meta={'when_empty': 'keep_last_file'},
 ) }}
--- conditions/notices.json (phase D; pipeline/ELT.md, "Phase D:
--- one notices file"): one OrgNotice (features/ORG_NOTICES.md section 2) per
+-- conditions/notices.json: one OrgNotice (features/ORG_NOTICES.md section 2)
+-- per
 -- club notice in the closures and warnings marts, every club in one file.
 -- A club notice is a row of a source the extract declares a notice resource
 -- for (seeds/notice_readers.csv): ATC's, NYNJTC's, NY Parks' closed areas and
--- every club's phase C notices. OurHike's own closures, its reports and
+-- every club's notices. OurHike's own closures, its reports and
 -- NWS's alerts have files of their own and are not here.
 --
 -- FACTS AND A LINK, NO PROSE: a title, the club, its category,

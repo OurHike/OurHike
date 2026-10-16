@@ -6,7 +6,7 @@
 -- them beside those.
 --
 -- WHICH LAYERS. Only a layer whose sources.json row gives a `place_kind`,
--- `park` or `town` (the places worker's read of each layer, 2026-10-03), and
+-- `park` or `town` (read from each layer, 2026-10-03), and
 -- only where int_sources__publication lets the layer publish. The filter
 -- comes FIRST, before any geometry is touched, because a held layer can be
 -- vast (GNIS's 176,566 populated places, MassGIS's 61,486 open-space

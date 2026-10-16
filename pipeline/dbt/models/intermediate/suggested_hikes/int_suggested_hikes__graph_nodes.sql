@@ -15,7 +15,7 @@
 -- phone would read. pub_trail_graph's parity against build_trail_graph.py is
 -- what holds them to today's: no differences on the fixtures' 172 edges, and
 -- byte-identical files over 6,504 and 16,126 nodes cut from live lines (the
--- trail_network family, tl-net, 2026-10-02). Publication is already applied
+-- trail_network family, 2026-10-02). Publication is already applied
 -- upstream of the noding, in the trail_lines mart, as it is for the file.
 select
     node_index,

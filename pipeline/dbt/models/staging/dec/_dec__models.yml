@@ -1,17 +1,16 @@
 version: 2
 
 models:
-  # --- Phase D: the non-A.T. organizations (#100) --------------------------
+  # --- The non-A.T. organizations (#100) ------------------------------------
   #
   # Four providers, fourteen models, and the thing worth noticing is how
   # little had to change to hold them: the column shape, the naming, the
-  # seed and the reconciliation tests all generalized as designed. What did
-  # NOT generalize is recorded in DBT.md's Phase D section.
+  # seed and the reconciliation tests all generalized as designed. What did not generalize is recorded in git history.
   #
   # This was a section header in the one staging.yml every org shared. That
   # file is now one _<org>__models.yml per org directory, so each test sits
   # beside its model, which dbt_project_evaluator's fct_test_directories
-  # enforces; the other three Phase D providers are in nynjtc/, mohonk/ and
+  # enforces; the other three hand-staged providers are in nynjtc/, mohonk/ and
   # oprhp/.
   - name: stg_dec__lean_tos
     data_tests:

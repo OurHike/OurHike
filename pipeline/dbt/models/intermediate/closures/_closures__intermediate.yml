@@ -278,8 +278,7 @@ models:
 
   - name: int_closures__club_notices
     description: >
-      Every generated club notice source's rows, read by the phase
-      C rules (pipeline/ELT.md): one row per notice in the closures family's
+      Every generated club notice source's rows, read by the club notice rules (pipeline/ELT.md): one row per notice in the closures family's
       columns, each read by its own words against one vocabulary for every
       source (seeds/notice_words.csv; the model's header, rule
       2), with `obstructs_trail` true only where that reading closes the

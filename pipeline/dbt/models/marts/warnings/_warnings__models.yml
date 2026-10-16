@@ -237,8 +237,7 @@ models:
       - name: starts_on
         description: >
           The day a club notice says it starts, as the source states it, in
-          UTC; null where the source states none (the phase C reads
-          it before publishing). A hunting area's season where its layer gives
+          UTC; null where the source states none (the closure rules read it before publishing). A hunting area's season where its layer gives
           one, and never a season OurHike supplied.
         data_type: date
       - name: ends_on
@@ -419,8 +418,7 @@ models:
         description: >
           Null on a row this build read from its source. Set on a row of a
           notice source int_closures__gate holds back this build: the last
-          good row the previous build's history held, kept rather than
-          dropped (phase D; int_closures__held_carried), and
+          good row the previous build's history held, kept rather than dropped (int_closures__held_carried), and
           this is when carrying it began. It stays put while the hold lasts.
         data_type: timestamptz
       - name: _first_seen_at
@@ -476,12 +474,12 @@ unit_tests:
           - {source_key: oprhp_trail_closures, may_publish: false}
           - {source_key: feed_a, may_publish: true}
       # A feed's notice the window aged out is carried in from the warnings
-      # mart only (the phase C), as the organization notice it was.
+      # mart only, as the organization notice it was.
       - input: ref('int_closures__window_carried')
         rows:
           - {mart: warnings, notice_id: 'feed_a:item-3', source_key: feed_a, obstructs_trail: null, review_state: not_reviewed}
           - {mart: closures, notice_id: 'feed_a:item-1', source_key: feed_a, obstructs_trail: true, review_state: org_published}
-      # A notice source the gate holds keeps its last good rows (the phase D), the warnings mart's half.
+      # A notice source the gate holds keeps its last good rows, the warnings mart's half.
       - input: ref('int_closures__held_carried')
         rows:
           - {mart: closures, notice_id: 'held_c:1', source_key: held_c, obstructs_trail: true, review_state: org_published, carried_since: '2026-10-04 10:00:00+00'}

@@ -1,6 +1,6 @@
 version: 2
 
-# The phase C: the club notice sources' seeds. Eight are reviewed
+# The club notice sources' seeds. Eight are reviewed
 # by hand row by row (notice_source_fields, the notice_words and
 # notice_word_overrides, the notice_hazard_areas, the notice_states, Q3's notice_steward_areas and the notice_park_terms), one is a
 # person's mark on a notice (notice_marks), one is copied from the layers'

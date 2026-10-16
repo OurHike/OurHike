@@ -8,12 +8,12 @@
 -- build's rows in either mart by design, and counting them here would fail
 -- the build for the very case the gate exists to contain. The test reads the
 -- union joined to the passing sources, not the whole union. What a held
--- source does land is its last good rows (int_closures__held_carried,
--- the phase D), each once, in the mart the history had it in, so
+-- source does land is its last good rows (int_closures__held_carried), each
+-- once, in the mart the history had it in, so
 -- those are counted as the window's carried rows are. Returns one row per
 -- notice that lands in no mart, in both, or in a mart it should not.
 --
--- THE CLUB NOTICES (phase C) are counted as they land: a
+-- THE CLUB NOTICES are counted as they land: a
 -- closures-type one through int_closures__unioned like any notice, unless
 -- its own status or dates hold it back (`notice_held_because`: a status
 -- read as not current, or a rescinded order), which lands it in neither;

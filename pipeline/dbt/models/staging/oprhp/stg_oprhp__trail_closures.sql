@@ -1,5 +1,5 @@
 -- OPRHP's TEMPORARY trail-closure polygons. A safety surface: of everything
--- Phase D stages, this is the layer whose freshness matters most
+-- staged by hand, this is the layer whose freshness matters most
 -- (CLAUDE.md's closures path).
 --
 -- TWO COLUMNS, AND THAT IS EVERYTHING THE REGISTRY EVIDENCES. sources.json

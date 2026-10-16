@@ -47,11 +47,28 @@ import duckdb
 
 import export_poi
 from lib import photo_screen
+from lib.derived import replace_table
 
 ROOT = Path(__file__).parent
 WAREHOUSE_PATH = ROOT / "data" / "warehouse.duckdb"
 SCHEMA = "derived"
 TABLE = "poi_photos"
+
+COLUMNS = (
+    ("source", "varchar"),
+    ("poi_id", "varchar"),
+    ("photo_index", "integer"),
+    ("digest", "varchar"),
+    ("page_url", "varchar"),
+    ("author", "varchar"),
+    ("license", "varchar"),
+    ("taken", "varchar"),
+    ("screened", "boolean"),
+    ("flagged", "boolean"),
+    ("decision", "varchar"),
+    ("photo", "json"),
+    ("_loaded_at", "timestamptz"),
+)
 
 
 def manifest_rows(commons: Path, atc: Path, decisions: dict[str, dict]) -> list[tuple]:
@@ -79,30 +96,7 @@ def manifest_rows(commons: Path, atc: Path, decisions: dict[str, dict]) -> list[
 
 def write_poi_photos(con: duckdb.DuckDBPyConnection, rows: list[tuple], loaded_at: datetime) -> int:
     """Replace derived.poi_photos with these rows. Returns the row count."""
-    con.execute(f"create schema if not exists {SCHEMA}")
-    con.execute(f"""
-        create or replace table {SCHEMA}.{TABLE} (
-            source varchar,
-            poi_id varchar,
-            photo_index integer,
-            digest varchar,
-            page_url varchar,
-            author varchar,
-            license varchar,
-            taken varchar,
-            screened boolean,
-            flagged boolean,
-            decision varchar,
-            photo json,
-            _loaded_at timestamptz
-        )
-    """)
-    if rows:
-        con.executemany(
-            f"insert into {SCHEMA}.{TABLE} values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
-            [(*row, loaded_at) for row in rows],
-        )
-    return con.execute(f"select count(*) from {SCHEMA}.{TABLE}").fetchone()[0]
+    return replace_table(con, TABLE, COLUMNS, [(*row, loaded_at) for row in rows])
 
 
 def main(argv: list[str] | None = None) -> int:

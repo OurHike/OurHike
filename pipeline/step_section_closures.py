@@ -40,6 +40,7 @@ from pathlib import Path
 import duckdb
 
 from lib import data_env
+from lib.derived import replace_table
 from lib.http_retry import request_with_retry
 from lib.section_closures import evaluate, line_sets
 from lib.source_registry import load_registry
@@ -51,6 +52,7 @@ TABLE = "section_closures"
 #: The network lines as the monthly lane holds them after NYS Parks' area closures split them.
 LINES = "intermediate.int_trail_lines__network_area_closures"
 NOTICES_KEY = "conditions/notices.json"
+COLUMNS = ("trail_segment_key", "notice_id", "closure_source", "closure_reason", "line_set")
 
 
 def read_notices(path: Path | None, from_bucket: bool) -> tuple[list[dict] | None, str]:
@@ -111,21 +113,11 @@ def closures(notices: list[dict], lines: list[tuple], providers: dict[str, str])
 
 
 def write(con: duckdb.DuckDBPyConnection, rows: list[dict], loaded_at: datetime) -> None:
-    con.execute(f"create schema if not exists {SCHEMA}")
-    con.execute(f"""
-        create or replace table {SCHEMA}.{TABLE} (
-            trail_segment_key varchar, notice_id varchar, closure_source varchar, closure_reason varchar,
-            line_set varchar, _loaded_at timestamptz
-        )
-    """)
-    if not rows:
-        return
-    con.executemany(
-        f"insert into {SCHEMA}.{TABLE} values (?, ?, ?, ?, ?, ?)",
-        [
-            (r["trail_segment_key"], r["notice_id"], r["closure_source"], r["closure_reason"], r["line_set"], loaded_at)
-            for r in rows
-        ],
+    replace_table(
+        con,
+        TABLE,
+        [(name, "varchar") for name in COLUMNS] + [("_loaded_at", "timestamptz")],
+        [(*(row[name] for name in COLUMNS), loaded_at) for row in rows],
     )
 
 

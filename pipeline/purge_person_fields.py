@@ -151,6 +151,7 @@ from hand_off import BUNDLE as HAND_OFF_BUNDLE
 from hand_off import BUNDLE_POINTER as HAND_OFF_BUNDLE_POINTER
 from hand_off import FOLDER as HAND_OFF_FOLDER
 from hand_off import POINTER as HAND_OFF_POINTER
+from lib.store_names import quote_identifier
 from row_history import ELEMENTARY_POINTER, ELEMENTARY_SAVES, POINTER, SAVES
 
 #: Where the workflows keep each store in the raw bucket, beside dlt's own prefix (RAW_STORE_PREFIX):
@@ -576,10 +577,6 @@ def read_bundle(store: Store, stored: Stored) -> None:
                 stored.fields[f"{path}:{name}"] = Holding(listed, occurrences, with_value)
 
 
-def _quoted(name: str) -> str:
-    return '"' + name.replace('"', '""') + '"'
-
-
 def _literal(text: str) -> str:
     return "'" + text.replace("'", "''") + "'"
 
@@ -615,8 +612,8 @@ def read_duckdb(store: Store, stored: Stored, rules: FieldRules, scratch: Path) 
                 listed = rules(table if schema == "raw" else None).listed_by(column)
                 if listed:
                     rows, with_value = con.execute(
-                        f"select count(*), count(nullif(cast({_quoted(column)} as varchar), '')) "
-                        f"from stored.{_quoted(schema)}.{_quoted(table)}"
+                        f"select count(*), count(nullif(cast({quote_identifier(column)} as varchar), '')) "
+                        f"from stored.{quote_identifier(schema)}.{quote_identifier(table)}"
                     ).fetchone()
                     stored.fields[f"{schema}.{table}.{column}"] = Holding(listed, rows, with_value)
     finally:

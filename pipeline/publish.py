@@ -2150,6 +2150,18 @@ def verify_hashes(entries: dict[str, dict]) -> None:
         )
 
 
+def r2_client(config: BotocoreConfig | None = None):
+    """An S3 client for the public R2 bucket, from R2_ENDPOINT_URL and its key pair."""
+    kwargs = {"config": config} if config is not None else {}
+    return boto3.client(
+        "s3",
+        endpoint_url=os.environ["R2_ENDPOINT_URL"],
+        aws_access_key_id=os.environ["R2_ACCESS_KEY_ID"],
+        aws_secret_access_key=os.environ["R2_SECRET_ACCESS_KEY"],
+        **kwargs,
+    )
+
+
 def load_remote_json(s3_client, bucket: str, manifest_key: str = MANIFEST_KEY) -> dict | None:
     """A JSON object already in the bucket, or None if the key is not there.
 
@@ -2431,21 +2443,12 @@ def publish(
     )
 
     if s3_client is None:
-        s3_client = boto3.client(
-            "s3",
-            endpoint_url=os.environ["R2_ENDPOINT_URL"],
-            aws_access_key_id=os.environ["R2_ACCESS_KEY_ID"],
-            aws_secret_access_key=os.environ["R2_SECRET_ACCESS_KEY"],
-            # Sized to the requests the stages below can have open at
-            # once, which is the thread count times what a managed upload
-            # fans out to - see PUBLISH_POOL_CONNECTIONS for why the default
-            # of 10 costs handshakes rather than queueing. Only the client
-            # this function builds: one passed in belongs to its caller.
-            config=BotocoreConfig(
-                max_pool_connections=PUBLISH_POOL_CONNECTIONS,
-                read_timeout=PUBLISH_READ_TIMEOUT_S,
-            ),
-        )
+        # Sized to the requests the stages below can have open at once, which
+        # is the thread count times what a managed upload fans out to - see
+        # PUBLISH_POOL_CONNECTIONS for why the default of 10 costs handshakes
+        # rather than queueing. Only the client this function builds: one
+        # passed in belongs to its caller.
+        s3_client = r2_client(BotocoreConfig(max_pool_connections=PUBLISH_POOL_CONNECTIONS, read_timeout=PUBLISH_READ_TIMEOUT_S))
     if bucket is None:
         bucket = os.environ["R2_BUCKET"]
 
@@ -2925,13 +2928,7 @@ def publish_live(
     verify_hashes({key: dbt.live[key] for key in keys if key in dbt.live})
 
     if s3_client is None:
-        s3_client = boto3.client(
-            "s3",
-            endpoint_url=os.environ["R2_ENDPOINT_URL"],
-            aws_access_key_id=os.environ["R2_ACCESS_KEY_ID"],
-            aws_secret_access_key=os.environ["R2_SECRET_ACCESS_KEY"],
-            config=BotocoreConfig(read_timeout=PUBLISH_READ_TIMEOUT_S),
-        )
+        s3_client = r2_client(BotocoreConfig(read_timeout=PUBLISH_READ_TIMEOUT_S))
     if bucket is None:
         bucket = os.environ["R2_BUCKET"]
 
@@ -2997,13 +2994,7 @@ def publish_sidecar(
     verify_hashes({key: dbt.sidecars[key] for key in keys if key in dbt.sidecars})
 
     if s3_client is None:
-        s3_client = boto3.client(
-            "s3",
-            endpoint_url=os.environ["R2_ENDPOINT_URL"],
-            aws_access_key_id=os.environ["R2_ACCESS_KEY_ID"],
-            aws_secret_access_key=os.environ["R2_SECRET_ACCESS_KEY"],
-            config=BotocoreConfig(read_timeout=PUBLISH_READ_TIMEOUT_S),
-        )
+        s3_client = r2_client(BotocoreConfig(read_timeout=PUBLISH_READ_TIMEOUT_S))
     if bucket is None:
         bucket = os.environ["R2_BUCKET"]
 
@@ -3095,12 +3086,7 @@ def publish_channels(
     assert_valid_keys([key, *manifests.values()])
 
     if s3_client is None:
-        s3_client = boto3.client(
-            "s3",
-            endpoint_url=os.environ["R2_ENDPOINT_URL"],
-            aws_access_key_id=os.environ["R2_ACCESS_KEY_ID"],
-            aws_secret_access_key=os.environ["R2_SECRET_ACCESS_KEY"],
-        )
+        s3_client = r2_client()
     if bucket is None:
         bucket = os.environ["R2_BUCKET"]
 

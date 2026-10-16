@@ -58,6 +58,7 @@ import re
 import sys
 from pathlib import Path
 
+from lib.store_names import quote_identifier as _quote
 from parity import RESULT_FORMAT as PARITY_RESULT_FORMAT
 
 PIPELINE_DIR = Path(__file__).resolve().parent
@@ -191,10 +192,6 @@ def _tables(con) -> dict[tuple[str, str], set[str]]:
         found.setdefault((schema, table), set()).add(column)
     versions = {key for key in found if re.fullmatch(r".+_v\d+", key[1]) and (key[0], re.sub(r"_v\d+$", "", key[1])) in found}
     return {key: columns for key, columns in found.items() if key not in versions}
-
-
-def _quote(name: str) -> str:
-    return '"' + name.replace('"', '""') + '"'
 
 
 def mart_counts(con, tables: dict) -> list[dict]:

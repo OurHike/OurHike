@@ -75,6 +75,7 @@ from pathlib import Path
 import duckdb
 
 import fetch_trail_water
+from lib.derived import replace_table
 
 ROOT = Path(__file__).parent
 WAREHOUSE_PATH = ROOT / "data" / "warehouse.duckdb"
@@ -83,6 +84,16 @@ SCHEMA = "derived"
 TABLE = "site_water"
 #: fetch_trail_water.py's two layers, in the order its _run() fetches them.
 LAYERS = ("shelters", "campsites")
+COLUMNS = (
+    ("site_row", "integer"),
+    ("layer", "varchar"),
+    ("atc_global_id", "varchar"),
+    ("atc_name", "varchar"),
+    ("water", "json"),
+    ("unresolved", "varchar"),
+    ("candidate", "json"),
+    ("_loaded_at", "timestamptz"),
+)
 
 
 def read_sites(con: duckdb.DuckDBPyConnection, relation: str = SITES) -> dict[str, list[dict]]:
@@ -156,19 +167,6 @@ def _json(value) -> str | None:
 
 def write_site_water(con: duckdb.DuckDBPyConnection, records: list[dict], loaded_at: datetime) -> int:
     """Replace derived.site_water with one row per site record, in order. Returns the row count."""
-    con.execute(f"create schema if not exists {SCHEMA}")
-    con.execute(f"""
-        create or replace table {SCHEMA}.{TABLE} (
-            site_row integer,
-            layer varchar,
-            atc_global_id varchar,
-            atc_name varchar,
-            water json,
-            unresolved varchar,
-            candidate json,
-            _loaded_at timestamptz
-        )
-    """)
     rows = [
         (
             row,
@@ -182,10 +180,7 @@ def write_site_water(con: duckdb.DuckDBPyConnection, records: list[dict], loaded
         )
         for row, record in enumerate(records)
     ]
-    # No records is an empty table, not an error: executemany refuses an empty list.
-    if rows:
-        con.executemany(f"insert into {SCHEMA}.{TABLE} values (?, ?, ?, ?, ?, ?, ?, ?)", rows)
-    return con.execute(f"select count(*) from {SCHEMA}.{TABLE}").fetchone()[0]
+    return replace_table(con, TABLE, COLUMNS, rows)
 
 
 def main(argv: list[str] | None = None) -> int:

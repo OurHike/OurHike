@@ -54,6 +54,8 @@ from pathlib import Path
 
 import duckdb
 
+from lib.derived import replace_table
+
 ROOT = Path(__file__).parent
 WAREHOUSE_PATH = ROOT / "data" / "warehouse.duckdb"
 SCHEMA = "derived"
@@ -66,6 +68,16 @@ NEVER_LANDED = (
     "copies, and no earlier build pinned one (extract/_geofabrik.py), so this build publishes no OSM water"
 )
 
+COLUMNS = (
+    ("feature_row", "integer"),
+    ("osm_id", "varchar"),
+    ("kind", "varchar"),
+    ("lon", "double"),
+    ("lat", "double"),
+    ("properties", "json"),
+    ("_loaded_at", "timestamptz"),
+)
+
 
 def read_points(path: Path) -> list[dict]:
     """The file's features, as fetch_osm_water.py's feature() writes them, in order."""
@@ -74,18 +86,6 @@ def read_points(path: Path) -> list[dict]:
 
 def write_osm_water(con: duckdb.DuckDBPyConnection, features: list[dict], loaded_at: datetime) -> int:
     """Replace derived.osm_water with one row per feature. Returns the row count."""
-    con.execute(f"create schema if not exists {SCHEMA}")
-    con.execute(f"""
-        create or replace table {SCHEMA}.{TABLE} (
-            feature_row integer,
-            osm_id varchar,
-            kind varchar,
-            lon double,
-            lat double,
-            properties json,
-            _loaded_at timestamptz
-        )
-    """)
     rows = []
     for row, feature in enumerate(features):
         properties = feature.get("properties") or {}
@@ -102,10 +102,7 @@ def write_osm_water(con: duckdb.DuckDBPyConnection, features: list[dict], loaded
                 loaded_at,
             )
         )
-    # No features is an empty table, not an error: executemany refuses an empty list.
-    if rows:
-        con.executemany(f"insert into {SCHEMA}.{TABLE} values (?, ?, ?, ?, ?, ?, ?)", rows)
-    return con.execute(f"select count(*) from {SCHEMA}.{TABLE}").fetchone()[0]
+    return replace_table(con, TABLE, COLUMNS, rows)
 
 
 def main(argv: list[str] | None = None) -> int:

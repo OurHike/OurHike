@@ -70,12 +70,10 @@
 -- int_closures__trail_closure_areas (`area_geojson`), in EPSG:5070 as the
 -- cuts are, never notices.json's outline grown 100 m, which would make two
 -- neighbours look alike. Of such a pair the file draws the row its source
--- edited first (`updated_at`; one with none counts as edited last), then the
--- lower notice_id: a copy is made after the order it copies, so the first
--- edit is the likelier original (Reasoned; on those four it keeps Region 4's
--- row three times, and IDPR's Crooked Fire, which IDPR posted two days
--- before Region 4's layer did). Which publisher's row to keep is the
--- maintainer's call, asked with the four pairs, so the rule names no source.
+-- edited last (`updated_at`; one with none counts as edited first), then the
+-- lower notice_id, so a hiker reads the newest wording and dates. The
+-- maintainer chose newest-wins on 2026-10-16, over the earlier rule that
+-- kept the first edit as the likelier original. The rule names no source.
 -- The other row is not drawn, and stays in notices.json's list under its
 -- own credit.
 -- ONLY AN AREA THE MAP DRAWS COMPETES: a row of the cut, which this file
@@ -83,9 +81,9 @@
 -- shape raised, or it is under about a metre across) is drawn nowhere, so
 -- it must not take a drawn copy's place. When the rule measured every area
 -- of int_closures__trail_closure_areas instead, as it was first written,
--- such an area edited first hid the copy the cut had drawn, and neither was
--- drawn (this writer's unit test that
--- never_lets_an_undrawn_copy_edited_first_hide_the_drawn_one). In an hour
+-- such an area hid the copy the cut had drawn, and neither was drawn (this
+-- writer's unit test that
+-- never_lets_an_undrawn_copy_edited_later_hide_the_drawn_one). In an hour
 -- with no lines the cut has no row, so nothing competes and, as before, no
 -- area is drawn.
 -- @unvalidated: `same_closure_share`, 0.9, is the review's number. On the
@@ -207,7 +205,7 @@ areas as (
         closing.notice_id,
         closing.source_key,
         coalesce(
-            json_extract_string(closing.notice, '$.updated_at'), '9999'
+            json_extract_string(closing.notice, '$.updated_at'), ''
         ) as edited,
         outlines.outline
     from closing
@@ -238,13 +236,13 @@ meeting as (
             and st_intersects(first_area.outline, second_area.outline)
 ),
 
--- The row of each same-closure pair that is not drawn: the later edit, then
--- the higher notice_id.
+-- The row of each same-closure pair that is not drawn: the earlier edit,
+-- then the higher notice_id.
 not_drawn as (
     select distinct
         case
             when
-                first_edited < second_edited
+                first_edited > second_edited
                 or (first_edited = second_edited and first_id < second_id)
                 then second_id
             else first_id

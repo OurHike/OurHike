@@ -352,7 +352,7 @@ def test_a_writer_whose_own_test_failed_refuses_because_its_file_is_already_writ
 
 
 def test_after_a_partial_build_a_failed_writers_key_is_kept_its_file_unread_and_the_rest_collected(project):
-    """Decision 81 and soak run 531: one writer's error published nothing, though six others had written. Under
+    """Soak run 531: one writer's error published nothing, though six others had written. Under
     OURHIKE_BUILD_PARTIAL a failed writer's key keeps the bucket's last copy, and so does one whose own test failed,
     whatever is on disk under their names, and every other file is collected."""
     _write_all(project)
@@ -707,7 +707,7 @@ def test_the_podcast_list_is_never_in_the_manifest_or_a_release(project, s3_clie
 
 # --- build metadata from a dbt writer: the data-quality page's files -----------
 
-# The two writers decision 102 adds, in their shapes (models/publish/_publish__data_quality.yml): each exposure's
+# The two data-quality writers, in their shapes (models/publish/_publish__data_quality.yml): each exposure's
 # meta says `sidecar`, and the hourly one's key is under conditions/.
 QUALITY_WRITERS = {
     "model.ourhike.pub_stewards": WRITERS["model.ourhike.pub_stewards"],

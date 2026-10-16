@@ -196,8 +196,7 @@ def download_with_retry(
 
     `session`, when given, sends every attempt in place of bare `requests`,
     for the fourth caller: extract/_geofabrik.py passes extract/_kinds.py's
-    session(), which refuses an answer redirected to another host (review
-    finding SEC-5 of PR #1805). Without one nothing changes for the others.
+    session(), which refuses an answer redirected to another host. Without one nothing changes for the others.
 
     `response_headers`, when given, is filled with the headers of the one
     response whose body became `dest`, for the third caller (#1652):

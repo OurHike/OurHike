@@ -189,8 +189,8 @@ class TestParks:
         assert report["sources"][exporter.PARKS_KEY]["reaches_hikers"] is True
 
     def test_a_park_s_miles_are_its_lines_length_on_the_earth_in_alaska_and_new_york(self, sandbox):
-        """Decision 97 (the maintainer, 2026-10-06): a park's `trailMiles` is the length on the WGS84 ellipsoid of
-        the line pieces inside it, as decision 90 measures the graph's edges. EPSG:5070 is equal-area for the lower
+        """The maintainer, 2026-10-06: a park's `trailMiles` is the length on the WGS84 ellipsoid of the line pieces
+        inside it, as the graph's edges are measured. EPSG:5070 is equal-area for the lower
         48 only and its metre is not the ground's: five miles due north at Anchorage and ten at Harriman, placed with
         pyproj's Geod fwd, read 4.4 and 10.1 there (measured 2026-10-06), and the place list prints the figure as
         "N mi of trail"."""
@@ -428,7 +428,7 @@ class TestPointPlaces:
     def test_a_trailhead_with_a_short_line_near_it_is_kept_though_it_prints_zero(self, sandbox):
         # Sixty-five metres of trail rounds to 0.0 mi on the row; the drop
         # rule reads the metres, not the figure. It was 0.05 mi of fixture
-        # degrees until decision 97, which reads 80.8 m on the ellipsoid and
+        # degrees on EPSG:5070, which reads 80.8 m on the ellipsoid and
         # rounds up to 0.1 (80.1 m in EPSG:5070, 0.0).
         write(sandbox["nearby"], poi("oprhp_facilities:7", "trailhead", "oprhp_facilities", "Stub", LON, LAT))
         anchor_line(sandbox, miles=0.04)
@@ -539,10 +539,10 @@ class TestTrails:
         assert row["trailMiles"] == pytest.approx(2 * half, abs=0.5)
 
     def test_a_long_trail_prints_its_length_on_the_earth_and_is_listed_on_its_epsg5070_length(self, sandbox):
-        """Decision 97 (the maintainer, 2026-10-06): a long trail's `trailMiles` is its lines' length on the WGS84
+        """The maintainer, 2026-10-06: a long trail's `trailMiles` is its lines' length on the WGS84
         ellipsoid. Sixty miles due north at Anchorage and at Harriman, placed with pyproj's Geod fwd, which EPSG:5070
         reads 52.9 and 60.5 (measured 2026-10-06). Whether a trail is long enough to list is still decided on its
-        EPSG:5070 length, the measure export_nearby_trails._through_routes() sums for the overview, so decision 97
+        EPSG:5070 length, the measure export_nearby_trails._through_routes() sums for the overview, so the ellipsoid
         moves no trail on or off the list: 52 miles north at Anchorage reads 45.9 there and is not listed."""
         write(
             sandbox["lines"][0],

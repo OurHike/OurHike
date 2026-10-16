@@ -6,8 +6,7 @@ requirements-extract.txt read. Both secrets are named literally ("Is there a
 database to read" says why), each behind its own leg's test, so an unset
 secret is an empty string rather than the other leg's.
 
-PICKING IT IN THE SCRIPT AND UNSETTING THE REST WAS NOT ENOUGH (review finding
-SEC-7 of PR #1805 — dlt → dbt re-platform as one go/no-go change). The step
+PICKING IT IN THE SCRIPT AND UNSETTING THE REST WAS NOT ENOUGH. The step
 used to name both URLs in its env and `unset` them before the extract, which
 keeps a variable from the shell's later children, not from the shell's own
 /proc/<pid>/environ, which a child running as the same user reads: the step's
@@ -21,8 +20,8 @@ this test's process.
 THE EXPORT STEP TOO. "Export verified conditions" runs export_conditions.py,
 which reads the database itself, on either path (PHONE_FILES dbt or
 exporters). It picked its leg's URL in its script from both, so the
-exporter's python was a child of a shell holding both: round-2 fix worker B
-of PR #1805 found it, the same defect as SEC-7. It now takes the extract
+exporter's python was a child of a shell holding both, the same defect. It
+now takes the extract
 step's one expression, and every test here runs against both steps.
 
 WHAT THIS DOES NOT COVER. GitHub sends the runner every secret the job
@@ -30,7 +29,7 @@ references, production's on the UA leg included, and the runner's worker
 process holds them in its memory (not its environment); a dependency that can
 read another process's memory is past what a step's env can keep from it. A
 GitHub environment per leg, holding only that leg's URL, is the repository
-setting that would close it (SEC-7's full fix, the maintainer's).
+setting that would close it (the full fix, the maintainer's to make).
 """
 
 from __future__ import annotations
@@ -152,7 +151,7 @@ def test_the_steps_program_runs_with_its_own_legs_url_alone(tmp_path, step, envi
 @pytest.mark.parametrize("step", STEPS)
 @pytest.mark.parametrize("environment", sorted(HOSTS))
 def test_no_process_above_the_steps_program_holds_the_other_legs_url_in_its_environment(tmp_path, step, environment):
-    """SEC-7's probe (`/proc/<parent>/environ` read by the program's own process), over the whole chain of shells."""
+    """The leak's probe (`/proc/<parent>/environ` read by the program's own process), over the whole chain of shells."""
     _, ancestors = _run_step(tmp_path, step, environment)
 
     assert ancestors, "the stand-in read no ancestor's environment, so this test would pass on anything"

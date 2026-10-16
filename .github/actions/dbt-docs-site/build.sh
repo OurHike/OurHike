@@ -35,9 +35,8 @@ export DBT_ENGINE_SEND_ANONYMOUS_USAGE_STATS=false
 export OURHIKE_WAREHOUSE="$scratch/warehouse.duckdb"
 export OURHIKE_PROCESSED_DIR="$scratch/processed"
 
-# DuckDB-WASM, served at /data/duckdb/ from our own site and never from a CDN
-# (SEC-1 of PR #1805's second review): the page
-# runs on ourhike.org's origin, where a signed-in hiker's session is kept, so
+# DuckDB-WASM, served at /data/duckdb/ from our own site and never from a CDN:
+# the page runs on ourhike.org's origin, where a signed-in hiker's session is kept, so
 # any script it loads can read that session. duckdb-wasm/loader.js says why
 # the files are laid out as they are, and what was measured.
 # - The npm packages as duckdb-wasm/package-lock.json pins them: npm ci checks

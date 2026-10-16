@@ -1431,7 +1431,7 @@ def test_a_store_listed_as_started_may_not_cold_start_and_one_not_listed_may_wit
     assert forced.cold_start and forced.elementary_cold_start
 
 
-def test_a_store_started_before_decision_102_may_start_elementarys_history_until_it_is_listed_for_it():
+def test_a_store_saved_before_elementarys_history_may_start_it_until_it_is_listed_for_it():
     """Every store saved before Elementary came holds the snapshots and no elementary.json (row_history.py's
     docstring, "THE COLD START"): its first run with Elementary starts that history, said in a warning, and only a
     store [elementary_started] lists refuses a missing one."""

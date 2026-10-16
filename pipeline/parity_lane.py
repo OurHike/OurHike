@@ -5,7 +5,7 @@
 
 build-reference.yml's `parity` job runs each group in GROUPS on a runner of
 its own, side by side, and `parity-report` joins their answers into the one
-`monthly-parity` artifact gate_report.py reads (decision 30's parity on frozen
+`monthly-parity` artifact gate_report.py reads (the gate's parity on frozen
 inputs: pipeline-tests.yml's parity families less the six hourly conditions
 files, FAMILIES below).
 

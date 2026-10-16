@@ -1,4 +1,4 @@
-"""step_section_closures.py: decision 212's rule over a published notices.json and the warehouse's network lines,
+"""step_section_closures.py: the section-closure rule over a published notices.json and the warehouse's network lines,
 landed as derived.section_closures."""
 
 from __future__ import annotations

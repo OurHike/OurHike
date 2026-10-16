@@ -1,6 +1,6 @@
 """A deploy refuses when DATA_RELEASE and channels.json's entry for its data environment name two releases.
 
-Decision 145 (pipeline/ELT.md), by poll on 2026-10-09: "Add the guard". A
+The maintainer, 2026-10-09: "Add the guard". A
 phone reads the compiled DATA_RELEASE on its first launch and the release
 channels.json names from the launch after it reads that file, so a build whose
 two values disagree changes release under a new install (overnight offline

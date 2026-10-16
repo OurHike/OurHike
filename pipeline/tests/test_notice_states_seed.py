@@ -1,6 +1,6 @@
-"""Decision 76's seed, dbt/seeds/notice_states.csv, held to the registry it was read from.
+"""The states seed, dbt/seeds/notice_states.csv, held to the registry it was read from.
 
-A state-wide agency notice is placed by its state (the maintainer's poll,
+A state-wide agency notice is placed by its state (the maintainer,
 2026-10-04): the phone shows BLM's Utah fire restrictions to a hike planned
 in Utah that walks BLM's trails, and never to a Colorado hike. Which state a
 source speaks for is read from the source's own data, and a wrong row shows a
@@ -54,7 +54,7 @@ def tokens(text: str) -> set[str]:
     return set(re.split(r"[^a-z0-9]+", text.lower())) - {""}
 
 
-def test_the_seed_holds_the_thirteen_state_wide_notices_decision_76_found():
+def test_the_seed_holds_the_thirteen_state_wide_notices_read_from_the_registry():
     """BLM's 12 state fire-restriction pages and CT DEEP's emergency message, of the 22 unplaced agency notices
     UA's live notices.json held on 2026-10-04 (generated 20:32:13Z, read 21:44Z)."""
     keys = [row["source_key"] for row in seed_rows()]

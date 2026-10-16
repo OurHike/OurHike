@@ -350,8 +350,7 @@ step() {
   echo "   ok ($((SECONDS - started))s)"
 }
 
-# THE dbt GENERATORS' OUTPUT, which is not committed (pipeline/ELT.md
-# decision 91), written once, before the first suite that reads it: the
+# THE dbt GENERATORS' OUTPUT, which is not committed, written once, before the first suite that reads it: the
 # pipeline suite walks the models on disk (pipeline/tests/conftest.py refuses
 # to start without them) and the dbt suite parses them. On the suites' own
 # Python, which carries dlt as the generators need; CI's jobs give them the
@@ -385,7 +384,7 @@ fi
 # of the same environment beside it - a venv's bin/ always has both.
 # Anything else is an environment gap and is said, never guessed around:
 # another dbt on PATH is the dbt-core 1.x this project left, or the dbt-oss
-# distribution decision 32 moved off (`dbt --version` names which: "dbt
+# distribution this project moved off (`dbt --version` names which: "dbt
 # 2.0.6" for the full distribution, "dbt-oss 2.0.5" for the other).
 DBT_PIN="$(sed -n 's/^dbt==\([^ ;]*\).*/\1/p' pipeline/requirements-dbt.txt | head -1)"
 DBT_DIR=""

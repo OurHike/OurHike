@@ -106,8 +106,7 @@ def fetch_dataset_geojson(
 
     `session` is the caller's, so its headers ride every page: extract/'s
     Socrata resource passes the one that carries lib/user_agent.py's agent
-    (decision 39 of #1793: the pipeline never sends a default or borrowed
-    one). None keeps this function's old behaviour, a bare `requests` call.
+    (the pipeline never sends a default or borrowed one). None keeps this function's old behaviour, a bare `requests` call.
     """
     url = dataset_url(domain, dataset_id)
     records = PAGE_SIZE if page_size is None else page_size

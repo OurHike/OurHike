@@ -1,6 +1,6 @@
 """Every install of pipeline/requirements-dbt.txt checks a sha256 for every file, the build's own requirement included.
 
-Decision 144 (pipeline/ELT.md, the maintainer's poll of 2026-10-09): the page dbt writes for ourhike.org/data/
+The maintainer, 2026-10-09: the page dbt writes for ourhike.org/data/
 shares an origin with the app's signed-in session, and its scripts come from this install, so the install is
 hash-pinned. It takes all three parts below, because each one alone fails open:
 

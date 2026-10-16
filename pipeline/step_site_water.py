@@ -14,8 +14,8 @@ over at least MIN_GRADE_RUN_FT (10 ft), measured from USGS EPQS elevations at
 both ends; every refusal kept with its numbers. Each gate's evidence is on its
 constant in fetch_trail_water.py, and that file stays the one home of all four.
 
-WHY A STEP, AND WHY THE GATES STAY IN IT (decision 23 sends a rule to SQL
-first). What is not arithmetic here cannot be SQL in this build: the
+WHY A STEP, AND WHY THE GATES STAY IN IT (a rule goes to SQL first when it
+can). What is not arithmetic here cannot be SQL in this build: the
 hydrography is 21 NHD GeoPackages of about 270 MB, downloaded and deleted in
 turn, which stay files, and fourteen Geofabrik state extracts
 (#1652 — Download OSM's Geofabrik extracts at most once a month, into a
@@ -117,8 +117,8 @@ def offline_elevations(path: Path):
     """fetch_trail_water.elevation_ft's lookup against a file alone: a point it does not hold has no elevation.
 
     Keyed "lat,lon" at 6 dp, as make_dbt_fixtures.py writes the answers, where
-    fetch_trail_water.py's own cache has keyed each point exactly since
-    decision 131 (ELEVATION_CACHE_KEYS). The file stands in for EPQS, not for
+    fetch_trail_water.py's own cache has keyed each point exactly
+    (ELEVATION_CACHE_KEYS). The file stands in for EPQS, not for
     the cache: it holds one invented answer per place a scenario names, and a
     point computed from geometry may differ from that place in a double's last
     bits, which an exact key would turn into no answer at all.

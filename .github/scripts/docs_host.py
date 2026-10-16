@@ -10,7 +10,7 @@
 WHY. The dbt docs and the data-quality page used to be served at
 ourhike.org/data/, the same origin as the app at /app/, where a signed-in
 hiker's session is kept in browser storage, so any script on /data/ (dbt's
-own page, DuckDB-WASM) could read it. Decision 144's first half hash-pinned
+own page, DuckDB-WASM) could read it. Hash-pinning the installs fixed
 what those scripts are built from; this is the second half, which the
 maintainer chose by poll on 2026-10-10: the docs move to docs.ourhike.org,
 a Cloudflare Pages project named `ourhike-docs` (pages.yml's env names both).
@@ -19,7 +19,7 @@ THE DOCS HOST SERVES THE BUNDLE UNDER /data/, byte for byte the `_site/data/`
 pages.yml assembles, configures and checks for ourhike.org. Not at its root,
 because the bundle names its own paths from the root: DuckDB-WASM's base is
 `/data/duckdb/duckdb.js?` (.github/actions/dbt-docs-site/build.sh), the one
-decision 93's browser run measured, and the data pages' tabs are `/data/` and
+a browser run measured, and the data pages' tabs are `/data/` and
 `/data/quality/`. Served under /data/, one bundle is right on the docs host,
 on every preview and on ourhike.org; served at the root it would need a
 second build and a second browser run. Beside data/, `bundle` adds what the

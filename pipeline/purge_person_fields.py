@@ -1,4 +1,4 @@
-"""purge_person_fields: decision 56's purge. Prove the raw store's current tables hold no person field, list every
+"""purge_person_fields: the person-fields purge. Prove the raw store's current tables hold no person field, list every
 other stored object that still holds one, and with --delete delete exactly those.
 
     python purge_person_fields.py --raw-bucket NAME [--delete] [--summary FILE]
@@ -8,7 +8,7 @@ purge-person-fields.yml runs it on the extract's own venv (requirements-extract.
 duckdb), with the raw store's key, which only a workflow holds. The tests run it on a
 local `file://` store (tests/test_purge_person_fields.py).
 
-WHY. pipeline/ELT.md, decision 56: 15 loaded layers carried staff names in `Creator`, `Editor`, `created_user` and
+WHY. 15 loaded layers carried staff names in `Creator`, `Editor`, `created_user` and
 `last_edited_user`, and Alaska Trails' `DataOwner` held a person's e-mail address on 31 rows, until the extract stopped
 reading them (aafa7296, 2026-10-03). The maintainer decided the purge runs after the monthly lane had re-read every
 layer without them. The method is ELT.md's "Purging a field that should never have loaded" and the dlt skill's "A
@@ -64,7 +64,7 @@ than deleted on every purge for being transient: the listing then says whether i
 it only if it did, the rule every other object is under. A hand-off built after the current tables are clean holds
 none (Reasoned: hand_off.py's `put` uploads the warehouse the leg's build made from those tables).
 
-Beside it since open question 17 (the maintainer's poll of 2026-10-10, "Compare every soak hour"),
+Beside it (the maintainer, 2026-10-10: "Compare every soak hour"),
 `checks/parity_inputs.json.gz`, hourly_parity.py's comparison bundle, goes with the same unit, its own pointer
 `checks/parity_inputs.json` a record of it. It holds rows, the answers the leg's extract kept and the rows its build
 read, as JSON texts inside one gzipped document, where JSON_KEY sees no inner key. So it is unpacked and each of its
@@ -823,7 +823,7 @@ def listing(answer: Answer, deleting: bool) -> list[str]:
     """The answer as plain lines for the job's log: keys, field names and counts, never a value."""
     store, lines = answer.store, []
     lines.append(
-        f"Decision 56's purge of person fields, {'DELETING' if deleting else 'listing only'}: {store.url}, "
+        f"The purge of person fields, {'DELETING' if deleting else 'listing only'}: {store.url}, "
         f"{_count(len(store.objects), 'object')}, {_size(sum(s.size for s in store.objects))}. "
         "Field names and counts only, never a value."
     )
@@ -1021,7 +1021,7 @@ def delete(answer: Answer, readers: int = READERS) -> tuple[list[str], list[str]
 def main(argv: list[str] | None = None, resources: list | None = None) -> int:
     """The command line. `resources` are discover()'s unless a test hands its own (find())."""
     parser = argparse.ArgumentParser(
-        description="Decision 56's purge: list, and with --delete delete, every stored copy of a person field "
+        description="The person-fields purge: list, and with --delete delete, every stored copy of a person field "
         "(this module's docstring)."
     )
     where = parser.add_mutually_exclusive_group(required=True)

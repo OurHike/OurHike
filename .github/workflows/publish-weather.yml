@@ -4,8 +4,8 @@
 # dropped by the maintainer on 2026-09-30, so only HRRR's land mask is still
 # read, once per data release, by the squares step.
 #
-# NWS'S ALERTS LEFT THIS WORKFLOW FOR publish-conditions.yml (decision 28a,
-# pipeline/ELT.md, "One job owns `warnings`"), under #1793 — Rebuild the data
+# NWS'S ALERTS LEFT THIS WORKFLOW FOR publish-conditions.yml (one job owns
+# `warnings`), under #1793 — Rebuild the data
 # platform as dlt → dbt: seven contracted marts, a monthly refresh, published
 # docs, and lighter phone downloads. That job builds the warnings mart, so it
 # is the one job that reads NWS; its UA leg now runs export_weather_alerts.py
@@ -146,8 +146,7 @@ jobs:
           retention-days: 1
 
       # THE RELEASE'S TRAIL LINES, FOR publish-conditions.yml'S CUT OF AREA
-      # CLOSURES (pipeline/ELT.md's decisions 187 and 192, for
-      # conditions/trail_closures.json; pipeline/prepare_closure_trail_lines.py
+      # CLOSURES (for conditions/trail_closures.json; pipeline/prepare_closure_trail_lines.py
       # has the measurements): its nearby trail lines and the A.T.'s own. Like
       # the squares above, the lines change with a data release and not with
       # the hour, and this job already downloads the release's
@@ -262,8 +261,7 @@ jobs:
         run: python publish.py
 
   # PRODUCTION'S TRAIL LINES, FOR publish-conditions.yml'S PRODUCTION LEG
-  # (Q11, the maintainer's poll of 2026-10-15, "Now, in this
-  # PR"). The build job above prepares UA's release alone, so the
+  # (the maintainer, 2026-10-15). The build job above prepares UA's release alone, so the
   # conditions job's production leg found no entry and cut no area: once
   # production publishes conditions/trail_closures.json from dbt, every one
   # of its hours would leave every area closure out (#1811 — Fast follows

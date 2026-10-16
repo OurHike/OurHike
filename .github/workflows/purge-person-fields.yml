@@ -1,4 +1,4 @@
-# Decision 56's purge (pipeline/ELT.md): every stored copy of a person field
+# The person-fields purge (pipeline/ELT.md): every stored copy of a person field
 # that loaded before the extract stopped reading them. 15 loaded layers carried
 # staff names in Creator, Editor, created_user and last_edited_user, and Alaska
 # Trails' DataOwner held a person's e-mail address on 31 rows, until aafa7296
@@ -76,7 +76,7 @@ permissions:
 env:
   PYTHONUNBUFFERED: "1"
   # dlt's telemetry is on by default and would send from a job holding the raw
-  # store's key (the dlt skill, rule 3).
+  # store's key (the dlt skill).
   RUNTIME__DLTHUB_TELEMETRY: "false"
 
 jobs:

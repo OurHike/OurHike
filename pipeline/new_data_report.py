@@ -1,4 +1,4 @@
-"""new_data_report: decision 31's review of what parity cannot check, read from a built warehouse.
+"""new_data_report: the review of what parity cannot check, read from a built warehouse.
 
     python new_data_report.py --warehouse data/warehouse.duckdb --out <dir> [--parity-dir <dir>] [--summary <file>]
     python new_data_report.py --warehouse data/warehouse.duckdb --facts-out <file>
@@ -15,9 +15,8 @@ warehouse the same build wrote, so they describe the files parity compared.
 summary in CI.
 
 Parity (parity.py, gate_report.py) holds every key today's pipeline publishes
-to today's exporter, so it cannot check a row no exporter ever wrote. Decision
-31 ("publish new data in this PR"; pipeline/ELT.md, "The go/no-go gate") adds
-a review of what the new marts carry. This writes `new_data_report.md`, for a
+to today's exporter, so it cannot check a row no exporter ever wrote. New data
+publishes (pipeline/ELT.md, "The go/no-go gate") with a review of what the new marts carry. This writes `new_data_report.md`, for a
 maintainer reading a pull request, and `new_data_report.json`, with:
 
 1. rows per org × type × mart: every table in the warehouse's `marts` schema,
@@ -45,7 +44,7 @@ WHAT IT NEVER HOLDS, enforced rather than hoped for:
   coordinate in a report is that location at any zoom. The --facts-out file
   is held to the same refusal, and so is a --facts file read back.
 
-Map shots per region (decision 31's third item) are preview recipes, not part
+Map shots per region are preview recipes, not part
 of this report; its last section names them (MAP_SHOTS).
 """
 
@@ -274,7 +273,7 @@ def layers(con, tables: dict) -> list[dict]:
 def todays_exporter_compared(family: str) -> bool:
     """Whether a parity family's old side is today's exporter. A v2 family's is the v1 file the same dbt
     build wrote beside it (parity.Family.v1_beside), so a source it names is the new path's, not today's: counting it
-    would read a wave 1 layer's first records as published today."""
+    would read a new layer's first records as published today."""
     from parity import FAMILIES
 
     known = FAMILIES.get(family)
@@ -390,7 +389,7 @@ def render_markdown(report: dict) -> str:
     lines = [
         "# New-data review: what the marts carry that parity cannot check",
         "",
-        f'Decision 31 (pipeline/ELT.md, "The go/no-go gate"). Warehouse `{inputs["warehouse"]}`; parity results '
+        f'pipeline/ELT.md, "The go/no-go gate". Warehouse `{inputs["warehouse"]}`; parity results '
         f"{'`' + inputs['parity_dir'] + '`' if inputs['parity_dir'] else 'not given'}.",
         "",
         *headline(report),

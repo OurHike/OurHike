@@ -306,7 +306,7 @@ def put_saves(store: Store, name: str, folder: str, ids: list[str]) -> None:
 
 
 def test_the_monthly_store_keeps_its_newest_three_saves_and_every_save_its_pointers_name(months, capsys):
-    """Decision 206. elementary.json was pointed back at s2 by hand: a save a pointer names is kept, as
+    """The monthly store keeps 3 saves. elementary.json was pointed back at s2 by hand: a save a pointer names is kept, as
     row_history.py's own _prune() keeps the save a save was built on."""
     ids = [f"s{number}" for number in range(1, 7)]
     put_saves(months, "monthly", "saves", ids)

@@ -3,8 +3,8 @@ reach production, and each job holds only its own keys.
 
 pipeline/ELT.md, "Why a scheduled run cannot reach production", lists the
 locks: no input names an environment, the one publish writes UA's keys by a
-literal, and promotion is the release train's. Since the maintainer's choice B
-(poll, 2026-10-08) the lane is two workflows: this one extracts every monthly
+literal, and promotion is the release train's. Since the maintainer's choice
+(2026-10-08) the lane is two workflows: this one extracts every monthly
 resource, pins the raw inputs and dispatches build-reference.yml by name with
 the pinned raw_run, and that one builds from the pin and publishes
 (test_build_reference.py holds that half). This file holds what a workflow
@@ -46,7 +46,7 @@ DISPATCH = re.compile(r"\bgh workflow run ([\w.-]+\.ya?ml)\b")
 PRODUCTION_ON_A_SCHEDULE = {"publish-conditions.yml"}
 #: The run id the extract job hands on: extract/_run.py stamps it with "%Y%m%dT%H%M%S.%fZ".
 RAW_RUN = "20261008T041936.333353Z"
-#: Every step the build job ran down to the pin before choice B, now the pin job's, by name.
+#: Every step the build job ran down to the pin before the split, now the pin job's, by name.
 PIN_STEPS = [
     "Is this raw_run pinned already",
     "Today's fetchers' files for this raw_run, and the DEM tile index",
@@ -145,7 +145,7 @@ def test_nothing_in_it_reads_an_input_or_names_any_environment_but_ua(workflow):
 
 
 def test_its_four_jobs_are_the_extract_the_pin_the_dispatch_and_refused(workflow):
-    """Choice B: the build, publish, confirm and parity jobs are build-reference.yml's, started by the dispatch."""
+    """The monthly lane's split: the build, publish, confirm and parity jobs are build-reference.yml's, started by the dispatch."""
     assert list(workflow["jobs"]) == ["extract", "pin", "dispatch", "refused"]
     assert not {"build", "publish", "confirm", "parity", "parity-report"} & set(workflow["jobs"])
 
@@ -158,7 +158,7 @@ def test_no_job_holds_the_public_buckets_keys_or_the_write_switch(workflow):
 
 
 def test_the_extract_job_holds_the_raw_store_and_the_upstream_credentials_and_nothing_else(workflow):
-    # The two upstream credentials: Hike Finder's password, and the NPS Data API's key for decision 54's NPS places
+    # The two upstream credentials: Hike Finder's password, and the NPS Data API's key for NPS places
     # and campgrounds (extract/_ogc.py's JsonFeatures), both optional and both warned about when unset.
     upstream = {"HIKEFINDER_PASSWORD", "NPS_API_KEY"}
     assert _secrets(workflow["jobs"]["extract"]) == RAW_STORE_SECRETS | {"R2_ENDPOINT_URL"} | upstream
@@ -218,7 +218,7 @@ def test_a_layer_refused_on_its_own_lets_the_pin_and_the_dispatch_run_and_the_la
 
 
 def test_the_pin_job_holds_every_step_the_build_ran_down_to_the_pin_and_no_dbt(workflow):
-    """Choice B moved them whole, in order; build-reference.yml's build job starts at "Build the warehouse from the
+    """The monthly lane's split moved them whole, in order; build-reference.yml's build job starts at "Build the warehouse from the
     pin" and holds none of them (test_build_reference.py)."""
     job = workflow["jobs"]["pin"]
     names = [step.get("name") for step in job["steps"]]
@@ -294,7 +294,7 @@ def test_every_step_down_to_the_pin_is_skipped_on_a_rerun_that_already_has_one(w
 
 
 def test_the_pin_job_restores_the_epqs_answers_before_the_scan_that_asks_and_saves_them_for_the_build(workflow):
-    """ARC-3 of PR #1805's second review carried the EPQS answers and the DEM samples between attempts in one job.
+    """The pin job carries the EPQS answers and the DEM samples between attempts in one job.
     fetch_trail_water.py --derive asks EPQS through the first file, so the pin job restores before it and saves after,
     also on a failed run, under the prefix build-reference.yml's build job restores (test_build_reference.py holds
     the two files to one prefix and one path list)."""
@@ -371,7 +371,7 @@ def _run_the_dispatch(workflow: dict, tmp_path: Path, ref: str, gh_exit: int = 0
 
 
 def test_the_dispatch_starts_build_reference_on_this_ref_with_this_raw_run_and_its_summary_says_how_again(workflow, tmp_path):
-    """The brief for choice B: each extract run's summary prints the raw_run and the exact command that builds from
+    """The brief for the split: each extract run's summary prints the raw_run and the exact command that builds from
     it again. That command, run as printed, makes the same call the job made."""
     status, summary, calls = _run_the_dispatch(workflow, tmp_path, "main")
 

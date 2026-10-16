@@ -91,8 +91,7 @@ runs:
         pip install --require-hashes -r pipeline/requirements-dbt-build.txt
         pip install --require-hashes --no-build-isolation -r pipeline/requirements-dbt.txt
 
-    # The dbt generators' output, which is not committed (pipeline/ELT.md
-    # decision 91), written before build.sh's dbt reads the project. On a venv
+    # The dbt generators' output, which is not committed, written before build.sh's dbt reads the project. On a venv
     # of the extract's pins: the generators read its club folders, whose
     # modules import dlt, and requirements-dbt.txt cannot share a venv with
     # them (pipeline-tests.yml's dbt job says why).

@@ -1,8 +1,7 @@
 """prepare_closure_trail_lines.py reads a release's trail lines once, into the file the hourly cut of area closures reads.
 
-Decision 187 (S6, the maintainer's poll of 2026-10-11): the hourly build crosses out an area closure's trails where they run
-inside it, and these are its lines: the release's nearby trail lines and, since decision 192 (the maintainer's poll of
-2026-10-14, "Yes, like any trail"), the A.T.'s own trails.geojson. No test here touches the network: latest.json and the
+The hourly build crosses out an area closure's trails where they run inside it, and these are its lines: the release's
+nearby trail lines and the A.T.'s own trails.geojson (the maintainer, 2026-10-14: "Yes, like any trail"). No test here touches the network: latest.json and the
 downloads are stubbed.
 """
 
@@ -206,7 +205,7 @@ def test_a_release_is_downloaded_once_and_prepared_once(tmp_path, served):
 
 
 def test_a_directory_prepared_under_another_schema_is_prepared_again(tmp_path, served):
-    """A cache restored from before decision 192 held no A.T. line: its schema is refused, so it is read again."""
+    """A cache restored from before the A.T.'s lines were added held no A.T. line: its schema is refused, so it is read again."""
     out = tmp_path / "out"
     prepare.main(["--env", "ua", "--out-dir", str(out)])
     held = json.loads((out / prepare.RELEASE_FILE).read_text())

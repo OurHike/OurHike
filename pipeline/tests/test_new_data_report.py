@@ -1,4 +1,4 @@
-"""new_data_report.py: decision 31's review of what the marts carry that parity cannot check."""
+"""new_data_report.py: the review of what the marts carry that parity cannot check."""
 
 import json
 
@@ -116,7 +116,7 @@ def test_the_report_holds_no_dispersed_campsite_location_and_no_person_field(war
     text = _written(out)
     for leaked in ("44.123456", "71.654321", DISPERSED["name"], PERSON["photo_author"], PERSON["email"], "EMAIL"):
         assert leaked not in text, leaked
-    # The campsite is counted, which is what decision 31 asks of it.
+    # The campsite is counted, as the new-data review asks.
     assert "| points_of_interest | usfs | campsite | 1 |" in text
 
 
@@ -163,7 +163,7 @@ def test_licence_basis_and_may_publish_come_from_int_sources__publication(wareho
 
 def test_a_v2_familys_old_side_is_the_new_path_and_never_counts_as_today(warehouse, parity_dir):
     """nearby_poi_v2's old side is the v1 file the same dbt build wrote, so a source only it names is not published
-    today: a wave 1 layer's first records read as new, not as today's."""
+    today: a new layer's first records read as new, not as today's."""
     v2 = {
         "format": parity.RESULT_FORMAT,
         "family": "nearby_poi_v2",

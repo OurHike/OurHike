@@ -4,7 +4,7 @@ The notices job fills each environment's notices store, and
 production's is the one publish-conditions.yml's production leg will build
 hikers' closures and warnings from once the dbt path is cut over. A schedule
 fires from main alone, but `workflow_dispatch` runs any ref, with that ref's
-copy of the workflow, and decision 62's soak dispatches this workflow from
+copy of the workflow, and the soak dispatches this workflow from
 the pull request's branch. So it carries publish-conditions.yml's two locks,
 and this file holds both the same way
 test_conditions_production_leg_needs_main.py does, with that file's

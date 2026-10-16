@@ -1,4 +1,4 @@
-"""Rule 19's reviewed table, dbt/seeds/notice_park_terms.csv, held to its own shape and the registry.
+"""The reviewed park-terms table, dbt/seeds/notice_park_terms.csv, held to its own shape and the registry.
 
 A club's `park:` term maps to the park areas places.json publishes for it, each as that place's bounding box, and a
 notice whose every park term is mapped shows only to a planned route that meets one of them

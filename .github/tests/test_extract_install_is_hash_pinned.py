@@ -1,7 +1,7 @@
 """Every install of pipeline/requirements-extract.txt checks a sha256 for every file.
 
-Decision 160 (pipeline/ELT.md, the maintainer's poll of 2026-10-11): the extract's venv runs in jobs that hold the raw
-store's write keys, the hourly legs among them, so its install is hash-pinned, as decision 144 made the dbt install.
+The maintainer, 2026-10-11: the extract's venv runs in jobs that hold the raw store's write keys, the hourly legs among
+them, so its install is hash-pinned, as the dbt install is.
 It takes both parts below, because either alone fails open (test_dbt_install_is_hash_pinned.py has the measurement):
 
 - requirements-extract.txt lists `--hash=sha256:` under every pin, compiled with --generate-hashes. pip switches hash

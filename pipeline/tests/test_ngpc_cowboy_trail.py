@@ -1,6 +1,6 @@
 """NGPC's Cowboy Trail: one 29-section status layer is both its closures and its line.
 
-The maintainer's P7+P8 on wave 6's review page 01 (poll of 2026-10-11): NGPC ships, and the Cowboy Trail draws from
+The maintainer, 2026-10-11: NGPC ships, and the Cowboy Trail draws from
 the commission's section layer, `ngpc_cowboy_trail_improvements` (Cowboy_Trail/FeatureServer/5), developed trail
 only; the 321-mile corridor line must never draw as trail. What holds that here, without a warehouse:
 

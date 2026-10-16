@@ -1,6 +1,6 @@
 """CI's dbt job runs the Elementary checks a pull request reaches, and every one otherwise.
 
-The maintainer's poll of 2026-10-08: "Run all of them that have been modified, and downstream models." On a pull
+The maintainer, 2026-10-08: "Run all of them that have been modified, and downstream models." On a pull
 request, pipeline-tests.yml's dbt job parses its base once more with Elementary's two switches on, and build_marts.py
 runs `tag:elementary_check,state:modified+` against it (its docstring, "A PULL REQUEST RUNS THE CHECKS ITS CHANGE
 REACHES"). What is held here is the half in the workflow and in scripts/test.sh:
@@ -154,7 +154,7 @@ def test_the_build_takes_a_base_only_when_the_step_named_one_and_says_which_chec
     seen = tmp_path / "python-saw.txt"
     _stand_in(bin_, "python", f'printf "%s\\n" "$@" > "{seen}"\n')
     step = _step(name=BUILD_STEP)
-    # STATE_BASE is decision 210's, which tests/test_dbt_state_build.py holds; unset here, it passes nothing.
+    # STATE_BASE is the state build's, which tests/test_dbt_state_build.py holds; unset here, it passes nothing.
     assert step["env"] == {
         "CHECKS_BASE": "${{ steps.checks-base.outputs.dir }}",
         "STATE_BASE": "${{ steps.state.outputs.dir }}",

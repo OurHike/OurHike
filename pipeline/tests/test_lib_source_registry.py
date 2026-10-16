@@ -477,7 +477,7 @@ def test_the_greenway_layer_never_ships_an_on_street_bike_lane():
 
 # --- club_arcgis_layer: read by pipeline/extract/ alone -------
 
-# A club layer shaped the way decision 54's wave 1 registers one: an ArcGIS
+# A club layer shaped the way the registry registers one: an ArcGIS
 # URL, a type field, and `reaches_hikers` true, so that no reader skips it on
 # that flag alone. Appended to the real registry, so the test bites before any
 # real row of the kind exists and keeps biting on every row added later.
@@ -495,7 +495,7 @@ CLUB_LAYER_PROBE = {
 
 
 def test_no_legacy_reader_selects_a_club_arcgis_layer_row(tmp_path, monkeypatch):
-    """The property that keeps the legacy publish off the club hosts decision 54 registers.
+    """The property that keeps the legacy publish off the club hosts the registry lists.
 
     publish-vector-data.yml runs fetch_external_layers.py, which fetches every
     row external_sources() returns whatever its reaches_hikers says, and fails
@@ -519,9 +519,8 @@ def test_no_legacy_reader_selects_a_club_arcgis_layer_row(tmp_path, monkeypatch)
     path = tmp_path / "sources.json"
     path.write_text(json.dumps(registry))
     monkeypatch.setattr(load_raw, "SOURCES_PATH", path)
-    # Decision 54's waves 2 and 3 register their GIS files and geographic APIs for the extract alone, as wave 1
-    # registers its ArcGIS layers, and waves 4 and 5 their club pages' and PDFs' points (section S), so no legacy
-    # reader may select those rows either.
+    # Club GIS files, geographic APIs and the points on club pages and PDFs are registered for the extract alone, as
+    # club ArcGIS layers are, so no legacy reader may select those rows either.
     extract_only = {CLUB_ARCGIS_LAYER, GIS_FILE, OGC_FEATURES, JSON_FEATURES, PAGE_POINTS, PDF_POINTS}
     club_keys = {entry["key"] for entry in registry["sources"] if source_kind(entry) in extract_only}
 
@@ -544,7 +543,7 @@ def test_no_legacy_reader_selects_a_club_arcgis_layer_row(tmp_path, monkeypatch)
 
 
 def test_the_exporters_path_counts_every_row_a_legacy_reader_selects_and_no_extract_only_row():
-    """Decision 196 (the maintainer's poll, 2026-10-14): on the exporters' path, export_sources.py names a steward
+    """On the exporters' path, export_sources.py names a steward
     only for rows today's exporters read, so production's sources screen names only stewards whose data production's
     files carry until the cutover. read_by_an_exporter() is that rule, and the readers above are what it describes:
     every row one of them selects, and each page-read exporter's own SOURCE_KEY, must count, or a steward whose data

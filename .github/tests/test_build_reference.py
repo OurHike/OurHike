@@ -312,7 +312,7 @@ def test_the_pin_check_runs_before_dbts_packages_and_the_build(workflow):
 
 
 def test_the_build_holds_the_steps_from_the_warehouse_on_and_none_of_the_pins(workflow):
-    """Choice B moved these whole from refresh-reference.yml's build job; the steps down to the pin are its pin job's
+    """The monthly lane's split moved these whole from refresh-reference.yml's build job; the steps down to the pin are its pin job's
     (test_refresh_reference.py)."""
     names = [step.get("name") for step in workflow["jobs"]["build"]["steps"]]
     runs = _runs(workflow["jobs"]["build"])

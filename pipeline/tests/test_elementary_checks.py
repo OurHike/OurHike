@@ -97,7 +97,7 @@ def test_there_are_checks_of_every_kind_elt_md_names():
 
 
 def test_no_elementary_freshness_check_is_declared_anywhere():
-    """Decision 203 (the maintainer, 2026-10-15): freshness is measured from OurHike's own last read of a source, by
+    """The maintainer, 2026-10-15: freshness is measured from OurHike's own last read of a source, by
     dbt's `source freshness` on the run log, never by Elementary's learned checks. freshness_anomalies on `_loaded_at`
     learned how long a source usually goes unchanged, and event_freshness_anomalies how long since a club last
     edited a notice; a table_anomalies or a table monitor of either metric learns the same, so none is declared."""
@@ -274,7 +274,7 @@ def test_each_one_reader_exposure_names_the_columns_it_reads_in_elementarys_word
             assert column["data_type"] == _normalized(contract[column["column_name"]]["data_type"]), f"{exposure}: {column}"
 
 
-#: The safety columns (decision 102: water distance, elevation, trail status, closure dates) and the monitors each
+#: The safety columns (water distance, elevation, trail status, closure dates) and the monitors each
 #: carries: Elementary's minimum and maximum are numeric monitors only (0.26.0's get_available_monitors()).
 SAFETY_COLUMNS = {
     ("points_of_interest", 1, "water_distance_ft"): ["null_percent", "min", "max"],
@@ -320,7 +320,7 @@ def test_elementarys_training_and_detection_settings_are_its_defaults_written_wh
         "anomaly_sensitivity": 3,
     }
     assert "min_training_set_size" not in variables
-    assert variables["test_sample_row_count"] == 0, "no failing row is kept (decision 102's rules)"
+    assert variables["test_sample_row_count"] == 0, "no failing row is kept"
 
 
 #: The anomaly-test arguments that would let a check fire before its window holds the 11 points

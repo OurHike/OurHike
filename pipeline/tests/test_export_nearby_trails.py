@@ -1083,9 +1083,8 @@ def test_a_trail_that_only_touches_at_a_point_stays_open(tmp_path, monkeypatch):
     there is nothing to close.
 
     A trail running ALONG the boundary is the next test's case: shapely
-    counts it as inside, because a polygon contains its own edge, and until
-    decision 213 this left it closed; rule 6 of that decision ("Only inside
-    closes", the maintainer's poll of 2026-10-15) opens it.
+    counts it as inside, because a polygon contains its own edge, and the
+    rule "Only inside closes" (the maintainer, 2026-10-15) opens it.
     """
     touches_the_corner = [(-74.15, 41.15), (-74.10, 41.20)]
     manifest, body = _run(
@@ -1891,8 +1890,7 @@ FIVE_MILES_NORTH = {
 
 @pytest.mark.parametrize(("wkt", "conus_albers_miles"), FIVE_MILES_NORTH.values(), ids=FIVE_MILES_NORTH.keys())
 def test_length_miles_is_the_lines_wgs84_geodesic_not_its_epsg5070_length(wkt, conus_albers_miles):
-    """Decision 97 (the maintainer, 2026-10-06): `length_miles` is measured on the WGS84 ellipsoid, as decision 90
-    measures the graph's edges. EPSG:5070 is equal-area for the lower 48 only and its metre is not the ground's, so
+    """The maintainer, 2026-10-06: `length_miles` is measured on the WGS84 ellipsoid, as the graph's edges are. EPSG:5070 is equal-area for the lower 48 only and its metre is not the ground's, so
     `length_miles` read `conus_albers_miles` here before. The line sheet prints it, and lineClimb compares it with
     the graph edges' geodesic metres to tell a whole trail from part of one."""
     geojson = ex.records_to_geojson(
@@ -2773,7 +2771,7 @@ def test_lines_that_differ_in_nothing_kept_merge_into_one_and_keep_every_vertex(
 
 
 def test_the_zooms_above_the_context_are_the_bytes_the_single_cut_wrote(tmp_path, monkeypatch):
-    """z9-z14 are cut by the statement write_tiles ran before decision 202,
+    """z9-z14 are cut by the statement write_tiles ran before it split the zooms,
     with GDAL's own defaults spelled out and the tile budget raised from
     500,000 to TILES_MAX_BYTES. Every tile that fit the old budget - every
     tile these lines make - must be identical, byte for byte, to that cut's."""

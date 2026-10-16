@@ -141,7 +141,7 @@ AT_GRAPH_SOURCES = ("centerline", "side_trails")
 # Anchorage and 755.7 m in American Samoa, and east-west 1,126.4 m at Anchorage
 # (measured 2026-10-06 with pyproj, DBT2-2). The phone sums `length_m` for a
 # route's miles and its Naismith time, so a short reading is the dangerous
-# side. Since decision 90 (the maintainer's poll of 2026-10-06) `length_m` is
+# side. Since 2026-10-06 (the maintainer's choice) `length_m` is
 # the piece's geodesic length on WGS84 instead (_geodesic_lengths), as
 # int_trail_network__raw_edges measures it in dbt.
 GEOGRAPHIC_CRS = "EPSG:4326"
@@ -170,8 +170,8 @@ SWEEP_TOLERANCES_M = (0.0, 2.0, 5.0, 8.0, 12.0, 20.0, 35.0, 60.0, 100.0)
 
 CLOSED_STATUS = "closed"
 
-#: The `line_kind` a club's own line carries in nearby_trails.geojson (the maintainer's poll of
-#: 2026-10-04: "draw now, route later"). A club line draws on the map and is never an edge: many repeat a line already
+#: The `line_kind` a club's own line carries in nearby_trails.geojson (the maintainer, 2026-10-04:
+#: "draw now, route later"). A club line draws on the map and is never an edge: many repeat a line already
 #: in the network (FLTC's and NCTA's shared stretch, three copies of the Superior Hiking Trail), and a route could jump
 #: between two copies, until a dedupe step checks each against the lines already there. dbt's junction graph reads
 #: only the trail_lines mart's network rows, so this refusal is the same rule for anything that reads the file.

@@ -13,7 +13,7 @@ inventory photos, a `photos` list). Each photo record carries its bucket key
 author, license, taken) and, for Commons, the face screen's result
 (lib/photo_screen.py's `screen`). Those records are what land here; the bytes
 stay where the fetchers put them and the bucket gate in publish.py reads
-(decision 4: bytes never enter DuckDB).
+(bytes never enter DuckDB).
 
 A STAND-IN FOR AN EXTRACT KIND. The Commons manifest belongs to the extract
 (`_shared/wikimedia/`), which waits: fetch_poi_images.py geosearches around

@@ -46,7 +46,7 @@ perform these steps", GitHub's docs, "Downloading workflow artifacts", read
 repository, so an artifact here is a publication for as long as it lasts
 (Reasoned). The warehouse holds every raw table the leg read, those of
 sources the registry holds back among them, and OurHike's own reports:
-decision 102's "no row leaves the warehouse" reaches it. The history store
+the data-quality rule "no row leaves the warehouse" reaches it. The history store
 is private, and already holds the snapshots of every mart row.
 
 ONE COPY A LEG, OVERWRITTEN EACH BUILD, so nothing piles up. The checks run
@@ -69,13 +69,12 @@ its put, or a push since the build); STALE (5) in place of 4 when
 there is none; 1 for anything else, a store that cannot be read, a torn
 upload, a warehouse still holding a write-ahead log.
 
-ONE HOUR WITHOUT ONE IS A WARNING, NONE IN 2.5 HOURS IS RED (decision 200,
-the maintainer's poll of 2026-10-15, "Red if none in 2.5 h"). Every hour
+ONE HOUR WITHOUT ONE IS A WARNING, NONE IN 2.5 HOURS IS RED (the
+maintainer, 2026-10-15: "Red if none in 2.5 h"). Every hour
 that takes nothing reads green on its own, and the soak's routine reads only
 red or green, so eight hours of soak runs 666 to 676 compared nothing and
-looked clean (review finding S2-1 of PR #1805 — dlt → dbt re-platform as one
-go/no-go change). So check-conditions.yml passes gate_report.py's
-SOAK_MAX_GAP_HOURS, decision 158's gap, as --max-age-hours to both takes, and
+looked clean. So check-conditions.yml passes gate_report.py's
+SOAK_MAX_GAP_HOURS, the soak's allowed gap, as --max-age-hours to both takes, and
 an hour whose store's newest warehouse or bundle is older than that, or that
 holds none, goes red. With the soak's hourly runs, 55.6 to 63.0 minutes
 apart (gate_report.py's measurement), the newest put is about an hour old
@@ -83,8 +82,8 @@ after one hour without one and about two after two, so it is the third such
 hour in a row that goes red, or the second when the hours drift half an
 hour apart (Reasoned).
 
-THE HOUR'S COMPARISON TAKES A BUNDLE, NOT THE WAREHOUSE (open question 17, the
-maintainer's poll of 2026-10-10: "Compare every soak hour"):
+THE HOUR'S COMPARISON TAKES A BUNDLE, NOT THE WAREHOUSE (the maintainer,
+2026-10-10: "Compare every soak hour"):
 
     python hand_off.py put-bundle --url URL --bundle DIR --run RUN [--attempt N] [--commit SHA]
     python hand_off.py take-bundle --url URL --out DIR --run RUN [--commit SHA]

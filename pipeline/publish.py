@@ -54,8 +54,8 @@ and the version written records it as latest.json's `raw_run`, which every
 other publish carries forward (RAW_RUN_ENV_VAR says why, and
 prune_raw_store.py is what reads it).
 
-`python publish.py --channels` uploads the committed channels.json, decision
-44's pointer to the release folder each environment's phones read, and nothing
+`python publish.py --channels` uploads the committed channels.json, the
+pointer to the release folder each environment's phones read, and nothing
 else. It is the release train's step, run by a dispatch; publish() never does
 it, so no scheduled run can move what a phone reads.
 """
@@ -569,7 +569,7 @@ def release_only(name: str) -> bool:
     """Whether an artifact's bytes live only in a release folder: a
     release-scoped key under a schema version's own segment, `v2/<file>`.
 
-    Decision 44 writes a v2 beside its v1 at `releases/<id>/v2/<file>` and adds
+    A v2 is written beside its v1 at `releases/<id>/v2/<file>` and adds
     no root key (pipeline/ELT.md, "Versions and channels"). The root's flat
     keys are what installed apps read, and all of them are v1's. A build that
     reads v2 resolves its release folder and reads `v2/<key>` inside it
@@ -1660,7 +1660,7 @@ DBT_PROCESSED_DIR_DEFAULT = "../data/processed/dbt"
 DBT_WAREHOUSE_ENV_VAR = "OURHIKE_WAREHOUSE"
 DBT_WAREHOUSE_DEFAULT = "../data/warehouse.duckdb"
 #: Set to "true" by publish-conditions.yml when build_marts.py exited its
-#: PARTIAL_EXIT (decision 81: "Hold that source and publish the rest"): some
+#: PARTIAL_EXIT ("Hold that source and publish the rest"): some
 #: writers failed while the others wrote. collect_dbt_phone_files() then keeps
 #: a failed writer's key, its file never read, rather than refusing the whole
 #: publish, and the workflow turns the run red once everything else is
@@ -1957,8 +1957,8 @@ def collect_dbt_phone_files(
 
     A WRITER THAT FAILED, its own model or a test of it, is refused, unless
     `writers_may_fail` (default: BUILD_PARTIAL_ENV_VAR is "true", which
-    publish-conditions.yml sets when build_marts.py exited PARTIAL_EXIT;
-    decision 81). Then its keys are kept and `failed`, and its file is never
+    publish-conditions.yml sets when build_marts.py exited PARTIAL_EXIT).
+    Then its keys are kept and `failed`, and its file is never
     read, whatever its age: a writer that failed mid-write, or wrote a file
     its own test refused, never publishes it. build_marts.py removes that
     file as well.

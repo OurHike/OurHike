@@ -293,8 +293,8 @@ def test_a_writer_reading_a_versioned_mart_without_pinning_it_fails():
 
 
 def test_a_writer_reading_an_unversioned_mart_needs_no_pin():
-    """Every family not yet versioned (decision 44 versions the marts that feed
-    a phone file as each one lands)."""
+    """Every family not yet versioned (the marts that feed a phone file are
+    versioned as each one lands)."""
     writer_id, writer = _writer(reads=(("trail_lines", None),))
     head = _manifest(_mart(name="trail_lines"), (writer_id, writer), exposures=[_exposure(writer_id, ["nearby_trails.geojson"])])
     assert _check(None, head).failures == []
@@ -304,8 +304,8 @@ def test_a_writer_reading_an_unversioned_mart_needs_no_pin():
 
 
 def test_an_intermediate_reading_a_versioned_mart_without_pinning_it_fails():
-    """The review of PR #1805 (dlt → dbt re-platform as one go/no-go change), 2026-10-09: seven intermediates read
-    points_of_interest or trail_lines unpinned, and rule 5 looked only at the writers. int_trail_lines__spur_destinations
+    """Seven intermediates once read points_of_interest or trail_lines unpinned while rule 5 looked only at the
+    writers (found 2026-10-09). int_trail_lines__spur_destinations
     alone feeds trail_lines v1, and through it three writers, each of which pins."""
     reader_id, reader = _reader(pinned=False)
     (failure,) = _check(None, _manifest(_mart(version=1), (reader_id, reader))).failures

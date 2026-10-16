@@ -28,7 +28,7 @@ docs, and lighter phone downloads). The dbt job's `dbt` binary is dbt 2.0.6,
 which runs DuckDB 1.5.4 through an ADBC driver it downloads from
 public.cdn.getdbt.com, and fetches its own spatial build from
 extensions.duckdb.org on a cold cache (measured 2026-10-01; dbt-oss 2.0.5,
-before decision 32, did the same). The seeding held here is the Python
+used before, did the same). The seeding held here is the Python
 duckdb's, which load_raw.py uses. The dbt job caches dbt's two downloads with
 actions/cache instead, and its comments say what is measured about that half
 and what is not.

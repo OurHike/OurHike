@@ -153,7 +153,7 @@ jobs:
       # real spread (pipeline/ELT.md, "The schedule: 05:15 UTC on the 3rd").
       # The age runs from the extract behind the newest build on main that
       # refreshed UA: the instant its raw_run began, which build-reference.yml's
-      # run-name writes into the run's title. Until the maintainer's choice B
+      # run-name writes into the run's title. Until the maintainer's split of the monthly lane
       # (2026-10-08) split the lane, one run extracted and built, so its own
       # start was that instant; dating a build by its start now would let a
       # build from an old pin, dispatched by hand, clear the alarm while UA

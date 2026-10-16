@@ -449,7 +449,7 @@ jobs:
             exit "$status"
           fi
 
-      # DECISION 31's NEW-DATA REVIEW, THE WAREHOUSE'S HALF (pipeline/ELT.md,
+      # THE NEW-DATA REVIEW, THE WAREHOUSE'S HALF (pipeline/ELT.md,
       # "The go/no-go gate"): new_data_report.py counts what the marts carry
       # - rows per club and type, every layer's licence basis and may_publish,
       # every closure, warning, water and shelter source - from the warehouse
@@ -802,7 +802,7 @@ jobs:
           key: monthly-elevation-answers-${{ github.run_id }}
           restore-keys: monthly-elevation-answers-
 
-      # DECISION 30's PARITY ON FROZEN INPUTS: pipeline-tests.yml's parity
+      # THE GATE'S PARITY ON FROZEN INPUTS: pipeline-tests.yml's parity
       # families less the six hourly conditions files, this group's share of
       # them, through pipeline/parity_lane.py. A difference is evidence for the
       # gate, not a failure of this lane, so the step fails only when none of
@@ -896,7 +896,7 @@ jobs:
               --summary "$GITHUB_STEP_SUMMARY"
           fi
 
-      # DECISION 31's NEW-DATA REVIEW, THE PARITY HALF: the build job's counts
+      # THE NEW-DATA REVIEW, THE PARITY HALF: the build job's counts
       # of what the marts carry (its new_data_report.py --facts-out step),
       # beside every group's parity results, which say whether today's files
       # carry each closure, warning, water and shelter source. Missing only
@@ -949,7 +949,7 @@ jobs:
           retention-days: 90
           if-no-files-found: warn
 
-  # DECISION 205's RETENTION STEP (pipeline/prune_raw_store.py, whose
+  # THE RETENTION STEP (pipeline/prune_raw_store.py, whose
   # docstring has every rule and the reader each one keeps something for).
   # It keeps what each environment serves and what the next build reads:
   # UA's pin and stored warehouse, one pin back, every pin newer than the

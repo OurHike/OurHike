@@ -227,7 +227,7 @@ jobs:
       # holds different ids - measured 2026-09-09, 31 against production's 14,
       # with 10 in common. Checking each base separately turns "the pin must
       # exist in both" into a red deploy rather than something to remember.
-      # Since decision 44 the pin is the compiled fallback a first run reads
+      # The pin is the compiled fallback a first run reads
       # before it has verified a channels.json entry (lib/dataRelease.ts).
       #
       # AND WHAT IT HOLDS MUST FIT A LAUNCH: check 22 on the manifest just
@@ -261,7 +261,7 @@ jobs:
           fi
           python3 ../.github/scripts/check_launch_budget.py "$pinned" --release "$release"
 
-      # Decision 44's pointer, against UA's own base: pages.yml's step of the
+      # The versions pointer, against UA's own base: pages.yml's step of the
       # same name, which says why both it and the step above must hold. The
       # environment is read off the base as the client reads it, so a
       # UA_DATA_BASE_URL override pointing at production's data checks

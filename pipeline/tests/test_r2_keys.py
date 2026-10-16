@@ -129,9 +129,9 @@ def test_every_key_a_dbt_writers_exposure_names_is_a_legal_key():
         # folder written once and never overwritten cannot express.
         "conditions/closures.json",
         "conditions/reports.json",
-        # Decision 84's hazard areas, beside conditions/notices.json.
+        # The hazard areas, beside conditions/notices.json.
         "conditions/hazard_areas.json",
-        # Every club closure for the map, decision 187 of pipeline/ELT.md.
+        # Every club closure for the map.
         "conditions/trail_closures.json",
     ],
 )

@@ -5,8 +5,7 @@ tarballs from codeload.github.com. Uncached, every hourly conditions run
 depended on both hosts being up at that minute: soak run 538 (2026-10-05,
 job 111578158835) logged "Installing dbt-labs/codegen ... Installed 3
 packages" at 01:19:19, in a step that runs under `bash -e`, so a failed
-download skipped the build and the publish. That is ARCH-6 of the PR #1805
-review, and pipeline-tests.yml's dbt job already caches dbt's ADBC driver and
+download skipped the build and the publish. pipeline-tests.yml's dbt job already caches dbt's ADBC driver and
 v2's spatial build for the same reason ("so a warm cache rides out an outage
 of either host").
 
@@ -38,9 +37,9 @@ DEPS = re.compile(r"\bdbt\"?\s+deps\b")
 JOBS_THAT_RUN_DEPS = {
     ("pipeline-tests.yml", "dbt"),
     ("publish-conditions.yml", "publish"),
-    # The monthly lane's build, which choice B (2026-10-08) moved out of refresh-reference.yml.
+    # The monthly lane's build, which the monthly lane's split (2026-10-08) moved out of refresh-reference.yml.
     ("build-reference.yml", "build"),
-    # The hourly lane's checks, which decision 110 (2026-10-08) runs after its build has published.
+    # The hourly lane's checks, which run after its build has published.
     ("check-conditions.yml", "check"),
 }
 

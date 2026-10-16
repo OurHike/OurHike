@@ -120,7 +120,7 @@ ELEVATION_INDEX_PATH = ROOT / "data" / "raw" / "elevation" / "tile_index.json"
 
 # The same CRS pair build_trail_graph.py nodes the graph in, and the same one
 # export_elevation.py walks the A.T. profile in. The graph's published
-# `length_m` is not measured in it since decision 90 (2026-10-06): it is the
+# `length_m` is not measured in it since 2026-10-06: it is the
 # WGS84 geodesic, while these samples are still spaced in EPSG:5070 metres,
 # which outside the lower 48 are not the ground's (build_trail_graph.py's
 # PROJECTED_CRS note). HIKE_PLANNING.md

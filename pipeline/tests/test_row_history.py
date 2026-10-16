@@ -192,7 +192,7 @@ def _saves_in(tmp_path, name: str, saves: int):
 
 
 def test_the_monthly_store_keeps_its_newest_three_saves_by_its_own_row_of_row_history_stores_toml(tmp_path):
-    """Decision 206 (the maintainer's poll, 2026-10-15): "3 saves", the newest and two back, from the next save on."""
+    """The maintainer, 2026-10-15: "3 saves", the newest and two back, from the next save on."""
     store = _saves_in(tmp_path, "monthly", 5)
 
     pointer = json.loads((store / POINTER).read_text())
@@ -491,7 +491,7 @@ def test_two_builds_one_store_the_third_restores_both_builds_rows_and_a_rewritte
 
 
 def test_a_store_saved_before_elementary_starts_its_history_only_when_allowed(tmp_path):
-    """Every store saved before decision 102 holds a history.json and no elementary.json."""
+    """Every store saved before Elementary's history was kept holds a history.json and no elementary.json."""
     store, _ = _cold_then_saved(tmp_path)
     (store / row_history.ELEMENTARY_POINTER).unlink()
 

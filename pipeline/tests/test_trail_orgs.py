@@ -34,7 +34,7 @@ LICENCE_BASES = {
     "unstated",
 }
 #: The catalogue's `type`s. `county_agency` joined on 2026-10-11 for maricopa-parks, Maricopa County Parks and
-#: Recreation (the maintainer's poll, review page 02, P14). Pinned here so that a type cannot be introduced by
+#: Recreation (the maintainer's choice). Pinned here so that a type cannot be introduced by
 #: editing the data alone: each is either a club (generate_notice_models.py's CLUB_TYPES), not a managing
 #: organisation at all (extract/_contract.py's NOT_CLUB_TYPES), or an agency, which is every other type here.
 ORG_TYPES = {
@@ -249,7 +249,7 @@ def test_every_accepted_arcgis_owner_says_why_it_is_an_institution(catalogue):
 
 
 def test_maintainer_clearinghouse_is_new_yorks_alone(orgs):
-    """Decisions 20 and 22 ruled on NYS DEC's and OPRHP's clearinghouse datasets, nobody else's.
+    """The clearinghouse basis covers NYS DEC's and OPRHP's datasets, nobody else's.
 
     No state work is public domain by default, so pipeline/ELT.md's "Who may
     publish" moved both rows off `public_domain` on 2026-10-01. A third row with

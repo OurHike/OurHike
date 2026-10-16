@@ -249,7 +249,7 @@ def test_put_bundle_refuses_a_folder_holding_a_name_a_bundle_may_not_carry(tmp_p
     assert not (tmp_path / "store" / hand_off.BUNDLE_POINTER).exists()
 
 
-# --- none in 2.5 h is red (the maintainer's poll of 2026-10-15, "Red if none in 2.5 h") -------------------
+# --- none in 2.5 h is red (the maintainer, 2026-10-15) -------------------
 
 
 def _put_hours_ago(store, pointer_file, hours):

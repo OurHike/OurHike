@@ -34,8 +34,7 @@
 #     a planner that says whether a build is worth dispatching at all - which
 #     is the question a maintainer currently answers by guessing.
 #
-# ITS MONDAY RUN GIVES WAY TO THE MONTHLY LANE (pipeline/ELT.md, "Workflows",
-# decision 28a). Every month refresh-reference.yml extracts and pins, and the
+# ITS MONDAY RUN GIVES WAY TO THE MONTHLY LANE (pipeline/ELT.md, "Workflows"). Every month refresh-reference.yml extracts and pins, and the
 # build-reference.yml run it dispatches builds and stages a release on UA,
 # which is the build this planner could only recommend. So once one run of
 # build-reference.yml on main has refreshed UA, a scheduled run of this one
@@ -112,8 +111,7 @@ jobs:
       # build-reference.yml on main has refreshed UA: its job "Confirm UA
       # serves what the build wrote" passed, whatever the run concluded,
       # because a run can refresh UA and still be failed by a later job
-      # (decision 49 did that to monthly runs 16 and 17; WF3 of the PR #1805
-      # review). check-upstream-freshness.yml's 35-day alarm counts a run the
+      # (monthly runs 16 and 17 did). check-upstream-freshness.yml's 35-day alarm counts a run the
       # same way. An API answer this cannot read plans too: this workflow
       # writes nothing, so planning when unsure costs a report and never a
       # publish.

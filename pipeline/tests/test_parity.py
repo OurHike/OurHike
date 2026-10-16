@@ -50,7 +50,7 @@ def test_ints_and_floats_print_apart():
     assert differences(_document(A), _document({**A, "at_miles": [[1, 2]]}), FAMILY) != []
 
 
-# --- a key a file holds more than once (PY-4 of PR #1805's second review) ---
+# --- a key a file holds more than once ---
 
 
 def _poi(feature_id: str, water: str) -> dict:

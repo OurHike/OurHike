@@ -325,8 +325,7 @@ def test_compare_runs_parity_keys_only_per_family_and_turns_red_only_for_a_diffe
 
 def test_no_bundle_reads_as_every_family_not_compared_and_the_run_stays_green(tmp_path, fake_parity, capsys):
     """Green, and impossible to miss: the summary opens on it and one annotation says it for the hour, ahead of the six
-    (review finding S2-1 of PR #1805 — dlt → dbt re-platform as one go/no-go change: eight soak runs compared nothing
-    and every one read clean)."""
+    (eight soak runs once compared nothing and every one read clean)."""
     summary = tmp_path / "summary.md"
     code = hourly_parity.main(
         ["compare", "--bundle", str(tmp_path / "none"), "--out", str(tmp_path / "result"), "--missing", "nothing was handed on"]
@@ -371,9 +370,8 @@ def _stopped_at(monkeypatch, name: str, stop: type[BaseException] = KeyboardInte
 
 
 def test_a_comparison_stopped_part_way_leaves_run_json_naming_where_it_stopped(tmp_path, monkeypatch):
-    """The 2026-10-15 review's finding S2-3: compare() wrote run.json once, after the last family, so a step killed at
-    its cap or a compare() that raised left no run.json, and the gate read the hour as one that never came, which
-    decision 158's gap rule absorbs. run.json is written before the first family and after each, so the family being
+    """Written once, after the last family, run.json would be missing for a step killed at its cap or a compare()
+    that raised, and the gate would read the hour as one that never came, which the soak's gap absorbs. run.json is written before the first family and after each, so the family being
     compared reads `failed` (a crash, which makes the key differ) and the families after it `not_compared`."""
     bundle_dir = tmp_path / "bundle"
     hourly_parity.bundle(

@@ -2,8 +2,8 @@
 
 Usage: python spike_table_keys.py   (from pipeline/; reads sources.json live)
 
-A spike for decision 40 of #1793 — Rebuild the data platform as dlt → dbt:
-seven contracted marts, a monthly refresh, published docs, and lighter phone
+A measurement for #1793 — Rebuild the data platform as dlt → dbt: seven
+contracted marts, a monthly refresh, published docs, and lighter phone
 downloads (pipeline/ELT.md, "One key per table"). It is what measured the
 thirteen keys that table marks as measured on 2026-10-01; it is not on any
 publish path and has no tests. Rerun it to check a key before a staging model

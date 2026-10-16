@@ -316,7 +316,7 @@ def _run_served(site: Path, project: Path, capsys) -> tuple[int, str]:
 
 
 def test_a_served_page_that_loads_duckdb_wasm_from_jsdelivr_fails(tmp_path, capsys):
-    """dbt 2.0.6's default: the page imports DuckDB-WASM's code from cdn.jsdelivr.net, on ourhike.org's origin (SEC-1)."""
+    """dbt 2.0.6's default: the page imports DuckDB-WASM's code from cdn.jsdelivr.net, on ourhike.org's origin."""
     code, out = _run_served(_site(tmp_path), _project(tmp_path, ""), capsys)
     assert code == 1
     assert "index.html: the page loads DuckDB-WASM from https://cdn.jsdelivr.net, another origin" in out

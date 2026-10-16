@@ -371,7 +371,7 @@ def _geodesic_kilometre(lon, lat, azimuth):
     ids=["a north-south kilometre at Anchorage, Alaska", "an east-west kilometre at Harriman, New York"],
 )
 def test_an_edges_length_m_is_its_wgs84_geodesic_not_its_epsg5070_length(lon, lat, azimuth, conus_albers_m):
-    """Decision 90 (the maintainer, 2026-10-06): EPSG:5070 is equal-area for the lower 48 only, and its metre is not
+    """The maintainer, 2026-10-06: EPSG:5070 is equal-area for the lower 48 only, and its metre is not
     the ground's. These two kilometres read `conus_albers_m` there (measured 2026-10-06 with pyproj), which is what
     length_m published before; the phone sums length_m for a route's miles and its Naismith time."""
     graph, _ = _build(_feature(_geodesic_kilometre(lon, lat, azimuth)))

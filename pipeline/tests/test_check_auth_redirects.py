@@ -66,7 +66,7 @@ UA = {
     "hiker_facing": False,
 }
 
-# The data docs' host since pipeline/ELT.md decision 144: on the bucket's
+# The data docs' host: on the bucket's
 # CORS list for the quality page, and on no Supabase list, explicitly.
 DOCS = {
     "pattern": "https://docs.ourhike.org",

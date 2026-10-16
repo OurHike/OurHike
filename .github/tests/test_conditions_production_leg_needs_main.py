@@ -27,7 +27,7 @@ TWO LOCKS, AND THIS FILE HOLDS BOTH.
 
 The same two locks keep the production leg from a dispatch that picks
 `phone_files: dbt`, from any ref: that path has soaked on UA only, and
-decision 92 keeps production on the exporters until the cutover. The
+production stays on the exporters until the cutover. The
 schedule passes no input, and a dispatch left at `phone_files: scheduled`
 asks for no path, so neither is touched.
 

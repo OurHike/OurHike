@@ -1,7 +1,6 @@
 """The release's nearby trail lines reach the hourly cut of area closures through one cache, written in one place.
 
-Decision 187 (S6, the maintainer's poll of 2026-10-11) crosses out an area
-closure's trails where they run inside it, in conditions/trail_closures.json,
+An area closure crosses out its trails where they run inside it, in conditions/trail_closures.json,
 and the hourly conditions build cuts them. Its lines are the release's nearby
 trail lines, which publish-weather.yml prepares once per release
 (pipeline/prepare_closure_trail_lines.py) and caches under the release's id,
@@ -16,7 +15,7 @@ And to the script's SCHEMA. The conditions job restores the newest entry
 whose key starts with its restore-keys prefix, so a prefix that does not name
 the schema restores an entry written to an older rule until a new one is
 saved: under SCHEMA 1 the lines held no A.T. line, and an hour cut against
-one would leave the A.T. open where decision 192 crosses it out. Naming the
+one would leave the A.T. open where the closure crosses it out. Naming the
 schema in both keys makes a schema bump a new prefix, which the old entries
 cannot match.
 """
@@ -149,7 +148,7 @@ LEG_VARIABLE = re.search(r'^LEG_VARIABLE = "([A-Z_]+)"$', STEP_SCRIPT.read_text(
 
 
 def test_a_restore_that_stalls_gives_up_as_a_miss_inside_its_cap_and_never_fails_the_job():
-    """Review finding S2-7 of PR #1805 — dlt → dbt re-platform as one go/no-go change: actions/cache waits 10 minutes on
+    """actions/cache waits 10 minutes on
     a stalled segment by default, before the build and "Publish to R2". A stalled download now gives up as a miss before
     the step's cap, the cap stops anything else, and either is an hour without lines, never a failed job.
     .github/tests/test_conditions_build_budget.py counts the cap."""
@@ -161,7 +160,7 @@ def test_a_restore_that_stalls_gives_up_as_a_miss_inside_its_cap_and_never_fails
 
 
 def test_the_build_names_its_leg_so_the_cut_can_say_when_the_lines_are_another_releases():
-    """Review finding S2-4, the same review: the restore takes the newest entry the branch can see, which need not be
+    """The restore takes the newest entry the branch can see, which need not be
     the leg's current release, so step_closure_trail_lines asks the leg's latest.json and warns when it is not."""
     steps = _steps(CONDITIONS, "publish")
     (build,) = [step for step in steps if step.get("id") == "build"]

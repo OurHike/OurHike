@@ -15,7 +15,7 @@ de-duplicated where the guide names one place twice (STATED_DUPLICATE_M,
 100 m, for two lots with coordinates). Every entry it does not place is
 counted by reason, and the step prints the count.
 
-WHY A STEP (decision 23 sends a rule to SQL first). The classification is
+WHY A STEP (a rule goes to SQL first when it can). The classification is
 some thirty regular expressions with look-ahead and look-behind, which RE2,
 DuckDB's engine, does not have, so the patterns themselves would have to be
 rewritten, and each rewrite is a new judgement about what a sentence means on

@@ -673,7 +673,7 @@ def test_main_flushes_the_cache_even_when_it_refuses(tmp_path, monkeypatch):
 
 def test_an_epqs_lookup_that_fails_or_answers_null_is_not_cached_so_the_next_attempt_asks_again(tmp_path, monkeypatch):
     """The rule that makes carrying this file between runs safe (publish-vector-data.yml's FETCH_OUTPUTS, and
-    the monthly lane since ARC-3 of PR #1805's second review, whose refresh-reference.yml pin job and
+    the monthly lane, whose refresh-reference.yml pin job and
     build-reference.yml build job each restore and save it): only an answered elevation is kept.
     A null value, or five failed tries, must reach the next attempt as a question, never as a cached unknown."""
     cache_path, _writes = _fake_epqs(monkeypatch, tmp_path)
@@ -898,7 +898,7 @@ def test_the_cache_key_is_each_coordinate_exactly_and_reads_back_to_the_same_dou
     assert trail_water._elevation_key(np.float64(41.5), -74.25) == "41.5,-74.25"
 
 
-def test_a_cache_file_written_before_decision_131_is_discarded_whole_even_where_an_old_key_is_a_new_exact_key(
+def test_a_cache_file_under_the_old_six_decimal_keys_is_discarded_whole_even_where_an_old_key_is_a_new_exact_key(
     tmp_path, monkeypatch
 ):
     """'40.000001,-75.000001' was the 6-decimal key of every point within half a millionth of a degree of it, and is

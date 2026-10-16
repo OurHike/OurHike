@@ -6,8 +6,7 @@
     python prepare_closure_trail_lines.py --from-file <nearby_trails.geojson> [--at-file <trails.geojson>] \
         --release <id> [--out-dir DIR]
 
-WHAT IT IS FOR. Decision 187 (S6, the maintainer's poll of 2026-10-11), building
-#1152 — Move OPRHP's temporary closures onto the conditions clock, where a
+WHAT IT IS FOR. Building #1152 — Move OPRHP's temporary closures onto the conditions clock, where a
 safety layer belongs — for every club closure: an area closure's trails are
 crossed out where they run inside it, cut by the hourly build as NYS Parks'
 areas already are monthly (int_trail_lines__network_area_closures). The cut is
@@ -24,10 +23,9 @@ trails and spurs, which a phone draws the A.T. from
 (client/src/lib/config.ts's TRAILS_KEY). So a crossed-out stretch is cut from
 the very line the phone draws under it.
 
-THE A.T. IS CUT LIKE ANY TRAIL (the maintainer's poll of
-2026-10-14, "Yes, like any trail"; the recommendation had been that only ATC
-closes the A.T.): decision 187's "an area's trails are crossed out where they
-run inside it" includes the A.T., and the sheet names the closing
+THE A.T. IS CUT LIKE ANY TRAIL (the maintainer, 2026-10-14: "Yes, like any
+trail"): "an area's trails are crossed out where they run inside it" includes
+the A.T., and the sheet names the closing
 organisation. Until then this read nearby_trails.geojson alone, which does not
 carry the A.T.'s lines, so no club's area ever crossed the A.T. out. One place
 is affected: OPRHP's undated 2023 "Area Closed - No Entry" areas at Bear

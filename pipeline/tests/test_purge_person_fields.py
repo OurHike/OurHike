@@ -1,4 +1,4 @@
-"""purge_person_fields.py, decision 56's purge, end to end on a local raw store: real dlt, real pins, a stored warehouse.
+"""purge_person_fields.py, the person-fields purge, end to end on a local raw store: real dlt, real pins, a stored warehouse.
 
 Each test builds the store as the monthly lane built ours. A run under the rule as it stood before aafa7296, when
 nothing was left out, lands two layers holding a person field: `RANGER`, named in PERSON_FIELDS, and `DataOwner`,
@@ -163,7 +163,7 @@ def parquet_bytes(table: pa.Table) -> bytes:
 
 @pytest.fixture
 def bucket(tmp_path, registry, requests_mock, monkeypatch):
-    """The store as decision 56 found it: a month landed before the fix, pinned, built and stored, and copied to browse/.
+    """The store as the purge found it: a month landed before the fix, pinned, built and stored, and copied to browse/.
 
     Beside it, objects every bucket of ours holds that hold no person field: the Geofabrik mirror (a PBF this script
     does not read, and its index) and a row-history save of a mart's snapshot.

@@ -520,11 +520,11 @@ def dbt_exposure_keys() -> set[str]:
 #: Client keys only a dbt writer writes: a 404 on a bucket the exporters
 #: still publish (production until the cutover), so each must be
 #: one the client reads as optional and falls back from. conditions/notices.json
-#: (#1805, decision 53 phase D) is: lib/useConditions.ts keeps the panel on
+#: (#1805) is: lib/useConditions.ts keeps the panel on
 #: atc_updates.json and nynjtc_alerts.json while it is absent. Named rather
 #: than derived, so a second dbt-only key is a decision somebody writes here.
 #: conditions/notice_states.json is too: lib/publishedNotices.ts reads a 404 as no states' shapes, and
-#: the planned-hike panel then shows no state-wide notice, as decision 68 left them.
+#: the planned-hike panel then shows no state-wide notice.
 #: conditions/hazard_areas.json is too: lib/publishedNotices.ts reads a 404 as no answer, and
 #: chrome/noticesPanel.tsx then draws the hazard areas from notices.json where that file has reached the phone.
 #: conditions/trail_closures.json is too: lib/publishedNotices.ts reads a 404 as no answer,

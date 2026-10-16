@@ -35,7 +35,7 @@ sits at `edges[i].length_m * j / (n - 1)` where `n` is that array's own length.
 A consumer must take `n` FROM THE ARRAY and never recompute it from
 `length_m`, and that is measured rather than defensive. The sampler walks the
 edge's vertices re-projected to EPSG:5070, and `length_m` is not that walk's
-length. Since decision 90 (2026-10-06) it is the line's WGS84 geodesic, which
+length. Since 2026-10-06 it is the line's WGS84 geodesic, which
 differs from its EPSG:5070 length by up to 1.24% in the lower 48 and 28.7%
 outside it (measured 2026-10-06 per routable part of UA's network). Before
 that it was the projected length of the same line before those vertices were

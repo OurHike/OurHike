@@ -1,6 +1,6 @@
 """CI's dbt job builds a pull request from main's last build when it safely can, and everything otherwise.
 
-The maintainer's poll of 2026-10-15 ("In this PR anyway"): the build step took 16 min 7 s on 2a826f01 (Pipeline tests
+The maintainer, 2026-10-15: the build step took 16 min 7 s on 2a826f01 (Pipeline tests
 run 38773605297), on every pull request. pipeline/state_base.py's docstring has the design; what is held here is the
 workflow's half and the rules' answers:
 
@@ -349,7 +349,7 @@ def test_whatever_the_decision_cannot_answer_is_the_full_build_said_once_and_nev
     assert output == "", "no `dir=`, so the build step passes no --state-base"
     assert not (pipeline / "data" / "warehouse.duckdb").exists(), "the load starts a warehouse of its own, as before"
     (notice,) = [line for line in done.stdout.splitlines() if line.startswith("::")]
-    assert notice.startswith("::notice title=Full fixture build::Every node is built, as before decision 210: ") and why in notice
+    assert notice.startswith("::notice title=Full fixture build::Every node is built: ") and why in notice
 
 
 def test_a_decision_that_raises_is_a_full_build(monkeypatch, tmp_path, capsys):
@@ -366,6 +366,4 @@ def test_a_decision_that_raises_is_a_full_build(monkeypatch, tmp_path, capsys):
     )
 
     assert code == 0 and output.read_text() == ""
-    assert "::notice title=Full fixture build::Every node is built, as before decision 210: the decision itself failed" in (
-        capsys.readouterr().out
-    )
+    assert "::notice title=Full fixture build::Every node is built: the decision itself failed" in (capsys.readouterr().out)

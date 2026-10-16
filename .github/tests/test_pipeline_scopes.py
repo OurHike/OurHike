@@ -46,14 +46,14 @@ PUBLISHING_PATHS = {
     # main without anyone writing it down here.
     "publish-weather.yml",
     # The seventh, from #1793's monthly lane (pipeline/ELT.md, "Workflows").
-    # Since the maintainer's choice B (2026-10-08) it extracts and pins, and
+    # Since the maintainer's split of the monthly lane (2026-10-08) it extracts and pins, and
     # publishes through the eighth, which its dispatch job starts with
     # `gh workflow run build-reference.yml` (the derivation's dispatch rule).
     "refresh-reference.yml",
     # The eighth: the monthly lane's build from a pin, whose `publish` job runs
     # `python publish.py` with OURHIKE_PHONE_FILES=dbt.
     "build-reference.yml",
-    # The ninth, from decision 110: the hourly lane's checks, which
+    # The ninth: the hourly lane's checks, which
     # publish-conditions.yml's `checks` job starts with `gh workflow run
     # check-conditions.yml`, and which put conditions/data_quality.json in
     # place with `python publish.py --sidecar`.
@@ -64,8 +64,8 @@ PUBLISHING_PATHS = {
 #: publish.py, whose raw tables a publishing path reads later. Pinned exactly,
 #: as the publishing roster is.
 EXTRACT_PATHS = {
-    # Decision 61's notices legs, every 4 hours; publish-conditions.yml's
-    # hourly dbt path reads their served copy (pipeline/ELT.md, phase F).
+    # The notices legs, every 4 hours; publish-conditions.yml's hourly dbt
+    # path reads their served copy.
     "extract-notices.yml",
 }
 
@@ -159,7 +159,7 @@ def test_a_monthly_types_extract_file_stales_the_publishing_path_that_runs_the_m
 def test_a_step_build_marts_runs_stales_every_path_that_runs_build_marts():
     """build_marts.py starts each step as a subprocess by its STEPS entry's script name, which no import reaches, so
     step_osm_water.py was unclaimed though the monthly build lands OSM water through it (#1652). The monthly build is
-    build-reference.yml's since choice B, and refresh-reference.yml reruns it through the dispatch."""
+    build-reference.yml's since the split, and refresh-reference.yml reruns it through the dispatch."""
     verdict = _verdict(["pipeline/step_osm_water.py"])
     assert "STALE  build-reference.yml" in verdict and "STALE  publish-conditions.yml" in verdict
     assert "STALE  refresh-reference.yml" in verdict
@@ -168,7 +168,7 @@ def test_a_step_build_marts_runs_stales_every_path_that_runs_build_marts():
 
 
 def test_a_workflow_that_dispatches_a_publishing_path_is_one_and_its_scope_holds_the_dispatched_ones():
-    """Choice B (2026-10-08): refresh-reference.yml publishes nothing itself, and starts build-reference.yml with
+    """The monthly lane's split (2026-10-08): refresh-reference.yml publishes nothing itself, and starts build-reference.yml with
     `gh workflow run`. Derived from the run scripts, so it stays a publishing path rather than turning into an
     extract path, and a run of it reruns everything the build reads."""
     scopes = _load_scopes_module()

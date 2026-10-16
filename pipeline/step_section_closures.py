@@ -4,10 +4,9 @@
     OURHIKE_DATA_ENV=ua DATA_BASE_URL=https://data.ourhike.org \\
         python step_section_closures.py --warehouse W --from-bucket            # the environment's published file
 
-Decision 212's rule (lib/section_closures.py), wired into the monthly lane by decision 213 (the maintainer's polls of
-2026-10-15, for #1801 — The junction graph routes hikers onto the Tuscarora's Doll Ridge section, which PATC says is
+lib/section_closures.py's rule, in the monthly lane (the maintainer, 2026-10-15, for #1801 — The junction graph routes hikers onto the Tuscarora's Doll Ridge section, which PATC says is
 closed for loss of landowner permission): a notice that closes the trail in its own words, has no geometry of its own
-("No, own geometry wins (Recommended)": a notice with its own geometry is never read here), and is the line's steward's
+(a notice with its own geometry is never read here), and is the line's steward's
 or a club's naming the trail, closes the one line set whose name is the section it names. This lands one row per line
 it closes, with the notice's own title as the reason, verbatim, and int_trail_lines__network_section_closures marks
 those lines closed, so nearby_trails.geojson carries the closure and int_trail_network__routable refuses them.

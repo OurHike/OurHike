@@ -7,7 +7,7 @@
 # downloads.
 #
 # TWO WORKFLOWS, SO THAT A FIX TO A FAILED BUILD DOES NOT COST A NEW EXTRACT
-# (the maintainer's choice B, by poll, 2026-10-08). About ten of monthly runs
+# (the maintainer's split of the monthly lane, 2026-10-08). About ten of monthly runs
 # 17 to 29 failed after a good extract (ELT.md's ledger, "The gate's monthly
 # run"), and each fix then paid for a fresh extract, because a re-run is tied
 # to its own run's commit. On monthly run 29 (37726904273, the Actions API's
@@ -30,8 +30,8 @@
 #
 # FOUR JOBS, EACH HOLDING ONLY ITS OWN CREDENTIALS:
 #   extract   R2_RAW_* and HIKEFINDER_PASSWORD, no public-bucket key. Lands
-#             every monthly resource in the private raw store (`our-hike-raw`,
-#             decision 43), checked before and after the load, plus the
+#             every monthly resource in the private raw store (`our-hike-raw`),
+#             checked before and after the load, plus the
 #             as-landed copy build-reference.yml's parity job reads, and OSM's
 #             fourteen Geofabrik extracts as files at most once in 30 days
 #             (#1652).
@@ -44,7 +44,7 @@
 #             it again.
 #   refused   No credential. Fails the run when the extract left a layer out.
 #
-# NOT HERE YET: `notes` (decision 14's note ageing), `verify`
+# NOT HERE YET: `notes` (note ageing), `verify`
 # (verify-release.yml has no workflow_call), the cell and shard cutters
 # (cut_cells.py and cut_trail_graph.py read the exporters' files, not
 # data/processed/dbt/), and `maintain`, which waits for DuckLake (ELT.md
@@ -89,7 +89,7 @@ permissions:
 env:
   PYTHONUNBUFFERED: "1"
   # dlt's telemetry is on by default and would send from a job holding R2
-  # write keys (the dlt skill, rule 3). Every job here inherits this.
+  # write keys (the dlt skill). Every job here inherits this.
   RUNTIME__DLTHUB_TELEMETRY: "false"
   # dbt's documented opt-out, and the only switch set (pipeline-tests.yml's
   # dbt job says why: the dbt Product Licensing Agreement, section 3.2).
@@ -113,7 +113,7 @@ jobs:
     # Measured: the full extract took 1 h 48 m on run 37058045092 and 1 h 45 m
     # on 37081046157 (2026-10-02/03), of which Hike Finder's crawl delay is
     # about 64 min for its 386 requests (the dlt skill, "Terms are never routed
-    # around"). 120 left 12 minutes, so the limit was 180. Decision 54's
+    # around"). 120 left 12 minutes, so the limit was 180. The club
     # layers took run 37182708502's extract step (run 13) to 161.5 min, about
     # 50 of it reading one layer at a time and about 103 normalizing in one
     # process (extract/_run.py's MONTHLY_NORMALIZE_WORKERS). The reads now run four
@@ -202,8 +202,8 @@ jobs:
           # publish-conditions run 481 and on this lane's run 37081046157.
           DESTINATION__FILESYSTEM__CREDENTIALS__REGION_NAME: auto
           HIKEFINDER_PASSWORD: ${{ secrets.HIKEFINDER_PASSWORD }}
-          # The NPS Data API's places and campgrounds (decision 54 waves 2
-          # and 3, extract/_ogc.py's JsonFeatures). Unset, both tables are
+          # The NPS Data API's places and campgrounds (extract/_ogc.py's
+          # JsonFeatures). Unset, both tables are
           # withdrawn with a warning and the run stays green; their base models
           # read an absent table as no rows (dbt/macros/raw_or_empty.sql).
           NPS_API_KEY: ${{ secrets.NPS_API_KEY }}
@@ -244,7 +244,7 @@ jobs:
   # the raw_inputs row): today's fetchers' files, the DEM tile index and the
   # two water scans, under steps/raw_inputs/<raw_run>/, write-once. Its steps
   # down from "Is this raw_run pinned already" are the ones the build job ran
-  # down to the pin before choice B, moved whole.
+  # down to the pin before the split, moved whole.
   pin:
     name: Pin the raw inputs, the DEM tile index and the water scans
     needs: extract
@@ -539,9 +539,8 @@ jobs:
           echo "This run dispatched build-reference.yml on \`$REF\` with this raw_run. It waits in the raw-lake-monthly group until this run ends." >> "$GITHUB_STEP_SUMMARY"
 
   # Last, so a layer refused on its own has not held back the ones that
-  # loaded, and the run still goes red for it: decision 30's gate counts "no
-  # failed check", and a refusal is one. The hourly legs only warn since
-  # decisions 100 and 101, because publish-conditions.yml's dbt source
+  # loaded, and the run still goes red for it: the gate counts "no failed
+  # check", and a refusal is one. The hourly legs only warn, because publish-conditions.yml's dbt source
   # freshness turns a source red within a day; this lane runs no freshness
   # check on live data, so a red there would come a month or more late
   # (Reasoned), and this job keeps its red. The extract job's summary names

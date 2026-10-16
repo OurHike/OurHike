@@ -143,6 +143,8 @@ export type NoticesMapProps = Pick<
   | 'newNoticeCount'
   | 'newNoticeLabel'
   | 'noticeRowLabel'
+  | 'readAllNoticesLabel'
+  | 'onReadAllNotices'
   | 'hazardAreas'
   | 'onSelectHazardArea'
   | 'hazardAreaSheet'
@@ -155,6 +157,9 @@ export type NoticesMapProps = Pick<
  *  conditions/notices.json nor hazard_areas.json - a fresh array per render would re-push the
  *  map's source on every one. */
 const NO_HAZARD_AREAS: readonly HazardArea[] = []
+/** The "Read all" door's list draws nothing: every row in it is a notice no
+ *  map places, which is why it is listed there. */
+const NOTHING_DRAWN: ReadonlySet<string> = new Set()
 /** No club closure, as one shared reference, for NO_HAZARD_AREAS's reason. */
 const NO_CLUB_CLOSURES: readonly TrailClosure[] = []
 
@@ -274,6 +279,13 @@ export interface NoticesInput {
   /** ATC's club sections (lib/clubSections.ts): which club maintains each
    *  A.T. mile, for a long hike's clubs. */
   clubSections?: ClubSections
+  /**
+   * Asks the shell for conditions/notices.json whatever is planned, because
+   * the hiker opened the "Read all" door (decision 213's Q20): decision 77
+   * downloads it only for a planned hike, and a tap on the door is a hiker
+   * asking for it.
+   */
+  onAskAllNotices?: () => void
 }
 
 const NO_TRIPS: readonly Trip[] = []
@@ -297,6 +309,7 @@ export function useNoticesPanel({
   dayHikes = NO_DAY_HIKES,
   graph = null,
   clubSections = EMPTY_CLUB_SECTIONS,
+  onAskAllNotices,
 }: NoticesInput): NoticesPanel {
   const [selectedBandId, setSelectedBandId] = useState<string | null>(null)
   /** The tapped hazard area, by notice id (#1805). */
@@ -312,6 +325,8 @@ export function useNoticesPanel({
    * and closes that sheet should find the list still where they left it.
    */
   const [noticesOpen, setNoticesOpen] = useState(false)
+  /** Whether the "Read all" door's list is open (decision 213's Q20). */
+  const [allClubsOpen, setAllClubsOpen] = useState(false)
   /**
    * The newest edit the hiker has already silenced on this phone, PER
    * ORGANIZATION - lib/notices.ts's watermarks, read once at mount and written
@@ -662,6 +677,43 @@ export function useNoticesPanel({
     [noticesOpen, trailIndex, bbox],
   )
 
+  /**
+   * THE "READ ALL" DOOR (decision 213, the maintainer's Q20 of 2026-10-15,
+   * "Keep a 'Read all' door (Recommended)"): every club's notices that no map
+   * draws - its own notices with no place (`unplaced`, and `org_terms`, which
+   * places nothing a map draws) - planned or not. The planned-hike panel
+   * shows them only to a hike on that club's trails in the next 7 days, so
+   * with nothing planned a hiker had no screen listing them at all once that
+   * panel replaced "Read all N trail notices". Clubs only, as the panel's own
+   * rule: an agency posts across a whole forest or state, and every one of
+   * its notices is the feed features/ORG_NOTICES.md §9 warns against. A row
+   * with no `steward_kind` counts as a club's, so a missing field shows a
+   * notice rather than hiding one. Null until conditions/notices.json is on
+   * the phone.
+   */
+  const unplacedClubNotices = useMemo(
+    () =>
+      clubNotices?.filter(
+        (notice) =>
+          notice.steward_kind !== 'agency' &&
+          (notice.place.kind === 'unplaced' || notice.place.kind === 'org_terms'),
+      ) ?? null,
+    [clubNotices],
+  )
+  const readAllNoticesLabel = !clubMode
+    ? undefined
+    : unplacedClubNotices === null
+      ? 'Read all club notices not on the map'
+      : unplacedClubNotices.length === 0
+        ? undefined
+        : unplacedClubNotices.length === 1
+          ? 'Read the 1 club notice not on the map'
+          : `Read all ${unplacedClubNotices.length} club notices not on the map`
+  const readAllNotices = useCallback(() => {
+    setAllClubsOpen(true)
+    onAskAllNotices?.()
+  }, [onAskAllNotices])
+
   const mapScreen = useMemo<NoticesMapProps>(
     () => ({
       atcUpdates: bandsOnMap,
@@ -725,7 +777,28 @@ export function useNoticesPanel({
             onClose={() => setSelectedClubClosureId(null)}
           />
         ),
-      noticeList: !noticesOpen ? null : clubMode ? (
+      readAllNoticesLabel,
+      onReadAllNotices: readAllNoticesLabel === undefined ? undefined : readAllNotices,
+      noticeList: !noticesOpen ? (
+        !allClubsOpen ? null : (
+          <NoticeList
+            notices={unplacedClubNotices ?? []}
+            drawnIds={NOTHING_DRAWN}
+            reviewedAt={reviewedBySource}
+            stewards={stewards}
+            extent={null}
+            now={now}
+            waiting={
+              unplacedClubNotices !== null
+                ? undefined
+                : clubNoticesMissing
+                  ? 'This phone has no copy of the clubs’ notices yet. Connect once to get them.'
+                  : 'Getting the clubs’ notices…'
+            }
+            onClose={() => setAllClubsOpen(false)}
+          />
+        )
+      ) : clubMode ? (
         planned === null ? null : (
           <PlannedNoticeList
             planned={planned}
@@ -774,6 +847,11 @@ export function useNoticesPanel({
       clubNotices,
       selection,
       today,
+      readAllNoticesLabel,
+      readAllNotices,
+      allClubsOpen,
+      unplacedClubNotices,
+      clubNoticesMissing,
     ],
   )
 

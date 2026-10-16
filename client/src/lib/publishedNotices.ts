@@ -48,6 +48,7 @@ import {
   readPublished,
   type ClosureShape,
   type NoticeHazard,
+  type NoticeParkArea,
   type NoticePlace,
   type NoticeStateArea,
   type OrgNotice,
@@ -176,6 +177,36 @@ function pageUrlOrNull(value: unknown): string | null {
   }
 }
 
+/** Rule 19's park areas (decision 213), or null for none: absent, empty, or
+ *  any one unreadable. All or nothing, because the areas narrow which hikes
+ *  are shown the notice, and a list missing one park would hide it from a
+ *  hike in that park; with none it shows as an unmapped notice does. */
+function validParkAreas(value: unknown): NoticeParkArea[] | null {
+  if (!Array.isArray(value) || value.length === 0) return null
+  const areas: NoticeParkArea[] = []
+  for (const item of value) {
+    if (typeof item !== 'object' || item === null) return null
+    const row = item as Record<string, unknown>
+    const box = row.bbox
+    if (
+      typeof row.place_id !== 'string' ||
+      !Array.isArray(box) ||
+      box.length !== 4 ||
+      !box.every((n) => typeof n === 'number' && Number.isFinite(n))
+    ) {
+      return null
+    }
+    const [west, south, east, north] = box as number[]
+    if (!(west < east && south < north)) return null
+    areas.push({
+      place_id: row.place_id,
+      name: typeof row.name === 'string' ? row.name : row.place_id,
+      bbox: [west, south, east, north],
+    })
+  }
+  return areas
+}
+
 /** A place this build can read, or `unplaced` - a notice nobody can place is
  *  still one a hiker is told about (ORG_NOTICES.md §3). A geometry with no
  *  coordinate this build can read is kept as it came: lib/plannedNotices.ts's
@@ -198,10 +229,11 @@ function validPlace(value: unknown): NoticePlace {
     return { kind: 'at_miles', start: place.start, end: place.end }
   }
   if (place.kind === 'org_terms' && Array.isArray(place.terms)) {
-    return {
-      kind: 'org_terms',
-      terms: place.terms.filter((term): term is string => typeof term === 'string'),
-    }
+    const terms = place.terms.filter((term): term is string => typeof term === 'string')
+    const areas = validParkAreas(place.areas)
+    return areas === null
+      ? { kind: 'org_terms', terms }
+      : { kind: 'org_terms', terms, areas }
   }
   if (
     place.kind === 'geometry' &&

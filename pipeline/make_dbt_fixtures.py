@@ -5291,6 +5291,25 @@ def closure_trail_lines_fixtures() -> dict[str, dict]:
     }
 
 
+def section_closures_fixtures() -> dict[str, dict]:
+    """section_closures/notices.json: the conditions/notices.json step_section_closures reads under --fixtures
+    (decision 213). One closing club notice naming a section no fixture line carries, so the step reads, evaluates and
+    lands an empty table, and every network line ships as the exporters ship it: a fixture that closed a line would be
+    a difference from export_nearby_trails.py in every parity family that reads the network, which does not apply the
+    rule. The closing itself is held by the step's pytest and int_trail_lines__network_section_closures' unit test."""
+    notice = {
+        "notice_id": "fixture_club_page:section",
+        "source_key": "fixture_club_page",
+        "club": "fixture",
+        "provider": "Fixture Club",
+        "steward_kind": "club",
+        "title": "The Fixture Nowhere Trail - Hidden Valley section is closed.",
+        "place": {"kind": "unplaced"},
+        "obstructs_trail": True,
+    }
+    return {"section_closures/notices.json": {"generated_at": "2026-10-15T00:00:00Z", "notices": [notice]}}
+
+
 #: Five metres and ten metres of latitude, near enough at 41.6 degrees north
 #: (111,320 m a degree); every graph assertion measures the built graph
 #: rather than trusting these.
@@ -11205,6 +11224,7 @@ def write_fixtures(raw_dir: Path) -> list[str]:
         **page_points_fixtures(),
         **section_k_fixtures(),
         **closure_trail_lines_fixtures(),
+        **section_closures_fixtures(),
     }
     files = _trail_lines_network_fixtures(files)
     files = _trail_lines_at_fixtures(files)

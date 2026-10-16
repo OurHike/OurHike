@@ -1527,6 +1527,15 @@ function App() {
   // What the trail is like right now - closures, reports, the ATC's own
   // notices - and when something last reached the server. See
   // lib/useConditions.ts for the two tiers behind the first two.
+  /**
+   * Whether the hiker has opened the legend's "Read all" door (decision 213,
+   * the maintainer's Q20 of 2026-10-15): conditions/notices.json is then
+   * downloaded with no hike planned too, for the list behind it. Session-lived
+   * on purpose: a later launch asks again only if the hiker does.
+   */
+  const [allNoticesAsked, setAllNoticesAsked] = useState(false)
+  const askAllNotices = useCallback(() => setAllNoticesAsked(true), [])
+
   const {
     closures,
     reports,
@@ -1552,8 +1561,10 @@ function App() {
   } = useConditions(
     online,
     afterFirstFrame,
-    // Decision 77: conditions/notices.json only once a hike is planned.
-    anyHikePlanned(tripStore.trips, dayHikeStore.hikes),
+    // Decision 77: conditions/notices.json only once a hike is planned, or
+    // once the hiker opens the legend's "Read all" door for it (decision
+    // 213's Q20, `allNoticesAsked` below).
+    anyHikePlanned(tripStore.trips, dayHikeStore.hikes) || allNoticesAsked,
   )
 
   /**
@@ -3512,6 +3523,7 @@ function App() {
     dayHikes: dayHikeStore.hikes,
     graph: dayHikeIndex ?? graphIndex,
     clubSections,
+    onAskAllNotices: askAllNotices,
   })
   /** The closure tape's and the warning pin's sheets (#1373, F12) - the two
    *  the map drew marks for and never opened. */

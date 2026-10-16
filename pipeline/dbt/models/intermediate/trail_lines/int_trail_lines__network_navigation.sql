@@ -3,7 +3,9 @@
 -- half): export_trails.py's simplify_records() at
 -- DEFAULT_SIMPLIFY_TOLERANCE_M, which export_nearby_trails.py's main() calls
 -- on the deduplicated records once the closed areas have split them
--- (int_trail_lines__network_area_closures).
+-- (int_trail_lines__network_area_closures) and a notice has closed its
+-- section (int_trail_lines__network_section_closures, which export_
+-- nearby_trails.py does not do: a dbt-only difference, decision 213).
 -- int_trail_lines__network_published cuts this
 -- line to six decimals for the trail_lines mart and nearby_trails.geojson;
 -- the overview sketch is simplified again from this line at full precision,
@@ -25,7 +27,7 @@
 -- answers. A part has two distinct vertices exactly when its bounding box
 -- has width or height, which is the test below.
 with deduplicated as (
-    select * from {{ ref('int_trail_lines__network_area_closures') }}
+    select * from {{ ref('int_trail_lines__network_section_closures') }}
 ),
 
 reduced as (

@@ -617,7 +617,7 @@ NAVIGATION = "int_trail_lines__network_navigation_answers_what_simplify_records_
 def test_the_1_m_pass_is_simplify_records_vertex_for_vertex():
     test = _unit_test(NAVIGATION)
     expected = _expected(test)
-    for row in _rows(test, "int_trail_lines__network_area_closures"):
+    for row in _rows(test, "int_trail_lines__network_section_closures"):
         (record,) = export_trails.simplify_records([{"id": row["trail_line_id"], "wkt": row["geom_wkt"]}])
         geoms = np.array([shapely.from_wkt(row["geom_wkt"])], dtype=object)
         reduced = reproject(

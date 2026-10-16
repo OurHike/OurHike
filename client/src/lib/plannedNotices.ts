@@ -43,9 +43,20 @@
 //  - `geometry` (a club's own polygon, line or point, decision 67's hazard
 //    areas among them): it meets the route within `NOTICE_REACH_FEET`;
 //  - `unplaced` and `org_terms`: the club that posted it maintains a trail
-//    the route uses. `org_terms` is read as unplaced on purpose - no reviewed
-//    table maps NYNJTC's terms to features yet, and ORG_NOTICES.md §4's rule
-//    is that "an unmapped term places nothing".
+//    the route uses. ORG_NOTICES.md §4's rule is that "an unmapped term
+//    places nothing", so an `org_terms` notice is read as unplaced unless
+//  - RULE 19 (decision 213, the maintainer's poll of 2026-10-15, "Park-term
+//    table (Recommended)"): its place carries `areas`, the park areas a
+//    reviewed table (pipeline/dbt/seeds/notice_park_terms.csv) maps every
+//    one of its `park:` terms to. Then it touches a route only if the club
+//    maintains a trail the route uses AND the route meets one of those
+//    areas within `NOTICE_REACH_FEET`. Before it, a day hike on Pine Meadow
+//    in Harriman listed all 18 of NYNJTC's notices, the Delaware Water Gap's
+//    and Minnewaska's among them. Each area is its park's bounding box, which
+//    holds the whole park, so a route that meets the park meets the box: the
+//    rule can hide a notice only from a route that is nowhere near its park
+//    (Reasoned). A route this phone cannot draw (`lines` empty) is not
+//    tested, and is shown the notice as before.
 //
 // CLUBS ONLY, FOR AN UNPLACED NOTICE. The maintainer's answer, by poll on
 // 2026-10-04: an agency's notice shows only where it is placed on or near the
@@ -156,7 +167,7 @@ import {
 } from './noticeGeometry'
 import { isCurrentOn, mayStartBy, obstructsOn } from './noticeCurrency'
 import type { TrailNotice } from './notices'
-import type { NoticeStateArea } from './publishedConditions'
+import type { NoticeParkArea, NoticeStateArea } from './publishedConditions'
 import { clubTimeline, type ClubSections } from './clubSections'
 import type { Stewards } from './stewards'
 import type { RouteLeg } from './trailGraph'
@@ -548,6 +559,31 @@ function routeInItsStates(notice: TrailNotice, stretch: PlannedStretch): boolean
   return false
 }
 
+/** Rule 19 (the module comment's): whether a route meets one of the park
+ *  areas an `org_terms` notice names, as their bounding boxes. True with no
+ *  areas, which narrows nothing, and true for a route this phone cannot
+ *  draw, which cannot be tested. */
+function meetsItsParks(
+  areas: readonly NoticeParkArea[] | undefined,
+  stretch: PlannedStretch,
+): boolean {
+  if (areas === undefined || areas.length === 0 || stretch.lines.length === 0) return true
+  const parts: GeometryParts = {
+    points: [],
+    lines: [],
+    polygons: areas.map(({ bbox: [west, south, east, north] }) => [
+      [
+        [west, south],
+        [east, south],
+        [east, north],
+        [west, north],
+        [west, south],
+      ],
+    ]),
+  }
+  return linesMeetParts(stretch.lines, parts, NOTICE_REACH_FEET)
+}
+
 /** Whether one notice touches one planned hike (the module comment's rule). */
 export function noticeTouches(
   notice: TrailNotice,
@@ -567,6 +603,7 @@ export function noticeTouches(
     place.kind === 'org_terms' ||
     (shape !== null && partsBounds(shape) === null)
   ) {
+    if (place.kind === 'org_terms' && !meetsItsParks(place.areas, stretch)) return null
     const provider = noticeProvider(notice, byKey)
     const onItsTrails = provider !== undefined && stretch.providers.has(provider)
     if (notice.steward_kind === 'agency') {

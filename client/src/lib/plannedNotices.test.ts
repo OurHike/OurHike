@@ -526,6 +526,75 @@ describe('an unplaced notice', () => {
   })
 })
 
+describe('a club notice whose park terms are mapped to park areas (rule 19, decision 213)', () => {
+  // The day hike runs north along -76.5 from 41.1 to 41.2 on NYS OPRHP's
+  // trails (`dayHike`), so OPRHP's org_terms notices are its club's.
+  function parks(
+    id: string,
+    areas: Array<[number, number, number, number]> | undefined,
+  ): TrailNotice {
+    return notice({
+      notice_id: `oprhp_trail_closures:${id}`,
+      source_key: 'oprhp_trail_closures',
+      steward_kind: 'club',
+      place: {
+        kind: 'org_terms',
+        terms: ['park:fixture'],
+        ...(areas === undefined
+          ? {}
+          : {
+              areas: areas.map((bbox, i) => ({
+                place_id: `fixture:${i}`,
+                name: `Fixture ${i}`,
+                bbox,
+              })),
+            }),
+      },
+    })
+  }
+  const around = parks('around', [[-76.6, 41.0, -76.4, 41.3]])
+  const farAway = parks('far', [[-75.4, 40.9, -74.7, 41.3]])
+  const oneOfTwo = parks('second', [
+    [-75.4, 40.9, -74.7, 41.3],
+    [-76.55, 41.15, -76.45, 41.16],
+  ])
+  const unmapped = parks('unmapped', undefined)
+  // 200 ft east of the route (about 0.0007 degrees of longitude at 41 N).
+  const justBeside = parks('beside', [[-76.4993, 41.12, -76.49, 41.13]])
+
+  it('shows the notice whose park the route enters, from the club', () => {
+    expect(pick([around], [], [dayHike(TODAY)]).hikes[0].fromClubs).toHaveLength(1)
+  })
+
+  it('leaves out the notice whose only park is nowhere near the route, though its club maintains the trail', () => {
+    expect(pick([farAway], [], [dayHike(TODAY)]).hikes[0].fromClubs).toEqual([])
+  })
+
+  it('shows the notice when the route meets any one of its parks', () => {
+    expect(pick([oneOfTwo], [], [dayHike(TODAY)]).hikes[0].fromClubs).toHaveLength(1)
+  })
+
+  it('shows the notice when the route passes within NOTICE_REACH_FEET of its park', () => {
+    expect(pick([justBeside], [], [dayHike(TODAY)]).hikes[0].fromClubs).toHaveLength(1)
+  })
+
+  it('shows a notice with no areas, an unmapped term, to every hike on its club’s trails as before', () => {
+    expect(pick([unmapped], [], [dayHike(TODAY)]).hikes[0].fromClubs).toHaveLength(1)
+  })
+
+  it('never shows the notice to a hike on another club’s trails, however near its park', () => {
+    const elsewhere = dayHike(TODAY, {
+      figures: {
+        miles: 7,
+        legs: [
+          { name: 'Fixture', source: 'bta_trail_closures', blaze_color: null, miles: 7 },
+        ],
+      },
+    })
+    expect(pick([around], [], [elsewhere]).hikes[0].fromClubs).toEqual([])
+  })
+})
+
 describe('a state-wide agency notice (decision 76)', () => {
   // Two invented states sharing a meridian at -76.4: "UT" to its west, where
   // the fixture day hike's taps (-76.5, 41.1 to 41.2) sit about 8 km from the

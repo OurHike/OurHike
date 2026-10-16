@@ -132,6 +132,39 @@ sources:
           - name: _loaded_at
             description: When the step wrote the table, UTC.
             data_tests: [not_null]
+      - name: section_closures
+        data_tests:
+          # Rows sharing stg_derived__section_closures's key must be exact copies (decision 40). Two notices naming
+          # one section each name its lines, so a line can come twice with two notice ids; the staging dedupe keeps
+          # the first by notice id, and this warns so the log names them.
+          - duplicates_are_exact:
+              arguments:
+                key_columns: ["'section_closures'", "trail_segment_key"]
+        description: >
+          The network lines an organization's own notice closes by naming
+          their section (decisions 212 and 213), written by
+          step_section_closures (pipeline/step_section_closures.py) in the
+          monthly lane from the conditions/notices.json the hourly lane
+          published, one row per line, through lib/section_closures.py.
+          Empty when the step read no notices, which closes nothing. Read by
+          int_trail_lines__network_section_closures.
+        columns:
+          - name: trail_segment_key
+            description: The line's key in int_trail_lines__network_area_closures.
+            data_tests: [not_null]
+          - name: notice_id
+            description: The closing notice's `notice_id` in conditions/notices.json.
+            data_tests: [not_null]
+          - name: closure_source
+            description: The closing notice's `source_key`, the organization the sheet names.
+            data_tests: [not_null]
+          - name: closure_reason
+            description: The closing notice's `title`, verbatim.
+          - name: line_set
+            description: The layer and name of the line set the notice closed, for the log.
+          - name: _loaded_at
+            description: When the step wrote the table, UTC.
+            data_tests: [not_null]
       - name: graph_pieces
         data_tests:
           # Rows sharing stg_derived__graph_pieces's key must be exact copies (decision 40).

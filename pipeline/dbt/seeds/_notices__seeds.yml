@@ -1,9 +1,10 @@
 version: 2
 
-# Decision 53's phase C: the club notice sources' seeds. Seven are reviewed
+# Decision 53's phase C: the club notice sources' seeds. Eight are reviewed
 # by hand row by row (notice_source_fields, decision 190's notice_words and
 # notice_word_overrides, decision 67's notice_hazard_areas, decision 76's
-# notice_states and Q3's notice_steward_areas), one is a
+# notice_states, Q3's notice_steward_areas and decision 213's
+# notice_park_terms), one is a
 # person's mark on a notice (notice_marks), one is copied from the layers'
 # own coded-value domains (notice_category_labels; notice_issuers, which also
 # names each compiled layer's issuer field), and one is written by
@@ -654,4 +655,86 @@ seeds:
           Where the state was read, each quotation in single quotes as the
           source's sources.json row spells it: the URL's path, the page's
           title as the extract landed it, or the registry's own note.
+        data_tests: [not_null]
+  - name: notice_park_terms
+    description: >
+      Rule 19 (decision 213, the maintainer's poll of 2026-10-15, "Park-term
+      table (Recommended)"): a club's park term, as its notices carry it in an
+      `org_terms` place (`park:<slug>`, features/ORG_NOTICES.md section 4),
+      mapped by a person to the park area places.json publishes under that
+      name. pub_conditions_notices gives an `org_terms` notice whose every
+      park term has a row here those areas, and client/src/lib/
+      plannedNotices.ts then shows it only to a planned hike whose route
+      meets one of them, where before it showed to every hike on the club's
+      trails. Keyed on the source and the term, never the term alone, so
+      every club's terms fit; a term may map to several areas (NYNJTC's one
+      term for Harriman and Bear Mountain maps to both). AN UNMAPPED TERM
+      PLACES NOTHING (section 4): a notice with one park term no row maps
+      carries no areas and shows as before, so the table can only narrow
+      what a hiker is shown, and only where a person has read both sides.
+      THE AREA IS ITS BOUNDING BOX, west, south, east and north in degrees,
+      copied from places.json's `bbox` for the row's `place_id` (UA release
+      2026-10-10-2, read 2026-10-15): a box holds its whole park, so a route
+      that meets the park meets the box, and the box can only show a notice
+      to more hikes than the park would, never fewer (Reasoned). The cost is
+      the corners: Harriman's box also holds the north of Sterling Forest.
+      tests/test_notice_park_terms_seed.py holds the boxes' shape. Measured
+      2026-10-15 on UA's live conditions/notices.json: NYNJTC is the one club
+      whose notices carry park terms, 10 distinct; 7 have a published area
+      and are mapped here, and three have none in places.json, so they stay
+      unmapped and their notices show as before:
+      park:pequannock-watershed (Newark's watershed lands),
+      park:mahlon-dickerson-reservation (a Morris County park) and
+      park:palisades-interstate-park (the New Jersey section; OPRHP's
+      'Palisades' row is a 0.004-degree New York parcel that would hide
+      Giant Stairs from a Shore Trail hike).
+    config:
+      column_types:
+        source_key: varchar
+        term: varchar
+        place_id: varchar
+        place_name: varchar
+        west: double
+        south: double
+        east: double
+        north: double
+        evidence: varchar
+    data_tests:
+      - dbt_utils.unique_combination_of_columns:
+          arguments:
+            combination_of_columns: [source_key, term, place_id]
+      - dbt_utils.expression_is_true:
+          arguments:
+            expression: "west < east and south < north and west >= -180 and east <= 180 and south >= -90 and north <= 90"
+      # The `park:` arm of the `org_terms` place only: a trail term places nothing yet.
+      - dbt_utils.expression_is_true:
+          arguments:
+            expression: "regexp_full_match(term, 'park:[a-z0-9-]+')"
+    columns:
+      - name: source_key
+        description: The notice source's sources.json key.
+        data_tests: [not_null]
+      - name: term
+        description: The park term as the notice carries it, `park:<slug>`.
+        data_tests: [not_null]
+      - name: place_id
+        description: The place's `id` in places.json.
+        data_tests: [not_null]
+      - name: place_name
+        description: The place's `name` in places.json, for the reviewer.
+        data_tests: [not_null]
+      - name: west
+        description: The place's bbox, west edge, degrees of longitude.
+        data_tests: [not_null]
+      - name: south
+        description: The place's bbox, south edge, degrees of latitude.
+        data_tests: [not_null]
+      - name: east
+        description: The place's bbox, east edge, degrees of longitude.
+        data_tests: [not_null]
+      - name: north
+        description: The place's bbox, north edge, degrees of latitude.
+        data_tests: [not_null]
+      - name: evidence
+        description: Why the term names that place, in the reviewer's words.
         data_tests: [not_null]

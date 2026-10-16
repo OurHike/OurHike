@@ -334,7 +334,9 @@ unit_tests:
       Decision 53's phase D, with decisions 55 and 67: one OrgNotice per club
       notice in either mart, by source_key then notice_id, of exactly the
       documented keys. ATC's row is placed by its A.T. miles and named by its
-      states; NYNJTC's carries its trail tags as `org_terms`; a burned area
+      states; NYNJTC's carries its trail and park tags as `org_terms`, with
+      rule 19's `areas` (decision 213) only where seeds/notice_park_terms.csv
+      maps every park term, from that source's rows alone; a burned area
       carries its own geometry and `hazard`, never obstructs the trail,
       whatever its row says, and carries no `current_until`, so it never
       greys while its layer is served (decision 156); OurHike's own closure and an NWS alert are not
@@ -400,6 +402,7 @@ unit_tests:
               cast(null as varchar) as issuer
           from (values
               ('nynjtc_trail_alerts:detour', 'org_notice', 'nynjtc', 'nynjtc_trail_alerts', null, 'not_reviewed', 'Fixture detour', null, null, 'Harriman-Bear Mountain', null, null, null, null, '2026-09-29T12:00:00Z', 'https://www.nynjtc.org/fixture', null, '2026-09-29 13:00:00+00', '2026-09-29 13:00:00+00', null),
+              ('nynjtc_trail_alerts:closure', 'org_notice', 'nynjtc', 'nynjtc_trail_alerts', null, 'not_reviewed', 'Fixture closure', null, null, '', null, null, null, null, '2026-09-29T12:00:00Z', 'https://www.nynjtc.org/fixture-2', null, '2026-09-29 13:00:00+00', '2026-09-29 13:00:00+00', null),
               ('usfs_baer_assessments:1', 'org_notice', 'usfs', 'usfs_baer_assessments', true, 'not_reviewed', 'FIXTURE FIRE', null, null, 'Fixture National Forest', null, null, '2026-08-26', null, null, null, '{"type":"Point","coordinates":[-74.1,41.2]}', '2026-10-03 00:00:00+00', '2026-10-03 00:00:00+00', null),
               ('club_page:1', 'org_notice', 'a', 'club_page', null, 'not_reviewed', 'Fixture trail work', null, null, null, null, null, null, '2026-11-01', null, 'https://example.org/fixture', null, '2026-10-02 00:00:00+00', '2026-10-04 08:00:00+00', '2026-10-04 08:00:00+00'),
               ('nws_alerts:x', 'nws_alert', 'nws', 'nws_alerts', false, 'relayed', null, null, null, null, null, null, null, null, null, null, null, '2026-10-04 00:00:00+00', '2026-10-04 00:00:00+00', null)
@@ -425,7 +428,13 @@ unit_tests:
           - {source_key: usfs_baer_assessments, states: 'ID MT', evidence: 'Fixture'}
       - input: ref('int_closures__nynjtc_checked')
         rows:
-          - {notice_id: 'nynjtc_trail_alerts:detour', place_terms: '["trail:appalachian-trail"]'}
+          - {notice_id: 'nynjtc_trail_alerts:detour', place_terms: '["trail:appalachian-trail","park:fixture-park"]'}
+          - {notice_id: 'nynjtc_trail_alerts:closure', place_terms: '["park:fixture-park","park:unmapped-park"]'}
+      - input: ref('notice_park_terms')
+        rows:
+          - {source_key: nynjtc_trail_alerts, term: 'park:fixture-park', place_id: 'fixture_parks:2', place_name: 'Fixture East', west: -74.0, south: 41.2, east: -73.9, north: 41.3, evidence: 'Fixture'}
+          - {source_key: nynjtc_trail_alerts, term: 'park:fixture-park', place_id: 'fixture_parks:1', place_name: 'Fixture West', west: -74.2, south: 41.1, east: -74.0, north: 41.3, evidence: 'Fixture'}
+          - {source_key: other_club, term: 'park:unmapped-park', place_id: 'fixture_parks:3', place_name: 'Another club', west: -75.0, south: 40.0, east: -74.5, north: 40.5, evidence: 'Fixture: another source''s term maps nothing for NYNJTC'}
       - input: ref('int_closures__gate')
         rows:
           - {source_key: atc_trail_updates, passed: true, may_publish: true}
@@ -443,7 +452,7 @@ unit_tests:
           - {table_name: raw_a__club_page, outcome: skipped, checked_at: '2026-10-04 09:00:00+00'}
     expect:
       rows:
-        - {notices: '[{"notice_id":"atc_trail_updates:bridge","source_key":"atc_trail_updates","club":"atc","provider":"ATC","steward_kind":"club","title":"Fixture footbridge out","category":"Closure","locality":"VT","place":{"kind":"at_miles","start":1650.5,"end":1650.5},"hazard":null,"obstructs_trail":true,"starts_on":null,"ends_on":null,"updated_at":"2026-09-30T12:00:00Z","current_until":"2026-12-29","checked_at":"2026-10-04T10:00:00Z","first_seen_at":"2026-10-01T00:00:00Z","changed_at":"2026-10-02T00:00:00Z","carried_since":null,"source_url":"https://appalachiantrail.org/fixture","review_state":"reviewed"},{"notice_id":"club_page:1","source_key":"club_page","club":"a","provider":"Fixture Club","steward_kind":"club","title":"Fixture trail work","category":null,"locality":"","place":{"kind":"unplaced"},"hazard":null,"obstructs_trail":false,"starts_on":null,"ends_on":"2026-11-01","updated_at":null,"current_until":"2026-11-01","checked_at":"2026-10-04T06:00:00Z","first_seen_at":"2026-10-02T00:00:00Z","changed_at":"2026-10-04T08:00:00Z","carried_since":"2026-10-04T08:00:00Z","source_url":"https://example.org/fixture","review_state":"unreviewed"},{"notice_id":"nynjtc_trail_alerts:detour","source_key":"nynjtc_trail_alerts","club":"nynjtc","provider":"NYNJTC","steward_kind":"club","title":"Fixture detour","category":null,"locality":"Harriman-Bear Mountain","place":{"kind":"org_terms","terms":["trail:appalachian-trail"]},"hazard":null,"obstructs_trail":false,"starts_on":null,"ends_on":null,"updated_at":"2026-09-29T12:00:00Z","current_until":"2026-12-28","checked_at":"2026-10-04T10:30:00Z","first_seen_at":"2026-09-29T13:00:00Z","changed_at":"2026-09-29T13:00:00Z","carried_since":null,"source_url":"https://www.nynjtc.org/fixture","review_state":"unreviewed"},{"notice_id":"usfs_baer_assessments:1","source_key":"usfs_baer_assessments","club":"usfs","provider":"USFS","steward_kind":"agency","title":"FIXTURE FIRE","category":null,"locality":"Fixture National Forest","place":{"kind":"geometry","geometry":{"type":"Point","coordinates":[-74.1,41.2]}},"hazard":"burned_area","obstructs_trail":false,"starts_on":"2026-08-26","ends_on":null,"updated_at":null,"checked_at":null,"first_seen_at":"2026-10-03T00:00:00Z","changed_at":"2026-10-03T00:00:00Z","carried_since":null,"source_url":null,"review_state":"unreviewed","states":["ID","MT"]}]'}
+        - {notices: '[{"notice_id":"atc_trail_updates:bridge","source_key":"atc_trail_updates","club":"atc","provider":"ATC","steward_kind":"club","title":"Fixture footbridge out","category":"Closure","locality":"VT","place":{"kind":"at_miles","start":1650.5,"end":1650.5},"hazard":null,"obstructs_trail":true,"starts_on":null,"ends_on":null,"updated_at":"2026-09-30T12:00:00Z","current_until":"2026-12-29","checked_at":"2026-10-04T10:00:00Z","first_seen_at":"2026-10-01T00:00:00Z","changed_at":"2026-10-02T00:00:00Z","carried_since":null,"source_url":"https://appalachiantrail.org/fixture","review_state":"reviewed"},{"notice_id":"club_page:1","source_key":"club_page","club":"a","provider":"Fixture Club","steward_kind":"club","title":"Fixture trail work","category":null,"locality":"","place":{"kind":"unplaced"},"hazard":null,"obstructs_trail":false,"starts_on":null,"ends_on":"2026-11-01","updated_at":null,"current_until":"2026-11-01","checked_at":"2026-10-04T06:00:00Z","first_seen_at":"2026-10-02T00:00:00Z","changed_at":"2026-10-04T08:00:00Z","carried_since":"2026-10-04T08:00:00Z","source_url":"https://example.org/fixture","review_state":"unreviewed"},{"notice_id":"nynjtc_trail_alerts:closure","source_key":"nynjtc_trail_alerts","club":"nynjtc","provider":"NYNJTC","steward_kind":"club","title":"Fixture closure","category":null,"locality":"","place":{"kind":"org_terms","terms":["park:fixture-park","park:unmapped-park"]},"hazard":null,"obstructs_trail":false,"starts_on":null,"ends_on":null,"updated_at":"2026-09-29T12:00:00Z","current_until":"2026-12-28","checked_at":"2026-10-04T10:30:00Z","first_seen_at":"2026-09-29T13:00:00Z","changed_at":"2026-09-29T13:00:00Z","carried_since":null,"source_url":"https://www.nynjtc.org/fixture-2","review_state":"unreviewed"},{"notice_id":"nynjtc_trail_alerts:detour","source_key":"nynjtc_trail_alerts","club":"nynjtc","provider":"NYNJTC","steward_kind":"club","title":"Fixture detour","category":null,"locality":"Harriman-Bear Mountain","place":{"kind":"org_terms","terms":["trail:appalachian-trail","park:fixture-park"],"areas":[{"place_id":"fixture_parks:1","name":"Fixture West","bbox":[-74.2,41.1,-74.0,41.3]},{"place_id":"fixture_parks:2","name":"Fixture East","bbox":[-74.0,41.2,-73.9,41.3]}]},"hazard":null,"obstructs_trail":false,"starts_on":null,"ends_on":null,"updated_at":"2026-09-29T12:00:00Z","current_until":"2026-12-28","checked_at":"2026-10-04T10:30:00Z","first_seen_at":"2026-09-29T13:00:00Z","changed_at":"2026-09-29T13:00:00Z","carried_since":null,"source_url":"https://www.nynjtc.org/fixture","review_state":"unreviewed"},{"notice_id":"usfs_baer_assessments:1","source_key":"usfs_baer_assessments","club":"usfs","provider":"USFS","steward_kind":"agency","title":"FIXTURE FIRE","category":null,"locality":"Fixture National Forest","place":{"kind":"geometry","geometry":{"type":"Point","coordinates":[-74.1,41.2]}},"hazard":"burned_area","obstructs_trail":false,"starts_on":"2026-08-26","ends_on":null,"updated_at":null,"checked_at":null,"first_seen_at":"2026-10-03T00:00:00Z","changed_at":"2026-10-03T00:00:00Z","carried_since":null,"source_url":null,"review_state":"unreviewed","states":["ID","MT"]}]'}
 
   - name: pub_conditions_notices_simplifies_an_area_for_a_phone
     model: pub_conditions_notices
@@ -505,6 +514,8 @@ unit_tests:
       - input: ref('notice_states')
         rows: []
       - input: ref('int_closures__nynjtc_checked')
+        rows: []
+      - input: ref('notice_park_terms')
         rows: []
       - input: ref('int_closures__gate')
         rows:
@@ -810,6 +821,8 @@ unit_tests:
         rows: []
       - input: ref('int_closures__nynjtc_checked')
         rows: []
+      - input: ref('notice_park_terms')
+        rows: []
       - input: ref('int_closures__gate')
         rows:
           - {source_key: club_ok, passed: true, may_publish: true, rows_total: 1}
@@ -875,6 +888,8 @@ unit_tests:
       - input: ref('notice_states')
         rows: []
       - input: ref('int_closures__nynjtc_checked')
+        rows: []
+      - input: ref('notice_park_terms')
         rows: []
       - input: ref('int_closures__gate')
         rows:
@@ -945,6 +960,8 @@ unit_tests:
       - input: ref('notice_states')
         rows: []
       - input: ref('int_closures__nynjtc_checked')
+        rows: []
+      - input: ref('notice_park_terms')
         rows: []
       - input: ref('int_closures__gate')
         rows:
@@ -1023,6 +1040,8 @@ unit_tests:
         rows: []
       - input: ref('int_closures__nynjtc_checked')
         rows: []
+      - input: ref('notice_park_terms')
+        rows: []
       - input: ref('int_closures__gate')
         rows:
           - {source_key: fixture_club, passed: true, may_publish: true, rows_total: 9}
@@ -1092,6 +1111,8 @@ unit_tests:
         rows: []
       - input: ref('int_closures__nynjtc_checked')
         rows: []
+      - input: ref('notice_park_terms')
+        rows: []
       - input: ref('int_closures__gate')
         rows:
           - {source_key: fixture_club, passed: true, may_publish: true, rows_total: 4}
@@ -1158,6 +1179,8 @@ unit_tests:
       - input: ref('notice_states')
         rows: []
       - input: ref('int_closures__nynjtc_checked')
+        rows: []
+      - input: ref('notice_park_terms')
         rows: []
       - input: ref('int_closures__gate')
         rows:

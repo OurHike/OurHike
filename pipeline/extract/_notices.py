@@ -759,9 +759,11 @@ class _PageReader(HTMLParser):
         self._in_title = False
 
     def _boundary(self, tag: str) -> None:
+        # A line break, which every reader of the text folds to one space as before: `blocks()` alone reads it, so a
+        # heading and the paragraph under it are never one sentence (THE CLOSING SENTENCE).
         if tag not in INLINE_ELEMENTS:
             for index in self.open:
-                self.text[index].append(" ")
+                self.text[index].append("\n")
 
     def handle_starttag(self, tag, attrs):
         attrs = dict(attrs)
@@ -816,14 +818,26 @@ class _PageReader(HTMLParser):
                 if self._h1 and index not in self.h1_done:
                     self.h1[index].append(data)
 
-    def region(self, fallback: bool) -> tuple[str, str, str | None] | None:
-        """(which region, its text, its first <h1>) for the first spec the page has, or `document`, or None."""
+    def _index(self, fallback: bool) -> int | None:
         indexes = [i for i in range(len(self.specs)) if i in self.text]
         if not indexes and not fallback:
             return None
-        index = indexes[0] if indexes else len(self.specs)
-        name = self.specs[index] if indexes else DOCUMENT
+        return indexes[0] if indexes else len(self.specs)
+
+    def region(self, fallback: bool) -> tuple[str, str, str | None] | None:
+        """(which region, its text, its first <h1>) for the first spec the page has, or `document`, or None."""
+        index = self._index(fallback)
+        if index is None:
+            return None
+        name = self.specs[index] if index < len(self.specs) else DOCUMENT
         return name, _text("".join(self.text[index])) or "", _text("".join(self.h1[index]))
+
+    def blocks(self, fallback: bool) -> list[str]:
+        """The same region's text as its block elements' runs of text, each with whitespace folded, in page order."""
+        index = self._index(fallback)
+        if index is None:
+            return []
+        return [folded for block in "".join(self.text[index]).split("\n") if (folded := _text(block))]
 
 
 def html_text(fragment: str) -> str:
@@ -1062,6 +1076,85 @@ def read_pdf(body: bytes) -> PdfFacts:
 # The columns a page notice lands, and nothing else.
 PAGE_COLUMNS = ("url", "title", "date", "date_text", "date_source", "format", "region", "region_chars", "region_sha256")
 
+# THE CLOSING SENTENCE (decision 213, the maintainer's poll of 2026-10-15, "Land the closing sentence
+# (Recommended)"): for a page notice of every organization, the one place decision 55's "facts and a link" bends. A
+# page that states that a named section of its trail is closed lands that sentence verbatim, as the row's title,
+# beside the link, so the closures vocabulary (seeds/notice_words.csv, decision 190) reads the club's own words for
+# whether the trail is closed, and the section-closure rule (lib/section_closures.py, decision 212) reads which
+# section. Quoted, never paraphrased or cut: a sentence is landed whole or not at all. Nothing else of the page
+# lands. The pages are the clubs' own, and no registered page notice's `terms` names a restriction on quoting (each
+# row's licence is "Facts and a link only", the maintainer's call, not the club's grant), so a verbatim sentence
+# attributed and linked stays inside what decision 213 answered (Reasoned from sources.json's 69 page_notice rows'
+# `licence` and `terms`, read 2026-10-15).
+#
+# A CLOSING SENTENCE says that a section is closed: the word "section" and a closed-verb (CLOSED_VERB), in one
+# sentence of at most CLOSING_SENTENCE_CHARS, read inside one block of the page (a paragraph, a list item, a heading),
+# so a heading never runs into the sentence under it. The first on the page is taken. PATC's Tuscarora page (read
+# live 2026-10-15): 'The Tuscarora Trail section just west of Massanutten Mountain is closed due to loss of landowner
+# permission.' That sentence locates its section without naming it, and the same paragraph names it two sentences
+# on, 'This is the Doll Ridge section from Three Top Mountain to Riverview Drive.', so an IDENTIFYING SENTENCE in the
+# same block, within IDENTIFYING_WITHIN sentences after it, that says only which section that is ("This is the <name>
+# section ..."), lands with it, verbatim, the sentences between left out and marked by an ellipsis. That is one
+# sentence past the poll's "only a sentence" (@unvalidated as the maintainer's intent: the lead's reading, to put to
+# the maintainer), and IDENTIFYING_WITHIN = 0 turns it off.
+#
+# @unvalidated: the 300-character cap is picked, not fitted: a sentence splitter that misses a full stop could
+# otherwise land a paragraph, and the one measured sentence is 103 characters. What would settle it is the longest
+# closing sentence a month of every page notice's reads lands, which nobody has collected yet.
+CLOSING_SENTENCE_CHARS = 300
+IDENTIFYING_WITHIN = 2
+# Closed now, in the page's words: never "will be closed", because a page notice states no start the build can read,
+# so a closure announced for next week would read as closed today (Palmetto Trail's 'Starting October 19th a section
+# of trail … will be closed', read 2026-10-15): CLAUDE.md's "miss rather than cry wolf". "Will remain closed" is
+# closed now, and "remain closed" in it matches.
+CLOSED_VERB = re.compile(
+    r"\b(?:is|are|remains?|has\s+been|have\s+been)\s+(?:now\s+|currently\s+|temporarily\s+)?closed\b",
+    re.IGNORECASE,
+)
+SECTION_WORD = re.compile(r"\bsection\b", re.IGNORECASE)
+IDENTIFYING_SENTENCE = re.compile(r"(?:this|that|it)\s+is\s+the\s+\S.*\bsection\b", re.IGNORECASE)
+# A sentence ends at a full stop, a question or an exclamation mark followed by a space and a capital (or a quote or a
+# bracket before one), and never after an abbreviation a trail page writes mid-sentence: EBRPD's alerts page
+# (read 2026-10-15) states 'The pedestrian bridge section of the Trail will be closed beginning Monday, Oct. 13', which
+# a split at every full stop cut to '… Monday, Oct.', a sentence no page wrote.
+_SENTENCE_END = re.compile(r"(?<=[.!?])\s+(?=[\"'“‘(\[]?[A-Z])")
+_ABBREVIATION = re.compile(
+    r"(?:\b(?:jan|feb|mar|apr|jun|jul|aug|sep|sept|oct|nov|dec|mon|tue|tues|wed|thu|thur|thurs|fri|sat|sun|rd|st|mt|mtn|"
+    r"ft|no|dr|ave|hwy|rte|mr|mrs|ms|jr|sr|vs|etc|approx|mi|co|twp|u\.s|e\.g|i\.e)|\b[A-Za-z])\.$",
+    re.IGNORECASE,
+)
+
+
+def _sentences(block: str) -> list[str]:
+    """A block's sentences, each verbatim: split at _SENTENCE_END except after an _ABBREVIATION."""
+    sentences: list[str] = []
+    start = 0
+    for end in _SENTENCE_END.finditer(block):
+        if _ABBREVIATION.search(block[start : end.start()]):
+            continue
+        sentences.append(block[start : end.start()].strip())
+        start = end.end()
+    sentences.append(block[start:].strip())
+    return [sentence for sentence in sentences if sentence]
+
+
+def closing_sentence(blocks: list[str]) -> str | None:
+    """The page's first sentence stating that a section is closed, verbatim, with the identifying sentence the same
+    block gives within IDENTIFYING_WITHIN sentences after it, if any (THE CLOSING SENTENCE above); None where the page
+    states none."""
+    for block in blocks:
+        sentences = _sentences(block)
+        for index, sentence in enumerate(sentences):
+            if len(sentence) > CLOSING_SENTENCE_CHARS:
+                continue
+            if not (SECTION_WORD.search(sentence) and CLOSED_VERB.search(sentence)):
+                continue
+            for gap, following in enumerate(sentences[index + 1 : index + 1 + IDENTIFYING_WITHIN]):
+                if len(following) <= CLOSING_SENTENCE_CHARS and IDENTIFYING_SENTENCE.match(following):
+                    return f"{sentence} {following}" if gap == 0 else f"{sentence} … {following}"
+            return sentence
+    return None
+
 
 @dataclass(frozen=True)
 class PageNotice(_NoticeSource):
@@ -1211,15 +1304,20 @@ class PageNotice(_NoticeSource):
         day = _http_day(stamp)
         return (stamp, day, "last_modified") if self.trust_validators and day else None
 
-    def _row(self, title: str | None, dated: tuple | None, fmt: str, region: str, text: str) -> dict:
+    def _row(
+        self, title: str | None, dated: tuple | None, fmt: str, region: str, text: str, blocks: list[str] | None = None
+    ) -> dict:
         if not title:
             raise NoticeUnreadable(f"{self.key}: the page has no <h1>, og:title or <title>, which is a changed shape")
         if self.expect_title and self.expect_title.lower() not in title.lower():
             raise NoticeUnreadable(f"{self.key}: the page's title is now {title!r}, which no longer names {self.expect_title!r}")
         date_text, day, source = dated or (None, None, None)
+        # THE CLOSING SENTENCE, where the page states one, is the row's title in place of the page's own, which lands
+        # nowhere else: a second column of the page's words would be wording the leak test reads (generate_notice_
+        # models.py's PROSE_ROLES says how), and the page's name is in its link.
         return {
             "url": self.url,
-            "title": title,
+            "title": closing_sentence(blocks or []) or title,
             "date": day,
             "date_text": date_text,
             "date_source": source,
@@ -1255,7 +1353,8 @@ class PageNotice(_NoticeSource):
             or self._last_modified(response)
         )
         own = h1 or _text(reader.og_title) or title
-        return self._row(own or (_text(self.entry.get("title")) if self.registry_title else None), dated, "html", region, text)
+        own = own or (_text(self.entry.get("title")) if self.registry_title else None)
+        return self._row(own, dated, "html", region, text, reader.blocks(fallback=self.region is None))
 
     def _wp_row(self, response: requests.Response) -> dict:
         try:
@@ -1263,10 +1362,13 @@ class PageNotice(_NoticeSource):
             title, content = post["title"]["rendered"], post["content"]["rendered"]
         except (ValueError, KeyError, TypeError) as error:
             raise NoticeUnreadable(f"{self.key}: {self.fetch_url} is not a WordPress post with a title and content") from error
-        text = html_text(content)
+        reader = _PageReader(())
+        reader.feed(content)
+        reader.close()
+        text = reader.region(fallback=True)[1]
         modified = post.get("modified_gmt")
         dated = self._stated(text) or ((modified, _iso_day(modified), "wp_modified") if _iso_day(modified) else None)
-        return self._row(_text(html_text(title)), dated, "wp_rest", "wp:content", text)
+        return self._row(_text(html_text(title)), dated, "wp_rest", "wp:content", text, reader.blocks(fallback=True))
 
     def _pdf_row(self, response: requests.Response) -> dict:
         facts = read_pdf(response.content)

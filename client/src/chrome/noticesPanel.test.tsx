@@ -613,6 +613,95 @@ describe('with conditions/notices.json (#1805, decision 66)', () => {
   })
 })
 
+describe('the "Read all" door beside the planned-hike row (decision 213’s Q20)', () => {
+  // The maintainer, 2026-10-15, "Keep a 'Read all' door (Recommended)": every
+  // club's notices no map draws, planned or not, behind a row of their own.
+  function doorPanel(
+    clubNotices: readonly TrailNotice[] | null,
+    options: { listed?: boolean; missing?: boolean; asked?: () => void } = {},
+  ) {
+    return renderHook(() =>
+      useNoticesPanel({
+        updates: [update()],
+        orgNotices: [orgNotice()],
+        reviewedAt: null,
+        stewards: STEWARDS,
+        trailIndex: NO_INDEX,
+        bbox: BBOX,
+        now: NOW,
+        clubNotices,
+        clubNoticesGeneratedAt: clubNotices === null ? null : NOW,
+        clubNoticesListed: options.listed ?? false,
+        clubNoticesMissing: options.missing ?? false,
+        dayHikes: [],
+        onAskAllNotices: options.asked,
+      }),
+    )
+  }
+
+  const unplaced = orgNotice({ notice_id: 'nynjtc_trail_alerts:unplaced' })
+  const terms = orgNotice({
+    notice_id: 'nynjtc_trail_alerts:terms',
+    place: { kind: 'org_terms', terms: ['park:harriman-bear-mountain-state-parks'] },
+  })
+  const placed = orgNotice({
+    notice_id: 'nynjtc_trail_alerts:placed',
+    place: { kind: 'geometry', geometry: { type: 'Point', coordinates: [-74.1, 41.2] } },
+  })
+  const agency = orgNotice({
+    notice_id: 'usfs_alerts:unplaced',
+    source_key: 'usfs_alerts',
+    steward_kind: 'agency',
+  })
+
+  it('counts every club notice no map draws, never a placed one or an agency’s, with nothing planned', () => {
+    const { result } = doorPanel([unplaced, terms, placed, agency])
+    expect(result.current.mapScreen.readAllNoticesLabel).toBe(
+      'Read all 2 club notices not on the map',
+    )
+  })
+
+  it('opens those notices in the full list, each saying the map does not draw it', () => {
+    const { result } = doorPanel([unplaced, terms, placed, agency])
+    act(() => result.current.mapScreen.onReadAllNotices?.())
+    const list = result.current.mapScreen.noticeList as {
+      type: { displayName?: string }
+      props: { notices: TrailNotice[]; drawnIds: ReadonlySet<string> }
+    }
+    expect(list.type.displayName).toBe('Deferred(NoticeList)')
+    expect(list.props.notices.map((notice) => notice.notice_id)).toEqual([
+      'nynjtc_trail_alerts:unplaced',
+      'nynjtc_trail_alerts:terms',
+    ])
+    expect(list.props.drawnIds.size).toBe(0)
+  })
+
+  it('asks for notices.json when tapped before it is on the phone, and says it is getting them', () => {
+    let asked = 0
+    const { result } = doorPanel(null, { listed: true, asked: () => (asked += 1) })
+    expect(result.current.mapScreen.readAllNoticesLabel).toBe(
+      'Read all club notices not on the map',
+    )
+    act(() => result.current.mapScreen.onReadAllNotices?.())
+    expect(asked).toBe(1)
+    const list = result.current.mapScreen.noticeList as { props: { waiting?: string } }
+    expect(list.props.waiting).toBe('Getting the clubs’ notices…')
+  })
+
+  it('reads the 1 notice in the singular, as the old row did', () => {
+    const { result } = doorPanel([unplaced])
+    expect(result.current.mapScreen.readAllNoticesLabel).toBe(
+      'Read the 1 club notice not on the map',
+    )
+  })
+
+  it('offers no door on a bucket that has not said it serves notices.json, where today’s row lists everything', () => {
+    const { result } = doorPanel(null)
+    expect(result.current.mapScreen.readAllNoticesLabel).toBeUndefined()
+    expect(result.current.mapScreen.onReadAllNotices).toBeUndefined()
+  })
+})
+
 describe('decision 67’s areas from conditions/hazard_areas.json (decision 84)', () => {
   // Decision 77 downloads notices.json only once a hike is planned, and the
   // areas were drawn from it alone, so a phone with nothing planned drew

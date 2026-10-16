@@ -1099,6 +1099,27 @@ describe('the way to every ATC notice (#687)', () => {
     expect(onOpenNotices).toHaveBeenCalledTimes(1)
   })
 
+  it('draws the "Read all" door right after the planned-hike row, and reports its tap (decision 213’s Q20)', async () => {
+    const onReadAllNotices = vi.fn()
+    render(
+      <Legend
+        {...PROPS}
+        noticeRowLabel="Notices for your planned hikes"
+        onOpenNotices={vi.fn()}
+        readAllNoticesLabel="Read all 157 club notices not on the map"
+        onReadAllNotices={onReadAllNotices}
+      />,
+    )
+
+    const row = screen.getByRole('button', { name: 'Notices for your planned hikes' })
+    const door = screen.getByRole('button', {
+      name: 'Read all 157 club notices not on the map',
+    })
+    expect(row.nextElementSibling).toBe(door)
+    await userEvent.click(door)
+    expect(onReadAllNotices).toHaveBeenCalledTimes(1)
+  })
+
   it('sits above the downloaded-map block, not inside it', () => {
     // Trail-content-adjacent, not a download errand - #687 is explicit that
     // conflating the two is what this replaced.

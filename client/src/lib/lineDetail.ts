@@ -498,10 +498,14 @@ export function buildLineDetail(
       return attribution !== null && attribution.trim() !== '' ? attribution : null
     }
 
-    if (line.closureKind === 'area') {
+    // `section` (decision 213): an organization's own notice named this
+    // line's section closed, so the sentence is theirs and carries their own
+    // words verbatim, as an area's does - with no "temporarily", which their
+    // notice may not say.
+    if (line.closureKind === 'area' || line.closureKind === 'section') {
       const steward = attributionOf(line.closureSource)
-      const who =
-        steward === null ? 'Temporarily closed' : `Temporarily closed by ${steward}`
+      const closed = line.closureKind === 'area' ? 'Temporarily closed' : 'Closed'
+      const who = steward === null ? closed : `${closed} by ${steward}`
       const reason =
         typeof line.closureReason === 'string' && line.closureReason.trim() !== ''
           ? line.closureReason.trim()

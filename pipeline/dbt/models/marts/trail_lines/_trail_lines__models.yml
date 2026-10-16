@@ -194,11 +194,11 @@ models:
       - dbt_utils.expression_is_true:
           name: trail_lines_closure_reasons_are_on_area_sections
           arguments:
-            expression: "closure_reason is null or coalesce(closure_kind = 'area', false)"
+            expression: "closure_reason is null or coalesce(closure_kind in ('area', 'section'), false)"
       - dbt_utils.expression_is_true:
           name: trail_lines_closure_sources_are_on_area_sections
           arguments:
-            expression: "(closure_source is not null) = coalesce(closure_kind = 'area', false)"
+            expression: "(closure_source is not null) = coalesce(closure_kind in ('area', 'section'), false)"
       # The A.T.'s files publish no status: absent means unknown, never an
       # invented open. Closures on the A.T. are the closures mart's.
       - dbt_utils.expression_is_true:
@@ -408,40 +408,48 @@ models:
           open because nothing says otherwise (export_nearby_trails.py's
           DEFAULT_STATUS), which is a default and not a finding; or
           'closed_area', a network section inside one of NYS Parks' closed
-          areas (int_trail_lines__network_area_closures). Null where
-          trail_status is.
+          areas (int_trail_lines__network_area_closures); or
+          'closed_section', a network line an organization's own notice
+          closed by naming its section (int_trail_lines__network_section_closures,
+          decision 213). Null where trail_status is.
         data_type: varchar
         data_tests:
           - accepted_values:
               arguments:
-                values: [stated, default_without_status_column, closed_area]
+                values: [stated, default_without_status_column, closed_area, closed_section]
       - name: closure_kind
         description: >
           'long_term' on a network or club line its steward marks closed; 'area' on a network
           section inside one of NYS Parks' temporary closed areas, which
           nearby_trails.geojson's v1 still splits (decision 44) while #1152 —
           Move OPRHP's temporary closures onto the conditions clock, where a
-          safety layer belongs — moves the areas to the closures mart; null
-          on every open line and on every A.T. line.
+          safety layer belongs — moves the areas to the closures mart;
+          'section' on a network line an organization's own notice closed by
+          naming its section (decision 213); null on every open line and on
+          every A.T. line.
         data_type: varchar
         data_tests:
           - accepted_values:
               arguments:
-                values: [long_term, area]
+                values: [long_term, area, section]
       - name: closure_reason
         description: >
           On a network section inside one of NYS Parks' closed areas, that
           area's reason as the steward wrote it (the layer's `Name`,
           stripped), from the area the line overlaps most, a tie to the
-          first in the layer; null where it wrote none, and on every other
-          line. nearby_trails.geojson publishes it as `closure_reason`.
+          first in the layer; on a line a section closure closed, the
+          closing notice's own title, verbatim (decision 213); null where it
+          wrote none, and on every other line. nearby_trails.geojson
+          publishes it as `closure_reason`.
         data_type: varchar
       - name: closure_source
         description: >
           On a network section inside one of NYS Parks' closed areas, the
           closure layer's registry key (`oprhp_trail_closures`), which is not
           the line's own `source` (#1142): the sheet names the organization
-          that closed the ground. Null on every other line.
+          that closed the ground. On a line a section closure closed, the
+          closing notice's source key (decision 213). Null on every other
+          line.
         data_type: varchar
       - name: duplicate_of
         description: >

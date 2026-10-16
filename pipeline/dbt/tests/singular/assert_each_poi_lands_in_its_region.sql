@@ -5,8 +5,8 @@
 -- layer level (its header has the three USFS sites the first live monthly
 -- run found, 2026-10-03). Listed so a run log names them; the
 -- points_of_interest mart's region test fails if one ships. A warning for
--- any, an error when every point is outside its box (decision 204,
--- macros/test_levels.sql's named_rows_level()): the boxes or a swapped
+-- any, an error when every point is outside its box (macros/test_levels.sql's
+-- named_rows_level()): the boxes or a swapped
 -- reader, not a publisher's typo.
 {{ config(
     fail_calc=named_rows_level(),

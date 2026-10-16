@@ -104,8 +104,7 @@ models:
       and warnings marts, facts and a link only, each with its
       place (ATC's A.T. miles, the source's own geometry shaped for a phone: an area grown 100 m and simplified at 100 m and a line
       or point simplified at 10 m, NYNJTC's trail and park terms, or
-      unplaced), decision
-      67's `hazard` where it is a hunting area, shooting site or burned area,
+      unplaced), the `hazard` where it is a hunting area, shooting site or burned area,
       the club's own `updated_at` and OurHike's `checked_at` (the run log's
       latest read that loaded the source or found it unchanged), and the
       marts' row dates. A source int_closures__gate holds keeps its last good
@@ -1488,8 +1487,7 @@ exposures:
     owner:
       name: OurHike
     description: >
-      The hunting areas, shooting sites and burned areas (decision
-      84): the hazard rows of conditions/notices.json in a file of their own,
+      The hunting areas, shooting sites and burned areas: the hazard rows of conditions/notices.json in a file of their own,
       read by client/src/lib/publishedNotices.ts as
       PUBLISHED_HAZARD_AREAS_KEY at launch, whatever the hiker has planned,
       because a phone downloads notices.json only once a hike is planned. The map draws an area where a downloaded trail crosses one,
@@ -1546,8 +1544,7 @@ exposures:
     owner:
       name: OurHike
     description: >
-      The shape of every state a state-wide agency notice names (decision
-      76), read by client/src/lib/publishedNotices.ts as
+      The shape of every state a state-wide agency notice names, read by client/src/lib/publishedNotices.ts as
       PUBLISHED_NOTICE_STATES_KEY beside conditions/notices.json, for
       client/src/lib/plannedNotices.ts's one question of it: is a planned
       route inside this state? Never drawn. Its bytes hold between builds,

@@ -1,7 +1,6 @@
 version: 2
 
-# Rule 5 of pipeline/ELT.md's "Who may publish", mechanised (decision 53's
-# phase C): restrictive words that no decision answers keep `may_publish`
+# Rule 5 of pipeline/ELT.md's "Who may publish", mechanised (the phase C): restrictive words that no decision answers keep `may_publish`
 # false. int_sources__publication reads both seeds, and its header says how.
 # tests/test_dbt_publication_rule_five.py holds each unit test's mocked seed
 # to these files row for row.
@@ -14,10 +13,9 @@ seeds:
       ownership or copyright line (ownership), a line that restricts nothing
       (not_a_restriction: warranty, liability, accuracy, reliance and credit
       lines, grants, links, and the scope notes "illustrative, informational
-      or planning purposes" with the purposes decisions 80 and 106 read; all
+      or planning purposes" and the purposes they name; all
       cut out of the words before anything else is read), or the backstop
-      (unclassified), read on what every other phrase leaves. Decision 193
-      (the maintainer's poll, 2026-10-14) reads a layer's own words by class,
+      (unclassified), read on what every other phrase leaves. A layer's own words are read by class (the maintainer's poll, 2026-10-14),
       never row by row, so a phrase is written for a class of wording and
       names the registry row it was first written from, rather than being
       scoped to one publisher's sentence. Each pattern is a case-insensitive
@@ -67,7 +65,7 @@ seeds:
       matches, so no row has to name it. No row answers `cannot_be_met` or
       `unclassified`. A basis that is a maintainer's ruling on the dataset
       itself answers its own words through publishable_licence_bases'
-      `covers_own_words_named_by` instead (decision 213, Q25), so no row
+      `covers_own_words_named_by` instead, so no row
       here repeats it.
     config:
       column_types:

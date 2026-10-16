@@ -1,9 +1,8 @@
 version: 2
 
 # The trail_network family: the junction graph a day hike routes over, which
-# build_trail_graph.py builds today. The rules are pipeline/ELT.md's TN rows,
-# applied in that file's order: the routable lines, the cuts
-# (with TN04's cutting in step_node_lines), the node grid and the
+# build_trail_graph.py builds today. The rules are applied in that file's order: the routable lines, the cuts
+# (the cutting itself in step_node_lines), the node grid and the
 # welds, the edges. tests/test_dbt_trail_network_parity.py
 # holds each unit test below to build_trail_graph.py on the same rows.
 models:
@@ -65,7 +64,7 @@ models:
 
   - name: int_trail_network__cuts
     description: >
-      Where the routable parts are cut (and TN04's inputs): one row
+      Where the routable parts are cut (and the inputs): one row
       per pair of parts that cross or touch, and one per line end within
       trail_network_endpoint_snap_m (8 m, @unvalidated) of a part its own
       does not cross, among pairs whose envelopes meet, in EPSG:5070 metres.

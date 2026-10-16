@@ -2,7 +2,7 @@
 {%- set quant_m = var('trail_network_node_quant_m') %}
 -- Every piece build_graph() keeps as an edge before it compacts the nodes,
 -- with the node each end becomes once the welds have merged nodes, and
--- whether compaction then drops it (build_trail_graph.py, TN06's rest):
+-- whether compaction then drops it (build_trail_graph.py):
 --
 -- - A piece whose two ends found one node and whose EPSG:5070 length is at
 --   most trail_network_node_quant_m (0.5 m) is a loop shorter than the grid,
@@ -18,7 +18,7 @@
 --   Python numbers both ends before it tests the loop.
 --
 -- `length_m` is the piece's length on the WGS84 ellipsoid
--- (macros/geodesic_length_m.sql; decision 90, the maintainer's poll of
+-- (macros/geodesic_length_m.sql, the maintainer's poll of
 -- 2026-10-06), as build_trail_graph.py measures it with pyproj's Geod, rounded
 -- to 2 decimals as Python's round() rounds it (printf, not DuckDB's round()).
 -- It was EPSG:5070 metres until then, which read a north-south kilometre as

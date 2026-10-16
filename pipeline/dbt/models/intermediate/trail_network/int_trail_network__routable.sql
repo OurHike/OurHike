@@ -2,7 +2,7 @@
 {%- set at_sources = var('trail_network_at_sources') %}
 -- The trail lines a route may run on, one row per line part, and one row per
 -- refusal: build_trail_graph.py's routable_lines() over the collection
--- build() merges (TN01-TN03 of pipeline/ELT.md's ledger).
+-- build() merges.
 --
 -- THE INPUT is the trail_lines mart, the lines a phone draws, read as
 -- build_trail_graph.py reads the two files written from it: every network

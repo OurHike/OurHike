@@ -17,8 +17,7 @@ sources:
       # the one that reads it, so `_loaded_at` is OurHike's clock, and no
       # run log row names a derived table for last_read_or_confirmed_at to
       # read. A stale one is a build reading a table an earlier build left.
-      # The thresholds are every monthly source's (decision 203,
-      # make_dbt_staging.py's MONTHLY_FRESHNESS_DAYS), both @unvalidated;
+      # The thresholds are every monthly source's (make_dbt_staging.py's MONTHLY_FRESHNESS_DAYS), both @unvalidated;
       # build_marts.py's freshness runs leave this source out (its
       # FRESHNESS_LEFT_OUT), since it is no upstream read.
       loaded_at_field: _loaded_at
@@ -110,8 +109,7 @@ sources:
           line alone. So the table is empty exactly when no release's lines
           were there to read, which leaves every area closure out of
           conditions/trail_closures.json that run, neither crossed out nor
-          shaded. Read by int_closures__area_trail_cuts (decisions 187 and
-          191).
+          shaded. Read by int_closures__area_trail_cuts.
         columns:
           - name: release
             description: The data release the lines were published in, as its latest.json named it.
@@ -228,8 +226,7 @@ sources:
           int_points_of_interest__water_sites, in the order fetch_trail_water.py
           writes data/raw/trail_water.json, each with the water it can reach
           or the reason it cannot. The hydrography's GeoPackages and extracts
-          and EPQS's answers never enter the warehouse; only these verdicts do
-          (pipeline/ELT.md's PO07 and PO17).
+          and EPQS's answers never enter the warehouse; only these verdicts do.
         columns:
           - name: site_row
             description: The record's place in the file's `sites` array, from 0.
@@ -269,8 +266,7 @@ sources:
           for the extract, which waits on #1652 — Download OSM's Geofabrik
           extracts at most once a month, into a private raw bucket that
           outlives the 7-day Actions cache. Until then only fixture mode
-          lands points here and a live build lands none (pipeline/ELT.md's
-          PO03).
+          lands points here and a live build lands none.
         columns:
           - name: feature_row
             description: The feature's place in the file, from 0.
@@ -305,7 +301,7 @@ sources:
           distance pass int_points_of_interest__osm_water_reach measured,
           and the grade build_osm_water_reach.apply_grade_gate() takes from
           USGS EPQS for a point that passed it. One row per row of that
-          model (pipeline/ELT.md's PO06 and PO07).
+          model.
         columns:
           - name: osm_id
             description: The OSM node id.
@@ -340,8 +336,7 @@ sources:
           fetch_atc_photos.py's poi_images_atc.json (ATC), each with its bucket
           key's digest, its credit, the face screen's flag and the human
           decision on that digest from reference/photo_screen_decisions.json.
-          Manifest rows only: the bytes never enter the warehouse
-          (pipeline/ELT.md's PO24 and PO38).
+          Manifest rows only: the bytes never enter the warehouse.
         columns:
           - name: source
             description: commons or atc, the outcome file the photo came from.
@@ -394,7 +389,7 @@ sources:
           (pipeline/step_long_path_guide.py) through
           lib/nynjtc_long_path_guide.py's build_records(): one row per record,
           each placed at NYNJTC's own coordinates or by the guide's mile
-          along its section's line, and de-duplicated (pipeline/ELT.md's PO36).
+          along its section's line, and de-duplicated.
         columns:
           - name: record_row
             description: The record's place in build_records()' output, from 0.

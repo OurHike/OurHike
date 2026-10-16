@@ -20,13 +20,13 @@
 -- `type` first.
 --
 -- TWO LENGTHS, both in metres on the WGS84 ellipsoid: `length_m` on the line
--- as its steward published it, before any simplification (decision 8:
--- Douglas-Peucker only shortens a line, so a length taken after it
+-- as its steward published it, before any simplification (Douglas-Peucker only
+-- shortens a line, so a length taken after it
 -- under-reports a day hike), and `published_length_m` on the 1 m line before
 -- the cut, which is what records_to_geojson()'s `length_miles` is rounded
--- from. Each is macros/geodesic_length_m.sql's (the
--- maintainer's poll of 2026-10-06, as decision 90 measures the graph's
--- edges), handed the line projected to EPSG:5070 as the macro takes it. The
+-- from. Each is macros/geodesic_length_m.sql's (the maintainer's poll of
+-- 2026-10-06, as the graph's edges are measured), handed the line projected to
+-- EPSG:5070 as the macro takes it. The
 -- trip there and back changed no line's length by more than 7.3e-7 m against
 -- the lon/lat line's own (measured 2026-10-06 on UA's 329,446 routable
 -- lines, with the macro's ST_Length_Spheroid). They were EPSG:5070 metres

@@ -3,7 +3,7 @@
 -- upstream column kept: export_poi.py composes a shelter's description from
 -- its inventory columns, so they all travel on.
 --
--- What a row IS stays out of this model, as decision 40 asks of staging: its
+-- What a row IS stays out of this model, as staging must: its
 -- poi_type and confidence come from the poi_type_mapping seed, and the
 -- `atc_shelters` name its published id starts with from the poi_sources
 -- seed, both joined in int_points_of_interest__classified. A row with no

@@ -2,8 +2,7 @@ version: 2
 
 # The suggested_hikes family: NYNJTC's Hike Finder hikes and OurHike's curated
 # highlights, from their pages and reviewed files to the suggested_hikes
-# mart. The rules are pipeline/ELT.md's ledger rows SH01-SH14, applied in
-# today's order: export_suggested_hikes.py's over route_hikefinder.py's,
+# mart. The rules are applied in today's order: export_suggested_hikes.py's over route_hikefinder.py's,
 # lib/hike_route_builder.py's grade, and lib/highlights.py's resolve().
 models:
   - name: int_suggested_hikes__hike_finder
@@ -70,7 +69,7 @@ models:
     description: >
       Each Hike Finder hike's route graded, with every check that is not clean
       in a reviewer's order: _grade() over a generated route, and
-      published_route()'s checks over a published track, which SH04's row carries.
+      published_route()'s checks over a published track.
     columns:
       - name: hike_number
         description: The export's hike id.

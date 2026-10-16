@@ -1,6 +1,6 @@
 {{ config(materialized='table') }}
 -- How ATC's half-mile markers orient and scale each centerline piece: the
--- calibration of the mile axis (pipeline/ELT.md's EL03),
+-- calibration of the mile axis,
 -- export_elevation._calibrated_part and the end of
 -- calibrate_parts_to_markers, on the pieces of
 -- int_trail_lines__mile_axis_pieces and the pairs of

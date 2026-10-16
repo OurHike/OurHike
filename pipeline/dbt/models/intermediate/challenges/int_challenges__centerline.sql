@@ -1,5 +1,5 @@
--- The A.T. centerline every challenge place is measured against (CH04,
--- CH13), as export_challenges.load_centerline() reads it: the features of
+-- The A.T. centerline every challenge place is measured against, as
+-- export_challenges.load_centerline() reads it: the features of
 -- trails.geojson whose `source` is `centerline`, LineString or
 -- MultiLineString. trails.geojson is the trail_lines mart's rows that are
 -- not `network` or `club` (pub_trails_geojson), and it publishes source_key as

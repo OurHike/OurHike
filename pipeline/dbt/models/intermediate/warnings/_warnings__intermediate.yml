@@ -371,7 +371,7 @@ unit_tests:
 
   - name: int_warnings__serious_reports_keeps_the_public_moderated_reports_a_moderator_called_serious
     description: >
-      WN10's new rule: the warnings mart takes the reports
+      The warnings mart takes the reports
       test_moderated_public_reports_are_exported_and_submitted_ones_are_not
       lets out of the database (verified or resolved, and public), and of
       those only the ones a moderator escalated to `serious`. A resolved one

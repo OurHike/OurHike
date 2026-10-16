@@ -1,6 +1,6 @@
 version: 2
 
-# The clubs' own places layers (the wave 1), after
+# The clubs' own places layers, after
 # int_places__unioned. No mart reads them: every layer here is held back by
 # its sources.json row.
 models:
@@ -21,8 +21,7 @@ models:
             expression: "not loses_too_many_points_outside_region"
       # The record of every stray point cleared, one warned row per layer
       # that lost any, so a monthly run's log names the layers to look at;
-      # an error when every layer lost one (decision 204,
-      # tests/generic/rows_named.sql), the boxes rather than the layers.
+      # an error when every layer lost one (tests/generic/rows_named.sql), the boxes rather than the layers.
       - rows_named:
           name: places_layer_had_a_point_cleared_outside_its_region
           arguments:

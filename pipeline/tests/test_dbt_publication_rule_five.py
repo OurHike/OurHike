@@ -23,7 +23,7 @@ UNIT_TESTS = DBT / "models" / "intermediate" / "sources" / "_sources__intermedia
 SEEDS = ("licence_restriction_phrases", "licence_restriction_answers")
 PUBLICATION_TESTS = (
     "int_sources__publication_publishes_only_what_a_rule_makes_true",
-    "int_sources__publication_holds_words_no_decision_answers",
+    "int_sources__publication_holds_words_no_ruling_answers",
 )
 
 

@@ -25,8 +25,7 @@ sources:
         # @unvalidated: 7 hours is pipeline/ELT.md's hourly row, the worst
         # measured publish-conditions.yml gap (6.3 h) rounded up; the 99th
         # percentile of _extract_runs.checked_at gaps over 30 days settles it.
-        # The error is 24 hours, the conditions leg's other tables' (decision
-        # 101), since decision 204 gives every source both: @unvalidated as
+        # The error is 24 hours, the conditions leg's other tables', since every source has both: @unvalidated as
         # theirs. Not tagged conditions_job: a failed read of these stops the
         # whole leg, red at once (extract/_run.py's stops_the_leg(),
         # tests/test_notice_source_freshness.py), so the hourly freshness step

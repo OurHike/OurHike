@@ -371,13 +371,13 @@ unit_tests:
         - {provider: Q, steward_name: 'Org Q', problem: 'support block for (no author) is missing: author'}
   - name: int_sources__publication_publishes_only_what_a_rule_makes_true
     description: >
-      One row per branch of "Who may publish" this model decides: rule 1
-      both ways, a verdict nobody recorded (null reaches_hikers), a basis
-      nobody settled, and each guard refusing a row that rule 1 alone would
-      publish. Decision 69 admits `public_gis` on a club's own page,
-      PDF or map route of points (`page_points`, `pdf_points`,
-      `json_features`), and rule 6 still refuses it on a hike list or a
-      club's document, which carry prose.
+      One row per branch of "Who may publish" this model decides: a
+      registered row published or held on its own `reaches_hikers`, a
+      verdict nobody recorded (null reaches_hikers), a basis nobody settled,
+      and each guard refusing a row the first rule alone would publish.
+      `public_gis` covers a club's own page, PDF or map route of points
+      (`page_points`, `pdf_points`, `json_features`) and still refuses a
+      hike list or a club's document, which carry prose.
     model: int_sources__publication
     given:
       - input: ref('stg_registry__sources')
@@ -536,56 +536,44 @@ unit_tests:
         - {source_key: gis_on_a_hike_list, may_publish: false, publication_rule: public_gis_needs_a_gis_endpoint}
         - {source_key: gis_on_a_club_document, may_publish: false, publication_rule: public_gis_needs_a_gis_endpoint}
         - {source_key: opentrail_at, may_publish: true, publication_rule: publishing_before_registration}
-  - name: int_sources__publication_holds_words_no_decision_answers
+  - name: int_sources__publication_holds_words_no_ruling_answers
     description: >
-      Rule 5 (pipeline/ELT.md, "Who may publish"), one row per branch, each
-      shipping by its own registry row so that rule 5 is what decides it:
-      words that restrict nothing, disclaimers cut out before they are
-      read, a restriction answered by a decision the row's licence names
-      and the same words where it names none, an answer on the wrong
-      basis, a condition no decision can answer, words no phrase
-      explains (the backstop), a row the registry holds back, which
-      still carries rule 5's verdict, the inventory's own narration of a
-      terms read (never the source's words), and a club's copyright line
-      that the facts and a link answer. Then the 2026-10-04
-      answers: a hold-harmless clause beside an open licence (decision
-      71); a sheet's accuracy and liability lines;
-      a site's bar on disruptive use, answered where the licence names
-      decision 75 and held where it does not, beside a plain bar on bots,
-      which no phrase explains; and a copyright footer on a club's own
-      page of points, answered by decision 69. Then the 2026-10-08 answer:
-      Explore PA Trails' purposes-only sentence beside its save-harmless
-      clause publishes, the sentence read as a scope note by decision 106
-      and the clause as a liability line by decision 71, whatever the
-      row's licence names. Then decision 193 (the maintainer's poll,
-      2026-10-14), a layer's own words read by class: an ownership or
-      copyright line publishes on a public GIS item whatever its licence
-      names, beside its grant on an organization's own terms too, and
-      still holds a notice whose licence names no decision; a refusal
-      ("Do not redistribute", "Not for distribution") still holds where
-      no decision is named; a warranty line however it is quoted, an
-      accuracy line and "illustrative" or "planning purposes" restrict
-      nothing, while a purpose outside the class ("administrative
-      purposes only") is still held; "not intended to be use for
-      navigation" holds, its typo and all; and a licence granting reuse
-      on conditions publishes where the row's licence records them under
-      And holds where nobody read it. Then the review of
-      2026-10-15 (findings S2-1 and F1): a grant, a credit line or a
-      reliance disclaimer is cut alone, so a ban later in its sentence is
-      still read and holds, and "forbidden", "consent" and "not allowed"
-      hold where no phrase explains them; and the wordings those phrases
-      were written for (IDPR's, NGPC's, FDEP's and the Census Bureau's)
-      still publish. Then the same day's widening: "NOT FOR NAVIGATION",
-      "Do not use this data for navigation" and "not suitable for
-      navigation" hold as cannot_be_met, and "Redistribution", "not
-      permitted", "not authorized" and "Unauthorized" hold where no phrase
-      explains them. Then decision 213, Q25 (2026-10-15): a clearinghouse
-      dataset's own words, whatever class they read as, publish where the
-      row's licence names decisions 20 and 22, and hold where it names
-      neither, and a navigation line still holds such a row; and the
-      Florida Trail Association's legal-use scope note and hazards line,
-      read by class, restrict nothing. The seeds are
-      mocked as the seed files are
+      Restrictive words no ruling answers hold a row (pipeline/ELT.md, "Who
+      may publish"), one row per branch, each shipping by its own registry
+      row so that this rule is what decides it: words that restrict
+      nothing, disclaimers cut out before they are read, a restriction
+      answered by a ruling the row's licence names and the same words where
+      it names none, an answer on the wrong basis, a condition no ruling can
+      answer, words no phrase explains (the backstop), a row the registry
+      holds back, which still carries the verdict, the inventory's own
+      narration of a terms read, and a club's copyright line that the facts
+      and a link answer. Also: a hold-harmless clause beside an open
+      licence; a sheet's accuracy and liability lines; a site's bar on
+      disruptive use, answered where the licence names its ruling and held
+      where it does not, beside a plain bar on bots, which no phrase
+      explains; a copyright footer on a club's own page of points; Explore
+      PA Trails' purposes-only sentence beside its save-harmless clause,
+      which publishes whatever the licence names. Words are read by class
+      (the maintainer's poll, 2026-10-14): an ownership or copyright line
+      publishes on a public GIS item whatever its licence names, and still
+      holds a notice whose licence names no ruling; a refusal ("Do not
+      redistribute", "Not for distribution") holds where no ruling is
+      named; a warranty, accuracy, "illustrative" or "planning purposes"
+      line restricts nothing, while "administrative purposes only" holds;
+      "not intended to be use for navigation" holds, typo and all; a
+      licence granting reuse on conditions publishes where the row records
+      them. A grant, a credit line or a reliance disclaimer is cut alone,
+      so a ban later in its sentence still holds, and "forbidden",
+      "consent" and "not allowed" hold where no phrase explains them.
+      "NOT FOR NAVIGATION", "Do not use this data for navigation" and "not
+      suitable for navigation" hold as cannot_be_met; "Redistribution",
+      "not permitted", "not authorized" and "Unauthorized" hold where no
+      phrase explains them. A clearinghouse dataset's own words, whatever
+      class they read as, publish where the row's licence names the
+      clearinghouse ruling and hold where it does not, and a navigation
+      line still holds such a row (the maintainer's poll, 2026-10-15). The
+      Florida Trail Association's legal-use scope note and hazards line
+      restrict nothing. The seeds are mocked as the seed files are
       (tests/test_dbt_publication_rule_five.py).
     model: int_sources__publication
     given:

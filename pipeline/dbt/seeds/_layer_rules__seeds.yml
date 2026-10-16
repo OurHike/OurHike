@@ -1,8 +1,6 @@
 version: 2
 
-# The rules the live reads found a layer needs beyond its key
-# (pipeline/ELT.md, "What wave 1's live reads found that phase C must
-# honour"), one row per rule per layer, each quoting the evidence it rests on.
+# The rules the live reads found a layer needs beyond its key, one row per rule per layer, each quoting the evidence it rests on.
 # A judgement somebody reviews row by row, so it is a seed and not a
 # generated file: pipeline/make_dbt_staging.py stages the layers, and the
 # type's intermediate reads this to apply the rule.

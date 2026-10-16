@@ -36,8 +36,8 @@
 --   its one id, so no two features share an id; the open part keeps every
 --   property of its line. A part of several pieces stays a MultiLineString
 --   (_merge()), never merged across the gap the closure made.
--- - ONLY A PIECE INSIDE THE GROUND CLOSES, NOT ONE ALONG ITS EDGE (decision
---   213, rule 6, the maintainer's poll of 2026-10-15, "Only inside closes",
+-- - ONLY A PIECE INSIDE THE GROUND CLOSES, NOT ONE ALONG ITS EDGE (rule 6, the
+-- maintainer's poll of 2026-10-15, "Only inside closes",
 --   applied to both cuts of an area closure onto lines, this one and the
 --   hourly int_closures__area_trail_cuts): an `inside` piece closes only if
 --   some part of it lies more than `area_closure_edge_m` (2 m) in from the

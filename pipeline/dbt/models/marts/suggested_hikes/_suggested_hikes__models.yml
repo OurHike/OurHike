@@ -109,8 +109,7 @@ models:
       # validSegments). Every route the step forms has two or more, so one
       # with fewer is a defect in the step, not a refusal; warn, because
       # export_suggested_hikes.py would publish it and the client drop it.
-      # An error when every suggested hike has fewer (decision 204,
-      # tests/generic/rows_named.sql): the step, not one route.
+      # An error when every suggested hike has fewer (tests/generic/rows_named.sql): the step, not one route.
       - rows_named:
           name: suggested_hikes_names_a_route_with_fewer_than_two_ends
           arguments:

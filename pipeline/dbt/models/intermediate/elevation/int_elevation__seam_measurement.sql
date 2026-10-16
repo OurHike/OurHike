@@ -1,6 +1,6 @@
 -- The junction graph's seam, measured: one row, the numbers
 -- export_network_profile.measure_seams puts in trail_graph_profile_manifest.
--- json's `seam` block (EL13 of pipeline/ELT.md's ledger), from
+-- json's `seam` block, from
 -- int_elevation__seam_nodes. Writing the manifest is left to the cutover; this
 -- is what
 -- it will say.

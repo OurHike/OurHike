@@ -131,8 +131,7 @@ sources:
           # so freshness reads the run log instead
           # (macros/last_read_or_confirmed_at.sql), where every run that finds
           # it unchanged writes `skipped`. A read the leg refuses on its own is
-          # a warning on the hourly run since decision 100 (the maintainer's
-          # poll of 2026-10-07), and red here after 24 hours unread: the
+          # a warning on the hourly run (the maintainer's poll of 2026-10-07), and red here after 24 hours unread: the
           # thresholds are generate_notice_models.py's FRESHNESS_HOURS, graded
           # there, and tests/test_notice_source_freshness.py holds these to
           # them. publish-conditions.yml's freshness step selects

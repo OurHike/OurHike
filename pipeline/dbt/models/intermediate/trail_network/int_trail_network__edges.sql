@@ -1,7 +1,7 @@
 {{ config(materialized='table') }}
 {%- set decimals = 6 %}
--- One row per junction-graph edge, as build_trail_graph.py publishes it
--- (TN07 of pipeline/ELT.md's ledger): a piece of a maintained trail line
+-- One row per junction-graph edge, as build_trail_graph.py publishes it:
+-- a piece of a maintained trail line
 -- between two junctions, carrying its parent line's id (published as
 -- `trail_id`), source, name and blaze, because the client reads all four off
 -- the edge (frame `1j` tallies legs per organization while the hiker builds;
@@ -20,8 +20,7 @@
 -- - length_m is the piece's length on the WGS84 ellipsoid at 2 decimals
 --   (int_trail_network__raw_edges), measured on the 1 m
 --   navigation line the graph is noded from, as build_trail_graph.py
---   measures it today (the full-resolution length is not built:
---   ELT.md's TN07 row says why);
+--   measures it today (the full-resolution length is not built);
 -- - geom_geojson is a GeoJSON LineString whose `coordinates` are exactly
 --   the edge's entry in trail_graph_geometry.json: the piece's vertices back
 --   in lon/lat, ST_Transform giving pyproj's doubles (measured 2026-10-02 on

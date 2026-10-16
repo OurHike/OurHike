@@ -45,10 +45,10 @@
 -- unit test holds them exactly; the elevation mart casts them to decimals.
 --
 -- THE KEY, profile_sample_key, is dbt_utils.generate_surrogate_key over
--- (line_id, seq), the published sample, which is what one row is (decision
--- 197: every model has one column that is unique and not null). Its other
--- grain, (line_id, sample_index), stays a test of its own in the YAML: EL07
--- publishes a walk sample at most once.
+-- (line_id, seq), the published sample, which is what one row is (every model
+-- has one column that is unique and not null). Its other
+-- grain, (line_id, sample_index), stays a test of its own in the YAML: a walk
+-- sample publishes at most once.
 with points as (
     select * from {{ ref('int_elevation__sample_points') }}
 ),

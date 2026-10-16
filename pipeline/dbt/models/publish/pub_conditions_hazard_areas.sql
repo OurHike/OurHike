@@ -6,8 +6,8 @@
 -- conditions/hazard_areas.json (the maintainer's poll of
 -- 2026-10-05: "Their own small file, read at launch"): the notices of
 -- conditions/notices.json that carry the `hazard` (hunting,
--- shooting or burned_area), and no others. Decision 77 has a phone download
--- notices.json only once a hike is planned, and the map draws hunting areas,
+-- shooting or burned_area), and no others. A phone downloads notices.json only
+-- once a hike is planned, and the map draws hunting areas,
 -- shooting sites and burned areas from these rows, so a phone with nothing
 -- planned drew none; client/src/lib/publishedNotices.ts reads this file at
 -- launch instead, whatever is planned.

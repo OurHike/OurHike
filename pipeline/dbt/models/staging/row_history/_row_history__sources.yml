@@ -23,8 +23,7 @@ sources:
       freshness:
         # @unvalidated, the threshold of the hourly sources: a snapshot every
         # conditions leg writes. What settles it is the gap between saves the
-        # store's history.json records. The error is twice the warning, 14
-        # days, since decision 204 gives every source both: @unvalidated, the
+        # store's history.json records. The error is twice the warning, 14 days, since every source has both: @unvalidated, the
         # same gaps settle it.
         warn_after: {count: 7, period: day}
         error_after: {count: 14, period: day}

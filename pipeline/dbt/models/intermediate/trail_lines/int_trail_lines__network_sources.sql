@@ -19,11 +19,11 @@
 --
 -- `may_publish` is int_sources__publication's (pipeline/ELT.md, "Who may
 -- publish"). Every network source is kept whatever it says, because
--- export_nearby_trails.py runs the build-stopping registry checks (TL08,
--- TL09) over held-back sources too.
+-- export_nearby_trails.py runs the build-stopping registry checks over
+-- held-back sources too.
 --
--- THE TWO FIELDS A LINE'S PUBLISHED ID IS READ FROM (TL05,
--- macros/resolve_feature_id.sql): `global_id_field`, the layer's GlobalID as
+-- THE TWO FIELDS A LINE'S PUBLISHED ID IS READ FROM
+-- (macros/resolve_feature_id.sql): `global_id_field`, the layer's GlobalID as
 -- the layer spells it, which lib/feature_id.py reads only where that is
 -- exactly `GlobalID`, and the GeoJSON id the Python falls back to, which
 -- ArcGIS sets to the object id the entry's `object_id_field` names and
@@ -148,8 +148,9 @@ field_names as (
         coalesce(name_field, 'Name') as field_name,
         0 as field_order
     from declared
-    -- The two id fields, at places below zero: no filter reads them, so TL08
-    -- never counts them, and `missing_id_fields` below does instead.
+    -- The two id fields, at places below zero: no filter reads them, so the
+    -- filter count never counts them, and `missing_id_fields` below does
+    -- instead.
     union all
     select
         source_key,

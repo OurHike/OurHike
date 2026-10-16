@@ -173,8 +173,7 @@ models:
       # source line that arrives that way rather than drop it
       # (export_trails.simplify_records' never-drop rule), so one such line
       # is reported rather than allowed to hold every line back. An error
-      # when every line is invalid (decision 204,
-      # tests/generic/rows_named.sql): the geometry reader, not one line.
+      # when every line is invalid (tests/generic/rows_named.sql): the geometry reader, not one line.
       - rows_named:
           name: trail_lines_geometries_are_valid
           arguments:
@@ -417,8 +416,7 @@ models:
           'closed_area', a network section inside one of NYS Parks' closed
           areas (int_trail_lines__network_area_closures); or
           'closed_section', a network line an organization's own notice
-          closed by naming its section (int_trail_lines__network_section_closures,
-          decision 213). Null where trail_status is.
+          closed by naming its section (int_trail_lines__network_section_closures). Null where trail_status is.
         data_type: varchar
         data_tests:
           - accepted_values:

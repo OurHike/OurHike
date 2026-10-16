@@ -124,8 +124,7 @@ models:
   - name: int_challenges__items
     description: >
       Every item of every file that reached its items, resolved as
-      resolve_challenge()'s loop and resolve_item() resolve it (CH01,
-      CH03-CH09): the first refusal in `problem`, and where there is none the
+      resolve_challenge()'s loop and resolve_item() resolve it: the first refusal in `problem`, and where there is none the
       item as it publishes. A place is a published POI with its own mile,
       coordinate and name; a place that is not off_trail must lie within its
       radius of the centerline, measured as the model's header says.
@@ -191,8 +190,7 @@ models:
     data_tests:
       # The exporter's closing ::warning::, "N challenge(s) and M item(s) did
       # not publish, and K publishers.json line(s) were refused": a refusal
-      # is never silent. A warning for any, and an error past 50 (decision
-      # 204): every row here is a refusal, so a share would always be all of
+      # is never silent. A warning for any, and an error past 50: every row here is a refusal, so a share would always be all of
       # them, and a count is the threshold. @unvalidated: 50 is the lead's
       # pick, above the fixture build's 13 invented refusals (76e71a8d,
       # 2026-10-15) and UA's none (its monthly page of 2026-10-10), settled

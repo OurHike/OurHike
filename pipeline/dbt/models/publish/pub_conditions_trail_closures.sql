@@ -7,13 +7,13 @@
 -- 184 (the maintainer's poll of 2026-10-11, "Build the map file now") builds
 -- #1152 — Move OPRHP's temporary closures onto the conditions clock, where a
 -- safety layer belongs — in its shape (C), an hourly file of closed
--- stretches, for every club closure in PR #1805, and decision 187 (S6) says
--- how each is drawn with the crossed-out mark (client/src/lib/closureStyle.ts):
+-- stretches, for every club closure in PR #1805, each drawn with the
+-- crossed-out mark (client/src/lib/closureStyle.ts):
 -- a line closure along its own line, an area closure's trails where they run
--- inside it, a point closure as one cross; decision 191 (2026-10-14) shades
--- an area closure no mapped trail runs inside. The phone reads this file at
+-- inside it, a point closure as one cross; the phone shades an area closure no
+-- mapped trail runs inside. The phone reads this file at
 -- launch, as it reads conditions/hazard_areas.json, because
--- decision 77 downloads notices.json only once a hike is planned. Routes
+-- a phone downloads notices.json only once a hike is planned. Routes
 -- still go through a closure: this file changes what is drawn, not where a
 -- route may run.
 --
@@ -121,8 +121,9 @@
 --
 -- ORDER: by source_key, then notice_id, that writer's order.
 --
--- SIZE. UA's first published file, of 2026-10-14 18:15 UTC, built before
--- decisions 191 and 192: 1,198 closures (975 lines, 46 areas, 177 points),
+-- SIZE. UA's first published file, of 2026-10-14 18:15 UTC, built before areas
+-- were shaded and the A.T. cut: 1,198 closures (975 lines, 46 areas, 177
+-- points),
 -- 3,165,161 bytes, 633,700 on the wire as its latest.json lists it. The 156
 -- areas no mapped trail ran inside were left out of it. As shades they add
 -- 197,598 bytes and 32,244 gzipped at level 6 (publish.py's), 5.1%: Measured

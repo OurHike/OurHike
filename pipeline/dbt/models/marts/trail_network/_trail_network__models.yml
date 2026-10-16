@@ -165,13 +165,11 @@ models:
           - type: not_null
       - name: length_m
         description: >
-          The piece's length in metres on the WGS84 ellipsoid (decision 90;
-          EPSG:5070 metres before it), 2 decimals, measured on the 1 m
+          The piece's length in metres on the WGS84 ellipsoid (EPSG:5070 metres before it), 2 decimals, measured on the 1 m
           navigation line the graph is noded from, as
           build_trail_graph.py measures it; never more than a few
           centimetres off the line the phone draws, and equal or shorter
-          than the steward's full-resolution line (decision 8's
-          full-resolution length is not built, ELT.md's TN07 row).
+          than the steward's full-resolution line (the full-resolution length is not built).
         data_type: double
         constraints:
           - type: not_null

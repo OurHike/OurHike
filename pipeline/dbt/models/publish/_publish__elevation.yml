@@ -19,8 +19,7 @@ models:
       - dbt_utils.expression_is_true:
           arguments:
             expression: "json_valid(profile_json) and json_type(cast(profile_json as json)) = 'ARRAY'"
-      # A MOSTLY UNMEASURED PROFILE NEVER REPLACES A GOOD ONE (decision 194,
-      # the maintainer's poll of 2026-10-14, "Toward caution"): more than
+      # A MOSTLY UNMEASURED PROFILE NEVER REPLACES A GOOD ONE (the maintainer's poll of 2026-10-14, "Toward caution"): more than
       # var elevation_profile_max_null_share of the samples with no height (a
       # record whose elevation_ft is null or missing) fails this writer, at
       # ERROR. dbt tests a model after building it, so the file is written by

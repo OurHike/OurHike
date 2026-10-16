@@ -53,8 +53,8 @@
 --                         source, since a key allows only exact
 --                         copies, and its exactness test warns rather than
 --                         stopping every club's build
--- and EVERY SOURCE, FOR ANY ONE OF ITS ROWS (decision
--- 81, the maintainer's poll of 2026-10-05: "Hold that source and publish the
+-- and EVERY SOURCE, FOR ANY ONE OF ITS ROWS (the maintainer's poll of
+-- 2026-10-05: "Hold that source and publish the
 -- rest"; review finding ARCH-1 of PR #1805 — dlt → dbt re-platform as one
 -- go/no-go change):
 --   wording               a row that holds its source's own wording in a

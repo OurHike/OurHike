@@ -34,8 +34,7 @@ seeds:
         description: Why, what ends it, and the issue by number and title.
   - name: model_key_exceptions
     description: >
-      The models excepted from decision 197, the maintainer's rule of
-      2026-10-15 that every model has one id: a column carrying an
+      The models excepted from the maintainer's rule of 2026-10-15 that every model has one id: a column carrying an
       unfiltered `unique` test and an unfiltered `not_null` (a test, or a
       not_null constraint under an enforced contract), both at error. A
       multi-column key counts only as a dbt_utils.generate_surrogate_key
@@ -191,9 +190,7 @@ seeds:
       - name: covers_own_words_named_by
         description: >
           Set only where the basis is a maintainer's ruling on the dataset
-          itself rather than on any wording of it (Q25:
-          decisions 20 and 22 cover a clearinghouse dataset's own restrictive
-          words). A case-insensitive RE2 expression a row's `licence` must
+          itself rather than on any wording of it (the clearinghouse ruling covers a clearinghouse dataset's own restrictive words). A case-insensitive RE2 expression a row's `licence` must
           match to name that ruling; where it does, int_sources__publication
           answers every restriction class in the row's quoted words except
           `cannot_be_met`. Empty for every other basis.

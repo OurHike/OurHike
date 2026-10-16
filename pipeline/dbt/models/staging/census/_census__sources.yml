@@ -5,7 +5,7 @@ sources:
     description: >
       The U.S. Census Bureau's TIGER/Line state boundaries, landed by the
       extract's _shared/census/ folder (pipeline/extract/_shared/census/
-      states.py) for decision 76: a state-wide agency notice is placed by its
+      states.py): a state-wide agency notice is placed by its
       state. sources.json's census_tiger_states holds the counts, the
       validators and the terms.
     schema: raw

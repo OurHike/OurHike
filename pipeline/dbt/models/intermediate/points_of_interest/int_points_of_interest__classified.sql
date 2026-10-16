@@ -23,7 +23,7 @@
 -- asset that is one of DEC's null sentinels (var `poi_null_sentinels`) is
 -- no name.
 --
--- The wave 1 point layers (int_points_of_interest__club_points)
+-- The generated club point layers (int_points_of_interest__club_points)
 -- arrive as unified records too: their type, confidence, id and name were
 -- set there from the club_poi_types and layer_rules seeds, and a row a rule
 -- held back carries its reason as `rule_drop_reason`, which is the first
@@ -259,7 +259,7 @@ select
     cleaned.properties,
     cleaned.entry as registry_entry,
     case
-        -- A wave 1 point a layer_rules row holds back
+        -- A generated club point a layer_rules row holds back
         -- (int_points_of_interest__club_points).
         when
             cleaned.is_unified

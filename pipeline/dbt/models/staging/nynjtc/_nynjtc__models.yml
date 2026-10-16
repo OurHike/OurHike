@@ -38,7 +38,7 @@ models:
           ArcGIS writes as each GeoJSON feature's `id` (43 of 43 equal, read
           live 2026-10-09). export_nearby_trails.py publishes it as
           `nynjtc_long_path:<FID>`, and int_trail_lines__network_judged
-          publishes the same. Not the key: decision 40 never keys on an
+          publishes the same. Not the key: a key never rests on an
           object id alone.
         data_tests: [not_null, unique]
       - name: loaded_at
@@ -80,7 +80,7 @@ models:
           read live 2026-10-09). export_nearby_trails.py publishes it as
           `nynjtc_highlands_trail:<OBJECTID>`, and
           int_trail_lines__network_judged publishes the same. Not the key:
-          decision 40 never keys on an object id alone.
+          a key never rests on an object id alone.
         data_tests: [not_null, unique]
       - name: loaded_at
         description: The extract's `_loaded_at` for the read this row came from, naive UTC.

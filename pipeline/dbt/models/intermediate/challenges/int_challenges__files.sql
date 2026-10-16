@@ -1,6 +1,6 @@
 -- Every challenge file, checked as far as lib/challenges.py's
--- resolve_challenge() goes before it reads the items (CH03,
--- CH10-CH12), after export_challenges.build_output()'s two checks on where
+-- resolve_challenge() goes before it reads the items, after
+-- export_challenges.build_output()'s two checks on where
 -- the file was filed. One row per file, in the order today's exporter reads
 -- them (load_challenge_files(): sorted(reference/challenges/*/*.json)).
 --

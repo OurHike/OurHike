@@ -1,7 +1,6 @@
 version: 2
 
-# The places family's intermediates: export_places.py's rules in SQL, PL01 to
-# PL11 in pipeline/ELT.md's ledger, in the order build_output() applies them.
+# The places family's intermediates: export_places.py's rules in SQL, in the order build_output() applies them.
 # Each model's header says which rule it holds and what it rests on.
 models:
   - name: int_places__park_units
@@ -161,8 +160,7 @@ models:
     data_tests:
       # Warns: dbt prints only a row count, so the model's post-hook logs
       # the rows, and int_places__final leaves them out (macros/storable_text.sql).
-      # An error when every row holds such text (decision 204,
-      # tests/generic/rows_named.sql): the reader, not one place's text.
+      # An error when every row holds such text (tests/generic/rows_named.sql): the reader, not one place's text.
       - rows_named:
           name: int_places__resolved_stores_its_text
           arguments:

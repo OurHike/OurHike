@@ -5,8 +5,8 @@
 -- fetch_atc_features() today, which keeps a feature only where it carries a
 -- geometry. One row per site. The step orders them as fetch_atc_features
 -- does (by name, then GlobalID) and reads nothing else, so the key,
--- water_site_key (dbt_utils.generate_surrogate_key over layer and GlobalID,
--- decision 197), stays in the warehouse.
+-- water_site_key (dbt_utils.generate_surrogate_key over layer and GlobalID),
+-- stays in the warehouse.
 with sites as (
     select
         'shelters' as layer,

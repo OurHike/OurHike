@@ -498,7 +498,7 @@ checks as (
 
 -- validate() records an id only after its row passes every check,
 -- so the id belongs to the first row with no problem at all, and a later
--- row that passed every check before PC06 is the repeat.
+-- row that passed every check before the repeat check is the repeat.
 kept as (
     select
         spotify_id,

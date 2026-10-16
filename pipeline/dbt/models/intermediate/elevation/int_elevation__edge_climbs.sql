@@ -1,7 +1,6 @@
 {{ config(materialized='table') }}
 -- Each junction-graph edge's climb, [gain, loss] in whole feet, or nothing:
--- one row per edge of int_trail_network__edges. EL10 and EL11 of
--- pipeline/ELT.md's ledger, the SQL form of
+-- one row per edge of int_trail_network__edges. The SQL form of
 -- export_network_elevation.edge_climb over lib/elevation_gain.py's dead band
 -- (macros/dead_band_gain.sql). trail_graph_elevation.json is written from it
 -- (pub_trail_graph_elevation), and the trail_network mart is planned to carry

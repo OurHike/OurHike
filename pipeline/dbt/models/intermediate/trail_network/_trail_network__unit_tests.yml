@@ -743,7 +743,7 @@ unit_tests:
 
   - name: int_trail_network__raw_edges_an_edges_length_is_its_wgs84_geodesic_in_alaska_and_the_lower_48
     description: >
-      Decision 90 (the maintainer, 2026-10-06): length_m is measured on the
+      The maintainer, 2026-10-06: length_m is measured on the
       WGS84 ellipsoid, not in EPSG:5070, which is equal-area for the lower 48
       only. Each piece is 1,000 m on the ellipsoid, placed with pyproj's
       Geod: north from Anchorage (-149.9, 61.2), and east from Harriman

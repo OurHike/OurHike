@@ -18,8 +18,7 @@ sources:
       # the one that reads it, so `_loaded_at` is OurHike's clock, and no
       # run log row names a derived table for last_read_or_confirmed_at to
       # read. A stale one is a build reading a table an earlier build left.
-      # The thresholds are every monthly source's (decision 203,
-      # make_dbt_staging.py's MONTHLY_FRESHNESS_DAYS), both @unvalidated;
+      # The thresholds are every monthly source's (make_dbt_staging.py's MONTHLY_FRESHNESS_DAYS), both @unvalidated;
       # build_marts.py's freshness runs leave this source out (its
       # FRESHNESS_LEFT_OUT), since it is no upstream read.
       loaded_at_field: _loaded_at

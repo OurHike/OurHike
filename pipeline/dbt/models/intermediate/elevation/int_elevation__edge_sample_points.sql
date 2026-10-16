@@ -2,8 +2,7 @@
 -- Where each junction-graph edge reads the DEM: one row per sample along an
 -- edge, both ends included. The SQL form of
 -- export_network_elevation.edge_sample_points, which export_network_profile.py
--- imports so that the climb and the profile are measured at the same points
--- (EL11 and EL12 of pipeline/ELT.md's ledger read these rows).
+-- imports so that the climb and the profile are measured at the same points.
 -- step_dem_sampling reads them through int_elevation__dem_points, after the
 -- A.T.'s.
 --

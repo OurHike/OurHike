@@ -88,8 +88,7 @@ sources:
           # layer belongs), so not the source's 7 days on `_loaded_at`: how long
           # since the extract read the layer or confirmed it unchanged, from its
           # run log (macros/last_read_or_confirmed_at.sql). A refusal is a
-          # warning on the hourly run since decision 100 (the maintainer's poll
-          # of 2026-10-07), and red here after 24 hours unread: the thresholds
+          # warning on the hourly run (the maintainer's poll of 2026-10-07), and red here after 24 hours unread: the thresholds
           # are generate_notice_models.py's FRESHNESS_HOURS, graded there, and
           # tests/test_notice_source_freshness.py holds these to them.
           # publish-conditions.yml's freshness step selects `conditions_job`.
@@ -152,7 +151,7 @@ sources:
               visitor app SHOWS, not what exists on the ground - which is
               why export_nearby_poi.py reads the N side as low confidence
               rather than dropping it. The dbt path does the same for every
-              type but water, which decision 195 holds where it reads N
+              type but water, which is held where it reads N
               (int_points_of_interest__publishable).
       - name: raw_nysparks__oprhp_park_polygons
         data_tests:

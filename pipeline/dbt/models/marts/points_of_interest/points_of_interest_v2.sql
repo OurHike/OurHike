@@ -15,7 +15,7 @@
 -- or three, and where that straddles a half at the seventh decimal they
 -- would round apart.
 --
--- THE CUT IS PYTHON'S round(x, 6), as decision 8 cuts trails.geojson:
+-- THE CUT IS PYTHON'S round(x, 6), as trails.geojson is cut:
 -- cast(printf('%.6f', x) as double), which matched Python's round() on every
 -- one of 266,800 near-half doubles where DuckDB's round() missed 14,125
 -- (.claude/skills/dbt/SKILL.md, "Contracts, and the traps in them"). A
@@ -24,7 +24,7 @@
 -- coordinates to Python's round() of v1's properties.
 --
 -- Why a version: lat and lon are removed and geom_geojson's precision
--- changes, which decision 44 ships beside v1 (check_contract_versions.py).
+-- changes, so it ships as a new version beside v1 (check_contract_versions.py).
 -- v1 stays the latest version, so every unpinned ref still reads v1: the
 -- places, suggested_hikes and spur-destination models among them.
 with v1 as (

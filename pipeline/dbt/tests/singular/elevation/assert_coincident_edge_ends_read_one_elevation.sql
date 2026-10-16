@@ -1,6 +1,6 @@
 -- Where every edge-end meeting at a junction is the same published
 -- coordinate, the ends read one DEM point, so their published elevations are
--- one value and the node has no step (EL13 of pipeline/ELT.md's ledger;
+-- one value and the node has no step (;
 -- export_network_profile.measure_seams: "a node whose incident ends are all
 -- the SAME published coordinate has no step by construction, because the
 -- same lon/lat reads the same DEM pixel"). That is what lets a consumer
@@ -15,8 +15,8 @@
 -- vertex could in principle straddle a key or a pixel edge; the odds are
 -- about one in 10^8 a node (Reasoned from a ~1e-14 degree round trip against
 -- 1e-6 degree keys, never seen), and the build should not stop for them.
--- An error when every coincident node has a step (decision 204,
--- macros/test_levels.sql's named_rows_level(), over `total_rows`, the
+-- An error when every coincident node has a step (macros/test_levels.sql's
+-- named_rows_level(), over `total_rows`, the
 -- coincident nodes): the sampler, not a pixel edge.
 {{ config(
     fail_calc=named_rows_level(),

@@ -2,8 +2,8 @@
 -- ATC's own points that name the place a GATC water source is at (the
 -- gatc_water_atc_names seed, reviewed row by row), each with its point.
 -- int_points_of_interest__gatc_water reads each onto ATC's mile axis and
--- holds a placed source whose mile disagrees with its namesake's (decision
--- 75). One row per seed row per ATC point carrying that Name in that layer:
+-- holds a placed source whose mile disagrees with its namesake's. One row per
+-- seed row per ATC point carrying that Name in that layer:
 -- a Name ATC uses twice gives two rows, and the check takes the one nearer
 -- GATC's mile. A seed row whose Name ATC no longer carries gives none, and
 -- checks nothing (assert_gatc_water_names_find_both_halves warns).

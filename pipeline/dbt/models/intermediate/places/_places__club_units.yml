@@ -1,6 +1,6 @@
 version: 2
 
-# The clubs' parks and towns (the wave 1 places layers) in
+# The clubs' parks and towns (the generated club places layers) in
 # places.json. Kept apart from _places__unit_tests.yml on purpose:
 # tests/test_dbt_places_parity.py holds every unit test there to
 # export_places.py's own answer, and export_places.py reads no club layer,

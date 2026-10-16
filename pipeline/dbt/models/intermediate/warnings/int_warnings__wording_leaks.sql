@@ -32,8 +32,8 @@
 -- title can never fail on text the source's facts already carry. A row
 -- carried from the row history (int_closures__window_carried,
 -- int_closures__held_carried) is not read again: it was read here in the
--- build that first held it (Reasoned: every mart row passed this check, at
--- severity error before decision 81, as a gate hold since).
+-- build that first held it (Reasoned: every mart row passed this check when it
+-- was read).
 with wording as (
     select distinct
         source_key,
@@ -79,7 +79,7 @@ published as (
 -- of 24,101,736 characters of UA run 538's notices.json, read in the review
 -- of PR #1805 — dlt → dbt re-platform as one go/no-go change, 2026-10-05).
 -- `published` leaves it out before a row becomes JSON, so it is never even
--- written out: since decision 81 this runs before the gate, on the path every
+-- written out: this runs before the gate, on the path every
 -- mart and writer waits for (soak run 539, publish-conditions.yml
 -- 37254930168, built it in 21.05 s, then after the finals).
 published_values as (

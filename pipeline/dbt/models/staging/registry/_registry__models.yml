@@ -24,7 +24,7 @@ models:
           registry's answer, not a licence judgement (sources.json's
           reaches_hikers_comment).
         data_tests:
-          # SR01's hard failure: a source with no answer stops the build
+          # A hard failure: a source with no answer stops the build
           # rather than defaulting either way, as build_output() refuses.
           # Stricter in one place: export_sources.py reads any value by its
           # truth, so "no" in quotes would ship; here only a boolean counts.

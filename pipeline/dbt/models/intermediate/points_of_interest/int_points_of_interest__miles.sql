@@ -1,7 +1,7 @@
 {{ config(materialized='table') }}
 -- Each A.T.-family POI's NOBO mile from Springer, on the same
--- marker-calibrated axis the elevation profile is sampled along (PO11,
--- export_poi.py's attach_miles(); #753 — Publish a mile on every POI, because
+-- marker-calibrated axis the elevation profile is sampled along
+-- (export_poi.py's attach_miles(); #753 — Publish a mile on every POI, because
 -- this codebase measures a mile two different ways and a plan cannot survive
 -- that; #652 — The elevation profile's mile axis is out of order in 18
 -- places, by up to 46 miles). A position, never a heading. One row per

@@ -277,8 +277,7 @@ sources:
             data_tests:
               # WARN: the staging key falls back to OBJECTID where a row has
               # no GlobalID, so a missing one is reported, not fatal. An
-              # error when no row has one (decision 204,
-              # tests/generic/rows_named.sql): the layer stopped serving it.
+              # error when no row has one (tests/generic/rows_named.sql): the layer stopped serving it.
               - rows_named:
                   name: raw_atc__centerline_names_a_row_with_no_globalid
                   arguments:
@@ -317,8 +316,7 @@ sources:
             data_tests:
               # WARN: the staging key falls back to OBJECTID where a row has
               # no GlobalID, so a missing one is reported, not fatal. An
-              # error when no row has one (decision 204,
-              # tests/generic/rows_named.sql): the layer stopped serving it.
+              # error when no row has one (tests/generic/rows_named.sql): the layer stopped serving it.
               - rows_named:
                   name: raw_atc__side_trails_names_a_row_with_no_globalid
                   arguments:
@@ -449,9 +447,7 @@ sources:
           # the file, and freshness reads the run log instead
           # (macros/last_read_or_confirmed_at.sql), where every run that finds
           # the file unchanged writes `skipped`. A read the leg refuses on its
-          # own (a file that will not parse) is a warning on the hourly run
-          # since decision 100 (the maintainer's poll of 2026-10-07), and red
-          # here after 24 hours unread: the thresholds are
+          # own (a file that will not parse) is a warning on the hourly run (the maintainer's poll of 2026-10-07), and red here after 24 hours unread: the thresholds are
           # generate_notice_models.py's FRESHNESS_HOURS, graded there, and
           # tests/test_notice_source_freshness.py holds these to them.
           # publish-conditions.yml's freshness step selects `conditions_job`.
@@ -556,8 +552,7 @@ sources:
           # check is never FRESH, since each run re-reads a share of its pages,
           # so the newest `loaded` row stands still only while the read is
           # refused, or incomplete with too many pages moved to fit one run's
-          # budget. A refusal is a warning on the hourly run since decision 100
-          # (the maintainer's poll of 2026-10-07), and red here after 24 hours
+          # budget. A refusal is a warning on the hourly run (the maintainer's poll of 2026-10-07), and red here after 24 hours
           # without a read: the thresholds are generate_notice_models.py's
           # FRESHNESS_HOURS, graded there, and
           # tests/test_notice_source_freshness.py holds these to them. Before

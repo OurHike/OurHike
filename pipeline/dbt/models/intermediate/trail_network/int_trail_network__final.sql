@@ -1,6 +1,5 @@
 -- int_trail_network__final: the trail network mart's rows before their row
--- dates, every contracted column but _first_seen_at and _changed_at. This is
--- what models/marts/trail_network/trail_network.sql held until decision 57;
+-- dates, every contracted column but _first_seen_at and _changed_at. The
 -- int_trail_network__history snapshots it, and the mart reads that snapshot.
 --
 -- The junction graph a day hike routes over, one row per edge (pipeline/

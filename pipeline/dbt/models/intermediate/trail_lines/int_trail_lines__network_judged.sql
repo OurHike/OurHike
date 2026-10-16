@@ -10,8 +10,8 @@
 -- by another source, unsupported geometry. Values match as text
 -- only, as the Python compares JSON values with the registry's strings: a
 -- number never reads as "1".
---
--- TL13 needs INSIDE_BOUNDARY_MIN_FRACTION (0.8) of the line's length inside
+-- The park-boundary rule needs INSIDE_BOUNDARY_MIN_FRACTION (0.8) of the
+-- line's length inside
 -- the named park polygons, in degrees as inside_boundary() measures it. 0.8
 -- is @unvalidated in the Python's own comment, which names what would
 -- settle it: a real drive between 0.8 and 1.0.

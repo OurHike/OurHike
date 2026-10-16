@@ -13,8 +13,7 @@ models:
       ATC shelters, one row per shelter, keyed and deduplicated, with every
       upstream column the extract lands. Their poi_type ('shelter') and
       confidence ('high') are the poi_type_mapping seed's, joined in
-      int_points_of_interest__classified: decision 40 keeps classification
-      out of staging.
+      int_points_of_interest__classified: classification stays out of staging.
     columns:
       - name: poi_key
         description: >

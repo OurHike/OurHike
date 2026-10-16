@@ -1,7 +1,7 @@
 -- The ArcGIS coded-value domains the trail_lines family decodes against:
 -- one row per (source, field, code). export_trails.py and export_spurs.py
 -- fetch these live, mid-transform, with lib/arcgis.get_field_coded_domain;
--- here the decode is a join (pipeline/ELT.md's TL02), against a frozen copy.
+-- here the decode is a join against a frozen copy.
 --
 -- @unvalidated AS A COPY: the trail_lines_coded_domains var in
 -- dbt_project.yml was read from side_trails' live field metadata
@@ -18,8 +18,8 @@
 -- join answers the same (an integer-coded field landed as text would not).
 --
 -- THE KEY, coded_value_key, is dbt_utils.generate_surrogate_key over
--- (source_key, field_name, code), one of a field's coded values (decision
--- 197: every model has one column that is unique and not null).
+-- (source_key, field_name, code), one of a field's coded values (every model
+-- has one column that is unique and not null).
 select
     {{ dbt_utils.generate_surrogate_key([
         'domains.source_key',

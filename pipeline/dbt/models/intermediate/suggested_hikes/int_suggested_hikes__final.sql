@@ -1,6 +1,5 @@
 -- int_suggested_hikes__final: the suggested hikes mart's rows before their row
--- dates, every contracted column but _first_seen_at and _changed_at. This is
--- what models/marts/suggested_hikes/suggested_hikes.sql held until decision 57;
+-- dates, every contracted column but _first_seen_at and _changed_at. The
 -- int_suggested_hikes__history snapshots it, and the mart reads that snapshot.
 --
 -- The hikes a phone is offered, one row each, keyed by the id it publishes
@@ -26,12 +25,12 @@
 -- export_highlights.py publishes today.
 --
 -- THE SAFETY FIELDS (_suggested_hikes__models.yml has each test):
--- - SH08, the climb: `climb_gain_ft` and `climb_loss_ft` are both null where
+-- - The climb: `climb_gain_ft` and `climb_loss_ft` are both null where
 --   the walk was never priced, never 0, and Naismith reads them with no
 --   descent credit (client/src/lib/naismith.ts), left so;
--- - SH09, the photograph: only from the person-confirmed join, all three of
+-- - The photograph: only from the person-confirmed join, all three of
 --   its url, credit and licence or none, the url a sha256 bucket key;
--- - SH10, the publication: only with a named author, and no `hikerNote`
+-- - The publication: only with a named author, and no `hikerNote`
 --   column at all, because that field's contract is that a person checked
 --   the hike, and nobody has checked these; `author_name`, the steward the
 --   card credits, on every hike;

@@ -5,8 +5,7 @@ models:
     description: >
       Where the A.T. elevation profile reads the DEM: one row per 25 m sample
       along the mile axis (int_trail_lines__mile_axis), in walk order, with
-      the point in lon/lat and the published mile of each. EL05 of
-      pipeline/ELT.md's ledger, export_elevation.sample_points_along_parts
+      the point in lon/lat and the published mile of each. export_elevation.sample_points_along_parts
       and the mile half of build_profile. step_dem_sampling reads every row;
       int_elevation__profile drops the ones two pieces both cover.
     data_tests:
@@ -68,13 +67,13 @@ models:
   - name: int_elevation__profile
     description: >
       The A.T. elevation profile as elevation_profile.json publishes it, one
-      row per published sample in order: EL07 (the first piece to reach a
-      mile keeps it), EL08 (part_start at each seam) and EL09 (a DEM gap is
-      null, never 0) of pipeline/ELT.md's ledger, export_elevation's
-      profile_records. The numbers are text so unit tests hold them exactly;
+      row per published sample in order: the first piece to reach a
+      mile keeps it, part_start at each seam and a DEM gap is
+      null, never 0, as export_elevation's
+      profile_records has it. The numbers are text so unit tests hold them exactly;
       the elevation mart casts them.
     data_tests:
-      # A rule, not the key: EL07 publishes each walk sample at most once.
+      # A rule, not the key: each walk sample publishes at most once.
       # The key is the published sample, (line_id, seq), below.
       - dbt_utils.unique_combination_of_columns:
           arguments:
@@ -197,8 +196,7 @@ models:
     description: >
       Each junction-graph edge's samples with the DEM's answer at each: the
       metres as read, and the whole feet trail_graph_profile.json publishes,
-      rounded once from the metres (EL12 of pipeline/ELT.md's ledger,
-      export_network_profile.edge_profile's rounding). Null where the DEM has
+      rounded once from the metres (export_network_profile.edge_profile's rounding). Null where the DEM has
       no answer, never 0.
     data_tests:
       - dbt_utils.expression_is_true:
@@ -231,8 +229,7 @@ models:
   - name: int_elevation__edge_climbs
     description: >
       Each junction-graph edge's climb, gain and loss in whole feet, or null
-      where the DEM answered none of its samples: EL10 and EL11 of
-      pipeline/ELT.md's ledger, export_network_elevation.edge_climb over
+      where the DEM answered none of its samples: export_network_elevation.edge_climb over
       lib/elevation_gain.py's 3 m dead band (macros/dead_band_gain.sql),
       measured within the edge and never across a node join. One row per
       edge of int_trail_network__edges, the ones with no sample included.
@@ -269,8 +266,7 @@ models:
       - name: gain_ft
         description: >
           Confirmed ascent along the edge in feet, over each unbroken run of
-          samples, rounded UP to the whole foot, toward caution (decision
-          194): never under the unrounded figure, where today's
+          samples, rounded UP to the whole foot, toward caution: never under the unrounded figure, where today's
           export_network_elevation.py rounds to the nearest foot. Null where
           nobody measured the edge.
       - name: loss_ft
@@ -294,8 +290,7 @@ models:
   - name: int_elevation__seam_nodes
     description: >
       The vertical step at every junction two or more edge-ends meet at, one
-      row per such node: export_network_profile.measure_seams per node (EL13
-      of pipeline/ELT.md's ledger). `coincident` where every incident end is
+      row per such node: export_network_profile.measure_seams per node. `coincident` where every incident end is
       one published coordinate; step_ft, in the published whole feet, where
       two or more ends were measured.
     columns:
@@ -317,8 +312,7 @@ models:
   - name: int_elevation__seam_measurement
     description: >
       The junction graph's seam as trail_graph_profile_manifest.json's
-      `seam` block reports it, one row (EL13 of pipeline/ELT.md's ledger,
-      export_network_profile.measure_seams): shared nodes, coincident ones,
+      `seam` block reports it, one row (export_network_profile.measure_seams): shared nodes, coincident ones,
       steps, steps over the dead band, and the median, 95th percentile and
       largest step, nearest-rank. Writing the manifest is left to the cutover.
     data_tests:

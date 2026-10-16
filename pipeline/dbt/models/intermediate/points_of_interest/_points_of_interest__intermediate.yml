@@ -1,7 +1,7 @@
 version: 2
 
 # The points_of_interest family's rules, in the order export_poi.py and
-# export_nearby_poi.py apply them (pipeline/ELT.md's ledger rows PO01-PO38):
+# export_nearby_poi.py apply them:
 # unioned -> classified -> publishable -> in_corridor -> identified -> sites
 # -> water -> enriched -> described, with miles beside described, the
 # tombstones in retired, and every row that does not ship in dropped. Each
@@ -191,7 +191,7 @@ models:
           The other end of the walk, the nearest point on the feature, as
           "lat,lon" at 6 dp, the precision make_dbt_fixtures.py keys its EPQS
           answers at, so a unit test can hold it exactly. fetch_trail_water.py's
-          own cache has keyed each point exactly since decision 131.
+          own cache keys each point exactly.
       - name: passes_distance
         description: Within MATCH_RADIUS_FT of the nearest; false where nothing is near.
         data_tests: [not_null]
@@ -271,8 +271,7 @@ models:
   - name: int_points_of_interest__deduplicated
     description: >
       The reached POIs less each OSM water point within
-      WATER_DEDUP_RADIUS_M (25 m) of an opentrail water point (PO09,
-      export_poi.py's dedupe_water()): opentrail imports OSM, so the pair is
+      WATER_DEDUP_RADIUS_M (25 m) of an opentrail water point (export_poi.py's dedupe_water()): opentrail imports OSM, so the pair is
       largely one node arriving through two doors, and the opentrail one
       keeps its published id.
     columns:
@@ -440,7 +439,7 @@ models:
 
   - name: int_points_of_interest__cautioned
     description: >
-      int_points_of_interest__described's rows, every one, with decision 65 applied: a water point a
+      int_points_of_interest__described's rows, every one, with the seasonal-tap rule applied: a water point a
       layer_rules `plumbed_water` row names, a tap or fountain whose layer records no shutoff season,
       at low confidence (the phone's hollow pin) and with `water_caution`, which the waypoint card
       reads. A layer's own winter status (an `open_in_winter` row, CPW's d_WINTER_S 'Open') leaves the
@@ -527,8 +526,7 @@ models:
 
   - name: int_points_of_interest__water_sites
     description: >
-      The A.T. shelters and campsites step_site_water.py asks about (PO07,
-      PO17): one row per staged row of ATC's two layers that has a point, as
+      The A.T. shelters and campsites step_site_water.py asks about: one row per staged row of ATC's two layers that has a point, as
       fetch_trail_water.py reads them through build_water_distance.py's
       fetch_atc_features(), which keeps a feature only where it carries a
       geometry. The step orders them as fetch_atc_features() does, by name

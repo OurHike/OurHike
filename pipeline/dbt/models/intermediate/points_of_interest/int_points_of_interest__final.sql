@@ -1,7 +1,6 @@
 -- int_points_of_interest__final: the points of interest mart's rows before
 -- their row dates, every contracted column but _first_seen_at and _changed_at.
--- This is what models/marts/points_of_interest/points_of_interest.sql held
--- until decision 57; int_points_of_interest__history snapshots it, and the mart
+-- The int_points_of_interest__history snapshots it, and the mart
 -- reads that snapshot.
 --
 -- Every POI a phone is given, one row each, keyed by the id it publishes

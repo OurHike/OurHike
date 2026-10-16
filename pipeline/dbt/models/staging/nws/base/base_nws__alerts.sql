@@ -1,5 +1,5 @@
--- Every active NWS alert (extract/_shared/nws/alerts.py), keyed (decision
--- 40), with nothing filtered: Test messages and cancellations are still
+-- Every active NWS alert (extract/_shared/nws/alerts.py), keyed, with nothing
+-- filtered: Test messages and cancellations are still
 -- here, and int_warnings__nws_relayed leaves them out.
 --
 -- NWS's words stay as NWS wrote them: the text fields are renamed and

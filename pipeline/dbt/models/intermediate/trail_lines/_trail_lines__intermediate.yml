@@ -4,8 +4,7 @@ models:
   - name: int_trail_lines__mile_axis_pieces
     description: >
       The A.T. centerline merged into as few pieces as touch, each oriented
-      and put in order along a straight Springer->Katahdin line: steps EL01
-      and EL02 of the mile axis (pipeline/ELT.md), which
+      and put in order along a straight Springer->Katahdin line: the first two steps of the mile axis, which
       export_elevation.load_merged_trail_line and ordered_oriented_parts do
       today. ATC's half-mile markers then calibrate these pieces in
       int_trail_lines__mile_axis_markers and
@@ -43,8 +42,7 @@ models:
   - name: int_trail_lines__mile_axis_markers
     description: >
       Which of ATC's half-mile markers calibrates which centerline piece, and
-      where along it: the snap of step EL03 (pipeline/ELT.md),
-      export_elevation._snap_markers_to_parts plus calibrate_parts_to_markers'
+      where along it: export_elevation._snap_markers_to_parts plus calibrate_parts_to_markers'
       fallback for a piece no marker snapped to. One row per (piece, marker)
       pair. The model's comment says how ties are broken where the Python's
       STRtree has no rule.
@@ -383,8 +381,7 @@ models:
         description: >
           Whether the geometry is a LineString or MultiLineString. Anything
           else is skipped, with a warning, as export_trails.py warns and skips;
-          an error when no feature has a line (decision 204,
-          tests/generic/rows_named.sql), the layer's geometry rather than one
+          an error when no feature has a line (tests/generic/rows_named.sql), the layer's geometry rather than one
           feature's.
         data_tests:
           - rows_named:
@@ -600,8 +597,7 @@ models:
         description: >
           A Type that is there and does not decode, which export_spurs.py
           counts in one warning and does not treat as a spur. An error when
-          no side trail's Type decodes (decision 204,
-          tests/generic/rows_named.sql): the coded-value domain, not one row.
+          no side trail's Type decodes (tests/generic/rows_named.sql): the coded-value domain, not one row.
         data_tests:
           - rows_named:
               name: int_trail_lines__spurs_warns_of_an_undecodable_type
@@ -640,8 +636,7 @@ models:
     data_tests:
       # Two polygons naming one acronym: the Python keeps the later, this the
       # lower GlobalID's, so the two would name the club differently. An
-      # error when every club is named twice (decision 204,
-      # tests/generic/rows_named.sql): a doubled layer, not one club.
+      # error when every club is named twice (tests/generic/rows_named.sql): a doubled layer, not one club.
       - rows_named:
           name: int_trail_lines__club_names_name_each_club_once
           arguments:

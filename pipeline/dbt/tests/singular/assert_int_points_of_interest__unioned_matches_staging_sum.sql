@@ -42,7 +42,7 @@ with expected as (
             select count(*) from {{ ref('stg_derived__site_water') }}
             where has_water
         )
-        -- The wave 1 point layers, one branch for all of them.
+        -- The generated club point layers, one branch for all of them.
         + (
             select count(*)
             from {{ ref('int_points_of_interest__club_points') }}

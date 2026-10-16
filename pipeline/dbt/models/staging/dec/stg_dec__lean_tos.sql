@@ -3,7 +3,7 @@
 -- upstream column kept. The other five DEC per-type POI models have this
 -- shape and refer here.
 --
--- WHAT A ROW IS STAYS OUT OF STAGING, as decision 40 asks. sources.json
+-- WHAT A ROW IS STAYS OUT OF STAGING. sources.json
 -- declares this layer's poi_type ('shelter'), its id field (OBJECTID), its
 -- name field (NAME), its public flag (PUBLICUSE = 'Y') and the asset and
 -- facility fields a description is composed from; export_nearby_poi.py reads

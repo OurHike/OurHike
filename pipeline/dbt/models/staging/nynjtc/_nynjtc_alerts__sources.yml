@@ -16,8 +16,7 @@ sources:
       # unchanged, from its run log (macros/last_read_or_confirmed_at.sql).
       # `_loaded_at` moves only when NYNJTC's posts, as they would land, do
       # (WordpressPosts' change check), so a quiet week read as stale on it.
-      # A refusal is a warning on the hourly run since decision 100 (the
-      # maintainer's poll of 2026-10-07), and red here once NYNJTC has gone
+      # A refusal is a warning on the hourly run (the maintainer's poll of 2026-10-07), and red here once NYNJTC has gone
       # unread for 24 hours. The thresholds are generate_notice_models.py's
       # FRESHNESS_HOURS, graded there; tests/test_notice_source_freshness.py
       # holds these to them. publish-conditions.yml's freshness step selects

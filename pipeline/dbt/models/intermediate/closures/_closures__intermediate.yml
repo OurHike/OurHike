@@ -463,8 +463,7 @@ models:
       source with a row here, so the source carries its last good rows and
       every other source and file publishes.
     data_tests:
-      # The gate holds the source, so the row never reaches a mart (decision
-      # 81). `holds_a_source` makes build_marts.py print the rows and turn
+      # The gate holds the source, so the row never reaches a mart. `holds_a_source` makes build_marts.py print the rows and turn
       # the run red after the publish (its PARTIAL_EXIT). No severity of its
       # own: a warning in production and UA, which build on,
       # and an error in dev and CI, where no fixture row should land outside
@@ -971,8 +970,7 @@ unit_tests:
       tests/test_dbt_conditions_parity.py runs the Python over these rows and
       fails where the two disagree, except n09 (a named reference this model
       does not decode), n14 and n15 (one slug on two posts), n16 (a title
-      that is not a string) and n17-n19 (links back into the app, decision
-      94), which it lists as deliberate. n20's query key only contains the
+      that is not a string) and n17-n19 (links back into the app), which it lists as deliberate. n20's query key only contains the
       letters of `code`, and the post reads.
     model: int_closures__nynjtc_checked
     given:
@@ -4930,8 +4928,7 @@ unit_tests:
       half inside an area keeps only its inside half; a line wholly inside is
       kept whole, after it in line id order; a line outside adds nothing, and
       one that only touches a corner is no walkable section. Each area with a
-      stretch is one MultiLineString, a single stretch included. Decision
-      191: an area no line runs inside is shaded, its own outline its
+      stretch is one MultiLineString, a single stretch included. An area no line runs inside is shaded, its own outline its
       `shade_geojson`, and so is one whose only stretch, under a metre long,
       does not outlast the phone's 5 decimal places.
     given:

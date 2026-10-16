@@ -10,8 +10,8 @@
 -- (int_trail_lines__network_sources), clipped to their own ground.
 --
 -- `global_id_field` and `object_id_field` are the two fields
--- lib/feature_id.py's id reads, as sources.json names them (TL05,
--- macros/resolve_feature_id.sql): ATC spells its GlobalID `GlobalID`, so a
+-- lib/feature_id.py's id reads, as sources.json names them
+-- (macros/resolve_feature_id.sql): ATC spells its GlobalID `GlobalID`, so a
 -- side trail is published under it.
 --
 -- The Python finds a source's features at data/raw/<key>.geojson, so a new

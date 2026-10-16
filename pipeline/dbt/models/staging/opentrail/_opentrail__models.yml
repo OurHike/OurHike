@@ -13,8 +13,7 @@ models:
       opentrail waypoints, one row per waypoint, keyed and deduplicated, with
       every column the extract lands. What a waypoint is (its poi_type and
       confidence, from its `icon` through the poi_type_mapping seed) is
-      int_points_of_interest__classified's to say: decision 40 moved the seed
-      join out of staging.
+      int_points_of_interest__classified's to say: staging joins nothing.
     columns:
       - name: poi_key
         description: >

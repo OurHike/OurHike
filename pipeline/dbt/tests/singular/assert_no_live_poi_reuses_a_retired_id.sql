@@ -3,7 +3,7 @@
 -- upstream of every export: reconcile_poi_identity.py:585-592 holds a record
 -- that "re-presents the key of a RETIRED row", and :928-930 exits 2, so
 -- the publish stops until a person writes a `same` override. The dbt build
--- runs no reconcile (PO22 stays a Python step), so this is its hold, and it
+-- runs no reconcile (it stays a Python step), so this is its hold, and it
 -- names what the mart's unique test on poi_id would only count. Fails by
 -- returning each such id with the release that retired it.
 --
@@ -15,7 +15,7 @@
 -- tombstoned at once, the same count; this test was skipped there, so that
 -- log does not say which ids. The
 -- ledger's live rows hold 201 osm_water and 39 nhd_stream points, which this
--- build does not land yet (pipeline/ELT.md's PO03 and PO07), and a real
+-- build does not land yet, and a real
 -- water point in a site stops synthesis, so the likeliest reading is that
 -- those sites had one then and have none here (Reasoned; a build with OSM
 -- and trail water landed would settle it).

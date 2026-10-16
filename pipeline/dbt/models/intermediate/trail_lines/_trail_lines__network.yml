@@ -1384,8 +1384,7 @@ unit_tests:
       three branches the pytest reaches only through main(): the reason
       of the area a line overlaps most, a tie going to the area first in
       the layer (whose key sorts second, so a tie broken by key would
-      answer the other), and an area with no reason. And decision 213's
-      rule 6, "Only inside closes": a trail following the square's west
+      answer the other), and an area with no reason. And the rule 6, "Only inside closes": a trail following the square's west
       edge 0.84 m inside ships unchanged, and a trail running 1.1 m inside
       its south edge, then out and back in across it, closes only the
       stretch that goes in, its stretch along the edge open after the
@@ -1592,10 +1591,10 @@ unit_tests:
         - {"trail_line_id": "nynjtc_long_path:generated-0", "line_kind": "network", "feature_order": 9, "geom_geojson": "{\"type\":\"LineString\",\"coordinates\":[[-74.6,42.0],[-74.5,42.1]]}"}
   - name: int_trail_lines__network_published_measures_both_lengths_on_the_wgs84_ellipsoid
     description: >
-      Decision 97 (the maintainer's poll of 2026-10-06): a network line's
+      The maintainer's poll of 2026-10-06: a network line's
       length_m and published_length_m, which nearby_trails.geojson's
       `length_miles` is rounded from, are its length on the WGS84 ellipsoid
-      (macros/geodesic_length_m.sql), as decision 90 measures the graph's
+      (macros/geodesic_length_m.sql), as the graph measures its
       edges. One row per case of
       tests/test_export_nearby_trails.py's
       test_length_miles_is_the_lines_wgs84_geodesic_not_its_epsg5070_length:
@@ -1910,8 +1909,7 @@ exposures:
     description: >
       The Python step that runs the section-closure rule
       (lib/section_closures.py) over the conditions/notices.json the hourly
-      lane published and the network lines (pipeline/step_section_closures.py,
-      decision 213), between the dbt invocation that builds
+      lane published and the network lines (pipeline/step_section_closures.py), between the dbt invocation that builds
       int_trail_lines__network_area_closures and the one that reads its
       answer back as source('derived', 'section_closures'). A step because
       the monthly lane holds no hourly notice table, and the rule is the one

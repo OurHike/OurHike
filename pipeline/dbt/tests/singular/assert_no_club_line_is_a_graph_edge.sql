@@ -1,4 +1,5 @@
--- Decision 64 ("draw now, route later"): a club's own line draws on the map
+-- "Draw now, route later" (the maintainer, 2026-10-04): a club's own line
+-- draws on the map
 -- and never routes until a dedupe step has checked it against the lines
 -- already there, which is not built. A club line that reached the junction
 -- graph could carry a route along one copy of a trail and back along

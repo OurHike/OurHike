@@ -53,7 +53,7 @@
 -- its own order, then the club lines by source and id.
 --
 -- BOTH LENGTHS ARE ON THE WGS84 ELLIPSOID, as the network's are
--- (int_trail_lines__network_published's header; decision 97, the
+-- (int_trail_lines__network_published's header, the
 -- maintainer's poll of 2026-10-06): `length_m` of the line before the pass
 -- and `published_length_m` of the 1 m line, which nearby_trails.geojson's
 -- `length_miles` is rounded from, each by macros/geodesic_length_m.sql.

@@ -1,8 +1,7 @@
 version: 2
 
-# The clubs' own elevation layers (the wave 1), after
-# int_elevation__unioned: the rules pipeline/ELT.md's "What wave 1's live
-# reads found that phase C must honour" gives them, each with a unit test
+# The clubs' own elevation layers, after
+# int_elevation__unioned: the rules the live reads of 2026-10-03 found for them, each with a unit test
 # below. Neither model is read by a mart: every layer here is held back by
 # its sources.json row.
 models:
@@ -168,8 +167,7 @@ unit_tests:
   - name: elevation_club_samples_never_calibrate_from_an_unchecked_z
     model: int_elevation__club_samples
     description: >
-      ATC's Z checked against 3DEP before any calibration (pipeline/ELT.md, "What wave 1's live
-      reads found"): no step compares a sample with 3DEP yet, so every sample, ATX's metres
+      ATC's Z checked against 3DEP before any calibration: no step compares a sample with 3DEP yet, so every sample, ATX's metres
       included, is unchecked and unusable for calibration, however plausible its value.
     given:
       - input: ref('int_elevation__unioned')
@@ -233,8 +231,7 @@ unit_tests:
   - name: elevation_source_extents_count_a_row_with_no_geometry_but_not_its_vertices
     model: int_elevation__source_extents
     description: >
-      A region box is set from the rows' own vertices (pipeline/ELT.md, "What wave 1's live reads
-      found"): ATX's 18 rows with no geometry count as rows and add no vertex, and its vertices
+      A region box is set from the rows' own vertices: ATX's 18 rows with no geometry count as rows and add no vertex, and its vertices
       fit the eastern box.
     given:
       - input: ref('int_elevation__unioned')

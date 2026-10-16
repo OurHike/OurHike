@@ -1,6 +1,6 @@
 -- int_sources__final: the sources mart's rows before their row dates, every
--- contracted column but _first_seen_at and _changed_at. This is what
--- models/marts/sources/sources.sql held until decision 57; int_sources__history
+-- contracted column but _first_seen_at and _changed_at. The
+-- int_sources__history
 -- snapshots it, and the mart reads that snapshot.
 --
 -- Every registered source (one row per layer or feed in sources.json), with

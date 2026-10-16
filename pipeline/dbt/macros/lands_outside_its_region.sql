@@ -84,7 +84,7 @@
     Palmetto Trail's markers and lines (lon -83.125 to -79.561, lat 33.030
     to 35.215) sit inside the eastern box and have no entry.
 
-    WAVE 6'S STEWARDS (2026-10-11) follow ohta_major_trailheads: the point
+    THE STEWARDS REGISTERED 2026-10-11 follow ohta_major_trailheads: the point
     layers make_dbt_staging.py stages once their stewards' trail_orgs.json
     rows gave them club folders, each by every point read that day with
     outSR 4326 and geometry only, and IDOT's bicycle inventory, a trail-line

@@ -1,7 +1,7 @@
 {{ config(format='json', location='nearby_trails.geojson') }}
 -- nearby_trails.geojson, every other organization's trail lines, in the
--- shape export_nearby_trails.py's records_to_geojson() writes (decision 44's
--- v1): one Feature per line, its properties in that function's order, then
+-- shape export_nearby_trails.py's records_to_geojson() writes (the v1): one
+-- Feature per line, its properties in that function's order, then
 -- the geometry. No phone reads this file since #1257
 -- (client/src/lib/config.ts's NEARBY_TRAILS_TILES_KEY says why); it is what
 -- nearby_trails.pmtiles is cut from, and build_trail_graph.py,

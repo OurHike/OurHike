@@ -21,20 +21,21 @@
 -- build_output(). The places mart is this, typed.
 --
 -- Long trails: every (source, name) whose published lines total at
--- least trail_lines_network_named_trail_threshold_miles (50, TL12's
--- NAMED_TRAIL_THRESHOLD_MILES, @unvalidated in export_nearby_trails.py's
+-- least trail_lines_network_named_trail_threshold_miles (50,
+-- export_nearby_trails.py's NAMED_TRAIL_THRESHOLD_MILES, @unvalidated in
+-- export_nearby_trails.py's
 -- own comment, which names a run on the live registry as what settles
 -- it), summed by `trail_name` so the A.T. is one trail. The total that
 -- clears it is still in EPSG:5070 metres (`projected_metres`), the measure
--- the overview's through routes are summed in against the same threshold
--- decision 97 moved the miles printed, not which trails are listed.
+-- the overview's through routes are summed in against the same threshold: the
+-- ellipsoid moved the miles printed, not which trails are listed.
 -- So outside the lower 48 a trail near the threshold can be listed at under
 -- 50 printed miles, or left out at over 50 (export_places.py's
 -- load_named_trails() works the Anchorage case).
 --
 -- Miles of published trail, in metres on the WGS84 ellipsoid
--- (the maintainer's poll of 2026-10-06, as decision 90
--- measures the graph's edges): for a park, the lines inside its boundary;
+-- (the maintainer's poll of 2026-10-06, as the graph's edges are measured):
+-- for a park, the lines inside its boundary;
 -- for a trailhead, parking area or town, the lines within
 -- places_trail_radius_miles of its point (@unvalidated; dbt_project.yml
 -- says what would settle it), through ST_Buffer's default circle as
@@ -44,8 +45,8 @@
 -- EPSG:5070 too, which read five miles due north as 4.4 at Anchorage
 -- (measured 2026-10-06 with pyproj). The disc is still a circle in
 -- EPSG:5070 metres, so outside the lower 48 its radius on the ground is
--- not places_trail_radius_miles: decision 97 named the lengths, not the
--- disc. Rounded to a tenth with printf, as Python's round() rounds, never
+-- not places_trail_radius_miles: the poll named the lengths, not the disc.
+-- Rounded to a tenth with printf, as Python's round() rounds, never
 -- DuckDB's round(), which differed from Python on 14,125 of 266,800 doubles
 -- at the half (measured; int_trail_lines__network_published's header).
 --
@@ -65,7 +66,7 @@
 -- everywhere, which would read as "no park holds any trail"; and nothing
 -- is dropped for being far from a line.
 --
--- THE CLUBS' PARKS AND TOWNS (the wave 1 places layers,
+-- THE CLUBS' PARKS AND TOWNS (the generated club places layers,
 -- int_places__club_units, only those whose layer may publish) are measured
 -- the same two ways: a club park by the lines inside its boundary, a club
 -- town by the lines within the radius of its point. Each is kept whatever it
@@ -445,7 +446,7 @@ lines as (
     from published
 ),
 
--- Cut in EPSG:5070, measured on the WGS84 ellipsoid (PL08 above).
+-- Cut in EPSG:5070, measured on the WGS84 ellipsoid (above).
 shape_metres as (
     select
         measured_shapes.shape_kind,

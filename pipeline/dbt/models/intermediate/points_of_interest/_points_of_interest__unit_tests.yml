@@ -442,7 +442,7 @@ unit_tests:
 
   - name: int_points_of_interest__described_says_what_describe_stream_point_says
     description: >
-      PO07 and PO17's sentence: describe_stream_point(), which describe_water()
+      The stream sentence: describe_stream_point(), which describe_water()
       hands a point carrying `sources`, one row per case: the stream's name
       or "A stream", the flow claim in the words of whoever made it, the
       others who mapped it, and no claim where nobody classified the reach
@@ -541,7 +541,7 @@ unit_tests:
 
   - name: int_points_of_interest__described_says_what_describe_water_says
     description: >
-      PO03's sentence: describe_water()'s OSM half, one row per case: what
+      the sentence: describe_water()'s OSM half, one row per case: what
       was mapped (WATER_KINDS), "mapped as intermittent" for
       intermittent=yes in any case, "mapped as seasonal" for any seasonal
       value but no and the empty string, both joined by "and", "Marked not
@@ -1177,7 +1177,7 @@ unit_tests:
 
   - name: int_points_of_interest__in_corridor_applies_no_ring_without_a_network
     description: >
-      PO33's failure direction: with no published network line at all,
+      the failure direction: with no published network line at all,
       clip_to_network() keeps every row, so no ring applies, and the A.T.
       family keeps only what its corridor reaches. The same rows as the
       ring's unit test, against an empty network.
@@ -1284,7 +1284,7 @@ unit_tests:
 
   - name: int_points_of_interest__osm_water_reach_measures_like_measure_distances
     description: >
-      PO06's distance half: build_osm_water_reach.py's measure_distances()
+      the distance half: build_osm_water_reach.py's measure_distances()
       on OSM water points beside the centerline, a side trail another
       organization also draws (the side trail wins the tie), the Long Path,
       a line whose organization does not reach hikers (not measured), a
@@ -1452,7 +1452,7 @@ unit_tests:
 
   - name: int_points_of_interest__trailheads_marks_like_mark_closed_trailheads
     description: >
-      PO34 both ways, against the fixture warehouse's own ten A.T. side
+      The A.T. side-trail rule both ways, against the fixture warehouse's own ten A.T. side
       trails (make_dbt_fixtures.py; one has no geometry) and centerline,
       plus one more centerline piece: a trailhead 33 m from an open side
       trail and 44 m from a closed line is not marked; one whose two lines
@@ -1585,7 +1585,7 @@ unit_tests:
 
   - name: int_points_of_interest__trailheads_marks_nothing_without_the_side_trails
     description: >
-      PO34's miss-rather-than-cry-wolf direction when an A.T. layer is
+      the miss-rather-than-cry-wolf direction when an A.T. layer is
       missing: with no side trails, a trailhead beside the open A.T. and a
       closed side path would read as closed, so mark_closed_trailheads()
       marks nothing, and neither does this, though it still counts.
@@ -1633,7 +1633,7 @@ unit_tests:
 
   - name: int_points_of_interest__miles_reads_the_axis_like_attach_miles
     description: >
-      PO11 and PO10 on three axis pieces in EPSG:5070 metres: piece 0 ends
+      The mile rules on three axis pieces in EPSG:5070 metres: piece 0 ends
       exactly where piece 1 begins, at the projection of (-74, 41). Read
       between two anchors, before the first and past the last (one mile per
       mile), on a piece with one anchor, 200 m off to the side, 2 km past

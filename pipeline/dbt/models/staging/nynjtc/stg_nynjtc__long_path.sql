@@ -19,7 +19,7 @@
 -- this model and publishes the same id, so no line's id changes at cutover
 -- (ELT.md).
 --
--- FID IS NOT THE KEY. Decision 40 keys a row on current values and never
+-- FID IS NOT THE KEY. A row is keyed on current values and never
 -- on an object id alone, because a reload mints object ids again. Whether
 -- NYNJTC's seasonal republish in place keeps FIDs is @unvalidated: the live
 -- ids run from 1 to 85 over 43 rows (2026-10-09), which reads as features

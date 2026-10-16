@@ -1,8 +1,8 @@
 {{ config(materialized='table') }}
 -- Each junction-graph edge's samples with the DEM's answer at each, in metres
 -- and in the whole feet trail_graph_profile.json publishes: one row per row of
--- int_elevation__edge_sample_points. EL12 of pipeline/ELT.md's ledger, the
--- SQL form of export_network_profile.edge_profile's rounding.
+-- int_elevation__edge_sample_points. The SQL form of
+-- export_network_profile.edge_profile's rounding.
 --
 -- WHOLE FEET, as the Python rounds them: the DEM's metres over
 -- elevation_metres_per_foot, rounded once, from the unrounded metres, as

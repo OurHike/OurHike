@@ -1,5 +1,5 @@
--- NYNJTC's Trail Alerts posts (extract/nynjtc/closures.py), keyed (decision
--- 40), with nothing filtered and nothing joined. Reading a post is the
+-- NYNJTC's Trail Alerts posts (extract/nynjtc/closures.py), keyed, with
+-- nothing filtered and nothing joined. Reading a post is the
 -- work of int_closures__nynjtc_checked, which does what lib/nynjtc_alerts.py's
 -- parse_alert() does: unescape the title, resolve the place-term ids.
 --

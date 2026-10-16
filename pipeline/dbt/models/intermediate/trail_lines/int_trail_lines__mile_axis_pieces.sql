@@ -1,7 +1,7 @@
 {{ config(materialized='table') }}
 -- The A.T. centerline merged into as few pieces as touch, oriented and put
 -- in order along a straight Springer->Katahdin line: the first two steps of
--- the mile axis (pipeline/ELT.md's EL01 and EL02), before ATC's half-mile
+-- the mile axis, before ATC's half-mile
 -- markers calibrate it in int_trail_lines__mile_axis. One row per piece, in
 -- the order export_elevation.ordered_oriented_parts returns them.
 --

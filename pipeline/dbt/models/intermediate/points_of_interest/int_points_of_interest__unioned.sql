@@ -2,7 +2,7 @@
 -- Every staged row of every layer a POI file publishes from, one row each,
 -- unfiltered and unclassified: the A.T. family export_poi.py writes as the
 -- eight poi_<type>.geojson files, the other organizations' layers
--- export_nearby_poi.py writes as nearby_poi.geojson, the wave 1
+-- export_nearby_poi.py writes as nearby_poi.geojson, the generated club
 -- point layers, which no exporter reads, and GATC's water list placed from
 -- its miles (the last two branches). A row here is
 -- not a publishable POI; int_points_of_interest__classified and
@@ -26,8 +26,8 @@
 -- branch list to the staging models it reads, row for row.
 --
 -- The last branch is not a staged layer: it is fetch_trail_water.py's site
--- water, which step_site_water.py derives into derived.site_water (PO07,
--- PO17), one point per shelter or campsite whose water the gates passed.
+-- water, which step_site_water.py derives into derived.site_water, one point
+-- per shelter or campsite whose water the gates passed.
 -- Its properties are the six load_trail_water() writes, under the same
 -- names, and the poi_sources seed reads its id from `site_global_id`, so the
 -- stream point publishes as `nhd_stream:<site GlobalID>` exactly as
@@ -131,7 +131,7 @@ select
 from {{ ref('stg_derived__site_water') }} as site
 where site.has_water
 union all by name
--- The wave 1 point layers, every row of the clubs' registered
+-- The generated club point layers, every row of the clubs' registered
 -- ArcGIS point layers that no exporter reads: int_points_of_interest__
 -- club_points, which types each row from the club_poi_types seed and holds
 -- it back by the layer_rules seed. Each is a record already typed, as the
@@ -163,7 +163,8 @@ union all by name
 -- records: each A.T. source placed on ATC's mile axis from GATC's own mile,
 -- typed water at low confidence there, with its hold reason where one holds
 -- it (the approach trail, a mile no piece carries, GATC's own "dry", a
--- namesake past the bound), read as the wave 1 records above are. A held
+-- namesake past the bound), read as the generated club records above are. A
+-- held
 -- source with no point arrives with a null geom; the classifier reads its
 -- rule_drop_reason first.
 select

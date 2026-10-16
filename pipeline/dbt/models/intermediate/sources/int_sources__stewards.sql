@@ -10,8 +10,8 @@
 -- `steward` the provider's shipping sources name; the first such block in
 -- the file wins, as in `_block`, so photo_licence, which comes first, is
 -- ATC's licence block. `steward`, `trust` and `attribution` come from the
--- sources only when every shipping source gives the same one (SR06,
--- `_unanimous`; a source that gives none breaks the agreement).
+-- sources only when every shipping source gives the same one (`_unanimous`; a
+-- source that gives none breaks the agreement).
 --
 -- Problems are `_support_record`'s and `_store_record`'s, in
 -- their words, except for a paper-map table no resource lands: SQL sees

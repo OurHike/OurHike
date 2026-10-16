@@ -1,6 +1,6 @@
 {{ config(materialized='table') }}
 -- Every elevation the clubs' registered elevation layers publish, one row per
--- sample, in metres and in feet: the wave 1 elevation layers
+-- sample, in metres and in feet: the generated club elevation layers
 -- (int_elevation__unioned), read the way each layer's sources.json row says.
 -- No mart reads this yet; every layer here is held back by its row
 -- (`reaches_hikers: false`).
@@ -16,8 +16,7 @@
 --   are band_low_ft and band_high_ft, the top band open, and the sample has
 --   no single elevation. A value that is neither is kept, with no elevation.
 --
--- THE RULES (pipeline/ELT.md, "What wave 1's live reads found that phase C
--- must honour"), each a unit test in _elevation__club_samples_unit_tests.yml:
+-- THE RULES, each a unit test in _elevation__club_samples_unit_tests.yml:
 -- - UNITS PER ROW. Each sample carries its own layer's `elevation_unit` and
 --   is converted by it: ATC's ATX Z is metres, NCTA's, NJDEP's, PASDA's and
 --   PCTA's are feet (each row's elevation_unit_comment has the 3DEP check

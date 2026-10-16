@@ -1,6 +1,6 @@
 -- Ice Age National Scenic Trail in Wisconsin (WDNR) (Wisconsin DNR,
--- sources.json `wi_ice_age_trail`): every row, keyed and deduped (decision
--- 40), with nothing filtered and nothing joined. A base model, the one place
+-- sources.json `wi_ice_age_trail`): every row, keyed and deduped, with nothing
+-- filtered and nothing joined. A base model, the one place
 -- this dataset is staged, for the stewardship and staging models
 -- of every club whose portion it holds.
 --

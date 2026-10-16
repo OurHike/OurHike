@@ -1,6 +1,6 @@
 -- A HELD NOTICE SOURCE WHOSE NOTICES WERE READ KEEPS ROWS IN THE MARTS, OR
--- conditions/notices.json KEEPS ITS LAST COPY (review finding DBT-10 of PR
--- #1805 — dlt → dbt re-platform as one go/no-go change, with decision 81).
+-- conditions/notices.json KEEPS ITS LAST COPY (a review finding on PR #1805 —
+-- dlt → dbt re-platform as one go/no-go change).
 -- A notice source int_closures__gate holds although this build read rows of
 -- it carries its last good rows (int_closures__held_carried, and
 -- int_closures__window_carried for a feed). Where the row history holds none
@@ -15,8 +15,8 @@
 -- tolerance and no severity of its own: an error in dev and
 -- CI, and in production and UA a warning, so every other file still
 -- publishes, which `holds_a_source` makes build_marts.py print and turn red
--- after the publish (its PARTIAL_EXIT). Decision 208 gates the tests of
--- int_closures__gate at error and leaves this one on the switch, with the
+-- after the publish (its PARTIAL_EXIT). The tests of int_closures__gate are
+-- errors everywhere; this one stays on the switch, with the
 -- held share (int_closures__gate_holds_no_source): what it names is a held
 -- source, which at error would hold every conditions file.
 {{ config(meta={'holds_a_source': true}) }}

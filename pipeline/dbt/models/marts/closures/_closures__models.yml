@@ -119,8 +119,7 @@ models:
       # their miles, and the backend bounds them itself (finite, swapped into
       # order on the way in, app/schemas/closure.py), so one out-of-extent
       # closure is reported rather than allowed to hold every OurHike closure
-      # back. An error when every such row is (decision 204,
-      # tests/generic/rows_named.sql): the miles broken wholesale.
+      # back. An error when every such row is (tests/generic/rows_named.sql): the miles broken wholesale.
       - rows_named:
           name: closures_other_miles_are_inside_the_trail_and_in_order
           arguments:
@@ -155,8 +154,7 @@ models:
       # tests/generic/lands_in_the_region_its_source_publishes_in.sql's.
       # A swap in stg_oprhp__trail_closures passed every other test while every
       # closed section left nearby_trails.geojson (measured 2026-10-03).
-      #
-      # DECISION 81's HOLD, WITH DECISION 204's SWITCH: int_closures__rows_outside_region runs
+      # THE PER-SOURCE HOLD, WITH THE ENVIRONMENT SWITCH: int_closures__rows_outside_region runs
       # the same boxes before the gate, which holds such a source, so a row
       # this finds is one that hold leaves in the mart: a row carried from
       # the row history, or an NWS alert, which reaches the warnings mart
@@ -476,8 +474,7 @@ models:
       - name: issuer
         description: >
           The agency that issued the order, where its publisher compiles
-          other agencies' orders and its rows name the issuer (decision 213,
-          rule 21; seeds/notice_issuers.csv): 'Bureau of Land Management' on
+          other agencies' orders and its rows name the issuer (rule 21; seeds/notice_issuers.csv): 'Bureau of Land Management' on
           a Utah FFSL row. Null on every other row. Not prose: a name, from
           the field the source names its issuer in.
         data_type: varchar
@@ -541,16 +538,14 @@ unit_tests:
           - {source_key: oprhp_trail_closures, may_publish: false}
           - {source_key: feed_a, may_publish: true}
           - {source_key: feed_b, may_publish: false}
-      # A feed's notice the window aged out is carried in (decision 53's
-      # phase C), from the closures mart only, and only where its source may
+      # A feed's notice the window aged out is carried in (the phase C), from the closures mart only, and only where its source may
       # publish: the gate's read checks do not apply to the last good rows.
       - input: ref('int_closures__window_carried')
         rows:
           - {mart: closures, notice_id: 'feed_a:item-1', source_key: feed_a, obstructs_trail: true, review_state: org_published}
           - {mart: closures, notice_id: 'feed_b:item-2', source_key: feed_b, obstructs_trail: true, review_state: org_published}
           - {mart: warnings, notice_id: 'feed_a:item-3', source_key: feed_a, obstructs_trail: null, review_state: not_reviewed}
-      # A notice source the gate holds keeps its last good rows (decision 53's
-      # phase D), each in the mart it was in: int_closures__held_carried has
+      # A notice source the gate holds keeps its last good rows (the phase D), each in the mart it was in: int_closures__held_carried has
       # already read the gate, so every closures row it hands over lands.
       - input: ref('int_closures__held_carried')
         rows:

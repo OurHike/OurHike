@@ -7,11 +7,11 @@
 -- export_atc_updates.py's build_document() writes: `generated_at`, the
 -- reviewed file's `reviewed_at`, every reviewed row in the file's order, each
 -- as lib/atc_updates.py's published_rows() writes it, and then every update
--- ATC posted since the review that publishes without a person (#963,
--- CL07-CL10), in slug order, each as auto_row() writes it.
+-- ATC posted since the review that publishes without a person (#963), in slug
+-- order, each as auto_row() writes it.
 --
 -- WHICH ROWS: ATC's rows in the closures mart and in the warnings mart.
--- Decision 7 splits them by obstructs_trail, and this file has always held
+-- obstructs_trail splits them between the two, and this file has always held
 -- both halves; an automatic row's obstructs_trail is forced false, so every
 -- one is in the warnings mart (review_state `auto`). Each row's JSON is the
 -- published_row of int_closures__atc_checked (the reviewer's own values) or

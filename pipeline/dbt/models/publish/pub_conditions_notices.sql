@@ -19,7 +19,7 @@
 -- `steward_kind` is the readers seed's club or agency (the "clubs
 -- only": the phone shows an agency's notice to a planned hike only where it
 -- is placed on or near the route).
--- `states` is decision 76's: on the rows of a source seeds/notice_states.csv
+-- `states`: on the rows of a source seeds/notice_states.csv
 -- names, the two-letter codes of the states it speaks for, and absent on
 -- every other row. The phone shows such an agency notice to a hike planned
 -- in one of them that walks the agency's trails, reading the states' shapes
@@ -69,8 +69,7 @@
 --   11.45 m a phone's own fix is off under canopy (ELT.md, "Simplify
 --   geometries"), so the line moves less than the hiker's dot does
 --   (Reasoned).
---   Everything at 5 decimal places, 1.1 m of latitude, where decision 8's
---   files carry 6.
+--   Everything at 5 decimal places, 1.1 m of latitude, where the files carry 6.
 -- Measured 2026-10-05 on UA's live file (generated 2026-10-05T01:22:48Z,
 -- 7,392 notices, 1,063 of them areas), re-shaped by the macro as dbt
 -- compiles it, run on DuckDB 1.5.5 with spatial eb1e57c (dbt 2.0.6's own
@@ -89,8 +88,8 @@
 -- a carried row (a source int_closures__gate holds this build keeps its last
 -- good rows, int_closures__held_carried) it is the latest such read before
 -- carrying began, so it never claims a read this build did not use.
--- `first_seen_at` and `changed_at` are the marts' row dates (decisions 52 and
--- 57), null in a build without its history. `starts_on` and
+-- `first_seen_at` and `changed_at` are the marts' row dates, null in a build
+-- without its history. `starts_on` and
 -- `ends_on` are the club's own, never filled in.
 --
 -- `current_until` IS THE LAST DAY THE NOTICE READS AS CURRENT, an ISO day,
@@ -126,8 +125,8 @@
 -- `standing` as "Closed until <steward> says otherwise." (client/src/lib/
 -- noticeCurrency.ts). Both read from the marts, so a carried row keeps
 -- them as the history saved them (int_closures__held_carried).
--- A hazard area carries NO `current_until` key, so it never greys (decision
--- 156, the maintainer's poll of 2026-10-11, "Stay current while served"). It
+-- A hazard area carries NO `current_until` key, so it never greys (the
+-- maintainer's poll of 2026-10-11, "Stay current while served"). It
 -- is a standing designation the agency's live layer serves again on every
 -- read, not an event with an end, and none of the 341 on UA's file of
 -- 2026-10-10 had an edit date (Measured), so the date rules would have greyed
@@ -163,7 +162,7 @@
 -- (Reasoned: every build that saves its history writes this file from the
 -- same marts; a --no-history-save build is the exception), and holding the
 -- file for it would stop every club's notices for as long as one source is
--- never read, the outcome decision 81 rejected.
+-- never read, which the maintainer rejected (poll of 2026-10-05).
 --
 -- `conditions/atc_updates.json` and `conditions/nynjtc_alerts.json` are not
 -- touched: their writers, their parity lines and installed phones keep them

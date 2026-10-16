@@ -2,9 +2,7 @@ version: 2
 
 # The phase C: the club notice sources' seeds. Eight are reviewed
 # by hand row by row (notice_source_fields, the notice_words and
-# notice_word_overrides, the notice_hazard_areas, decision 76's
-# notice_states, Q3's notice_steward_areas and decision 213's
-# notice_park_terms), one is a
+# notice_word_overrides, the notice_hazard_areas, the notice_states, Q3's notice_steward_areas and the notice_park_terms), one is a
 # person's mark on a notice (notice_marks), one is copied from the layers'
 # own coded-value domains (notice_category_labels; notice_issuers, which also
 # names each compiled layer's issuer field), and one is written by
@@ -30,8 +28,7 @@ seeds:
       the inventory notes quoted in `why`, and not read against live values,
       except where `why` says so. A source another reader lands has a row
       only where its rows carry its status in fields of the site's own
-      beyond the reader's shape (the Great Allegheny Passage's ACF fields,
-      the maintainer's answer to wave 6's page 01, P6, poll of 2026-10-11):
+      beyond the reader's shape (the Great Allegheny Passage's ACF fields, the maintainer's poll of 2026-10-11):
       each named as `column.$path`, replacing the reader's field for that
       role alone (generate_notice_models.py's ONE EXCEPTION TO A FIXED
       SHAPE), and held by that test to the source's fixture rows.
@@ -61,8 +58,7 @@ seeds:
         description: >
           The field holding the notice's own headline or name, or words in
           single quotes that every row of the layer is titled with, where the
-          layer's only such field holds a code a hiker cannot read (decision
-          95: CPW's conflict areas, whose ACTIVITYCO reads BBHCA or MLHCA).
+          layer's only such field holds a code a hiker cannot read (CPW's conflict areas, whose ACTIVITYCO reads BBHCA or MLHCA).
       - name: category
         description: >
           The field a row shows under its title as the source's own label,
@@ -145,8 +141,7 @@ seeds:
           The layer's own name as its service publishes it, the `name` of
           its layer document, read for every ArcGIS row on 2026-10-15
           through the extract's own request (lib/user_agent.py's
-          USER_AGENT). A schema fact, staged as a constant on every row:
-          decision 190 reads whether the layer is named for closures (a
+          USER_AGENT). A schema fact, staged as a constant on every row: the closure rules read whether the layer is named for closures (a
           layer closes by its own name only if that name says so, the
           maintainer's poll of 2026-10-15) or for a kind of site. Empty for
           a source no layer document names.
@@ -162,8 +157,7 @@ seeds:
       int_closures__club_notices' rule 2 reads every club notice against it,
       in the order its header gives: `not_current` (held: an archived,
       cleared, hidden or open row, a flag's no), `not_a_hikers_use` (held as
-      nothing for a hiker: motorized, OHV, snowmobile, decision 165 made
-      general) unless a `bars_every_use` word (any use, public entry) or an
+      nothing for a hiker: motorized, OHV, snowmobile) unless a `bars_every_use` word (any use, public entry) or an
       `a_hikers_use` word (foot, stock) stands beside it, `closes_trail`
       (closed, closure, impassable) unless a `partly` (partial), an
       `a_way_around` (detour, reroute), a `not_a_closure` (alert, notice,
@@ -305,8 +299,7 @@ seeds:
           ('Safety Closure') whatever they bar, 'Forest Wide - Alcohol'
           among them (read live 2026-10-14). In a status the same word is
           the row's state ('Full Closure') and closes by itself, and so it
-          does as a placed row's whole category ('Closure' alone, decision
-          213, rule 1). True also on 'restriction' and 'restrictions', the
+          does as a placed row's whole category ('Closure' alone, rule 1). True also on 'restriction' and 'restrictions', the
           other kind of order a category names, which therefore keeps no
           title quiet: a title's unqualified closing word beside a category
           of 'Other Restriction' closes (rule 2).
@@ -409,8 +402,7 @@ seeds:
     description: >
       Where a publisher compiles other agencies' orders and each row names
       the agency that issued it, the field that names it, and the label the
-      layer's own coded-value domain gives each code of that field (decision
-      213, rule 21, the maintainer's poll of 2026-10-15). A row with no code
+      layer's own coded-value domain gives each code of that field (rule 21, the maintainer's poll of 2026-10-15). A row with no code
       names a field that holds the issuer in words, shown as written.
       pipeline/generate_notice_models.py stages the field as `issuer` on its
       source alone; int_closures__club_notices shows the label, and the
@@ -501,8 +493,7 @@ seeds:
   - name: notice_steward_areas
     description: >
       A notice source whose points sit inside its own steward's areas, and
-      the layer of those areas (the maintainer's answer to Q3, poll of
-      2026-10-11: "a status point inside exactly one of its steward's own
+      the layer of those areas (the maintainer's poll of 2026-10-11: "a status point inside exactly one of its steward's own
       areas takes that area"). int_closures__club_notices' rule 4 gives such
       a notice, where its own geometry is a point inside exactly one area of
       that layer, the area as its place; inside none or several it keeps its
@@ -532,7 +523,7 @@ seeds:
     description: >
       A person's mark on one notice: `lifted` ends a notice that a feed's
       window no longer carries (int_closures__window_carried keeps such a
-      notice otherwise, because a window is not a list, decision 53 phase C).
+      notice otherwise, because a window is not a list).
       Empty until somebody marks one; each row is reviewed in a pull
       request like any other seed.
     config:
@@ -608,8 +599,7 @@ seeds:
           organization as one (generate_notice_models.py's CLUB_TYPES), agency
           for the other types there and for every extract/_shared/ folder.
           pub_conditions_notices publishes it, and the phone's planned-hike
-          panel shows an agency's notice only where it is placed (decision
-          66's "clubs only"). OurHike's own and NWS's rows read agency and
+          panel shows an agency's notice only where it is placed (the "clubs only"). OurHike's own and NWS's rows read agency and
           never reach notices.json.
         data_tests:
           - not_null
@@ -618,8 +608,7 @@ seeds:
                 values: [club, agency]
   - name: notice_states
     description: >
-      The agency notice sources that speak for a whole state (decision 76,
-      the maintainer's poll of 2026-10-04 from statewide_notice_mock.html's
+      The agency notice sources that speak for a whole state (the maintainer's poll of 2026-10-04 from statewide_notice_mock.html's
       frame A): BLM's state fire-restriction pages and CT DEEP's state parks
       emergency message. Such a notice is placed by its state, on that
       agency's land: the phone shows it to a hike planned in a named state

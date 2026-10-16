@@ -1,6 +1,5 @@
 -- int_places__final: the places mart's rows before their row dates, every
--- contracted column but _first_seen_at and _changed_at. This is what
--- models/marts/places/places.sql held until decision 57; int_places__history
+-- contracted column but _first_seen_at and _changed_at. The int_places__history
 -- snapshots it, and the mart reads that snapshot.
 --
 -- Every place a hiker can name before anything is downloaded, one row each:

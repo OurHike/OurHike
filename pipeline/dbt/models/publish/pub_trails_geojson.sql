@@ -1,6 +1,6 @@
 {{ config(format='json', location='trails.geojson') }}
--- trails.geojson, the A.T.'s lines as the phone draws them (TL15's 1 m
--- pass, the 6 decimals), from the trail_lines
+-- trails.geojson, the A.T.'s lines as the phone draws them (the 1 m simplify
+-- pass, 6 decimals), from the trail_lines
 -- mart's A.T. rows: the centerline's chains, then the side trails and spurs,
 -- in feature_order, as export_trails.py writes them. A FeatureCollection
 -- named "trails", as GDAL's GeoJSON driver names it there, each feature's

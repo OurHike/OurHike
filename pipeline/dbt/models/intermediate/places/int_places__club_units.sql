@@ -1,6 +1,6 @@
 {{ config(materialized='table') }}
--- The parks and towns of the clubs' registered places layers (decision 54's
--- wave 1, int_places__unioned) that places.json lists, one row per place,
+-- The parks and towns of the clubs' registered places layers
+-- (int_places__unioned) that places.json lists, one row per place,
 -- before anything is measured: int_places__resolved measures each as it
 -- measures NY Parks' parks and the waypoint towns, and the places mart lists
 -- them beside those.

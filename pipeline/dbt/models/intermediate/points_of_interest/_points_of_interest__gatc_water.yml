@@ -1,7 +1,6 @@
 version: 2
 
-# GATC's water list on its way into the points_of_interest family (decision 75,
-# the maintainer's poll of 2026-10-04): int_points_of_interest__gatc_water places
+# GATC's water list on its way into the points_of_interest family (the maintainer's poll of 2026-10-04): int_points_of_interest__gatc_water places
 # each A.T. source on ATC's mile axis from GATC's own mile, holds what it cannot
 # stand behind, and types the rest water at low confidence, as a record
 # int_points_of_interest__unioned reads whole. Its rules are unit tests below;
@@ -142,7 +141,7 @@ models:
 unit_tests:
   - name: gatc_water_places_each_mile_on_the_axis_and_holds_what_it_cannot_stand_behind
     description: >
-      Decision 75 on three axis pieces in EPSG:5070 metres (the miles unit test's): a mile between
+      GATC's water list on three axis pieces in EPSG:5070 metres (the miles unit test's): a mile between
       two anchors, before the first and past the last on piece 0, and on piece 1's one anchor,
       each placed and read back at its own mile; the start of piece 2. Held: an approach-trail
       row, a mile in the gap between pieces 0 and 1 (never moved to the nearer), an entry that

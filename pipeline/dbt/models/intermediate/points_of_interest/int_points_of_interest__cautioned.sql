@@ -1,5 +1,5 @@
--- int_points_of_interest__described's rows, every one, with decision 65's
--- season caution applied (the maintainer's poll of 2026-10-04, from
+-- int_points_of_interest__described's rows, every one, with the season caution
+-- applied (the maintainer's poll of 2026-10-04, from
 -- decisions-64-67-mock.html section 2): a plumbed tap or fountain whose
 -- layer records no shutoff season ships as UNCONFIRMED water, at low
 -- confidence, which the phone draws as its hollow pin, and with

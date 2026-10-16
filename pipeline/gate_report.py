@@ -599,10 +599,9 @@ SOAK_LEG = "ua"
 #: What --commit takes: a commit's sha, in full or by its first seven characters or more (git's own short form).
 COMMIT_SHAPE = re.compile(r"[0-9a-fA-F]{7,40}")
 #: The longest two consecutive runs of the soak may be apart and still both count, in hours. Decided by the
-#: maintainer, 2026-10-11: "Allow one missed hour". The soak's routine dispatches publish-conditions.yml at :18
-#: every hour from the session that watches the pull request, and runs 617 to 624 (2026-10-10, 11:20 to 18:19 UTC) began
-#: 55.6 to 63.0 minutes apart (Measured from the Actions API's created_at). A restart of that session's container then
-#: delayed the 23:18 UTC tick by 56 minutes, so run 629 (22:18) was followed by run 631 (00:15), 1 h 57 min apart
+#: maintainer, 2026-10-11: "Allow one missed hour". The soak is dispatched at :18 every hour, and runs 617 to
+#: 624 (2026-10-10, 11:20 to 18:19 UTC) began 55.6 to 63.0 minutes apart (Measured from the Actions API's created_at).
+#: A restart of the dispatcher then delayed the 23:18 UTC tick by 56 minutes, so run 629 (22:18) was followed by run 631 (00:15), 1 h 57 min apart
 #: (Measured, 2026-10-11). 2.5 hours takes one missed hour and its jitter, and still refuses two in a row.
 SOAK_MAX_GAP_HOURS = 2.5
 

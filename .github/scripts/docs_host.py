@@ -279,7 +279,7 @@ CSS_URL = re.compile(r"""url\(\s*['"]?(/[^'")\s]*)""")
 #: adds a hidden `<a href="https://docs.ourhike.org/cdn-cgi/content?id=…"
 #: aria-hidden="true" rel="nofollow noopener" style="display: none !important">`
 #: right after `<body>` of a page it serves to a non-browser agent: a bot
-#: setting on the zone, AI Labyrinth by its look (measured by the lead against
+#: setting on the zone, AI Labyrinth by its look (measured against
 #: the maintainer's placeholder, 2026-10-10 21:07 UTC; ourhike-docs.pages.dev
 #: does not add it). `check` reads the bundle, where no such link can be, so
 #: this only matters to a copy saved from the served site; it is skipped there

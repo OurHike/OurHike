@@ -183,3 +183,46 @@ describe('a geometry place', () => {
     })
   })
 })
+
+describe('an org_terms place’s park areas (rule 19, decision 213)', () => {
+  const harriman = {
+    place_id: 'oprhp_park_polygons:20',
+    name: 'Harriman',
+    bbox: [-74.2, 41.1, -74.0, 41.3],
+  }
+
+  it('keeps every readable area with its bbox as [west, south, east, north]', () => {
+    const notice = validNotice(
+      row({ place: { kind: 'org_terms', terms: ['park:harriman'], areas: [harriman] } }),
+    )
+    expect(notice?.place).toEqual({
+      kind: 'org_terms',
+      terms: ['park:harriman'],
+      areas: [harriman],
+    })
+  })
+
+  it.each([
+    ['a bbox of three numbers', { ...harriman, bbox: [-74.2, 41.1, -74.0] }],
+    [
+      'a bbox whose west is east of its east',
+      { ...harriman, bbox: [-74.0, 41.1, -74.2, 41.3] },
+    ],
+    ['a bbox with a string in it', { ...harriman, bbox: [-74.2, '41.1', -74.0, 41.3] }],
+    ['no place_id', { name: 'Harriman', bbox: harriman.bbox }],
+  ])(
+    'drops every area, never one, when one is unreadable: %s, so the notice shows as an unmapped one does',
+    (_, broken) => {
+      const notice = validNotice(
+        row({
+          place: {
+            kind: 'org_terms',
+            terms: ['park:a', 'park:b'],
+            areas: [harriman, broken],
+          },
+        }),
+      )
+      expect(notice?.place).toEqual({ kind: 'org_terms', terms: ['park:a', 'park:b'] })
+    },
+  )
+})

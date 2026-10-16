@@ -35,8 +35,15 @@
 --   geometry   a row with its source's own geometry, shaped for a phone
 --              (below);
 --   org_terms  NYNJTC's trail and park tags as `taxonomy:slug`
---              (int_closures__nynjtc_checked), which place nothing until a
---              reviewed table maps a term to a feature (section 4);
+--              (int_closures__nynjtc_checked). Rule 19 (decision 213): where
+--              seeds/notice_park_terms.csv maps EVERY `park:` term of the
+--              notice, the place also carries `areas`, one
+--              {place_id, name, bbox} per mapped park, the bbox places.json's
+--              own; one unmapped park term, or none at all, and it carries
+--              none, since a park nobody has placed could be anywhere (section
+--              4: "an unmapped term places nothing"). The phone shows a
+--              notice with areas only to a planned route that meets one;
+--              trail terms place nothing yet;
 --   unplaced   everything else.
 --
 -- THE GEOMETRY A PHONE NEEDS (decision 77, the maintainer's poll of
@@ -192,6 +199,12 @@ nynjtc_terms as (
     where place_terms is not null
 ),
 
+-- Rule 19's reviewed table (decision 213): a club's park term and the park
+-- areas places.json publishes for it.
+park_terms as (
+    select * from {{ ref('notice_park_terms') }}
+),
+
 gate as (
     select * from {{ ref('int_closures__gate') }}
 ),
@@ -252,6 +265,56 @@ club_notices as (
     select marts.*
     from marts
     inner join notice_sources on marts.source_key = notice_sources.source_key
+),
+
+-- Rule 19 (decision 213): each `park:` term of an `org_terms` notice with
+-- the areas seeds/notice_park_terms.csv maps it to, or one row with no area
+-- for a term the seed does not map.
+notice_terms as (
+    select
+        nynjtc_terms.notice_id,
+        club_notices.source_key,
+        unnest(from_json(nynjtc_terms.place_terms, '["VARCHAR"]')) as term
+    from nynjtc_terms
+    inner join club_notices
+        on nynjtc_terms.notice_id = club_notices.notice_id
+),
+
+park_term_places as (
+    select
+        notice_terms.notice_id,
+        notice_terms.term,
+        park_terms.place_id,
+        park_terms.place_name,
+        park_terms.west,
+        park_terms.south,
+        park_terms.east,
+        park_terms.north
+    from notice_terms
+    left join park_terms
+        on
+            notice_terms.source_key = park_terms.source_key
+            and notice_terms.term = park_terms.term
+    where notice_terms.term like 'park:%'
+),
+
+-- Only a notice whose every park term the seed maps carries areas.
+park_areas as (
+    select
+        notice_id,
+        to_json(
+            list(
+                json_object(
+                    'place_id', place_id,
+                    'name', place_name,
+                    'bbox', [west, south, east, north]
+                )
+                order by term, place_id
+            )
+        ) as areas
+    from park_term_places
+    group by notice_id
+    having count(*) filter (where place_id is null) = 0
 ),
 
 -- A read that told OurHike what the source holds: one that loaded it, or
@@ -402,6 +465,14 @@ notice_rows as (
                     then json_object(
                         'kind', 'geometry', 'geometry', placed.phone_geometry
                     )
+                when
+                    nynjtc_terms.place_terms is not null
+                    and park_areas.areas is not null
+                    then json_object(
+                        'kind', 'org_terms',
+                        'terms', cast(nynjtc_terms.place_terms as json),
+                        'areas', park_areas.areas
+                    )
                 when nynjtc_terms.place_terms is not null
                     then json_object(
                         'kind', 'org_terms',
@@ -450,6 +521,7 @@ notice_rows as (
     left join registry on club_notices.source_key = registry.source_key
     left join hazards on club_notices.source_key = hazards.source_key
     left join nynjtc_terms on club_notices.notice_id = nynjtc_terms.notice_id
+    left join park_areas on club_notices.notice_id = park_areas.notice_id
     left join placed on club_notices.notice_id = placed.notice_id
     left join source_checks
         on club_notices.source_key = source_checks.source_key

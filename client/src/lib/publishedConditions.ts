@@ -370,9 +370,22 @@ export async function fetchPublishedAtcUpdates(
  * is the rule `lib/closureBanner.ts` already lives by for a closure whose
  * band cannot be placed.
  */
+/** One park area an `org_terms` notice names (rule 19, decision 213): its
+ *  places.json id and name, and that place's bounding box as
+ *  `[west, south, east, north]` in degrees. */
+export interface NoticeParkArea {
+  place_id: string
+  name: string
+  bbox: readonly [number, number, number, number]
+}
+
 export type NoticePlace =
   | { kind: 'at_miles'; start: number; end: number }
-  | { kind: 'org_terms'; terms: string[] }
+  /** A club's own tags as `taxonomy:slug`. `areas`, rule 19 (decision 213):
+   *  the park areas a reviewed table (pipeline/dbt/seeds/
+   *  notice_park_terms.csv) maps every one of its `park:` terms to, each
+   *  places.json's bounding box; absent where any park term is unmapped. */
+  | { kind: 'org_terms'; terms: string[]; areas?: NoticeParkArea[] }
   /** The source's own geometry, GeoJSON in lon/lat, simplified at 10 m for
    *  a phone by pub_conditions_notices (#1805). Only conditions/notices.json
    *  carries it. */

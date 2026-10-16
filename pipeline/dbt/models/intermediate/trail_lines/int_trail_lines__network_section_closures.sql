@@ -1,6 +1,6 @@
 {{ config(materialized='table') }}
 -- Every network line, with the ones an organization's own notice closes by
--- naming their section marked closed (decisions 212 and 213, for #1801 —
+-- naming their section marked closed (for #1801 —
 -- The junction graph routes hikers onto the Tuscarora's Doll Ridge section,
 -- which PATC says is closed for loss of landowner permission). Read between
 -- NYS Parks' area closures (int_trail_lines__network_area_closures) and the
@@ -13,7 +13,7 @@
 -- line's steward's or a club's naming the trail, closes the one line set
 -- whose name is the section it names. This model only applies the step's
 -- answer: the whole line closes, `closure_kind` 'section', and the reason is
--- the notice's own title verbatim (decision 213's closing sentence, for a
+-- the notice's own title verbatim (the closing sentence, for a
 -- page notice), the closing organization its source (#1142: the sheet speaks
 -- the closing organization's name, not the line's).
 --

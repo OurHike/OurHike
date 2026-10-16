@@ -1,4 +1,4 @@
--- The A.T. build's line sources (TL01), export_trails.load_line_sources():
+-- The A.T. build's line sources, export_trails.load_line_sources():
 -- every registry entry carrying blaze metadata, a `blaze_field` or a
 -- `blaze_default` key, that is not another organization's layer. Today that is
 -- centerline (blaze_default "White") and side_trails (blaze_field "Blaze"),

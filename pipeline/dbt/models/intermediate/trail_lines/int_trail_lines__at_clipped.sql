@@ -1,10 +1,10 @@
 {{ config(materialized='table') }}
--- The A.T.'s line features that touch the corridor (TL14),
+-- The A.T.'s line features that touch the corridor,
 -- export_trails.clip_to_corridor(): a feature is kept whole when any part of
 -- its full-resolution line intersects int_trail_lines__corridor, and never
 -- cut down to the boundary. It runs before the 1 m pass, so a feature can
 -- never be excluded because simplification moved it. Only features with a
--- line geometry reach it (TL04).
+-- line geometry reach it.
 with features as (
     select * from {{ ref('int_trail_lines__at_features') }}
 ),

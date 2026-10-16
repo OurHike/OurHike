@@ -46,7 +46,7 @@ SNAPSHOT_BODY = re.compile(
     re.S,
 )
 #: What the not_null tests on the two dates must say, so a degraded conditions leg's null dates warn, and production's
-#: and UA's do, as dbt_project.yml's switch makes every other test's (decision 204).
+#: and UA's do, as dbt_project.yml's switch makes every other test's.
 SEVERITY = "{{ 'warn' if env_var('OURHIKE_ROW_HISTORY', 'on') == 'off' or env_var('OURHIKE_DATA_ENV', 'dev') in ['production', 'ua'] else 'error' }}"
 
 
@@ -160,7 +160,7 @@ def test_there_are_marts_to_check():
 
 @pytest.mark.parametrize("path", MART_FILES, ids=[path.stem for path in MART_FILES])
 def test_each_mart_carries_both_row_dates_in_its_contract(path):
-    assert problems(path, MODELS_YAML) == [], f"{path.stem} must carry _first_seen_at and _changed_at (decision 57)"
+    assert problems(path, MODELS_YAML) == [], f"{path.stem} must carry _first_seen_at and _changed_at"
 
 
 @pytest.mark.parametrize("path", MART_FILES, ids=[path.stem for path in MART_FILES])

@@ -9,19 +9,19 @@ models:
   - name: int_trail_lines__network_sources
     description: >
       One row per sources.json entry export_nearby_trails.py exports: an
-      external organization's layer carrying blaze metadata (TL01). Every
+      external organization's layer carrying blaze metadata. Every
       field the network's filters read, in the registry's spelling and as
       the warehouse column dlt landed it under, with the source's
       `may_publish` from int_sources__publication.
     data_tests:
-      # TL09: an entry naming a name column and a name constant has decided
+      # An entry naming a name column and a name constant has decided
       # neither, and name_constant_conflicts() stops the export on it.
       - dbt_utils.expression_is_true:
           arguments:
             expression: "not declares_name_twice"
           config:
             severity: error
-      # TL08: a field the entry declares that the layer did not land. The
+      # A field the entry declares that the layer did not land. The
       # layer's schema has changed: re-read its fields at the entry's `url`
       # and update the registry entry before building. To see which, from
       # pipeline/dbt:
@@ -33,7 +33,7 @@ models:
             expression: "json_array_length(missing_declared_fields) = 0"
           config:
             severity: error
-      # TL05: an id field the entry declares that the layer did not land.
+      # An id field the entry declares that the layer did not land.
       # Every line of that layer would publish under another id, and a phone
       # joins its climb to a line by that id (macros/resolve_feature_id.sql).
       # Re-read the layer's fields at the entry's `url`, and its metadata's
@@ -72,10 +72,10 @@ models:
       - name: name_column
         description: The column a name is read from, `name_field` or its "Name" default.
       - name: declares_name_twice
-        description: Whether the entry states both `name_field` and `name_constant` (TL09).
+        description: Whether the entry states both `name_field` and `name_constant`.
       - name: missing_declared_fields
         description: >
-          TL08: each of `declared_fields` whose column the layer did not land,
+          Each of `declared_fields` whose column the layer did not land,
           in the registry's spelling, as a JSON list; empty for a layer with
           no rows. Stricter
           than missing_declared_fields() on a Socrata layer, where a column
@@ -98,7 +98,7 @@ models:
           `_socrata_id` on a Socrata layer, else `object_id_field`'s column.
       - name: missing_id_fields
         description: >
-          TL05: each of `global_id_field` and `object_id_field` whose column
+          Each of `global_id_field` and `object_id_field` whose column
           the layer did not land, as a JSON list; empty for a layer with no
           rows.
       - name: chains_duplicates
@@ -167,7 +167,7 @@ models:
         description: >
           The id nearby_trails.geojson publishes and each graph edge carries
           as `trail_id`, built as lib/feature_id.py builds it
-          (macros/resolve_feature_id.sql, TL05): the GlobalID only where the
+          (macros/resolve_feature_id.sql): the GlobalID only where the
           layer spells it exactly `GlobalID` (sources.json's
           `global_id_field`), else the object id its row names
           (`object_id_field`) or Socrata's row id, else `generated-<n>`, else
@@ -184,7 +184,7 @@ models:
           value, null where it is one of the entry's placeholders.
       - name: trail_status
         description: >
-          'open' or 'closed' (TL10). Open on every row of a layer with no
+          'open' or 'closed'. Open on every row of a layer with no
           status column, which is a default and not a finding
           (`trail_status_basis`).
         data_tests:
@@ -216,7 +216,7 @@ models:
   - name: int_trail_lines__network_deduplicated
     description: >
       The network's published lines at full resolution: every kept row whose
-      source may publish, each declared duplicate drawn once (TL18) and
+      source may publish, each declared duplicate drawn once and
       named on its senior's `duplicate_of`, with its blaze.
     columns:
       - name: trail_segment_key
@@ -281,7 +281,7 @@ models:
       filter reads a field by the name the registry gives it.
     columns:
       - name: trail_segment_key
-        description: The row's staging key (decision 40), the registry key first, so it is unique across the union.
+        description: The row's staging key, the registry key first, so it is unique across the union.
         data_tests: [not_null, unique]
       - name: source_key
         description: The registry key of the layer.
@@ -309,7 +309,7 @@ models:
     description: >
       Every staged line feature's blaze, the A.T.'s two sources (centerline,
       side_trails) and the network's, as lib/blaze.py answers it for that
-      source's exporter (TL03): export_trails.py's decode-then-map for the
+      source's exporter: export_trails.py's decode-then-map for the
       A.T., export_nearby_trails.py's resolve_blaze() for the network. One
       row per feature, keyed on its staging key; tl-at's A.T. models read the
       A.T. rows.
@@ -357,7 +357,7 @@ models:
           # Python prints a WARNING per feature naming it. A warn here names
           # those rows in the build's own output, where a person sees them;
           # the fix is a row in reference/blaze_mapping.json. An error when
-          # no row is reviewed (decision 204, tests/generic/rows_named.sql):
+          # no row is reviewed (tests/generic/rows_named.sql):
           # the table or the reader, not one value.
           - rows_named:
               name: int_trail_lines__blazes_every_blaze_value_is_reviewed
@@ -428,7 +428,7 @@ models:
 
   - name: int_trail_lines__network_navigation
     description: >
-      Every network line that ships at 1 m (TL15): Douglas-Peucker in
+      Every network line that ships at 1 m: Douglas-Peucker in
       EPSG:5070, the Python's simplify_records() vertex for vertex, keeping
       a line's full-resolution geometry where the pass would leave a part
       undrawable. int_trail_lines__network_published cuts it to six
@@ -456,7 +456,7 @@ models:
   - name: int_trail_lines__network_section_closures
     description: >
       Every network line, with the lines an organization's own notice closes
-      by naming their section marked closed (decisions 212 and 213):
+      by naming their section marked closed:
       step_section_closures' answer over the published
       conditions/notices.json, applied whole to each line it names.
       closure_kind 'section', the notice's title as the reason, verbatim, and
@@ -533,7 +533,7 @@ models:
             expression: "st_geometrytype(st_geomfromgeojson(geom_geojson)) in ('LINESTRING', 'MULTILINESTRING')"
       # Warn: the Python does not require a valid line, and keeps a
       # steward's line whose vertices all sit on one point. An error when
-      # every line is invalid (decision 204, tests/generic/rows_named.sql):
+      # every line is invalid (tests/generic/rows_named.sql):
       # the geometry reader, not one steward's line.
       - rows_named:
           name: int_trail_lines__network_published_names_an_invalid_line
@@ -549,7 +549,7 @@ models:
             expression: "coalesce(trail_status = 'closed', false) = (closure_kind is not null)"
       # An area's or a section's closure names the organization that closed
       # it, and only they do; a reason travels with it and nowhere else
-      # (#1142, decision 213).
+      # (#1142).
       - dbt_utils.expression_is_true:
           arguments:
             expression: "coalesce(closure_kind in ('area', 'section'), false) = (closure_source is not null)"
@@ -578,7 +578,7 @@ models:
       - name: published_id
         description: >
           The `id` nearby_trails.geojson carries, today's exporter's id for
-          the same feature (int_trail_lines__network_judged, TL05).
+          the same feature (int_trail_lines__network_judged).
         data_type: varchar
         constraints:
           - type: not_null
@@ -625,13 +625,13 @@ models:
         description: The line's name; null where nothing names it (a placeholder, or no name at all).
         data_type: varchar
       - name: blaze_color
-        description: The palette member, or neutral, the map paints (TL03).
+        description: The palette member, or neutral, the map paints.
         data_type: varchar
         constraints:
           - type: not_null
       - name: trail_status
         description: >
-          'open' or 'closed' (TL10). Open on every row of a layer with no
+          'open' or 'closed'. Open on every row of a layer with no
           status column, which is a default and not a finding: read
           `trail_status_basis` before reading open as a fact.
         data_type: varchar
@@ -645,7 +645,7 @@ models:
           'stated' where the layer's own status column gave `trail_status`;
           'default_without_status_column' where it has none; 'closed_area'
           on a section a closed area closed; 'closed_section' on a line an
-          organization's notice closed by naming its section (decision 213).
+          organization's notice closed by naming its section.
         data_type: varchar
         data_tests:
           - not_null
@@ -657,7 +657,7 @@ models:
           'long_term' on a line its steward marks closed; 'area' on a
           section inside one of NYS Parks' closed areas; 'section' on a line
           an organization's own notice closed by naming its section
-          (int_trail_lines__network_section_closures, decision 213); null
+          (int_trail_lines__network_section_closures); null
           otherwise.
         data_type: varchar
         data_tests:
@@ -680,7 +680,7 @@ models:
           key; null on every other line.
         data_type: varchar
       - name: duplicate_of
-        description: The source whose copy of this path the line swallowed (TL18); null where it swallowed none.
+        description: The source whose copy of this path the line swallowed; null where it swallowed none.
         data_type: varchar
       - name: geom_geojson
         description: >
@@ -691,17 +691,17 @@ models:
         constraints:
           - type: not_null
       - name: length_m
-        description: The line's length in metres on the WGS84 ellipsoid (decision 97) as its steward published it, before the 1 m pass (decision 8).
+        description: The line's length in metres on the WGS84 ellipsoid as its steward published it, before the 1 m pass.
         data_type: double
         constraints:
           - type: not_null
       - name: published_length_m
-        description: The 1 m line's length in metres on the WGS84 ellipsoid (decision 97), before the six-decimal cut; `length_miles` is rounded from it.
+        description: The 1 m line's length in metres on the WGS84 ellipsoid, before the six-decimal cut; `length_miles` is rounded from it.
         data_type: double
         constraints:
           - type: not_null
       - name: vertex_miles
-        description: Null on every network line; the calibrated mile axis is the A.T.'s (TL22).
+        description: Null on every network line; the calibrated mile axis is the A.T.'s.
         data_type: double[]
       - name: monotonic_breaks
         description: Null on every network line, as vertex_miles is.
@@ -721,7 +721,7 @@ models:
 
   - name: int_trail_lines__network_name_aliases
     description: >
-      reference/trail_name_aliases.json's reviewed spellings (TL21): one row
+      reference/trail_name_aliases.json's reviewed spellings: one row
       per (source, published spelling) and the long trail it is, as
       export_nearby_trails.py's _alias_index() reads the file.
     columns:
@@ -729,7 +729,7 @@ models:
       # later one in the Python; here the key's unique test stops the build.
       - name: spelling_key
         description: >
-          The row's key (decision 197): dbt_utils.generate_surrogate_key over
+          The row's key: dbt_utils.generate_surrogate_key over
           source_key and published_spelling. Its unique test fails on any two
           rows sharing them, the combination test it replaced; never null by
           construction, so the two inputs' own not_null tests hold the values.
@@ -751,7 +751,7 @@ models:
     description: >
       Every network line that ships, at the overview's 100 m, with the trail
       identity it belongs to and whether its run of shared tread is a
-      through route of 50 miles or more (TL12, TL21): write_overview()'s
+      through route of 50 miles or more: write_overview()'s
       steps before the floor.
     columns:
       - name: trail_line_id
@@ -771,7 +771,7 @@ models:
 
   - name: int_trail_lines__network_overview_seam
     description: >
-      The lines the sketch draws (TL20): every coarse line above the
+      The lines the sketch draws: every coarse line above the
       one-pixel floor at z5, or on a through route, simplified to half a z5
       pixel. pub_network_overview groups and writes them.
     columns:
@@ -786,7 +786,7 @@ models:
 
   - name: int_trail_lines__network_overview_features
     description: >
-      network_overview.geojson's features (TL20, TL21), one row per
+      network_overview.geojson's features, one row per
       (source, through route, blaze_color, trail_status) group, in
       write_overview()'s order, its properties and its MultiLineString's
       coordinates at three decimals as JSON text. pub_network_overview
@@ -798,7 +798,7 @@ models:
       - name: properties_json
         description: >
           The feature's properties, `name` and `through_route` only on a through route; on a club
-          group (decision 64), `source`, `blaze_color` and `line_kind` 'club', and no status.
+          group, `source`, `blaze_color` and `line_kind` 'club', and no status.
         data_tests: [not_null]
       - name: coordinates_json
         description: Every line of the group, each a part, at three decimals.
@@ -1098,9 +1098,9 @@ unit_tests:
         - {"trail_segment_key": "sql::a_socrata_row_with_a_globalid_is_its_row_id", "dropped_because": null, "trail_line_id": "socrata_with_a_globalid:{C-1}", "published_id": "socrata_with_a_globalid:row-c1", "name": "C", "trail_status": "open", "trail_status_basis": "default_without_status_column", "closure_kind": null, "boundary_missing": false}
   - name: int_trail_lines__network_sources_answers_what_the_registry_checks_answer
     description: >
-      Which registry entries are network line sources (TL01), the fields
-      each declares that its layer did not land (TL08), an entry naming a
-      name column and a name constant (TL09), dlt's sql_ci_v1 naming of
+      Which registry entries are network line sources, the fields
+      each declares that its layer did not land, an entry naming a
+      name column and a name constant, dlt's sql_ci_v1 naming of
       awkward field names, and a source junior in one declared pair and
       senior in another. Rows the Python answers are keyed after their
       pytest case in the registry entry's `_case`; tests/test_dbt_trail_lines_network_parity.py
@@ -1537,7 +1537,7 @@ unit_tests:
         - {"trail_segment_key": "test_simplify_trails::test_drawable_all_answers_what_has_drawable_geometry_answers[two real parts]", "trail_line_id": "case_source:19", "name": "Case 19", "geom_wkt": "MULTILINESTRING ((-74 41, -74.1 41.10000000000002), (-74.20000000000002 41.20000000000002, -74.3 41.30000000000001))", "kept_full_resolution": false}
   - name: int_trail_lines__network_published_cuts_what_rounded_geometry_cuts
     description: >
-      The six-decimal cut nearby_trails.geojson carries (TL23), one row per
+      The six-decimal cut nearby_trails.geojson carries, one row per
       case of tests/test_export_nearby_trails.py's that the cut answers:
       survey noise cut to six decimals, a line or part the cut would
       collapse kept whole at full precision, a negative zero, wandering
@@ -1601,7 +1601,7 @@ unit_tests:
   - name: int_trail_lines__network_overview_routes_answers_what_through_routes_answers
     description: >
       One run of rows per pytest case of the through-route rule (#1307,
-      #1776; TL12, TL21): a trail of 50 miles or more in one row or in
+      #1776): a trail of 50 miles or more in one row or in
       sections that meet is a through route; one name in two places, or
       two organizations sharing a name, is not; two spellings the alias
       table folds into one trail chain as one, under the trail's name. The
@@ -1784,7 +1784,7 @@ unit_tests:
   - name: int_trail_lines__network_overview_seam_answers_what_the_floor_and_seam_answer
     description: >
       _above_the_seam_floor() and the seam's _simplified_part_by_part()
-      (#1775, TL20), one row per pytest case: a line whose box is under one
+      (#1775), one row per pytest case: a line whose box is under one
       z5 pixel is dropped and one twice that is kept, a through route's
       sub-pixel sections are all kept, a kept line is simplified to half a
       z5 pixel, and a ring a few metres round keeps its own vertices
@@ -1814,7 +1814,7 @@ unit_tests:
         - {"trail_line_id": "cdtc_centerline:test_export_nearby_trails::test_a_ring_too_small_to_simplify_leaves_the_rest_of_its_trail_simplified_in_the_sketch", "through_route": null, "seam_wkt": "MULTILINESTRING ((-106.5 39.00000000000001, -106.5 39.045000000000044), (-106.4504 39.0204, -106.45038 39.0204, -106.45038 39.02042, -106.4504 39.02042, -106.4504 39.0204))"}
   - name: int_trail_lines__network_overview_features_answer_what_write_overview_writes
     description: >
-      write_overview()'s grouping (#1135, #1307; TL20): an open and a
+      write_overview()'s grouping (#1135, #1307): an open and a
       closed line of one blaze are two features, a through route's lines
       are one named feature marked `through_route`, everything else is
       haze carrying neither, coordinates are cut to three decimals, a
@@ -1846,7 +1846,7 @@ unit_tests:
           - {"trail_line_id": "usfs_trails:test_export_nearby_trails::test_a_sketch_line_the_three_decimal_cut_leaves_as_one_point_is_not_written", "source_key": "usfs_trails", "blaze_color": "Unknown", "trail_status": "open", "through_route": null, "seam_wkt": "MULTILINESTRING ((-74.3 41.6, -74.3 41.65), (-74.3004 41.6204, -74.30038 41.6204, -74.30038 41.62042, -74.3004 41.62042, -74.3004 41.6204))"}
           - {"trail_line_id": "usfs_trails:test_export_nearby_trails::test_no_sketch_line_repeats_the_vertex_before_it_once_cut_to_three_decimals", "source_key": "usfs_trails", "blaze_color": "Unknown", "trail_status": "open", "through_route": null, "seam_wkt": "MULTILINESTRING ((-74.35 41.6, -74.35 41.65), (-74.3504 41.62448, -74.35038 41.62448, -74.35038 41.62452, -74.3504 41.62452, -74.3504 41.62448))"}
           - {"trail_line_id": "oprhp_trails:test_export_nearby_trails::test_a_sketch_group_whose_every_line_cuts_to_one_point_writes_no_feature", "source_key": "oprhp_trails", "blaze_color": "Red", "trail_status": "closed", "through_route": "Long Path", "seam_wkt": "LINESTRING (-74.1 40.5, -74.09998 40.5, -74.09998 40.50002, -74.1 40.50002, -74.1 40.5)"}
-      # Decision 64's club lines, which write_overview() never sees.
+      # The club lines, which write_overview() never sees.
       - input: ref('int_trail_lines__club_overview')
         rows: []
     expect:
@@ -1861,7 +1861,7 @@ unit_tests:
   - name: int_trail_lines__network_section_closures_closes_the_lines_a_notice_names_and_no_other
     model: int_trail_lines__network_section_closures
     description: >
-      Decision 213: a line step_section_closures names ships closed,
+      A line step_section_closures names ships closed,
       closure_kind 'section', with the notice's own title verbatim and its
       source as the closer; the line beside it is untouched; and a line
       already closed (here inside one of NYS Parks' areas) keeps its own
@@ -1890,7 +1890,7 @@ exposures:
     owner:
       name: OurHike
     description: >
-      The Python step that runs decision 212's section-closure rule
+      The Python step that runs the section-closure rule
       (lib/section_closures.py) over the conditions/notices.json the hourly
       lane published and the network lines (pipeline/step_section_closures.py,
       decision 213), between the dbt invocation that builds

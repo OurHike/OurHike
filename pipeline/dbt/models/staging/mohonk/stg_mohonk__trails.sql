@@ -28,7 +28,7 @@
 -- and 6 read 'NYS OPRHP/PIPC' with Manager still Mohonk.
 with source as (
     -- dlt lands geometry as GeoJSON text (extract/_kinds.py's JSON
-    -- hint); cast here, as decision 40 has staging do.
+    -- hint); cast here, as staging models do.
     select
         * exclude (geometry),
         st_geomfromgeojson(cast(geometry as varchar)) as geom
@@ -45,7 +45,7 @@ renamed as (
         -- The layer's object id (sources.json's `object_id_field`), which
         -- ArcGIS writes as each feature's GeoJSON `id`: the id
         -- lib/feature_id.py publishes a line under where it has no GlobalID
-        -- (TL05, int_trail_lines__network_judged's `published_id`).
+        -- (int_trail_lines__network_judged's `published_id`).
         objectid,
         name,
         general_classification,

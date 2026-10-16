@@ -316,7 +316,7 @@ def test_each_sql_only_unit_test_is_one_a_trusting_reader_would_answer_different
 
 
 def cautious_climb(elevations_m: list[float | None]) -> list[int] | None:
-    """export_network_elevation.edge_climb with decision 194's rounding: each figure rounded UP to the whole foot, where
+    """export_network_elevation.edge_climb with the rounding: each figure rounded UP to the whole foot, where
     edge_climb rounds to the nearest (int_elevation__edge_climbs' header). The rest is edge_climb's own: the metres
     turned to feet once, before the dead band, and None for an edge nobody measured."""
     if network_elevation.edge_climb(elevations_m) is None:
@@ -344,7 +344,7 @@ def _climb_windows(test: dict) -> dict[str, list]:
 @pytest.mark.parametrize("test", _on("int_elevation__edge_climbs"), ids=lambda test: test["name"])
 def test_each_edge_climbs_unit_test_is_edge_climb_rounded_up(test):
     """export_network_elevation.edge_climb over each edge's samples in order, each figure rounded up rather than to the
-    nearest foot (decision 194, cautious_climb()), and build()'s measured and partial."""
+    nearest foot (cautious_climb()), and build()'s measured and partial."""
     may = {row["source_key"]: row["may_publish"] for row in _given(test, "int_sources__publication")}
     sources = {edge["edge_id"]: edge["source_key"] for edge in _given(test, "int_trail_network__edges")}
     windows = _climb_windows(test)
@@ -401,7 +401,7 @@ def _climb_document(*entries) -> dict:
 
 def test_parity_explains_a_climb_one_foot_up_and_nothing_else():
     """trail_graph_elevation's `explained`: a figure the same or exactly one foot more, on an edge both sides measured,
-    is decision 194's rounding; a foot less, two feet more, a null on either side, or a float is still a difference."""
+    is the rounding; a foot less, two feet more, a null on either side, or a float is still a difference."""
     family = parity.FAMILIES["trail_graph_elevation"]
     assert family.explained is parity._climb_rounding_reasons
     today = _climb_document([328, 0], [196, 12], [10, 10], [0, 0], None, [5, 5], [7, 7], [9, 9], [3, 3])

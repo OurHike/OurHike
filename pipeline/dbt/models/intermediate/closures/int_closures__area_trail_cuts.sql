@@ -24,7 +24,7 @@
 -- AN HOUR WITH NO LINES HAS NO ROW AT ALL. With nothing to cut against,
 -- nothing says which areas have a trail inside, so none is shaded either:
 -- the maintainer chose to shade only the areas with no trail inside, over
--- shading every area (decision 191's option B), and an area whose trails
+-- shading every area (the option B), and an area whose trails
 -- would have been crossed out must not be drawn as one with none. So that
 -- hour every area closure is left out of the file, as all of them were in
 -- such an hour before decision 191, and step_closure_trail_lines' warning
@@ -88,7 +88,7 @@
 -- once more, and what is left is collected as a MultiLineString whatever its
 -- count: one stretch is a MultiLineString of one, so a phone reads one type.
 -- Measured 2026-10-11 against the 193 areas of UA's conditions/notices.json of
--- 16:23 UTC (grown 100 m, decision 77, so a little more than these areas)
+-- 16:23 UTC (grown 100 m, so a little more than these areas)
 -- and release 2026-10-10-2's lines: 47 of the 193 held a mapped trail, in
 -- 1,311 stretches of 101,146 vertices, 2,203,651 bytes of GeoJSON at 5
 -- decimals unshaped and 1,247,769 shaped at 10 m.

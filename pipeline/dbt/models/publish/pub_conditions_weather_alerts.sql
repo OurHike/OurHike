@@ -10,10 +10,10 @@
 -- alerts in id order, each with NWS's words under bake()'s names, how it was
 -- placed and the squares it reaches, and `unknown_zones`.
 --
--- WHICH ALERTS: the warnings mart's NWS rows (WN01, WN02: Actual, not a
+-- WHICH ALERTS: the warnings mart's NWS rows (Actual, not a
 -- cancellation, NWS's words as written, and only while
 -- int_sources__publication lets NWS publish), placed by
--- int_warnings__nws_placed (WN03), and only those that reach a trail square.
+-- int_warnings__nws_placed, and only those that reach a trail square.
 -- The mart itself holds every relayed alert and none of the placement, so the
 -- hourly lane's other files never wait on the weather squares.
 --

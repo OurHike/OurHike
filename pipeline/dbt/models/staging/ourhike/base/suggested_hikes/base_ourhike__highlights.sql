@@ -1,5 +1,5 @@
 -- reference/highlights.json (_shared/ourhike/highlights.py): every row of
--- the curated list, keyed (decision 40), with nothing filtered and nothing
+-- the curated list, keyed, with nothing filtered and nothing
 -- joined. Each row is still the JSON its reviewer wrote: resolving it is
 -- int_suggested_hikes__highlights' work, because a field's JSON type is one
 -- of the things lib/highlights.py's resolve() checks.

@@ -5,7 +5,7 @@
 -- so a row read at any other point never lends a sample its elevation.
 with source as (
     -- The step writes the point as GeoJSON text, as dlt lands every
-    -- geometry; cast here, as decision 40 has staging do.
+    -- geometry; cast here, as staging models do.
     select
         * exclude (geometry),
         st_geomfromgeojson(cast(geometry as varchar)) as geom

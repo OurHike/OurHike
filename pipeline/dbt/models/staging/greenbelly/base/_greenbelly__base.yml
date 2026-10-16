@@ -16,7 +16,7 @@ models:
     columns:
       - name: shelter_capacity_key
         description: >
-          The row's key (decision 40): dbt_utils.generate_surrogate_key over
+          The row's key: dbt_utils.generate_surrogate_key over
           the file's path and poi_id.
         data_tests: [not_null, unique]
       - name: poi_id

@@ -79,7 +79,7 @@ models:
       - dbt_utils.expression_is_true:
           arguments:
             expression: "len(list_filter(d_milli_mi[2:], lambda step: step <= 0)) = 0"
-      # v1's null-share test on the same samples (decision 194; its comment
+      # v1's null-share test on the same samples (its comment
       # says how a failure keeps the last good file): e_deci_ft is null
       # exactly where a sample has no height, so a v2 phone never gets the
       # mostly unmeasured profile v1's writer refused.
@@ -232,7 +232,7 @@ exposures:
         r2_keys: [trail_graph_elevation.json]
         format: json
         cadence: monthly
-        # EL14: no published gain figure exists for any trail of the
+        # No published gain figure exists for any trail of the
         # network's own, so the 3 m dead band checked on the A.T. is
         # unchecked here, and the manifest says so; stage 4 writes it.
         estimate: true
@@ -259,7 +259,7 @@ exposures:
         r2_keys: [trail_graph_profile.json]
         format: json
         cadence: monthly
-        # EL14, as trail_graph_elevation.json's.
+        # As trail_graph_elevation.json's.
         estimate: true
         route_gain_source: trail_graph_elevation.json
   - name: elevation_profile_json_v2
@@ -269,7 +269,7 @@ exposures:
     owner:
       name: OurHike
     description: >
-      v2 of elevation_profile.json (decision 44): the same A.T. samples, as
+      v2 of elevation_profile.json: the same A.T. samples, as
       delta-coded columns of whole thousandths of a mile and tenths of a foot,
       published beside v1 at v2/elevation_profile.json under the release
       folder (stage 6 of #1793; pipeline/ELT.md, "Making the download
@@ -291,7 +291,7 @@ exposures:
         size_budget_bytes: 219158
         cadence: monthly
         # The mart columns this file's writer reads, in Elementary's type words, which
-        # exposure_schema_validity checks on the mart (decision 102). It can only because this is
+        # exposure_schema_validity checks on the mart. It can only because this is
         # the one phone file reading that mart: with more, Elementary 0.26.0 needs
         # context["render"], which dbt 2.0.6 lacks.
         referenced_columns:

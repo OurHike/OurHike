@@ -31,7 +31,7 @@ sources:
     tables:
       - name: formed_routes
         data_tests:
-          # Rows sharing stg_derived__formed_routes's key must be exact copies (decision 40).
+          # Rows sharing stg_derived__formed_routes's key must be exact copies.
           - duplicates_are_exact:
               arguments:
                 key_columns: ["'formed_routes'", "hike_number"]
@@ -40,11 +40,11 @@ sources:
           written by step_form_route (pipeline/step_form_route.py) from
           int_suggested_hikes__hike_finder and the graph's edges: a generated
           route formed from the description (lib/hike_route_builder.py's
-          measure_route(), SH03), or a published track measured
+          measure_route()), or a published track measured
           (measure_published()) and re-walked between its 400 m samples
-          (SH06). One row per hike, keyed by its number. What the graph
+          One row per hike, keyed by its number. What the graph
           measured and nothing graded: the grade is
-          int_suggested_hikes__graded's (SH04). Every number a grade or the
+          int_suggested_hikes__graded's. Every number a grade or the
           phone reads is the double's repr as text, so no step between the
           search and the grade rounds it; every list is JSON.
         columns:

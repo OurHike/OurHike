@@ -1,5 +1,5 @@
 {{ config(materialized='table') }}
--- The centerline's chains with the A.T. mile of every vertex (TL22),
+-- The centerline's chains with the A.T. mile of every vertex,
 -- export_trails.vertex_miles(): what trail_miles.json publishes beside
 -- trails.geojson, so a phone reads the same mile a POI carries instead of
 -- measuring the line itself (#1192 — A returning hiker's launch freezes

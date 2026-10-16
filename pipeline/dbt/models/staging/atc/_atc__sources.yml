@@ -11,7 +11,7 @@ sources:
     schema: raw
     config:
       # When the extract last read each table or confirmed it unchanged, from
-      # its run log, never `_loaded_at` (decision 203): make_dbt_staging.py's
+      # its run log, never `_loaded_at`: make_dbt_staging.py's
       # LOADED_AT_QUERY and MONTHLY_FRESHNESS_DAYS say why, and
       # tests/test_source_freshness.py holds every monthly source to them.
       loaded_at_query: "{{ last_read_or_confirmed_at(this) }}"
@@ -21,11 +21,11 @@ sources:
     tables:
       - name: raw_atc__shelters
         data_tests:
-          # Rows sharing stg_atc__shelters's key must be exact copies (decision 40).
+          # Rows sharing stg_atc__shelters's key must be exact copies.
           - duplicates_are_exact:
               arguments:
                 key_columns: ["'shelters'", "globalid"]
-          # Elementary's checks (make_dbt_staging.py's raw_table_checks(), decision 102), each with its two thresholds (decision 204).
+          # Elementary's checks (make_dbt_staging.py's raw_table_checks()), each with its two thresholds.
           - elementary.volume_anomalies:
               config:
                 severity: error
@@ -57,11 +57,11 @@ sources:
             description: The shelter's name as ATC publishes it.
       - name: raw_atc__campsites
         data_tests:
-          # Rows sharing stg_atc__campsites's key must be exact copies (decision 40).
+          # Rows sharing stg_atc__campsites's key must be exact copies.
           - duplicates_are_exact:
               arguments:
                 key_columns: ["'campsites'", "globalid"]
-          # Elementary's checks (make_dbt_staging.py's raw_table_checks(), decision 102), each with its two thresholds (decision 204).
+          # Elementary's checks (make_dbt_staging.py's raw_table_checks()), each with its two thresholds.
           - elementary.volume_anomalies:
               config:
                 severity: error
@@ -91,11 +91,11 @@ sources:
             description: The campsite's name as ATC publishes it.
       - name: raw_atc__viewpoints
         data_tests:
-          # Rows sharing stg_atc__viewpoints's key must be exact copies (decision 40).
+          # Rows sharing stg_atc__viewpoints's key must be exact copies.
           - duplicates_are_exact:
               arguments:
                 key_columns: ["'viewpoints'", "globalid"]
-          # Elementary's checks (make_dbt_staging.py's raw_table_checks(), decision 102), each with its two thresholds (decision 204).
+          # Elementary's checks (make_dbt_staging.py's raw_table_checks()), each with its two thresholds.
           - elementary.volume_anomalies:
               config:
                 severity: error
@@ -121,11 +121,11 @@ sources:
             data_tests: [not_null, unique]
       - name: raw_atc__parking
         data_tests:
-          # Rows sharing stg_atc__parking's key must be exact copies (decision 40).
+          # Rows sharing stg_atc__parking's key must be exact copies.
           - duplicates_are_exact:
               arguments:
                 key_columns: ["'parking'", "globalid"]
-          # Elementary's checks (make_dbt_staging.py's raw_table_checks(), decision 102), each with its two thresholds (decision 204).
+          # Elementary's checks (make_dbt_staging.py's raw_table_checks()), each with its two thresholds.
           - elementary.volume_anomalies:
               config:
                 severity: error
@@ -150,11 +150,11 @@ sources:
             data_tests: [not_null, unique]
       - name: raw_atc__privies
         data_tests:
-          # Rows sharing stg_atc__privies's key must be exact copies (decision 40).
+          # Rows sharing stg_atc__privies's key must be exact copies.
           - duplicates_are_exact:
               arguments:
                 key_columns: ["'privies'", "globalid"]
-          # Elementary's checks (make_dbt_staging.py's raw_table_checks(), decision 102), each with its two thresholds (decision 204).
+          # Elementary's checks (make_dbt_staging.py's raw_table_checks()), each with its two thresholds.
           - elementary.volume_anomalies:
               config:
                 severity: error
@@ -179,11 +179,11 @@ sources:
             data_tests: [not_null, unique]
       - name: raw_atc__communities
         data_tests:
-          # Rows sharing stg_atc__communities's key must be exact copies (decision 40).
+          # Rows sharing stg_atc__communities's key must be exact copies.
           - duplicates_are_exact:
               arguments:
                 key_columns: ["'communities'", "globalid"]
-          # Elementary's checks (make_dbt_staging.py's raw_table_checks(), decision 102), each with its two thresholds (decision 204).
+          # Elementary's checks (make_dbt_staging.py's raw_table_checks()), each with its two thresholds.
           - elementary.volume_anomalies:
               config:
                 severity: error
@@ -213,11 +213,11 @@ sources:
             description: The community's name (upstream spells it upper-case).
       - name: raw_atc__bridges
         data_tests:
-          # Rows sharing stg_atc__bridges's key must be exact copies (decision 40).
+          # Rows sharing stg_atc__bridges's key must be exact copies.
           - duplicates_are_exact:
               arguments:
                 key_columns: ["'bridges'", "globalid"]
-          # Elementary's checks (make_dbt_staging.py's raw_table_checks(), decision 102), each with its two thresholds (decision 204).
+          # Elementary's checks (make_dbt_staging.py's raw_table_checks()), each with its two thresholds.
           - elementary.volume_anomalies:
               config:
                 severity: error
@@ -245,11 +245,11 @@ sources:
             data_tests: [not_null, unique]
       - name: raw_atc__centerline
         data_tests:
-          # Rows sharing stg_atc__centerline_segments's key must be exact copies (decision 40).
+          # Rows sharing stg_atc__centerline_segments's key must be exact copies.
           - duplicates_are_exact:
               arguments:
                 key_columns: ["'centerline'", "coalesce(globalid, cast(objectid as varchar))"]
-          # Elementary's checks (make_dbt_staging.py's raw_table_checks(), decision 102), each with its two thresholds (decision 204).
+          # Elementary's checks (make_dbt_staging.py's raw_table_checks()), each with its two thresholds.
           - elementary.volume_anomalies:
               config:
                 severity: error
@@ -286,11 +286,11 @@ sources:
               - unique
       - name: raw_atc__side_trails
         data_tests:
-          # Rows sharing stg_atc__side_trails's key must be exact copies (decision 40).
+          # Rows sharing stg_atc__side_trails's key must be exact copies.
           - duplicates_are_exact:
               arguments:
                 key_columns: ["'side_trails'", "coalesce(globalid, cast(objectid as varchar))"]
-          # Elementary's checks (make_dbt_staging.py's raw_table_checks(), decision 102), each with its two thresholds (decision 204).
+          # Elementary's checks (make_dbt_staging.py's raw_table_checks()), each with its two thresholds.
           - elementary.volume_anomalies:
               config:
                 severity: error
@@ -326,11 +326,11 @@ sources:
               - unique
       - name: raw_atc__trail_club_sections
         data_tests:
-          # Rows sharing stg_atc__club_sections's key must be exact copies (decision 40).
+          # Rows sharing stg_atc__club_sections's key must be exact copies.
           - duplicates_are_exact:
               arguments:
                 key_columns: ["'trail_club_sections'", "globalid"]
-          # Elementary's checks (make_dbt_staging.py's raw_table_checks(), decision 102), each with its two thresholds (decision 204).
+          # Elementary's checks (make_dbt_staging.py's raw_table_checks()), each with its two thresholds.
           - elementary.volume_anomalies:
               config:
                 severity: error
@@ -358,11 +358,11 @@ sources:
             data_tests: [not_null, unique]
       - name: raw_atc__half_mile_points_from_springer
         data_tests:
-          # Rows sharing stg_atc__half_mile_markers's key must be exact copies (decision 40).
+          # Rows sharing stg_atc__half_mile_markers's key must be exact copies.
           - duplicates_are_exact:
               arguments:
                 key_columns: ["'half_mile_points_from_springer'", "point_id"]
-          # Elementary's checks (make_dbt_staging.py's raw_table_checks(), decision 102), each with its two thresholds (decision 204).
+          # Elementary's checks (make_dbt_staging.py's raw_table_checks()), each with its two thresholds.
           - elementary.volume_anomalies:
               config:
                 severity: error
@@ -392,11 +392,11 @@ sources:
             data_tests: [not_null]
       - name: raw_atc__at_treadway
         data_tests:
-          # Rows sharing stg_atc__treadway's key must be exact copies (decision 40).
+          # Rows sharing stg_atc__treadway's key must be exact copies.
           - duplicates_are_exact:
               arguments:
                 key_columns: ["'at_treadway'", "globalid"]
-          # Elementary's checks (make_dbt_staging.py's raw_table_checks(), decision 102), each with its two thresholds (decision 204).
+          # Elementary's checks (make_dbt_staging.py's raw_table_checks()), each with its two thresholds.
           - elementary.volume_anomalies:
               config:
                 severity: error
@@ -421,11 +421,11 @@ sources:
             data_tests: [not_null, unique]
       - name: raw_atc__atc_trail_updates
         data_tests:
-          # Rows sharing base_atc__atc_trail_updates's key must be exact copies (decision 40).
+          # Rows sharing base_atc__atc_trail_updates's key must be exact copies.
           - duplicates_are_exact:
               arguments:
                 key_columns: ["'reference/atc_updates.json'", "_row"]
-          # Elementary's checks (make_dbt_staging.py's raw_table_checks(), decision 102), each with its two thresholds (decision 204).
+          # Elementary's checks (make_dbt_staging.py's raw_table_checks()), each with its two thresholds.
           - elementary.volume_anomalies:
               config:
                 severity: error
@@ -483,11 +483,11 @@ sources:
             description: The file's fields besides `updates` and `_README`, as JSON text, on every row.
       - name: raw_atc__atc_updates
         data_tests:
-          # Rows sharing base_atc__atc_updates's key must be exact copies (decision 40).
+          # Rows sharing base_atc__atc_updates's key must be exact copies.
           - duplicates_are_exact:
               arguments:
                 key_columns: ["'reference/atc_updates.json'", "_path"]
-          # Elementary's checks (make_dbt_staging.py's raw_table_checks(), decision 102), each with its two thresholds (decision 204).
+          # Elementary's checks (make_dbt_staging.py's raw_table_checks()), each with its two thresholds.
           - elementary.volume_anomalies:
               config:
                 severity: error
@@ -528,11 +528,11 @@ sources:
             description: The file's path in the repository.
       - name: raw_atc__atc_trail_updates_pages
         data_tests:
-          # Rows sharing base_atc__atc_trail_updates_pages's key must be exact copies (decision 40).
+          # Rows sharing base_atc__atc_trail_updates_pages's key must be exact copies.
           - duplicates_are_exact:
               arguments:
                 key_columns: ["'atc_trail_updates'", "slug"]
-          # Elementary's checks (make_dbt_staging.py's raw_table_checks(), decision 102), each with its two thresholds (decision 204).
+          # Elementary's checks (make_dbt_staging.py's raw_table_checks()), each with its two thresholds.
           - elementary.volume_anomalies:
               config:
                 severity: error
@@ -577,7 +577,7 @@ sources:
           lists, as lib/atc_scrape.py's parse_update() reads the update's
           page. ATC's prose is not landed (sources.json's licence, "facts and
           a link only"). int_closures__atc_automatic decides which rows may
-          publish without a person (CL07-CL10).
+          publish without a person.
         columns:
           - name: slug
             description: ATC's slug for the update, from its URL in the sitemap. Unique by construction.
@@ -598,7 +598,7 @@ sources:
             description: >
               Every "NOBO mile X to Y" in the update's text, in order, a JSON
               list of {direction, start, end, raw}: start and end as numbers,
-              thousands separators read (CL11), end null for a point.
+              thousands separators read, end null for a point.
           - name: source_url
             description: The update's own page, lib/atc_scrape.py's update_url().
           - name: sitemap_lastmod
@@ -617,11 +617,11 @@ sources:
             description: The update's place in the sitemap, from 0.
       - name: raw_atc__water_distance
         data_tests:
-          # Rows sharing base_atc__water_distance's key must be exact copies (decision 40).
+          # Rows sharing base_atc__water_distance's key must be exact copies.
           - duplicates_are_exact:
               arguments:
                 key_columns: ["'reference/water_distance.json'", "atc_global_id"]
-          # Elementary's checks (make_dbt_staging.py's raw_table_checks(), decision 102), each with its two thresholds (decision 204).
+          # Elementary's checks (make_dbt_staging.py's raw_table_checks()), each with its two thresholds.
           - elementary.volume_anomalies:
               config:
                 severity: error

@@ -10,7 +10,7 @@ sources:
       OurHike's own data. This file holds the rows its Postgres serves to
       the conditions bake, landed by the extract's _shared/ourhike/
       closures.py, reports.py and field_notes.py through each
-      export_conditions.py query, whole (decision 6): moderator-verified
+      export_conditions.py query, whole: moderator-verified
       closures, public reports, visible field notes and corroborated
       disputes. Who reported, who verified and who hid a row never leave the
       database (_kinds.py's WITHHELD_COLUMNS).
@@ -36,11 +36,11 @@ sources:
     tables:
       - name: raw_ourhike__closures
         data_tests:
-          # Rows sharing base_ourhike__closures's key must be exact copies (decision 40).
+          # Rows sharing base_ourhike__closures's key must be exact copies.
           - duplicates_are_exact:
               arguments:
                 key_columns: ["'ourhike_closures'", "id"]
-          # Elementary's checks (make_dbt_staging.py's raw_table_checks(), decision 102), each with its two thresholds (decision 204).
+          # Elementary's checks (make_dbt_staging.py's raw_table_checks()), each with its two thresholds.
           - elementary.volume_anomalies:
               config:
                 severity: error
@@ -67,11 +67,11 @@ sources:
             data_tests: [not_null]
       - name: raw_ourhike__reports
         data_tests:
-          # Rows sharing base_ourhike__reports's key must be exact copies (decision 40).
+          # Rows sharing base_ourhike__reports's key must be exact copies.
           - duplicates_are_exact:
               arguments:
                 key_columns: ["'ourhike_reports'", "id"]
-          # Elementary's checks (make_dbt_staging.py's raw_table_checks(), decision 102), each with its two thresholds (decision 204).
+          # Elementary's checks (make_dbt_staging.py's raw_table_checks()), each with its two thresholds.
           - elementary.volume_anomalies:
               config:
                 severity: error
@@ -99,11 +99,11 @@ sources:
             data_tests: [not_null]
       - name: raw_ourhike__notes
         data_tests:
-          # Rows sharing base_ourhike__notes's key must be exact copies (decision 40).
+          # Rows sharing base_ourhike__notes's key must be exact copies.
           - duplicates_are_exact:
               arguments:
                 key_columns: ["'ourhike_notes'", "id"]
-          # Elementary's checks (make_dbt_staging.py's raw_table_checks(), decision 102), each with its two thresholds (decision 204).
+          # Elementary's checks (make_dbt_staging.py's raw_table_checks()), each with its two thresholds.
           - elementary.volume_anomalies:
               config:
                 severity: error
@@ -123,18 +123,18 @@ sources:
         description: >
           OurHike's visible field notes, PUBLIC_NOTES_SQL's rows: each place's
           five most recent inside 90 days. No mart reads them;
-          export_conditions.py writes conditions/notes.json (WN11). Key: `id`.
+          export_conditions.py writes conditions/notes.json. Key: `id`.
         columns:
           - name: id
             description: The note's UUID primary key, as text.
             data_tests: [not_null]
       - name: raw_ourhike__disputes
         data_tests:
-          # Rows sharing base_ourhike__disputes's key must be exact copies (decision 40).
+          # Rows sharing base_ourhike__disputes's key must be exact copies.
           - duplicates_are_exact:
               arguments:
                 key_columns: ["'ourhike_disputes'", "poi_id"]
-          # Elementary's checks (make_dbt_staging.py's raw_table_checks(), decision 102), each with its two thresholds (decision 204).
+          # Elementary's checks (make_dbt_staging.py's raw_table_checks()), each with its two thresholds.
           - elementary.volume_anomalies:
               config:
                 severity: error
@@ -155,7 +155,7 @@ sources:
           The places field notes say are gone, PUBLIC_DISPUTES_SQL's rows:
           one per POI that two accounts or more have marked not found inside
           180 days, as a count, never an account. No mart reads them;
-          export_conditions.py writes conditions/disputes.json (WN11). Key:
+          export_conditions.py writes conditions/disputes.json. Key:
           `poi_id`, the query's GROUP BY.
         columns:
           - name: poi_id

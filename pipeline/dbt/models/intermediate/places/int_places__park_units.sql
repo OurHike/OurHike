@@ -1,8 +1,8 @@
 {{ config(materialized='table') }}
 -- The parks places.json lists, one row per park unit: export_places.py's
--- load_parks(), step for step (PL01-PL03).
+-- load_parks(), step for step.
 --
--- PL01: no rows unless oprhp_park_polygons may publish
+-- No rows unless oprhp_park_polygons may publish
 -- (int_sources__publication), where load_parks() reads `reaches_hikers`.
 -- Measured 2026-10-02: the two agree on 64 of 64 sources in the real
 -- sources.json, the check pipeline/ELT.md asks for before may_publish
@@ -13,12 +13,12 @@
 -- PARK_FIELDS), read under dlt's names, so a column OPRHP renames is a
 -- registry edit. A field the layer lacks reads as null.
 --
--- PL03: every polygon goes through ST_MakeValid first, because
+-- Every polygon goes through ST_MakeValid first, because
 -- ST_Intersection refuses an invalid one. Measured 2026-10-02: 9 of the
 -- live layer's 858 polygons fail ST_IsValid, which settles the count
 -- export_places.py left @unvalidated.
 --
--- PL02, one row per unit: a polygon with no name or id is not a place. A
+-- One row per unit: a polygon with no name or id is not a place. A
 -- polygon joins its unit, `oprhp_park_polygons:<unit>`; one without a unit
 -- joins the single unit whose polygons wear its name, else stands alone as
 -- `oprhp_park_polygons:<id>`. A unit takes its commonest name (ties: the
@@ -42,7 +42,7 @@ organizations as (
     select * from {{ ref('stg_registry__organizations') }}
 ),
 
--- The park layer's entry, only where it may publish (PL01).
+-- The park layer's entry, only where it may publish.
 entry as (
     select
         registry.source_key,
@@ -194,7 +194,7 @@ field_text as (
     where field_columns.name_column is not null
 ),
 
--- Stripped to null as _clean() does, and every polygon made valid (PL03).
+-- Stripped to null as _clean() does, and every polygon made valid.
 parts as (
     select
         part,

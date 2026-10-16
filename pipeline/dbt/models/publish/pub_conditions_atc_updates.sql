@@ -22,7 +22,7 @@
 -- NO ROW, SO NO FILE, while int_closures__gate holds ATC back (`meta.gate`):
 -- phone_file's `when_empty: keep_last_file` writes nothing and the phone keeps
 -- its last file, as export_atc_updates.py writes nothing for an unreviewed
--- file or a bad row (CL05). publish.py then fails the run for a bad row, as
+-- file or a bad row. publish.py then fails the run for a bad row, as
 -- the Python exits 1, and not for an unreviewed file, for which it exits 0
 -- ("a red X on a job that is behaving correctly is how a real failure gets
 -- missed later").

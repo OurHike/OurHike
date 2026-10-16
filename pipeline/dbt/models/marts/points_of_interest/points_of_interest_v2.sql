@@ -1,4 +1,4 @@
--- The points_of_interest mart's v2 (decision 44), for the eight
+-- The points_of_interest mart's v2, for the eight
 -- v2/poi_<type>.geojson files and v2/nearby_poi.geojson (stage 6 of #1793;
 -- pipeline/ELT.md, "Making the download smaller", tier (a): "6 decimals" and
 -- "one copy of each coordinate"). The same rows as v1, every column as v1
@@ -76,7 +76,7 @@ select
     water_distance_source,
     description,
     nearby,
-    -- PO36: the Long Path guide's own fields, on its waypoints, as v1's.
+    -- The Long Path guide's own fields, on its waypoints, as v1's.
     lp_section,
     section_mile,
     placement,
@@ -101,7 +101,7 @@ select
     club,
     source_key,
     _loaded_at,
-    -- v1's row dates (decision 57): v2's rows are v1's, printed for v2's
+    -- v1's row dates: v2's rows are v1's, printed for v2's
     -- files, so a change to a v1 column v2 drops moves them too.
     _first_seen_at,
     _changed_at

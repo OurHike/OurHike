@@ -1,4 +1,4 @@
-"""The data-quality page's two files, built by dbt from Elementary-shaped tables (decision 102, step 4).
+"""The data-quality page's two files, built by dbt from Elementary-shaped tables (step 4).
 
 The warehouse here holds what pub_data_quality and pub_conditions_data_quality
 read, in the shapes Elementary 0.26.0 writes them on dbt 2.0.6 and DuckDB
@@ -7,7 +7,7 @@ header): three builds of one lane's history, each check of the third (this
 build) chosen to reach one rule of the file, and a project graph in which two
 raw tables publish, three are held, one is OurHike's own registry, and one is
 a step's derived table; and this build's `dbt source freshness` results, as
-Elementary's end-of-run hook writes them (decision 203). Then the two writers
+Elementary's end-of-run hook writes them. Then the two writers
 are built, with Elementary on,
 and each file is read field by field: what counts, what is named, the order of
 what needs a look, since when, which series are charted, their window and
@@ -105,7 +105,7 @@ PUBLICATION = [
     ("osm_water", True),
 ]
 NOTICE_READERS = [("club_notices", "raw_club__club_news")]
-#: Decision 213's rule 23 (the maintainer's poll, 2026-10-15): each published source's last post, its own layer's
+#: The rule 23 (the maintainer's poll, 2026-10-15): each published source's last post, its own layer's
 #: newest edit date, as int_sources__final and int_sources__data_edited give it. secret_layer is held, so its title
 #: and day never reach the file; osm_water publishes and its layer states no date, so it has no entry.
 FINAL_SOURCES = [
@@ -192,7 +192,7 @@ TESTS = {
 #: Each test's error_if and meta in Elementary's dbt_tests, where one is not dbt_project.yml's `>0` and `{}` (decision
 #: 204): a warning past its error_if is failed on the page, unless it stays at warn, and a level is no count of rows.
 THRESHOLDS = {
-    # Warned 6 at zero tolerance, kept a warning by its meta, as decision 197's four closures key tests are.
+    # Warned 6 at zero tolerance, kept a warning by its meta, as the four closures key tests are.
     "assert_lines_match_checks": (">0", {"stays_at_warn": "decision 197"}),
     # A level (macros/test_levels.sql): warned at 1, an error only at 2, and never a count.
     "not_null_challenges_id": (">1", {"scores_a_level": True}),
@@ -346,8 +346,8 @@ def _freshness(uid: str, status: str, seconds: int | None, limits: tuple[str, st
 
 
 #: This build's freshness run and what came before it. Counted: dec's last result (it was measured twice in this
-#: build), NWS's error (2 hours to error, decision 101), the registry's warning (OurHike's own source, cleared), ATC's
-#: challenges' warning with no error limit, as a reaches_hikers false source has (decision 100), and OPRHP's runtime
+#: build), NWS's error (2 hours to error), the registry's warning (OurHike's own source, cleared), ATC's
+#: challenges' warning with no error limit, as a reaches_hikers false source has, and OPRHP's runtime
 #: error. Not counted: the build before's result, the held secret layer's, and a source Elementary's dbt_sources does
 #: not describe.
 FRESHNESS = [
@@ -446,7 +446,7 @@ def _history() -> tuple[list[dict], list[dict], list[dict]]:
         "volume_mart", invocation=checks, at=B3, status="pass", test_type="anomaly_detection", sub_type="row_count"
     )
     # The closures mart's table check warns on both its metrics: its row count counts, and its freshness, a metric
-    # Elementary learns, counts nowhere (decision 203, macros/data_quality.sql's header, "FRESHNESS").
+    # Elementary learns, counts nowhere (macros/data_quality.sql's header, "FRESHNESS").
     closures_rows, closures_fresh = (
         _result(
             "table_closures", invocation=checks, at=B3, status="warn", test_type="anomaly_detection", sub_type=metric, failures=1
@@ -764,10 +764,10 @@ def test_this_builds_counted_checks_by_kind_a_held_source_neither_named_nor_coun
     derived table that shares a registry key's name, a test Elementary's dbt_tests does not hold, and a skipped test.
     The retried test counts once, as its retry passed. Earlier builds' results are history, not this build's.
     Freshness is the five sources' dbt freshness this build measured (FRESHNESS); Elementary's freshness_anomalies on
-    NWS and the freshness half of the closures mart's table_anomalies test count nowhere (decision 203)."""
+    NWS and the freshness half of the closures mart's table_anomalies test count nowhere."""
     document = files["monthly"]
 
-    # The mart's not_null on `name` warned with 5 past its error_if of >0: failed (decision 204).
+    # The mart's not_null on `name` warned with 5 past its error_if of >0: failed.
     assert document["totals"] == _counts(28, 11, 12, 3, 2)
     assert document["kinds"] == [
         {"kind": "freshness", **_counts(5, 1, 2, 1, 1)},
@@ -808,10 +808,10 @@ def test_needs_a_look_is_worst_first_and_each_entry_carries_only_numbers_and_nam
         # Past its error limit: seconds since the extract last read it or confirmed it unchanged, against the error
         # limit, also in seconds. No `since`: the value is how long.
         entry("freshness", "raw_nws__alerts", None, "fail", 11250, None, 7200.0, None, *reversed(source)),
-        # Warned with 5 past its error_if of >0, so failed (decision 204). Passed in the build before: since this build.
+        # Warned with 5 past its error_if of >0, so failed. Passed in the build before: since this build.
         entry("dbt_tests", "trail_lines_v1", "name", "fail", 5, None, None, now, None, "not_null"),
         entry("dbt_tests", "trail_lines_v1", "status", "fail", 2, None, None, now, None, "accepted_values"),
-        # No error limit (reaches_hikers false, decision 100): the warning limit is the one quoted.
+        # No error limit (reaches_hikers false): the warning limit is the one quoted.
         entry("freshness", "raw_atc__challenges_atc", None, "warn", 46800, None, 43200.0, None, *reversed(source)),
         entry("freshness", "raw_registry__sources", None, "warn", 3456000, None, 5356800.0, None, *reversed(source)),
         entry("volume", "closures_v1", None, "warn", 40, 50.0, 60.0, now, "row_count", "table_anomalies"),
@@ -837,7 +837,7 @@ def test_needs_a_look_is_worst_first_and_each_entry_carries_only_numbers_and_nam
 
 
 #: Each series as the file writes it, each band where that series' check scored the bucket and null where no kept
-#: run did. The closures mart's table check's row count, its freshness metric charted nowhere (decision 203). A mart's
+#: run did. The closures mart's table check's row count, its freshness metric charted nowhere. A mart's
 #: table is named by version, and `mart` names its folder, as by_mart does.
 CLOSURES_SERIES = [
     {
@@ -1073,7 +1073,7 @@ def test_each_sources_freshness_is_its_last_result_in_this_build_and_elementarys
 
 
 def test_last_posts_date_each_published_source_by_its_own_layer_and_warn_about_none(files, empty_files):
-    """Decision 213's rule 23 (the maintainer's poll, 2026-10-15, "Not now, show last post"): no gap-based freshness
+    """The rule 23 (the maintainer's poll, 2026-10-15, "Not now, show last post"): no gap-based freshness
     warning, each source's last post shown as information instead. The monthly file lists every published source
     whose layer states an edit date, by title; a held source is neither named nor dated; nothing about it is counted,
     so totals and needs_a_look are what they were; the hourly lane reads no layer's date and lists none."""

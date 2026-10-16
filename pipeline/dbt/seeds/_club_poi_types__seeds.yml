@@ -1,6 +1,6 @@
 version: 2
 
-# Which POI type each of decision 54's wave 1 point layers publishes a row as
+# Which POI type each of the wave 1 point layers publishes a row as
 # (pipeline/ELT.md, "Loading everything the clubs publish"), one row per value
 # that maps. An allowlist: a value no row names publishes nothing, so a type a
 # person has not read never reaches a phone. A judgement somebody reviews row

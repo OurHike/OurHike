@@ -16,7 +16,7 @@ models:
     columns:
       - name: formed_route_key
         description: >
-          The row's key (decision 40): dbt_utils.generate_surrogate_key over
+          The row's key: dbt_utils.generate_surrogate_key over
           the table's name and the hike's number.
         data_tests: [not_null, unique]
       - name: hike_number
@@ -43,7 +43,7 @@ models:
         description: >
           Feet gained over a generated walk, from this build's per-edge
           climb; null, with climb_loss_ft, where any edge was never priced.
-          Absent means unknown, never flat (SH08).
+          Absent means unknown, never flat.
       - name: climb_loss_ft
         description: Feet lost over a generated walk; null exactly where climb_gain_ft is.
       - name: route_ends
@@ -68,7 +68,7 @@ models:
       - name: rewalk_ends
         description: The published track's samples, each pulled onto its line, [lon, lat] at full precision.
       - name: rewalk_miles
-        description: The re-walk's length in miles, which the tolerance compares with the track's (SH06).
+        description: The re-walk's length in miles, which the tolerance compares with the track's.
       - name: rewalk_climb_gain_ft
         description: Feet gained over the re-walk, the only climb a published hike carries; null where unpriced.
       - name: rewalk_climb_loss_ft

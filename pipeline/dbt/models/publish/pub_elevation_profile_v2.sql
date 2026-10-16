@@ -1,5 +1,5 @@
 {{ config(format='json', location='elevation_profile_v2.json') }}
--- v2/elevation_profile.json (decision 44's v2 of the elevation mart), the
+-- v2/elevation_profile.json (the v2 of the elevation mart), the
 -- A.T. elevation profile packed as columns of whole numbers, delta-coded
 -- (pipeline/ELT.md, "Making the download smaller", tier (a)). The same
 -- samples as v1's elevation_profile.json, in the same order, and the same

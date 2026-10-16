@@ -40,7 +40,7 @@
     - position: the feature's place in its layer, or null where its staging
       model keeps none;
     - last_resort: a step the Python does not have, for a row with none of
-      the three, such as decision 40's staging key, which stays unique and
+      the three, such as the staging key, which stays unique and
       stable where a place in a file the warehouse never saw cannot be.
 -#}
 {% macro resolve_feature_id(

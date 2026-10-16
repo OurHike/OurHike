@@ -1,7 +1,7 @@
 -- NYC park drives that are closed to cars (Central Park and Prospect Park)
 -- (NYC DOT, sources.json `nyc_park_drives`): every row, keyed and deduped
--- (decision 40), with nothing filtered and nothing joined. A base model, the
--- one place this dataset is staged (decision 34), for the stewardship and
+-- with nothing filtered and nothing joined. A base model, the
+-- one place this dataset is staged, for the stewardship and
 -- staging models of every club whose portion it holds.
 --
 -- Key: globalid unique on 6,496 of 6,496 live rows of the Centerline dataset
@@ -9,7 +9,7 @@
 -- measured 2026-10-01).
 with source as (
     -- dlt lands geometry as GeoJSON text (extract/_kinds.py's JSON
-    -- hint); cast here, as decision 40 has staging do.
+    -- hint); cast here, as staging models do.
     select
         * exclude (geometry),
         st_geomfromgeojson(cast(geometry as varchar)) as geom

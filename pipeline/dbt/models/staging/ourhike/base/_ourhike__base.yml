@@ -15,7 +15,7 @@ models:
     columns:
       - name: poi_identity_key
         description: >
-          The row's key (decision 40): dbt_utils.generate_surrogate_key over
+          The row's key: dbt_utils.generate_surrogate_key over
           the file's path and poi_id.
         data_tests: [not_null, unique]
       - name: poi_id
@@ -44,7 +44,7 @@ models:
     columns:
       - name: blaze_mapping_document_key
         description: >
-          The row's key (decision 40): dbt_utils.generate_surrogate_key over
+          The row's key: dbt_utils.generate_surrogate_key over
           the file's name and its landed path.
         data_tests: [not_null, unique]
       - name: document_json
@@ -61,7 +61,7 @@ models:
     columns:
       - name: trail_name_aliases_document_key
         description: >
-          The row's key (decision 40): dbt_utils.generate_surrogate_key over
+          The row's key: dbt_utils.generate_surrogate_key over
           the file's name and its landed path.
         data_tests: [not_null, unique]
       - name: document_json
@@ -80,7 +80,7 @@ models:
     columns:
       - name: work_projects_document_key
         description: >
-          The row's key (decision 40): dbt_utils.generate_surrogate_key over
+          The row's key: dbt_utils.generate_surrogate_key over
           the file's name and its landed path.
         data_tests: [not_null, unique]
       - name: document_json

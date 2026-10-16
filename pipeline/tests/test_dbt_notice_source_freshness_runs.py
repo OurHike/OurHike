@@ -132,7 +132,7 @@ def _cases() -> dict[str, tuple[str, str, datetime, list[tuple[str, datetime]]]]
     hourly = _notice_sources("hourly", True, 7)
     daily = _notice_sources("daily", True, 2)
     (quiet,) = _notice_sources("hourly", False, 1)
-    every_4_hours = range(26, 0, -4)  # the notices job's cron, decision 61: 26, 22, ..., 2 hours ago
+    every_4_hours = range(26, 0, -4)  # the notices job's cron: 26, 22, ..., 2 hours ago
     cases = {
         "refused for 30 hours": (hourly[0], _ago(30), [("loaded", _ago(30)), *(("refused", _ago(h)) for h in every_4_hours)]),
         "confirmed unchanged an hour ago": (
@@ -160,7 +160,7 @@ def _cases() -> dict[str, tuple[str, str, datetime, list[tuple[str, datetime]]]]
         "daily, refused for 50 hours": (daily[1], _ago(50), [("loaded", _ago(50)), ("refused", _ago(26)), ("refused", _ago(2))]),
         "reaching no hiker, refused for 30 hours": (quiet, _ago(30), [("loaded", _ago(30)), ("refused", _ago(2))]),
     }
-    # Decision 203's monthly sources, read once a month (refresh-reference.yml's "15 5 3 * *"): read at the last
+    # The monthly sources, read once a month (refresh-reference.yml's "15 5 3 * *"): read at the last
     # refresh; last read 40 days ago and 70 days ago, refused since; and a reviewed file whose bytes have not changed
     # in over a year, confirmed unchanged at the last refresh.
     month = _monthly_sources(4)
@@ -180,7 +180,7 @@ def _cases() -> dict[str, tuple[str, str, datetime, list[tuple[str, datetime]]]]
     }
     built = {name: (*source, loaded_at, rows) for name, (source, loaded_at, rows) in cases.items()}
     # The conditions job's own upstream, hand-staged: NWS's alerts, refused on the last three hourly reads, which
-    # decision 101's 2 hours turn red where every other source this leg reads would still pass.
+    # the 2 hours turn red where every other source this leg reads would still pass.
     built["NWS's alerts, refused for 3 hours"] = (
         "nws",
         "raw_nws__alerts",
@@ -354,7 +354,7 @@ def test_a_refused_source_that_reaches_no_hiker_only_warns(freshness):
 
 def test_nws_alerts_refused_for_3_hours_are_stale(freshness):
     """The conditions job's own upstreams, refused on their own, warn on the hourly run as the notices job's do
-    (decision 101), and NWS's alerts are red here after 2 hours unread, not 24 (the maintainer's poll of 2026-10-07:
+    and NWS's alerts are red here after 2 hours unread, not 24 (the maintainer's poll of 2026-10-07:
     "Both, NWS red after 2 h")."""
     assert freshness["NWS's alerts, refused for 3 hours"] == "error"
 

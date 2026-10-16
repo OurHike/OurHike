@@ -1,6 +1,6 @@
 version: 2
 
-# The rules decision 54's live reads found a layer needs beyond its key
+# The rules the live reads found a layer needs beyond its key
 # (pipeline/ELT.md, "What wave 1's live reads found that phase C must
 # honour"), one row per rule per layer, each quoting the evidence it rests on.
 # A judgement somebody reviews row by row, so it is a seed and not a
@@ -27,7 +27,7 @@ seeds:
       list's `drop_where_contains`
       row is read the same way by int_points_of_interest__gatc_water, which its records come
       through instead. For points of interest of any organization
-      (int_points_of_interest__classified, decision 65): `plumbed_water` (a water row where the
+      (int_points_of_interest__classified): `plumbed_water` (a water row where the
       field equals `matches` is a tap or fountain whose shutoff season the layer does not record: it
       ships at low confidence with the season caution `water_caution` 'no_shutoff_season', and a
       layer typed per row by the poi_value_types seed, NY Parks', is typed water by it) and

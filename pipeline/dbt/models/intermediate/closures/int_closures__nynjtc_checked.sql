@@ -1,5 +1,5 @@
 -- NYNJTC's Trail Alerts posts, read as lib/nynjtc_alerts.py's parse_alert()
--- reads them and shaped as its published_rows() publishes them (WN05-WN08),
+-- reads them and shaped as its published_rows() publishes them,
 -- one row per post, with why it cannot be read in `problems`. An empty list
 -- means the post publishes. int_closures__gate holds NYNJTC's whole file
 -- back on any problem, as fetch_nynjtc_alerts.py leaves the previous cache in
@@ -14,16 +14,16 @@
 -- `&amp;#8211;` for a typed `&#8211;`). python_strip()'s class is
 -- str.isspace()'s, which is what Python's `\s` matches in a str pattern.
 --
--- PLACE TERMS (WN05) resolve against the daily vocabulary: an id the post
+-- PLACE TERMS resolve against the daily vocabulary: an id the post
 -- carries that the vocabulary holds, in the post's own order; an id it does
 -- not hold is dropped, never faked (parse_alert's terms_for()). A term needs
 -- an id, a name and a slug, and its name is unescaped once (parse_terms()).
--- `locality` (WN07) is the regions, else the states, else the parks: each
+-- `locality` is the regions, else the states, else the parks: each
 -- name that is not blank, once, in order (published_rows()'s locality_of()).
 --
--- `updated_at` (WN08) is `modified`, NYNJTC's site-local time written as UTC
+-- `updated_at` is `modified`, NYNJTC's site-local time written as UTC
 -- to the second: a known error of a few hours, carried, as _as_utc_stamp()
--- carries it. Nothing here places, classifies or reviews a post (WN06):
+-- carries it. Nothing here places, classifies or reviews a post:
 -- that is int_closures__unioned's null `obstructs_trail`, by decision 7.
 --
 -- STRICTER THAN THE PYTHON, deliberately, each a post the Python would read:
@@ -31,7 +31,7 @@
 -- came last, and a `title.rendered` that is not a string reads as no title,
 -- where _text_of() prints whatever it is. WordPress keeps a slug unique within
 -- posts and renders every title as a string, so neither has happened. And a
--- link back into the app (macros/link_into_the_app.sql, decision 94) is a
+-- link back into the app (macros/link_into_the_app.sql) is a
 -- problem here, which the Python reads as any other "http" link.
 with posts as (
     select * from {{ ref('base_nynjtc__nynjtc_trail_alerts') }}
@@ -113,7 +113,7 @@ named_tags as (
 -- locality_of(): a taxonomy's names that are not blank, each once, in the
 -- order the post first names them.
 -- features/ORG_NOTICES.md section 4's left-hand side, for
--- conditions/notices.json's `org_terms` place (decision 53, phase D): each
+-- conditions/notices.json's `org_terms` place (phase D): each
 -- post's trail and park tags as `taxonomy:slug`, keyed on the taxonomy and
 -- the slug and never the term id or the bare slug (section 4's three
 -- properties), trail tags first and each in the post's own order. No term is
@@ -265,7 +265,7 @@ checked as (
                         when not coalesce(starts_with(link, 'http'), false)
                             then 'a link that is not http'
                     end,
-                    -- Decision 94: not back into the app, which
+                    -- Not back into the app, which
                     -- parse_alert() does not check.
                     case
                         when coalesce(starts_with(link, 'http'), false)

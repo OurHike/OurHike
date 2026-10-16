@@ -1,6 +1,6 @@
 {{ config(materialized='table') }}
 -- Every elevation the clubs' registered elevation layers publish, one row per
--- sample, in metres and in feet: decision 54's wave 1 elevation layers
+-- sample, in metres and in feet: the wave 1 elevation layers
 -- (int_elevation__unioned), read the way each layer's sources.json row says.
 -- No mart reads this yet; every layer here is held back by its row
 -- (`reaches_hikers: false`).

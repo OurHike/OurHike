@@ -31,7 +31,7 @@ sources:
     schema: raw
     config:
       # When the extract last read each table or confirmed it unchanged, from
-      # its run log, never `_loaded_at` (decision 203): make_dbt_staging.py's
+      # its run log, never `_loaded_at`: make_dbt_staging.py's
       # LOADED_AT_QUERY and MONTHLY_FRESHNESS_DAYS say why, and
       # tests/test_source_freshness.py holds every monthly source to them.
       loaded_at_query: "{{ last_read_or_confirmed_at(this) }}"
@@ -41,11 +41,11 @@ sources:
     tables:
       - name: raw_nysdec__dec_hiking_trails
         data_tests:
-          # Rows sharing stg_dec__hiking_trails's key must be exact copies (decision 40).
+          # Rows sharing stg_dec__hiking_trails's key must be exact copies.
           - duplicates_are_exact:
               arguments:
                 key_columns: ["'dec_hiking_trails'", "globalid"]
-          # Elementary's checks (make_dbt_staging.py's raw_table_checks(), decision 102), each with its two thresholds (decision 204).
+          # Elementary's checks (make_dbt_staging.py's raw_table_checks()), each with its two thresholds.
           - elementary.volume_anomalies:
               config:
                 severity: error
@@ -96,11 +96,11 @@ sources:
               DEC's and is made in export_nearby_trails.py, not here.
       - name: raw_nysdec__dec_lean_tos
         data_tests:
-          # Rows sharing stg_dec__lean_tos's key must be exact copies (decision 40).
+          # Rows sharing stg_dec__lean_tos's key must be exact copies.
           - duplicates_are_exact:
               arguments:
                 key_columns: ["'dec_lean_tos'", "asset_uid"]
-          # Elementary's checks (make_dbt_staging.py's raw_table_checks(), decision 102), each with its two thresholds (decision 204).
+          # Elementary's checks (make_dbt_staging.py's raw_table_checks()), each with its two thresholds.
           - elementary.volume_anomalies:
               config:
                 severity: error
@@ -141,11 +141,11 @@ sources:
               widens cannot quietly bring internal assets with it.
       - name: raw_nysdec__dec_primitive_campsites
         data_tests:
-          # Rows sharing stg_dec__primitive_campsites's key must be exact copies (decision 40).
+          # Rows sharing stg_dec__primitive_campsites's key must be exact copies.
           - duplicates_are_exact:
               arguments:
                 key_columns: ["'dec_primitive_campsites'", "asset_uid", "md5(st_astext(st_geomfromgeojson(cast(geometry as varchar))))"]
-          # Elementary's checks (make_dbt_staging.py's raw_table_checks(), decision 102), each with its two thresholds (decision 204).
+          # Elementary's checks (make_dbt_staging.py's raw_table_checks()), each with its two thresholds.
           - elementary.volume_anomalies:
               config:
                 severity: error
@@ -172,11 +172,11 @@ sources:
             data_tests: [not_null, unique]
       - name: raw_nysdec__dec_scenic_vistas
         data_tests:
-          # Rows sharing stg_dec__scenic_vistas's key must be exact copies (decision 40).
+          # Rows sharing stg_dec__scenic_vistas's key must be exact copies.
           - duplicates_are_exact:
               arguments:
                 key_columns: ["'dec_scenic_vistas'", "asset_uid"]
-          # Elementary's checks (make_dbt_staging.py's raw_table_checks(), decision 102), each with its two thresholds (decision 204).
+          # Elementary's checks (make_dbt_staging.py's raw_table_checks()), each with its two thresholds.
           - elementary.volume_anomalies:
               config:
                 severity: error
@@ -202,11 +202,11 @@ sources:
             data_tests: [not_null, unique]
       - name: raw_nysdec__dec_firetowers
         data_tests:
-          # Rows sharing stg_dec__firetowers's key must be exact copies (decision 40).
+          # Rows sharing stg_dec__firetowers's key must be exact copies.
           - duplicates_are_exact:
               arguments:
                 key_columns: ["'dec_firetowers'", "asset_uid"]
-          # Elementary's checks (make_dbt_staging.py's raw_table_checks(), decision 102), each with its two thresholds (decision 204).
+          # Elementary's checks (make_dbt_staging.py's raw_table_checks()), each with its two thresholds.
           - elementary.volume_anomalies:
               config:
                 severity: error
@@ -232,11 +232,11 @@ sources:
             data_tests: [not_null, unique]
       - name: raw_nysdec__dec_viewing_areas
         data_tests:
-          # Rows sharing stg_dec__viewing_areas's key must be exact copies (decision 40).
+          # Rows sharing stg_dec__viewing_areas's key must be exact copies.
           - duplicates_are_exact:
               arguments:
                 key_columns: ["'dec_viewing_areas'", "asset_uid"]
-          # Elementary's checks (make_dbt_staging.py's raw_table_checks(), decision 102), each with its two thresholds (decision 204).
+          # Elementary's checks (make_dbt_staging.py's raw_table_checks()), each with its two thresholds.
           - elementary.volume_anomalies:
               config:
                 severity: error
@@ -264,11 +264,11 @@ sources:
             data_tests: [not_null, unique]
       - name: raw_nysdec__dec_parking_areas
         data_tests:
-          # Rows sharing stg_dec__parking_areas's key must be exact copies (decision 40).
+          # Rows sharing stg_dec__parking_areas's key must be exact copies.
           - duplicates_are_exact:
               arguments:
                 key_columns: ["'dec_parking_areas'", "asset_uid", "md5(st_astext(st_geomfromgeojson(cast(geometry as varchar))))"]
-          # Elementary's checks (make_dbt_staging.py's raw_table_checks(), decision 102), each with its two thresholds (decision 204).
+          # Elementary's checks (make_dbt_staging.py's raw_table_checks()), each with its two thresholds.
           - elementary.volume_anomalies:
               config:
                 severity: error
@@ -297,11 +297,11 @@ sources:
             data_tests: [not_null, unique]
       - name: raw_nysdec__dec_backcountry_features
         data_tests:
-          # Rows sharing stg_dec__backcountry_features's key must be exact copies (decision 40).
+          # Rows sharing stg_dec__backcountry_features's key must be exact copies.
           - duplicates_are_exact:
               arguments:
                 key_columns: ["'dec_backcountry_features'", "asset_uid", "name", "md5(st_astext(st_geomfromgeojson(cast(geometry as varchar))))"]
-          # Elementary's checks (make_dbt_staging.py's raw_table_checks(), decision 102), each with its two thresholds (decision 204).
+          # Elementary's checks (make_dbt_staging.py's raw_table_checks()), each with its two thresholds.
           - elementary.volume_anomalies:
               config:
                 severity: error

@@ -3,7 +3,7 @@
 -- whose value is an object is a block: a fact about an organization, joined
 -- to its steward by `author` (or `also_covers`, #1432) in int_sources__
 -- stewards and int_sources__registered. Every other entry is kept, with a
--- null `block_kind`, because staging filters nothing (decision 40).
+-- null `block_kind`, because staging filters nothing.
 --
 -- The order matters: export_sources.py's `_block` takes the first block in
 -- the file that names a steward, so `entry_position` is the tie-break.

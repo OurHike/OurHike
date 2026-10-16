@@ -25,7 +25,7 @@
 -- assert_no_synthesized_water_is_held_on_a_retired_id.sql lists the held
 -- anchors at warn. This stays an error for every other collision, such as a
 -- layer whose feature re-presents a retired key.
--- A gate on a mart a hiker's safety reads (decision 204, dbt_project.yml's
+-- A gate on a mart a hiker's safety reads (dbt_project.yml's
 -- `marts:` gates): an error in every environment, so in production a
 -- failure holds the files below at their last good copy.
 {{ config(severity='error') }}

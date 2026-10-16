@@ -1,5 +1,5 @@
 {{ config(materialized='table') }}
--- Which club maintains which stretch of the A.T. (TL24-TL26):
+-- Which club maintains which stretch of the A.T. 
 -- export_club_sections.py with lib/club_sections.py's rules. One row per
 -- run of half-mile markers one club maintains, in mile order, plus the runs
 -- the centerline names no club for.
@@ -15,7 +15,7 @@
 -- can differ in the last bit, which matters only at such a tie or at
 -- exactly 100 m.
 --
--- TL25, a digit Acronym is never a club (is_attributable): empty or all
+-- A digit Acronym is never a club (is_attributable): empty or all
 -- ASCII digits is no club, and its miles publish as unattributed rather
 -- than borrowing the stale polygon layer's answer. (str.isdigit() also
 -- takes other scripts' digits; the live layer's 44 Acronym values are all
@@ -28,9 +28,9 @@
 -- unattributed miles (66 of 77 markers) carry such a code and could be
 -- decoded; the other 11 markers have no vertex within 100 m.
 --
--- TL24, the runs: a new run where the club changes or two markers are more
+-- The runs: a new run where the club changes or two markers are more
 -- than STRETCH_GAP_MILES (0.75) apart; each run owns MILEPOST_HALF_WIDTH
--- (0.25 mi) either side of its end markers. TL26: the southernmost run
+-- (0.25 mi) either side of its end markers. The southernmost run
 -- starts at mile 0 and the northernmost ends at the last marker, a tie
 -- going to the first in the order min() and max() search (the `keyed`
 -- CTE).

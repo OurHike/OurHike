@@ -4,7 +4,7 @@
 -- in their numbering, then the side trails and spurs in the layer's order,
 -- as export_trails.merge_chain_records() returns them.
 --
--- THE 6-DECIMAL CUT (decision 8), where export_trails.py writes GDAL's
+-- THE 6-DECIMAL CUT, where export_trails.py writes GDAL's
 -- digits: every coordinate rounded to trail_lines_published_decimals as
 -- Python's round() rounds it (a correctly rounded decimal, which
 -- format('{:.6f}') is too), vertex for vertex, never ST_ReducePrecision,

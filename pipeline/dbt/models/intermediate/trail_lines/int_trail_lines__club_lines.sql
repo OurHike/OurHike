@@ -1,9 +1,9 @@
 {{ config(materialized='table') }}
--- Every line of the clubs' registered trail-line layers (decision 54's wave
+-- Every line of the clubs' registered trail-line layers (the wave
 -- 1, int_trail_lines__unioned) with the rules pipeline/ELT.md's "What wave
 -- 1's live reads found that phase C must honour" gives trail lines, read
 -- from the layer_rules seed, where each row quotes the evidence it rests on.
--- int_trail_lines__club_published draws what may draw (decision 64), only
+-- int_trail_lines__club_published draws what may draw, only
 -- where its source may publish, and the routable network
 -- (int_trail_lines__network_*) does not read these layers.
 --
@@ -20,7 +20,7 @@
 -- - ROADS RIDE IN SOME TRAIL LAYERS. A `drop_where` row leaves out every
 --   line whose field (dlt's name, read from `properties`) equals its value:
 --   MassGIS DCR's roads-and-trails layer loses its TYPE 'Public Road' lines.
---   A filter, so it lives here and not in staging (decision 40).
+--   A filter, so it lives here and not in staging.
 -- - A STATUS LAYER DRAWS ONLY WHAT IT CALLS TRAIL. `keep_only_where` rows
 --   leave out every line whose field is none of their values, compared
 --   without case or surrounding space as the point rules compare
@@ -36,14 +36,14 @@
 --   as a steward's closure on a network line ships. NGPC's sections close on
 --   Road_Status 'Closed' or Condition 'Impassable' or 'Not Passable',
 --   whatever the other reads, the values the shared vocabulary
---   (seeds/notice_words.csv, decision 190) reads as closing the trail for
+--   (seeds/notice_words.csv) reads as closing the trail for
 --   its notices (tests/test_ngpc_cowboy_trail.py holds the two alike): 3 of its
 --   29 sections on the live read of 2026-10-11, the Niobrara bridge's,
 --   'Open' beside 'Not Passable', among them.
 -- - TWO DIMENSIONS. geom_wkt is ST_Force2D of the line, so a Z-enabled
 --   layer's heights (ATA's Z is feet, ATC's metres) never ride into a
 --   network built from it; had_z says which lines arrived with one.
--- - A TRAIL LINE IS A LINE. A GIS file mixes kinds (decision 54's wave 2:
+-- - A TRAIL LINE IS A LINE. A GIS file mixes kinds (the wave 2:
 --   OTA's My Map carries 72 trailheads beside its 89 lines, Condor's KMLs 2
 --   polygons, the Nez Perce NHT's map 110 tour stops), so a row whose
 --   geometry is not a LINESTRING or MULTILINESTRING is left out here; its

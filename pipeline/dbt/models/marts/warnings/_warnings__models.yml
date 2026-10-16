@@ -3,14 +3,14 @@ version: 2
 models:
   - name: warnings
     description: >
-      What a hiker should know that does not block the trail (decision 2):
+      What a hiker should know that does not block the trail:
       organization notices that do not obstruct it or that nobody has
-      classified (decision 7: unknown lands here, never dropped), NWS's
+      classified (unknown lands here, never dropped), NWS's
       relayed alerts, and OurHike's serious reports. No hazard POIs:
       ELT.md's warnings ledger, "No hazard POI exists to port". Every row's source may publish, and a
       notice's source passed int_closures__gate, or is held by it and the
       row is that source's last good one, marked with `carried_since`
-      (decision 53, phase D). Decision 67's hazard areas (hunting areas,
+      (phase D). The hazard areas (hunting areas,
       shooting sites and burned areas, seeds/notice_hazard_areas.csv) land
       here and never in the closures mart. Rebuilt whole each run, as the
       closures mart is.
@@ -18,7 +18,7 @@ models:
       access: public
       contract:
         enforced: true
-    # Decision 44: a phone file's shape is a version of the mart it is
+    # A phone file's shape is a version of the mart it is
     # written from. v1 is today's shape at today's keys, and every pub_ writer
     # reading this mart pins it, ref('warnings', v=1), so a later latest
     # version cannot move a published file. A removed, renamed or retyped
@@ -31,11 +31,11 @@ models:
       - v: 1
         defined_in: warnings
     data_tests:
-      # Elementary's checks (decision 102; pipeline/ELT.md, "The checks, and
-      # where each goes"), each with its two thresholds (decision 204) and run by build_marts.py: after the
+      # Elementary's checks (pipeline/ELT.md, "The checks, and
+      # where each goes"), each with its two thresholds and run by build_marts.py: after the
       # writers in CI's fixture build, and every hour in check-conditions.yml
       # once the hourly build has published (build_marts.py's
-      # HOURLY_LANE_CHECKS, decision 110). The rows at each build;
+      # HOURLY_LANE_CHECKS). The rows at each build;
       # the rows per club and source, so one club's notices vanishing cannot
       # hide inside the total; and each column's null rate, the geometry and
       # the long text (NWS's headline, description, instruction and area, a
@@ -73,7 +73,7 @@ models:
             error_if: ">1"
             tags: [elementary_check]
             enabled: "{{ env_var('OURHIKE_ELEMENTARY_CHECKS', 'false') == 'true' }}"
-      # Never a block: false, or null where nobody has classified it (decision 7).
+      # Never a block: false, or null where nobody has classified it.
       - dbt_utils.expression_is_true:
           name: warnings_never_obstruct_the_trail
           arguments:
@@ -83,7 +83,7 @@ models:
           name: warnings_unclassified_notices_read_not_reviewed
           arguments:
             expression: "obstructs_trail is not null or review_state = 'not_reviewed'"
-      # CL09: an ATC update nobody here has read is never a block, and is only
+      # An ATC update nobody here has read is never a block, and is only
       # ever ATC's (int_closures__atc_automatic forces obstructs_trail false).
       - dbt_utils.expression_is_true:
           name: warnings_automatic_atc_rows_are_atcs_and_never_obstruct
@@ -230,9 +230,9 @@ models:
       - name: starts_on
         description: >
           The day a club notice says it starts, as the source states it, in
-          UTC; null where the source states none (decision 53's phase C reads
+          UTC; null where the source states none (the phase C reads
           it before publishing). A hunting area's season where its layer gives
-          one, and never a season OurHike supplied (decision 67).
+          one, and never a season OurHike supplied.
         data_type: date
       - name: ends_on
         description: >
@@ -414,7 +414,7 @@ models:
           Null on a row this build read from its source. Set on a row of a
           notice source int_closures__gate holds back this build: the last
           good row the previous build's history held, kept rather than
-          dropped (decision 53, phase D; int_closures__held_carried), and
+          dropped (phase D; int_closures__held_carried), and
           this is when carrying it began. It stays put while the hold lasts.
         data_type: timestamptz
       - name: _first_seen_at
@@ -426,7 +426,7 @@ models:
                 # warn on a leg build_marts.py built without its history,
                 # where both dates are null and the run is red already, and
                 # in production and UA, where build_marts.py reports a
-                # failure as an error unless the history is off (decision 204).
+                # failure as an error unless the history is off.
                 severity: "{{ 'warn' if env_var('OURHIKE_ROW_HISTORY', 'on') == 'off' or env_var('OURHIKE_DATA_ENV', 'dev') in ['production', 'ua'] else 'error' }}"
       - name: _changed_at
         description: "{{ doc('row_changed_at') }}"
@@ -439,7 +439,7 @@ models:
 unit_tests:
   - name: warnings_takes_every_notice_that_does_not_block_and_reads_a_null_as_not_reviewed
     description: >
-      Decision 7's split, the warnings mart's half, over the same notices as
+      The split, the warnings mart's half, over the same notices as
       closures_takes_what_blocks_the_trail_from_a_source_that_passed_and_may_publish:
       a false keeps its source's review state, and a null, which nobody has
       classified, reads not_reviewed whatever its source said. Nothing that
@@ -470,7 +470,7 @@ unit_tests:
           - {source_key: oprhp_trail_closures, may_publish: false}
           - {source_key: feed_a, may_publish: true}
       # A feed's notice the window aged out is carried in from the warnings
-      # mart only (decision 53's phase C), as the organization notice it was.
+      # mart only (the phase C), as the organization notice it was.
       - input: ref('int_closures__window_carried')
         rows:
           - {mart: warnings, notice_id: 'feed_a:item-3', source_key: feed_a, obstructs_trail: null, review_state: not_reviewed}

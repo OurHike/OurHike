@@ -1,7 +1,7 @@
 -- BLM trails and routes (Natl GTLF public display) (BLM, sources.json
--- `blm_trails`): every row, keyed and deduped (decision 40), with nothing
+-- `blm_trails`): every row, keyed and deduped, with nothing
 -- filtered and nothing joined. A base model, the one place this dataset is
--- staged (decision 34), for the stewardship and staging models of every club
+-- staged, for the stewardship and staging models of every club
 -- whose portion it holds.
 --
 -- Key: geometry plus five route columns, 19,530 of 19,530 live rows after 2
@@ -16,7 +16,7 @@
 -- change, 2026-10-05). DEC's models order by it the same way.
 with source as (
     -- dlt lands geometry as GeoJSON text (extract/_kinds.py's JSON
-    -- hint); cast here, as decision 40 has staging do.
+    -- hint); cast here, as staging models do.
     select
         * exclude (geometry),
         st_geomfromgeojson(cast(geometry as varchar)) as geom

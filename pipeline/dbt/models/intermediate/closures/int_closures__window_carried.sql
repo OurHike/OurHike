@@ -1,12 +1,12 @@
 {{ config(materialized='table') }}
--- A FEED IS A WINDOW, NOT A LIST (decision 53, phase C; measured by phase B's
+-- A FEED IS A WINDOW, NOT A LIST (phase C; measured by phase B's
 -- FeedNotices, 2026-10-03: CFPA's feed carries 10 of its 30 notices). A
 -- notice from a source whose answer is its newest items
 -- (seeds/notice_readers.csv's `listing` = 'window') that the previous build's
 -- closures or warnings mart held, and that this build's read no longer
 -- carries, has aged out of the window, which says nothing about whether it
 -- was lifted. So it is carried, with the content the mart last held, into
--- int_closures__final or int_warnings__final, and decision 57's snapshot
+-- int_closures__final or int_warnings__final, and the snapshot
 -- never closes it on absence alone.
 --
 -- IT STAYS UNTIL, per phase C:

@@ -3,13 +3,13 @@
 -- and the water: its capacity and the nearby parts. One row per POI. The
 -- sentence is int_points_of_interest__described's.
 --
--- CAPACITY (PO13): how many a shelter sleeps, from
+-- CAPACITY: how many a shelter sleeps, from
 -- reference/shelter_capacity.json by published id, where the file states a
 -- number (export_poi.py's load_capacities() and attach_capacity()). Absent
 -- means nobody has said, never zero, and the points_of_interest mart refuses
 -- a zero.
 --
--- NEARBY (PO21, attach_nearby()): what a site's anchor publishes about the
+-- NEARBY (attach_nearby()): what a site's anchor publishes about the
 -- parts around it, as JSON the phone writes the sentence from. Each member's
 -- phrase (lib/poi_description.py's _privy_phrase() and _campsite_phrase(),
 -- or "water"; the bare type with its article for any other) and its distance

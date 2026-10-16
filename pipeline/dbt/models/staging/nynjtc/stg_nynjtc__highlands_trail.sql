@@ -14,7 +14,7 @@
 -- `nynjtc_highlands_trail:<OBJECTID>` (UA's release 2026-10-03-2, which it
 -- built, holds exactly the 12 live OBJECTIDs), and
 -- int_trail_lines__network_judged reads `objectid` from this model to
--- publish the same id (ELT.md, TL05).
+-- publish the same id (ELT.md).
 --
 -- THIS MODEL HAS NO BLAZE COLUMN BECAUSE THE LAYER PUBLISHES NO BLAZE, and
 -- that is the whole reason this model is worth reading beside its sibling.
@@ -32,7 +32,7 @@
 -- has already taken the word.
 with layer as (
     -- dlt lands geometry as GeoJSON text (extract/_kinds.py's JSON
-    -- hint); cast here, as decision 40 has staging do.
+    -- hint); cast here, as staging models do.
     --
     -- `rowid` is the row's place in the raw table, which extract/_warehouse.py
     -- fills in the order the layer's pages served the features: the order

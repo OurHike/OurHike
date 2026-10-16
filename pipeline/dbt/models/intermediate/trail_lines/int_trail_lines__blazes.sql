@@ -1,6 +1,6 @@
 {{ config(materialized='table') }}
 -- Every staged line feature's blaze, the A.T.'s and the network's, as
--- lib/blaze.py answers it (TL03): one row per feature, keyed on its staging
+-- lib/blaze.py answers it: one row per feature, keyed on its staging
 -- key. The two exports answer differently, and this model gives each
 -- source the answer its own exporter gives today.
 --
@@ -12,7 +12,7 @@
 -- domain and the value is one of its codes; else the registry's
 -- `blaze_default` when the row has no value; else 'Unknown', undecoded.
 -- Neither A.T. source has a table today, so for both it is the decode alone.
--- The domains come from int_trail_lines__coded_domains (tl-at's, TL02),
+-- The domains come from int_trail_lines__coded_domains (tl-at's),
 -- which reads them as rows where the Python makes a live ArcGIS call.
 --
 -- THE NETWORK'S SOURCES, export_nearby_trails.py's resolve_blaze(). There

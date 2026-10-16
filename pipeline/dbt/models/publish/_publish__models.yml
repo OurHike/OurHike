@@ -81,7 +81,7 @@ exposures:
         # publish-podcasts.yml is what ships an edit today, on no schedule.
         cadence: monthly
         # The mart columns this file's writer reads, in Elementary's type words, which
-        # exposure_schema_validity checks on the mart (decision 102). It can only because this is
+        # exposure_schema_validity checks on the mart. It can only because this is
         # the one phone file reading that mart: with more, Elementary 0.26.0 needs
         # context["render"], which dbt 2.0.6 lacks.
         referenced_columns:

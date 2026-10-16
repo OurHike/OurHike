@@ -14,8 +14,8 @@ models:
       contract:
         enforced: true
     data_tests:
-      # Elementary's checks (decision 102; pipeline/ELT.md, "The checks, and
-      # where each goes"), each with its two thresholds (decision 204) and run by build_marts.py after the
+      # Elementary's checks (pipeline/ELT.md, "The checks, and
+      # where each goes"), each with its two thresholds and run by build_marts.py after the
       # writers: the hikes at each build; the hikes per club and source, so one
       # club's hikes vanishing cannot hide inside the total; each column's null
       # rate, the long text (a hike's overview, description, directions,
@@ -53,14 +53,14 @@ models:
             error_if: ">1"
             tags: [elementary_check]
             enabled: "{{ env_var('OURHIKE_ELEMENTARY_CHECKS', 'false') == 'true' }}"
-      # SH08: absent means never priced, never 0, and both feet go together.
+      # Absent means never priced, never 0, and both feet go together.
       - dbt_utils.expression_is_true:
           arguments:
             expression: "(climb_gain_ft is null) = (climb_loss_ft is null)"
       - dbt_utils.expression_is_true:
           arguments:
             expression: "climb_gain_ft is null or (climb_gain_ft >= 0 and climb_loss_ft >= 0)"
-      # SH09: a photograph is its url, credit and licence, or nothing at all.
+      # A photograph is its url, credit and licence, or nothing at all.
       - dbt_utils.expression_is_true:
           arguments:
             expression: "(photo_url is null) = (photo_credit is null) and (photo_url is null) = (photo_licence is null)"
@@ -69,7 +69,7 @@ models:
       - dbt_utils.expression_is_true:
           arguments:
             expression: "photo_url is null or regexp_full_match(photo_url, 'photos/[0-9a-f]{64}[.]jpg')"
-      # SH10: a hike credits a named steward, and ships a publication block
+      # A hike credits a named steward, and ships a publication block
       # only with the author its page names.
       - dbt_utils.expression_is_true:
           arguments:
@@ -78,7 +78,7 @@ models:
           arguments:
             expression: "publication_submitted_by is null or publication_submitted_by != ''"
       # The record says where its line came from, and how much it is worth,
-      # wherever the line is drawn. A rejected route never reaches here (SH05).
+      # wherever the line is drawn. A rejected route never reaches here.
       - dbt_utils.expression_is_true:
           arguments:
             expression: >-
@@ -173,14 +173,14 @@ models:
         description: >
           Feet gained over the walk, whole feet, from this build's per-edge
           climb. Null, with climb_loss_ft, where any edge was never priced:
-          absent means unknown, never flat (SH08).
+          absent means unknown, never flat.
         data_type: integer
       - name: climb_loss_ft
         description: Feet lost over the walk; null exactly where climb_gain_ft is.
         data_type: integer
       - name: difficulty
         description: >
-          The client's slug for the publisher's difficulty (SH07), null where
+          The client's slug for the publisher's difficulty, null where
           it has no slot, so the card prints no badge rather than a guess.
         data_type: varchar
       - name: published_difficulty
@@ -197,7 +197,7 @@ models:
       - name: photo_url
         description: >
           The confirmed photograph's bucket key, `photos/<sha256>.jpg`, only
-          from the person-confirmed join (SH09); null where none is confirmed.
+          from the person-confirmed join; null where none is confirmed.
         data_type: varchar
       - name: photo_credit
         description: The photographer's credit as the page carried it, with "Photo by " where it did not say so.
@@ -292,7 +292,7 @@ models:
       - name: publication_submitted_by
         description: >
           The Author the page names, which a publication block needs; null on
-          a page that names nobody, which ships no block (SH10).
+          a page that names nobody, which ships no block.
         data_type: varchar
       - name: track_reproduction
         description: How far a published track's re-walk sat from its own length, as a percentage; null on a generated route.
@@ -338,7 +338,7 @@ models:
                 # warn on a leg build_marts.py built without its history,
                 # where both dates are null and the run is red already, and
                 # in production and UA, where build_marts.py reports a
-                # failure as an error unless the history is off (decision 204).
+                # failure as an error unless the history is off.
                 severity: "{{ 'warn' if env_var('OURHIKE_ROW_HISTORY', 'on') == 'off' or env_var('OURHIKE_DATA_ENV', 'dev') in ['production', 'ua'] else 'error' }}"
       - name: _changed_at
         description: "{{ doc('row_changed_at') }}"

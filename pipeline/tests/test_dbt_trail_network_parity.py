@@ -92,7 +92,7 @@ def test_every_unit_test_is_on_a_model_this_file_holds_to_the_python():
 
 def _features(rows: list[dict]) -> list[dict]:
     """The mart's rows as the features nearby_trails.geojson and trails.geojson carry, in feature order: each under its
-    `published_id`, the `id` both files publish (TL05)."""
+    `published_id`, the `id` both files publish."""
     return [
         {
             "type": "Feature",
@@ -291,7 +291,7 @@ def test_each_raw_edges_unit_test_is_build_graph(con, test):
     ]
     # dbt compares a double to 0.1, so the expected length is held here to the
     # centimetre the file publishes: both sides measure the WGS84 geodesic and
-    # round it to 2 decimals (decision 90).
+    # round it to 2 decimals.
     for row, edge in zip(published, graph["edges"]):
         if "length_m" in row:
             assert row["length_m"] == edge["length_m"], "length_m, at 2 decimals"

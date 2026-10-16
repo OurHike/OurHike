@@ -1,13 +1,13 @@
--- The warnings mart's row history (snapshots/warnings/, decision 57) as the
+-- The warnings mart's row history (snapshots/warnings/) as the
 -- previous build saved it, read back for one rule: a feed's notice that
--- leaves the feed's window is not lifted (decision 53, phase C;
+-- leaves the feed's window is not lifted (phase C;
 -- int_closures__window_carried). The columns are the club notices' own: a
 -- carried row is only ever a generated club notice source's, whose rows
 -- carry nothing else, so the history's other columns are not read.
 --
 -- `row_json` is the whole saved row, every column the mart had when it was
 -- saved, for a second rule: a notice source int_closures__gate holds keeps
--- its last good rows (decision 53, phase D; int_closures__held_carried),
+-- its last good rows (phase D; int_closures__held_carried),
 -- which need every column of an ATC or NYNJTC row, and which read a column
 -- the saved history predates (a column a later build added) as null rather
 -- than failing.

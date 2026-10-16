@@ -18,22 +18,22 @@
 ] %}
 -- Every row places.json publishes, measured, in file order:
 -- export_places.py's load_named_trails(), measure() and the end of
--- build_output() (PL07-PL11). The places mart is this, typed.
+-- build_output(). The places mart is this, typed.
 --
--- PL07, long trails: every (source, name) whose published lines total at
+-- Long trails: every (source, name) whose published lines total at
 -- least trail_lines_network_named_trail_threshold_miles (50, TL12's
 -- NAMED_TRAIL_THRESHOLD_MILES, @unvalidated in export_nearby_trails.py's
 -- own comment, which names a run on the live registry as what settles
 -- it), summed by `trail_name` so the A.T. is one trail. The total that
 -- clears it is still in EPSG:5070 metres (`projected_metres`), the measure
 -- the overview's through routes are summed in against the same threshold
--- (TL12): decision 97 moved the miles printed, not which trails are listed.
+-- decision 97 moved the miles printed, not which trails are listed.
 -- So outside the lower 48 a trail near the threshold can be listed at under
 -- 50 printed miles, or left out at over 50 (export_places.py's
 -- load_named_trails() works the Anchorage case).
 --
--- PL08, miles of published trail, in metres on the WGS84 ellipsoid
--- (decision 97, the maintainer's poll of 2026-10-06, as decision 90
+-- Miles of published trail, in metres on the WGS84 ellipsoid
+-- (the maintainer's poll of 2026-10-06, as decision 90
 -- measures the graph's edges): for a park, the lines inside its boundary;
 -- for a trailhead, parking area or town, the lines within
 -- places_trail_radius_miles of its point (@unvalidated; dbt_project.yml
@@ -49,23 +49,23 @@
 -- DuckDB's round(), which differed from Python on 14,125 of 266,800 doubles
 -- at the half (measured; int_trail_lines__network_published's header).
 --
--- PL09, `within`: the park whose boundary contains the point; where two
+-- `within`: the park whose boundary contains the point; where two
 -- do, the first in int_places__park_units' `unit_order`.
 --
--- PL10: a trailhead or parking area with no published line near it is
+-- A trailhead or parking area with no published line near it is
 -- dropped when anything was measured: a USFS trailhead in Arizona is not a
 -- place this app can put a trail under. Decided on the metres, so eighty
 -- metres of trail prints 0.0 and is kept. A town or park is never dropped:
 -- "no trail data held" is true, and the row is what a hiker who lives
 -- there should find.
 --
--- PL11, no lines at all (an ordinary state: no steward's lines may publish
+-- No lines at all (an ordinary state: no steward's lines may publish
 -- and the A.T. export has not run): nothing is measured, so `trail_miles`
 -- is null and `trail_miles_measured` false on every row, never 0
 -- everywhere, which would read as "no park holds any trail"; and nothing
 -- is dropped for being far from a line.
 --
--- THE CLUBS' PARKS AND TOWNS (decision 54's wave 1 places layers,
+-- THE CLUBS' PARKS AND TOWNS (the wave 1 places layers,
 -- int_places__club_units, only those whose layer may publish) are measured
 -- the same two ways: a club park by the lines inside its boundary, a club
 -- town by the lines within the radius of its point. Each is kept whatever it
@@ -276,7 +276,7 @@ club_town_shapes as (
 -- export_places.py: given the second unit test's shape as a NY Parks park,
 -- export_places.py also reads 0.0 miles, and on the first it raises GEOS's
 -- TopologyException (measured by round-2 fix worker C of PR #1805,
--- 2026-10-06, through that test's own harness). Decision 54's club parks
+-- 2026-10-06, through that test's own harness). The club parks
 -- are not export_places.py's. Whether NY Parks should change with them is
 -- left to #1811 — Fast follows after PR #1805's dlt → dbt re-platform: the
 -- hiker's own download choice, the cutover, and what the port found in

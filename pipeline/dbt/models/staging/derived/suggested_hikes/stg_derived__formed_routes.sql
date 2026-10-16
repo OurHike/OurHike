@@ -1,7 +1,7 @@
 -- Each Hike Finder hike's route as step_form_route measured it over the
 -- junction graph (pipeline/step_form_route.py), staged like any table a
 -- source lands: the step writes every number as its double's repr and every
--- list as JSON text, and they are cast here, as decision 40 has staging do.
+-- list as JSON text, and they are cast here, as staging models do.
 -- A repr reads back to the same double (DuckDB parses the shortest
 -- round-trip digits Python prints exactly), so nothing between the search
 -- and the grade rounds a measurement.

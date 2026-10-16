@@ -3,7 +3,7 @@
     "cast(" ~ var('poi_water_match_radius_ft') ~ " as double) * "
     ~ var('poi_metres_per_foot') %}
 {%- set ceiling_m = var('poi_osm_water_measure_ceiling_m') %}
--- The distance half of OSM water's reach (PO06): for every OSM water point
+-- The distance half of OSM water's reach: for every OSM water point
 -- inside the corridor, the nearest thing a hiker could be walking from, and
 -- whether it is within MATCH_RADIUS_FT of it. build_osm_water_reach.py's
 -- measure_distances(), and its constants: the radius is

@@ -1,9 +1,9 @@
 -- ATC's Trail Updates as their website shows them (extract/atc/closures.py's
 -- third resource, extract/_kinds.py's AtcTrailUpdatePages): one row per
 -- update ATC's trail-updates sitemap lists, as lib/atc_scrape.py's
--- parse_update() reads its page, keyed (decision 40), with nothing filtered
+-- parse_update() reads its page, keyed, with nothing filtered
 -- and nothing joined. Which rows may publish without a person is
--- int_closures__atc_automatic's (CL07-CL10).
+-- int_closures__atc_automatic's.
 --
 -- `states` and `miles` stay JSON, as the extract landed them: a mile is the
 -- number the parse read, which int_closures__atc_automatic carries as its

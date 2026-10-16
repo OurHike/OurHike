@@ -1,8 +1,8 @@
 version: 2
 
-# Decision 53's phase C: the club notice sources' seeds. Eight are reviewed
-# by hand row by row (notice_source_fields, decision 190's notice_words and
-# notice_word_overrides, decision 67's notice_hazard_areas, decision 76's
+# The phase C: the club notice sources' seeds. Eight are reviewed
+# by hand row by row (notice_source_fields, the notice_words and
+# notice_word_overrides, the notice_hazard_areas, decision 76's
 # notice_states, Q3's notice_steward_areas and decision 213's
 # notice_park_terms), one is a
 # person's mark on a notice (notice_marks), one is copied from the layers'
@@ -17,11 +17,11 @@ seeds:
       Which of an ArcGIS notice layer's own fields fills each role of the
       shared club-notice shape: title, category, status, start, end,
       rescinded, edited, link, a place name and, where a reading needs it, the
-      layer's own wording of what a notice bars (narrative, decision 190).
+      layer's own wording of what a notice bars (narrative).
       It is each source's schema, never a meaning: what a value means is
       notice_words', the same for every source. One row per layer, each field
       named as the layer publishes it (dlt lowercases it), from the field
-      list decision 53's inventory read on 2026-10-03, which
+      list the inventory read on 2026-10-03, which
       make_dbt_fixtures.py's NOTICE_LAYERS records. An empty field means the
       layer has none, and the role is null, never filled in.
       pipeline/generate_notice_models.py reads it to write each layer's
@@ -66,7 +66,7 @@ seeds:
       - name: category
         description: >
           The field a row shows under its title as the source's own label,
-          'Listed as' its value (decisions 78 and 137), or words in single
+          'Listed as' its value, or words in single
           quotes as for `title`. A STANDARD (the review of PR #1805 of
           2026-10-15, thread 4279218690): it holds the row's own status, the
           kind of notice its source files it as ('Safety Closure', 'Fire
@@ -77,7 +77,7 @@ seeds:
           class (Midpen's CLOSETYPE, 'Regular'; Santa Clara's closure_type,
           'long-term'), a site's own type (site_type) or a map symbol (PCTA's
           'Purple'). Where a layer has no field that holds one, its status
-          is its category (decision 78), or it has none.
+          is its category, or it has none.
       - name: category_holds
         description: >
           What `category` holds, `status` or `reason` as that column's
@@ -108,7 +108,7 @@ seeds:
           PROSE_ROLES): int_closures__club_notices reads it for notice_words'
           motorized and every-use words and outputs none of it, and the
           wording union still counts it as wording, so the leak test still
-          holds a source whose mart rows carry it (decision 55). Named for
+          holds a source whose mart rows carry it. Named for
           IDPR's two layers, where 4 of the 5 orders that bar motorized use
           alone say so nowhere else (read live 2026-10-14), and for
           Michigan's two, whose TrailUseCategory says which use a row
@@ -118,9 +118,9 @@ seeds:
       - name: site_type
         description: >
           The field holding the source's own type for a row, the kind of
-          place it is, which decision 190's site rule reads (the maintainer's
+          place it is, which the site rule reads (the maintainer's
           poll of 2026-10-15: a closed site is not a closed trail). Never the
-          category, which a row shows (decision 78). Named for USFS's
+          category, which a row shows. Named for USFS's
           recreation sites, whose markeractivity reads 'Campground
           Camping' 1,651, 'Trailhead' 156 and 'Day Hiking' 42 of the 2,999
           closed or temporarily closed sites (read live 2026-10-15), and for
@@ -154,7 +154,7 @@ seeds:
         description: The evidence for the row, quoted from its sources.json notes where they hold it.
   - name: notice_words
     description: >
-      Decision 190's one vocabulary for every notice source (the maintainer,
+      The one vocabulary for every notice source (the maintainer,
       poll of 2026-10-14: "Do by their own words. But make this logic that
       applies everywhere. we need to stop doing org by org customization."):
       each word a row's own status, category, title or narrative can hold,
@@ -218,7 +218,7 @@ seeds:
       # Only a word read in a category can name a kind there: a closing
       # word, which then needs the title and outranks nothing, or a
       # restriction word (`not_a_closure`), which keeps no title quiet
-      # (decision 213, rule 2).
+      # (rule 2).
       - dbt_utils.expression_is_true:
           arguments:
             expression: "not category_needs_title or (reads_as in ('closes_trail', 'not_a_closure') and not outranks_status and contains(' ' || read_in || ' ', ' category '))"
@@ -294,7 +294,7 @@ seeds:
           is the side a hiker is safer on (NGPC's Niobrara Bridge section,
           'Open' beside 'Not Passable', which its sources.json row says must
           never show as open). False on 'fully obstructed', so the Great
-          Allegheny Passage's Hidden still holds its alert (decision 166).
+          Allegheny Passage's Hidden still holds its alert.
         data_tests: [not_null]
       - name: category_needs_title
         description: >
@@ -309,7 +309,7 @@ seeds:
           213, rule 1). True also on 'restriction' and 'restrictions', the
           other kind of order a category names, which therefore keeps no
           title quiet: a title's unqualified closing word beside a category
-          of 'Other Restriction' closes (decision 213, rule 2).
+          of 'Other Restriction' closes (rule 2).
         data_tests: [not_null]
       - name: why
         description: >
@@ -319,7 +319,7 @@ seeds:
   - name: notice_word_overrides
     description: >
       A value no shared word can read, kept for its own source alone, each
-      row saying why no general rule reads it (decision 190: "aim for none").
+      row saying why no general rule reads it ("aim for none").
       Rule 2 reads a row here as a word of notice_words that only its own
       source holds, matched exactly. One row: CTSST's H_C 'C', a one-letter
       code for a closure.
@@ -455,7 +455,7 @@ seeds:
   - name: notice_hazard_areas
     description: >
       The notice sources that are an area a hiker walks into rather than a
-      notice about the trail (decision 67, 2026-10-04): hunting areas,
+      notice about the trail: hunting areas,
       recreational shooting sites and burned areas. Each publishes as a
       warning that never closes a trail, drawn where a downloaded trail
       crosses it, with `hazard` saying which. A source with a
@@ -658,7 +658,7 @@ seeds:
         data_tests: [not_null]
   - name: notice_park_terms
     description: >
-      Rule 19 (decision 213, the maintainer's poll of 2026-10-15, "Park-term
+      Rule 19 (the maintainer's poll of 2026-10-15, "Park-term
       table (Recommended)"): a club's park term, as its notices carry it in an
       `org_terms` place (`park:<slug>`, features/ORG_NOTICES.md section 4),
       mapped by a person to the park area places.json publishes under that

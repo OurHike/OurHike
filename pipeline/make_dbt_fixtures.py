@@ -189,7 +189,7 @@ def _half_mile_layer():
 # which has no rasterio.
 #
 # THE TILE HAS BOTH KINDS OF HOLE a profile meets, so parity reaches the null
-# path (EL09): rows ELEVATION_FIXTURE_NODATA_ROWS are nodata across the
+# path: rows ELEVATION_FIXTURE_NODATA_ROWS are nodata across the
 # tile, which the first segment crosses, and the tile stops short of the
 # second segment's northern end, so the samples past it have no tile at all.
 # Its edges sit half a pixel off both segments' longitudes, so no sample
@@ -337,7 +337,7 @@ def _oprhp_trails_layer():
     """oprhp_trails' measured field list (sources.json notes, 2026-08-18).
 
     `Blaze` and `Map_Blaze` are the two blaze columns sources.json names.
-    GlobalID is the key (decision 40): unique on 16,641 of 16,641 rows,
+    GlobalID is the key: unique on 16,641 of 16,641 rows,
     measured 2026-10-01.
     The notes say the layer carries "up to three Blaze colours" but spell
     only one of them, so only the spelled one is here - two invented column
@@ -402,7 +402,7 @@ def _oprhp_facilities_layer():
     here because export_nearby_poi.py reads the N side as low confidence
     rather than dropping it. `Asset` is the coded integer 1-17 whose domain
     the service does not publish - carried as the integer it is, undecoded.
-    GlobalID is the key (decision 40): unique on 8,823 of 8,823 rows,
+    GlobalID is the key: unique on 8,823 of 8,823 rows,
     measured 2026-10-01, where the registry's `id_field` still says OBJECTID.
     """
     return _features(
@@ -496,7 +496,7 @@ def _nynjtc_highlands_trail_layer():
 def _mohonk_trails_layer():
     """Measured 2026-08-25. Blaze is a genuine coded field whose live values
     include the literal string 'N/A' (124 of 304 rows) and, on 7 rows, no
-    value at all - both shapes appear here. GlobalID is the key (decision 40):
+    value at all - both shapes appear here. GlobalID is the key:
     unique on 304 of 304 rows, measured 2026-10-01."""
     common = {
         "General_Classification": "Trail",
@@ -1375,7 +1375,7 @@ def _dec_asset_layer(asset, names, publicuse=("Y",), asset_uids=None, places=Non
     columns are NOT assumed to carry across - a sibling service is evidence
     about itself, not about its siblings.
 
-    ASSET_UID is the seventh, and the key (decision 40, pipeline/ELT.md "One
+    ASSET_UID is the seventh, and the key (pipeline/ELT.md "One
     key per table"): measured on all seven DEC point services on 2026-10-01,
     unique on four of them and NOT unique on three. Primitive campsites hold
     four ids that two different sites share, at different places and mostly
@@ -1463,7 +1463,7 @@ NOT_THE_OBJECT_ID = {"pasda_dcnr_trails": "OBJECTID"}
 
 
 # Each layer's KEY columns, for the base models that key and dedupe it (pipeline/ELT.md, "One key per
-# table", decision 40). The NAMES are measured: each is the column ELT.md's key table records as
+# table"). The NAMES are measured: each is the column ELT.md's key table records as
 # unique on the live layer, 2026-10-01, spelled as the upstream spells it. The VALUES are not: they
 # are placeholders that keep each row's key distinct, of a type nobody measured, and say so by
 # starting with "fixture". Applied after each layer's own builder, so no builder changes shape.
@@ -1554,21 +1554,21 @@ def _with_key_fields(collection: dict, fields: dict) -> dict:
 #   nothing and export_nearby_poi.py's completeness gate refused the run; a
 #   `PIT PRIVY` row is the layer's commonest real value (356, per the map's
 #   own comment).
-# - SITE WATER'S TWO INPUTS (PO07, PO17): each site's candidate stream
+# - SITE WATER'S TWO INPUTS: each site's candidate stream
 #   reaches and the EPQS answers, as site_water/candidates.json and
 #   site_water/epqs_elevations.json (_site_water_fixtures), which
 #   step_site_water.py reads in place of the hydrography and the network, so
 #   fetch_trail_water.py's gates run on the grid's own sites in CI.
-# - OSM WATER'S POINTS AND ANSWERS (PO03, PO06, PO08, PO09): a dozen points in
+# - OSM WATER'S POINTS AND ANSWERS: a dozen points in
 #   fetch_osm_water.py's shape and the EPQS answers for their walks
 #   (_osm_water_fixtures), which step_osm_water.py and step_osm_water_grade.py
 #   read, and one opentrail water waypoint beside a grid site for the dedupe
 #   to find a twin of.
-# - THE PHOTO MANIFESTS (PO24, PO38): Commons and ATC outcome records and a
+# - THE PHOTO MANIFESTS: Commons and ATC outcome records and a
 #   decisions ledger for grid sites (_poi_photo_fixtures), which
 #   step_poi_photos.py lands, reaching every branch of the face gate and the
 #   attachment. Labels hashed into digests, never bytes.
-# - THE LONG PATH GUIDE'S PAGES (PO36): five section pages and the index in
+# - THE LONG PATH GUIDE'S PAGES: five section pages and the index in
 #   the real skeleton (_long_path_guide_fixtures), which extract/_fixtures.py
 #   serves to the guide_pages kind, so the extract's own parser lands them.
 POI_REFERENCE_DIR = Path(__file__).parent / "reference"
@@ -1640,7 +1640,7 @@ def _poi_site_point(index: int) -> dict:
     return {"type": "Point", "coordinates": [-74.30 + (index % 25) * 0.004, 41.20 + (index // 25) * 0.004]}
 
 
-# Site water (PO07, PO17): step_site_water.py's two fixture inputs, in place
+# Site water: step_site_water.py's two fixture inputs, in place
 # of the hydrography and EPQS, which CI may not fetch. Each scenario is a
 # shelter or campsite of the grid above, by its place in `kept`, and the
 # stream reaches near it: (hydrography, stream id, name, flow, OSM's NHD
@@ -1724,7 +1724,7 @@ def _site_water_fixtures(sites: list[dict]) -> dict[str, str]:
     }
 
 
-# OSM water (PO03, PO06, PO08, PO09): step_osm_water.py's points, in
+# OSM water: step_osm_water.py's points, in
 # fetch_osm_water.py's feature() shape, and the EPQS answers
 # step_osm_water_grade.py reads in place of the network, keyed "lat,lon" at
 # 6 dp as step_site_water.offline_elevations() reads them (fetch_trail_water.
@@ -1830,7 +1830,7 @@ def _osm_water_fixtures(kept: list[dict]) -> tuple[dict[str, dict | str], dict]:
     return files, waypoint
 
 
-# Photos (PO24, PO38): the two outcome files export_poi.py attaches photos
+# Photos: the two outcome files export_poi.py attaches photos
 # from, in the shapes their fetchers write them (fetch_poi_images.py's one
 # `photo` per POI, fetch_atc_photos.py's `photos` list), and a decisions
 # ledger in reference/photo_screen_decisions.json's shape. They live under
@@ -1928,7 +1928,7 @@ def _poi_photo_fixtures(kept: list[dict]) -> dict[str, str]:
     }
 
 
-# The Long Path guide (PO36): NYNJTC's section pages in their real skeleton
+# The Long Path guide: NYNJTC's section pages in their real skeleton
 # (tests/test_nynjtc_long_path_guide.py's page builder, measured 2026-09-08:
 # WordPress <details><summary> blocks, entries as <strong>MILE</strong> on
 # <br> boundaries), which extract/_fixtures.py serves to the guide_pages
@@ -2253,12 +2253,12 @@ def _nws_alerts() -> dict:
             _nws_alert(1, "Severe Thunderstorm Warning", "Actual", "Alert", storm_cell),
             # Placed by zone: no polygon, and NWS gave it no end and no instruction.
             _nws_alert(2, "Flood Watch", "Actual", "Update", None, ends=None, instruction=None, severity="Moderate"),
-            # Dropped by the relay (WN01): a cancellation, and a message that is not Actual.
+            # Dropped by the relay: a cancellation, and a message that is not Actual.
             _nws_alert(3, "Severe Thunderstorm Warning", "Actual", "Cancel", storm_cell),
             _nws_alert(4, "Tornado Warning", "Test", "Alert", storm_cell),
             # Null where NWS sends null: no headline, no onset.
             _nws_alert(5, "Special Weather Statement", "Actual", "Alert", None, headline=None, onset=None, ends=None),
-            # Placed by zone (WN03), on none: a zone the pinned files never heard of, which
+            # Placed by zone, on none: a zone the pinned files never heard of, which
             # conditions/weather_alerts.json reports, and a marine zone, in no state, which it does not.
             _nws_alert(
                 6,
@@ -2269,7 +2269,7 @@ def _nws_alerts() -> dict:
                 affectedZones=["https://api.weather.gov/zones/forecast/NYZ999", "https://api.weather.gov/zones/forecast/ANZ335"],
             ),
             # Drawn far from any trail square, while the zones it lists (the default two) reach
-            # several: a polygon is an alert's whole placement, so it reaches none (WN03).
+            # several: a polygon is an alert's whole placement, so it reaches none.
             _nws_alert(
                 7,
                 "Flash Flood Warning",
@@ -2282,7 +2282,7 @@ def _nws_alerts() -> dict:
 
 
 # The NBM weather squares build_weather_squares.py writes as squares.json, for
-# the A.T. through Harriman, where the alerts above sit (WN03). The SQUARES are
+# the A.T. through Harriman, where the alerts above sit. The SQUARES are
 # real: the squares lib/nbm_grid.py puts six points on the trail in, Bear
 # Mountain's published waypoint (712, 2007) among them, filled into cells by
 # build_weather_squares.py's own squares_by_cell() (computed 2026-10-02;
@@ -3169,7 +3169,7 @@ def _json_api_fixtures() -> dict[str, str]:
 # REST, `/wp-json/wp/v2/pages/<id>` at its origin. THE SHAPES ARE MEASURED: each page's region, its
 # title's place and its stated date's wording, WordPress's REST page and post (`title.rendered`,
 # `content.rendered`, `modified_gmt`), and RSS 2.0 as WordPress, Drupal and Weebly serve it, are what
-# decision 53's inventory and phase B's live reads found on 2026-10-03 (each row's sources.json `notes`
+# the inventory and phase B's live reads found on 2026-10-03 (each row's sources.json `notes`
 # says which). EVERY VALUE IS INVENTED and starts with 'Fixture': no real notice, name, title, post or
 # number is copied. Each feed item carries a `dc:creator` and a `description`, so the reader's rule
 # that neither lands is run. The two phase B batches wrote their halves separately: folders a to m in
@@ -3455,7 +3455,7 @@ def _notice_pages_n_to_z() -> dict[str, tuple[str, str, str]]:
         NOTICE_HTML,
         _notice_page("Canalway Trail Alerts", None),
     )
-    # Review page 02's stewards (decision 122, 2026-10-09), held in _shared/: each page's own title, which its
+    # Review page 02's stewards, held in _shared/: each page's own title, which its
     # expect_title holds, and each feed as one item.
     pages["il_dnr_closures_page"] = (
         "https://dnr.illinois.gov/closures/currentclosuresofdnrsitesandareas.html",
@@ -3541,7 +3541,7 @@ WP_CATEGORY_POSTS = {
     "tko_oct_trail_conditions": ("https://trailkeepersoforegon.org", 10, "trail-conditions"),
     # Decision 122 (2026-10-09): the River to River Trail Society's 'Trail Conditions', category 4, r2r/ since its row (2026-10-11).
     "r2r_trail_conditions": ("https://rivertorivertrail.net", 4, "trail-conditions"),
-    # Decision 53's drafted rows for RATC, registered 2026-10-10 once its robots.txt answered 200.
+    # The drafted rows for RATC, registered 2026-10-10 once its robots.txt answered 200.
     "ratc_closures_posts": ("https://www.ratc.org", 78, "closures"),
     "ratc_news_posts": ("https://www.ratc.org", 13, "ratc-news"),
 }
@@ -3827,9 +3827,9 @@ def _club_wordpress_fixtures() -> dict[str, str]:
     (sources.json's `notes`); ATA's category 251 carries a passage term beside
     it, as its live posts do; MATC's category is 157; GMC's posts sit in no
     category and carry `alert-category` terms. Land Between The Lakes' were
-    read on 2026-10-08 (decision 54's wave 6): its alert category 57 is
+    read on 2026-10-08 (the wave 6): its alert category 57 is
     'Trails'. The Great Allegheny Passage's `trail-alerts` type was read on
-    2026-10-09 (decision 122): its posts carry their status in ACF fields.
+    2026-10-09: its posts carry their status in ACF fields.
     """
     ata, gmc, matc = "aztrail.org", "greenmountainclub.org", "www.matc.org"
     documents = {
@@ -3888,7 +3888,7 @@ def closures_and_warnings_fixtures() -> dict[str, str]:
 # One file per layer under external/, where extract/_fixtures.py's fixture_file() finds it
 # by registry key, so fixture mode runs each layer through ArcgisLayer's own change check,
 # pager, hints and count proof. THE NAMES ARE MEASURED: every property is a field name the
-# layer's live ?f=json lists, read in decision 53's phase A inventory on 2026-10-03 (the
+# layer's live ?f=json lists, read in the phase A inventory on 2026-10-03 (the
 # session's scratchpad, never committed). THE VALUES ARE INVENTED and start with 'Fixture'
 # wherever they are text. Fixture mode answers every query with every row, whatever its
 # `where`, so each row carries a status value the layer's own filter keeps. No person field
@@ -3909,7 +3909,7 @@ NOTICE_LAYERS = {
             "forestorgcode": "0811",
             "openstatus": "temporarily closed",
             "recareaurl": "https://www.fs.usda.gov/recarea/fixture",
-            # The site's own type, which decision 190's site rule reads (seeds/notice_source_fields.csv's
+            # The site's own type, which the site rule reads (seeds/notice_source_fields.csv's
             # site_type): a field the live layer lists, read 2026-10-15; the value is one it holds.
             "markeractivity": "Campground Camping",
         },
@@ -4637,7 +4637,7 @@ NOTICE_LAYERS = {
             "last_edited_date": FIXTURE_DATE_MS,
         },
     ),
-    # Decision 54's wave 6 (2026-10-08): the Empire State Trail's closed sections and its work zones, each
+    # The wave 6 (2026-10-08): the Empire State Trail's closed sections and its work zones, each
     # field list the one its live ?f=json gave that day. The closures view serves no GlobalID.
     "ptny_est_closures": (
         _line,
@@ -5110,7 +5110,7 @@ NOTICE_LAYERS = {
             "FROM_MEAS": 261.6,
         },
     ),
-    # Review page 02 (decision 122, 2026-10-09): the NorthEast Texas Trail Coalition's damaged bridges, held.
+    # Review page 02: the NorthEast Texas Trail Coalition's damaged bridges, held.
     "nett_damaged_bridges": (
         _point,
         {
@@ -5230,7 +5230,7 @@ def _north(lon: float, lat: float, degrees: float) -> dict:
 
 #: The release's nearby trail lines as step_closure_trail_lines reads them under --fixtures
 #: (closure_trail_lines/nearby_trails.geojson, in nearby_trails.geojson's own shape), for the hourly cut of
-#: area closures (decision 187, S6). The network lines NETWORK_CLOSED_AREAS
+#: area closures (S6). The network lines NETWORK_CLOSED_AREAS
 #: describes, on the same ground, as (id, name, geometry), so every branch of the cut has a fixture:
 #: - the lon -73.97 line, half inside the first area, so only its north half is crossed out;
 #: - a lon -73.98 line, wholly inside the second;
@@ -5239,7 +5239,7 @@ def _north(lon: float, lat: float, degrees: float) -> dict:
 #: - the lon -71.3 USFS line on the last area's west edge, which the GEOS intersection keeps;
 #: - a line nowhere near any area, which the step's box filter never lands.
 #: The other fixture club areas (King County's, Midpen's, the Grand Canyon's, Region 6's fire areas) hold
-#: none of these, nor of CLOSURE_AT_LINES, so each is shaded (decision 191).
+#: none of these, nor of CLOSURE_AT_LINES, so each is shaded.
 CLOSURE_TRAIL_LINES = [
     ("fixture-nearby:across", "Fixture Across Trail", _north(-73.97, 41.03, 0.005)),
     ("fixture-nearby:rockfall", "Fixture Rockfall Trail", _north(-73.98, 41.02, 0.005)),
@@ -5293,7 +5293,7 @@ def closure_trail_lines_fixtures() -> dict[str, dict]:
 
 def section_closures_fixtures() -> dict[str, dict]:
     """section_closures/notices.json: the conditions/notices.json step_section_closures reads under --fixtures
-    (decision 213). One closing club notice naming a section no fixture line carries, so the step reads, evaluates and
+    One closing club notice naming a section no fixture line carries, so the step reads, evaluates and
     lands an empty table, and every network line ships as the exporters ship it: a fixture that closed a line would be
     a difference from export_nearby_trails.py in every parity family that reads the network, which does not apply the
     rule. The closing itself is held by the step's pytest and int_trail_lines__network_section_closures' unit test."""
@@ -5471,11 +5471,11 @@ def _network_rows() -> dict[str, list[dict]]:
     above never exercise, each named for the rule it is there for.
 
     nynjtc_long_path gains three ~20.7 mi sections chained end to end, about 62
-    mi of one Long Path: the overview's through-route rule (TL12, 50 mi). OPRHP
+    mi of one Long Path: the overview's through-route rule (50 mi). OPRHP
     gains the statuses and names its filters decide on: a `Closed` trail long
     enough to clear the overview's 1-pixel floor (the safety row: it ships
     closed, closure_kind long_term), a `Proposed` one (dropped), a `Foot` 'N'
-    one (dropped), its own copies of the two owned routes (suppressed, TL11),
+    one (dropped), its own copies of the two owned routes (suppressed),
     and a trail the A.T. runs along under `Alt_Name` (kept)."""
     oprhp = {
         "Unit": "Palisades",
@@ -5742,7 +5742,7 @@ TRAIL_LINES_AT_SIDE_TRAILS = [
     ),
 ]
 
-# Club polygons for lib/club_sections.py's rules (TL24-TL26), which the base
+# Club polygons for lib/club_sections.py's rules, which the base
 # fixture's TTC0 and TTC1 polygons reach only in part: one naming the first
 # centerline segment's club, TTC, padded with whitespace and with no
 # TRAIL_CLUB, so the name falls back to the acronym; and one whose acronym is
@@ -5807,7 +5807,7 @@ def _trail_lines_at_fixtures(files: dict[str, dict | str | bytes]) -> dict[str, 
 #
 # Each hike is here for a rule, named beside it. Ids 1, 4 and 11 have a
 # confirmed photograph in the real reference/nynjtc_hike_photos.json, which
-# fixture mode loads as it is, so the photo join (SH09) has rows to match and
+# fixture mode loads as it is, so the photo join has rows to match and
 # rows to miss. The coordinates sit beside the fixture Long Path
 # (`_network_rows`, a due-north line at longitude -74.3), so a route can form
 # once the trail_network family's edges are built from the fixture lines.
@@ -5849,7 +5849,7 @@ _HIKEFINDER_HIKES = (
         4,
         "Fixture Long Path Out and Back",
         # A published track that closes on itself, the one difficulty with no
-        # slug of its own (SH07), and no author, so no publication block (SH10).
+        # slug of its own, and no author, so no publication block.
         {
             "Length": "2.1 miles",
             "Difficulty": '<span class="badge bg-info">Very Strenuous</span>',
@@ -5900,8 +5900,8 @@ _HIKEFINDER_HIKES = (
     (
         9,
         "Fixture Hike Off The Map",
-        # A coordinate outside the NYNJTC box, refused by the parse (SH01), so
-        # the page lands with no start; a difficulty with no slot (SH07); no
+        # A coordinate outside the NYNJTC box, refused by the parse, so
+        # the page lands with no start; a difficulty with no slot; no
         # stated length.
         {
             "Length": "N/A",
@@ -5946,7 +5946,7 @@ _HIKEFINDER_HIKES = (
         12,
         "Fixture No Route Type",
         # No Route Type and no Description card: two of hike_problems()'s
-        # review notes (SH02), on a hike with a coordinate.
+        # review notes, on a hike with a coordinate.
         {
             "Length": "3.5 miles",
             "Difficulty": '<span class="badge bg-info">Strenuous</span>',
@@ -6036,7 +6036,7 @@ def _places_fixtures(files: dict[str, dict | str | bytes]) -> dict[str, dict | s
     `_oprhp_park_polygons_layer()` above, written before the entry declared
     any field, the layer's shape no longer, and this replaces its output.
 
-    Each polygon is there for one rule of load_parks() (PL02, PL03), and the
+    Each polygon is there for one rule of load_parks(), and the
     boxes sit on the network fixture's lines so the measured miles are not all
     zero:
     - unit 127, "Fixture Harriman", two parcels: one over the stacked network
@@ -6053,13 +6053,13 @@ def _places_fixtures(files: dict[str, dict | str | bytes]) -> dict[str, dict | s
     - "Fixture Lone Preserve", no unit, over the 1777 East Trail at -74.25;
     - unit 300, "Fixture Bowtie Park", a ring that crosses itself, which
       ST_MakeValid turns into two triangles before anything is measured
-      (PL03), and which carries no Category;
+      and which carries no Category;
     - a blank name and a null geometry, neither of which is a place.
 
     ATC's two fixture Communities also get the STATE column the live layer
     carries (read 2026-10-02: all 59 rows have the field, 14 of them null),
     so the towns places.json lists reach both answers of state_code()
-    (PL04): "Virginia" reads as VA, and "Virgnia", a misspelling one live row
+    "Virginia" reads as VA, and "Virgnia", a misspelling one live row
     still carries on 2026-10-02, is no state, so that town has none, ATC's
     organization declaring none either. Nothing else
     reads the column: export_poi.py publishes a town's name, never its
@@ -6232,7 +6232,7 @@ ELEVATION_PRODUCT_FIXTURES = {
 }
 
 
-# Decision 54's wave 1 places layers (pipeline/ELT.md, "Loading everything the
+# The wave 1 places layers (pipeline/ELT.md, "Loading everything the
 # clubs publish"): every `club_arcgis_layer` row a club's places.py claims,
 # registered 2026-10-03. Each fixture carries what its sources.json row
 # declares as read off the live layer that day - the key (`id_field`, or
@@ -6682,7 +6682,7 @@ CLUB_TRAIL_LINE_FIELDS = {
         "creator:s stroke_opacity:i stroke_width:i title:s fill:s class:s updated:d stroke:s fill_opacity:d "
         "folderId:s gpstype:s ObjectId:o Shape__Length:d"
     ),
-    # Decision 54's wave 6 (2026-10-08): the Empire State Trail's segments and connector trails, the field lists
+    # The wave 6 (2026-10-08): the Empire State Trail's segments and connector trails, the field lists
     # their live ?f=json gave that day.
     "oprhp_est_segments": "OBJECTID:o Type:s Surface:s Miles:d ParentLegName:s ParentLegID:s UID:s GlobalID:g Shape__Length:d",
     "oprhp_est_connectors": "OBJECTID:o Name:s UID:s GlobalID:g Shape__Length:d",
@@ -8534,7 +8534,7 @@ CLUB_POINT_FIXTURES = {
         ("OBJECTID", "LOCATION"),
         {"OBJECTID": (1, 2), "LOCATION": ("Fixture black hills parking 0", "Fixture black hills parking 1")},
     ),
-    # Decision 54's wave 6 (2026-10-08): the Empire State Trail's TrailFeature layer, the field list
+    # The wave 6 (2026-10-08): the Empire State Trail's TrailFeature layer, the field list
     # its live metadata gave that day. Row 0 carries the '<Null>' name the live layer gives 18
     # restrooms, so CI's build shows int_points_of_interest__club_points reading it as no name.
     "external/oprhp_est_trail_features.geojson": (
@@ -8794,7 +8794,7 @@ CLUB_POINT_FIXTURES = {
             "Condition": ("Good", "Fair"),
         },
     ),
-    # Review page 02 (decision 122, 2026-10-09): the NorthEast Texas Trail Coalition's trail features, held.
+    # Review page 02: the NorthEast Texas Trail Coalition's trail features, held.
     "external/nett_trail_pois.geojson": (
         ("OBJECTID", "TYPE", "NOTES", "GlobalID", "CreationDate", "Creator", "EditDate", "Editor"),
         {
@@ -9655,7 +9655,7 @@ def _gis_file_documents() -> dict[str, dict]:
                 "application/geo+json",
             )
         ),
-        # Review page 02 (decision 122, 2026-10-09): the Baker Trail's file, rctc/ since its row (2026-10-11). The live file's
+        # Review page 02: the Baker Trail's file, rctc/ since its row (2026-10-11). The live file's
         # property names on a route line, a shelter and a parking point.
         "rctc_baker_trail_geojson": _files(
             (
@@ -9937,7 +9937,7 @@ def _geo_api_documents() -> dict[str, dict]:
 
 
 def gis_file_and_geo_api_fixtures() -> dict[str, str]:
-    """Decision 54's waves 2 and 3 (section G): one answers document per registered GIS file and geographic API."""
+    """The waves 2 and 3 (section G): one answers document per registered GIS file and geographic API."""
     documents = {**_gis_file_documents(), **_geo_api_documents()}
     return {f"conditions/json_apis/{key}.json": json.dumps(document) for key, document in documents.items()}
 
@@ -9958,7 +9958,7 @@ def gis_file_and_geo_api_fixtures() -> dict[str, str]:
 # ARE INVENTED, every name starts with 'Fixture', and every point sits on the fixture grid (_point), inside each
 # source's region box. `rows` is what the parser must land.
 #
-# AMC Berkshire's parking page is also the notice amc_wma_at_parking (decision 53), which fixture mode answers by
+# AMC Berkshire's parking page is also the notice amc_wma_at_parking, which fixture mode answers by
 # the same URL, so the notices document for that key is written here too, with this body: one page, as the site
 # serves it, for both of its readers. Its <h1> is the page notice's title.
 #
@@ -10303,7 +10303,7 @@ PAGE_POINTS_SITE_FIXTURES = {
 
 
 def page_points_fixtures() -> dict[str, str]:
-    """Decision 54's waves 4 and 5 (section S): one answers document per club page read for its points."""
+    """The waves 4 and 5 (section S): one answers document per club page read for its points."""
     files = {}
     for key, (url, content_type, body, rows) in PAGE_POINTS_FIXTURES.items():
         answer = {"content_type": content_type, "body": body()}

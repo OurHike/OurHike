@@ -3,7 +3,7 @@
 Stage 3 of #1793 — Rebuild the data platform as dlt → dbt: seven contracted
 marts, a monthly refresh, published docs, and lighter phone downloads. The
 Hike Finder hikes and the curated highlights moved to SQL (pipeline/ELT.md's
-ledger, SH02 and SH04-SH14), and until stage 5 deletes the Python both are
+ledger), and until stage 5 deletes the Python both are
 live: parity.py compares the files the two write on the fixture warehouse in
 CI. The fixture reaches few of the rules, because most of them are refusals,
 so this holds the rest, model by model:

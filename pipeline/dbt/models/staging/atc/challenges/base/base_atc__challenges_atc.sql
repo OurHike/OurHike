@@ -1,5 +1,5 @@
 -- reference/challenges/atc/ (extract/atc/challenges.py): every challenge file
--- of the ATC's folder, keyed (decision 40), with nothing filtered and nothing
+-- of the ATC's folder, keyed, with nothing filtered and nothing
 -- joined. Each file is still the JSON its reviewer wrote, `_README` aside:
 -- reading its fields is the gate's work (int_challenges__files), because a
 -- field's JSON type is one of the things the gate checks.

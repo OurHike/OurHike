@@ -1,6 +1,6 @@
 """The places family's SQL answers what export_places.py answers, on the same rows (#1793, stage 3).
 
-places.json moved to SQL (pipeline/ELT.md's places rows, PL01-PL11), and until
+places.json moved to SQL (pipeline/ELT.md's places rows), and until
 stage 5 deletes the Python both are live. parity.py compares the two files on
 the fixture warehouse in CI; this holds the cases the fixture never reaches,
 one dbt unit test per case of tests/test_export_places.py:
@@ -611,7 +611,7 @@ def test_the_writer_writes_what_record_writes(test):
 
 
 def test_a_place_from_a_layer_no_exporter_reads_is_explained_as_decision_31s_new_data():
-    """places' parity explains a trailhead or parking lot from one of decision 54's wave 1 point layers as new data,
+    """places' parity explains a trailhead or parking lot from one of the wave 1 point layers as new data,
     and the order with those places left out. A place from a layer export_nearby_poi.py reads, or one with no source,
     is still a difference, and so is an order that differs once the new places are left out."""
     import parity
@@ -743,7 +743,7 @@ def test_a_parking_lot_whose_disc_holds_a_copied_line_is_explained_by_decision_4
     assert parity._places_reasons({"places": [place(every, **park)]}, {"places": [place(once, **park)]}) == {}
 
 
-# --- the measure both sides use (decision 97) ---------------------------------
+# --- the measure both sides use ---------------------------------
 
 
 def test_export_places_measures_with_the_macro_int_places_resolved_uses():
@@ -779,7 +779,7 @@ CUT_PIECES = {
 def test_a_piece_a_park_cuts_measures_pyprojs_geodesic_length(line_wkt, park_wkt):
     """The piece int_places__resolved and export_places.measure() take a park's miles from: the line cut against the
     park in EPSG:5070, then measured by the macro's expression. It reads pyproj's Geod(ellps='WGS84') length of the
-    same piece, taken back to lon/lat, to a micrometre, as decision 90's macro test holds the graph's edges."""
+    same piece, taken back to lon/lat, to a micrometre, as the macro test holds the graph's edges."""
     to_projected = Transformer.from_crs(exporter.GEOGRAPHIC_CRS, exporter.PROJECTED_CRS, always_xy=True).transform
     to_geographic = Transformer.from_crs(exporter.PROJECTED_CRS, exporter.GEOGRAPHIC_CRS, always_xy=True).transform
     projected = [shapely_transform(to_projected, shapely.wkt.loads(wkt)) for wkt in (line_wkt, park_wkt)]

@@ -1,4 +1,4 @@
--- Decision 76: the phone counts a route vertex as in a state only when it is
+-- The phone counts a route vertex as in a state only when it is
 -- more than `edge_margin_m` inside the state's simplified shape
 -- (int_closures__notice_state_shapes says why that is safe only while the
 -- simplified edge stays within the margin of the state's own). This measures

@@ -1,6 +1,6 @@
 version: 2
 
-# The clubs' parks and towns (decision 54's wave 1 places layers) in
+# The clubs' parks and towns (the wave 1 places layers) in
 # places.json. Kept apart from _places__unit_tests.yml on purpose:
 # tests/test_dbt_places_parity.py holds every unit test there to
 # export_places.py's own answer, and export_places.py reads no club layer,
@@ -134,7 +134,7 @@ unit_tests:
       projected park is invalid. ST_MakeValid of the whole made the overlap
       a hole by the even-odd rule, and the 652.7 m trail on the island
       measured 0.0 miles. Each part made valid, then unioned, measures it.
-      Here rather than in _places__unit_tests.yml because decision 54's club
+      Here rather than in _places__unit_tests.yml because the club
       parks are not export_places.py's, so tests/test_dbt_places_parity.py
       has no Python answer to hold it to.
     given:

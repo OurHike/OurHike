@@ -27,7 +27,7 @@
       later decision on how removed features merge back.
 
     dbt 2.0.6 behaviour this rests on, measured 2026-10-03 in a scratch
-    project on DuckDB (pipeline/ELT.md, "Row dates (decision 52)", has the
+    project on DuckDB (pipeline/ELT.md, "Row dates", has the
     list): a SQL snapshot block with strategy check, check_cols
     [_row_hash], unique_key (one column, or a list) and hard_deletes
     invalidate kept an unchanged row's one version across builds, opened a

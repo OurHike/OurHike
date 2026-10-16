@@ -18,16 +18,16 @@
 --   tests/test_organizations.py holds the registry to `stated_by_org`,
 --   `maintainer_authorisation`, `public_gis`, `maintainer_clearinghouse`
 --   and `unresolved`.
--- - `maintainer_clearinghouse` (decisions 20 and 22) covers NYS DEC and
+-- - `maintainer_clearinghouse` covers NYS DEC and
 --   OPRHP alone, so another steward's row with that basis is refused. The
 --   13 rows whose datasets the NYS GIS Clearinghouse lists carry it since
 --   2026-10-15, each quoting its item's own words in `terms`, which the
 --   basis answers (rule 5, below); tests/test_organizations.py holds it to
 --   those two organizations' rows before this guard would see one.
--- - `public_gis` (decision 21a) needs a GIS endpoint: an ArcGIS or Socrata
+-- - `public_gis` needs a GIS endpoint: an ArcGIS or Socrata
 --   layer (`club_arcgis_layer` is a club's ArcGIS layer that only the
 --   extract reads, lib/source_registry.py), a GIS file or an OGC API
---   Features collection (`gis_file`, `ogc_features`, decision 54's waves 2
+--   Features collection (`gis_file`, `ogc_features`, the waves 2
 --   and 3: a club's own KML, GPX or GeoJSON on a public URL is a GIS layer
 --   it publishes, Reasoned), or a source with no `kind`, which the fetcher
 --   reads as an ArcGIS layer. Decision 69 (the maintainer's poll,
@@ -41,7 +41,7 @@
 --   notice or other page source is still refused (rule 6): the
 --   presumption does not reach prose. A club's notice pages, feeds and
 --   posts publish on another basis, the maintainer's facts and a link
---   (`maintainer_authorisation`, decisions 53 and 55; 131 of the 132 such
+--   (`maintainer_authorisation`; 131 of the 132 such
 --   sources in seeds/notice_readers.csv on 2026-10-08, TATC's republished
 --   ridgerunner reports `unresolved`), which decision 107 (the
 --   maintainer's poll, 2026-10-08) confirmed for clubs' closure posts:
@@ -56,7 +56,7 @@
 --                                  commercial, no_reuse, permission,
 --                                  purpose_limited, condition, conduct
 --                                  (a site's bar on disruptive or
---                                  malicious use, decision 75),
+--                                  malicious use),
 --                                  cannot_be_met, ownership (an ownership
 --                                  or copyright line: "property of",
 --                                  "copyright", "all rights reserved"),
@@ -92,7 +92,7 @@
 --   for navigation" and "not suitable for navigation".
 --   A BASIS THAT IS A RULING ON THE DATASET ITSELF answers the dataset's
 --   own words, whatever class they read as, except `cannot_be_met`
---   (decision 213, Q25, the maintainer's poll of 2026-10-15: "Decisions 20
+--   (the maintainer's poll of 2026-10-15: "Decisions 20
 --   and 22 cover a clearinghouse dataset's own restrictive words, so quote
 --   them in its `terms`"). The publishable_licence_bases seed says which
 --   bases are such a ruling, in `covers_own_words_named_by`: the words a
@@ -134,15 +134,15 @@
 --   dbt run): 446 quote words; 153 carry a restriction; 79 are unanswered,
 --   every one held by its own `reaches_hikers`. Before the answers, on 670
 --   rows at 3510e68e, 80 were. The answers took three off that list: OHTA's
---   copyright footer (decision 69), FMST's "updated only when" (decision
---   72) and IN.gov's clause on bots (decision 75). Decision 71 moved no
+--   copyright footer, FMST's "updated only when" (decision
+--   72) and IN.gov's clause on bots. Decision 71 moved no
 --   verdict: rule 5 already read a hold-harmless line as a liability line.
 --   Re-measured 2026-10-08 the same way, on the registry after decision 106
 --   (branch d106-107, from 4ad88f3b), 693 rows: 449 quote words; 153 carry
 --   a restriction; 79 are unanswered, every one held by its own
 --   `reaches_hikers`. The one new quote is pasda_explore_pa_trail_access's,
 --   PA DCNR's Explore PA Trails terms, which carry no restriction once
---   decision 71's and decision 106's phrases are cut out; without decision
+--   the and the phrases are cut out; without decision
 --   106's phrase the same words read purpose_limited, unanswered.
 --   Re-measured 2026-10-14 the same way, on the registry after decision 193
 --   (W11's build, from dd5f57f7), 782 rows: 384 publish and 398 are held by
@@ -167,7 +167,7 @@
 -- NOT HERE YET, and why. Rule 2 (trail_orgs.json's `load` for a layer with
 -- no sources.json row) and rule 7 (the four `refuse` organizations) read
 -- trail_orgs.json, which the extract does not land yet, and no layer either
--- rule would decide is extracted today. Decision 38's conditions are read
+-- rule would decide is extracted today. The conditions are read
 -- here only as far as whether a decision answers them; carrying each one
 -- with its layer into the sources mart arrives with the rows it decides.
 with sources as (
@@ -360,7 +360,7 @@ decided as (
                     'socrata_geojson_layer',
                     'gis_file',
                     'ogc_features',
-                    -- Decision 69: a club's own page, PDF or map route.
+                    -- A club's own page, PDF or map route.
                     'page_points',
                     'pdf_points',
                     'json_features'

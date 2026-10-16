@@ -1,6 +1,6 @@
 {#-
     How many rows a base or staging model's dedupe removed from its raw table,
-    as one row (`raw_rows`, `model_rows`), with two thresholds (decision 204):
+    as one row (`raw_rows`, `model_rows`), with two thresholds:
     a warning for any copy removed, an error once the copies are half the raw
     table or more (macros/test_levels.sql's dedupe_copies_level(), so
     `failures` is a level). Each copy is exact, which duplicates_are_exact on

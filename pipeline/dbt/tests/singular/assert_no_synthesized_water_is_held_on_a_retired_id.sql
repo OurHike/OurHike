@@ -3,7 +3,7 @@
 -- (that model's header), one row each: the anchor, the retired id and the
 -- release that retired it, with `total_rows`, every anchor that synthesized
 -- water or was held from it. A warning for any; an error when every one of
--- them is held (decision 204, macros/test_levels.sql's named_rows_level()),
+-- them is held (macros/test_levels.sql's named_rows_level()),
 -- which is the ledger or the ids broken wholesale rather than places to
 -- review. For a person to write a `same` override
 -- where it is the same place returning (reconcile_poi_identity.py:585-592's

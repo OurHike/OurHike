@@ -23,7 +23,7 @@
 -- that point.
 --
 -- THE KEY, edge_sample_key, is dbt_utils.generate_surrogate_key over
--- (edge_id, sample_index) (decision 197: every model has one column that is
+-- (edge_id, sample_index) (every model has one column that is
 -- unique and not null).
 with points as (
     select * from {{ ref('int_elevation__edge_sample_points') }}

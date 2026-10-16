@@ -1,7 +1,7 @@
 {{ config(materialized='table') }}
 {%- set radius = var('poi_trailhead_trail_radius_m') %}
 -- Each of the other organizations' trailheads, and whether every trail line
--- near it is closed (PO34, export_nearby_poi.py's mark_closed_trailheads(),
+-- near it is closed (export_nearby_poi.py's mark_closed_trailheads(),
 -- #1695 — Draw a trailhead whose trails are all closed with a ✕). One row per
 -- trailhead that ships.
 --

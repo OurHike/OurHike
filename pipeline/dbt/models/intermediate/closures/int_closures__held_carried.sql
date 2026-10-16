@@ -1,5 +1,5 @@
 {{ config(materialized='table') }}
--- A NOTICE SOURCE THE GATE HOLDS KEEPS ITS LAST GOOD ROWS (decision 53, phase
+-- A NOTICE SOURCE THE GATE HOLDS KEEPS ITS LAST GOOD ROWS (phase
 -- D; pipeline/ELT.md, "Phase D: one notices file"): one row per notice the
 -- previous build's row history held as current, of a source
 -- int_closures__gate holds back this build, with every column the mart had,
@@ -152,7 +152,7 @@ read_back as (
         json_extract_string(row_json, '$.closure_place') as closure_place,
         json_extract_string(row_json, '$.geom_geojson') as geom_geojson,
         json_extract_string(row_json, '$.source_row_key') as source_row_key,
-        -- Decision 213's rules 14 and 21, as the mart saved them: a row saved
+        -- The rules 14 and 21, as the mart saved them: a row saved
         -- before they existed reads false and null.
         coalesce(
             try_cast(

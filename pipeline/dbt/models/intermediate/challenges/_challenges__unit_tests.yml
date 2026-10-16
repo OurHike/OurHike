@@ -552,7 +552,7 @@ unit_tests:
         - {"item_key": "test_export_challenges::TestBuildingTheOutput::test_a_place_the_published_centerline_passes_publishes:1", "report_label": "mcafee-knob", "problem": null, "sealed": false, "place_distances": "[\"5.000\"]", "published_item": "{\"id\":\"mcafee-knob\",\"section\":\"experience\",\"title\":\"Hike to McAfee Knob.\",\"note\":null,\"note_by\":null,\"photo\":null,\"match\":{\"kind\":\"place\",\"radius_m\":150,\"off_trail\":false,\"places\":[{\"poi\":\"atc_viewpoints:knob\",\"name\":\"McAfee Knob Summit\",\"poi_type\":\"viewpoint\",\"mile\":714.92,\"lat\":37.39,\"lon\":-80.03}]}}"}
   - name: int_challenges__items_skip_the_radius_check_with_no_centerline
     description: >
-      CH13: with no centerline the radius check is not made, so a place the
+      With no centerline the radius check is not made, so a place the
       centerline would refuse publishes, and int_challenges__centerline's warn
       test is what says the check was skipped. With no parking POI, parking is
       not a published type.

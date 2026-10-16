@@ -1,12 +1,12 @@
 {{ config(materialized='table') }}
 -- NYNJTC's Hike Finder hikes, one row each, as export_suggested_hikes.py
 -- reads a cache entry: the facts every published record carries, the slug
--- the client holds for the publisher's difficulty (SH07), and what stops the
--- hike reaching a phone as it stands (SH02). step_form_route.py reads this
--- table to form each hike's route (SH03), so it is a table, not a view: a
+-- the client holds for the publisher's difficulty, and what stops the
+-- hike reaching a phone as it stands. step_form_route.py reads this
+-- table to form each hike's route, so it is a table, not a view: a
 -- Python step reads it from outside dbt, with DuckDB 1.5.5.
 --
--- SH02, `problems`, is lib/hikefinder.py's hike_problems(), check for check
+-- `problems`, is lib/hikefinder.py's hike_problems(), check for check
 -- in its order and in its words. It is a review aid and never a gate: the
 -- `warn` test on it lists the hikes a person should read, and nothing here
 -- or downstream drops a hike for it. Its parse-time copy rides beside it
@@ -14,7 +14,7 @@
 -- as dlt → dbt: seven contracted marts, a monthly refresh, published docs,
 -- and lighter phone downloads — stops the extract stamping one.
 --
--- SH07, `difficulty_slug`, is difficulty_slug(): the export's label,
+-- `difficulty_slug`, is difficulty_slug(): the export's label,
 -- stripped as str.strip() strips and lowercased, looked up in
 -- suggested_hike_difficulty_slugs. No row there is no slug, and the card
 -- prints no badge rather than a guessed one; "Very Strenuous" takes
@@ -71,7 +71,7 @@ read_hikes as (
 
 select
     *,
-    -- hike_problems(), in its order and its words (SH02).
+    -- hike_problems(), in its order and its words.
     to_json(
         list_filter(
             [

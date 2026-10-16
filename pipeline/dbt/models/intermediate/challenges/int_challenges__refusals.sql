@@ -1,5 +1,5 @@
 -- Everything the challenges port refused, one row per refusal, in the order
--- export_challenges.main() prints its report (CH08: "A list quietly
+-- export_challenges.main() prints its report ("A list quietly
 -- shrinking is the failure nobody notices, so a refusal is never just an
 -- absence from the output"):
 --   1. every publishers.json row or trail refused, in the file's order;

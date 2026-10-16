@@ -32,7 +32,7 @@
 -- same count on every edge, at the same lon/lat to the bit.
 --
 -- THE KEY, edge_sample_point_key, is dbt_utils.generate_surrogate_key over
--- (edge_id, sample_index) (decision 197: every model has one column that is
+-- (edge_id, sample_index) (every model has one column that is
 -- unique and not null).
 with edges as (
     select

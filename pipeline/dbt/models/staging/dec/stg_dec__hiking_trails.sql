@@ -47,7 +47,7 @@
 -- ASSET 'SNOWMOBILE TRAIL' and 456 are unpaved roads.
 with source as (
     -- dlt lands geometry as GeoJSON text (extract/_kinds.py's JSON
-    -- hint); cast here, as decision 40 has staging do.
+    -- hint); cast here, as staging models do.
     select
         * exclude (geometry),
         st_geomfromgeojson(cast(geometry as varchar)) as geom

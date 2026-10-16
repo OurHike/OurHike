@@ -1,6 +1,6 @@
 {{ config(materialized='table') }}
 -- The A.T. shelters and campsites whose water step_site_water asks about
--- (PO07, PO17): every row of ATC's two layers that has a point, as
+-- every row of ATC's two layers that has a point, as
 -- fetch_trail_water.py reads them through build_water_distance.py's
 -- fetch_atc_features() today, which keeps a feature only where it carries a
 -- geometry. One row per site. The step orders them as fetch_atc_features

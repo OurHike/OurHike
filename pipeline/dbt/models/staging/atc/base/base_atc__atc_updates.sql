@@ -1,5 +1,5 @@
 -- reference/atc_updates.json whole (extract/atc/closures.py's second
--- resource), as its one row, keyed (decision 40), with nothing filtered.
+-- resource), as its one row, keyed, with nothing filtered.
 -- The review is the file's, not a row's: lib/atc_updates.py's is_reviewed()
 -- reads the document, and an empty reviewed file publishes `atc_updates: []`,
 -- so int_closures__gate reads the review here, where it exists however many

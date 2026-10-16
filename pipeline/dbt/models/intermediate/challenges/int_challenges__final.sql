@@ -14,7 +14,7 @@
 -- row per challenge, keyed by its id, because a challenge is what a hiker
 -- joins and what the file lists; its sections and items stay the published
 -- JSON they resolved to, each item's places carrying the published POI's
--- own mile, coordinate and name (CH01).
+-- own mile, coordinate and name.
 --
 -- PUBLICATION. A challenge's source is the claim its club's folder was
 -- landed under (`reference/challenges/<club>`). No sources.json row records

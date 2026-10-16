@@ -1,14 +1,14 @@
 -- National Forest System Trails (USFS, nationwide) (USFS, sources.json
--- `usfs_trails`): every row, keyed and deduped (decision 40), with nothing
+-- `usfs_trails`): every row, keyed and deduped, with nothing
 -- filtered and nothing joined. A base model, the one place this dataset is
--- staged (decision 34), for the stewardship and staging models of every club
+-- staged, for the stewardship and staging models of every club
 -- whose portion it holds.
 --
 -- Key: globalid unique on 86,417 live rows (pipeline/ELT.md, "One key per
 -- table", measured 2026-10-01).
 with source as (
     -- dlt lands geometry as GeoJSON text (extract/_kinds.py's JSON
-    -- hint); cast here, as decision 40 has staging do.
+    -- hint); cast here, as staging models do.
     select
         * exclude (geometry),
         st_geomfromgeojson(cast(geometry as varchar)) as geom

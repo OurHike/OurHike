@@ -1,6 +1,6 @@
 {{ config(format='json_document', location='places.json') }}
 -- places.json, the places a hiker can name before anything is downloaded, in
--- the shape export_places.py's build_output() writes (decision 44's v1):
+-- the shape export_places.py's build_output() writes (the v1):
 -- `generated_at`, `trailRadiusMiles`, `trailMilesMeasured`, then `places`,
 -- one record per row of the places mart in its `place_order`.
 --

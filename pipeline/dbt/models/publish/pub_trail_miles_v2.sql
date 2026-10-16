@@ -1,7 +1,7 @@
 {{ config(format='json', location='trail_miles_v2.json') }}
 -- depends_on: {{ ref('pub_trails_geojson') }}
 --
--- v2/trail_miles.json (decision 44's v2 of the trail_lines mart): the A.T.
+-- v2/trail_miles.json (the v2 of the trail_lines mart): the A.T.
 -- mile of every centerline vertex of trails.geojson, as v1's trail_miles.json
 -- carries it, with each chain's list delta-coded in whole thousandths of a
 -- mile (pipeline/ELT.md, "Making the download smaller", tier (a)).
@@ -18,7 +18,7 @@
 --
 -- trails_sha256 STAYS SECOND, the hash of the trails.geojson bytes
 -- pub_trails_geojson wrote, as v1's writer reads it: trails.geojson has no
--- v2 (its 6 decimals are already v1's, decision 8), so both versions of
+-- v2 (its 6 decimals are already v1's), so both versions of
 -- this file name the one line file a release carries.
 -- client/src/lib/trailData.ts finds the hash with one regular expression in
 -- the file's first 512 bytes, which is why it is not moved.

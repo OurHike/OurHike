@@ -7,7 +7,7 @@ version: 2
 # export_nearby_poi.py's own functions, retired_poi with
 # export_retired_poi.py's build().
 #
-# Beside them, stage 6's nine v2 writers (decision 44; stage 6 of #1793):
+# Beside them, stage 6's nine v2 writers (stage 6 of #1793):
 # pub_poi_<type>_v2 and pub_nearby_poi_v2 over v2 of the mart, each with an
 # exposure of its own at v2/<file>, which parity.py's <file>_v2 families hold
 # to the v1 file the same build wrote. retired_poi has no v2.
@@ -313,7 +313,7 @@ exposures:
     owner:
       name: OurHike
     description: >
-      v2 of poi_shelter.geojson (decision 44), published beside v1 at
+      v2 of poi_shelter.geojson, published beside v1 at
       v2/poi_shelter.geojson under the release folder (stage 6 of #1793;
       pipeline/ELT.md, "Making the download smaller"): the same POIs and
       properties, each position once, at 6 decimals. Its own exposure, not a
@@ -340,7 +340,7 @@ exposures:
     owner:
       name: OurHike
     description: >
-      v2 of poi_campsite.geojson (decision 44), published beside v1 at
+      v2 of poi_campsite.geojson, published beside v1 at
       v2/poi_campsite.geojson under the release folder (stage 6 of #1793;
       pipeline/ELT.md, "Making the download smaller"): the same POIs and
       properties, each position once, at 6 decimals. Its own exposure, not a
@@ -367,7 +367,7 @@ exposures:
     owner:
       name: OurHike
     description: >
-      v2 of poi_water.geojson (decision 44), published beside v1 at
+      v2 of poi_water.geojson, published beside v1 at
       v2/poi_water.geojson under the release folder (stage 6 of #1793;
       pipeline/ELT.md, "Making the download smaller"): the same POIs and
       properties, each position once, at 6 decimals. Its own exposure, not a
@@ -394,7 +394,7 @@ exposures:
     owner:
       name: OurHike
     description: >
-      v2 of poi_resupply.geojson (decision 44), published beside v1 at
+      v2 of poi_resupply.geojson, published beside v1 at
       v2/poi_resupply.geojson under the release folder (stage 6 of #1793;
       pipeline/ELT.md, "Making the download smaller"): the same POIs and
       properties, each position once, at 6 decimals. Its own exposure, not a
@@ -421,7 +421,7 @@ exposures:
     owner:
       name: OurHike
     description: >
-      v2 of poi_viewpoint.geojson (decision 44), published beside v1 at
+      v2 of poi_viewpoint.geojson, published beside v1 at
       v2/poi_viewpoint.geojson under the release folder (stage 6 of #1793;
       pipeline/ELT.md, "Making the download smaller"): the same POIs and
       properties, each position once, at 6 decimals. Its own exposure, not a
@@ -448,7 +448,7 @@ exposures:
     owner:
       name: OurHike
     description: >
-      v2 of poi_parking.geojson (decision 44), published beside v1 at
+      v2 of poi_parking.geojson, published beside v1 at
       v2/poi_parking.geojson under the release folder (stage 6 of #1793;
       pipeline/ELT.md, "Making the download smaller"): the same POIs and
       properties, each position once, at 6 decimals. Its own exposure, not a
@@ -475,7 +475,7 @@ exposures:
     owner:
       name: OurHike
     description: >
-      v2 of poi_privy.geojson (decision 44), published beside v1 at
+      v2 of poi_privy.geojson, published beside v1 at
       v2/poi_privy.geojson under the release folder (stage 6 of #1793;
       pipeline/ELT.md, "Making the download smaller"): the same POIs and
       properties, each position once, at 6 decimals. Its own exposure, not a
@@ -502,7 +502,7 @@ exposures:
     owner:
       name: OurHike
     description: >
-      v2 of poi_trailhead.geojson (decision 44), published beside v1 at
+      v2 of poi_trailhead.geojson, published beside v1 at
       v2/poi_trailhead.geojson under the release folder (stage 6 of #1793;
       pipeline/ELT.md, "Making the download smaller"): the same POIs and
       properties, each position once, at 6 decimals. Its own exposure, not a
@@ -529,7 +529,7 @@ exposures:
     owner:
       name: OurHike
     description: >
-      v2 of nearby_poi.geojson (decision 44), published beside v1 at
+      v2 of nearby_poi.geojson, published beside v1 at
       v2/nearby_poi.geojson under the release folder (stage 6 of #1793;
       pipeline/ELT.md, "Making the download smaller"): the same POIs and
       properties, each position once, at 6 decimals. A phone reads it only

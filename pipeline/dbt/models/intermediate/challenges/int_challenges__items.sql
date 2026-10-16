@@ -4,7 +4,7 @@
 --
 -- One row per item of each challenge file int_challenges__files passes,
 -- checked as lib/challenges.py's resolve_challenge() and resolve_item() do
--- (CH01, CH03-CH10). `problem` is the first refusal, in the Python's order
+-- `problem` is the first refusal, in the Python's order
 -- (the `resolved` CTE); where it is null, `published_item` publishes. A
 -- repeated id loses to the first, since tags are keyed by item id, even
 -- when the first is refused.
@@ -14,7 +14,7 @@
 -- publishes that POI's name, mile, lat and lon, rounded as _place() rounds
 -- them. One bad place refuses a whole `places_all` item.
 --
--- The radius check (CH04), for `place` and `places_all` places not marked
+-- The radius check, for `place` and `places_all` places not marked
 -- `off_trail`: the smaller of two challenges_haversine_m() distances, to
 -- the closest point on the nearest centerline chain (ST_ClosestPoint in
 -- EPSG:5070) and to the nearest vertex within 0.1 degree (all that today's
@@ -26,11 +26,11 @@
 -- with bearing (measured 2026-10-02 at 41 N 74 W: a 30.0 m pair read
 -- 29.83 m east-west, 30.21 m north-south), enough to admit a place 0.6%
 -- past its radius. The refusal prints the distance, where the Python said
--- "more than a grid cell". With no centerline (CH13) the check is skipped,
+-- "more than a grid cell". With no centerline the check is skipped,
 -- and the warn test
 -- challenges_distance_check_has_a_centerline_to_measure_against says so.
 --
--- Sealed titles (CH07): a mystery with a title and a reveal_on publishes
+-- Sealed titles: a mystery with a title and a reveal_on publishes
 -- `sealed_title` (base64) and a null `title` through the reveal_on day,
 -- against var challenges_build_date (default: today in UTC).
 --

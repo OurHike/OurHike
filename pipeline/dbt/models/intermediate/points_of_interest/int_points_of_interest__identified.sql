@@ -1,5 +1,5 @@
 {{ config(materialized='table') }}
--- Every POI in its file's ground, with the id it publishes under (PO23).
+-- Every POI in its file's ground, with the id it publishes under.
 --
 -- THE A.T. FAMILY PUBLISHES UNDER THE IDENTITY LEDGER'S IDS:
 -- export_poi.py's apply_ledger_ids(), the load-bearing line of
@@ -14,7 +14,7 @@
 --
 -- The ledger is the committed reviewed file (base_ourhike__poi_identity),
 -- never a proposal: writing it stays reconcile_poi_identity.py's, a Python
--- step (PO22), because it carries state across releases and never re-mints.
+-- step, because it carries state across releases and never re-mints.
 --
 -- THE OTHER ORGANIZATIONS' POIs ARE UNLEDGERED: export_nearby_poi.py
 -- publishes each under its derived id, and so does this (pipeline/ELT.md,

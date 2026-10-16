@@ -1,7 +1,7 @@
 -- The curated highlights resolved against the published POIs: one row per
 -- row of reference/highlights.json, in file order, with the first rule it
 -- breaks (`problem`, null where it publishes) in lib/highlights.py's
--- resolve()'s words and order (SH12, SH13). A curated list quietly
+-- resolve()'s words and order. A curated list quietly
 -- shrinking is the failure nobody notices, so the `warn` test on `problem`
 -- names every dropped row, as export_highlights.py prints them.
 --
@@ -19,7 +19,7 @@
 -- are ordered, so a leg never runs backwards, and cut to 2 decimals as
 -- as_published()'s round(x, 2) cuts them.
 --
--- SH14, nothing derived is stored: no length, ascent or Naismith time. The
+-- Nothing derived is stored: no length, ascent or Naismith time. The
 -- phone derives all three from the elevation profile it holds, so a better
 -- profile improves every highlight without a republish.
 --

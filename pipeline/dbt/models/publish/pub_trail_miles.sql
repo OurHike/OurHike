@@ -16,7 +16,7 @@
 -- when it equals the published hash of the trails.geojson it verified, and
 -- measures the line itself otherwise (trailData.ts's fetchTrailMiles). The
 -- depends_on line above runs this writer after that one. It never equals
--- export_trails.py's, whose trails.geojson has other bytes (decision 8).
+-- export_trails.py's, whose trails.geojson has other bytes.
 --
 -- `axis` keeps export_trails.py's literal: int_trail_lines__mile_axis is
 -- export_elevation.calibrated_trail_axis in SQL, equal on ATC's 562 live

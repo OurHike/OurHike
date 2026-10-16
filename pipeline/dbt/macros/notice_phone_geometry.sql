@@ -67,7 +67,7 @@
     A LINE OR A POINT is not grown: Douglas-Peucker at 10 m with the topology
     preserved, in EPSG:5070 as before decision 77, then 5 decimal places.
 
-    AN AREA THE MAP SHADES (`grown=false`, decision 191, the maintainer's
+    AN AREA THE MAP SHADES (`grown=false`, the maintainer's
     poll of 2026-10-14, "Shade them, no edge"; int_closures__area_trail_cuts)
     is not grown either: the 10 m step alone, in the same frame, then 5
     decimal places. The 100 m growth is for showing a planned route a notice

@@ -16,7 +16,7 @@ models:
     columns:
       - name: dem_sample_key
         description: >
-          The row's key (decision 40): dbt_utils.generate_surrogate_key over
+          The row's key: dbt_utils.generate_surrogate_key over
           the table's name, line_id and sample_index.
         data_tests: [not_null, unique]
       - name: line_id
@@ -47,15 +47,15 @@ models:
             compare_model: source('derived', 'closure_trail_lines')
     description: >
       The release's trail lines that may run inside an area closure, the
-      A.T.'s own among them (decision 192), from step_closure_trail_lines's
+      A.T.'s own among them, from step_closure_trail_lines's
       derived.closure_trail_lines: the release, the line's id and the line
       itself. Read by int_closures__area_trail_cuts, which cuts them against
-      each area (decision 187), and shades an area none runs inside
-      (decision 191).
+      each area, and shades an area none runs inside
+      
     columns:
       - name: closure_trail_line_key
         description: >
-          The row's key (decision 40): dbt_utils.generate_surrogate_key over
+          The row's key: dbt_utils.generate_surrogate_key over
           the table's name, the release and the line's id.
         data_tests: [not_null, unique]
       - name: release
@@ -78,13 +78,13 @@ models:
             compare_model: source('derived', 'section_closures')
     description: >
       The network lines an organization's own notice closes by naming their
-      section (decisions 212 and 213), from step_section_closures's
+      section, from step_section_closures's
       derived.section_closures: the line, the closing notice, its source and
       its title. Read by int_trail_lines__network_section_closures.
     columns:
       - name: section_closure_key
         description: >
-          The row's key (decision 40): dbt_utils.generate_surrogate_key over
+          The row's key: dbt_utils.generate_surrogate_key over
           the table's name and the line's key.
         data_tests: [not_null, unique]
       - name: trail_segment_key
@@ -114,11 +114,11 @@ models:
       The NBM weather squares build_weather_squares.py chose for a release,
       from step_weather_squares's derived.weather_squares: squares.json's
       document as JSON, read by int_warnings__weather_squares and
-      int_warnings__nws_placed to place NWS alerts (WN03).
+      int_warnings__nws_placed to place NWS alerts.
     columns:
       - name: weather_squares_key
         description: >
-          The row's key (decision 40): dbt_utils.generate_surrogate_key over
+          The row's key: dbt_utils.generate_surrogate_key over
           the table's name and the release.
         data_tests: [not_null, unique]
       - name: release
@@ -148,7 +148,7 @@ models:
     columns:
       - name: graph_piece_key
         description: >
-          The row's key (decision 40): dbt_utils.generate_surrogate_key over
+          The row's key: dbt_utils.generate_surrogate_key over
           the table's name, row_kind, part_id, piece_index and cut_key.
         data_tests: [not_null, unique]
       - name: row_kind
@@ -190,7 +190,7 @@ models:
     columns:
       - name: site_water_key
         description: >
-          The row's key (decision 40): dbt_utils.generate_surrogate_key over
+          The row's key: dbt_utils.generate_surrogate_key over
           the table's name, the layer and the site's GlobalID.
         data_tests: [not_null, unique]
       - name: site_row
@@ -236,7 +236,7 @@ models:
     columns:
       - name: osm_water_key
         description: >
-          The row's key (decision 40): dbt_utils.generate_surrogate_key over
+          The row's key: dbt_utils.generate_surrogate_key over
           the table's name and the OSM node id.
         data_tests: [not_null, unique]
       - name: osm_id
@@ -261,7 +261,7 @@ models:
     columns:
       - name: osm_water_grade_key
         description: >
-          The row's key (decision 40): dbt_utils.generate_surrogate_key over
+          The row's key: dbt_utils.generate_surrogate_key over
           the table's name and the OSM node id.
         data_tests: [not_null, unique]
       - name: osm_id
@@ -287,7 +287,7 @@ models:
     columns:
       - name: poi_photo_key
         description: >
-          The row's key (decision 40): dbt_utils.generate_surrogate_key over
+          The row's key: dbt_utils.generate_surrogate_key over
           the table's name, the source, the POI id and the photo's place.
         data_tests: [not_null, unique]
       - name: poi_id
@@ -314,7 +314,7 @@ models:
     columns:
       - name: long_path_guide_key
         description: >
-          The row's key (decision 40): dbt_utils.generate_surrogate_key over
+          The row's key: dbt_utils.generate_surrogate_key over
           the table's name and the record's id.
         data_tests: [not_null, unique]
       - name: id

@@ -1,6 +1,6 @@
 {#-
     A file a phone reads, written by the model that shapes it (pipeline/ELT.md,
-    "Publish (reverse ETL)", decision 24): the materialisation every pub_
+    "Publish (reverse ETL)"): the materialisation every pub_
     writer model sets, from dbt_project.yml's `publish` folder.
 
     The model is built as a table, and the table copied to

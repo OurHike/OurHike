@@ -8,7 +8,7 @@
 -- club_for_mile() never reads them, so a mile in one has no club.
 --
 -- THE KEY, club_stretch_key, is dbt_utils.generate_surrogate_key over
--- (club_order, stretch_order) (decision 197: every model has one column that
+-- (club_order, stretch_order) (every model has one column that
 -- is unique and not null).
 with clubs as (
     select

@@ -2,7 +2,7 @@
 -- rule 4): one row per notice source seeds/notice_steward_areas.csv links to
 -- a layer of its own steward's areas, and per area of that layer, carrying
 -- the area's own outline as GeoJSON text. The maintainer's answer to Q3
--- (poll of 2026-10-11, decision 185): "a status point inside exactly one of
+-- (poll of 2026-10-11): "a status point inside exactly one of
 -- its steward's own areas takes that area". Which source names which layer
 -- is the seed's, never a key written here, so the rule is the same for
 -- every steward.

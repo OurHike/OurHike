@@ -75,7 +75,7 @@ exposures:
       than trimming it. Every hike's ends are what the phone routes a day
       hike between, so a wrong end is a hiker sent somewhere the write-up
       does not go: which ships is int_suggested_hikes__graded's and
-      __routed's (SH04-SH06). Published in the release folder by
+      __routed's. Published in the release folder by
       publish-vector-data.yml from export_suggested_hikes.py's file until
       stage 4 of #1793 — Rebuild the data platform as dlt → dbt: seven
       contracted marts, a monthly refresh, published docs, and lighter phone

@@ -3,14 +3,14 @@
 -- build_document() and record_for() derive them from route_hikefinder.py's
 -- routes artifact.
 --
--- SH05: a rejected or endless route ships nothing. A `rejected` grade, or a
+-- A rejected or endless route ships nothing. A `rejected` grade, or a
 -- route with no ends, is dropped here, so the hike does not reach the shelf
 -- at all: client/src/lib/dayHikes.ts's validSegments drops a record with
 -- fewer than two ends, and a line nobody can stand behind must be absent,
 -- not faint (lib/hike_route_builder.py: "a confidently wrong prediction is
 -- more dangerous than an honest unknown").
 --
--- SH06: a published track ships only if the phone, re-routing between its
+-- A published track ships only if the phone, re-routing between its
 -- samples on this build's lines, walks back the track's own length within
 -- TRACK_REPRODUCTION_TOLERANCE, 10%. That number is @unvalidated in
 -- export_suggested_hikes.py, which names nothing that would settle it;
@@ -30,7 +30,7 @@
 -- its first end at the end, so the phone closes it exactly as closeTheLoop
 -- would (segments_for()).
 --
--- SH08: the climb is absent where the walk was never priced, never 0: a
+-- The climb is absent where the walk was never priced, never 0: a
 -- walk with one unmeasured edge reported as flat fails SHORT, and short is
 -- what gets somebody caught by the dark. Both feet are null together.
 --
@@ -61,7 +61,7 @@ routes as (
         rewalk_climb_gain_ft,
         rewalk_climb_loss_ft
     from graded
-    -- SH05: `route["grade"] == "rejected" or not route.get("ends")`.
+    -- `route["grade"] == "rejected" or not route.get("ends")`.
     where
         grade != 'rejected'
         and coalesce(json_array_length(route_ends), 0) > 0

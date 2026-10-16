@@ -11,7 +11,7 @@
 -- EVERY PUBLIC REPORT, NOT ONLY THE SERIOUS ONES. The file carries every
 -- verified or resolved public report, whatever its severity, and the phone
 -- reads `severity` itself; the warnings mart takes only the serious ones
--- (int_warnings__serious_reports, WN10). So this reads
+-- (int_warnings__serious_reports). So this reads
 -- base_ourhike__reports, the query's own rows, with the query's predicate
 -- applied again: a report the extract should never have landed is left out
 -- rather than published.

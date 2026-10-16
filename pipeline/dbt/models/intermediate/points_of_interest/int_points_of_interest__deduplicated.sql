@@ -1,5 +1,5 @@
 {{ config(materialized='table') }}
--- The reached POIs less OSM's twins of opentrail's water (PO09):
+-- The reached POIs less OSM's twins of opentrail's water:
 -- export_poi.py's dedupe_water(), after the reach gate as read_sources()
 -- runs it. An OSM water point within WATER_DEDUP_RADIUS_M (var
 -- `poi_water_dedup_radius_m`, 25 m) of any opentrail water point is dropped,

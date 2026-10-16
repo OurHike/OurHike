@@ -19,7 +19,7 @@ models:
       access: public
       contract:
         enforced: true
-    # Decision 44: a phone file's shape is a version of the mart it is
+    # A phone file's shape is a version of the mart it is
     # written from. v1 is today's shape at today's key, elevation_profile.json,
     # and pub_elevation_profile pins it, ref('elevation', v=1). v2
     # (elevation_v2.sql) carries each number as a whole count of its
@@ -66,7 +66,7 @@ models:
                     tags: [elementary_check]
                     enabled: "{{ env_var('OURHIKE_ELEMENTARY_CHECKS', 'false') == 'true' }}"
         # The key is v1's line_sample_key, included above with its unique
-        # and not_null tests (decision 197).
+        # and not_null tests.
         data_tests:
           - dbt_utils.expression_is_true:
               arguments:
@@ -125,8 +125,8 @@ models:
                 tags: [elementary_check]
                 enabled: "{{ env_var('OURHIKE_ELEMENTARY_CHECKS', 'false') == 'true' }}"
     data_tests:
-      # Elementary's checks (decision 102; pipeline/ELT.md, "The checks, and
-      # where each goes"), each with its two thresholds (decision 204) and run by build_marts.py after the
+      # Elementary's checks (pipeline/ELT.md, "The checks, and
+      # where each goes"), each with its two thresholds and run by build_marts.py after the
       # writers: the samples at each build; the samples per club and source,
       # so one club's line vanishing cannot hide inside the total; and each
       # column's null rate (no geometry and no long text here). The
@@ -164,7 +164,7 @@ models:
             tags: [elementary_check]
             enabled: "{{ env_var('OURHIKE_ELEMENTARY_CHECKS', 'false') == 'true' }}"
       # One row per (line_id, seq) is line_sample_key's unique test
-      # (decision 197), below.
+      # below.
       # The first sample of a line begins a piece by definition (#559): a
       # consumer starts a new run at every part_start without special-casing
       # the first.
@@ -197,7 +197,7 @@ models:
     columns:
       - name: line_sample_key
         description: >
-          The row's key (decision 197): dbt_utils.generate_surrogate_key over
+          The row's key: dbt_utils.generate_surrogate_key over
           line_id and seq, the md5 of their text joined by '-'. Its unique
           test fails on any two rows sharing (line_id, seq), which is what the
           combination test it replaced checked. Never null by construction,
@@ -261,8 +261,8 @@ models:
               arguments:
                 min_value: -300
                 max_value: 20500
-          # A safety column (decision 102): its null rate, lowest and highest
-          # sample against the builds before, with its two thresholds (decision 204).
+          # A safety column: its null rate, lowest and highest
+          # sample against the builds before, with its two thresholds.
           - elementary.column_anomalies:
               arguments:
                 column_anomalies: [null_percent, min, max]
@@ -334,7 +334,7 @@ models:
                 # warn on a leg build_marts.py built without its history,
                 # where both dates are null and the run is red already, and
                 # in production and UA, where build_marts.py reports a
-                # failure as an error unless the history is off (decision 204).
+                # failure as an error unless the history is off.
                 severity: "{{ 'warn' if env_var('OURHIKE_ROW_HISTORY', 'on') == 'off' or env_var('OURHIKE_DATA_ENV', 'dev') in ['production', 'ua'] else 'error' }}"
       - name: _changed_at
         description: "{{ doc('row_changed_at') }}"

@@ -32,11 +32,11 @@ sources:
     tables:
       - name: raw_nynjtc__nynjtc_trail_alerts
         data_tests:
-          # Rows sharing base_nynjtc__nynjtc_trail_alerts's key must be exact copies (decision 40).
+          # Rows sharing base_nynjtc__nynjtc_trail_alerts's key must be exact copies.
           - duplicates_are_exact:
               arguments:
                 key_columns: ["'nynjtc_trail_alerts'", "id"]
-          # Elementary's checks (make_dbt_staging.py's raw_table_checks(), decision 102), each with its two thresholds (decision 204).
+          # Elementary's checks (make_dbt_staging.py's raw_table_checks()), each with its two thresholds.
           - elementary.volume_anomalies:
               config:
                 severity: error
@@ -69,11 +69,11 @@ sources:
             data_tests: [not_null]
       - name: raw_nynjtc__nynjtc_trail_alerts_terms
         data_tests:
-          # Rows sharing base_nynjtc__nynjtc_trail_alerts_terms's key must be exact copies (decision 40).
+          # Rows sharing base_nynjtc__nynjtc_trail_alerts_terms's key must be exact copies.
           - duplicates_are_exact:
               arguments:
                 key_columns: ["'nynjtc_trail_alerts_terms'", "taxonomy", "id"]
-          # Elementary's checks (make_dbt_staging.py's raw_table_checks(), decision 102), each with its two thresholds (decision 204).
+          # Elementary's checks (make_dbt_staging.py's raw_table_checks()), each with its two thresholds.
           - elementary.volume_anomalies:
               config:
                 severity: error

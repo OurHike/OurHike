@@ -4,7 +4,7 @@
 -- graph could carry a route along one copy of a trail and back along
 -- another, or down a line nobody has compared with the network. Returns one
 -- row per graph edge, or routable line part, made from a club line.
--- A gate on a mart a hiker's safety reads (decision 204, dbt_project.yml's
+-- A gate on a mart a hiker's safety reads (dbt_project.yml's
 -- `marts:` gates): an error in every environment, so in production a
 -- failure holds the files below at their last good copy.
 {{ config(severity='error') }}

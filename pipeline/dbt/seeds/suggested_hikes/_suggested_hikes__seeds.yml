@@ -6,7 +6,7 @@ seeds:
       The Hike Finder export's six difficulty labels onto the five slugs the
       client holds (client/src/lib/suggestedHikes.ts's DIFFICULTIES), as
       export_suggested_hikes.py's DIFFICULTY_SLUGS maps them, keyed on the
-      label stripped and lowercased as difficulty_slug() reads it (SH07).
+      label stripped and lowercased as difficulty_slug() reads it.
       "Very Strenuous" has no slot of its own and takes the hardest one,
       `strenuous`, which understates it, so the record also carries the
       publisher's own word in `publishedDifficulty`. A label with no row

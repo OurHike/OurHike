@@ -32,7 +32,7 @@
 -- own line's source. A source the registry does not list may not publish.
 --
 -- THE KEY, line_sample_key, is dbt_utils.generate_surrogate_key over
--- (line_id, seq), the mart's grain (decision 197: every model has one column
+-- (line_id, seq), the mart's grain (every model has one column
 -- that is unique and not null). int_elevation__history snapshots it with the
 -- rest of the row and the mart carries it; no phone file prints it, because
 -- every pub_ writer that reads the mart names its columns.

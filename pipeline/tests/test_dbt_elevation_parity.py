@@ -22,7 +22,7 @@ the file publish.py uploads, so the two are held together here:
   int_elevation__dem_points, in its ask_order, a gap as NULL and never as
   NaN, and refuses what it cannot write honestly;
 - it and today's sampler answer each point with that point's own pixel,
-  whatever samples.json holds from either of them (decision 115: the cache is
+  whatever samples.json holds from either of them (the cache is
   keyed on the point itself).
 
 The network half (the junction graph's edges) is held by

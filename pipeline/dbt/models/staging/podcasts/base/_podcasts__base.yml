@@ -14,7 +14,7 @@ models:
     columns:
       - name: episode_row_key
         description: >
-          The row's key (decision 40): dbt_utils.generate_surrogate_key over
+          The row's key: dbt_utils.generate_surrogate_key over
           the file's path and the row's place in it.
         data_tests: [not_null, unique]
       - name: file_row

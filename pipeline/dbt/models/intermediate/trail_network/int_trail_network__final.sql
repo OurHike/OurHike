@@ -17,7 +17,7 @@
 -- trail_graph_profile.json).
 -- assert_every_graph_edge_comes_from_a_source_that_may_publish holds it.
 --
--- No closed trail is an edge (TN01, a safety field of ELT.md's table):
+-- No closed trail is an edge (a safety field of ELT.md's table):
 -- assert_no_closed_trail_is_a_graph_edge. "Closed" means closures known at
 -- the monthly build; a closure that starts later reaches routing only when
 -- the client applies the hourly `closures`. Today's manually dispatched

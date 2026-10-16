@@ -1,6 +1,6 @@
 version: 2
 
-# Decision 54's wave 1 point layers on their way into the points_of_interest
+# The wave 1 point layers on their way into the points_of_interest
 # family: int_points_of_interest__club_points types each row and applies the
 # rules pipeline/ELT.md's "What wave 1's live reads found that phase C must
 # honour" gives points of interest, each a unit test below, and
@@ -27,7 +27,7 @@ models:
             expression: "(poi_type is null) = (confidence is null)"
     columns:
       - name: poi_key
-        description: The point's key, from its base model (decision 40).
+        description: The point's key, from its base model.
         data_tests: [not_null, unique]
       - name: source_key
         description: The layer's sources.json key.
@@ -113,11 +113,11 @@ unit_tests:
   - name: club_points_map_water_only_by_the_potability_field
     model: int_points_of_interest__club_points
     description: >
-      A water type is not water (pipeline/ELT.md, "What wave 1's live reads found"): IATA's water
+      A water type is not water: IATA's water
       layer is water only where its Potability code says so, 1 Potable or 2 Treatment required,
       and never by its Feature_Type or the "Potable Water" view's name. A Potability 0 'No water'
       lake maps to nothing; a potable drinking fountain (Feature_Type 11) is water too, and
-      int_points_of_interest__cautioned gives it decision 65's season caution, because its
+      int_points_of_interest__cautioned gives it the season caution, because its
       layer records no shutoff season. Every water row ships low.
     given:
       - input: ref('int_points_of_interest__club_unioned')
@@ -233,7 +233,7 @@ unit_tests:
   - name: club_points_never_publish_a_point_that_is_not_public
     model: int_points_of_interest__club_points
     description: >
-      Not public is not shown (pipeline/ELT.md, "What wave 1's live reads found"): USFWS's points
+      Not public is not shown: USFWS's points
       ship only where Public_Use reads 'Public Use', so 'Non-public Use', 'Public Use Limited' and a
       null are all held back; a USFWS sewage plant is held back even where it is public; PA DCNR's
       staff residences are held back; and a publisher's own withhold (GMC's PublicMap 'N') is
@@ -275,7 +275,7 @@ unit_tests:
   - name: club_points_never_publish_a_notice_as_a_poi
     model: int_points_of_interest__club_points
     description: >
-      Notices hide in POI layers (pipeline/ELT.md, "What wave 1's live reads found"): FLTC's hunting
+      Notices hide in POI layers: FLTC's hunting
       closures and high-water advisories are held back while its lean-tos ship, and a PCTA Halfmile
       water point whose popup carries the 2018 Mountain Fire closure is held back while one whose
       popup is only a description ships.

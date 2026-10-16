@@ -6,24 +6,24 @@ deletes the Python both are live. parity.py compares the two writers' files on
 the fixture warehouse in CI; this holds the branches the fixtures never reach,
 by running the Python over each dbt unit test's own rows, one test per model:
 
-- int_trail_lines__blazes: lib/blaze.py, as each exporter composes it (TL03);
+- int_trail_lines__blazes: lib/blaze.py, as each exporter composes it;
 - int_trail_lines__network_sources: network_line_sources(),
   missing_declared_fields(), name_constant_conflicts() and dlt's own
-  normalize_identifier() (TL01, TL08, TL09);
+  normalize_identifier();
 - int_trail_lines__network_judged: keep_reason(), declared_name(),
   load_boundary() and lib/feature_id.py's id, `published_id` (TL04-TL07,
-  TL10, TL11, TL13, TL05), where DELIBERATE_IDS holds the two id rows that
+  TL10), where DELIBERATE_IDS holds the two id rows that
   differ on purpose and parity.py's NETWORK_ID_REASONS has to name the same
   two cases;
 - int_trail_lines__network_counts: count_problems();
 - int_trail_lines__network_deduplicated: deduplicate(), publication first;
 - int_trail_lines__network_area_closures: apply_area_closures(), NYS Parks'
   closed areas split onto the lines (#964);
-- int_trail_lines__network_navigation: simplify_records() at 1 m (TL15);
-- int_trail_lines__network_published: _rounded_geometry() (TL23);
+- int_trail_lines__network_navigation: simplify_records() at 1 m;
+- int_trail_lines__network_published: _rounded_geometry();
 - the overview's three models: _through_routes(), _above_the_seam_floor(),
   both passes' _simplified_part_by_part() and write_overview() itself (TL12,
-  TL20, TL21);
+  TL20);
 - the network's dbt_project.yml vars are the Python's constants.
 
 dbt runs the other half: each unit test holds the SQL to those expectations.
@@ -77,7 +77,7 @@ def _model(name: str) -> dict:
     return next(model for model in _document()["models"] if model["name"] == name)
 
 
-# --- int_trail_lines__blazes (TL03) ---------------------------------------------
+# --- int_trail_lines__blazes ---------------------------------------------
 
 BLAZES = "int_trail_lines__blazes_answers_what_lib_blaze_answers"
 
@@ -242,7 +242,7 @@ def test_the_mile_the_sql_divides_by_is_the_pythons():
     assert "/ 1609.344" in (DBT / "models" / "publish" / "pub_nearby_trails.sql").read_text()
 
 
-# --- int_trail_lines__network_sources (TL01, TL08, TL09) --------------------------
+# --- int_trail_lines__network_sources --------------------------
 
 SOURCES = "int_trail_lines__network_sources_answers_what_the_registry_checks_answer"
 
@@ -312,7 +312,7 @@ def test_a_source_both_junior_and_senior_is_flagged_where_the_python_would_chain
     assert {row["source_key"] for row in test["expect"]["rows"] if row["chains_duplicates"]} == chained == {"junior_and_senior"}
 
 
-# --- the two fields lib/feature_id.py reads, as sources.json declares them (TL05) ---
+# --- the two fields lib/feature_id.py reads, as sources.json declares them ---
 
 #: The names ArcGIS gives a layer's object id field on the registered line layers (pipeline/ELT.md's TL05: OBJECTID
 #: on 20 of the 24 network layers read 2026-10-08, FID on 3, OBJECTID_1 on pasda_dcnr_trails).
@@ -361,7 +361,7 @@ def test_the_fixtures_spell_each_line_layers_globalid_as_its_registry_row_does(t
                 assert feature["id"] == properties[entry["object_id_field"]], entry["key"]
 
 
-# --- int_trail_lines__network_judged (TL04-TL07, TL10, TL11, TL13, placeholders) ---
+# --- int_trail_lines__network_judged (placeholders) ---
 
 JUDGED = "int_trail_lines__network_judged_answers_what_keep_reason_answers"
 
@@ -482,7 +482,7 @@ def test_the_sources_keeping_nothing_are_the_ones_count_problems_names():
         assert kept[key] == sum(row["dropped_because"] is None for row in rows), key
 
 
-# --- int_trail_lines__network_deduplicated (TL18) ----------------------------------
+# --- int_trail_lines__network_deduplicated ----------------------------------
 
 DEDUPLICATED = "int_trail_lines__network_deduplicated_answers_what_deduplicate_answers"
 
@@ -609,7 +609,7 @@ def test_the_unit_tests_tie_would_answer_otherwise_if_broken_by_key():
     assert tied["closure_reason"] == "Closed: the outer area"
 
 
-# --- int_trail_lines__network_navigation (TL15) ------------------------------------
+# --- int_trail_lines__network_navigation ------------------------------------
 
 NAVIGATION = "int_trail_lines__network_navigation_answers_what_simplify_records_answers"
 
@@ -631,7 +631,7 @@ def test_the_1_m_pass_is_simplify_records_vertex_for_vertex():
         assert want["kept_full_resolution"] is (not bool(export_trails._drawable_all(reduced)[0])), row["trail_segment_key"]
 
 
-# --- int_trail_lines__network_published (TL23) ---------------------------------------
+# --- int_trail_lines__network_published ---------------------------------------
 
 PUBLISHED = "int_trail_lines__network_published_cuts_what_rounded_geometry_cuts"
 
@@ -691,7 +691,7 @@ def test_length_miles_and_published_length_m_are_both_pyprojs_wgs84_geodesic():
         assert miles * export_nearby_trails.METERS_PER_MILE == pytest.approx(pyproj_m, abs=1e-6), row["trail_segment_key"]
 
 
-# --- the overview sketch (TL12, TL20, TL21) ------------------------------------------
+# --- the overview sketch ------------------------------------------
 
 ROUTES = "int_trail_lines__network_overview_routes_answers_what_through_routes_answers"
 SEAM = "int_trail_lines__network_overview_seam_answers_what_the_floor_and_seam_answer"

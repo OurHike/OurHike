@@ -1,9 +1,9 @@
 {#-
     data_quality.json, one lane's file for the public page at
-    ourhike.org/data/quality/ (decision 102; pipeline/ELT.md, "Data quality
-    (decision 102)"): every check this build ran, from the tables Elementary
+    ourhike.org/data/quality/ (pipeline/ELT.md, "Data quality
+    "): every check this build ran, from the tables Elementary
     keeps them in, as counts and names, each source's freshness among them
-    (decision 203, below, "FRESHNESS"). pub_data_quality writes the monthly
+    (below, "FRESHNESS"). pub_data_quality writes the monthly
     lane's file and pub_conditions_data_quality the hourly lane's; each is
     `select` of this macro with its lane, and build_marts.py builds them in a
     pass of their own after Elementary's checks.
@@ -25,7 +25,7 @@
     length is a property of row values, so those checks carry their status
     and names, with every number null.
 
-    PUBLISHED SOURCES ONLY (decision 10's rule for /data/). A check counts,
+    PUBLISHED SOURCES ONLY (the rule for /data/). A check counts,
     and its table is named, only when nothing it tests holds a row of a
     source that may not publish:
     - a check that reads only marts, pub_ writers and seeds always counts:
@@ -64,7 +64,7 @@
     holds its rows too, and its row counts and failing-row counts would
     describe them.
 
-    AN ERROR PAST ITS THRESHOLD (decision 204, the maintainer, 2026-10-15:
+    AN ERROR PAST ITS THRESHOLD (the maintainer, 2026-10-15:
     "Every test should have both the warning and error thresholds"; "Build as
     proposed", his poll answer the same day). In production and UA
     dbt_project.yml's switch makes every failing test warn, and dbt
@@ -73,7 +73,7 @@
     from Elementary's dbt_tests in the `>N` form every test declares
     (pipeline/tests/test_dbt_test_thresholds.py), counts as failed here, as
     build_marts.py's relabelled_errors() reports it in the run's log. A test
-    whose meta says stays_at_warn (decision 197's four closures key tests)
+    whose meta says stays_at_warn (the four closures key tests)
     stays a warning, an Elementary check keeps dbt's own status (its
     `failures` is Elementary's count, not the level its fail_calc scored),
     and a test whose `failures` is a level, 0, 1 or 2 (macros/test_levels.sql:
@@ -99,7 +99,7 @@
     does). Its `expected_max` is the source's error limit in seconds, the
     limit the page quotes; for a source with no error limit, one whose
     sources.json row says reaches_hikers false, until decision 204 revisits
-    that rule (decision 100), it is the warning limit. `expected_min` is null:
+    that rule, it is the warning limit. `expected_min` is null:
     an age has no lower edge. `since` is null too, because the value already
     is how long. `metric` is last_read_age and `test` source_freshness, names
     this file gives, as dbt gives the measurement none. A source counts, and
@@ -118,7 +118,7 @@
     declares none.
 
     WHICH CHECKS ARE THIS BUILD'S. elementary_test_results holds the lane's
-    history (restored before the build, decision 102 step 3, and kept 430
+    history (restored before the build, and kept 430
     days for the monthly lane and 21 for the hourly, build_marts.py's
     ELEMENTARY_KEEP_DAYS, which bounds how far back `since` and
     `learning.builds` can see), so a result is this
@@ -275,7 +275,7 @@
       its own layer states (ArcGIS's editingInfo.dataLastEditDate, as
       int_sources__data_edited dates a table), as `source` (the registry key),
       `title` and `edited_on` (YYYY-MM-DD), ordered by title. Information, not
-      a check: decision 213's rule 23 (the maintainer's poll of 2026-10-15,
+      a check: the rule 23 (the maintainer's poll of 2026-10-15,
       "Not now, show last post") puts no warning on a gap between posts, so
       nothing here is counted in `totals` and the page gives it no status.
       Published sources only, as the rest of this file (int_sources__final's
@@ -357,7 +357,7 @@
 with recursive
 
 -- Each dbt test's error threshold, whether it stays at warn, and whether its
--- `failures` is a level rather than a count of rows (decision 204, the
+-- `failures` is a level rather than a count of rows (the
 -- header's "AN ERROR PAST ITS THRESHOLD").
 test_thresholds as (
     select

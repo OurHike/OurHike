@@ -4,7 +4,7 @@
 -- pipeline/ELT.md's podcasts rule table), and `problem` says why; null in
 -- both means the row publishes. This model's test fails the build on any
 -- problem, so a list that would drop a row writes nothing, as
--- export_podcasts.py refuses an upload that drops one (PC07). The allowed
+-- export_podcasts.py refuses an upload that drops one. The allowed
 -- fields, app hosts, id pattern and mile ceiling are seeds and vars that
 -- tests/test_dbt_podcasts_parity.py holds to the Python's constants.
 --
@@ -223,7 +223,7 @@ parsed as (
     from typed
 ),
 
--- PC05, tag by tag: each tagged POI live in the ledger under the name beside
+-- Tag by tag: each tagged POI live in the ledger under the name beside
 -- it, for the rows whose pois and places have the right shape.
 tags as (
     select
@@ -280,7 +280,7 @@ tag_problems as (
     group by episode_row_key
 ),
 
--- PC04, app by app in sorted order, as validate() walks sorted(items()).
+-- App by app in sorted order, as validate() walks sorted(items()).
 link_maps as (
     select
         episode_row_key,
@@ -496,7 +496,7 @@ checks as (
         on parsed.episode_row_key = link_problems.episode_row_key
 ),
 
--- PC06: validate() records an id only after its row passes every check,
+-- validate() records an id only after its row passes every check,
 -- so the id belongs to the first row with no problem at all, and a later
 -- row that passed every check before PC06 is the repeat.
 kept as (

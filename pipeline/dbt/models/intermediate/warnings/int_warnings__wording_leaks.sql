@@ -1,9 +1,9 @@
 {{ config(materialized='table') }}
--- NO PROSE IS PUBLISHED (decision 55; pipeline/ELT.md, phase C). One row per
+-- NO PROSE IS PUBLISHED (pipeline/ELT.md, phase C). One row per
 -- text value of a club notice that holds its source's own wording: a value
 -- int_warnings__notice_wording_unioned collected from that source's base
 -- model, which its staging model does not carry. Each row holds that source
--- in int_closures__gate (decision 81; review finding ARCH-1 of PR #1805 —
+-- in int_closures__gate (review finding ARCH-1 of PR #1805 —
 -- dlt → dbt re-platform as one go/no-go change), so its paragraphs never
 -- reach a mart and it carries its last good rows, while every other source
 -- and file publishes. Its test warns, so the log names the rows and the run
@@ -45,7 +45,7 @@ with wording as (
 -- dbt lint's RF03 and AL05 read as an unqualified reference and an unused
 -- alias unless every reference beside it is unqualified too. A closures-type
 -- notice lands in the closures mart only where it obstructs the trail, and
--- in the warnings mart otherwise (decision 7), so `mart` says which.
+-- in the warnings mart otherwise, so `mart` says which.
 published as (
     select
         case when obstructs_trail then 'closures' else 'warnings' end as mart,

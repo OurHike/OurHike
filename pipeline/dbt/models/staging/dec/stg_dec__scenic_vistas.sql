@@ -7,7 +7,7 @@
 -- walks to. That is a mapping, not a merge: the three stay separate sources.
 with source as (
     -- dlt lands geometry as GeoJSON text (extract/_kinds.py's JSON
-    -- hint); cast here, as decision 40 has staging do.
+    -- hint); cast here, as staging models do.
     select
         -- The row's place in the raw table, which extract/_warehouse.py fills
         -- in the order the upstream served it: the order a Python exporter

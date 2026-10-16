@@ -1,21 +1,21 @@
 {{ config(materialized='table') }}
--- What each blue-blazed spur leads to (TL27-TL29): export_spurs.py's
+-- What each blue-blazed spur leads to: export_spurs.py's
 -- build_spur_records() and attach_junction_miles() with lib/spurs.py's
 -- rules. One row per side trail; a spur also gets its spurs.json record.
 --
--- TL27: a spur is a side trail whose Type decodes to "3" (SPUR_TYPE_CODE),
+-- A spur is a side trail whose Type decodes to "3" (SPUR_TYPE_CODE),
 -- decoded in lib/spurs.decode_type()'s order (the `decoded` CTE).
 -- TYPE_LITERAL_ALIASES covers the misspelt literal that 60 live side
 -- trails carry for "2".
 --
--- TL28: orient() (the `oriented` CTE) makes the end nearer the centerline
+-- orient() (the `oriented` CTE) makes the end nearer the centerline
 -- the junction, and gives none when both ends are within ON_TRAIL_M (25 m,
 -- an alternate route), the two distances tie, or neither end is within
 -- JUNCTION_MAX_M (100 m). The far end's destination is the nearest
 -- destination POI within DESTINATION_MAX_M (150 m); a privy, parking lot
 -- or trailhead is never where a spur goes.
 --
--- TL29: the junction mile comes from axis_mile(), the same mile a POI gets
+-- The junction mile comes from axis_mile(), the same mile a POI gets
 -- (#136 — Publish the mile at which each spur joins the AT). Null where no
 -- end is the junction: absent means unknown, never a guess at whichever
 -- end won by a metre.

@@ -8,7 +8,7 @@
 -- against the line its steward published, and before simplify_records(),
 -- which makes the geometry final.
 --
--- WHY THIS IS STILL HERE (decision 44): #1152 — Move OPRHP's temporary
+-- WHY THIS IS STILL HERE: #1152 — Move OPRHP's temporary
 -- closures onto the conditions clock, where a safety layer belongs — is to
 -- publish the areas on the hourly conditions files, and the closures mart
 -- already carries them (int_closures__oprhp_areas). But a phone in the field
@@ -106,7 +106,7 @@ closed_ground as (
 ),
 
 -- The band within `area_closure_edge_m` of the closed ground's outline, in
--- EPSG:5070 (decision 213, rule 6, above).
+-- EPSG:5070 (rule 6, above).
 edged_ground as (
     select
         geom,

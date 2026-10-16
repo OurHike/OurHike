@@ -1,5 +1,5 @@
 -- reference/trail_name_aliases.json's `trails`, one row per published
--- spelling: which long trail a source's own spelling is (TL21), the
+-- spelling: which long trail a source's own spelling is, the
 -- reviewed half of export_nearby_trails.py's _alias_index(). USFS's five
 -- spellings of the Continental Divide are one trail through this table, and
 -- client/src/map/longTrailNames.ts is the same table on the client
@@ -8,7 +8,7 @@
 -- Exact on the publisher's spelling, never a prefix: a road named after a
 -- trail is not the trail, and that refusal is the file's, not this model's.
 -- The key, spelling_key, is dbt_utils.generate_surrogate_key over
--- (source_key, published_spelling) (decision 197; alias_key is the trail's
+-- (source_key, published_spelling) (alias_key is the trail's
 -- entry, which several spellings share). Its unique test stops the build
 -- where two entries claim one spelling, which _alias_index() would answer
 -- with the later entry, silently.

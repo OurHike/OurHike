@@ -1,5 +1,5 @@
 {{ config(format='json', location='nearby_poi_v2.geojson') }}
--- v2/nearby_poi.geojson (decision 44's v2 of the points_of_interest mart):
+-- v2/nearby_poi.geojson (the v2 of the points_of_interest mart):
 -- the other organizations' POIs as v1's nearby_poi.geojson carries them, in
 -- the same order, with each position held once, as the point's coordinates
 -- at 6 decimals, and no `lat` and `lon` properties (stage 6 of #1793;
@@ -15,7 +15,7 @@
 --
 -- WHICH POIs, unchanged from v1: every other organization's POI is still
 -- here, water and shelters and everything else. Moving their non-water,
--- non-shelter rows to 1° cells is decision 9's tier (b), which changes what
+-- non-shelter rows to 1° cells is the tier (b), which changes what
 -- a phone with no signal holds, and is the maintainer's to decide (ELT.md's
 -- open question on trailheads and parking).
 with pois as (

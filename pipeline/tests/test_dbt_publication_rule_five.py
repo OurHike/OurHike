@@ -1,4 +1,4 @@
-"""Rule 5's two seeds, held without a warehouse (pipeline/ELT.md, "Who may publish", rule 5; decision 53's phase C).
+"""Rule 5's two seeds, held without a warehouse (pipeline/ELT.md, "Who may publish", rule 5; the phase C).
 
 int_sources__publication reads licence_restriction_phrases and
 licence_restriction_answers to hold back a source whose quoted words carry a

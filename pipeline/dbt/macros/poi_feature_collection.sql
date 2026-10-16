@@ -17,7 +17,7 @@
     `relation` is the writer's own CTE over ref('points_of_interest'), so the
     ref stays in the model where dbt sees it.
 
-    `version` is the mart version the relation reads (decision 44). At 1,
+    `version` is the mart version the relation reads. At 1,
     the default, the document is today's shape, above. At 2 (stage 6 of
     #1793, the eight pub_poi_<type>_v2 writers) the `lat` and `lon`
     properties are left out, because the v2 mart holds a POI's position once,

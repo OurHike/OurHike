@@ -1,6 +1,6 @@
-"""The club notice sources' generated dbt models are what pipeline/generate_notice_models.py writes (decision 53, phase C).
+"""The club notice sources' generated dbt models are what pipeline/generate_notice_models.py writes (phase C).
 
-The generator's output is not committed (decision 91): every place that
+The generator's output is not committed: every place that
 parses the dbt project writes it first, through generate_dbt.py, so a closures
 or warnings resource registered in a club folder is staged by the next run.
 tests/test_dbt_generated_staging.py holds, for both generators, that a run
@@ -73,7 +73,7 @@ def _seed(name: str) -> list[dict]:
 
 
 def test_every_arcgis_field_the_seed_names_is_in_the_layers_measured_field_list():
-    """make_dbt_fixtures.py's NOTICE_LAYERS rows carry each layer's field names as decision 53's inventory read them."""
+    """make_dbt_fixtures.py's NOTICE_LAYERS rows carry each layer's field names as the inventory read them."""
     generated = {source.key: source for source in generator.notice_sources() if not source.hand_staged}
     arcgis = {key for key, source in generated.items() if source.reader_class == "ArcgisLayer"}
     rows = {row["source_key"]: row for row in _seed("notice_source_fields")}
@@ -275,7 +275,7 @@ def test_a_layers_own_name_and_a_sites_own_type_are_staged_as_schema(files):
     """The maintainer's fixes of 2026-10-15 read a layer's own name (whether it says closures, or names a kind of
     site) and a site's own type. The name is the seed's `layer_title`, a constant on every row of every ArcGIS
     layer; the type is USFS's markeractivity, staged as `site_type` beside its category, which stays its openstatus
-    (decision 78). A source the seed names no layer for stages a null name."""
+    A source the seed names no layer for stages a null name."""
     fields = {row["source_key"]: row for row in _seed("notice_source_fields")}
     sources = {source.key: source for source in generator.notice_sources()}
     arcgis = [key for key, source in sources.items() if source.reader_class == "ArcgisLayer" and not source.hand_staged]
@@ -299,7 +299,7 @@ def test_a_layers_own_name_and_a_sites_own_type_are_staged_as_schema(files):
 
 def test_a_category_holds_a_status_or_a_reason_and_never_a_class_code():
     """The review of PR #1805 of 2026-10-15, thread 4279218690: a category prints under a notice's tag as "Listed as"
-    its value (decisions 78 and 137), so Midpen's CLOSETYPE printed 'Regular' under a Closure tag on 122 closed areas,
+    its value, so Midpen's CLOSETYPE printed 'Regular' under a Closure tag on 122 closed areas,
     which a hiker reads as open. The standard (seeds/_notices__seeds.yml): a category holds the row's own status, the
     kind of notice its source files it as, or the reason it was posted, and never a class along another axis. Every
     seed row and every fixed reader that stages a category says which it holds, so a field is checked against the
@@ -463,7 +463,7 @@ def test_every_pdf_notice_keeps_its_freshness_and_only_cis_two_freshness_command
 def test_every_notice_raw_table_carries_elementarys_checks_and_no_staging_model_carries_event_freshness(files):
     """Decision 102, through the generator so one edit reaches every source: each raw table carries
     make_dbt_staging.py's raw_table_checks(), the same two whatever its cadence. No staging model carries Elementary's
-    event_freshness_anomalies any more (decision 203, the maintainer, 2026-10-15): it scored how long since a club last
+    event_freshness_anomalies any more (the maintainer, 2026-10-15): it scored how long since a club last
     edited a notice, a ramp that a pause in OurHike's own runs moves for every quiet source at once, and on UA's page of
     2026-10-15 04:38 UTC it was all 97 freshness warnings. A notice source's freshness is dbt's, from the run log
     (tests/test_notice_source_freshness.py)."""
@@ -507,7 +507,7 @@ def test_a_reader_no_source_uses_yet_stages_only_columns_it_lands(reader_class, 
 
 def test_every_unit_test_input_on_a_generated_notice_model_is_sql_rows():
     """A generated notice base model reads its raw table through notice_raw_table(), so on a warehouse that lacks the
-    table (an hourly build with no served notices copy, decision 61) it has only the key columns. dbt checks dict or
+    table (an hourly build with no served notices copy) it has only the key columns. dbt checks dict or
     CSV fixture rows against the input's real columns and fails the whole build before a test runs, which stopped the
     soak run on ecc43d56 (publish-conditions.yml 37203308446). SQL rows carry their own columns."""
     import glob
@@ -555,7 +555,7 @@ def test_every_notice_source_that_reaches_hikers_lands_in_the_warehouse_of_the_l
     conditions leg's tables and a notices leg's served copy, never the monthly store, so int_closures__gate held both
     every hour as "not in this warehouse", and every run stayed green.
 
-    So every staged notice source's table must be one a leg reads: decision 61's two jobs (extract/_run.py's
+    So every staged notice source's table must be one a leg reads: the two jobs (extract/_run.py's
     leg_tables()). A source whose sources.json row says reaches_hikers false is let through, since the gate holds it
     either way: USFWS's hunt units today. Its row turning true turns this red, which is when its lane is decided."""
     from extract._contract import all_resources, discover, discover_shared

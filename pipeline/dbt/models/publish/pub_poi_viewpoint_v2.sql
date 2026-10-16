@@ -1,5 +1,5 @@
 {{ config(format='json', location='poi_viewpoint_v2.geojson') }}
--- v2/poi_viewpoint.geojson, decision 44's v2 of the
+-- v2/poi_viewpoint.geojson, the v2 of the
 -- points_of_interest mart: the A.T. family's viewpoint POIs
 -- as v1's poi_viewpoint.geojson carries them, with each
 -- position held once, as the point's coordinates at 6 decimals, and no

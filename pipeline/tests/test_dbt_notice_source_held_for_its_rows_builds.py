@@ -34,7 +34,7 @@ Then, of the second build:
 
 Both builds run as a conditions leg does, OURHIKE_DATA_ENV=ua (decision 204,
 dbt_project.yml's switch): there a failing test warns and the build goes on,
-which is what decision 81's hold needs; in dev and CI the two tests that hold
+which is what the hold needs; in dev and CI the two tests that hold
 a source are errors and stop the build. So (f) no test of the second build but
 those two is past its own error threshold, as build_marts.py's
 relabelled_errors() reads one, which would otherwise pass here unseen.
@@ -129,7 +129,7 @@ def builds(tmp_path_factory) -> dict:
         "OURHIKE_WAREHOUSE": str(warehouse),
         "OURHIKE_PROCESSED_DIR": str(processed),
         "DBT_ENGINE_SEND_ANONYMOUS_USAGE_STATS": "false",
-        # As a conditions leg builds (decision 204): a failing test warns, so the gate's hold is what is tested.
+        # As a conditions leg builds: a failing test warns, so the gate's hold is what is tested.
         "OURHIKE_DATA_ENV": "ua",
     }
     target = root / "target"
@@ -216,7 +216,7 @@ def test_the_tests_that_hold_a_source_warn_and_name_both(builds):
 
 
 def test_no_other_test_of_the_second_build_is_past_its_error_threshold(builds):
-    """In UA every failing test warns (decision 204), so a failure this edit caused anywhere else would pass the
+    """In UA every failing test warns, so a failure this edit caused anywhere else would pass the
     build: build_marts.py would report it as an error, and so does this, unless it is one of the two holds."""
     errors = build_marts.relabelled_errors(list(builds["results"].values()), builds["manifest"])
     assert errors == {}

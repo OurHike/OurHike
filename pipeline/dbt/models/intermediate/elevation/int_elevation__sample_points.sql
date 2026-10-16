@@ -62,7 +62,7 @@
 -- int_elevation__profile casts it.
 --
 -- THE KEY, sample_point_key, is dbt_utils.generate_surrogate_key over
--- (line_id, sample_index), the walk position (decision 197: every model has
+-- (line_id, sample_index), the walk position (every model has
 -- one column that is unique and not null).
 with recursive pieces as (
     select

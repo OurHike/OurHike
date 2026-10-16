@@ -8,7 +8,7 @@
 -- one, and int_closures__area_trail_cuts cuts those lines against the areas.
 --
 -- THE SOURCE'S OWN AREA, NOT THE PHONE'S. conditions/notices.json carries an
--- area grown 100 m outward (decision 77) so that a route passing near it is
+-- area grown 100 m outward so that a route passing near it is
 -- shown the notice; that margin is for showing a notice rather than missing
 -- it, and it would cross out 100 m of open trail past the closure's edge. So
 -- the cut is against the area as the source drew it, as NYS Parks' areas are

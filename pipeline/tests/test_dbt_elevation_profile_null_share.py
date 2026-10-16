@@ -1,4 +1,4 @@
-"""A mostly unmeasured A.T. profile never replaces a good one (decision 194, the maintainer's poll of 2026-10-14).
+"""A mostly unmeasured A.T. profile never replaces a good one (the maintainer's poll of 2026-10-14).
 
 pub_elevation_profile and pub_elevation_profile_v2 each carry an error-level test, declared in
 models/publish/_publish__elevation.yml, that fails the writer when more than dbt_project.yml's var

@@ -1,5 +1,5 @@
 {{ config(format='json', location='poi_privy_v2.geojson') }}
--- v2/poi_privy.geojson, decision 44's v2 of the
+-- v2/poi_privy.geojson, the v2 of the
 -- points_of_interest mart: the A.T. family's privy POIs
 -- as v1's poi_privy.geojson carries them, with each
 -- position held once, as the point's coordinates at 6 decimals, and no

@@ -1,5 +1,5 @@
 -- reference/poi_identity.json (_shared/ourhike/poi_identity.py): every POI
--- ever published, retired ones included, keyed (decision 40), with nothing
+-- ever published, retired ones included, keyed, with nothing
 -- filtered and nothing joined.
 --
 -- Key: poi_id, the ledger's map key, unique by construction.

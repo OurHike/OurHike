@@ -1,9 +1,9 @@
 {{ config(materialized='table') }}
 -- The lines places.json measures, one row per published line:
--- export_places.py's load_lines() in SQL (PL06), with the name each line is
--- summed under for the long trails (PL07).
+-- export_places.py's load_lines() in SQL, with the name each line is
+-- summed under for the long trails.
 --
--- PL06, ONLY LINES THAT SHIP, PLUS THE A.T. load_lines() keeps a line from
+-- ONLY LINES THAT SHIP, PLUS THE A.T. load_lines() keeps a line from
 -- nearby_trails.geojson or trails.geojson only where its `source` is one of
 -- shipped_line_source_keys() (a network line source whose reaches_hikers is
 -- true) or `centerline`, so a park never prints miles of a line no phone

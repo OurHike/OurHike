@@ -1,5 +1,5 @@
 {#-
-    A review aid with two thresholds (decision 204): the rows of `model` that
+    A review aid with two thresholds: the rows of `model` that
     `named` names, each with `total_rows`, the model's rows. A warning when
     any row is named, the rows a person should read; an error when at least
     `error_share` of them are (1, every row: the reader or the rule broke

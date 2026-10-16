@@ -9,7 +9,7 @@ sources:
     schema: raw
     config:
       # When the extract last read each table or confirmed it unchanged, from
-      # its run log, never `_loaded_at` (decision 203): make_dbt_staging.py's
+      # its run log, never `_loaded_at`: make_dbt_staging.py's
       # LOADED_AT_QUERY and MONTHLY_FRESHNESS_DAYS say why, and
       # tests/test_source_freshness.py holds every monthly source to them.
       loaded_at_query: "{{ last_read_or_confirmed_at(this) }}"
@@ -19,11 +19,11 @@ sources:
     tables:
       - name: raw_cdtc__cdtc_centerline
         data_tests:
-          # Rows sharing base_cdtc__centerline's key must be exact copies (decision 40).
+          # Rows sharing base_cdtc__centerline's key must be exact copies.
           - duplicates_are_exact:
               arguments:
                 key_columns: ["'cdtc_centerline'", "state"]
-          # Elementary's checks (make_dbt_staging.py's raw_table_checks(), decision 102), each with its two thresholds (decision 204).
+          # Elementary's checks (make_dbt_staging.py's raw_table_checks()), each with its two thresholds.
           - elementary.volume_anomalies:
               config:
                 severity: error

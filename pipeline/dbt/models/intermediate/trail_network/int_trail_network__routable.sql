@@ -10,7 +10,7 @@
 -- centerline and side trails WHOLE (trails.geojson, in its order, kept to
 -- the sources in trail_network_at_sources, load_at_lines()' AT_GRAPH_SOURCES).
 -- The A.T. is absent from the network half by design (the route owner's
--- line wins, TL11), so without its own lines a graph would refuse a tap on
+-- line wins), so without its own lines a graph would refuse a tap on
 -- the widest line on the map with a sentence that is false there;
 -- assert_the_at_routes_on_the_junction_graph says so loudly, as main()'s
 -- WARNING does.
@@ -36,7 +36,7 @@
 -- copies onto every edge and a phone joins a graph cell's edges to a tile's
 -- lines by (client/src/lib/lineClimb.ts). `part_id`, and so every edge id
 -- after it, is built on `trail_line_id`, the mart's key, which stays as it
--- was (TL05).
+-- was.
 --
 -- `part_order` is the part's place in routable_lines()' list, which is the
 -- order every later model and step_node_lines reads the parts in. Geometry

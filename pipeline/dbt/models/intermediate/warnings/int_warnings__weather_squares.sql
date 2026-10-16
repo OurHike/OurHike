@@ -2,7 +2,7 @@
 -- (build_weather_squares.py's choice, the maintainer's of 2026-09-24): one
 -- row per square, however many trail cells list it, as
 -- export_weather_alerts.py's bake() reads them into `trail`, the set an
--- alert's polygon is tested against (WN03). A square is (row, col) on NOAA's
+-- alert's polygon is tested against. A square is (row, col) on NOAA's
 -- NBM CONUS grid, and covers the box (col, row) to (col + 1, row + 1) in grid
 -- units (lib/nbm_grid.py).
 with squares_documents as (

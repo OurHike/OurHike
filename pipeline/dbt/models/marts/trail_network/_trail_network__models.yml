@@ -17,8 +17,8 @@ models:
       contract:
         enforced: true
     data_tests:
-      # Elementary's checks (decision 102; pipeline/ELT.md, "The checks, and
-      # where each goes"), each with its two thresholds (decision 204) and run by build_marts.py after the
+      # Elementary's checks (pipeline/ELT.md, "The checks, and
+      # where each goes"), each with its two thresholds and run by build_marts.py after the
       # writers: the edges at each build; the edges per club and source, so
       # one club's network vanishing cannot hide inside the total; and each
       # column's null rate, the geometry left out. No
@@ -179,7 +179,7 @@ models:
                 # warn on a leg build_marts.py built without its history,
                 # where both dates are null and the run is red already, and
                 # in production and UA, where build_marts.py reports a
-                # failure as an error unless the history is off (decision 204).
+                # failure as an error unless the history is off.
                 severity: "{{ 'warn' if env_var('OURHIKE_ROW_HISTORY', 'on') == 'off' or env_var('OURHIKE_DATA_ENV', 'dev') in ['production', 'ua'] else 'error' }}"
       - name: _changed_at
         description: "{{ doc('row_changed_at') }}"

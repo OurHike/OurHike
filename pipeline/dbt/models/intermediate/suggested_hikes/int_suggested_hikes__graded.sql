@@ -3,7 +3,7 @@
 -- reviewer should read them. step_form_route measured each route
 -- (stg_derived__formed_routes); this grades the measurements.
 --
--- A generated route (SH04) gets lib/hike_route_builder.py's _grade(), check
+-- A generated route gets lib/hike_route_builder.py's _grade(), check
 -- for check (the `generated_checks` CTE): trails walked of those named,
 -- length against the stated miles, how much of a closed walk doubles back,
 -- and how far the parking sits from the line. The worst check sets the

@@ -25,7 +25,7 @@
 -- against the tile index would settle it. Loss is the same dead
 -- band on the ground turned over, as a positive number.
 --
--- BOTH ROUND UP TO THE WHOLE FOOT, toward caution (decision 194, the
+-- BOTH ROUND UP TO THE WHOLE FOOT, toward caution (the
 -- maintainer's poll of 2026-10-14; CLAUDE.md: "Round toward caution, and say
 -- which way you rounded"). ceil(), so an edge's climb reads under one foot
 -- over its unrounded figure and never under it. The phone sums a route edge

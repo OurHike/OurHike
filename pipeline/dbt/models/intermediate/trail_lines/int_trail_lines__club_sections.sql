@@ -6,7 +6,7 @@
 -- are published rather than dropped ("41 miles the fresh source cannot name
 -- reads as 'not recorded'; leaving it out would read as 'no trail here'").
 --
--- TL26, NAMES FROM THE POLYGONS ONLY, through int_trail_lines__club_names: a
+-- NAMES FROM THE POLYGONS ONLY, through int_trail_lines__club_names: a
 -- club the polygons do not name, or name with no text, keeps its acronym as
 -- its name, and has no region.
 --

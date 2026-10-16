@@ -1,7 +1,7 @@
 {{ config(materialized='table') }}
 {%- set decimals = 6 %}
 -- trail_graph.json's `nodes`: one row per published node, in the order
--- build_graph() numbers them, as [lon, lat] (TN06). A node's point is where
+-- build_graph() numbers them, as [lon, lat]. A node's point is where
 -- the node grid first made it, the first end to reach that place
 -- (int_trail_network__node_lookups); a merged node's is its group's lowest.
 -- Taken back to lon/lat with ST_Transform (pyproj's doubles, measured on

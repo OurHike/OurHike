@@ -37,7 +37,7 @@
 --   card credits, on every hike;
 -- - the route's provenance and grade on every hike, so a generated line is
 --   never drawn with its provenance still in flight.
--- Highlights store nothing derived (SH14): no length, ascent or time.
+-- Highlights store nothing derived: no length, ascent or time.
 with records as (
     select * from {{ ref('int_suggested_hikes__records') }}
 ),

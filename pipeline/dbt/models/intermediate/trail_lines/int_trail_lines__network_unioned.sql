@@ -15,7 +15,7 @@
 -- back out of the JSON, and int_trail_lines__network_judged reads a
 -- field by its warehouse column name (int_trail_lines__network_sources'
 -- `*_column`). A column the layer does not have reads as absent, which is
--- how missing_declared_fields() can be asked in SQL at all (TL08). Values
+-- how missing_declared_fields() can be asked in SQL at all. Values
 -- keep the types dlt landed them as. Not DuckDB's `*columns(...)` unpacking,
 -- which does the same in one line: dbt 2.0.6's own SQL parser warns
 -- SyntaxInvalid (dbt0101) on it (measured 2026-10-02), though DuckDB runs it.
@@ -31,7 +31,7 @@
 -- them.
 --
 -- A row's published id is int_trail_lines__network_judged's to build, from
--- `properties` and `source_row` (TL05).
+-- `properties` and `source_row`.
 {%- set base_branches = [
     ('usfs_trails', 'usfs', 'base_usfs__trails'),
     ('njdep_park_trails', 'njgin', 'base_njgin__njdep_park_trails'),

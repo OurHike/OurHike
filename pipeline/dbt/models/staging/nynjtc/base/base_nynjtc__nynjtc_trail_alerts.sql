@@ -9,7 +9,7 @@
 -- (lib/nynjtc_alerts.py's ParsedAlert: NYNJTC edits alerts in place).
 -- WordPress writes it site-local with no offset, and dlt read it as UTC,
 -- which is what lib/nynjtc_alerts.py's _as_utc_stamp() does with it too:
--- the same known error of a few hours, carried rather than hidden (WN08).
+-- the same known error of a few hours, carried rather than hidden.
 --
 -- Key: the post's WordPress id.
 with source as (

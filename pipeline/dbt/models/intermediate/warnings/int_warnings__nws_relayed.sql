@@ -1,11 +1,11 @@
 -- The NWS alerts OurHike relays (export_weather_alerts.py's relayed()):
--- every alert NWS marks `Actual` that is not a cancellation (WN01), with
+-- every alert NWS marks `Actual` that is not a cancellation, with
 -- NWS's own words and times exactly as it wrote them and null where it
--- sent null (WN02: "an alert with no `ends` has not been given one, which is
+-- sent null ("an alert with no `ends` has not been given one, which is
 -- not the same as ending now"). The maintainer's "relay all" (2026-09-26,
 -- HIKER_SAFETY.md §3): none is left out for being the wrong kind.
 --
--- WHERE AN ALERT LANDS IS NOT HERE (WN03). int_warnings__nws_placed puts
+-- WHERE AN ALERT LANDS IS NOT HERE. int_warnings__nws_placed puts
 -- each alert on the NBM weather squares build_weather_squares.py chose, by
 -- the alert's polygon when it has one and its zones otherwise, as
 -- export_weather_alerts.py does, and pub_conditions_weather_alerts writes

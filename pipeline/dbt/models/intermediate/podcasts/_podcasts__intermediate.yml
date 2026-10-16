@@ -8,7 +8,7 @@ models:
       first rule it breaks (`rule_id`, pipeline/ELT.md's PC numbers) and why
       (`problem`). Null in both means the row publishes.
     data_tests:
-      # PC07, the gate: any row with a problem fails the build, so the
+      # The gate: any row with a problem fails the build, so the
       # writers, which run only after every test has passed, write nothing.
       # export_podcasts.py's "a list that dropped a row is not uploaded".
       # dbt 2.0.6 reports only how many rows failed (it has no option to
@@ -43,7 +43,7 @@ models:
           than as Python's repr. Null if the row publishes.
   - name: int_podcasts__final
     description: >
-      The podcasts mart's rows before their row dates (decision 57):
+      The podcasts mart's rows before their row dates:
       what models/marts/podcasts/podcasts.sql held until then, every
       contracted column but _first_seen_at and _changed_at.
       int_podcasts__history snapshots it, and the mart reads that snapshot.

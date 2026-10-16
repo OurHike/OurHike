@@ -2,7 +2,7 @@
 -- (base_atc__atc_trail_updates_pages), may publish without a person:
 -- lib/atc_updates.py's auto_publish_refusal() and auto_row(), as
 -- export_atc_updates.py's automatic_rows() runs them over
--- fetch_atc_updates.py's scrape (CL07-CL10). One row per update the sitemap
+-- fetch_atc_updates.py's scrape. One row per update the sitemap
 -- lists, with `refusal`, the reason it may not publish, in the Python's
 -- words, null where it may; and for those, the row as auto_row() writes it.
 --
@@ -14,25 +14,25 @@
 --                                           review, everything unreviewed
 --                                           is the reviewer's reject pile
 --   no title, whitespace being none
---   a category this build does not know     var atc_update_categories (CL02)
+--   a category this build does not know     var atc_update_categories
 --   no states
---   mile references that disagree (CL08)    none, or more than one
+--   mile references that disagree    none, or more than one
 --                                           distinct (start, end)
---   the agreed span off the trail           vars atc_trail_mile_min/max (CL01)
+--   the agreed span off the trail           vars atc_trail_mile_min/max
 --   the agreed span running backwards
 -- An update's own words are never read: an all-clear publishes as one,
 -- under ATC's own headline (lib/atc_updates.py, "WHY THERE IS NO ALL-CLEAR
 -- REFUSAL"), and the extract does not land them.
 --
--- THE ROW (CL09): `obstructs_trail` is FORCED FALSE and read from nothing,
+-- THE ROW: `obstructs_trail` is FORCED FALSE and read from nothing,
 -- so an update nobody here has read can put a dot and a banner on the map
 -- and never a barrier across the trail, and it lands in the warnings mart
--- only (decision 7). The span is the first mile reference's, and a point's
+-- only. The span is the first mile reference's, and a point's
 -- end is its start. `updated_at` is dateModified in UTC to the second.
 -- `review_state` is lib/atc_updates.py's UNREVIEWED in the phone file, and
 -- `auto` in the marts (ELT.md, "The eleven marts").
 --
--- CL10: an update ATC stops listing leaves the sitemap, and so this model,
+-- An update ATC stops listing leaves the sitemap, and so this model,
 -- and is not republished (extract/_kinds.py's AtcTrailUpdatePages).
 --
 -- THE REVIEW IS THE REVIEWED FILE'S: `reviewed_at` from base_atc__atc_updates
@@ -207,7 +207,7 @@ select
     sitemap_row,
     refusal,
     refusal is null as publishes,
-    -- CL12: the refusals a person can act on, the ones
+    -- The refusals a person can act on, the ones
     -- propose_atc_updates.py's _actionable() keeps: every reason except a
     -- reviewed slug and an update older than the review, which are refused
     -- on every run and are the steady state, not a finding.

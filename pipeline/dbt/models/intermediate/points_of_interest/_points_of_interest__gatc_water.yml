@@ -15,7 +15,7 @@ models:
     columns:
       - name: namesake_key
         description: >
-          The row's key (decision 197): dbt_utils.generate_surrogate_key over the seed row
+          The row's key: dbt_utils.generate_surrogate_key over the seed row
           (gatc_mile, entry_starts, atc_layer) and atc_global_id, one row per seed row per ATC
           point. Its unique test fails on any two rows sharing the four, the combination test it
           replaced; never null by construction, so the four inputs' own not_null tests hold the
@@ -67,7 +67,7 @@ models:
               or abs(cast(placed_mile as double) - cast(gatc_mile as double)) <= 0.005
     columns:
       - name: poi_key
-        description: The base model's key (decision 40), carried.
+        description: The base model's key, carried.
         data_tests: [not_null, unique]
       - name: source_key
         description: "`gatc_water_sources`."

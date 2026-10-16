@@ -1,5 +1,5 @@
 -- The extract's run log (extract/_run.py's write_run_log()), one row per
--- resource per run, keyed (decision 40), with nothing filtered.
+-- resource per run, keyed, with nothing filtered.
 -- int_closures__gate reads the count an upstream gave in the run that loaded
 -- its rows.
 --

@@ -14,7 +14,7 @@ models:
       access: public
       contract:
         enforced: true
-    # Decision 44: a phone file's shape is a version of the mart it is
+    # A phone file's shape is a version of the mart it is
     # written from. v1 is today's shape at today's keys, and every pub_ writer
     # reading this mart pins it, ref('podcasts', v=1), so a later latest
     # version cannot move a published file. A removed, renamed or retyped
@@ -27,8 +27,8 @@ models:
       - v: 1
         defined_in: podcasts
     data_tests:
-      # Elementary's checks (decision 102; pipeline/ELT.md, "The checks, and
-      # where each goes"), each with its two thresholds (decision 204) and run by build_marts.py after the
+      # Elementary's checks (pipeline/ELT.md, "The checks, and
+      # where each goes"), each with its two thresholds and run by build_marts.py after the
       # writers: the episodes at each build; the episodes per club and source,
       # so one show vanishing cannot hide inside the total; each column's null
       # rate (no geometry and no long text here); and the columns
@@ -152,7 +152,7 @@ models:
                 # warn on a leg build_marts.py built without its history,
                 # where both dates are null and the run is red already, and
                 # in production and UA, where build_marts.py reports a
-                # failure as an error unless the history is off (decision 204).
+                # failure as an error unless the history is off.
                 severity: "{{ 'warn' if env_var('OURHIKE_ROW_HISTORY', 'on') == 'off' or env_var('OURHIKE_DATA_ENV', 'dev') in ['production', 'ua'] else 'error' }}"
       - name: _changed_at
         description: "{{ doc('row_changed_at') }}"

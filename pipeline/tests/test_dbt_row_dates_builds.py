@@ -1,6 +1,6 @@
 """Real dbt builds of the podcasts mart, a fresh warehouse each, with the row history saved and restored between.
 
-The production shape on a small fixture (decision 57): every run builds its
+The production shape on a small fixture: every run builds its
 warehouse from raw on a new machine, and what carries a mart row's dates from
 one build to the next is row_history.py's store. The podcasts mart is the
 smallest whose rows come from a file the extract lands (podcast episodes,

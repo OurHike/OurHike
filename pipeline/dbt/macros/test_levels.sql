@@ -1,6 +1,6 @@
 {#-
     THE `fail_calc` OF A TEST WHOSE ERROR IS A SHARE OF ITS INPUT, AND OF AN
-    ELEMENTARY CHECK'S, AS A LEVEL (decision 204, the maintainer, 2026-10-15:
+    ELEMENTARY CHECK'S, AS A LEVEL (the maintainer, 2026-10-15:
     "Every test should have both the warning and error thresholds").
 
     dbt compares one number, a test's `failures`, with both of its

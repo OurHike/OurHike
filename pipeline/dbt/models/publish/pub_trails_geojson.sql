@@ -1,6 +1,6 @@
 {{ config(format='json', location='trails.geojson') }}
 -- trails.geojson, the A.T.'s lines as the phone draws them (TL15's 1 m
--- pass, decision 8's 6 decimals), from the trail_lines
+-- pass, the 6 decimals), from the trail_lines
 -- mart's A.T. rows: the centerline's chains, then the side trails and spurs,
 -- in feature_order, as export_trails.py writes them. A FeatureCollection
 -- named "trails", as GDAL's GeoJSON driver names it there, each feature's
@@ -9,7 +9,7 @@
 -- on `blaze_color` and `source`, and sniffs the `centerline:chain:` ids
 -- (lib/trailShape.ts).
 --
--- THE DELIBERATE DIFFERENCE, decision 8: the Python writes GDAL's digits;
+-- THE DELIBERATE DIFFERENCE: the Python writes GDAL's digits;
 -- this writes each coordinate cut to six decimals, as the mart holds it. The
 -- bytes differ too, compact here and GDAL's spacing there, so
 -- trail_miles.json's trails_sha256 names this file's bytes, never the

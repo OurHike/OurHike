@@ -1,6 +1,6 @@
 version: 2
 
-# Which of GATC's water sources name a place ATC has a point for (decision 75):
+# Which of GATC's water sources name a place ATC has a point for:
 # a judgement somebody reviews row by row, so a seed and not a generated file.
 # int_points_of_interest__gatc_water reads it to check each placed source
 # against ATC's own point of the same name on every build.

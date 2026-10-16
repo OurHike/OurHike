@@ -1,6 +1,6 @@
 -- reference/work_projects.json whole
 -- (extract/_shared/ourhike/work_projects.py), as its one row, keyed
--- (decision 40), with nothing filtered. The file is
+-- with nothing filtered. The file is
 -- landed whole, `_README` aside, rather than one row per row of `rows`,
 -- because `rows` is empty today (maintainer decision 2026-08-20, on #760), so
 -- a row-per-row table would have no columns at all, and because the review,

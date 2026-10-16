@@ -1,7 +1,7 @@
 -- NYC DOT Greenways (current, off-street) (NYC DOT, sources.json
--- `nyc_dot_greenways`): every row, keyed and deduped (decision 40), with
+-- `nyc_dot_greenways`): every row, keyed and deduped, with
 -- nothing filtered and nothing joined. A base model, the one place this
--- dataset is staged (decision 34), for the stewardship and staging models of
+-- dataset is staged, for the stewardship and staging models of
 -- every club whose portion it holds.
 --
 -- Key: segmentid, 2,995 of 2,995 live rows after 44 exact copies: every
@@ -16,7 +16,7 @@
 -- (ELT.md, "Stable upstream keys"), which this does not change.
 with source as (
     -- dlt lands geometry as GeoJSON text (extract/_kinds.py's JSON
-    -- hint); cast here, as decision 40 has staging do.
+    -- hint); cast here, as staging models do.
     select
         * exclude (geometry),
         st_geomfromgeojson(cast(geometry as varchar)) as geom

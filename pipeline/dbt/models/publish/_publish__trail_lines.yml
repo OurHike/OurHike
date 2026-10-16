@@ -7,7 +7,7 @@ models:
       the trail_lines mart's A.T. rows: one row, the FeatureCollection's
       `type`, `name` and `features`, which the phone_file materialisation
       copies to processed_dir/trails.geojson. Coordinates at 6 decimals
-      (decision 8), where export_trails.py writes GDAL's digits. parity.py
+      where export_trails.py writes GDAL's digits. parity.py
       compares it with export_trails.py's file, feature by feature, after
       cutting the Python's coordinates to 6 decimals as
       export_nearby_trails._rounded_geometry does.
@@ -252,7 +252,7 @@ exposures:
     owner:
       name: OurHike
     description: >
-      v2 of trail_miles.json (decision 44): the same mile for every
+      v2 of trail_miles.json: the same mile for every
       centerline vertex of trails.geojson, delta-coded in whole thousandths
       of a mile, published beside v1 at v2/trail_miles.json under the release
       folder (stage 6 of #1793; pipeline/ELT.md, "Making the download
@@ -275,7 +275,7 @@ exposures:
         size_budget_bytes: 179522
         cadence: monthly
         # The mart columns this file's writer reads, in Elementary's type words, which
-        # exposure_schema_validity checks on the mart (decision 102). It can only because this is
+        # exposure_schema_validity checks on the mart. It can only because this is
         # the one phone file reading that mart: with more, Elementary 0.26.0 needs
         # context["render"], which dbt 2.0.6 lacks.
         referenced_columns:

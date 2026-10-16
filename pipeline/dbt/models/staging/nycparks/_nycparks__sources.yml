@@ -10,7 +10,7 @@ sources:
     schema: raw
     config:
       # When the extract last read each table or confirmed it unchanged, from
-      # its run log, never `_loaded_at` (decision 203): make_dbt_staging.py's
+      # its run log, never `_loaded_at`: make_dbt_staging.py's
       # LOADED_AT_QUERY and MONTHLY_FRESHNESS_DAYS say why, and
       # tests/test_source_freshness.py holds every monthly source to them.
       loaded_at_query: "{{ last_read_or_confirmed_at(this) }}"
@@ -20,11 +20,11 @@ sources:
     tables:
       - name: raw_nycparks__nyc_drinking_fountains
         data_tests:
-          # Rows sharing base_nycparks__nyc_drinking_fountains's key must be exact copies (decision 40).
+          # Rows sharing base_nycparks__nyc_drinking_fountains's key must be exact copies.
           - duplicates_are_exact:
               arguments:
                 key_columns: ["'nyc_drinking_fountains'", "\"system\"", "gispropnum"]
-          # Elementary's checks (make_dbt_staging.py's raw_table_checks(), decision 102), each with its two thresholds (decision 204).
+          # Elementary's checks (make_dbt_staging.py's raw_table_checks()), each with its two thresholds.
           - elementary.volume_anomalies:
               config:
                 severity: error
@@ -47,11 +47,11 @@ sources:
           3,195 live rows.
       - name: raw_nycparks__nyc_park_polygons
         data_tests:
-          # Rows sharing base_nycparks__nyc_park_polygons's key must be exact copies (decision 40).
+          # Rows sharing base_nycparks__nyc_park_polygons's key must be exact copies.
           - duplicates_are_exact:
               arguments:
                 key_columns: ["'nyc_park_polygons'", "gispropnum"]
-          # Elementary's checks (make_dbt_staging.py's raw_table_checks(), decision 102), each with its two thresholds (decision 204).
+          # Elementary's checks (make_dbt_staging.py's raw_table_checks()), each with its two thresholds.
           - elementary.volume_anomalies:
               config:
                 severity: error
@@ -77,11 +77,11 @@ sources:
           `system`).
       - name: raw_nycparks__nyc_parks_trails
         data_tests:
-          # Rows sharing base_nycparks__nyc_parks_trails's key must be exact copies (decision 40).
+          # Rows sharing base_nycparks__nyc_parks_trails's key must be exact copies.
           - duplicates_are_exact:
               arguments:
                 key_columns: ["'nyc_parks_trails'", "md5(st_astext(st_geomfromgeojson(cast(geometry as varchar))))", "date_collected"]
-          # Elementary's checks (make_dbt_staging.py's raw_table_checks(), decision 102), each with its two thresholds (decision 204).
+          # Elementary's checks (make_dbt_staging.py's raw_table_checks()), each with its two thresholds.
           - elementary.volume_anomalies:
               config:
                 severity: error
@@ -106,11 +106,11 @@ sources:
           Socrata's row id, `_socrata_id`, which duplicates_are_exact skips.
       - name: raw_nycparks__nyc_public_restrooms
         data_tests:
-          # Rows sharing base_nycparks__nyc_public_restrooms's key must be exact copies (decision 40).
+          # Rows sharing base_nycparks__nyc_public_restrooms's key must be exact copies.
           - duplicates_are_exact:
               arguments:
                 key_columns: ["'nyc_public_restrooms'", "md5(st_astext(st_geomfromgeojson(cast(geometry as varchar))))"]
-          # Elementary's checks (make_dbt_staging.py's raw_table_checks(), decision 102), each with its two thresholds (decision 204).
+          # Elementary's checks (make_dbt_staging.py's raw_table_checks()), each with its two thresholds.
           - elementary.volume_anomalies:
               config:
                 severity: error

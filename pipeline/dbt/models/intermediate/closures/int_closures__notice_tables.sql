@@ -1,6 +1,6 @@
 {{ config(materialized='table') }}
 -- Whether each club notice source's raw table is in this warehouse at all
--- (decision 61; pipeline/ELT.md, Phase F, "What this does not settle"). The
+-- (pipeline/ELT.md, Phase F, "What this does not settle"). The
 -- hourly warehouse adds the newest served copy of the 4-hourly notices
 -- store, so a notices table can be absent from it: one still waiting its
 -- turn (a table with no hints is never created empty), one a served copy

@@ -1,5 +1,5 @@
 -- NYNJTC's four place taxonomies (extract/nynjtc/closures.py's terms
--- resource, read daily), one row per term, keyed (decision 40). The names
+-- resource, read daily), one row per term, keyed. The names
 -- arrive HTML-escaped as WordPress stores them, and
 -- int_closures__nynjtc_checked unescapes them as lib/nynjtc_alerts.py's
 -- parse_terms() does.

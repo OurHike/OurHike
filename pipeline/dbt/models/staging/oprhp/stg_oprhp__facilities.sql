@@ -1,6 +1,6 @@
 -- NYS Parks' facility points as the extract lands them (extract/nysparks/
 -- points_of_interest.py): 8,823 statewide, measured 2026-08-18, keyed and
--- deduplicated (decision 40), every column kept.
+-- deduplicated, every column kept.
 --
 -- What publishes from this layer does so ROW BY ROW, and nothing here says
 -- which rows. sources.json declares no layer-wide `poi_type`, because there
@@ -36,7 +36,7 @@
 -- PARK's name, not the feature's.
 with source as (
     -- dlt lands geometry as GeoJSON text (extract/_kinds.py's JSON
-    -- hint); cast here, as decision 40 has staging do.
+    -- hint); cast here, as staging models do.
     select
         -- The row's place in the raw table, which extract/_warehouse.py fills
         -- in the order the upstream served it: the order a Python exporter

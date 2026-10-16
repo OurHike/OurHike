@@ -1,6 +1,6 @@
 {#-
     THE DAY A TITLE SAYS ITS NOTICE ENDS, as a DATE, or null where the title
-    states none this reads (decision 213, rule 13, the maintainer's poll of
+    states none this reads (rule 13, the maintainer's poll of
     2026-10-15: "a title that states its own end is read as the row's end").
     int_closures__club_notices takes the later of this and the row's own end
     date as its `ends_on`, and int_closures__oprhp_areas reads its areas'

@@ -1,8 +1,8 @@
 -- reference/water_distance.json (extract/atc/points_of_interest.py): every
 -- A.T. shelter and campsite with how far ATC's Campsite Sustainability Index
--- puts the nearest water, keyed (decision 40), nothing filtered or joined.
+-- puts the nearest water, keyed, nothing filtered or joined.
 -- build_water_distance.py builds the file and its `--check` re-derives it;
--- a person reviews it as a diff, and that review is the gate (PO14).
+-- a person reviews it as a diff, and that review is the gate.
 --
 -- Key: atc_global_id, unique on all 512 rows (pipeline/ELT.md, "One key per
 -- table").

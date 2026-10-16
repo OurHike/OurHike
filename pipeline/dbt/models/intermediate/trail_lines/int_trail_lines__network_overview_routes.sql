@@ -2,7 +2,7 @@
 -- The first half of network_overview.geojson's sketch, write_overview()'s
 -- steps before the floor: every network line that ships, simplified again
 -- to OVERVIEW_SIMPLIFY_TOLERANCE_M, and whether it is on a through route
--- (#1307, #1776; TL12, TL21).
+-- (#1307, #1776).
 --
 -- THE COARSE LINE: simplify_records() at 100 m, in EPSG:5070, on the 1 m
 -- line at full precision (int_trail_lines__network_navigation's, as

@@ -1,6 +1,6 @@
 {{ config(materialized='table') }}
 -- The second half of network_overview.geojson's sketch, write_overview()'s
--- steps after int_trail_lines__network_overview_routes (TL20): the floor,
+-- steps after int_trail_lines__network_overview_routes: the floor,
 -- then the seam's tolerance.
 --
 -- THE FLOOR, _above_the_seam_floor(): a coarse line whose whole bounding

@@ -3,7 +3,7 @@
     location='conditions_notice_states.json',
     meta={'when_empty': 'keep_last_file'},
 ) }}
--- conditions/notice_states.json (decision 76): the shape of every state a
+-- conditions/notice_states.json: the shape of every state a
 -- state-wide agency notice names, from int_closures__notice_state_shapes,
 -- one object each: its code (`state`, as conditions/notices.json's `states`
 -- names it), its name, the margin the phone holds a route to

@@ -19,7 +19,7 @@ version: 2
 unit_tests:
   - name: int_trail_lines__at_features_answers_what_resolve_feature_id_answers
     description: >
-      lib/feature_id.resolve_feature_id() (TL05) and the line-only rule (TL04),
+      lib/feature_id.resolve_feature_id() and the line-only rule,
       one row per pytest case, keyed `<pytest file>::<case>` in
       trail_segment_key; rows keyed `sql::` pin a behaviour no pytest names.
       The OBJECTID stands in for the feature's GeoJSON `id`, which ArcGIS
@@ -82,7 +82,7 @@ unit_tests:
 
   - name: int_trail_lines__at_clipped_keeps_whole_what_touches_the_corridor
     description: >
-      export_trails.clip_to_corridor() (TL14) against a one-degree box for a
+      export_trails.clip_to_corridor() against a one-degree box for a
       corridor: a line that touches it is kept whole, one that does not is
       dropped, and a feature with no line never reaches the clip. Keyed
       `<pytest file>::<case>` in trail_segment_key.
@@ -106,7 +106,7 @@ unit_tests:
 
   - name: int_trail_lines__at_simplified_answers_what_simplify_records_answers
     description: >
-      export_trails.simplify_records() at the 1 m default (TL15), one row per
+      export_trails.simplify_records() at the 1 m default, one row per
       pytest case of tests/test_simplify_trails.py the default tolerance can
       ask, keyed `<pytest file>::<case>` in trail_segment_key. The lines are
       that file's _dense_line(), shorter, and its predicate cases as lines.
@@ -528,7 +528,7 @@ unit_tests:
     description: >
       lib/spurs.py's decode_type, line_endpoints, orient, junction_end,
       resolve_destination and PointIndex, and export_spurs.py's
-      build_spur_records and attach_junction_miles (TL27-TL29), one row per
+      build_spur_records and attach_junction_miles, one row per
       pytest case keyed `<pytest file>::<case>` in trail_segment_key, each case
       in a region of its own along 40 N with test_lib_spurs.py's twenty-vertex
       centerline, and its Type domain. The mile axis is one straight piece
@@ -823,7 +823,7 @@ unit_tests:
 
   - name: int_trail_lines__at_published_cuts_every_coordinate_and_never_degenerates_a_line
     description: >
-      Decision 8's 6-decimal cut of trails.geojson, which no A.T. pytest names,
+      The 6-decimal cut of trails.geojson, which no A.T. pytest names,
       as export_nearby_trails._rounded_geometry cuts the network's: every
       coordinate rounded as Python's round() rounds it, near-half values
       included, and a line the cut would leave with a part of fewer than two
@@ -855,7 +855,7 @@ unit_tests:
 
   - name: int_trail_lines__at_sources_answers_what_load_line_sources_answers
     description: >
-      export_trails.load_line_sources() (TL01), which no pytest of its own
+      export_trails.load_line_sources(), which no pytest of its own
       names: every registry entry with blaze metadata that is not another
       organization's layer, in the registry's order. A source with no kind is
       an arcgis_feature_layer; a new A.T. line source with no staging model is

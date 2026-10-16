@@ -1,4 +1,4 @@
--- NYS Parks' statewide trail network, keyed on GlobalID (decision 40), with
+-- NYS Parks' statewide trail network, keyed on GlobalID, with
 -- its geometry. `globalid` and `geom` are carried for
 -- int_trail_lines__network_unioned, which publishes these lines from stage 3 of
 -- #1793 — Rebuild the data platform as dlt → dbt: seven contracted marts, a
@@ -28,7 +28,7 @@
 -- trail is.
 with source as (
     -- dlt lands geometry as GeoJSON text (extract/_kinds.py's JSON
-    -- hint); cast here, as decision 40 has staging do.
+    -- hint); cast here, as staging models do.
     select
         * exclude (geometry),
         st_geomfromgeojson(cast(geometry as varchar)) as geom
@@ -45,7 +45,7 @@ renamed as (
         -- The layer's object id (sources.json's `object_id_field`), which
         -- ArcGIS writes as each feature's GeoJSON `id`: the id
         -- lib/feature_id.py publishes a line under where it has no GlobalID
-        -- (TL05, int_trail_lines__network_judged's `published_id`).
+        -- (int_trail_lines__network_judged's `published_id`).
         objectid,
         name,
         alt_name,

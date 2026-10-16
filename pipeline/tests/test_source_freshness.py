@@ -1,4 +1,4 @@
-"""Every monthly source's dbt freshness reads the extract's run log, and both warns and errors (decision 203).
+"""Every monthly source's dbt freshness reads the extract's run log, and both warns and errors.
 
 Decision 203 (the maintainer, 2026-10-15: "Maybe we should use the date of the
 last successful data uppdate? Having that many warnings seems like a false

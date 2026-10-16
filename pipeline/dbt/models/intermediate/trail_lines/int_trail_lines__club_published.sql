@@ -2,7 +2,7 @@
 {%- set decimals = var('trail_lines_network_coordinate_decimals') %}
 -- The clubs' own trail lines as the trail_lines mart draws them, one row per
 -- line that may draw, in the mart's 23 columns, with `line_kind` 'club'
--- (decision 64, the maintainer's poll of 2026-10-04: "draw now, route
+-- (the maintainer's poll of 2026-10-04: "draw now, route
 -- later"). int_trail_lines__final unions it with the A.T.'s half and the
 -- network's, and its publication join keeps only a line whose source may
 -- publish.
@@ -25,7 +25,7 @@
 -- has nothing to draw.
 --
 -- THE GEOMETRY, as the network's: Douglas-Peucker at 1 m in EPSG:5070
--- (var trail_lines_network_navigation_tolerance_m, TL15), keeping the line
+-- (var trail_lines_network_navigation_tolerance_m), keeping the line
 -- whole where the pass would leave a part with fewer than two distinct
 -- vertices (simplify_records()' never-drop rule), then every vertex cut to
 -- six decimals as Python's round() cuts it, keeping full precision where
@@ -188,7 +188,7 @@ chosen as (
 
 select
     chosen.source_key || ':' || chosen.trail_segment_key as trail_line_id,
-    -- No exporter publishes a club's own line (decision 64), so no phone
+    -- No exporter publishes a club's own line, so no phone
     -- holds another id for it: its published id is its key.
     chosen.source_key || ':' || chosen.trail_segment_key as published_id,
     chosen.club,

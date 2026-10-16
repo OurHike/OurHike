@@ -3,9 +3,9 @@ version: 2
 models:
   - name: closures
     description: >
-      What blocks the trail, from every source that says so (decision 6):
+      What blocks the trail, from every source that says so:
       one row per organization notice, closed area or OurHike closure whose
-      `obstructs_trail` is true (decision 7), from a source that passed
+      `obstructs_trail` is true, from a source that passed
       int_closures__gate and may publish, and the last good rows of a notice
       source the gate holds this build, marked with `carried_since` (decision
       53, phase D). Rebuilt whole each run, so a lifted closure leaves it,
@@ -16,7 +16,7 @@ models:
       access: public
       contract:
         enforced: true
-    # Decision 44: a phone file's shape is a version of the mart it is
+    # A phone file's shape is a version of the mart it is
     # written from. v1 is today's shape at today's keys, and every pub_ writer
     # reading this mart pins it, ref('closures', v=1), so a later latest
     # version cannot move a published file. A removed, renamed or retyped
@@ -29,18 +29,18 @@ models:
       - v: 1
         defined_in: closures
     data_tests:
-      # Elementary's checks (decision 102; pipeline/ELT.md, "The checks, and
-      # where each goes"), each with its two thresholds (decision 204) and run by build_marts.py: after the
+      # Elementary's checks (pipeline/ELT.md, "The checks, and
+      # where each goes"), each with its two thresholds and run by build_marts.py: after the
       # writers in CI's fixture build, and every hour in check-conditions.yml
       # once the hourly build has published (build_marts.py's
-      # HOURLY_LANE_CHECKS, decision 110). The rows at each build;
+      # HOURLY_LANE_CHECKS). The rows at each build;
       # the rows per club and source, so one club's notices vanishing cannot
       # hide inside the total; and each column's null rate, the geometry and
       # the long text (a reporter's note, NYS Parks' place description) left
       # out. The closure dates' own checks are on their columns, so the dates
       # are left out here and counted once. So are the 22 columns one source
       # family fills and every other row leaves null (thread 4279328937 of
-      # PR #1805's review, decision 204): ATC's atc_id, states and
+      # PR #1805's review): ATC's atc_id, states and
       # list_position; ATC's and OurHike's own closures' trail_id, mile_start
       # and mile_end; NYS Parks' closure_kind and closure_reason; OurHike's
       # report columns, closure_uuid to end_lon; and carried_since, a held
@@ -98,7 +98,7 @@ models:
       # A.T. miles inside the trail's own extent (ATC's half-mile markers,
       # 0.5-2197.5; lib/atc_updates.py's TRAIL_MILE_MIN and TRAIL_MILE_MAX) and
       # in order. ERROR for ATC's rows, which int_closures__atc_checked refuses
-      # otherwise (CL01, CL03), so this can only fire on a bug in the gate.
+      # otherwise, so this can only fire on a bug in the gate.
       - dbt_utils.expression_is_true:
           name: closures_atc_miles_are_inside_the_trail_and_in_order
           arguments:
@@ -214,7 +214,7 @@ models:
           - type: not_null
       - name: obstructs_trail
         description: >
-          Always true: a hiker is stopped from walking through (decision 7).
+          Always true: a hiker is stopped from walking through.
           The test holds it, not a check constraint: dbt 2.0.6 warns that a
           check "is not supported by duckdb, and will be ignored"
           (ConstraintNotSupported, dbt1110, measured 2026-10-02).
@@ -256,7 +256,7 @@ models:
         description: AT for an A.T. mile range; OurHike's own trail id for its closures.
         data_type: varchar
         data_tests:
-          # Where an ATC closure is (decision 102's safety columns, thread
+          # Where an ATC closure is (the safety columns, thread
           # 4279328937): its null rate among ATC's own rows, which is 0 while
           # int_closures__atc_checked refuses an ATC row without its miles,
           # so it moves only on a bug there. Here and on mile_start and
@@ -318,13 +318,13 @@ models:
       - name: starts_on
         description: >
           The day a club notice says it starts, as the source states it, in
-          UTC; null where the source states none (decision 53's phase C reads
+          UTC; null where the source states none (the phase C reads
           it before publishing). A hunting area's season where its layer gives
-          one, and never a season OurHike supplied (decision 67).
+          one, and never a season OurHike supplied.
         data_type: date
         data_tests:
-          # A closure date (decision 102): its null rate against the builds
-          # before, with its two thresholds (decision 204) and the all-columns
+          # A closure date: its null rate against the builds
+          # before, with its two thresholds and the all-columns
           # check's 25% floor, here and on ends_on, and on expected_reopen
           # among OurHike's own rows. Elementary's minimum and maximum are
           # numeric monitors only (0.26.0's get_available_monitors()), so a
@@ -461,7 +461,7 @@ models:
         data_type: varchar
       - name: stands_until_lifted
         description: >
-          True on standing closed land (decision 213, rule 14;
+          True on standing closed land (rule 14;
           int_closures__club_notices' rule 7): an area a full listing serves,
           closed by its own status or its layer's own name, stating no date
           of any kind. pub_conditions_notices writes it no `current_until`.
@@ -480,7 +480,7 @@ models:
           Null on a row this build read from its source. Set on a row of a
           notice source int_closures__gate holds back this build: the last
           good row the previous build's history held, kept rather than
-          dropped (decision 53, phase D; int_closures__held_carried), and
+          dropped (phase D; int_closures__held_carried), and
           this is when carrying it began. It stays put while the hold lasts.
         data_type: timestamptz
       - name: _first_seen_at
@@ -492,7 +492,7 @@ models:
                 # warn on a leg build_marts.py built without its history,
                 # where both dates are null and the run is red already, and
                 # in production and UA, where build_marts.py reports a
-                # failure as an error unless the history is off (decision 204).
+                # failure as an error unless the history is off.
                 severity: "{{ 'warn' if env_var('OURHIKE_ROW_HISTORY', 'on') == 'off' or env_var('OURHIKE_DATA_ENV', 'dev') in ['production', 'ua'] else 'error' }}"
       - name: _changed_at
         description: "{{ doc('row_changed_at') }}"
@@ -505,7 +505,7 @@ models:
 unit_tests:
   - name: closures_takes_what_blocks_the_trail_from_a_source_that_passed_and_may_publish
     description: >
-      Decision 7's split, the closures mart's half: a notice whose
+      The split, the closures mart's half: a notice whose
       obstructs_trail is true, from a source int_closures__gate passed and
       int_sources__publication lets publish. A false and a null go to the
       warnings mart (warnings_takes_every_notice_that_does_not_block_and_reads_a_null_as_not_reviewed),

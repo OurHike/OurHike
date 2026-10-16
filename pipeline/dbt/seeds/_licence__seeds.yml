@@ -62,7 +62,7 @@ seeds:
       licence basis, and the words a row's own `licence` names it by. A
       restriction a row's terms carry is answered only by a row here whose
       restriction and basis match and whose `named_by` the row's licence
-      text matches. A class answer (decision 193: an ownership or copyright
+      text matches. A class answer (an ownership or copyright
       line on a public GIS item publishes) names `.*`, which every licence
       matches, so no row has to name it. No row answers `cannot_be_met` or
       `unclassified`. A basis that is a maintainer's ruling on the dataset

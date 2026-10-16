@@ -17,8 +17,8 @@
 --
 -- THE SAFETY FIELDS, each a test in _places__models.yml:
 -- - `state` is a postal code, and only where the source or its organization
---   states one (PL04): absent is unknown, never guessed;
--- - `trail_miles` is null exactly where nothing was measured (PL11), so an
+--   states one: absent is unknown, never guessed;
+-- - `trail_miles` is null exactly where nothing was measured, so an
 --   unmeasured place never reads as a place with no trail.
 with resolved as (
     select * from {{ ref('int_places__resolved') }}

@@ -1,5 +1,5 @@
 -- Every registered source, shipping or not, with what the org console's
--- registry.json says about it (#929, SR07). Nothing is composed: each field
+-- registry.json says about it (#929). Nothing is composed: each field
 -- is one the registry carries, copied, and null where it carries none,
 -- because a console filling a gap would hide the registration a probe
 -- cannot describe (export_sources.py's build_registry()).

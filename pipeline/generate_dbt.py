@@ -1,4 +1,4 @@
-"""Write every dbt file the two generators own, before anything reads the dbt project (decision 91).
+"""Write every dbt file the two generators own, before anything reads the dbt project.
 
 The maintainer, by poll, 2026-10-06, on review findings VOL-1 and DBT2-5 of PR #1805 — dlt → dbt re-platform as one
 go/no-go change: "Generate at build time (Recommended): Delete them from the repo; every dbt run (CI, test.sh, the

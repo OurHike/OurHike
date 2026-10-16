@@ -191,7 +191,7 @@ seeds:
       - name: covers_own_words_named_by
         description: >
           Set only where the basis is a maintainer's ruling on the dataset
-          itself rather than on any wording of it (decision 213, Q25:
+          itself rather than on any wording of it (Q25:
           decisions 20 and 22 cover a clearinghouse dataset's own restrictive
           words). A case-insensitive RE2 expression a row's `licence` must
           match to name that ruling; where it does, int_sources__publication

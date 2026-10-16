@@ -92,7 +92,7 @@ models:
   - name: int_trail_lines__mile_axis_calibration
     description: >
       How ATC's half-mile markers orient and scale each centerline piece
-      (EL03): export_elevation._calibrated_part and calibrate_parts_to_markers'
+      export_elevation._calibrated_part and calibrate_parts_to_markers'
       sort, one row per piece in mile order, the piece as WKT.
       int_trail_lines__mile_axis is this with the WKT made into geometry, and
       its columns say what each of these is.
@@ -155,7 +155,7 @@ models:
       - name: geom_5070
         description: >
           The piece in EPSG:5070 metres, full resolution, oriented so the
-          mile grows along it. Never the 1 m navigation line (decision 8).
+          mile grows along it. Never the 1 m navigation line.
       - name: length_m
         description: >
           The piece's length in metres, st_length of geom_5070: shapely's
@@ -197,7 +197,7 @@ models:
   - name: int_trail_lines__mile_axis_holdout
     description: >
       How well the mile axis reproduces ATC's own miles on markers it never
-      saw (export_elevation.measure_marker_agreement, EL04), one row, with the
+      saw (export_elevation.measure_marker_agreement), one row, with the
       held-out gate as three tests: export_elevation.require_marker_agreement
       refuses an axis on any one. Today only export_elevation.py runs that
       gate; here it sits upstream of every A.T. mile.
@@ -216,7 +216,7 @@ models:
       # as export_elevation.measure_marker_agreement's single 0.0 clears
       # require_marker_agreement. So this says when it scored nothing. It
       # holds or it does not, so its warning and its error are the same row
-      # (decision 204, the maintainer's "Build as proposed", 2026-10-15): an
+      # (the maintainer's "Build as proposed", 2026-10-15): an
       # error in dev and CI, whose fixture axis holds one piece with four
       # snapped markers for it (make_dbt_fixtures.py's _half_mile_layer()),
       # and in production and UA a warning that build_marts.py reports as an
@@ -248,7 +248,7 @@ models:
   - name: int_trail_lines__coded_domains
     description: >
       Each ArcGIS coded-value domain a trail_lines source decodes against,
-      one row per code (TL02): side_trails' Blaze, which
+      one row per code: side_trails' Blaze, which
       int_trail_lines__blazes decodes trails.geojson's blaze_color with,
       and its Type, which the spurs read. export_trails.py and
       export_spurs.py fetch these live mid-transform; here they are a frozen
@@ -266,7 +266,7 @@ models:
     columns:
       - name: coded_value_key
         description: >
-          The row's key (decision 197): dbt_utils.generate_surrogate_key over
+          The row's key: dbt_utils.generate_surrogate_key over
           source_key, field_name and code, one coded value of one field. Its
           unique test fails on any two rows sharing the three, the
           combination test it replaced; never null by construction, so the
@@ -294,7 +294,7 @@ models:
 
   - name: int_trail_lines__at_sources
     description: >
-      The A.T. build's line sources (TL01), export_trails.load_line_sources():
+      The A.T. build's line sources, export_trails.load_line_sources():
       every registry entry with a blaze_field or blaze_default key that is not
       another organization's layer, today centerline and side_trails.
     columns:
@@ -348,8 +348,8 @@ models:
   - name: int_trail_lines__at_features
     description: >
       Every staged feature of the A.T.'s line sources before the clip, as
-      export_trails.build_trail_records() makes them: its published id (TL05),
-      name and blaze, and whether it has a line geometry (TL04).
+      export_trails.build_trail_records() makes them: its published id,
+      name and blaze, and whether it has a line geometry.
     columns:
       - name: trail_segment_key
         description: The staging key.
@@ -369,7 +369,7 @@ models:
           The GlobalID, else the OBJECTID (side trails only), else
           `generated-<source_row>`. resolve_feature_id() warns on the last;
           so does this, and is an error when every feature has no id
-          (decision 204, tests/generic/rows_named.sql): the layer's id
+          (tests/generic/rows_named.sql): the layer's id
           fields, not one feature.
         data_tests:
           - rows_named:
@@ -432,7 +432,7 @@ models:
 
   - name: int_trail_lines__at_clipped
     description: >
-      The A.T.'s line features that touch the corridor, kept whole (TL14).
+      The A.T.'s line features that touch the corridor, kept whole.
     columns:
       - name: trail_line_id
         description: The published feature id.
@@ -440,7 +440,7 @@ models:
 
   - name: int_trail_lines__at_simplified
     description: >
-      The A.T.'s published lines at the 1 m pass in EPSG:5070 (TL15), a line
+      The A.T.'s published lines at the 1 m pass in EPSG:5070, a line
       the pass would leave undrawable kept at full resolution, with both
       lengths. Measured 2026-10-02: on ATC's 4,221 live lines, ST_Simplify
       gave shapely.simplify's vertices, every one to the bit.
@@ -464,7 +464,7 @@ models:
 
   - name: int_trail_lines__at_chains
     description: >
-      The centerline's 1 m lines merged into maximal chains (TL16), numbered
+      The centerline's 1 m lines merged into maximal chains, numbered
       by bounds, `centerline:chain:<n>`. Measured 2026-10-02: on ATC's live
       centerline, the 463 chains equal merge_chain_records()'s, ids, names and
       vertices to the bit.
@@ -500,7 +500,7 @@ models:
 
   - name: int_trail_lines__at_chain_miles
     description: >
-      The chains with every vertex's A.T. mile (TL22), on the axis by the
+      The chains with every vertex's A.T. mile, on the axis by the
       axis_mile macro, rounded at 3 decimals as numpy rounds them, and the
       count of steps against the chain's direction. Measured 2026-10-02: all
       216,767 live vertex miles equal trail_miles.json's, with the same 112
@@ -523,7 +523,7 @@ models:
 
   - name: int_trail_lines__at_overview
     description: >
-      The corridor-view sketch (TL17): each centerline segment's 1 m line
+      The corridor-view sketch: each centerline segment's 1 m line
       simplified again at 100 m, one row per part, its coordinates at 4
       decimals.
     columns:
@@ -536,7 +536,7 @@ models:
 
   - name: int_trail_lines__spur_destinations
     description: >
-      The published POIs a spur may lead to (TL28): the points_of_interest
+      The published POIs a spur may lead to: the points_of_interest
       mart's poi_<type>.geojson rows of the five DESTINATION_POI_TYPES, with
       each one's published id, type, lat and lon as the file prints them,
       and its place in load_destination_pois()'s list.
@@ -550,7 +550,7 @@ models:
           # (test_a_run_with_no_published_pois_warns_rather_than_resolving_nothing_quietly):
           # every spur resolving to nothing reads as a trail network where
           # nothing leads anywhere. It holds or it does not, so its warning
-          # and its error are the same row (decision 204): an error in dev
+          # and its error are the same row: an error in dev
           # and CI, reported as an error in production and UA.
           - dbt_utils.at_least_one:
               name: int_trail_lines__spur_destinations_warns_when_no_poi_is_published
@@ -571,7 +571,7 @@ models:
   - name: int_trail_lines__spurs
     description: >
       Every side trail's decoded Type and, for a spur (Type 3), what
-      spurs.json says of it (TL27-TL29): where it leads, within 150 m of its
+      spurs.json says of it: where it leads, within 150 m of its
       far end, and the A.T. mile it joins at. Measured 2026-10-02: on ATC's
       live side trails, the same 784 spurs as export_spurs.py, every name,
       length and junction mile to the bit (no destination either side: no
@@ -613,7 +613,7 @@ models:
   - name: int_trail_lines__club_stretches
     description: >
       The runs of half-mile markers each maintaining club looks after, and
-      the runs the centerline names no club for (TL24-TL26), in mile order:
+      the runs the centerline names no club for, in mile order:
       each marker takes the club of the centerline vertex nearest it within
       100 m, a run breaks where the club changes or markers are more than
       0.75 mi apart, each run owns a quarter mile either side, and the ends
@@ -712,7 +712,7 @@ models:
         data_tests: [not_null, unique]
   - name: int_trail_lines__final
     description: >
-      The trail lines mart's rows before their row dates (decision 57):
+      The trail lines mart's rows before their row dates:
       what models/marts/trail_lines/trail_lines.sql held until then, every
       contracted column but _first_seen_at and _changed_at.
       int_trail_lines__history snapshots it, and the mart reads that snapshot.

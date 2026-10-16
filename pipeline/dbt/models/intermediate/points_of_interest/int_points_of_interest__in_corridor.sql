@@ -2,7 +2,7 @@
 {%- set ring_m =
     "cast(" ~ var('poi_network_ring_feet') ~ " as double) * "
     ~ var('poi_metres_per_foot') %}
--- The publishable POIs inside the ground their file covers (PO05, PO33).
+-- The publishable POIs inside the ground their file covers.
 --
 -- THE A.T. FAMILY keeps what lib/corridor.py's corridor reaches
 -- (build_corridor() and keep_within_corridor(), in that order on the same
@@ -25,7 +25,7 @@
 -- `boundary_source` (ST_Covers, so a point on the boundary line is inside).
 --
 -- ONE OF THEIRS IS ON THE A.T.: GATC's water list, placed on ATC's
--- centerline from GATC's miles (decision 75), whose records say so
+-- centerline from GATC's miles, whose records say so
 -- (`on_at_axis`), is kept as the A.T. family is, by the corridor.
 --
 -- THE RING IS lib/corridor.py's near_network_sql(): the point buffered by

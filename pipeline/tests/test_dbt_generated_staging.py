@@ -1,11 +1,11 @@
 """pipeline/make_dbt_staging.py writes the same models every run, none of them committed, and keys nothing it should not.
 
 The generator writes the dbt staging layer for every club ArcGIS layer of a staged type that no
-hand-written model reads (pipeline/ELT.md, "Loading everything the clubs publish (decision 54)"): a
-base model per raw table, keyed on the registry's measured key (decision 40), a staging model per
+hand-written model reads (pipeline/ELT.md, "Loading everything the clubs publish"): a
+base model per raw table, keyed on the registry's measured key, a staging model per
 club and type, each type's union, and the region each source is held to.
 
-Its output, and generate_notice_models.py's, is not committed (decision 91, the maintainer's poll of
+Its output, and generate_notice_models.py's, is not committed (the maintainer's poll of
 2026-10-06): every place that parses the dbt project writes it first, through generate_dbt.py. So the
 first tests here hold what that rests on, for both generators: a run writes the same bytes from an
 empty tree in either order and again over its own output; no committed file is one they write; and
@@ -209,7 +209,7 @@ def test_every_generated_raw_table_carries_elementarys_checks(written):
 
 def test_the_checks_the_generator_writes_as_text_are_the_list_it_names_and_no_freshness_of_elementarys():
     """sources_yaml() writes its YAML line by line, so raw_table_checks_yaml() is held to raw_table_checks(), which
-    holds no Elementary freshness check whatever the cadence (decision 203)."""
+    holds no Elementary freshness check whatever the cadence."""
     import yaml
 
     lines = make_dbt_staging.raw_table_checks_yaml(2)
@@ -219,7 +219,7 @@ def test_the_checks_the_generator_writes_as_text_are_the_list_it_names_and_no_fr
 
 
 def test_there_are_layers_to_stage():
-    """Decision 54's wave 1 on this branch: 83 places, 6 elevation, 98 trail-line and 69 point layers at least."""
+    """The wave 1 on this branch: 83 places, 6 elevation, 98 trail-line and 69 point layers at least."""
     by_type = {}
     for table in make_dbt_staging.tables():
         by_type[table.type] = by_type.get(table.type, 0) + 1

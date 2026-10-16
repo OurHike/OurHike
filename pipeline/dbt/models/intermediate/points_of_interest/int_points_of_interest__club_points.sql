@@ -1,5 +1,5 @@
 {{ config(materialized='table') }}
--- Every point of decision 54's wave 1 point layers
+-- Every point of the wave 1 point layers
 -- (int_points_of_interest__club_unioned) with its POI type and the rules
 -- pipeline/ELT.md's "What wave 1's live reads found that phase C must
 -- honour" gives points of interest, read from two seeds that quote the
@@ -44,7 +44,7 @@
 -- - NOTICES HIDE IN POI LAYERS: FLTC's hunting closures and high-water
 --   advisories, the 2018 fire closure in PCTA's Halfmile water popups, and
 --   the warning types of NCTA's and Tennessee State Parks' layers never
---   publish as POIs (decision 53's notices are their home).
+--   publish as POIs (the notices are their home).
 -- - Closed sites in a layer's own words, and dispersed camping, which
 --   usfs_dispersed_camping_holdback holds back, drop the same way.
 -- - A POINT LISTED TWICE IS ONE POINT: of a layer's rows that share a name

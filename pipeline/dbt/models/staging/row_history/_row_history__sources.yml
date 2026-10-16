@@ -1,9 +1,9 @@
 version: 2
 
 # The closures and warnings marts' own row histories, read back as sources so
-# that a feed's notice is not lifted by leaving its window (decision 53, phase
+# that a feed's notice is not lifted by leaving its window (phase
 # C; int_closures__window_carried). The tables are the snapshots
-# snapshots/closures/ and snapshots/warnings/ write (decision 57), restored
+# snapshots/closures/ and snapshots/warnings/ write, restored
 # into the warehouse before dbt runs (pipeline/row_history.py); read here they
 # are the history as the previous build saved it, because every model that
 # reads them builds before this build's snapshot does. A table that does not
@@ -12,7 +12,7 @@ version: 2
 sources:
   - name: row_history
     description: >
-      The closures and warnings marts' snapshots (decision 57), as the
+      The closures and warnings marts' snapshots, as the
       previous build left them: the one way a model upstream of a mart's
       final model reads what that mart held before, without a cycle.
     schema: intermediate
@@ -34,8 +34,8 @@ sources:
           Every version of every closures mart row (snapshots/closures/).
           Key: dbt's own dbt_scd_id, one per version.
         data_tests:
-          # Rows sharing stg_row_history__closures's key must be exact copies (decision 40),
-          # with no tolerance and no severity of its own (decision 204): the project's switch decides.
+          # Rows sharing stg_row_history__closures's key must be exact copies,
+          # with no tolerance and no severity of its own: the project's switch decides.
           - duplicates_are_exact:
               arguments:
                 key_columns: ["'int_closures__history'", "dbt_scd_id"]
@@ -44,8 +44,8 @@ sources:
           Every version of every warnings mart row (snapshots/warnings/).
           Key: dbt's own dbt_scd_id, one per version.
         data_tests:
-          # Rows sharing stg_row_history__warnings's key must be exact copies (decision 40),
-          # with no tolerance and no severity of its own (decision 204): the project's switch decides.
+          # Rows sharing stg_row_history__warnings's key must be exact copies,
+          # with no tolerance and no severity of its own: the project's switch decides.
           - duplicates_are_exact:
               arguments:
                 key_columns: ["'int_warnings__history'", "dbt_scd_id"]

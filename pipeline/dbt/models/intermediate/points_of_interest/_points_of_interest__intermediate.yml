@@ -19,7 +19,7 @@ models:
       reads each layer's own fields out of.
     columns:
       - name: poi_key
-        description: The staging model's surrogate key (decision 40).
+        description: The staging model's surrogate key.
         data_tests: [not_null, unique]
       - name: source_key
         description: The layer's sources.json key, or opentrail_at.
@@ -160,7 +160,7 @@ models:
 
   - name: int_points_of_interest__osm_water_reach
     description: >
-      The distance half of OSM water's reach (PO06), one row per OSM water
+      The distance half of OSM water's reach, one row per OSM water
       point in the corridor: the nearest of the centerline, a side trail, a
       published network line whose organization reaches hikers, a shelter
       and a campsite, within the 5-mile ceiling, and whether it is within
@@ -222,7 +222,7 @@ models:
 
   - name: int_points_of_interest__photos
     description: >
-      Each POI's card photo and gallery (PO24, PO38): the Commons photos
+      Each POI's card photo and gallery: the Commons photos
       through the face gate (refused never ships; flagged ships only once a
       person has cleared it), ATC's list where a POI has one, and only a
       photo with a digest to name its bucket object. export_poi.py's
@@ -253,7 +253,7 @@ models:
 
   - name: int_points_of_interest__reached
     description: >
-      The corridor's POIs a hiker could reach (PO08, PO10): every row that
+      The corridor's POIs a hiker could reach: every row that
       is not OSM water, and every OSM water point whose verdict says
       reachable. A point with no verdict is dropped (export_poi.py's
       gate_osm_water_reach()). A reachable point whose nearest walk is
@@ -265,7 +265,7 @@ models:
       - name: not_on_at
         description: >
           The other organization's trail an OSM water point is reached from,
-          which withholds its A.T. mile (PO10, mark_off_trail_records());
+          which withholds its A.T. mile (mark_off_trail_records());
           null on every other row, as the Python marks no other source.
 
   - name: int_points_of_interest__deduplicated
@@ -535,10 +535,10 @@ models:
       and then GlobalID, and reads nothing else.
     columns:
       # One row per site: each staging model keys and dedupes its layer on
-      # GlobalID (decision 40), so a site is its layer and its GlobalID.
+      # GlobalID, so a site is its layer and its GlobalID.
       - name: water_site_key
         description: >
-          The row's key (decision 197): dbt_utils.generate_surrogate_key over
+          The row's key: dbt_utils.generate_surrogate_key over
           layer and global_id. Its unique test fails on any two rows sharing
           them, the combination test it replaced; never null by construction,
           so the two inputs' own not_null tests hold the values.
@@ -564,7 +564,7 @@ models:
         data_tests: [not_null]
   - name: int_points_of_interest__final
     description: >
-      The points of interest mart's rows before their row dates (decision 57):
+      The points of interest mart's rows before their row dates:
       what models/marts/points_of_interest/points_of_interest.sql held until then, every
       contracted column but _first_seen_at and _changed_at.
       int_points_of_interest__history snapshots it, and the mart reads that snapshot.
@@ -582,7 +582,7 @@ exposures:
       name: OurHike
     description: >
       The Python step that decides which shelters and campsites have water a
-      hiker can walk to (pipeline/step_site_water.py, PO07 and PO17), between
+      hiker can walk to (pipeline/step_site_water.py), between
       the dbt invocation that builds int_points_of_interest__water_sites and
       the one that reads its answer back as source('derived', 'site_water').
       It calls fetch_trail_water.py's build() unchanged, because the gates sit
@@ -604,7 +604,7 @@ exposures:
       name: OurHike
     description: >
       The Python step that takes the grade half of OSM water's reach
-      (pipeline/step_osm_water_grade.py, PO06 and PO07), between the dbt
+      (pipeline/step_osm_water_grade.py), between the dbt
       invocation that builds int_points_of_interest__osm_water_reach and the
       one that reads its verdicts back as source('derived',
       'osm_water_grade'). It calls build_osm_water_reach.py's
@@ -627,7 +627,7 @@ exposures:
       name: OurHike
     description: >
       The Python step that places NYNJTC's Long Path guide as waypoints
-      (pipeline/step_long_path_guide.py, PO36), between the dbt invocation
+      (pipeline/step_long_path_guide.py), between the dbt invocation
       that builds the guide's staged sections and the Long Path's staged
       lines and the one that reads its records back as source('derived',
       'long_path_guide'). It calls lib/nynjtc_long_path_guide.py's

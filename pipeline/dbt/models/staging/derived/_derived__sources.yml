@@ -30,7 +30,7 @@ sources:
     tables:
       - name: dem_samples
         data_tests:
-          # Rows sharing stg_derived__dem_samples's key must be exact copies (decision 40).
+          # Rows sharing stg_derived__dem_samples's key must be exact copies.
           - duplicates_are_exact:
               arguments:
                 key_columns: ["'dem_samples'", "line_id", "sample_index"]
@@ -68,7 +68,7 @@ sources:
             data_tests: [not_null]
       - name: weather_squares
         data_tests:
-          # Rows sharing stg_derived__weather_squares's key must be exact copies (decision 40).
+          # Rows sharing stg_derived__weather_squares's key must be exact copies.
           - duplicates_are_exact:
               arguments:
                 key_columns: ["'weather_squares'", "release"]
@@ -80,7 +80,7 @@ sources:
           zone id in the zone files it pinned, and those files' names. The
           squares come from NOAA's rasters and NWS's shapefiles, which never
           enter the warehouse; only this answer does. Read by the NWS alerts'
-          placement (WN03).
+          placement.
         columns:
           - name: release
             description: The data release the squares were chosen for, as squares.json names it.
@@ -93,7 +93,7 @@ sources:
             data_tests: [not_null]
       - name: closure_trail_lines
         data_tests:
-          # Rows sharing stg_derived__closure_trail_lines's key must be exact copies (decision 40).
+          # Rows sharing stg_derived__closure_trail_lines's key must be exact copies.
           # prepare_closure_trail_lines.py writes one row per line id, so none share one.
           - duplicates_are_exact:
               arguments:
@@ -104,7 +104,7 @@ sources:
           (pipeline/step_closure_trail_lines.py) in the hourly lane: of the
           lines prepare_closure_trail_lines.py read once per release from the
           environment's current release, its nearby_trails.geojson and, since
-          decision 192, its trails.geojson (the A.T.'s own), those whose
+          Its trails.geojson (the A.T.'s own), those whose
           bounding box meets the box of a row of
           int_closures__trail_closure_areas; when none does, the file's first
           line alone. So the table is empty exactly when no release's lines
@@ -134,7 +134,7 @@ sources:
             data_tests: [not_null]
       - name: section_closures
         data_tests:
-          # Rows sharing stg_derived__section_closures's key must be exact copies (decision 40). Two notices naming
+          # Rows sharing stg_derived__section_closures's key must be exact copies. Two notices naming
           # one section each name its lines, so a line can come twice with two notice ids; the staging dedupe keeps
           # the first by notice id, and this warns so the log names them.
           - duplicates_are_exact:
@@ -142,7 +142,7 @@ sources:
                 key_columns: ["'section_closures'", "trail_segment_key"]
         description: >
           The network lines an organization's own notice closes by naming
-          their section (decisions 212 and 213), written by
+          their section, written by
           step_section_closures (pipeline/step_section_closures.py) in the
           monthly lane from the conditions/notices.json the hourly lane
           published, one row per line, through lib/section_closures.py.
@@ -167,7 +167,7 @@ sources:
             data_tests: [not_null]
       - name: graph_pieces
         data_tests:
-          # Rows sharing stg_derived__graph_pieces's key must be exact copies (decision 40).
+          # Rows sharing stg_derived__graph_pieces's key must be exact copies.
           - duplicates_are_exact:
               arguments:
                 key_columns: ["'graph_pieces'", "row_kind", "part_id", "piece_index", "cut_key"]
@@ -175,7 +175,7 @@ sources:
           The junction graph's pieces, written by step_node_lines
           (pipeline/step_node_lines.py) with build_trail_graph.py's own
           _split_all: every routable part of int_trail_network__routable cut
-          where int_trail_network__cuts says (TN04), one `piece` row per
+          where int_trail_network__cuts says, one `piece` row per
           piece in its order along the part, and one `landing` row per line
           end the cuts join to another line, the point it lands on.
         columns:
@@ -217,7 +217,7 @@ sources:
             data_tests: [not_null]
       - name: site_water
         data_tests:
-          # Rows sharing stg_derived__site_water's key must be exact copies (decision 40).
+          # Rows sharing stg_derived__site_water's key must be exact copies.
           - duplicates_are_exact:
               arguments:
                 key_columns: ["'site_water'", "layer", "atc_global_id"]
@@ -257,7 +257,7 @@ sources:
             data_tests: [not_null]
       - name: osm_water
         data_tests:
-          # Rows sharing stg_derived__osm_water's key must be exact copies (decision 40).
+          # Rows sharing stg_derived__osm_water's key must be exact copies.
           - duplicates_are_exact:
               arguments:
                 key_columns: ["'osm_water'", "osm_id"]
@@ -295,7 +295,7 @@ sources:
             data_tests: [not_null]
       - name: osm_water_grade
         data_tests:
-          # Rows sharing stg_derived__osm_water_grade's key must be exact copies (decision 40).
+          # Rows sharing stg_derived__osm_water_grade's key must be exact copies.
           - duplicates_are_exact:
               arguments:
                 key_columns: ["'osm_water_grade'", "osm_id"]
@@ -329,7 +329,7 @@ sources:
             data_tests: [not_null]
       - name: poi_photos
         data_tests:
-          # Rows sharing stg_derived__poi_photos's key must be exact copies (decision 40).
+          # Rows sharing stg_derived__poi_photos's key must be exact copies.
           - duplicates_are_exact:
               arguments:
                 key_columns: ["'poi_photos'", "source", "poi_id", "photo_index"]
@@ -385,7 +385,7 @@ sources:
             data_tests: [not_null]
       - name: long_path_guide
         data_tests:
-          # Rows sharing stg_derived__long_path_guide's key must be exact copies (decision 40).
+          # Rows sharing stg_derived__long_path_guide's key must be exact copies.
           - duplicates_are_exact:
               arguments:
                 key_columns: ["'long_path_guide'", "id"]

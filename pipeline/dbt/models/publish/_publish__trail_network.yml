@@ -103,7 +103,7 @@ exposures:
       junction graph in pieces a phone can read by range, so no growth in
       the data can freeze or crash it): each cell's graph, geometry and, where
       they align, elevation and profile, with global ids and local
-      positions (TN09, TN10). Written outside dbt: cut_trail_graph.py cuts
+      positions. Written outside dbt: cut_trail_graph.py cuts
       them from the whole files, unchanged, because dbt has no per-cell
       model fan-out.
     # The edges it is cut from, not a writer: each writer is one exposure's

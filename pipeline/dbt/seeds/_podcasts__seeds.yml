@@ -3,7 +3,7 @@ version: 2
 # The two lists int_podcasts__checked checks reference/podcast_episodes.json
 # against, as lib/podcasts.py's validate() does: a row that breaks either is a
 # problem, and that model's test fails the build, so a list that would drop a
-# row writes nothing (PC07). tests/test_dbt_podcasts_parity.py holds each
+# row writes nothing. tests/test_dbt_podcasts_parity.py holds each
 # file to its Python constant, and the unit test's mocked rows to the file.
 seeds:
   - name: podcast_row_fields

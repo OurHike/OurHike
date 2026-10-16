@@ -14,7 +14,7 @@ sources:
     schema: raw
     config:
       # When the extract last read each table or confirmed it unchanged, from
-      # its run log, never `_loaded_at` (decision 203): make_dbt_staging.py's
+      # its run log, never `_loaded_at`: make_dbt_staging.py's
       # LOADED_AT_QUERY and MONTHLY_FRESHNESS_DAYS say why, and
       # tests/test_source_freshness.py holds every monthly source to them.
       loaded_at_query: "{{ last_read_or_confirmed_at(this) }}"
@@ -24,11 +24,11 @@ sources:
     tables:
       - name: raw_nynjtc__nynjtc_long_path
         data_tests:
-          # Rows sharing stg_nynjtc__long_path's key must be exact copies (decision 40).
+          # Rows sharing stg_nynjtc__long_path's key must be exact copies.
           - duplicates_are_exact:
               arguments:
                 key_columns: ["'nynjtc_long_path'", "lp_section", "mileage"]
-          # Elementary's checks (make_dbt_staging.py's raw_table_checks(), decision 102), each with its two thresholds (decision 204).
+          # Elementary's checks (make_dbt_staging.py's raw_table_checks()), each with its two thresholds.
           - elementary.volume_anomalies:
               config:
                 severity: error
@@ -64,11 +64,11 @@ sources:
             description: The route name; 'Long Path' on all 43 rows.
       - name: raw_nynjtc__nynjtc_highlands_trail
         data_tests:
-          # Rows sharing stg_nynjtc__highlands_trail's key must be exact copies (decision 40).
+          # Rows sharing stg_nynjtc__highlands_trail's key must be exact copies.
           - duplicates_are_exact:
               arguments:
                 key_columns: ["'nynjtc_highlands_trail'", "section_name"]
-          # Elementary's checks (make_dbt_staging.py's raw_table_checks(), decision 102), each with its two thresholds (decision 204).
+          # Elementary's checks (make_dbt_staging.py's raw_table_checks()), each with its two thresholds.
           - elementary.volume_anomalies:
               config:
                 severity: error
@@ -100,11 +100,11 @@ sources:
             description: "'Highlands' on all 12 rows."
       - name: raw_nynjtc__nynjtc_long_path_guide
         data_tests:
-          # Rows sharing stg_nynjtc__long_path_guide's key must be exact copies (decision 40).
+          # Rows sharing stg_nynjtc__long_path_guide's key must be exact copies.
           - duplicates_are_exact:
               arguments:
                 key_columns: ["'nynjtc_long_path_guide'", "number"]
-          # Elementary's checks (make_dbt_staging.py's raw_table_checks(), decision 102), each with its two thresholds (decision 204).
+          # Elementary's checks (make_dbt_staging.py's raw_table_checks()), each with its two thresholds.
           - elementary.volume_anomalies:
               config:
                 severity: error

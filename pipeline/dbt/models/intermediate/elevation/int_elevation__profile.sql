@@ -7,7 +7,7 @@
 -- stg_derived__dem_samples. Three rules of pipeline/ELT.md's ledger, in the
 -- loop's order:
 --
--- EL07, THE FIRST PIECE TO REACH A MILE KEEPS IT. Where two pieces cover the
+-- THE FIRST PIECE TO REACH A MILE KEEPS IT. Where two pieces cover the
 -- same stretch (duplicate geometry surviving the merge, ORDERING.md's
 -- degree-6 nodes, about 5 mi of the real trail), their calibrated miles
 -- overlap, and publishing both would put those miles on the axis twice and
@@ -20,12 +20,12 @@
 -- it), and keeping both would publish one mile twice. So distance_mi is
 -- strictly increasing by construction.
 --
--- EL08, part_start AT EACH SEAM: true on the first kept sample of each
+-- part_start AT EACH SEAM: true on the first kept sample of each
 -- piece, the very first sample included (#559). The step into it is a seam
 -- in the trail rather than a slope: summing such steps put about 36,800 ft
 -- of climbing nobody did into the published total before #559.
 --
--- EL09, A DEM GAP IS NULL, NEVER 0. A sample the DEM has no answer for keeps
+-- A DEM GAP IS NULL, NEVER 0. A sample the DEM has no answer for keeps
 -- its place on the distance axis with no elevation, so a chart's axis stays
 -- continuous and nothing counts a climb across the gap. Feet are the DEM's
 -- metres over elevation_metres_per_foot, rounded to one decimal as Python's

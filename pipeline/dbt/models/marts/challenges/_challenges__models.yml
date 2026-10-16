@@ -15,7 +15,7 @@ models:
       access: public
       contract:
         enforced: true
-    # Decision 44: a phone file's shape is a version of the mart it is
+    # A phone file's shape is a version of the mart it is
     # written from. v1 is challenges.json's shape today, at today's key, and
     # pub_challenges pins it, ref('challenges', v=1), so a later latest
     # version cannot move the published file. A removed, renamed or retyped
@@ -26,8 +26,8 @@ models:
       - v: 1
         defined_in: challenges
     data_tests:
-      # Elementary's checks (decision 102; pipeline/ELT.md, "The checks, and
-      # where each goes"), each with its two thresholds (decision 204) and run by build_marts.py after the
+      # Elementary's checks (pipeline/ELT.md, "The checks, and
+      # where each goes"), each with its two thresholds and run by build_marts.py after the
       # writers: the rows at each build; the rows per club and source, so one
       # club's challenges vanishing cannot hide inside the total; each
       # column's null rate, the long text (a challenge's summary, its sections
@@ -69,35 +69,35 @@ models:
             severity: error
             tags: [elementary_check]
             enabled: "{{ env_var('OURHIKE_ELEMENTARY_CHECKS', 'false') == 'true' }}"
-      # CH11: both ends inclusive days, so a one-day window is a window.
+      # Both ends inclusive days, so a one-day window is a window.
       - dbt_utils.expression_is_true:
           name: challenges_windows_close_on_or_after_they_open
           arguments:
             expression: "window_closes >= window_opens"
           config:
             where: "window_opens is not null and window_closes is not null"
-      # CH08: a finish line the resolved items can reach, or none.
+      # A finish line the resolved items can reach, or none.
       - dbt_utils.expression_is_true:
           name: challenges_finish_lines_are_reachable
           arguments:
             expression: "finish_count >= 1 and finish_count <= item_count"
           config:
             where: "finish_count is not null"
-      # CH09: a reward is claimed at a finish line.
+      # A reward is claimed at a finish line.
       - dbt_utils.expression_is_true:
           name: challenges_rewards_have_a_finish_line
           arguments:
             expression: "finish_count is not null"
           config:
             where: "reward_kind is not null"
-      # CH09: entries only for a published challenge with a reward.
+      # Entries only for a published challenge with a reward.
       - dbt_utils.expression_is_true:
           name: challenges_take_entries_only_when_published_with_a_reward
           arguments:
             expression: "status = 'published' and reward_kind is not null"
           config:
             where: "takes_entries"
-      # CH09: everything a phone would load is https, or absent.
+      # Everything a phone would load is https, or absent.
       - dbt_utils.expression_is_true:
           name: challenges_links_are_https
           arguments:
@@ -105,14 +105,14 @@ models:
               coalesce(starts_with(photo, 'https://'), true)
               and coalesce(starts_with(reward_art, 'https://'), true)
               and coalesce(starts_with(reward_rules_url, 'https://'), true)
-      # CH10: the backend's id rule (ID_MAX_CHARS), so no tag of it is refused there.
+      # The backend's id rule (ID_MAX_CHARS), so no tag of it is refused there.
       - dbt_utils.expression_is_true:
           name: challenges_ids_are_lowercase_words_joined_by_hyphens
           arguments:
             expression: >
               length(challenge_id) <= {{ var('challenges_id_max_chars') }}
               and regexp_full_match(challenge_id, '{{ var("challenges_id_pattern") }}')
-      # CH11: `reviewed` is the day somebody last stood behind the list.
+      # `reviewed` is the day somebody last stood behind the list.
       - dbt_utils.expression_is_true:
           name: challenges_reviewed_is_a_date
           arguments:
@@ -126,7 +126,7 @@ models:
       - name: challenge_id
         description: >
           The challenge's id, lowercase words joined by hyphens, at most 120
-          characters, and its file's name (CH10). Tags are keyed by it, on the
+          characters, and its file's name. Tags are keyed by it, on the
           phone and on the backend.
         data_type: varchar
         constraints:
@@ -158,7 +158,7 @@ models:
         constraints:
           - type: not_null
       - name: org
-        description: The publishing organization's slug, which publishers.json scopes (CH02).
+        description: The publishing organization's slug, which publishers.json scopes.
         data_type: varchar
         constraints:
           - type: not_null
@@ -181,7 +181,7 @@ models:
         constraints:
           - type: not_null
       - name: trail
-        description: The trail the challenge is on, one its organization publishes (CH03). Published as `trail`.
+        description: The trail the challenge is on, one its organization publishes. Published as `trail`.
         data_type: varchar
         constraints:
           - type: not_null
@@ -192,7 +192,7 @@ models:
           - type: not_null
       - name: status
         description: >
-          `draft` or `published` (CH12). A draft publishes, labelled on every
+          `draft` or `published`. A draft publishes, labelled on every
           surface that names it (the maintainer's poll, 2026-09-30), and takes
           no entries.
         data_type: varchar
@@ -234,7 +234,7 @@ models:
         description: >
           Whether the club collects entries through OurHike, which the phone
           must know before it asks a hiker for a name and an address: true
-          only for a published challenge with a reward (CH09).
+          only for a published challenge with a reward.
         data_type: boolean
         constraints:
           - type: not_null
@@ -255,8 +255,8 @@ models:
         description: >
           The items that resolved, in the file's order, each as
           challenges.json carries it, as JSON: a mystery item's title sealed
-          as base64 through its reveal_on (CH07), and each place a published
-          POI's own id, name, type, mile, lat and lon (CH01).
+          as base64 through its reveal_on, and each place a published
+          POI's own id, name, type, mile, lat and lon.
         data_type: json
         constraints:
           - type: not_null
@@ -284,7 +284,7 @@ models:
                 # warn on a leg build_marts.py built without its history,
                 # where both dates are null and the run is red already, and
                 # in production and UA, where build_marts.py reports a
-                # failure as an error unless the history is off (decision 204).
+                # failure as an error unless the history is off.
                 severity: "{{ 'warn' if env_var('OURHIKE_ROW_HISTORY', 'on') == 'off' or env_var('OURHIKE_DATA_ENV', 'dev') in ['production', 'ua'] else 'error' }}"
       - name: _changed_at
         description: "{{ doc('row_changed_at') }}"

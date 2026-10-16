@@ -21,7 +21,7 @@ models:
     columns:
       - name: sample_point_key
         description: >
-          The row's key (decision 197): dbt_utils.generate_surrogate_key over
+          The row's key: dbt_utils.generate_surrogate_key over
           line_id and sample_index. Its unique test fails on any two rows
           sharing them, the combination test it replaced; never null by
           construction, so the two inputs' own not_null tests hold the values.
@@ -82,7 +82,7 @@ models:
     columns:
       - name: profile_sample_key
         description: >
-          The row's key (decision 197): dbt_utils.generate_surrogate_key over
+          The row's key: dbt_utils.generate_surrogate_key over
           line_id and seq, the published sample. Its unique test fails on any
           two rows sharing them, the combination test it replaced; never null
           by construction, so the two inputs' own not_null tests hold the
@@ -139,7 +139,7 @@ models:
     columns:
       - name: edge_sample_point_key
         description: >
-          The row's key (decision 197): dbt_utils.generate_surrogate_key over
+          The row's key: dbt_utils.generate_surrogate_key over
           edge_id and sample_index. Its unique test fails on any two rows
           sharing them, the combination test it replaced; never null by
           construction, so the two inputs' own not_null tests hold the values.
@@ -207,7 +207,7 @@ models:
     columns:
       - name: edge_sample_key
         description: >
-          The row's key (decision 197): dbt_utils.generate_surrogate_key over
+          The row's key: dbt_utils.generate_surrogate_key over
           edge_id and sample_index. Its unique test fails on any two rows
           sharing them, the combination test it replaced; never null by
           construction, so the two inputs' own not_null tests hold the values.
@@ -349,7 +349,7 @@ models:
         description: The largest step in feet, one decimal; 0.0 with no step.
   - name: int_elevation__final
     description: >
-      The elevation mart's rows before their row dates (decision 57):
+      The elevation mart's rows before their row dates:
       what models/marts/elevation/elevation.sql held until then, every
       contracted column but _first_seen_at and _changed_at.
       int_elevation__history snapshots it, and the mart reads that snapshot.
@@ -357,7 +357,7 @@ models:
     columns:
       - name: line_sample_key
         description: >
-          The row's key (decision 197): dbt_utils.generate_surrogate_key over
+          The row's key: dbt_utils.generate_surrogate_key over
           line_id and seq, the mart's grain, which the mart carries. Its
           unique test fails on any two rows sharing them, the combination
           test it replaced; never null by construction, and the mart's
@@ -377,7 +377,7 @@ exposures:
       (pipeline/step_dem_sampling.py), between the dbt invocation that builds
       int_elevation__dem_points and the one that reads its answer back as
       source('derived', 'dem_samples'). It is Python because DuckDB
-      has no raster type that is both fast and right (EL06, pipeline/ELT.md's
+      has no raster type that is both fast and right (pipeline/ELT.md's
       ledger), and it reads through export_elevation.ElevationSampler, the
       sampler today's export_elevation.py uses. Shown here so the docs draw
       both halves of the step.

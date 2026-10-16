@@ -1,5 +1,5 @@
 {{ config(materialized='table') }}
--- The clubs' lines in network_overview.geojson's sketch (decision 64), one
+-- The clubs' lines in network_overview.geojson's sketch, one
 -- row per club line the sketch keeps, in int_trail_lines__network_overview_
 -- seam's columns, which int_trail_lines__network_overview_features groups
 -- after the network's own.

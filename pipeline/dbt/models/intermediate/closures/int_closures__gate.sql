@@ -14,7 +14,7 @@
 --   atc_trail_updates     a file nobody reviewed (no `reviewed_at`, read
 --                         from the file landed whole, base_atc__atc_updates),
 --                         a file whose `updates` is not a list, then any row
---                         problem (CL01-CL06), in export_atc_updates.py's
+--                         problem, in export_atc_updates.py's
 --                         order; and a file whose two landings disagree on
 --                         how many rows it has. An empty reviewed file
 --                         passes, and publishes `atc_updates: []` as today
@@ -25,7 +25,7 @@
 --                         empty category as a broken parse, so today's file
 --                         never empties; this one publishes `[]` when NYNJTC
 --                         lifts its last alert
---   ourhike_closures      a row that is not moderator-verified (CL15), or
+--   ourhike_closures      a row that is not moderator-verified, or
 --                         whose mile or coordinate is not a finite number
 --   oprhp_trail_closures  nothing: an empty layer is a good week
 --   ourhike_reports       a coordinate or mile that is not a finite number
@@ -237,7 +237,7 @@ club_notices as (
     select * from {{ ref('int_closures__club_notices') }}
 ),
 
--- Decision 81's two per-row safety checks, by source: how many of its rows
+-- The two per-row safety checks, by source: how many of its rows
 -- each returns and the first, for `held_because`.
 wording_leaks as (
     select
@@ -488,7 +488,7 @@ judged as (
                     wording_leaks.rows_leaking || ' '
                     || gated_sources.source_key || ' row(s) hold the '
                     || 'source''s own wording in a published column '
-                    || '(decision 55), the first '
+                    || ', the first '
                     || wording_leaks.first_row || ', so none of its rows is '
                     || 'published (int_warnings__wording_leaks names each)'
             when coalesce(outside_region.rows_outside, 0) > 0

@@ -1,4 +1,4 @@
--- The published POIs a challenge place may name (CH01, CH02, CH03), as
+-- The published POIs a challenge place may name, as
 -- export_challenges.load_published_pois() reads them: the properties of
 -- every feature in export_poi.py's eight poi_<type>.geojson files, which are
 -- the points_of_interest mart's `poi_by_type` rows, and of no other file.

@@ -1,6 +1,6 @@
 version: 2
 
-# The clubs' own elevation layers (decision 54's wave 1), after
+# The clubs' own elevation layers (the wave 1), after
 # int_elevation__unioned: the rules pipeline/ELT.md's "What wave 1's live
 # reads found that phase C must honour" gives them, each with a unit test
 # below. Neither model is read by a mart: every layer here is held back by
@@ -100,7 +100,7 @@ unit_tests:
   - name: elevation_club_samples_convert_by_each_rows_own_unit
     model: int_elevation__club_samples
     description: >
-      Units per row (pipeline/ELT.md, "What wave 1's live reads found"): ATC's ATX Z is metres and
+      Units per row: ATC's ATX Z is metres and
       NCTA's Z field is feet, so each converts by its own row's unit, and a layer whose row names no
       unit gets no elevation in either, rather than a guessed one. 1,600.48 m is 5,250.92 ft;
       1,432.97 ft is 436.77 m (0.3048 m to the foot).
@@ -135,7 +135,7 @@ unit_tests:
   - name: elevation_club_samples_leave_no_z_on_any_geometry
     model: int_elevation__club_samples
     description: >
-      Units and dimensions (pipeline/ELT.md, "What wave 1's live reads found"): a Z-enabled line
+      Units and dimensions: a Z-enabled line
       needs ST_Force2D before the network, so each of its vertices comes out as a two-dimensional
       point, and a point that arrived with a Z loses it too. A line with no geometry (ATX repeats
       segment 25-01-03 18 times with none) gives no sample.

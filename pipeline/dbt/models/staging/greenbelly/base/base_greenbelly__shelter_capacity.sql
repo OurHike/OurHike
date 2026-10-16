@@ -2,8 +2,8 @@
 -- shelter_capacity.py): how many each A.T. shelter sleeps, from Greenbelly's
 -- hiker-maintained list joined to ATC's shelters by name, keyed (decision
 -- 40), nothing filtered or joined. build_shelter_capacity.py builds the file
--- and a person reviews it as a diff (PO12). A capacity nobody stands behind
--- is absent, never zero (PO13), and int_points_of_interest__enriched carries
+-- and a person reviews it as a diff. A capacity nobody stands behind
+-- is absent, never zero, and int_points_of_interest__enriched carries
 -- that absence through.
 --
 -- Key: poi_id, the published id the file is keyed by, 280 of 280.

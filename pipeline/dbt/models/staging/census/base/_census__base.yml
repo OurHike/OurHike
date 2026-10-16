@@ -11,12 +11,12 @@ models:
             compare_model: source('census', 'raw_census__census_tiger_states')
     description: >
       The U.S. Census Bureau's TIGER/Line states, every row, keyed and deduped
-      (decision 40), the file's own columns under dlt's names. Read by
+      the file's own columns under dlt's names. Read by
       stg_census__states.
     columns:
       - name: state_key
         description: >
-          The row's key (decision 40): dbt_utils.generate_surrogate_key over
+          The row's key: dbt_utils.generate_surrogate_key over
           census_tiger_states and stusps.
         data_tests: [not_null, unique]
       - name: stusps

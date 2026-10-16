@@ -11,7 +11,7 @@ version: 2
 unit_tests:
   - name: int_points_of_interest__described_says_what_lib_poi_description_says
     description: >
-      PO19 and PO20, one row per case of tests/test_lib_poi_description.py's
+      One row per case of tests/test_lib_poi_description.py's
       describers and tests/test_lib_atc_notes.py's clean_note() (a note rides
       a shelter that states nothing else, so the sentence is "Shelter. ATC
       notes: ..." or nothing), plus edges those tests leave implicit, each
@@ -362,7 +362,7 @@ unit_tests:
 
   - name: int_points_of_interest__described_dates_a_club_sheet_by_its_own_cell
     description: >
-      Decision 72: FMST's trailheads publish with the sheet's own "Current as
+      FMST's trailheads publish with the sheet's own "Current as
       of:" date, which extract/_gis_files.py lands as `source_as_of`. A club
       point whose row carries one says so, quoting the date as the sheet
       writes it and calling it the sheet's claim; a blank cell and a row
@@ -654,7 +654,7 @@ unit_tests:
 
   - name: int_points_of_interest__sites_groups_like_lib_poi_sites
     description: >
-      PO18 and PO35, one scenario per case of tests/test_poi_sites.py's
+      One scenario per case of tests/test_poi_sites.py's
       group_sites() and group_place_sites() tests (the gates, membership,
       anchor priority, and the NYC place sites), each on a latitude of its
       own so none reaches another, plus two edges: a name that is only type
@@ -804,7 +804,7 @@ unit_tests:
 
   - name: int_points_of_interest__classified_types_and_refuses_like_the_exporters
     description: >
-      PO01, PO02, PO04, PO30, PO31, PO32 and PO37, and every refusal before
+      And every refusal before
       the public flags: each ATC layer typed whole (the Communities at low),
       opentrail's `w` and `s` and an icon that publishes nothing (read before
       the geometry, as unify_all_sources() reads it), a row with no geometry,
@@ -816,7 +816,7 @@ unit_tests:
       over raw files written from the A.T. rows and build_records() on each
       other row, and holds every id, type, confidence, name and reason to
       them. The registry entries are sources.json's own, trimmed to the keys
-      a rule reads. NY Parks' Water Spigot types water: decision 65's row in
+      a rule reads. NY Parks' Water Spigot types water: the row in
       the poi_value_types seed, the one the dbt path adds to
       export_nearby_poi.py's map, which the pytest adds to the Python's map
       before it compares.
@@ -996,10 +996,10 @@ unit_tests:
 
   - name: int_points_of_interest__publishable_keeps_and_rates_like_public_verdict
     description: >
-      PO27, PO28 and PO29: DEC's PUBLICUSE keeps a row only where it reads Y
+      DEC's PUBLICUSE keeps a row only where it reads Y
       once stripped and upper-cased, OPRHP's ParksApp keeps every campsite and
       lowers the unflagged ones (a water point it does not show is held,
-      decision 195's test below), NYC's fountains ship low by their layer's
+      the test below), NYC's fountains ship low by their layer's
       confidence_floor, a layer with no public field ships high, and an
       A.T.-family row ships at the confidence classification gave it. Then
       may_publish: a source int_sources__publication holds back, or has no
@@ -1048,7 +1048,7 @@ unit_tests:
 
   - name: int_points_of_interest__publishable_holds_a_water_point_its_steward_does_not_show
     description: >
-      Decision 195, a pin claims no more than its steward, for water alone by
+      A pin claims no more than its steward, for water alone by
       its follow-up poll ("Taps only"): a water point whose steward's own
       public flag does not show it is held, where the layer's flag otherwise
       only lowers a row (OPRHP's ParksApp 'N' on a spigot, or no ParksApp at
@@ -1085,7 +1085,7 @@ unit_tests:
 
   - name: int_points_of_interest__dropped_says_why_a_point_its_steward_does_not_show_is_held
     description: >
-      Decision 195's held water row names the flag and the decision, beside
+      The held water row names the flag and the decision, beside
       the two reasons int_points_of_interest__publishable gave before it:
       DEC's flag says internal, and the source may not publish. The lean-to
       and the campsite the same flag only lowers ship, so neither is here.
@@ -1119,13 +1119,13 @@ unit_tests:
           - {source_key: 'nyc_public_restrooms', may_publish: false, publication_rule: 'unit test: held back'}
     expect:
       rows:
-        - {poi_key: 'd-01', drop_reason: 'held: ParksApp is not Y, so its steward does not show this water point, and a pin claims no more than its steward (decision 195)'}
+        - {poi_key: 'd-01', drop_reason: 'held: ParksApp is not Y, so its steward does not show this water point, and a pin claims no more than its steward'}
         - {poi_key: 'd-04', drop_reason: 'not public: PUBLICUSE is not Y'}
         - {poi_key: 'd-05', drop_reason: 'the source may not publish (unit test: held back)'}
 
   - name: int_points_of_interest__in_corridor_keeps_what_the_corridor_and_the_ring_keep
     description: >
-      PO05 and PO33: an A.T.-family row inside the 30-mile corridor, outside
+      An A.T.-family row inside the 30-mile corridor, outside
       it, within the 500 ft ring of a published line (124 m) and just past it
       (190 m); another organization's amenity inside the ring (also of a
       closed line, which the ring does not ask about) and far from it, a
@@ -1341,7 +1341,7 @@ unit_tests:
 
   - name: int_points_of_interest__reached_gates_and_marks_like_export_poi
     description: >
-      PO08 and PO10: an OSM water point reachable from the centerline
+      An OSM water point reachable from the centerline
       ships; one reachable from the Long Path ships carrying it as
       not_on_at; one whose verdict says unreachable and one with no verdict
       at all are dropped; opentrail's water, a shelter, another
@@ -1377,7 +1377,7 @@ unit_tests:
 
   - name: int_points_of_interest__deduplicated_drops_twins_like_dedupe_water
     description: >
-      PO09: an OSM water point 11 m and one 22 m from an opentrail water
+      An OSM water point 11 m and one 22 m from an opentrail water
       point are its twins and are dropped; one 28 m away is a neighbour and
       ships; nothing that is not OSM water is ever dropped, and OSM points
       near site water or near each other are not twins.
@@ -1408,7 +1408,7 @@ unit_tests:
 
   - name: int_points_of_interest__photos_gates_and_attaches_like_export_poi
     description: >
-      PO24 and PO38: a Commons photo the screen cleared ships; one it
+      A Commons photo the screen cleared ships; one it
       flagged is held until a person clears it, and then ships; a refused
       one never ships, flagged or not; an unscreened one ships; one with no
       digest names nothing in the bucket and shows nothing. ATC's list wins
@@ -1679,7 +1679,7 @@ unit_tests:
 
   - name: int_points_of_interest__identified_applies_the_ledger_like_apply_ledger_ids
     description: >
-      PO23: an A.T.-family row with a live ledger row publishes under that
+      An A.T.-family row with a live ledger row publishes under that
       row's poi_id, which is its derived id until upstream re-keys a feature
       (G2); one whose only ledger row is retired, or that has none, keeps its
       derived id; a retired row beside a live one for the same feature does
@@ -1718,7 +1718,7 @@ unit_tests:
 
   - name: int_points_of_interest__retired_resolves_like_lib_poi_identity
     description: >
-      PO26: every retired ledger row is a tombstone, and its superseded_by
+      Every retired ledger row is a tombstone, and its superseded_by
       resolves as lib/poi_identity.py's resolve() follows it: to a live row
       directly or through a chain of retired ones, and to nothing where it
       dangles, cycles, points at itself or ends at a retired row with no
@@ -1753,7 +1753,7 @@ unit_tests:
 
   - name: int_points_of_interest__water_attaches_and_synthesizes_like_export_poi
     description: >
-      PO14, PO15 and PO16: ATC's distance and its provenance attach to the
+      ATC's distance and its provenance attach to the
       shelter or campsite the file names, together or not at all (an empty
       provenance is none, a row with no distance attaches nothing, a layer
       other than shelters and campsites is not read). Then the synthesized
@@ -1894,7 +1894,7 @@ unit_tests:
 
   - name: int_points_of_interest__enriched_attaches_capacity_and_nearby_like_export_poi
     description: >
-      PO13 and PO21. Capacity: a shelter the file gives a number sleeps that
+      Capacity: a shelter the file gives a number sleeps that
       many; one the file names without a number, or does not name, has no
       capacity, never 0, and the other organizations' POIs take none. Nearby:
       each anchor's members, privy before water before campsite, then nearest,

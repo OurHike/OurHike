@@ -1,11 +1,11 @@
 {{ config(materialized='table') }}
--- Every network line that ships, simplified to 1 m (TL15, the network's
+-- Every network line that ships, simplified to 1 m (the network's
 -- half): export_trails.py's simplify_records() at
 -- DEFAULT_SIMPLIFY_TOLERANCE_M, which export_nearby_trails.py's main() calls
 -- on the deduplicated records once the closed areas have split them
 -- (int_trail_lines__network_area_closures) and a notice has closed its
 -- section (int_trail_lines__network_section_closures, which export_
--- nearby_trails.py does not do: a dbt-only difference, decision 213).
+-- nearby_trails.py does not do: a dbt-only difference).
 -- int_trail_lines__network_published cuts this
 -- line to six decimals for the trail_lines mart and nearby_trails.geojson;
 -- the overview sketch is simplified again from this line at full precision,

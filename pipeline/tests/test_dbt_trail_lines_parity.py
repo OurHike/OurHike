@@ -112,7 +112,7 @@ def test_the_at_line_vars_are_export_trails_constants():
     assert variables["trail_lines_overview_tolerance_m"] == export_trails.OVERVIEW_SIMPLIFY_TOLERANCE_M
     assert variables["trail_lines_overview_decimals"] == export_trails.OVERVIEW_COORDINATE_DECIMALS
     assert variables["trail_lines_mile_decimals"] == export_trails.TRAIL_MILE_DECIMALS
-    # Decision 8's six decimals for trails.geojson, the network file's own cut.
+    # The six decimals for trails.geojson, the network file's own cut.
     assert variables["trail_lines_published_decimals"] == export_nearby_trails.NEARBY_COORDINATE_DECIMALS
 
 
@@ -539,7 +539,7 @@ def _axis(test: dict) -> list:
 # --- which pytest cases the unit tests stand for -------------------------------------
 
 #: The pytest files pipeline/ELT.md's trail_lines ledger lists against tl-at's
-#: rows (TL01, TL04, TL05, TL14-TL17, TL22, TL24-TL29). export_nearby_trails
+#: rows. export_nearby_trails
 #: is the network's (tl-net), and lib_arcgis the live domain call TL02's var
 #: replaces in SQL, which stays at the edge for every other caller.
 LEDGER_FILES = (
@@ -788,7 +788,7 @@ def test_the_at_clipped_rows_are_clip_to_corridors_answers():
     assert {row["trail_segment_key"]: row["geom_wkt"] for row in test["expect"]["rows"]} == kept
 
 
-# --- int_trail_lines__at_simplified (TL15) -------------------------------------------
+# --- int_trail_lines__at_simplified -------------------------------------------
 
 
 def _simplified_tests() -> list[dict]:
@@ -884,7 +884,7 @@ def test_the_simplify_macro_refuses_a_negative_tolerance():
     con.close()
 
 
-# --- int_trail_lines__at_chains, __at_chain_miles (TL16, TL22) -----------------------
+# --- int_trail_lines__at_chains, __at_chain_miles -----------------------
 
 
 def test_the_at_chains_rows_are_merge_chain_records_answers():
@@ -927,7 +927,7 @@ def test_the_at_chain_miles_rows_are_vertex_miles_answers(monkeypatch):
             assert row["monotonic_breaks"] == export_trails._monotonic_breaks(np.array(json.loads(row["vertex_miles_json"]))), key
 
 
-# --- int_trail_lines__at_overview (TL17) ---------------------------------------------
+# --- int_trail_lines__at_overview ---------------------------------------------
 
 
 def test_the_at_overview_rows_are_write_overviews_answers(tmp_path, monkeypatch):
@@ -965,7 +965,7 @@ def test_the_at_overview_rows_are_write_overviews_answers(tmp_path, monkeypatch)
     assert len(json.loads(sketch["coordinates_json"])) < len(_coords(line["geom_wkt"])) / 4
 
 
-# --- int_trail_lines__spurs, __at_side_trails (TL27-TL29) ----------------------------
+# --- int_trail_lines__spurs, __at_side_trails ----------------------------
 
 
 def _spur_python(test: dict, monkeypatch) -> dict[str, dict]:
@@ -1061,7 +1061,7 @@ def test_spurs_json_holds_only_the_spurs_trails_geojson_draws():
         _compare(test["name"], key, key in python, key in sql)
 
 
-# --- int_trail_lines__at_published (decision 8) --------------------------------------
+# --- int_trail_lines__at_published --------------------------------------
 
 
 def test_the_at_published_rows_are_rounded_geometrys_answers():
@@ -1087,7 +1087,7 @@ def test_the_at_published_rows_are_rounded_geometrys_answers():
         )
 
 
-# --- the club sections (TL24-TL26) ---------------------------------------------------
+# --- the club sections ---------------------------------------------------
 
 
 def _club_python(test: dict) -> list[tuple[float, float, str | None]]:

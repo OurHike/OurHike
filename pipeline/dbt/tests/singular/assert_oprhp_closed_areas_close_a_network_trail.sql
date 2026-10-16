@@ -5,7 +5,7 @@
 -- fixture's closed sections from 10 to 0 on a green build (measured
 -- 2026-10-03). Warn, because the first case is real; the region-box test on
 -- the closures mart is what fails the build on a swap. An error once ten or
--- more areas may publish and none closes a trail (decision 204): one or two
+-- more areas may publish and none closes a trail: one or two
 -- areas missing every trail is a week, ten is where they are drawn.
 -- @unvalidated: ten is the lead's pick, settled by the area counts the
 -- monthly runs report beside this test over the first season.

@@ -4,9 +4,9 @@ models:
   - name: int_warnings__nws_relayed
     description: >
       The NWS alerts OurHike relays: every `Actual` message that is not a
-      cancellation (WN01), NWS's words and times exactly as written and null
-      where NWS sent null (WN02). int_warnings__nws_placed places them on the
-      trail's weather squares (WN03).
+      cancellation, NWS's words and times exactly as written and null
+      where NWS sent null. int_warnings__nws_placed places them on the
+      trail's weather squares.
     columns:
       - name: notice_id
         description: "`nws_alerts:` and NWS's message id; the warnings mart's key."
@@ -18,7 +18,7 @@ models:
         description: Alert or Update; never Cancel.
         data_tests:
           # Names each alert of another type, and is an error when every
-          # alert is one (decision 204, tests/generic/rows_named.sql): NWS
+          # alert is one (tests/generic/rows_named.sql): NWS
           # changing its words, rather than one odd alert.
           - rows_named:
               arguments:
@@ -29,7 +29,7 @@ models:
       The NBM weather squares under a trail or a waypoint, one row per square
       however many trail cells list it, from build_weather_squares.py's
       document (stg_derived__weather_squares): the set an NWS alert's polygon
-      is tested against, export_weather_alerts.py's `trail` (WN03).
+      is tested against, export_weather_alerts.py's `trail`.
     columns:
       - name: weather_square_key
         description: The release and the square.
@@ -48,7 +48,7 @@ models:
       Every NWS zone the weather squares know, one row each: the trail
       squares its outline overlaps (`zones`, [] for none) and whether the
       zone files build_weather_squares.py pinned hold it (`known_zones`), as
-      export_weather_alerts.py's bake() reads them (WN03).
+      export_weather_alerts.py's bake() reads them.
     columns:
       - name: weather_zone_key
         description: The release and the zone.
@@ -93,7 +93,7 @@ models:
 
   - name: int_warnings__nws_placed
     description: >
-      Where each relayed NWS alert lands on the weather squares (WN03): by its
+      Where each relayed NWS alert lands on the weather squares: by its
       polygon when NWS drew one, else by its zones, as
       export_weather_alerts.py's bake() places it, with the trail squares it
       reaches and the zones it names that the pinned files do not know.
@@ -135,7 +135,7 @@ models:
 
   - name: int_warnings__serious_reports
     description: >
-      OurHike's serious public reports, verified or resolved (WN10), for the
+      OurHike's serious public reports, verified or resolved, for the
       warnings mart. conditions/reports.json carries every public report and
       is written from base_ourhike__reports instead.
     columns:
@@ -173,19 +173,19 @@ models:
                 where: "starts_with(notice_kind, 'club_')"
   - name: int_warnings__wording_leaks
     description: >
-      No prose is published (decision 55): one row per text value of a club
+      No prose is published: one row per text value of a club
       notice the finals could publish (int_closures__unioned's and
       int_warnings__unioned's club rows, before the gate) that contains a
       whole value of that source's own wording
       (int_warnings__notice_wording_unioned). int_closures__gate holds each
       source with a row here, so none of its rows reaches a mart and it
-      carries its last good rows (decision 81).
+      carries its last good rows.
     data_tests:
       # The gate holds the source, so its paragraphs never reach a mart, and
-      # every other source and file still publishes (decision 81).
+      # every other source and file still publishes.
       # `holds_a_source` makes build_marts.py print the rows and turn the run
       # red after the publish (its PARTIAL_EXIT). No severity of its own
-      # (decision 204): a warning in production and UA, which build on, and
+      # a warning in production and UA, which build on, and
       # an error in dev and CI. At error in production, one club's title
       # stopped every hourly file (soak run 530).
       - dbt_utils.expression_is_true:
@@ -200,7 +200,7 @@ models:
         data_tests: [not_null, unique]
   - name: int_warnings__final
     description: >
-      The warnings mart's rows before their row dates (decision 57):
+      The warnings mart's rows before their row dates:
       what models/marts/warnings/warnings.sql held until then, every
       contracted column but _first_seen_at and _changed_at.
       int_warnings__history snapshots it, and the mart reads that snapshot.
@@ -320,7 +320,7 @@ unit_tests:
 
   - name: int_warnings__nws_relayed_nws_text_is_relayed_verbatim_and_a_missing_field_stays_null
     description: >
-      test_export_weather_alerts.py's case of that name (WN02): the
+      test_export_weather_alerts.py's case of that name: the
       description's line breaks, a headline's trailing space and every time's
       offset come through as NWS wrote them, and a field NWS sent as null
       stays null rather than becoming "" or now. The drawn polygon comes out
@@ -595,7 +595,7 @@ unit_tests:
       source's row is not read as that source's, a row no club notice source
       feeds (ATC's) is not read at all, and nor is a club notice held as not
       current (`notice_held_because`), which is never published. All of it
-      before int_closures__gate, which reads this (decision 81).
+      before int_closures__gate, which reads this.
     model: int_warnings__wording_leaks
     given:
       - input: ref('int_warnings__notice_wording_unioned')

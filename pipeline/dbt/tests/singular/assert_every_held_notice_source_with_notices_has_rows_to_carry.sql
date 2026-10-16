@@ -12,7 +12,7 @@
 --
 -- Returns one row per notice source that may publish, is held, had rows
 -- this build, and has no row in the closures or warnings mart. No
--- tolerance and no severity of its own (decision 204): an error in dev and
+-- tolerance and no severity of its own: an error in dev and
 -- CI, and in production and UA a warning, so every other file still
 -- publishes, which `holds_a_source` makes build_marts.py print and turn red
 -- after the publish (its PARTIAL_EXIT). Decision 208 gates the tests of

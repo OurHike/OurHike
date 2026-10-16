@@ -1,6 +1,6 @@
 {{ config(materialized='table') }}
 {%- set destination_types = var('trail_lines_spur_destination_poi_types') %}
--- The published POIs a spur may lead to (TL28), as export_spurs.py's
+-- The published POIs a spur may lead to, as export_spurs.py's
 -- load_destination_pois() reads them: the points_of_interest mart's rows in
 -- the eight poi_<type>.geojson files (`phone_files` 'poi_by_type'), of the
 -- five DESTINATION_POI_TYPES (trail_lines_spur_destination_poi_types:

@@ -8,10 +8,10 @@
 -- `generated_at`, the reviewed file's `reviewed_at` as written, and
 -- `work_projects`, every row of reference/work_projects.json in the file's
 -- order, each as lib/work_projects.py's published_rows() writes it
--- (int_closures__work_projects_checked, CL17). No mart owns work projects
+-- (int_closures__work_projects_checked). No mart owns work projects
 -- (ELT.md, "What reaches a phone from no mart").
 --
--- REWRITTEN WHOLE EVERY RUN (CL18): a cancelled or removed workday clears
+-- REWRITTEN WHOLE EVERY RUN: a cancelled or removed workday clears
 -- with the next build, because the extract replaces the file's one row
 -- whenever its bytes change and this writes the file from that row alone.
 --

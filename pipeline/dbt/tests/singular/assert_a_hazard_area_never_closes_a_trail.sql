@@ -7,7 +7,7 @@
 -- a trail (int_warnings__unioned); this holds that for whatever source the
 -- seed lists next, and for a source a later change moves to closures.py.
 -- Returns one row per notice that breaks it.
--- A gate on a mart a hiker's safety reads (decision 204, dbt_project.yml's
+-- A gate on a mart a hiker's safety reads (dbt_project.yml's
 -- `marts:` gates): an error in every environment, so in production a
 -- failure holds the files below at their last good copy.
 {{ config(severity='error') }}

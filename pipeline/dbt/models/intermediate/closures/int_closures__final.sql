@@ -4,13 +4,13 @@
 -- int_closures__history snapshots it, and the mart reads that snapshot.
 --
 -- What blocks the trail, from every source that says so (pipeline/ELT.md,
--- "The eleven marts", decision 6): one row per notice, closed area or
+-- "The eleven marts"): one row per notice, closed area or
 -- closure that obstructs it, from a source that passed int_closures__gate
 -- and may publish (int_sources__publication).
 --
 -- A CLUB NOTICE ITS OWN STATUS OR DATES HOLD BACK IS LEFT OUT: one whose own
 -- status or category says it is not current, or an order its source says was
--- rescinded (int_closures__club_notices' `held_because`, decision 53's phase
+-- rescinded (int_closures__club_notices' `held_because`, the phase
 -- C). One whose own end date has passed is not held back (the maintainer's
 -- frame A, 2026-10-10): it no longer closes the trail, so it lands in the
 -- warnings mart, and conditions/notices.json's `current_until` lets the phone
@@ -19,7 +19,7 @@
 -- trail, with its `starts_on`, and the phone closes the trail from the day
 -- before that day.
 --
--- DECISION 7'S SPLIT, CLOSURES' HALF: only rows whose `obstructs_trail` is
+-- THE SPLIT, CLOSURES' HALF: only rows whose `obstructs_trail` is
 -- true. A null (nobody has classified it, every NYNJTC alert today) and a
 -- false go to the warnings mart, never dropped, and the partition is held by
 -- assert_every_notice_lands_in_exactly_one_of_closures_or_warnings.
@@ -49,7 +49,7 @@ publication as (
 ),
 
 -- A feed's notices that aged out of its window, never lifted by absence
--- (int_closures__window_carried, decision 53's phase C), through the same
+-- (int_closures__window_carried, the phase C), through the same
 -- publication check as every row.
 carried as (
     select * from {{ ref('int_closures__window_carried') }}

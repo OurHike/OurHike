@@ -1,19 +1,19 @@
 {{ config(materialized='table') }}
 -- A table: the challenges mart, int_challenges__refusals and their tests
 -- all read it.
--- Every challenge file resolved to the end (CH08-CH11): the checks
+-- Every challenge file resolved to the end: the checks
 -- lib/challenges.py's resolve_challenge() makes after its items, then
 -- resolve()'s two, then build_output()'s. `problem` is the first refusal;
 -- with none, the row is the challenge as it publishes. One row per file, in
 -- the order today's exporter reads them.
 --
 -- Refusals, in the Python's order (the `checked`, `named` and `decided`
--- CTEs): int_challenges__files' first; then the finish (CH08: its count
+-- CTEs): int_challenges__files' first; then the finish (its count
 -- must be one the resolved items can reach, because a "25 for the drawing"
 -- that can only ever be 24 is a promise nobody can keep, so the whole
--- challenge drops); the reward and takes_entries (CH09); the photo and
--- reviewed date (CH11); the file named for its id, and no earlier file with
--- that id (CH10). build_output()'s last two checks (the org has a name,
+-- challenge drops); the reward and takes_entries; the photo and
+-- reviewed date; the file named for its id, and no earlier file with
+-- that id. build_output()'s last two checks (the org has a name,
 -- provider and domain) cannot fire here: publisher_scope()
 -- (int_challenges__publishers) already guarantees them, and the Python's
 -- comments say only a caller that built its scope another way reaches
@@ -276,7 +276,7 @@ select
         when published_reward then nullif(rules_url_text, '')
     end as reward_rules_url,
     case when published_reward then art_url end as reward_art,
-    -- True only for a published challenge with a reward (CH09).
+    -- True only for a published challenge with a reward.
     case
         when published
             then coalesce(

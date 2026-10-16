@@ -34,7 +34,7 @@ DEDUPE = re.compile(
 # keep within SQLFluff's line length (pipeline/generate_notice_models.py's).
 SOURCE = re.compile(r"source\(\s*'([a-z0-9_]+)',\s*'([a-z0-9_]+)'\s*\)")
 # Every model that keys and dedupes a raw table, which is every staging model that reads a
-# source() (decision 40): the stg_ models of the first 28, and the base_ models stage 3 adds
+# source(): the stg_ models of the first 28, and the base_ models stage 3 adds
 # for the rest (ELT.md, "The dbt project"). A stg_ model that reads a base model, as the
 # registry's do, has its key from that base model.
 MODELS = sorted(path for path in [*STAGING.rglob("stg_*.sql"), *STAGING.rglob("base_*.sql")] if SOURCE.search(path.read_text()))
@@ -57,7 +57,7 @@ def model_key(path: Path) -> tuple[str, list[str]]:
     return match.group(2), ast.literal_eval(items)
 
 
-# Read once: every parametrized case below asks, and there are hundreds (decisions 53's and 54's generated
+# Read once: every parametrized case below asks, and there are hundreds (the and 54's generated
 # models).
 @cache
 def models_yaml() -> dict:
@@ -123,7 +123,7 @@ def _row_tables() -> frozenset[str]:
     resources = all_resources(discover() + discover_shared())
     kinds = WordpressPosts | WordpressTerms | ConditionsQuery | PublishedHikes | AtcTrailUpdatePages | GuidePages
     kinds |= ClubPdf
-    # Decision 53's notice readers whose rows carry no geometry (pipeline/generate_notice_models.py's READERS).
+    # The notice readers whose rows carry no geometry (pipeline/generate_notice_models.py's READERS).
     kinds |= FeedNotices | PageNotice | NpsAlerts | DcnrParkAdvisories | UsgsElevatedVolcanoes | MediawikiAnnouncements
     kinds |= SheetCsvSegments
     return frozenset(resource.table for resource in resources if isinstance(resource, kinds)) - _content_tables()

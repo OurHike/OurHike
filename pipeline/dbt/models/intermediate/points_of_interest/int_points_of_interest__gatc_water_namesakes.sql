@@ -15,7 +15,7 @@
 --
 -- THE KEY, namesake_key, is dbt_utils.generate_surrogate_key over the seed
 -- row (gatc_mile, entry_starts, atc_layer) and the ATC point's GlobalID
--- (decision 197: every model has one column that is unique and not null).
+-- (every model has one column that is unique and not null).
 with names as (
     select * from {{ ref('gatc_water_atc_names') }}
 ),

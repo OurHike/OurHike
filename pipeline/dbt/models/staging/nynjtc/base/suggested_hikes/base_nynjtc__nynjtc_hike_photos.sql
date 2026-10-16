@@ -1,5 +1,5 @@
 -- reference/nynjtc_hike_photos.json (extract/nynjtc/photos.py): every row of
--- the person-confirmed hike-to-photograph join, keyed (decision 40), with
+-- the person-confirmed hike-to-photograph join, keyed, with
 -- nothing filtered and nothing joined. Each row is still the JSON its
 -- reviewer wrote: which rows confirm a photograph is the join's work
 -- (int_suggested_hikes__photos), because a field's own truth is what it

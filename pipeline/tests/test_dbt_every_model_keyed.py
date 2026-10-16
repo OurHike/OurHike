@@ -1,4 +1,4 @@
-"""Every dbt model has one id: a column that is unique and not null (decision 197).
+"""Every dbt model has one id: a column that is unique and not null.
 
 The maintainer, 2026-10-15: "Every dbt model should have a unique id that is unique and not null.
 If you made exceptions, we need to talk about that", then "surrogate key is fine too", and, asked
@@ -18,7 +18,7 @@ on its own:
 `where`, severity error, dbt's default `fail_calc`, and no tolerance in either threshold: dbt's
 default `!= 0`, or `>0`, which dbt_project.yml declares for every test since decision 204. A
 `where` or a threshold above that lets some duplicates through, which is no key. The severity
-is read as dev and CI parse it, with OURHIKE_DATA_ENV unset, where decision 204's switch makes
+is read as dev and CI parse it, with OURHIKE_DATA_ENV unset, where the switch makes
 it error; in production and UA the same switch makes a failing key test a warning that
 build_marts.py reports as an error, and the build goes on.
 
@@ -72,7 +72,7 @@ def model_name(node: dict) -> str:
     return f"{node['name']}.v{node['version']}" if node.get("version") is not None else node["name"]
 
 
-#: A threshold with no tolerance, spaces aside: dbt's default, and decision 204's form (dbt_project.yml).
+#: A threshold with no tolerance, spaces aside: dbt's default, and the form (dbt_project.yml).
 NO_TOLERANCE = frozenset({"!=0", ">0", ">=1", "<>0"})
 
 
@@ -342,7 +342,7 @@ def test_every_model_has_one_column_unique_and_not_null_or_a_recorded_exception(
     verdict = check(manifest, _rows())
     assert len(verdict["keyed"]) > 1000, "the rule read the whole project"
     assert not verdict["unkeyed"], (
-        "models with no column carrying an unfiltered unique and not_null at error (decision 197): give each a key, "
+        "models with no column carrying an unfiltered unique and not_null at error: give each a key, "
         f"a dbt_utils.generate_surrogate_key column where it takes several columns: {verdict['unkeyed']}"
     )
 

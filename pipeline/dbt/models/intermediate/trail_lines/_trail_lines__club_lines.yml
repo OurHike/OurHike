@@ -1,6 +1,6 @@
 version: 2
 
-# The clubs' own trail-line layers (decision 54's wave 1), after
+# The clubs' own trail-line layers (the wave 1), after
 # int_trail_lines__unioned: the rules pipeline/ELT.md's "What wave 1's live
 # reads found that phase C must honour" gives them, each with a unit test
 # below. Decision 64 (2026-10-04, "draw now, route later") draws them:
@@ -62,7 +62,7 @@ models:
         description: When the extract landed the line.
   - name: int_trail_lines__club_published
     description: >
-      Decision 64: every club line that may draw, in the trail_lines mart's columns with line_kind
+      Every club line that may draw, in the trail_lines mart's columns with line_kind
       'club', simplified at 1 m and cut to six decimals as the network's lines are. A historic
       alignment and a seasonal line never draw. Drawn and never routed: no junction graph, route
       distance or trail mile reads a club row, and the phone reads the mark to say so. Its status is
@@ -89,7 +89,7 @@ models:
       - name: published_id
         description: >
           The id nearby_trails.geojson publishes: the key itself, because no
-          exporter publishes a club's own line (decision 64), so no phone
+          exporter publishes a club's own line, so no phone
           holds another id for it.
         data_tests: [not_null, unique]
       - name: source_key
@@ -106,7 +106,7 @@ models:
         data_tests: [not_null]
   - name: int_trail_lines__club_overview
     description: >
-      Decision 64: the club lines network_overview.geojson's sketch keeps, in
+      The club lines network_overview.geojson's sketch keeps, in
       int_trail_lines__network_overview_seam's columns: the 100 m coarse line, the z5 floor and the
       seam's pass, as the network's, and never a through route. Only a line whose source may publish.
     data_tests:
@@ -161,7 +161,7 @@ unit_tests:
   - name: trail_lines_club_lines_never_route_or_draw_a_historic_alignment
     model: int_trail_lines__club_lines
     description: >
-      A historic alignment is not tread (pipeline/ELT.md, "What wave 1's live reads found"): NPS's
+      A historic alignment is not tread: NPS's
       National Historic Trail lines and OCTA's atlas routes never draw as a trail a hiker can walk
       and never join the routable network. A walkable layer beside them, NPS's Anza recreation
       trails, keeps both.
@@ -194,7 +194,7 @@ unit_tests:
   - name: trail_lines_club_lines_flag_a_winter_trail_seasonal
     model: int_trail_lines__club_lines
     description: >
-      A winter trail is seasonal (pipeline/ELT.md, "What wave 1's live reads found"): BLM's Iditarod
+      A winter trail is seasonal: BLM's Iditarod
       line is "primarily a winter trail", so every line of it carries season 'winter' before it
       draws, and a line of another layer carries none.
     given:
@@ -223,7 +223,7 @@ unit_tests:
   - name: trail_lines_club_lines_leave_out_the_roads_a_trail_layer_carries
     model: int_trail_lines__club_lines
     description: >
-      Roads ride in some trail layers (pipeline/ELT.md, "What wave 1's live reads found"): MassGIS
+      Roads ride in some trail layers: MassGIS
       DCR's roads-and-trails layer carries public roads, and its TYPE says which, so a 'Public Road'
       line is left out while its 'Trail' and 'Forest Road/Trail' lines stay, and another layer's
       line whose own TYPE reads 'Public Road' is untouched.
@@ -306,7 +306,7 @@ unit_tests:
   - name: trail_lines_club_lines_keep_only_the_lines_a_mixed_gis_file_carries
     model: int_trail_lines__club_lines
     description: >
-      A trail line is a line (decision 54's wave 2): OTA's Google My Map carries trailhead points and
+      A trail line is a line (the wave 2): OTA's Google My Map carries trailhead points and
       Condor's KMLs carry polygons beside their lines, so only a LINESTRING or MULTILINESTRING row
       stays, and a row with no geometry stays as it always has.
     given:
@@ -339,7 +339,7 @@ unit_tests:
   - name: trail_lines_club_lines_force_every_line_to_two_dimensions
     model: int_trail_lines__club_lines
     description: >
-      Units and dimensions (pipeline/ELT.md, "What wave 1's live reads found"): a Z-enabled line
+      Units and dimensions: a Z-enabled line
       needs ST_Force2D before the network, so ATA's line, whose Z is in feet, comes out without its
       heights and says it had them.
     given:
@@ -368,7 +368,7 @@ unit_tests:
   - name: trail_lines_source_extents_are_read_from_vertices_never_a_server_extent
     model: int_trail_lines__source_extents
     description: >
-      A server's extent can lie (pipeline/ELT.md, "What wave 1's live reads found"): USFWS's trail
+      A server's extent can lie: USFWS's trail
       segments answered returnExtentOnly with lat -24.99 to 90, while their vertices span lat 13.64
       to 63.20 and lon -159.48 to 144.87, Guam and Puerto Rico the outliers. The extent here is the
       vertices', which fit us_and_territories and no narrower box.
@@ -480,7 +480,7 @@ unit_tests:
   - name: trail_lines_club_overview_keeps_a_long_club_line_as_haze_and_never_a_held_back_one
     model: int_trail_lines__club_overview
     description: >
-      Decision 64's lines in the overview sketch: a club line long enough to clear the z5 floor is
+      The lines in the overview sketch: a club line long enough to clear the z5 floor is
       kept, as haze and never a through route; one shorter than a z5 pixel is a dot there and is
       dropped, as the network's are; and a line whose source may not publish is not drawn at all.
     given:

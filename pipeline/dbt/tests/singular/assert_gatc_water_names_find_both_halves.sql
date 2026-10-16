@@ -1,5 +1,5 @@
 -- Every gatc_water_atc_names row finds its GATC row and its ATC point, so
--- each check decision 75's measurement rests on still runs (the seed's
+-- each check the measurement rests on still runs (the seed's
 -- description). A row that finds neither checks nothing: a GATC republish
 -- that moved a mile or reworded a name, or an ATC renamed point, turns a
 -- checked source into an unchecked one with every other test green. Warns,

@@ -1,5 +1,5 @@
 {{ config(materialized='table') }}
--- The centerline's published lines, merged into maximal chains (TL16),
+-- The centerline's published lines, merged into maximal chains,
 -- export_trails.merge_chain_records(): one row per chain,
 -- `centerline:chain:<n>`.
 --

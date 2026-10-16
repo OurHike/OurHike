@@ -5,7 +5,7 @@ models:
     data_tests:
       # Warns when the dedupe dropped any row, each an exact copy
       # (duplicates_are_exact on the raw table), and is an error once the
-      # copies are half the raw table (decision 204, the generic test's).
+      # copies are half the raw table (the generic test's).
       - equal_rowcount_to_raw:
           arguments:
             compare_model: source('nycparks', 'raw_nycparks__nyc_drinking_fountains')
@@ -15,7 +15,7 @@ models:
     columns:
       - name: poi_key
         description: >
-          The row's key (decision 40): dbt_utils.generate_surrogate_key over
+          The row's key: dbt_utils.generate_surrogate_key over
           nyc_drinking_fountains, "system", gispropnum, the registry key first
           and then the columns measured unique for this layer.
         data_tests: [not_null, unique]
@@ -23,7 +23,7 @@ models:
     data_tests:
       # Warns when the dedupe dropped any row, each an exact copy
       # (duplicates_are_exact on the raw table), and is an error once the
-      # copies are half the raw table (decision 204, the generic test's).
+      # copies are half the raw table (the generic test's).
       - equal_rowcount_to_raw:
           arguments:
             compare_model: source('nycparks', 'raw_nycparks__nyc_park_polygons')
@@ -33,7 +33,7 @@ models:
     columns:
       - name: park_key
         description: >
-          The row's key (decision 40): dbt_utils.generate_surrogate_key over
+          The row's key: dbt_utils.generate_surrogate_key over
           nyc_park_polygons and gispropnum, the registry key first and then
           the column measured unique for this layer (2,061 of 2,061 live rows,
           2026-10-03).
@@ -42,7 +42,7 @@ models:
     data_tests:
       # Warns when the dedupe dropped any row, each an exact copy
       # (duplicates_are_exact on the raw table), and is an error once the
-      # copies are half the raw table (decision 204, the generic test's).
+      # copies are half the raw table (the generic test's).
       - equal_rowcount_to_raw:
           arguments:
             compare_model: source('nycparks', 'raw_nycparks__nyc_parks_trails')
@@ -52,7 +52,7 @@ models:
     columns:
       - name: trail_segment_key
         description: >
-          The row's key (decision 40): dbt_utils.generate_surrogate_key over
+          The row's key: dbt_utils.generate_surrogate_key over
           nyc_parks_trails, geometry_key(geom), date_collected, the registry
           key first and then the columns measured unique for this layer.
         data_tests: [not_null, unique]
@@ -60,7 +60,7 @@ models:
     data_tests:
       # Warns when the dedupe dropped any row, each an exact copy
       # (duplicates_are_exact on the raw table), and is an error once the
-      # copies are half the raw table (decision 204, the generic test's).
+      # copies are half the raw table (the generic test's).
       - equal_rowcount_to_raw:
           arguments:
             compare_model: source('nycparks', 'raw_nycparks__nyc_public_restrooms')
@@ -70,7 +70,7 @@ models:
     columns:
       - name: poi_key
         description: >
-          The row's key (decision 40): dbt_utils.generate_surrogate_key over
+          The row's key: dbt_utils.generate_surrogate_key over
           nyc_public_restrooms, geometry_key(geom), the registry key first and
           then the columns measured unique for this layer.
         data_tests: [not_null, unique]

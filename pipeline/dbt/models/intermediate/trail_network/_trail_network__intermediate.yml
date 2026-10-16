@@ -4,9 +4,9 @@ version: 2
 # dlt → dbt: seven contracted marts, a monthly refresh, published docs, and
 # lighter phone downloads): the junction graph a day hike routes over, which
 # build_trail_graph.py builds today. The rules are pipeline/ELT.md's TN rows,
-# applied in that file's order: the routable lines (TN01-TN03), the cuts
-# (TN05, with TN04's cutting in step_node_lines), the node grid and the
-# welds (TN06), the edges (TN07). tests/test_dbt_trail_network_parity.py
+# applied in that file's order: the routable lines, the cuts
+# (with TN04's cutting in step_node_lines), the node grid and the
+# welds, the edges. tests/test_dbt_trail_network_parity.py
 # holds each unit test below to build_trail_graph.py on the same rows.
 models:
   - name: int_trail_network__routable
@@ -14,7 +14,7 @@ models:
       The trail lines a route may run on, one row per line part in
       routable_lines()' order, and one row per refusal with its reason: a
       closed line, a line with no usable geometry, a part with fewer than two
-      coordinates (TN01-TN03). Every network line of the trail_lines mart,
+      coordinates. Every network line of the trail_lines mart,
       then the A.T.'s centerline and side trails whole.
     data_tests:
       # Every part that routes has a place in the order, and no refusal does.
@@ -43,7 +43,7 @@ models:
         description: >
           The line's `published_id` in the trail_lines mart, the `id`
           nearby_trails.geojson publishes, published on each edge as
-          `trail_id` (TL05). Never its `trail_line_id`, the key `part_id` is
+          `trail_id`. Never its `trail_line_id`, the key `part_id` is
           built on.
         data_tests: [not_null]
       - name: source_key
@@ -67,7 +67,7 @@ models:
 
   - name: int_trail_network__cuts
     description: >
-      Where the routable parts are cut (TN05, and TN04's inputs): one row
+      Where the routable parts are cut (and TN04's inputs): one row
       per pair of parts that cross or touch, and one per line end within
       trail_network_endpoint_snap_m (8 m, @unvalidated) of a part its own
       does not cross, among pairs whose envelopes meet, in EPSG:5070 metres.
@@ -109,7 +109,7 @@ models:
     description: >
       Every point build_graph() asks its node grid about, in the order it
       asks (each piece's start and end, then each weld's end and landing),
-      and the node it is (TN06): the first node within
+      and the node it is: the first node within
       trail_network_node_quant_m (0.5 m, @unvalidated) in the grid's scan
       order, or a new one.
     columns:
@@ -143,7 +143,7 @@ models:
       Every piece build_graph() keeps before compaction, with the node each
       end becomes once the welds have merged nodes (the group's lowest), the
       published node numbers, its length, and whether compaction drops it as
-      a loop no longer than 0.5 m (TN06).
+      a loop no longer than 0.5 m.
     columns:
       - name: edge_rank
         description: The kept piece's place in order, from 0.
@@ -167,7 +167,7 @@ models:
       - name: length_m
         description: >
           The piece's length on the WGS84 ellipsoid at 2 decimals, as
-          published (decision 90; EPSG:5070 metres before it).
+          published (EPSG:5070 metres before it).
         data_tests: [not_null]
       - name: dropped_as_a_loop
         description: Whether compaction drops it, its two ends one node and its EPSG:5070 length, at 2 decimals, at most 0.5 m.
@@ -177,7 +177,7 @@ models:
     description: >
       One row per junction-graph edge: a piece of a maintained trail line
       between two junctions, carrying its parent line's id, source, name and
-      blaze, in the order trail_graph.json lists them (TN07). The trail_network
+      blaze, in the order trail_graph.json lists them. The trail_network
       mart publishes it, and the elevation family's network models read it,
       as export_network_elevation.py and export_network_profile.py read
       trail_graph.json and trail_graph_geometry.json today: an edge's
@@ -221,7 +221,7 @@ models:
         description: The published `to`, an index into trail_graph.json's `nodes`.
       - name: length_m
         description: >
-          The piece's length in metres on the WGS84 ellipsoid (decision 90),
+          The piece's length in metres on the WGS84 ellipsoid,
           rounded to 2 decimals as published. Measured on the 1 m navigation
           line the graph is noded from, as build_trail_graph.py measures it
           today.
@@ -262,7 +262,7 @@ models:
           - type: not_null
   - name: int_trail_network__final
     description: >
-      The trail network mart's rows before their row dates (decision 57):
+      The trail network mart's rows before their row dates:
       what models/marts/trail_network/trail_network.sql held until then, every
       contracted column but _first_seen_at and _changed_at.
       int_trail_network__history snapshots it, and the mart reads that snapshot.
@@ -280,7 +280,7 @@ exposures:
       name: OurHike
     description: >
       The Python step that cuts every routable part where
-      int_trail_network__cuts says (pipeline/step_node_lines.py, TN04),
+      int_trail_network__cuts says (pipeline/step_node_lines.py),
       between the dbt invocation that builds its two inputs and the one that
       reads its answer back as source('derived', 'graph_pieces'). It is
       Python because the pieces must be the ones shapely's `substring` makes,

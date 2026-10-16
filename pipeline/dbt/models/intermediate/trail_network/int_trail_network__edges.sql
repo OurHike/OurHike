@@ -18,9 +18,9 @@
 -- - from_node and to_node are the published `from` and `to`, indexes into
 --   int_trail_network__nodes;
 -- - length_m is the piece's length on the WGS84 ellipsoid at 2 decimals
---   (int_trail_network__raw_edges; decision 90), measured on the 1 m
+--   (int_trail_network__raw_edges), measured on the 1 m
 --   navigation line the graph is noded from, as build_trail_graph.py
---   measures it today (decision 8's full-resolution length is not built:
+--   measures it today (the full-resolution length is not built:
 --   ELT.md's TN07 row says why);
 -- - geom_geojson is a GeoJSON LineString whose `coordinates` are exactly
 --   the edge's entry in trail_graph_geometry.json: the piece's vertices back

@@ -71,7 +71,7 @@
 -- - its namesake reading more than the bound from GATC's mile.
 -- A spigot (Neel Gap's) carries `water_source_kind` 'spigot', which the
 -- layer_rules `plumbed_water` row reads in int_points_of_interest__cautioned
--- for decision 65's season caution.
+-- for the season caution.
 --
 -- A MILE TO A POINT: the piece whose calibrated range holds the mile (the
 -- lower piece_id where two overlap, as axis_mile breaks a tie), and the

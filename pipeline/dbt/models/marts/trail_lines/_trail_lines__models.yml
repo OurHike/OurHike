@@ -15,7 +15,7 @@ models:
       access: public
       contract:
         enforced: true
-    # Decision 44: a phone file's shape is a version of the mart it is
+    # A phone file's shape is a version of the mart it is
     # written from. v1 is today's shape at today's keys, and every pub_ writer
     # reading this mart pins it, ref('trail_lines', v=1). v2
     # (trail_lines_v2.sql) carries each centerline chain's vertex miles as
@@ -96,8 +96,8 @@ models:
                 tags: [elementary_check]
                 enabled: "{{ env_var('OURHIKE_ELEMENTARY_CHECKS', 'false') == 'true' }}"
     data_tests:
-      # Elementary's checks (decision 102; pipeline/ELT.md, "The checks, and
-      # where each goes"), each with its two thresholds (decision 204) and run by build_marts.py after the
+      # Elementary's checks (pipeline/ELT.md, "The checks, and
+      # where each goes"), each with its two thresholds and run by build_marts.py after the
       # writers: the rows at each build; the rows per club and source, so one
       # club's layer vanishing cannot hide inside the national total; and each
       # column's null rate, the geometry and its per-vertex miles left out.
@@ -173,7 +173,7 @@ models:
           arguments:
             named: "not st_isvalid(st_geomfromgeojson(geom_geojson))"
       # A status and the basis it rests on come together: a stated one, or
-      # the default a layer with no status column ships (TL10), which is a
+      # the default a layer with no status column ships, which is a
       # default and not a finding.
       - dbt_utils.expression_is_true:
           name: trail_lines_statuses_carry_their_basis
@@ -207,7 +207,7 @@ models:
             expression: "trail_status is null"
           config:
             where: "line_kind not in ('network', 'club')"
-      # A club line is never open (decision 64): its status is unknown, or
+      # A club line is never open: its status is unknown, or
       # closed by its own layer as the layer_rules seed's closed_where rows
       # read it (int_trail_lines__club_lines; NGPC's Cowboy Trail sections,
       # the maintainer's P8 of 2026-10-11), which ships as a steward's own
@@ -293,7 +293,7 @@ models:
           spurs.json and trail_miles.json key their records by, and the
           `trail_id` each graph edge carries (trail_network's). Today's
           exporters' id for the same feature, built by their rule,
-          macros/resolve_feature_id.sql (TL05): the GlobalID only where the
+          macros/resolve_feature_id.sql: the GlobalID only where the
           layer spells it exactly `GlobalID`, then the object id or Socrata
           row id, then `generated-<index>`. The same as `trail_line_id` on
           every A.T. line, club line and network line whose layer spells its
@@ -334,7 +334,7 @@ models:
           Which line, and so which file draws it: `centerline`, a chain of
           the A.T.'s own line, and `side_trail` or `spur`, in trails.geojson;
           `network`, in nearby_trails.geojson; and `club`, a club's own line
-          (decision 64), in nearby_trails.geojson too, drawn and never routed:
+          in nearby_trails.geojson too, drawn and never routed:
           no junction graph, route distance or trail mile reads a club row,
           and the file carries `line_kind` on it so the phone can say so. A
           spur is a side trail whose `Type` decodes to 3 (lib/spurs.py's
@@ -386,8 +386,8 @@ models:
           - accepted_values:
               arguments:
                 values: [open, closed]
-          # A safety column (decision 102): its null rate against the builds
-          # before, with its two thresholds (decision 204). Elementary's minimum and maximum are numeric
+          # A safety column: its null rate against the builds
+          # before, with its two thresholds. Elementary's minimum and maximum are numeric
           # monitors only (0.26.0's get_available_monitors()).
           - elementary.column_anomalies:
               arguments:
@@ -421,11 +421,11 @@ models:
         description: >
           'long_term' on a network or club line its steward marks closed; 'area' on a network
           section inside one of NYS Parks' temporary closed areas, which
-          nearby_trails.geojson's v1 still splits (decision 44) while #1152 —
+          nearby_trails.geojson's v1 still splits while #1152 —
           Move OPRHP's temporary closures onto the conditions clock, where a
           safety layer belongs — moves the areas to the closures mart;
           'section' on a network line an organization's own notice closed by
-          naming its section (decision 213); null on every open line and on
+          naming its section; null on every open line and on
           every A.T. line.
         data_type: varchar
         data_tests:
@@ -438,7 +438,7 @@ models:
           area's reason as the steward wrote it (the layer's `Name`,
           stripped), from the area the line overlaps most, a tie to the
           first in the layer; on a line a section closure closed, the
-          closing notice's own title, verbatim (decision 213); null where it
+          closing notice's own title, verbatim; null where it
           wrote none, and on every other line. nearby_trails.geojson
           publishes it as `closure_reason`.
         data_type: varchar
@@ -448,13 +448,13 @@ models:
           closure layer's registry key (`oprhp_trail_closures`), which is not
           the line's own `source` (#1142): the sheet names the organization
           that closed the ground. On a line a section closure closed, the
-          closing notice's source key (decision 213). Null on every other
+          closing notice's source key. Null on every other
           line.
         data_type: varchar
       - name: duplicate_of
         description: >
           On a network line that swallowed another organization's copy of the
-          same path (TL18, #1459 — Two New York City agencies draw the same
+          same path (#1459 — Two New York City agencies draw the same
           tread and the map draws both lines, because nothing dedupes
           geometry across sources), the source whose copy it was; null
           elsewhere.
@@ -463,7 +463,7 @@ models:
         description: >
           The line as the phone draws it: an RFC 7946 LineString or
           MultiLineString in OGC:CRS84 lon/lat, after the 1 m Douglas-Peucker
-          pass in EPSG:5070 (TL15) and the cut to 6 decimals (decision 8). A
+          pass in EPSG:5070 and the cut to 6 decimals. A
           line the cut would leave with a part of fewer than two distinct
           vertices keeps full precision instead (ELT.md's never-degenerate
           rule), as export_nearby_trails.py's _rounded_geometry does.
@@ -476,7 +476,7 @@ models:
           The line's length in metres at full resolution, before the 1 m
           pass, which can only shorten a line (ELT.md's safety-field table);
           for a centerline chain, the sum of its segments'. A network or club
-          line's is on the WGS84 ellipsoid (decision 97); an A.T. line's is
+          line's is on the WGS84 ellipsoid; an A.T. line's is
           in EPSG:5070 metres (int_trail_lines__at_simplified,
           int_trail_lines__at_chains). No phone file carries it today.
         data_type: double
@@ -490,8 +490,8 @@ models:
           `measured`, because lineClimb's `partial` guard reads a field no
           exporter writes), measured from the drawn geometry and never a
           steward's stated mileage. A network or club line's is in metres on
-          the WGS84 ellipsoid (decision 97), as the trail graph's edges are
-          (decision 90), so lineClimb holds edges and line to one measure; an
+          the WGS84 ellipsoid, as the trail graph's edges are
+          so lineClimb holds edges and line to one measure; an
           A.T. line's, which no phone file carries, is in EPSG:5070 metres.
         data_type: double
         constraints:
@@ -545,7 +545,7 @@ models:
                 # warn on a leg build_marts.py built without its history,
                 # where both dates are null and the run is red already, and
                 # in production and UA, where build_marts.py reports a
-                # failure as an error unless the history is off (decision 204).
+                # failure as an error unless the history is off.
                 severity: "{{ 'warn' if env_var('OURHIKE_ROW_HISTORY', 'on') == 'off' or env_var('OURHIKE_DATA_ENV', 'dev') in ['production', 'ua'] else 'error' }}"
       - name: _changed_at
         description: "{{ doc('row_changed_at') }}"

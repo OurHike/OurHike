@@ -9,7 +9,7 @@
 --
 -- THE GEOMETRY IS THE ONE A PHONE DRAWS, as the mart's contract has it: the
 -- 1 m line from int_trail_lines__network_navigation, every vertex cut to six
--- decimals (TL23, NEARBY_COORDINATE_DECIMALS) as Python's round() cuts it.
+-- decimals (NEARBY_COORDINATE_DECIMALS) as Python's round() cuts it.
 -- That is not DuckDB's round(): measured 2026-10-02 on 266,800 doubles built
 -- to sit on, or an ulp either side of, a half at 6, 3 and 2 decimals,
 -- round(x, n) answered differently from Python on 14,125 and
@@ -24,7 +24,7 @@
 -- Douglas-Peucker only shortens a line, so a length taken after it
 -- under-reports a day hike), and `published_length_m` on the 1 m line before
 -- the cut, which is what records_to_geojson()'s `length_miles` is rounded
--- from. Each is macros/geodesic_length_m.sql's (decision 97, the
+-- from. Each is macros/geodesic_length_m.sql's (the
 -- maintainer's poll of 2026-10-06, as decision 90 measures the graph's
 -- edges), handed the line projected to EPSG:5070 as the macro takes it. The
 -- trip there and back changed no line's length by more than 7.3e-7 m against
@@ -40,7 +40,7 @@
 -- within a layer is the fetched file's, which the warehouse does not land.
 --
 -- The A.T.'s columns are null on every network row: `vertex_miles` and
--- `monotonic_breaks` (the calibrated mile axis, TL22) and the four spur_
+-- `monotonic_breaks` (the calibrated mile axis) and the four spur_
 -- fields (spurs.json's).
 with navigation as (
     select * from {{ ref('int_trail_lines__network_navigation') }}

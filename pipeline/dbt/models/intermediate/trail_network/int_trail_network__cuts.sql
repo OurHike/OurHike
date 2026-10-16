@@ -8,7 +8,7 @@
 -- (build_trail_graph.py, TN04's inputs and TN05): one row per pair of parts
 -- that cross or touch, and one per line END that stops short of another
 -- line. step_node_lines makes the cuts themselves, with shapely, so the
--- pieces are the ones build_trail_graph.py makes to the bit (TN04); this
+-- pieces are the ones build_trail_graph.py makes to the bit; this
 -- model is which cuts to make.
 --
 -- EVERY DISTANCE IN EPSG:5070 METRES (always_xy), as build() projects the

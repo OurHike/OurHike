@@ -2,7 +2,7 @@
 -- network_overview.geojson, the sketch of every other organization's trails
 -- the opening camera draws (#1135, client/src/lib/config.ts's
 -- NETWORK_OVERVIEW_KEY), in the shape export_nearby_trails.py's
--- write_overview() writes (decision 44's v1): one MultiLineString Feature
+-- write_overview() writes (the v1): one MultiLineString Feature
 -- per int_trail_lines__network_overview_features row, in its order.
 --
 -- Through int_trail_lines__network_overview_seam, the sketch is simplified

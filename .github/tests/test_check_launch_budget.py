@@ -20,12 +20,12 @@ from __future__ import annotations
 
 import json
 import os
+import re
 import subprocess
 import sys
 from pathlib import Path
 
 import check_launch_budget as guard
-import check_pin_matches_channels as pins
 import pytest
 import yaml
 
@@ -170,8 +170,11 @@ def _step(workflow: str, name: str) -> dict:
 
 
 def _pin() -> str:
-    release, _, _ = pins.pinned(pins.DATA_RELEASE_FILE.read_text(encoding="utf-8"), "dataRelease.ts")
-    return release
+    """DATA_RELEASE, read as the deploy steps read it, with sed's pattern."""
+    source = (REPO_ROOT / "client" / "src" / "lib" / "dataRelease.ts").read_text(encoding="utf-8")
+    match = re.search(r"^export const DATA_RELEASE = '(.*)'$", source, re.MULTILINE)
+    assert match, "could not read DATA_RELEASE out of client/src/lib/dataRelease.ts"
+    return match.group(1)
 
 
 def _publish(bucket: Path, prefix: str, size: int) -> None:

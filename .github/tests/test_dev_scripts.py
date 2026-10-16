@@ -108,17 +108,15 @@ def test_the_client_scope_carries_the_entries_whose_absence_was_the_drift():
 @pytest.mark.parametrize(
     "path",
     [
-        # client/src/lib/dataRelease.pointer.test.ts and config.phoneFileKey.test.ts
-        "channels.json",
         # client/src/lib/config.phoneFileKey.test.ts, which reads every *.yml there
         "pipeline/dbt/models/publish/_publish__elevation.yml",
     ],
 )
 def test_the_client_scope_covers_the_files_the_versioned_publish_client_tests_read(path):
     """client-tests.yml's own rule: a suite's scope includes every file its
-    tests read. Without these, the promotion pull request, which changes
-    channels.json and nothing else, ran no check of its entries against the
-    client's release-id rule. Matched as changed-paths matches, by prefix."""
+    tests read. Without this, a change to a publish model's v2 key list ran
+    no check against the client's own list. Matched as changed-paths
+    matches, by prefix."""
     assert any(path.startswith(prefix) for prefix in _scope("client").split()), path
 
 

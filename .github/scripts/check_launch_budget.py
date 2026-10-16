@@ -16,7 +16,7 @@ WHY A DEPLOY ASKS. The phone already declines such a file at the manifest
 the file. UA's release 2026-10-03-2 carried a 41,216,145-byte
 network_overview.geojson against the 33,554,432-byte budget, ua.yml deployed
 builds pinned to it, and the opening map drew the A.T. alone, for every UA
-phone, because UA serves no channels.json (review 5528343443 on PR #1805,
+phone, because UA served no channels.json (review 5528343443 on PR #1805,
 Measured 2026-10-15). verify-release.yml, the only place check 22 ran, is a
 dispatch-only promotion gate that no UA deploy passes through.
 
@@ -24,15 +24,14 @@ ua.yml and pages.yml refuse (exit 1). pr-preview.yml passes `--warn`: a
 preview is the screen a reviewer judges the change on, so it still deploys,
 and the sentence `--banner` writes leads its comment instead.
 
-ONE MANIFEST IS ENOUGH. The step weighs the release DATA_RELEASE names. A phone
-that has read channels.json follows that file's entry instead, and the two
-steps after it hold that entry to DATA_RELEASE (check_pin_matches_channels.py)
-and the uploaded copy to the committed entry, so a build that
-deploys has one release to weigh.
+TWO MANIFESTS IN A DEPLOY. ua.yml and pages.yml run this on the release
+DATA_RELEASE names, the floor a first run falls back to, and again on the
+release the uploaded channels.json names, which every phone that can read the
+pointer takes (lib/dataRelease.ts). Both are releases a phone of the build
+can be on.
 
 ONLY THE STANDARD LIBRARY, here and in lib/client_contract.py, so a runner's
-bare python3 runs it with nothing installed, as it runs
-check_pin_matches_channels.py.
+bare python3 runs it with nothing installed.
 
 Exit 0 when every weighed file fits, including a file with no `size_bytes`,
 which a phone weighs once it arrives (lib/artifactBudget.ts's `oversized`

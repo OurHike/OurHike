@@ -1331,21 +1331,23 @@ class TestTheDocsHost:
 
 
 class TestTheUploadedPointer:
-    """Both deploy guards hold the committed channels.json to the copy phones read.
+    """Both deploy guards check the channels.json uploaded at their base, the only copy there is.
 
-    Phones read `${base}/channels.json`, which only the release train's
-    `publish.py --channels` uploads (RELEASING.md §10), and the guard used to
-    read only `../channels.json`, so a deploy went green while phones followed
-    another release. That was the first defect in the client review of
-    **#1805 — dlt → dbt re-platform as one go/no-go change: every club through
-    dlt, eleven contracted marts writing every phone file, and the hourly and
-    monthly lanes**. The step's own script runs here against a stub `curl`
-    serving a fake bucket, because the refusal is in the shell.
+    Since the maintainer's decision of 2026-10-16 no file in the repository
+    names the release a phone reads: pipeline/channels.py moves each
+    environment's channels.json in the bucket, and a phone of this build takes
+    the release it names on its first launch when it can read it
+    (lib/dataRelease.ts). So the deploy holds that release to what it holds the
+    compiled floor to: its manifest resolves at this base and fits a launch. A
+    404 passes with a notice, because phones then read the floor. The step's
+    own script runs here against a stub `curl` serving a fake bucket, because
+    the refusal is in the shell.
     """
 
-    STEP = "Confirm channels.json's release exists"
+    STEP = "Confirm the uploaded pointer's release exists"
     BASE = "https://data.example.org"
     WORKFLOWS = ["pages.yml", "ua.yml"]
+    RELEASE = "2026-10-10-2"
     # The base each environment's build is given (lib/dataRelease.ts's
     # environmentOf): production is the bucket root, UA is its prefix.
     PREFIXES = {"production": "", "ua": "/environments/ua"}
@@ -1355,10 +1357,6 @@ class TestTheUploadedPointer:
         parsed = yaml.safe_load((WORKFLOW_DIR / workflow).read_text(encoding="utf-8"))
         steps = [step for job in parsed["jobs"].values() for step in job["steps"]]
         return next(step for step in steps if step.get("name") == cls.STEP)["run"]
-
-    @staticmethod
-    def _committed() -> dict:
-        return json.loads((REPO_ROOT / "channels.json").read_text(encoding="utf-8"))
 
     @staticmethod
     def _stub_curl(directory: Path) -> None:
@@ -1388,17 +1386,28 @@ exit 0
         path.write_text(script, encoding="utf-8")
         path.chmod(path.stat().st_mode | stat.S_IEXEC)
 
-    def _run(self, tmp_path: Path, workflow: str, environment: str, uploaded: dict | None, *, status: int | None = None):
-        """The step against `environment`'s base, where the committed entry's
-        manifest is published and `uploaded` (None for no copy) is at the root."""
+    def _run(
+        self,
+        tmp_path: Path,
+        workflow: str,
+        environment: str,
+        uploaded: dict | str | None,
+        *,
+        status: int | None = None,
+        published: str | None = RELEASE,
+        manifest: dict | None = None,
+    ):
+        """The step against `environment`'s base, where `published`'s manifest (None: no release) is in the tree
+        and `uploaded` (None for no copy) is the channels.json at its root."""
         prefix = self.PREFIXES[environment]
         root = tmp_path / "bucket" / prefix.strip("/")
-        release = self._committed()[environment]["v1"]
-        manifest = root / "releases" / release / "manifest.json"
-        manifest.parent.mkdir(parents=True)
-        manifest.write_text('{"artifacts": {}}', encoding="utf-8")
+        root.mkdir(parents=True)
+        if published is not None:
+            path = root / "releases" / published / "manifest.json"
+            path.parent.mkdir(parents=True)
+            path.write_text(json.dumps(manifest or {"artifacts": {}}), encoding="utf-8")
         if uploaded is not None:
-            (root / "channels.json").write_text(json.dumps(uploaded), encoding="utf-8")
+            (root / "channels.json").write_text(uploaded if isinstance(uploaded, str) else json.dumps(uploaded), encoding="utf-8")
         if status is not None:
             (root / "channels.json.status").write_text(str(status), encoding="utf-8")
         stubs = tmp_path / "stubs"
@@ -1424,50 +1433,64 @@ exit 0
 
     @pytest.mark.parametrize("workflow", WORKFLOWS)
     @pytest.mark.parametrize("environment", ["production", "ua"])
-    def test_an_uploaded_copy_naming_the_committed_release_passes(self, tmp_path, workflow, environment):
-        completed = self._run(tmp_path, workflow, environment, self._committed())
+    def test_a_pointer_naming_a_release_this_base_holds_passes(self, tmp_path, workflow, environment):
+        completed = self._run(tmp_path, workflow, environment, {environment: {"v1": self.RELEASE}})
 
         assert completed.returncode == 0, completed.stdout + completed.stderr
-        assert "The uploaded channels.json at" in completed.stdout
+        assert f"points {environment}'s v1 at {self.RELEASE}, which resolves" in completed.stdout
 
     @pytest.mark.parametrize("workflow", WORKFLOWS)
     @pytest.mark.parametrize("environment", ["production", "ua"])
-    def test_an_uploaded_copy_naming_another_release_fails_and_names_the_fix(self, tmp_path, workflow, environment):
-        """The regression: the committed entry resolves, and phones follow another."""
-        uploaded = self._committed()
-        uploaded[environment]["v1"] = "2026-01-01"
-
-        completed = self._run(tmp_path, workflow, environment, uploaded)
+    def test_a_pointer_naming_a_release_this_base_lacks_fails(self, tmp_path, workflow, environment):
+        """A phone would refuse it and stay where it is; the deploy says so first."""
+        completed = self._run(tmp_path, workflow, environment, {environment: {"v1": "2026-01-01"}})
 
         assert completed.returncode != 0
-        assert "::error::" in completed.stdout
-        assert "publish.py --channels" in completed.stdout
-        # The uploaded entry is remote text, and never reaches a workflow command.
-        assert "2026-01-01" not in completed.stdout
+        assert "::error::" in completed.stdout and "does not resolve" in completed.stdout
 
     @pytest.mark.parametrize("workflow", WORKFLOWS)
-    def test_an_uploaded_copy_with_no_entry_for_this_environment_fails(self, tmp_path, workflow):
-        uploaded = self._committed()
-        del uploaded["ua"]
+    def test_a_pointer_naming_a_release_over_the_launch_budget_fails(self, tmp_path, workflow):
+        """The pointed-at release is weighed as the floor is: check 22 (check_launch_budget.py)."""
+        manifest = {"artifacts": {"network_overview.geojson": {"sha256": "0" * 64, "size_bytes": 10**9}}}
 
+        completed = self._run(tmp_path, workflow, "ua", {"ua": {"v1": self.RELEASE}}, manifest=manifest)
+
+        assert completed.returncode != 0
+        assert "network_overview.geojson" in completed.stdout + completed.stderr
+
+    @pytest.mark.parametrize("workflow", WORKFLOWS)
+    @pytest.mark.parametrize(
+        "uploaded",
+        [{"production": {"v1": "2026-10-10-2"}}, {"ua": {"v2": "2026-10-10-2"}}, {"ua": {"v1": "latest"}}, "not json"],
+    )
+    def test_a_pointer_with_no_readable_entry_for_this_environment_fails_without_repeating_it(self, tmp_path, workflow, uploaded):
         completed = self._run(tmp_path, workflow, "ua", uploaded)
 
         assert completed.returncode != 0
-        assert "publish.py --channels" in completed.stdout
+        assert "names no v1 release id for ua" in completed.stdout
+        assert "latest" not in completed.stdout, "remote text never reaches a workflow command"
 
     @pytest.mark.parametrize("workflow", WORKFLOWS)
-    def test_no_uploaded_copy_passes_with_a_notice(self, tmp_path, workflow):
+    def test_no_uploaded_pointer_passes_with_a_notice(self, tmp_path, workflow):
         """A 404: phones then read the compiled DATA_RELEASE, checked one step earlier."""
-        completed = self._run(tmp_path, workflow, "production", None)
+        completed = self._run(tmp_path, workflow, "production", None, published=None)
 
         assert completed.returncode == 0, completed.stdout + completed.stderr
         assert "::notice::" in completed.stdout
         assert "DATA_RELEASE" in completed.stdout
 
     @pytest.mark.parametrize("workflow", WORKFLOWS)
-    def test_an_unreadable_uploaded_copy_fails(self, tmp_path, workflow):
-        """Neither a copy nor a 404, so nothing says which release phones follow."""
-        completed = self._run(tmp_path, workflow, "production", self._committed(), status=503)
+    def test_an_unreadable_pointer_fails(self, tmp_path, workflow):
+        """Neither a pointer nor a 404, so nothing says which release phones follow."""
+        completed = self._run(tmp_path, workflow, "production", {"production": {"v1": self.RELEASE}}, status=503)
 
         assert completed.returncode != 0
         assert "answered 503" in completed.stdout
+
+    @pytest.mark.parametrize("workflow", WORKFLOWS)
+    def test_it_reads_no_file_in_the_repository_for_the_release(self, workflow):
+        """The bucket copy is the only copy: a guard reading a committed file would check a release no phone reads."""
+        script = self._script(workflow)
+
+        assert "../channels.json" not in script
+        assert "check_pin_matches_channels" not in (WORKFLOW_DIR / workflow).read_text(encoding="utf-8")

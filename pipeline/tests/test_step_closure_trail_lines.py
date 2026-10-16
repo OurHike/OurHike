@@ -1,11 +1,11 @@
 """step_closure_trail_lines.py lands the release's trail lines that may run inside an area closure, and never stops the
 hourly build for want of them.
 
-Decision 187 (S6, the maintainer's poll of 2026-10-11): int_closures__area_trail_cuts crosses out an area closure's trails
-where they run inside it, from derived.closure_trail_lines, the A.T.'s own among them since decision 192. A failed step
+int_closures__area_trail_cuts crosses out an area closure's trails where they run inside it, from
+derived.closure_trail_lines, the A.T.'s own among them. A failed step
 stops build_marts.py's whole hourly build, every conditions file with it (its docstring, "ONE SOURCE OR ONE WRITER NEVER
 STOPS THE REST"), so an hour with no lines, or lines that will not read, lands an empty table and says so instead; and
-since decision 191 shades an area no trail runs inside, an hour that did read lines never lands an empty one.
+since an area no trail runs inside is shaded whole, an hour that did read lines never lands an empty one.
 """
 
 import json
@@ -88,7 +88,7 @@ def test_only_the_lines_whose_box_meets_an_areas_box_are_landed(tmp_path, monkey
 def test_lines_read_with_none_near_an_area_land_the_files_first_line_so_the_table_says_they_were_read(
     tmp_path, monkeypatch, capsys
 ):
-    """Decision 191 shades an area no trail runs inside, and an empty table is how the cut knows an hour had no lines
+    """An area no trail runs inside is shaded whole, and an empty table is how the cut knows an hour had no lines
     to look with; so lines that were read never leave it empty, and every area is shaded rather than left out."""
     monkeypatch.delenv("GITHUB_STEP_SUMMARY", raising=False)
     warehouse = _warehouse(tmp_path)
@@ -188,7 +188,7 @@ def test_the_fixture_build_prepares_a_geojson_first(tmp_path, monkeypatch):
 
 
 def test_the_fixture_build_prepares_the_ats_own_lines_beside_the_nearby_ones(tmp_path, monkeypatch):
-    """Decision 192: the fixture's trails.geojson goes through the same preparation, so an A.T. line inside an area
+    """The fixture's trails.geojson goes through the same preparation, so an A.T. line inside an area
     lands like any trail, and one far from every area does not."""
     monkeypatch.delenv("GITHUB_STEP_SUMMARY", raising=False)
     warehouse = _warehouse(tmp_path)
@@ -210,8 +210,7 @@ def test_the_ats_file_is_refused_without_the_nearby_one(tmp_path):
         step.main(["--warehouse", str(_warehouse(tmp_path)), "--at-geojson", str(tmp_path / "at.geojson")])
 
 
-# --- the lines' release against the leg's current one (review finding S2-4 of PR #1805 — dlt → dbt re-platform as one
-# go/no-go change): publish-conditions.yml restores the newest entry its branch can see, which need not be the leg's
+# --- the lines' release against the leg's current one: publish-conditions.yml restores the newest entry its branch can see, which need not be the leg's
 # current release, so the step says when it is not, and never refuses the lines for it.
 
 BASE = "https://data.example.org"

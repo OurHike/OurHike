@@ -116,7 +116,7 @@ concurrency:
   cancel-in-progress: true
 
 # The data docs' own host and the Cloudflare Pages project that serves it
-# (the maintainer's poll of 2026-10-10), named
+# (the maintainer, 2026-10-10), named
 # here once for every job below and for .github/scripts/docs_host.py, which
 # reads both from the environment. The maintainer creates the project and
 # attaches the domain in Cloudflare's dashboard (LAUNCH_CHECKLIST.md 3c).
@@ -131,7 +131,7 @@ jobs:
   # https://ourhike.org/data/"), served from docs.ourhike.org once the
   # docs-host job below has put it there; the action says why
   # an empty warehouse, and it reads no secret. A job of its own, holding a
-  # token that can read and not push (SEC-8 of PR #1805's second review): it
+  # token that can read and not push: it
   # installs dbt, fetches dbt's packages by tag and may download a native
   # driver, none of them hash-pinned, and a step's process can reach its
   # job's token whether or not the checkout persisted it. The build job
@@ -316,7 +316,7 @@ jobs:
         working-directory: site
         run: npm ci
 
-      # Decision 144 (pipeline/ELT.md): the data docs move to docs.ourhike.org
+      # The data docs move to docs.ourhike.org
       # once that host serves them. Asked here, before the site is built,
       # because one answer decides two things this job makes: the site's two
       # data links (PUBLIC_DOCS_ORIGIN, which site/src/layouts/Base.astro
@@ -446,7 +446,7 @@ jobs:
           fi
 
       # The pinned release must actually be there, checked against THIS
-      # build's own base (#1333). Since decision 44 the pin is the compiled
+      # build's own base (#1333). The pin is the compiled
       # fallback (lib/dataRelease.ts): what a phone reads until it has
       # verified a channels.json entry, so every first run reads it. A
       # fallback naming a folder the bucket lacks is a first run that 404s
@@ -555,7 +555,7 @@ jobs:
               exit 1 ;;
           esac
 
-      # Decision 145 (pipeline/ELT.md): DATA_RELEASE and channels.json's
+      # DATA_RELEASE and channels.json's
       # entry for this build's environment must name one release. A first
       # launch reads DATA_RELEASE and later launches the pointer
       # (lib/dataRelease.ts's SESSION_RELEASE), so a pair that disagrees
@@ -608,7 +608,7 @@ jobs:
           path: ${{ runner.temp }}/data-docs
 
       # check_docs_site.py, below, reads the docs' Parquet files with duckdb.
-      # The docs are built in their own read-only job (round-2 finding SEC-8),
+      # The docs are built in their own read-only job,
       # so nothing in this job installs dbt or duckdb any more: it needs
       # duckdb alone, at the pipeline's own pin, on the Python the docs action
       # builds with. Without it the check failed on its import (PR Preview run
@@ -648,7 +648,7 @@ jobs:
           # is the PWA's scope, and an installed app would claim the docs.
           # TWO PATHS UNDER IT ARE THE SITE'S: data/quality/, the data-quality
           # page, and data/how/, the plain "How
-          # the data is built" page in front of the docs (Q24 of #1805), which
+          # the data is built" page in front of the docs, which
           # site/dist brings. So the site may hold those and nothing else
           # under data/, and the docs may not bring a quality/ or how/ of
           # their own; either is refused, so the two can never be silently
@@ -657,7 +657,7 @@ jobs:
           # assets/ or Parquet, a recorded --vars, and coordinate-shaped text
           # (it says what it searches for, and the one place it allows it),
           # and with --served a script, worker or WASM file from another
-          # origin (decision 93: the page runs on the app's origin). It reads
+          # origin (the page runs on the app's origin). It reads
           # data/quality/ too, which holds none of those.
           if [ -e _site/data ]; then
             strays=$(find _site/data -mindepth 1 -maxdepth 1 ! -name quality ! -name how -printf '%f ')
@@ -787,7 +787,7 @@ jobs:
           path: _site/app
           retention-days: 7
 
-  # The second half of decision 144 (pipeline/ELT.md): the data docs on a
+  # The data docs on a
   # host of their own, docs.ourhike.org, so that nothing on the app's origin
   # runs dbt's page or DuckDB-WASM. The Cloudflare Pages project and its
   # custom domain are the maintainer's to create (LAUNCH_CHECKLIST.md 3c), and

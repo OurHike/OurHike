@@ -1106,7 +1106,7 @@ def test_a_trail_that_only_touches_at_a_point_stays_open(tmp_path, monkeypatch):
 
 
 def test_a_trail_along_the_edge_of_a_closed_area_stays_open(tmp_path, monkeypatch):
-    """Decision 213, rule 6 ("Only inside closes"): a trail lying within AREA_EDGE_M (2 m) of the closed area's outline
+    """A trail lying within AREA_EDGE_M (2 m) of the closed area's outline
     runs along its edge, not inside it, so it ships open, whole. 0.00001 degrees of longitude is 0.84 m at this
     latitude; the trail beside it 0.0001 in (8.4 m) is inside, and closes."""
     along_the_west_edge = [(-74.09999, 41.21), (-74.09999, 41.29)]

@@ -86,7 +86,7 @@ def test_each_line_lands_once_with_its_box_at_the_phone_files_five_decimals_orde
 
 
 def test_the_release_artifacts_read_are_every_line_a_phone_draws_the_at_among_them():
-    """Decision 192: the A.T.'s own trails.geojson beside the nearby trail lines, and a schema past the one that held
+    """The A.T.'s own trails.geojson beside the nearby trail lines, and a schema past the one that held
     no A.T. line, so a file prepared before the decision is never read as one prepared after it."""
     assert prepare.SOURCE_KEYS == ("nearby_trails.geojson", "trails.geojson")
     assert prepare.SCHEMA >= 2

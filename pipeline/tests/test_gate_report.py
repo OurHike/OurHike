@@ -1,4 +1,4 @@
-"""gate_report.py and parity.py --json-dir: decision 30's one answer per R2 key, from the shadow run's results."""
+"""gate_report.py and parity.py --json-dir: the gate's one answer per R2 key, from the shadow run's results."""
 
 import json
 from pathlib import Path
@@ -50,7 +50,7 @@ def test_parity_json_names_every_field_of_a_record_the_new_path_loses(monkeypatc
 
 
 def test_parity_json_names_the_record_an_exact_copy_copies_and_the_fields_they_differ_on(monkeypatch, tmp_path):
-    """Standard S3's two facts (result_document()): the record on the other side an exact copy copies, and the field
+    """The exact-copy standard's two facts (result_document()): the record on the other side an exact copy copies, and the field
     paths the two differ on. Here the copy differs from its partner in its key alone, then in a capacity the dbt
     writer changed too. A difference no exact-copy reason explains, and a partner its side lacks, get neither, and
     --keys-only keeps both facts while it drops every record."""
@@ -207,14 +207,14 @@ def test_a_keys_only_result_says_its_records_were_withheld_and_which_side_lacks_
 
 
 def test_an_explained_safety_difference_is_listed_for_approval_on_its_own_row():
-    explained = {**_difference("properties.confidence"), "reason": "expected by decision 40"}
+    explained = {**_difference("properties.confidence"), "reason": "expected, an exact copy"}
     rows, _, _ = key_rows(TODAY, DBT, {"poi_water": _result("poi_water", "poi_water.geojson", explained=[explained])})
     water = next(row for row in rows if row.key == "poi_water.geojson")
     assert (water.verdict, water.safety) == ("equal_apart_from_listed", ["confidence"])
     assert water.listed[0].open_because == "it changes confidence, and its reason is not an exact copy's"
 
 
-# --- standard S3: which listed differences come to the maintainer -----------------------------------------------
+# --- the exact-copy standard: which listed differences come to the maintainer -----------------------------------------------
 
 #: The changed fields of monthly run 31's two exact-copy groups and its seasonal taps, as its keys-only results list
 #: them (field names only, read 2026-10-11 from the run's parity artifact): a restroom copy and a line copy today's
@@ -266,7 +266,7 @@ def _nearby(poi: list[dict], trails: list[dict]) -> dict:
 
 
 def test_an_explained_difference_on_no_safety_field_is_accepted_without_row_review():
-    renamed = _explained("properties.id x", ["properties.name"], "expected by decision 40", held_by="new")
+    renamed = _explained("properties.id x", ["properties.name"], "expected, an exact copy", held_by="new")
     row = _nearby([renamed], [])["nearby_poi.geojson"]
 
     assert (row.verdict, row.safety, row.safety_accepted, row.listed[0].open_because) == (
@@ -278,7 +278,7 @@ def test_an_explained_difference_on_no_safety_field_is_accepted_without_row_revi
 
 
 def test_an_exact_copy_carrying_its_originals_safety_values_is_accepted_without_row_review():
-    """Standard S3: a restroom copy staging removed, whose kept copy the dbt writer publishes with the same confidence,
+    """A restroom copy staging removed, whose kept copy the dbt writer publishes with the same confidence,
     differs from it in ids and site alone, so a hiker sees the same value and no row comes to the maintainer."""
     copy = _explained(
         "properties.id nyc_public_restrooms:row-b",
@@ -293,10 +293,10 @@ def test_an_exact_copy_carrying_its_originals_safety_values_is_accepted_without_
     assert (row.safety, row.safety_accepted, row.listed[0].open_because) == ([], ["confidence"], None)
     markdown = gate_report.render_markdown(list(rows.values()), [], [], {"parity_dir": "d", "dbt_manifest": "m", "results": 2})
     (line,) = [line for line in markdown.split("\n") if "row-b" in line]
-    assert "accepted without row review by standard S3" in line
+    assert "accepted without row review by the exact-copy standard" in line
     assert "approve each row" not in line and "**safety" not in line
     assert "and 0 more carry an explained difference on one that stays open" in markdown
-    assert "1 explained difference(s) on a safety field are accepted without row review by standard S3" in markdown
+    assert "1 explained difference(s) on a safety field are accepted without row review by the exact-copy standard" in markdown
 
 
 def test_an_exact_copy_whose_safety_value_differs_from_its_originals_stays_open_and_names_it():
@@ -323,7 +323,7 @@ def test_an_exact_copy_whose_safety_value_differs_from_its_originals_stays_open_
 
 
 def test_an_exact_copy_parity_names_no_original_for_stays_open():
-    """A result written before S3, or a partner parity.py could not find once on its side, carries no partner: what a
+    """A result written before the exact-copy standard, or a partner parity.py could not find once on its side, carries no partner: what a
     hiker sees is unread, so the row stays open rather than being accepted on the reason's word."""
     copy = _explained("properties.id nyc_public_restrooms:row-b", RESTROOM_COPY_FIELDS, parity.POI_REASONS["exact_copy"])
     row = _nearby([copy], [])["nearby_poi.geojson"]
@@ -333,7 +333,7 @@ def test_an_exact_copy_parity_names_no_original_for_stays_open():
 
 
 def test_a_copy_on_a_safety_field_another_reason_explains_stays_open_whatever_its_partner():
-    """Only an exact-copy reason can accept a safety field: decision 65's taps carry a new confidence, which is a value
+    """Only an exact-copy reason can accept a safety field: the seasonal taps carry a new confidence, which is a value
     a hiker sees change, so naming a partner does not accept them."""
     tap = _explained(
         "properties.id oprhp_facilities:13789",
@@ -350,9 +350,9 @@ def test_a_copy_on_a_safety_field_another_reason_explains_stays_open_whatever_it
 
 
 def test_monthly_run_31s_two_copy_groups_are_accepted_and_its_seasonal_taps_still_come_to_the_maintainer():
-    """Run 31's safety-field groups as S3 reads them once parity.py names each copy's partner: nearby_poi's 2 NYC
+    """Run 31's safety-field groups as the exact-copy standard reads them once parity.py names each copy's partner: nearby_poi's 2 NYC
     restroom copies on confidence and nearby_trails' 57 copied lines on trail_status pass without row review (a line
-    copy differs from the line the dbt writer keeps in its id alone); decision 65's 105 taps change a confidence a
+    copy differs from the line the dbt writer keeps in its id alone); the 105 seasonal taps change a confidence a
     hiker sees and stay open, so nearby_poi.geojson still carries an open safety flag and nearby_trails.geojson none."""
     restrooms = [
         _explained(
@@ -388,8 +388,10 @@ def test_monthly_run_31s_two_copy_groups_are_accepted_and_its_seasonal_taps_stil
     assert all(item.open_because is None for item in trails.listed)
     assert (trails.safety, trails.safety_accepted) == ([], ["trail_status"])
     markdown = gate_report.render_markdown(list(rows.values()), [], [], {"parity_dir": "d", "dbt_manifest": "m", "results": 2})
-    assert "59 explained difference(s) on a safety field are accepted without row review by standard S3" in markdown
-    assert "### `nearby_trails.geojson`\n" in markdown, "no safety flag on a key whose only safety rows S3 accepts"
+    assert "59 explained difference(s) on a safety field are accepted without row review by the exact-copy standard" in markdown
+    assert "### `nearby_trails.geojson`\n" in markdown, (
+        "no safety flag on a key whose only safety rows the exact-copy standard accepts"
+    )
 
 
 def test_the_exact_copy_reasons_are_the_two_staging_dedupe_reasons_and_each_family_giving_one_names_its_partner():
@@ -439,7 +441,7 @@ def test_two_files_with_no_records_are_not_compared_unless_the_family_may_be_emp
     }
     rows = {row.key: row for row in key_rows(today, dbt, results)[0]}
 
-    # Decision 162: work projects' reviewed file is empty on purpose, so it may compare empty too.
+    # Work projects' reviewed file is empty on purpose, so it may compare empty too.
     work = rows["conditions/work_projects.json"]
     assert (work.verdict, work.blocks_go) == ("equal_apart_from_listed", False)
     assert "#760" in next(item.reason for item in work.listed if item.what == "records")
@@ -461,7 +463,7 @@ def test_only_the_poi_types_export_poi_may_publish_empty_and_three_conditions_fa
 
 
 def test_an_empty_conditions_family_counts_only_while_ci_compares_its_writer_on_rows(tmp_path, monkeypatch):
-    """Decisions 162 and 199: an hour of the soak that compared two empty conditions/closures.json,
+    """An hour of the soak that compared two empty conditions/closures.json,
     conditions/reports.json or conditions/work_projects.json files counts, because CI's fixture families compare each
     writer on rows each time pipeline-tests.yml's dbt job runs. So the fixtures keep a row each family publishes, and
     the parity step keeps all three lines: without either, nothing would compare that writer on a row while the empty
@@ -625,11 +627,11 @@ def test_main_writes_both_files_and_exits_2_without_results(tmp_path, capsys):
     page = summary.read_text()
     assert page.startswith("| family | status |\n### The gate's per-key report\n")
     assert f"- {len(report['keys'])} keys today's pipeline publishes: 1 differs, 0 not_compared, " in page
-    assert "- **1 block go** on this report's own reading of decision 30, for the maintainer to confirm." in page
+    assert "- **1 block go** on this report's own reading of the gate, for the maintainer to confirm." in page
 
 
 def test_a_record_from_a_source_todays_exporters_never_read_is_listed_once_as_new_data():
-    """Decision 31's new data: parity explains it, and the report lists it by reason, with no field called changed and
+    """New data: parity explains it, and the report lists it by reason, with no field called changed and
     no safety flag, because there is no old record to approve it against; new_data_report.py reviews it."""
     new_data = [
         {

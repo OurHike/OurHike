@@ -2,9 +2,8 @@
 
 `PHONE_FILES` chooses which pipeline writes a leg's phone files: `exporters`,
 today's Python bake, or `dbt`, pipeline/ELT.md's hourly lane (dlt into the raw
-store, then the closures and warnings marts and their pub_ writers). Decision
-92 (the maintainer's poll, 2026-10-06, answering ELT.md's open question 4:
-"UA on dbt, prod on exporters") made it one setting per environment, at the
+store, then the closures and warnings marts and their pub_ writers). The
+maintainer (2026-10-06: "UA on dbt, prod on exporters") made it one setting per environment, at the
 top of the workflow: `UA_PHONE_FILES: dbt`, so UA's scheduled leg keeps the
 dbt path the soak ran, and `PRODUCTION_PHONE_FILES: exporters` until the
 cutover, which is changing that one line. A dispatch's `phone_files` wins for
@@ -32,7 +31,7 @@ PATHS = ("exporters", "dbt")
 #: The dispatch's `phone_files` choice that leaves each leg on its own line, as the schedule does.
 SCHEDULED = "scheduled"
 CHOOSE_STEP = "Choose which pipeline writes this leg's phone files"
-#: Each environment's line, as decision 92 set them on 2026-10-06.
+#: Each environment's line, as the maintainer set them on 2026-10-06.
 SETTINGS = {"production": ("PRODUCTION_PHONE_FILES", "exporters"), "ua": ("UA_PHONE_FILES", "dbt")}
 
 
@@ -90,11 +89,10 @@ def _phone_files(
 
 
 def test_the_schedule_runs_uas_leg_on_the_dbt_path_and_productions_on_the_exporters(tmp_path):
-    """Decision 92: UA's scheduled leg keeps the soak's dbt path on main's code, and production's keeps today's bake
+    """UA's scheduled leg keeps the soak's dbt path on main's code, and production's keeps today's bake
     until the cutover. Before it, one workflow-wide `inputs.phone_files || 'exporters'` put both scheduled legs on
     the exporters, so after the merge no schedule ran the dbt path and UA's conditions/notices.json and
-    hazard_areas.json, which only dbt writes, froze (review finding ARC-2 of PR #1805 — dlt → dbt re-platform as one
-    go/no-go change)."""
+    hazard_areas.json, which only dbt writes, froze."""
     assert _phone_files(tmp_path, "ua") == "dbt", "UA's scheduled leg runs today's bake, so nothing rewrites its dbt files"
     assert _phone_files(tmp_path, "production") == "exporters", "production's scheduled leg left the exporters"
 
@@ -154,7 +152,7 @@ def test_a_line_that_names_neither_path_stops_its_leg_before_either_path_runs(tm
 
 def test_a_scheduled_production_leg_on_the_exporters_never_reads_a_notices_copy_so_no_notices_step_turns_it_red(tmp_path):
     """extract-notices.yml skips its production leg while production is on the exporters, so production's
-    notices store has no copy, which decision 96 counts as overdue. The production leg must not go red for a copy it
+    notices store has no copy, which counts as overdue after 8 hours. The production leg must not go red for a copy it
     never reads: on the exporters path the notices read is skipped, a skipped step has no outputs, and every step that
     reads them, the red ones among them, evaluates false."""
     from test_conditions_production_leg_needs_main import _evaluate
@@ -238,7 +236,7 @@ def test_a_failed_history_restore_still_publishes_and_then_turns_the_run_red():
 def test_a_build_that_held_a_source_or_a_writer_back_still_publishes_and_then_turns_the_run_red(
     tmp_path, status, outcome, outputs
 ):
-    """Decision 81 (the maintainer's poll, 2026-10-05: "Hold that source and publish the rest"): build_marts.py exits
+    """The maintainer, 2026-10-05: "Hold that source and publish the rest". build_marts.py exits
     PARTIAL_EXIT, 5, when the gate held a source for its rows, a per-source model's failure held its source, or some
     writers failed while the rest wrote; 6 is that and a degraded build together. The build step records `partial`
     and carries on, "Publish to R2" tells publish.py so (OURHIKE_BUILD_PARTIAL, which keeps a failed writer's key at the
@@ -282,8 +280,7 @@ def test_build_marts_exit_codes_the_workflow_reads_are_the_ones_it_defines():
 
 #: Today's exporters whose every file a dbt writer writes on the dbt path. There, publish.py's with_dbt_phone_files()
 #: drops each exporter entry whose key a writer owns, so running them asked NWS a second time for its whole active
-#: list, or rebuilt a reviewed file, for an entry thrown away (review finding ARC-10 of PR #1805 — dlt → dbt
-#: re-platform as one go/no-go change).
+#: list, or rebuilt a reviewed file, for an entry thrown away.
 DBT_OWNED_EXPORTERS = ("export_weather_alerts.py", "export_work_projects.py")
 #: export_conditions.py's four files (the `written` list in its main()).
 CONDITIONS_EXPORTS = ("closures", "reports", "notes", "disputes")
@@ -329,7 +326,7 @@ def test_an_exporter_whose_every_file_a_dbt_writer_writes_runs_on_the_exporters_
 
 
 def test_export_conditions_runs_on_both_paths_because_no_dbt_writer_writes_its_notes_or_disputes():
-    """Its closures and reports are thrown away on the dbt path, as ARC-10 says, and its notes and disputes are not:
+    """Its closures and reports are thrown away on the dbt path, as above, and its notes and disputes are not:
     the dbt path publishes those two from it (no mart owns field notes, WN11), so the step runs on both paths."""
     writers = _conditions_keys_with_a_writer()
     assert [kind for kind in CONDITIONS_EXPORTS if not writers.get(f"conditions/{kind}.json")] == ["notes", "disputes"]

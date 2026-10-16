@@ -153,7 +153,7 @@ def test_a_closed_trail_is_never_routable_and_the_refusal_is_counted():
 
 
 def test_a_club_line_is_drawn_and_never_an_edge():
-    """Decision 64: nearby_trails.geojson carries the clubs' own lines with `line_kind` 'club', and none routes,
+    """nearby_trails.geojson carries the clubs' own lines with `line_kind` 'club', and none routes,
     even where it meets a network line end to end, until a dedupe step has checked it against the network."""
     network = _feature([(LON, LAT), (LON + 0.01, LAT)])
     club = _feature(

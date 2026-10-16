@@ -182,7 +182,7 @@ def test_a_workflow_that_dispatches_a_publishing_path_is_one_and_its_scope_holds
 
 
 def test_the_hourly_checks_are_a_publishing_path_the_hourly_bake_dispatches_and_its_schedule_reruns():
-    """Decision 110: check-conditions.yml puts conditions/data_quality.json in place with `publish.py --sidecar`, and
+    """check-conditions.yml puts conditions/data_quality.json in place with `publish.py --sidecar`, and
     publish-conditions.yml's `checks` job starts it after every build with `gh workflow run`, so a change to what the
     checks run stales both, and the bake's own schedule reruns both from main."""
     scopes = _load_scopes_module()

@@ -1,4 +1,4 @@
-"""prune_raw_store.py, decision 205's retention step, end to end on a local raw store: real dlt, real pins and the
+"""prune_raw_store.py, the raw store's retention step, end to end on a local raw store: real dlt, real pins and the
 as-landed files they copy, stored warehouses, row-history saves, and each environment's latest.json on a local public
 bucket.
 

@@ -3,7 +3,7 @@
 # (steps/raw_inputs/<raw_run>/), the dbt writers' files are staged as a UA
 # release, UA is read back, and today's exporters are compared with the dbt
 # writers on the same pin. Cut out of refresh-reference.yml by
-# the maintainer's choice B (poll, 2026-10-08), and that file's header says
+# the maintainer's choice (2026-10-08), and that file's header says
 # why. Its dispatch job starts this one after each pin, and a person can
 # start it on any raw_run that has a pin, so a fix is tried on real monthly
 # data without paying for a new extract:
@@ -14,7 +14,7 @@
 # the branch whose code should build it. pipeline/ELT.md, "Rebuilding from a
 # pin", says what that costs and what it does not carry. Once UA serves what
 # it built, that run deletes what the retention step no longer needs, as
-# every run does by default since decision 207; `-f retention=list` lists it
+# every run does by default; `-f retention=list` lists it
 # and deletes nothing.
 #
 # NOTHING HERE CAN REACH PRODUCTION (ELT.md, "Why a scheduled run cannot
@@ -45,14 +45,13 @@
 #            group of families per runner (pipeline/parity_lane.py).
 #   parity-report  No credential. Joins the groups' answers into the one
 #            `monthly-parity` artifact and writes the gate's per-key report,
-#            and decision 31's new-data review report from the counts the
+#            and the new-data review report from the counts the
 #            build job took of its warehouse (`monthly-new-data-report`), each
 #            with its counts on the run's page.
-#   maintain R2_RAW_* only. Decision 205's retention step
+#   maintain R2_RAW_* only. The retention step
 #            (pipeline/prune_raw_store.py): once confirm has passed, or alone
 #            under retention_only, lists what the raw store keeps and why and
-#            what it no longer needs, and deletes that unless retention=list
-#            (decision 207 made delete the default).
+#            what it no longer needs, and deletes that unless retention=list.
 name: Build reference data from a pin
 
 # The raw_run in every run's title, so the run list says which pin each
@@ -69,10 +68,9 @@ on:
   # could name an environment: the raw_run, and the retention step's two
   # switches, each with a default, so refresh-reference.yml's dispatch,
   # which passes the raw_run alone, builds and then deletes what the raw
-  # store no longer needs: decision 207, the maintainer's poll of
-  # 2026-10-15, "Yes, delete each month". Each run keeps what is served,
-  # one pin back and the monthly row history's 3 saves (decisions 205 and
-  # 206); a person who wants the list without the delete passes
+  # store no longer needs (the maintainer, 2026-10-15: "Yes, delete each
+  # month"). Each run keeps what is served, one pin back and the monthly row
+  # history's 3 saves; a person who wants the list without the delete passes
   # retention=list.
   workflow_dispatch:
     inputs:
@@ -111,7 +109,7 @@ permissions:
 env:
   PYTHONUNBUFFERED: "1"
   # dlt's telemetry is on by default and would send from a job holding R2
-  # write keys (the dlt skill, rule 3). Every job here inherits this.
+  # write keys (the dlt skill). Every job here inherits this.
   RUNTIME__DLTHUB_TELEMETRY: "false"
   # dbt's documented opt-out, and the only switch set (pipeline-tests.yml's
   # dbt job says why: the dbt Product Licensing Agreement, section 3.2).
@@ -265,16 +263,14 @@ jobs:
           fi
           exit 1
 
-      # The dbt generators' output, which is not committed (pipeline/ELT.md
-      # decision 91), written before any dbt command reads the project, on
+      # The dbt generators' output, which is not committed, written before any dbt command reads the project, on
       # the extract's venv: the generators read its club folders, whose
       # modules import dlt.
       - name: Generate the dbt models (generate_dbt.py)
         run: '"$RUNNER_TEMP/extract/bin/python" generate_dbt.py'
 
       # dbt's packages: pipeline-tests.yml's dbt job explains the key, why a
-      # hit skips deps, and why only a deps that succeeded is saved (ARCH-6 of
-      # the PR #1805 review).
+      # hit skips deps, and why only a deps that succeeded is saved.
       - name: Restore dbt's packages
         id: dbt-packages
         uses: actions/cache/restore@v6
@@ -303,7 +299,7 @@ jobs:
           key: dbt-packages-${{ runner.os }}-${{ hashFiles('pipeline/dbt/packages.yml', 'pipeline/dbt/package-lock.yml') }}
 
       # THE EPQS ANSWERS AND THE DEM SAMPLES, carried from one attempt to the
-      # next (ARC-3 of PR #1805's second review). Without them every attempt
+      # next. Without them every attempt
       # re-asked USGS EPQS about the same 3,118 corridor OSM water points, for
       # 21 to 54 min (the job's budget above), and an EPQS outage would leave
       # fewer than build_osm_water_reach.py's MIN_REACHABLE (40) points
@@ -382,8 +378,7 @@ jobs:
       # file's added, though that file's pass runs after them
       # (build_marts.py's docstring, "THE DATA-QUALITY FILE IS WRITTEN
       # LAST"). Before that pass it runs `dbt source freshness` over the
-      # monthly lane's sources, 472 (Measured 2026-10-15, dbt ls) (decision 203:
-      # how long since this lane's extract last read each one or confirmed
+      # monthly lane's sources, 472 (Measured 2026-10-15, dbt ls): how long since this lane's extract last read each one or confirmed
       # it unchanged, warning at 35 days and red at 62), which the monthly
       # data-quality page records and which never fails this step
       # (build_marts.py's docstring, "EACH SOURCE'S FRESHNESS IS MEASURED FOR
@@ -400,21 +395,20 @@ jobs:
       # empty prefix once row_history_stores.toml lists `monthly`, stops the
       # build before dbt runs, so no run silently dates every row as new.
       #
-      # A FAILURE HOLDS WHAT IT REACHES AND THE REST PUBLISHES (decision 204,
-      # the maintainer, 2026-10-15: "prod environment should ignore those, dev
-      # & ci should not"; "Build as proposed", his poll answer the same day).
+      # A FAILURE HOLDS WHAT IT REACHES AND THE REST PUBLISHES (the maintainer,
+      # 2026-10-15: "prod environment should ignore those, dev & ci should
+      # not").
       # OURHIKE_DATA_ENV=ua is UA's switch for dbt_project.yml and
       # build_marts.py: a failing test warns and dbt builds below it, a test
       # past its own error threshold is reported as an error, and a failure
       # dbt still raises (a writer's test, a unit test, a contract, a test at
       # `severity: error`, a step) holds what it reaches, so each writer below
       # keeps its last file. build_marts.py then exits PARTIAL_EXIT, 5, as it
-      # does for decision 81's held source or failed writer. This step records
+      # does for a held source or a failed writer. This step records
       # `partial` and succeeds, "Publish to UA" keeps a failed writer's key
       # at the bucket's last copy (OURHIKE_BUILD_PARTIAL), and the last job
       # turns the run red after the publish, as publish-conditions.yml does.
-      # Until decision 204 an exit of 5 failed this step, and UA got no
-      # monthly release at all. Any other exit still stops the build.
+      # Any other exit still stops the build.
       - name: dbt build, the Python steps and the pub_ writers (build_marts.py --lane monthly)
         id: build-marts
         env:
@@ -677,7 +671,7 @@ jobs:
           raise SystemExit(1 if wrong else 0)
           PY
 
-  # Last, after the publish, for decision 204: what the build held back did
+  # Last, after the publish: what the build held back did
   # not hold back the files that were written, and the run still goes red for
   # it. The build step's log names each failure and what it held, and the run
   # summary lists them.
@@ -978,9 +972,9 @@ jobs:
   #   gh workflow run build-reference.yml --ref <branch> -f raw_run=<UA's raw_run> -f retention_only=true -f retention=list
   #   gh workflow run build-reference.yml --ref <branch> -f raw_run=<UA's raw_run> -f retention_only=true
   #
-  # the first to read the list, the second to delete it. Decision 205's
-  # one-time cleanup went that way: run 3 listed, and run 4 deleted once the
-  # maintainer had read the list (2026-10-15, pipeline/ELT.md's row 205).
+  # the first to read the list, the second to delete it. The first cleanup
+  # went that way: run 3 listed, and run 4 deleted once the maintainer had
+  # read the list (2026-10-15).
   #
   # IN raw-lake-monthly, as every job here (the workflow's group), so no run
   # of this file, refresh-reference.yml or purge-person-fields.yml can be

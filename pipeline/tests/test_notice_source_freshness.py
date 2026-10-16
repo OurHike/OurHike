@@ -1,6 +1,6 @@
 """Every notice source's dbt freshness reads the extract's run log, and errors once it has gone unread too long.
 
-Decision 100 (the maintainer's poll of 2026-10-07): a notice source refused
+The maintainer, 2026-10-07: a notice source refused
 by its host is a warning on the extract run, and dbt's source freshness turns
 it red once it has gone 24 hours without being read or confirmed unchanged.
 tests/test_dbt_notice_source_freshness_runs.py runs dbt on that rule; this
@@ -12,12 +12,12 @@ file holds, without dbt, that every source the rule covers carries it:
   `_loaded_at`, which a FRESH check leaves at its last load;
 - each errors after FRESHNESS_HOURS for its cadence, and a source whose
   sources.json row says reaches_hikers false warns as they do and errors
-  only after generate_notice_models.py's UNSHIPPED_ERROR_DAYS (decision 204:
-  every test has both thresholds), as extract/_run.py's quiet_refusals()
+  only after generate_notice_models.py's UNSHIPPED_ERROR_DAYS (every test
+  has both thresholds), as extract/_run.py's quiet_refusals()
   keeps its refusal from failing the run;
   the one monthly notice source warns and errors after make_dbt_staging.py's
-  MONTHLY_FRESHNESS_DAYS, as every monthly source does (decision 203,
-  tests/test_source_freshness.py);
+  MONTHLY_FRESHNESS_DAYS, as every monthly source does
+  (tests/test_source_freshness.py);
 - each is tagged with the job whose run log measures it, which is how
   publish-conditions.yml's freshness step selects them.
 
@@ -78,11 +78,11 @@ def test_a_daily_sources_thresholds_are_the_hourly_ones_plus_the_day_it_waits_to
     healthy one goes unread by design are added to the hourly sources' thresholds, never counted against it."""
     day = DUE_AFTER["daily"].total_seconds() / 3600
     assert generator.FRESHNESS_HOURS["daily"] == tuple(hours + day for hours in generator.FRESHNESS_HOURS["hourly"])
-    assert generator.FRESHNESS_HOURS["hourly"][1] == 24, "decision 100's 24 hours"
+    assert generator.FRESHNESS_HOURS["hourly"][1] == 24, "a notice source is red after 24 hours unread"
 
 
 def test_nws_alerts_are_red_after_2_hours_unread_and_warn_after_1():
-    """Decision 101 (the maintainer's poll of 2026-10-07: "Both, NWS red after 2 h"): with the hourly runs an hour
+    """The maintainer, 2026-10-07: "Both, NWS red after 2 h". With the hourly runs an hour
     apart, one refused read warns and two in a row are red; the warning is half the error, as FRESHNESS_HOURS has it."""
     assert generator.NWS_FRESHNESS_HOURS == (1, 2)
 
@@ -99,7 +99,7 @@ def test_every_generated_notice_source_measures_from_the_run_log_by_its_cadence(
         # A PDF notice included: CI's freshness leaves it out by its tag, never by dropping its thresholds
         # (tests/test_generated_notice_models.py).
         if source.cadence == "monthly":
-            # Decision 203: every monthly source's pair, USFWS's hunt units' too (tests/test_source_freshness.py).
+            # Every monthly source's pair, USFWS's hunt units' too (tests/test_source_freshness.py).
             expected = tuple(days * 24 for days in make_dbt_staging.MONTHLY_FRESHNESS_DAYS)
         else:
             hours = generator.FRESHNESS_HOURS[source.cadence]
@@ -126,8 +126,8 @@ def test_only_the_notices_jobs_tables_are_tagged_for_its_run_log(tables, resourc
 def test_every_conditions_job_upstream_a_leg_can_refuse_on_its_own_errors_after_24_hours_unread_and_nws_after_2(
     tables, resources
 ):
-    """The hourly run's extract refusal is a warning since decision 101 (the maintainer's poll of 2026-10-07: "Both,
-    NWS red after 2 h"), for these as for the notices job's sources under decision 100, so each carries the red in
+    """The hourly run's extract refusal is a warning (the maintainer, 2026-10-07: "Both, NWS red after 2 h"), for
+    these as for the notices job's sources, so each carries the red in
     freshness: 24 hours unread, NWS's alerts 2 (NWS_FRESHNESS_HOURS). OurHike's own Postgres rows are not among them:
     a failed read of those stops the whole leg (extract/_run.py's stops_the_leg()), which is red at once."""
     by_table = {resource.table: resource for resource in resources}

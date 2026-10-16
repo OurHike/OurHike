@@ -1,7 +1,7 @@
 """build-reference.yml, the monthly lane's build from a pin: it builds only from a raw_run that has one, nothing in it
 can reach production, and each job holds only its own keys.
 
-The maintainer's choice B (poll, 2026-10-08) cut the build, publish, confirm
+The maintainer's choice (2026-10-08) cut the build, publish, confirm
 and parity jobs out of refresh-reference.yml, so that a fix to a build that
 failed after a good extract can be tried on that extract's pin without paying
 for another (refresh-reference.yml's header has the run 29 times). What this
@@ -76,8 +76,8 @@ def refresh() -> dict:
 def test_it_runs_only_on_a_dispatch_whose_inputs_are_the_raw_run_and_the_retention_steps_two_switches(workflow):
     """No schedule (the lane's clock is refresh-reference.yml's) and no input that could name an environment. The
     retention step's two have defaults, so refresh-reference.yml's dispatch, which passes the raw_run
-    alone, builds and then deletes what the raw store no longer needs: decision 207, the maintainer's poll of
-    2026-10-15, "Yes, delete each month". `retention: list` is how a person asks for the list alone."""
+    alone, builds and then deletes what the raw store no longer needs (the maintainer, 2026-10-15, "Yes, delete
+    each month"). `retention: list` is how a person asks for the list alone."""
     triggers = _triggers(workflow)
 
     assert set(triggers) == {"workflow_dispatch"}
@@ -85,7 +85,7 @@ def test_it_runs_only_on_a_dispatch_whose_inputs_are_the_raw_run_and_the_retenti
     assert set(inputs) == {"raw_run", "retention", "retention_only"}
     assert inputs["raw_run"]["required"] is True and inputs["raw_run"]["type"] == "string"
     assert inputs["retention"]["type"] == "choice" and inputs["retention"]["options"] == ["list", "delete"]
-    assert inputs["retention"]["default"] == "delete", "decision 207: every monthly run deletes what it no longer needs"
+    assert inputs["retention"]["default"] == "delete", "every monthly run deletes what it no longer needs"
     assert inputs["retention_only"] == {**inputs["retention_only"], "type": "boolean", "default": False}
 
 
@@ -319,7 +319,7 @@ def test_the_build_holds_the_steps_from_the_warehouse_on_and_none_of_the_pins(wo
     moved = [
         "Build the warehouse from the pin",
         "dbt build, the Python steps and the pub_ writers (build_marts.py --lane monthly)",
-        # Not moved: decision 31's new-data counts, added after the split (test_the_new_data_review_*).
+        # Not moved: the new-data counts, added after the split (test_the_new_data_review_*).
         "The new-data review's counts, from the built warehouse (new_data_report.py --facts-out)",
         "Hand the new-data counts on",
         "Save the EPQS answers and the DEM samples",
@@ -357,7 +357,7 @@ def test_the_build_builds_from_the_pin_and_writes_only_under_steps(workflow):
 
 
 def test_the_build_restores_and_saves_the_epqs_answers_and_the_dem_samples_around_build_marts(workflow):
-    """ARC-3 of PR #1805's second review: monthly runs 20, 21 and 22 each asked USGS EPQS about the same 3,118 corridor
+    """Monthly runs 20, 21 and 22 each asked USGS EPQS about the same 3,118 corridor
     OSM water points again, for 21.3, 41.5 and 54.2 min, because nothing carried an answer from one attempt to the next.
     publish-vector-data.yml carries both files in FETCH_OUTPUTS. Restored before build_marts.py and on every run, since
     every run here builds from an existing pin and still grades and samples; saved after build_marts.py, and on a failed
@@ -444,11 +444,11 @@ MONTHLY_BUILD = "dbt build, the Python steps and the pub_ writers (build_marts.p
 def test_a_monthly_build_that_held_part_of_itself_back_publishes_to_ua_and_then_turns_the_run_red(
     workflow, tmp_path, status, outcome, outputs
 ):
-    """Decision 204 (the maintainer, 2026-10-15; "Build as proposed", his poll answer the same day): with
+    """The environment switch (the maintainer, 2026-10-15): with
     OURHIKE_DATA_ENV=ua, build_marts.py exits PARTIAL_EXIT, 5, when it built past an error or held what a failure
-    reaches, as decision 81's held source and failed writer do. The build step records `partial` and succeeds, the
+    reaches, as a held source and a failed writer do. The build step records `partial` and succeeds, the
     publish keeps a failed writer's key at UA's last copy (OURHIKE_BUILD_PARTIAL), and a job after the publish turns
-    the run red. Until decision 204 an exit of 5 failed the step, and UA got no monthly release at all. Any other
+    the run red. Any other
     exit still stops the build: the monthly lane never degrades its history, so 4 and 6 are not its answers. The
     step's own script runs here under bash, with build_marts.py's python a stand-in that answers `status`."""
     from test_notices_job import _base_env, _outputs, _run, _stand_in
@@ -568,7 +568,7 @@ def _run_prune_step(workflow: dict, tmp_path: Path, retention: str) -> list[str]
 
 @pytest.mark.parametrize("retention", ["delete", "list", ""])
 def test_the_retention_step_deletes_only_on_retention_delete_and_lists_on_any_other_value(workflow, tmp_path, retention):
-    """`delete` is the input's default since decision 207; `list`, or a value the step cannot read, lists only."""
+    """`delete` is the input's default; `list`, or a value the step cannot read, lists only."""
     argv = _run_prune_step(workflow, tmp_path, retention)
 
     assert argv[:3] == ["prune_raw_store.py", "--raw-bucket", "our-hike-raw"]
@@ -637,7 +637,7 @@ def _step(job: dict, name: str) -> tuple[int, dict]:
 
 
 def test_the_new_data_review_counts_the_warehouse_this_build_wrote_and_never_holds_up_the_ua_publish(workflow):
-    """Decision 31's report needs the warehouse, which only the build job holds, and every parity group's results,
+    """The new-data report needs the warehouse, which only the build job holds, and every parity group's results,
     which only parity-report holds: the build counts its own warehouse right after build_marts.py writes it, so the
     counts describe the files this run's parity compares, and hands on the counts, never the warehouse."""
     job = workflow["jobs"]["build"]

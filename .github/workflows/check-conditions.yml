@@ -1,13 +1,13 @@
 # Runs every Elementary check of the hourly conditions lane over the
 # warehouse one publish-conditions.yml run built, after that run has
-# published, and puts the lane's data-quality file in place. Decision 110
-# (pipeline/ELT.md), the maintainer's poll of 2026-10-08: "All of them,
-# hourly. build a different workflow that kicks off after the actual build".
+# published, and puts the lane's data-quality file in place. The
+# maintainer, 2026-10-08: "All of them, hourly. build a different workflow
+# that kicks off after the actual build".
 #
 # WHY A WORKFLOW OF ITS OWN. The lane's 1,053 checks take about 7.2 to 10.6
 # minutes on a runner (build_marts.py's docstring, "THE HOURLY LANE'S CHECKS
-# RUN APART", Reasoned from the sandbox's times), and decision 103 gives the
-# whole hourly build step 10 minutes, of which the build took 244.6 s on a
+# RUN APART", Reasoned from the sandbox's times), and the whole hourly build
+# step has 10 minutes, of which the build took 244.6 s on a
 # runner (Measured: publish-conditions.yml run 593's UA leg, 2026-10-08),
 # leaving about 5.9. Run here, after the publish, they can neither delay
 # what a hiker downloads nor turn it red.
@@ -40,7 +40,7 @@
 #      restored alone, from the save the build just made; Elementary's own
 #      tables with the checks' switch; every check the lane has; each
 #      source's freshness, on publish-conditions.yml's own freshness step's
-#      selection (decision 203: how long since the extract last read each
+#      selection (how long since the extract last read each
 #      source or confirmed it unchanged, against its own limits), recorded
 #      on the page and never turning this run red, since that step is the
 #      one that does; the lane's data-quality file, counting
@@ -94,8 +94,7 @@
 # job's step summaries settle a runner's.
 #
 # AND BESIDE THE CHECKS, THE SIX CONDITIONS FILES AGAINST TODAY'S EXPORTERS
-# (pipeline/ELT.md's open question 17, the maintainer's poll of 2026-10-10:
-# "Compare every soak hour"). Each leg's `parity` job takes the comparison
+# (the maintainer, 2026-10-10: "Compare every soak hour"). Each leg's `parity` job takes the comparison
 # bundle its build handed off beside the warehouse: the answers that hour's
 # extract received from NWS and OurHike's Postgres, the ATC and NYNJTC rows
 # the build read, its weather squares and its exit, and the six files its
@@ -110,7 +109,7 @@
 # publisher queued longer each hour, and a queued publisher is what a third
 # entrant cancels with nothing red (#1513 - A queued publish is silently
 # cancelled when another one joins publish-data, and it looks like a green
-# build; review finding 3 of PR #1805 was the same hold). A JOB OF ITS OWN
+# build). A JOB OF ITS OWN
 # beside `check`, not a step of it, so the checks keep every minute of their
 # 25, a difference and a failed check each go red under their own name, and
 # its 10-minute cap, under `check`'s beside it, leaves the sum above as it
@@ -152,14 +151,14 @@ permissions:
 env:
   PYTHONUNBUFFERED: "1"
   # Both off, in every step, as publish-conditions.yml sets them: dlt's
-  # telemetry (the dlt skill, rule 3) and dbt's (the dbt skill, "Telemetry
+  # telemetry (the dlt skill) and dbt's (the dbt skill, "Telemetry
   # off is the only switch").
   RUNTIME__DLTHUB_TELEMETRY: "false"
   DBT_ENGINE_SEND_ANONYMOUS_USAGE_STATS: "false"
-  # Decision 200 (the maintainer's poll of 2026-10-15, "Red if none in 2.5 h"):
+  # The maintainer, 2026-10-15, "Red if none in 2.5 h":
   # a leg whose history store holds no warehouse, or no comparison bundle, put
   # in this many hours goes red; one hour without one is a warning. It is
-  # gate_report.py's SOAK_MAX_GAP_HOURS, decision 158's gap
+  # gate_report.py's SOAK_MAX_GAP_HOURS, the soak's allowed gap
   # (.github/tests/test_check_conditions.py holds them equal), and each take
   # step says how it reads.
   MAX_AGE_HOURS: "2.5"
@@ -359,8 +358,7 @@ jobs:
       # cannot be read, or a torn upload, is red.
       #
       # AND RED WHEN THE STORE HAS HAD NO WAREHOUSE FOR MAX_AGE_HOURS
-      # (the maintainer's poll of 2026-10-15, "Red if none in
-      # 2.5 h"): hand_off.py then exits 5 in place of 4, which ends the leg
+      # (the maintainer, 2026-10-15, "Red if none in 2.5 h"): hand_off.py then exits 5 in place of 4, which ends the leg
       # here, red. One hour without one stays the warning above; this many
       # in a row is a soak that checks nothing, and its routine reads only
       # red or green (hand_off.py, "ONE HOUR WITHOUT ONE IS A WARNING, NONE IN
@@ -413,7 +411,7 @@ jobs:
       # saved in a few: 8.5 to 12 minutes in all. The sources' freshness
       # adds about what publish-conditions.yml's own freshness step takes, 11
       # s for 267 sources in a sandbox (its comment), and its end-of-run hook
-      # writing one row a source; dropping decision 203's 597 learned
+      # writing one row a source; dropping the 597 learned
       # freshness checks took more than that away (0.32 to 0.35 s of CPU a
       # check, build_marts.py's docstring). The step's summary line settles
       # it. A source past its error limit never fails this step:
@@ -424,7 +422,7 @@ jobs:
         timeout-minutes: 20
         env:
           ENVIRONMENT: ${{ matrix.data_environment }}
-          # Decision 204's switch, as the build read it (publish-conditions.yml):
+          # The environment switch, as the build read it (publish-conditions.yml):
           # each check's error is on this run's summary and the page, never its
           # exit, and the project renders as the build's did.
           OURHIKE_DATA_ENV: ${{ matrix.data_environment }}
@@ -601,7 +599,7 @@ jobs:
       # failed take too, then says every family was not compared, and goes
       # red only for a difference. Except exit 5: the store has had no
       # bundle for MAX_AGE_HOURS, or holds none (the
-      # maintainer's poll of 2026-10-15, "Red if none in 2.5 h"), which the
+      # maintainer, 2026-10-15, "Red if none in 2.5 h"), which the
       # last step turns red once this hour's comparison, every file not
       # compared, has been written and uploaded. MAX_AGE_HOURS is the
       # workflow's, at the top of this file.
@@ -641,11 +639,10 @@ jobs:
       # a shared sandbox); the summary's seconds column gives a runner's.
       #
       # EVERY HOUR WHOSE COMPARISON BEGINS LEAVES A run.json, so the gate can
-      # tell it from an hour that never ran (the 2026-10-15 adversarial
-      # review, finding S2-3). `!cancelled()`: a bare `if:` carries an
+      # tell it from an hour that never ran. `!cancelled()`: a bare `if:` carries an
       # implicit success(), so a take its cap stopped skipped
       # this step and the hour left nothing, which gate_report.py read as a
-      # run that never came and decision 158's 2.5 hours absorbed; now this
+      # run that never came and the soak's 2.5-hour gap absorbed; now this
       # step runs, finds TAKEN empty, and says every family was not compared.
       # And hourly_parity.py writes run.json before its first family and
       # after each, so this step's own cap or a crash leaves the family it
@@ -682,7 +679,7 @@ jobs:
           if-no-files-found: error
           overwrite: true
 
-      # Decision 200: red, last, when the take found the store with no bundle
+      # Red, last, when the take found the store with no bundle
       # for MAX_AGE_HOURS, so the hour's not-compared result is written and
       # uploaded first and the soak's routine, which reads only red or green,
       # sees an hourly comparison that has stopped comparing.

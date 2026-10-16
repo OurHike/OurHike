@@ -290,7 +290,7 @@ def test_the_one_object_the_checks_write_is_conditions_data_quality_json_after_t
 
 
 def test_the_checks_run_measures_freshness_only_through_build_marts_so_a_late_source_never_turns_it_red():
-    """Decision 203: the hourly page's freshness is the checks run's `dbt source freshness`, which build_marts.py runs
+    """The hourly page's freshness is the checks run's `dbt source freshness`, which build_marts.py runs
     before the data-quality file, on publish-conditions.yml's own freshness selection (pipeline/tests/
     test_build_marts.py holds the two equal), and whose exit it records and never raises. So this workflow runs no
     freshness of its own: publish-conditions.yml's freshness step is the one that turns an hour red."""

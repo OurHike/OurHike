@@ -17,13 +17,13 @@
 # dlt extracts each leg's closures and warnings into the private raw store,
 # dbt builds those marts and their pub_ writers, and publish.py publishes
 # the writers' files. The exporters still write the files no dbt writer
-# owns yet (drought, notes and disputes among them). ELT.md decisions 30
-# and 46 soaked the dbt path on UA for three days of hourly dispatches
-# before the merge, which is why a dispatch from any ref but main runs the
-# UA leg alone, and decision 92 keeps UA on it from main.
+# owns yet (drought, notes and disputes among them). The dbt path soaked on
+# UA for three days of hourly dispatches before the merge, which is why a
+# dispatch from any ref but main runs the UA leg alone; UA stays on it from
+# main.
 #
-# THE dbt PATH READS TWO STORES SINCE DECISION 61 (2026-10-04). This job's
-# extract keeps the upstreams the bake published before decision 53 (NWS,
+# THE dbt PATH READS TWO STORES. This job's extract keeps the hourly
+# upstreams (NWS,
 # OurHike's own rows, ATC, NYNJTC, OPRHP's closures and the work projects:
 # extract/_run.py's HOURLY_JOB_TABLES), and every other club's and agency's
 # notices are extract-notices.yml's, every 4 hours with up to an hour to
@@ -41,8 +41,8 @@
 #
 # AND THE dbt PATH'S SIX CONDITIONS FILES ARE COMPARED WITH TODAY'S
 # EXPORTERS EVERY HOUR, in check-conditions.yml's `parity` job, which the
-# same dispatch starts beside the checks (pipeline/ELT.md's open question 17,
-# the maintainer's poll of 2026-10-10: "Compare every soak hour"). The
+# same dispatch starts beside the checks (the maintainer, 2026-10-10:
+# "Compare every soak hour"). The
 # extract keeps the answers it received, and the hand-off step puts them in
 # the leg's private history store with what the build read and wrote. Here,
 # nothing more: the comparison runs in no job of this file, so it can
@@ -92,7 +92,7 @@
 # rows are not what a tester rehearses moderation against. That isolation is
 # real, and it is why the UA test closure below was never a production risk -
 # but it is not a licence to leave invented rows in UA either, because a UA
-# tester reading a map is reading a map. Maintainer decision 2026-09-09 took
+# tester reading a map is reading a map. The maintainer (2026-09-09) took
 # the work-projects samples out of the reviewed file this workflow bakes; the
 # one invented row the repository cannot reach from here is
 # `ua-test-closure-verified` in the UA conditions database, which is a DELETE
@@ -232,8 +232,8 @@ on:
     # to reach a hiker's phone the same afternoon, and nothing here polls
     # minute by minute. The measurement below says the afternoon is not
     # promised - a verification just after a run can wait ~6 h - and the
-    # maintainer accepted that rather than add an outside trigger (poll,
-    # 2026-09-25, #1316).
+    # maintainer accepted that rather than add an outside trigger (2026-09-25,
+    # #1316).
     #
     # It only means anything because the client re-reads on the same clock.
     # Both condition reads used to run once per online transition, so an
@@ -286,9 +286,8 @@ env:
   PYTHONUNBUFFERED: "1"
   # THE CUTOVER SWITCH, ONE LINE PER DATA ENVIRONMENT: which pipeline
   # writes that leg's phone files on every scheduled run, and on a dispatch
-  # left at `phone_files: scheduled`. Decision 92 (the maintainer's poll,
-  # 2026-10-06, answering pipeline/ELT.md's open question 4): "UA on dbt,
-  # prod on exporters". So UA's leg keeps the dbt path its soak ran, now on
+  # left at `phone_files: scheduled`. The maintainer, 2026-10-06: "UA on
+  # dbt, prod on exporters". So UA's leg keeps the dbt path its soak ran, now on
   # main's code, a further probation; production's keeps today's bake until
   # the cutover.
   #
@@ -307,8 +306,8 @@ env:
   PRODUCTION_PHONE_FILES: exporters
   UA_PHONE_FILES: dbt
   # Both off, in every step: dlt's telemetry is on by default and sends to
-  # telemetry.scalevector.ai from a job holding R2 keys (the dlt skill, rule
-  # 3), and this is dbt's documented opt-out (the dbt skill, "Telemetry off
+  # telemetry.scalevector.ai from a job holding R2 keys (the dlt skill), and
+  # this is dbt's documented opt-out (the dbt skill, "Telemetry off
   # is the only switch").
   RUNTIME__DLTHUB_TELEMETRY: "false"
   DBT_ENGINE_SEND_ANONYMOUS_USAGE_STATS: "false"
@@ -317,9 +316,8 @@ jobs:
   publish:
     name: Publish (${{ matrix.data_environment }})
     runs-on: ubuntu-latest
-    # 16 since decision 201 (pipeline/ELT.md; the maintainer's poll of
-    # 2026-10-15, "Job cap 16 minutes"), 15 since decision 103 raised the
-    # build step's own cap from 6 to 10 minutes, which stays.
+    # 16 minutes (the maintainer, 2026-10-15), with the build step's own cap
+    # at 10.
     # .github/tests/test_conditions_build_budget.py holds the build's cap, the
     # trail lines' restore's and the freshness step's, all at once, with the
     # slowest measured rest of the job, inside this one: 600 + 60 + 60 + 213
@@ -329,7 +327,7 @@ jobs:
     # SAME_BUILD_MS is this number by its own reasoning, and moved with it.
     timeout-minutes: 16
     # NO GROUP OF THE LEG'S OWN beside the workflow's publish-data, which
-    # holds the whole run. From decision 110 each leg held
+    # holds the whole run. Each leg once held
     # conditions-history-<leg> with check-conditions.yml's leg, so a build
     # waited for the last build's checks; but GitHub keeps one pending run per
     # group, so a checks run arriving while a leg waited there took its slot
@@ -535,8 +533,8 @@ jobs:
 
       # THE dbt PATH NEEDS THE RAW STORE AND THIS LEG'S DATABASE, and names
       # whichever is missing. The raw store's secrets are set: this step
-      # passed on run 481, 2026-10-02 (ELT.md decision 43: one bucket,
-      # `our-hike-raw`, one key, R2_ENDPOINT_URL reused). Today's bake skips
+      # passed on run 481, 2026-10-02 (one bucket, `our-hike-raw`, one key,
+      # R2_ENDPOINT_URL reused). Today's bake skips
       # its database half with a warning when there is no database; the dbt
       # path reads OurHike's own closures as a source, so it fails here,
       # before reading anything.
@@ -578,7 +576,7 @@ jobs:
           key: dbt-v2-runtime-${{ runner.os }}-${{ hashFiles('pipeline/requirements-dbt.txt') }}
 
       # dbt's packages, so an hourly run does not need dbt Hub and
-      # codeload.github.com up at its minute (ARCH-6 of the PR #1805 review).
+      # codeload.github.com up at its minute.
       # pipeline-tests.yml's dbt job explains the key, why a hit skips deps,
       # and why only a deps that succeeded is saved.
       - name: Restore dbt's packages (dbt path)
@@ -610,8 +608,7 @@ jobs:
             echo ""
           } >> "$GITHUB_STEP_SUMMARY"
 
-      # The dbt generators' output, which is not committed (pipeline/ELT.md
-      # decision 91), written before any dbt command reads the project, on
+      # The dbt generators' output, which is not committed, written before any dbt command reads the project, on
       # the extract's venv: the generators read its club folders, whose
       # modules import dlt. Measured 2026-10-06 in a sandbox: 2.7 to 3.7 s.
       # The two-minute cap only bounds a hang, @unvalidated: this summary
@@ -702,7 +699,7 @@ jobs:
       # conditions/nynjtc_alerts.json from the dbt writers, so running these
       # too would ask both sites twice for files nobody publishes. But these
       # steps also keep warm the `atc-updates-` cache propose-atc-updates.yml
-      # reads on main. Since decision 92 only the production leg runs them on
+      # reads on main. Only the production leg runs them on
       # the schedule, and its cache is the same ATC site's, so moving
       # production to the dbt path must first give that workflow another
       # input.
@@ -755,7 +752,7 @@ jobs:
       #
       # THE FOUR CAPS HAVE TO FIT THE JOB, which is what sizes the other three
       # rather than each step's own worst case. The job budget was 10 minutes
-      # when they were sized (15 since decision 103's build cap);
+      # when they were sized (16 now);
       # run 381 measured 32 s of set-up, checkout, Python and install before
       # the first fetch and 6-8 s of exports, ledger and R2 upload after the
       # last one. So the four ceilings may total about 8 minutes, and they do:
@@ -765,8 +762,8 @@ jobs:
       # something is wrong.
       #
       # If all four hit their ceilings, the old 10 minutes left the publish
-      # almost nothing, the case no step timeout can fix; the job's 15 since
-      # decision 103 leave it more (Reasoned from the sums above). What these
+      # almost nothing, the case no step timeout can fix; the job's 16 now
+      # leave it more (Reasoned from the sums above). What these
       # buy is the case that has happened: one slow upstream, bounded, with
       # the publish still reached.
       #
@@ -907,8 +904,8 @@ jobs:
       # the same environment-blindness: both legs publish the identical
       # reviewed content into their own tree. This step used to pass
       # $OURHIKE_DATA_ENV because the reviewed file's '[Sample]' rows
-      # published to UA and dev only (maintainer decision 2026-08-20, on
-      # #760); maintainer decision 2026-09-09 retired those rows, so there is
+      # published to UA and dev only (the maintainer, 2026-08-20, on #760);
+      # the maintainer retired those rows on 2026-09-09, so there is
       # nothing for the environment to select between. Every environment
       # carries exactly what a real club has supplied, which today is an
       # empty list, published deliberately so the client's read path is live
@@ -917,8 +914,7 @@ jobs:
       # TODAY'S BAKE ONLY. The dbt path's extract lands the same reviewed file
       # (raw_ourhike__work_projects) and pub_conditions_work_projects writes
       # conditions/work_projects.json, which publish.py takes from that writer
-      # and drops this script's entry for (review finding ARC-10 of PR #1805 —
-      # dlt → dbt re-platform as one go/no-go change).
+      # and drops this script's entry for.
       - name: Export the reviewed volunteer work projects
         if: env.PHONE_FILES == 'exporters'
         run: python export_work_projects.py
@@ -1082,8 +1078,8 @@ jobs:
             pipeline/data/processed/conditions/drought.json
           key: drought-inputs-${{ hashFiles('pipeline/data/raw/drought/**', 'pipeline/data/raw/centerline.geojson') }}
 
-      # NWS'S ACTIVE ALERTS, MOVED HERE FROM publish-weather.yml (ELT.md
-      # decision 28a, "One job owns `warnings`"): this job builds the warnings
+      # NWS'S ACTIVE ALERTS, MOVED HERE FROM publish-weather.yml (one job owns
+      # `warnings`): this job builds the warnings
       # mart, so it alone reads NWS; the weather job keeps the NBM forecast.
       # UA leg only: conditions/weather_alerts.json is UA's only today
       # (publish-weather.yml's "UA ONLY, BY DESIGN FOR NOW": nothing a hiker
@@ -1121,7 +1117,7 @@ jobs:
       # itself (raw_nws__alerts) and pub_conditions_weather_alerts writes
       # conditions/weather_alerts.json, which publish.py takes from that writer
       # and drops this script's entry for, so running it there asked NWS a
-      # second time each hour for nothing (ARC-10, as above). The squares'
+      # second time each hour for nothing. The squares'
       # restore above still runs on both: the dbt path's step_weather_squares
       # reads them.
       - name: Fetch NWS's active alerts and place them on trail squares (UA leg)
@@ -1159,15 +1155,15 @@ jobs:
           --summary "$GITHUB_STEP_SUMMARY"
 
       # 2. THIS LEG'S UPSTREAMS, THROUGH dlt, INTO THE RAW STORE: the twelve
-      # tables decision 61 keeps hourly (extract/_run.py's HOURLY_JOB_TABLES):
+      # tables kept hourly (extract/_run.py's HOURLY_JOB_TABLES):
       # OurHike's own rows from this leg's database, NWS, ATC's and NYNJTC's
       # notices (NYNJTC's terms when a day old), OPRHP's trail closures and
       # the work projects, through extract/_run.py's conditions_production or
       # conditions_ua leg, each its own dlt pipeline at
       # s3://<R2_RAW_BUCKET>/raw/dlt/<leg>/. Every table of those the leg has
       # committed then goes into the warehouse, and nothing else its store
-      # kept (it still holds the 80 notice layers it read before decision 61,
-      # frozen at the move); a table whose recorded load left no file is
+      # kept (it still holds the 80 notice layers it read before they moved
+      # to extract-notices.yml, frozen at the move); a table whose recorded load left no file is
       # refused, not read as "no closures". Every other club's notices come in
       # at step 2b.
       #
@@ -1184,7 +1180,7 @@ jobs:
       # store completes over about 8 hours. OurHike's own rows are the
       # exception and stop the leg, as export_conditions.py stops today's
       # bake. A refusal exits 3: this step records it, and a step after the
-      # publish warns, never red since decisions 100 and 101; the freshness
+      # publish warns, never red; the freshness
       # step at the end turns red once a refused source has gone 24 hours
       # unread, NWS's alerts 2 hours. A
       # refused row whose sources.json says reaches_hikers false exits 0
@@ -1196,7 +1192,7 @@ jobs:
       #
       # THE BUDGET: change checks end after 45 s (extract/_run.py's
       # LEG_CHECK_SECONDS), then 150 s of reading, inside the 6-minute step
-      # below. Kept as they were, because decision 61 shrank this step's
+      # below. Kept as they were, because moving the notices out shrank this step's
       # work rather than its budget: this leg now reads 12 upstreams. Run 505
       # (37151246098, 2026-10-03), the last before the 70 notice layers came
       # on, took this step 70 s reading 13, and run 510 (37176072338,
@@ -1210,8 +1206,7 @@ jobs:
       # cap would be sized from.
       #
       # THE HOUR'S ANSWERS ARE KEPT FOR THE COMPARISON (--record-answers;
-      # open question 17, the maintainer's poll of 2026-10-10: "Compare every
-      # soak hour"). extract/_answers.py wraps the transport alone: NWS's body
+      # the maintainer, 2026-10-10: "Compare every soak hour"). extract/_answers.py wraps the transport alone: NWS's body
       # and OurHike's closures and reports rows are kept as they arrive, in
       # fixture mode's files under data/hourly_parity/answers/, so
       # check-conditions.yml's `parity` job serves today's exporters the same
@@ -1235,8 +1230,7 @@ jobs:
         # and then `unset`-ting both names, as this step did, kept them from
         # the extract but not from this step's shell, whose /proc/<pid>/environ
         # the extract's python, its child, can read: production's URL was
-        # there on every UA run (review finding SEC-7 of PR #1805 — dlt → dbt
-        # re-platform as one go/no-go change).
+        # there on every UA run.
         # .github/tests/test_conditions_extract_sees_one_database_url.py runs
         # this step per leg and reads every ancestor's environment.
         env:
@@ -1260,8 +1254,7 @@ jobs:
             exit "$status"
           fi
 
-      # 2b. EVERY OTHER CLUB'S NOTICES, FROM extract-notices.yml (decision
-      # 61): its leg for this environment, notices_<env>, writes a served copy
+      # 2b. EVERY OTHER CLUB'S NOTICES, FROM extract-notices.yml: its leg for this environment, notices_<env>, writes a served copy
       # after each run that commits (extract/_warehouse.py, "THE SERVED
       # COPY"), and this adds the newest one to the warehouse, read-only: its
       # tables of the notices job, and its run log rows beside this leg's in
@@ -1273,8 +1266,8 @@ jobs:
       # (`read=older`, exit 5). No copy at all is a warning (`read=none`,
       # exit 6) while the leg's first committed run is under 8 hours old,
       # and past that, or with no committed run at all, it is overdue
-      # (`read=none` and `overdue=true`, exit 8: decision 96, the
-      # maintainer's poll of 2026-10-06, "Red after 8 h, like stale").
+      # (`read=none` and `overdue=true`, exit 8: the maintainer, 2026-10-06,
+      # "Red after 8 h, like stale").
       # Anything else (`read=unread`) builds without the notices store and
       # says so. In every case but `latest` the build below saves no row
       # history, so a notice missing from this build is never recorded as
@@ -1331,8 +1324,8 @@ jobs:
           esac
           echo "read=$served" >> "$GITHUB_OUTPUT"
 
-      # 2c. THE TRAIL LINES AN AREA CLOSURE IS CUT AGAINST (pipeline/ELT.md's
-      # decisions 187, 191 and 192, for conditions/trail_closures.json): a
+      # 2c. THE TRAIL LINES AN AREA CLOSURE IS CUT AGAINST (for
+      # conditions/trail_closures.json): a
       # release's nearby trail lines and the A.T.'s own, which
       # publish-weather.yml prepares once per release
       # (prepare_closure_trail_lines.py) and caches under the release's id,
@@ -1347,15 +1340,14 @@ jobs:
       # it finds: after a release moves, that is the old release's until
       # publish-weather.yml next runs in that scope and prepares the new one,
       # and on a branch holding an older entry of its own it can stay the old
-      # release for good (review finding S2-4 of PR #1805 — dlt → dbt
-      # re-platform as one go/no-go change). So step_closure_trail_lines asks the leg's
+      # release for good. So step_closure_trail_lines asks the leg's
       # latest.json which release is current, one request inside the build,
       # and when the lines are another release's it says so in a warning and
       # the run's summary, naming both, and never stops the build for it. Run
       # 676 (2026-10-15) restored release 2026-10-10-2's entry, which was UA's
       # current release that morning (Measured: its log, and UA's
       # latest.json read the same day). Production's entries come from
-      # publish-weather.yml's `production-lines` job (Q11),
+      # publish-weather.yml's `production-lines` job,
       # which prepares nothing while production's latest.json names no
       # release (none did on 2026-10-15). With no entry at all (the first
       # hours after this lands, or production before its first release) it
@@ -1364,8 +1356,7 @@ jobs:
       # conditions/trail_closures.json says so (`areas_cut` false, the areas
       # in `uncut_areas`), so a phone keeps the areas it last drew.
       #
-      # ONE MINUTE, AND NEVER A FAILED JOB (review finding S2-7, the same
-      # review). Run 676 restored 86,479,282 bytes in 1.4 s (Measured, its
+      # ONE MINUTE, AND NEVER A FAILED JOB. Run 676 restored 86,479,282 bytes in 1.4 s (Measured, its
       # log), but actions/cache waits 10 minutes on a stalled segment by
       # default, long enough to run this job past its cap before "Publish to
       # R2". SEGMENT_DOWNLOAD_TIMEOUT_MINS gives a stalled download up after
@@ -1421,10 +1412,8 @@ jobs:
       # below then turns the run red so the store gets fixed. Any other
       # failure stops here, as before.
       #
-      # ONE SOURCE OR ONE WRITER NEVER STOPS THE REST (the
-      # maintainer's poll of 2026-10-05: "Hold that source and publish the
-      # rest"; review finding ARCH-1 of PR #1805 — dlt → dbt re-platform as
-      # one go/no-go change). Five of the soak's first ten runs published
+      # ONE SOURCE OR ONE WRITER NEVER STOPS THE REST (the maintainer,
+      # 2026-10-05: "Hold that source and publish the rest"). Five of the soak's first ten runs published
       # nothing for anyone: 525 to 527 and 530 on a test of one source's
       # rows, and 531 on one writer after six others had written.
       # build_marts.py now exits PARTIAL_EXIT, 5, when part of the build was
@@ -1438,26 +1427,22 @@ jobs:
       # and publishes every file that was written, and the last step below
       # turns the run red, as the extract's exit 3 does. 6 is both 4 and 5.
       #
-      # DECISION 204 WIDENS THAT TO EVERY FAILURE (the maintainer, 2026-10-15:
-      # "prod environment should ignore those, dev & ci should not"; "Build
-      # as proposed", his poll answer the same day). OURHIKE_DATA_ENV, this
+      # EVERY FAILURE IS HELD THE SAME WAY (the maintainer, 2026-10-15: "prod
+      # environment should ignore those, dev & ci should not"). OURHIKE_DATA_ENV, this
       # leg's own name, is the switch dbt_project.yml and build_marts.py both
       # read: in production and UA a failing test warns and dbt builds below
       # it, a test past its own error threshold is reported as an error, and
       # a failure dbt still raises (a writer's test, a unit test, a contract,
       # a test at `severity: error`, a step) holds only what it reaches, so
       # each writer below keeps its last file and every other hourly file
-      # publishes. Each of these is PARTIAL_EXIT too. Until decision 204 any
-      # failure in stage A but one source's own stopped the hour.
+      # publishes. Each of these is PARTIAL_EXIT too.
       #
       # `--no-history-save` when step 2b did not add the newest notices copy:
       # the history is restored and the build dates rows from it, but nothing
       # is saved, so a notice this build lacks is never closed in the history
       # (build_marts.py's docstring).
       #
-      # SIX MINUTES, NOT FOUR, until decision 103 (WF5 of the PR #1805 review,
-      # and ARCH-7's cap).
-      # Measured from the API's step times for the UA leg's seven green soak
+      # SIX MINUTES, NOT FOUR, before the cap became ten. Measured from the API's step times for the UA leg's seven green soak
       # runs 529 to 539 (2026-10-04/05): this step took 83 to 182 s, and the
       # rest of the job 132 to 179 s. Run 538's 182 s was 6.5 s restoring the
       # row history, 9.4 s of seeds, 93 s of stage A, 12.8 s for the weather
@@ -1535,7 +1520,7 @@ jobs:
         # This leg's URL alone, by the extract step's expression and for its
         # reason: picked in the script from both, the other leg's URL sat in
         # the environment of the shell export_conditions.py runs under (found
-        # by round-2 fix worker B of PR #1805, the extract step's SEC-7 again).
+        # in review, the same leak as the extract step's).
         # .github/tests/test_conditions_extract_sees_one_database_url.py runs
         # this step per leg too.
         env:
@@ -1630,8 +1615,7 @@ jobs:
       # of the 18 runs of 2026-10-11 that had a bundle put none, and after run
       # 653 (19:28 UTC) the soak branch had no run until 666 (2026-10-14
       # 18:07), from which none of the eight runs to 676 put one, each comparison
-      # reading all six files not compared on a green run (review finding
-      # S2-1 of PR #1805 — dlt → dbt re-platform as one go/no-go change).
+      # reading all six files not compared on a green run.
       # On the UA soak runs 617 to 676 (2026-10-10 12:21 to
       # 2026-10-15 02:47 UTC; Measured from each run's `handed run` lines),
       # the 13 bundles that moved took 1.75 to 2.36 s each, gathered and put,
@@ -1740,15 +1724,10 @@ jobs:
           esac
           exit "$status"
 
-      # A WARNING, NEVER RED: decision 100 (the maintainer's poll of
-      # 2026-10-07, on round-2 finding ARC-5 of PR #1805 — dlt → dbt
-      # re-platform as one go/no-go change: "Red after 24h. But this should be
-      # Red in the data source freshness feature of dbt. Not blocking a
-      # datasource pipeline"), which named the notices job, and decision 101
-      # (the maintainer's poll of 2026-10-07: "Both, NWS red after 2 h"),
-      # which brought this leg under it. Until them this step turned the run
-      # red for one refused source, decision 30's soak counting "no failed
-      # check". The source's last committed table stands, the extract step's
+      # A WARNING, NEVER RED (the maintainer, 2026-10-07: "Red after 24h. But
+      # this should be Red in the data source freshness feature of dbt. Not
+      # blocking a datasource pipeline"; and for this leg, "Both, NWS red
+      # after 2 h"). The source's last committed table stands, the extract step's
       # summary names it and why, and the step "Check the notice sources'
       # freshness, red after 24 hours unread (dbt path)" turns red once it has
       # gone 24 hours without a read or a confirmation that it is unchanged
@@ -1806,15 +1785,13 @@ jobs:
           echo "::error title=Notices copy stale::The notices legs' newest served copy began its run more than 8 hours before this read, so this hour's club notices are at least that old. Everything was published and the row history saved. extract-notices.yml has written no copy since; look at its runs."
           exit 1
 
-      # Last for the same reason, and decision 96's: the notices leg has no
+      # Last for the same reason: the notices leg has no
       # served copy and has owed one for more than 8 hours, counted from its
       # first committed run (extract/_warehouse.py's SERVED_OVERDUE_EXIT), or
       # has never committed one. So this hour's closures and warnings
       # published with none of the notices job's club notices, as an `older`
       # copy's would with its last good ones, and the row history was not
-      # saved (`--no-history-save` above). Before decision 96 that was green
-      # however long it lasted (review finding PY-3 of PR #1805 — dlt → dbt
-      # re-platform as one go/no-go change). Only a leg on the dbt path gets
+      # saved (`--no-history-save` above). Only a leg on the dbt path gets
       # here: on the exporters the read above is skipped and writes no
       # output, which is why production's leg, whose notices leg
       # extract-notices.yml skips until the cutover, is never red for it.
@@ -1826,11 +1803,9 @@ jobs:
           echo "::error title=No notices copy::$LEG has written no served copy for more than 8 hours, or has never committed a run, so this hour's closures and warnings hold none of its club notices. Everything else was published, and no row history was saved. Step 2b's summary says since when; look at extract-notices.yml's runs for this environment."
           exit 1
 
-      # DECISION 100's RED, IN dbt's SOURCE FRESHNESS (the maintainer's poll of
-      # 2026-10-07, on round-2 finding ARC-5 of PR #1805 — dlt → dbt
-      # re-platform as one go/no-go change: "Red after 24h. But this should be
-      # Red in the data source freshness feature of dbt. Not blocking a
-      # datasource pipeline"). A notice source the extract could not read is a
+      # THE NOTICES' RED, IN dbt's SOURCE FRESHNESS (the maintainer,
+      # 2026-10-07: "Red after 24h. But this should be Red in the data source
+      # freshness feature of dbt. Not blocking a datasource pipeline"). A notice source the extract could not read is a
       # warning on its extract run, its last committed table standing; this
       # turns the run red once one has gone 24 hours without being read or
       # confirmed unchanged (48 for a source read once a day). Each source is
@@ -1858,8 +1833,8 @@ jobs:
       # THE NOTICES JOB'S SOURCES ONLY WITH A COPY. `tag:notices_job` is
       # measured when step 2b read one (`latest` or `older`): without one this
       # warehouse holds none of their run log, every one would read as never
-      # read, and that state is step 2b's to report (decision 96's 8 hours,
-      # and the `unread` step above). `tag:conditions_job`, this leg's own
+      # read, and that state is step 2b's to report (its 8 hours, and the
+      # `unread` step above). `tag:conditions_job`, this leg's own
       # upstreams that it can refuse on its own, is measured every run.
       #
       # ONE MINUTE: 11 s for the 267 tagged sources on the fixture warehouse,
@@ -1922,9 +1897,9 @@ jobs:
             ~/.duckdb/extensions/v1.5.4
           key: dbt-v2-runtime-${{ runner.os }}-${{ hashFiles('pipeline/requirements-dbt.txt') }}
 
-  # THE CHECKS OF THIS RUN'S BUILD ARE check-conditions.yml (decision 110,
-  # the maintainer's poll of 2026-10-08: "All of them, hourly. build a
-  # different workflow that kicks off after the actual build"), started
+  # THE CHECKS OF THIS RUN'S BUILD ARE check-conditions.yml (the maintainer,
+  # 2026-10-08: "build a different workflow that kicks off after the actual
+  # build"), started
   # here once every leg has built and published, with the legs this run ran
   # and this run as `build_run`, on this run's ref. Each of its legs takes
   # the warehouse its leg handed off above, runs every Elementary check of

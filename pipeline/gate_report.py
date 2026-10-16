@@ -9,7 +9,7 @@ no dbt manifest to read, or a --commit that is not a sha or comes without
 --hourly-dir. --summary appends the counts to a file, the run's
 step summary in build-reference.yml's parity-report job.
 
-Decision 30's go/no-go gate (pipeline/ELT.md, "The go/no-go gate") needs
+The go/no-go gate (pipeline/ELT.md, "The go/no-go gate") needs
 "every existing R2 key comes out byte-equal, or is listed with a reviewed
 reason". This is that list, built from the `<family>.json` files that
 `parity.py <family> --new <file> --json-dir <dir>` writes, one per line of
@@ -51,13 +51,13 @@ THE ANSWERS, worst first:
 - `equal_apart_from_listed`: no unexplained difference, and everything not
   held equal is listed with its reason: a difference the family's `explained`
   names, a field held to its form only (`stamps`), record order for an
-  unordered family. A record parity.py explains as decision 31's new data (a
+  unordered family. A record parity.py explains as new data (a
   source today's exporters never read, parity.NEW_DATA_REASON) is listed
   once, by reason, with no field called changed and no safety flag: there is
   no old record, and new_data_report.py is where it is reviewed.
 
-WHICH LISTED DIFFERENCES COME TO THE MAINTAINER: standard S3, adopted by the
-maintainer's poll of 2026-10-11 ("A difference a written reason explains is
+WHICH LISTED DIFFERENCES COME TO THE MAINTAINER: the exact-copy standard (the
+maintainer, 2026-10-11: "A difference a written reason explains is
 accepted without row review. That includes one on a safety field, when the
 record is an exact copy of one that still publishes, so the hiker sees the
 same value. Only an unexplained difference, or one that changes a safety
@@ -81,8 +81,8 @@ export_podcasts.py (measured 2026-10-01: 33,234 B → 25,457 B, no content
 difference; ELT.md's known-differences table). That formatting is the
 reviewed reason every `equal` key carries, stated once.
 
-THE HOURLY COMPARISONS (--hourly-dir; open question 17, the maintainer's poll
-of 2026-10-10, "Compare every soak hour"). The six `conditions/*` keys have no
+THE HOURLY COMPARISONS (--hourly-dir; the maintainer, 2026-10-10: "Compare
+every soak hour"). The six `conditions/*` keys have no
 parity result on the monthly lane, which pins its own inputs and none of an
 hour's, so they would read `not_ported` and block go for good.
 check-conditions.yml's `parity` job compares them every hour on that hour's
@@ -105,8 +105,8 @@ precisely what "clean across the soak" means here:
   with none is a build never dispatched, or a parity job cancelled, lost or
   without a Python before that command began, and only such an hour is a gap
   SOAK_MAX_GAP_HOURS can absorb;
-- otherwise the key passes only when EVERY run of the UA leg (SOAK_LEG,
-  decision 46) BUILT ON A COMMIT JUDGED, in the soak's last SOAK_HOURS
+- otherwise the key passes only when EVERY run of the UA leg (SOAK_LEG)
+  BUILT ON A COMMIT JUDGED, in the soak's last SOAK_HOURS
   (counted back from the newest such run, and reaching back to one at or
   before that start), compared it clean, and no two of those runs are more
   than SOAK_MAX_GAP_HOURS apart, so an hour with no comparison (an input that
@@ -121,9 +121,8 @@ precisely what "clean across the soak" means here:
   bundle compared nothing, and is never clean whatever it names). A UA run
   built on any other commit, another branch's included, is set aside, never
   fills an hour, and is named with its commit and span in the key's detail:
-  decision 112 asks for a fresh soak on the final branch. --commit given
-  twice counts a commit whose hourly lane is the same, which decision 142
-  does not restart the soak for; that sameness is the person's to vouch for,
+  the soak must be fresh on the final branch. --commit given twice counts a
+  commit whose hourly lane is the same, which does not restart the soak; that sameness is the person's to vouch for,
   so the report names every commit it counted;
 - anything else stays blocking, as `not_ported` with why
   `soak_not_covered`, and the detail names what is short.
@@ -216,8 +215,8 @@ LOCATION_FIELDS = frozenset(
 #: file equal to an empty file says nothing about the writer's records.
 #: The POI types are lib/poi_schema.ALLOWED_EMPTY_POI_TYPES, the list
 #: export_poi.py's own completeness gate reads, so the two cannot drift.
-#: work_projects is the maintainer's: decision 162 (poll, 2026-10-11). So are
-#: closures and reports: decision 199 (poll, 2026-10-15). Each of those three is
+#: work_projects is the maintainer's call (2026-10-11), and so are closures and
+#: reports (2026-10-15). Each of those three is
 #: listed only while CI's fixture family compares its writer on rows, which
 #: tests/test_gate_report.py's
 #: test_an_empty_conditions_family_counts_only_while_ci_compares_its_writer_on_rows
@@ -236,10 +235,10 @@ MAY_COMPARE_NO_RECORDS: dict[str, str] = {
     "work_projects": (
         "reference/work_projects.json's `rows` is empty by the maintainer's decision of 2026-08-20 on #760 (Volunteer "
         "opportunities on a map, the next fourteen days): no invented workday may reach a hiker, so both writers' "
-        "files hold no record on real data (0 rows, read 2026-10-11). Decision 162 (poll, 2026-10-11) counts it as "
+        "files hold no record on real data (0 rows, read 2026-10-11). The maintainer (2026-10-11) counts it as "
         "covered: CI's fixture family compares the writer on rows each time pipeline-tests.yml's dbt job runs, 3 "
         "invented workdays that fixture mode and parity.py's old side both read in place of the empty file "
-        "(lib/work_projects.FIXTURE_STAND_IN, since the maintainer's poll of 2026-10-15; until then it compared 0), "
+        "(lib/work_projects.FIXTURE_STAND_IN), "
         "and the soak shows both real files empty"
     ),
     "closures": (
@@ -247,7 +246,7 @@ MAY_COMPARE_NO_RECORDS: dict[str, str] = {
         "rows alone (pub_conditions_closures keeps source_key 'ourhike_closures', and export_conditions.py's "
         "PUBLIC_CLOSURES_SQL reads moderation_status 'verified'), and both files held no record in the first and the "
         "last hourly comparisons that had a bundle (check-conditions.yml runs 31 and 48, 2026-10-11 02:28 and 19:28 "
-        "UTC). Decision 199 (poll, 2026-10-15) counts it as covered: CI's fixture family compares the writer on rows "
+        "UTC). The maintainer (2026-10-15) counts it as covered: CI's fixture family compares the writer on rows "
         "each time pipeline-tests.yml's dbt job runs, 3 verified closures (make_dbt_fixtures._ourhike_postgres(); "
         "'no differences across 3 closures' in run 38610267739, 2026-10-14), and the soak shows both real files empty"
     ),
@@ -256,7 +255,7 @@ MAY_COMPARE_NO_RECORDS: dict[str, str] = {
         "OurHike's rows alone (pub_conditions_reports keeps source_key 'ourhike_reports', and export_conditions.py's "
         "PUBLIC_REPORTS_SQL reads status 'verified' or 'resolved' with visibility 'public'), and both files held no "
         "record in the first and the last hourly comparisons that had a bundle (check-conditions.yml runs 31 and 48, "
-        "2026-10-11 02:28 and 19:28 UTC). Decision 199 (poll, 2026-10-15) counts it as covered: CI's fixture family "
+        "2026-10-11 02:28 and 19:28 UTC). The maintainer (2026-10-15) counts it as covered: CI's fixture family "
         "compares the writer on rows each time pipeline-tests.yml's dbt job runs, 3 public reports "
         "(make_dbt_fixtures._ourhike_postgres(); 'no differences across 3 reports' in run 38610267739, 2026-10-14), "
         "and the soak shows both real files empty"
@@ -591,16 +590,16 @@ def load_results(parity_dir: Path) -> dict[str, dict]:
 
 # --- the hourly comparisons on real data (--hourly-dir) ------------------------------------------------------------
 
-#: Decision 46 amends decision 30's soak to 3 days of hourly runs on UA; the module docstring's rule counts that many
-#: hours back from the newest run of SOAK_LEG in --hourly-dir. Decided, not picked.
+#: The soak is 3 days of hourly runs on UA (pipeline/ELT.md, "The go/no-go gate"); the module docstring's rule counts
+#: that many hours back from the newest run of SOAK_LEG in --hourly-dir. Decided, not picked.
 SOAK_HOURS = 72
-#: The leg whose runs can cover the soak: decision 46's "an hourly dispatch of the conditions lane on UA". Another
+#: The leg whose runs can cover the soak: "an hourly dispatch of the conditions lane on UA". Another
 #: leg's run can still make a key differ, and never fills an hour UA missed. Decided, not picked.
 SOAK_LEG = "ua"
 #: What --commit takes: a commit's sha, in full or by its first seven characters or more (git's own short form).
 COMMIT_SHAPE = re.compile(r"[0-9a-fA-F]{7,40}")
-#: The longest two consecutive runs of the soak may be apart and still both count, in hours. Decided: decision 158, the
-#: maintainer's poll of 2026-10-11, "Allow one missed hour". The soak's routine dispatches publish-conditions.yml at :18
+#: The longest two consecutive runs of the soak may be apart and still both count, in hours. Decided by the
+#: maintainer, 2026-10-11: "Allow one missed hour". The soak's routine dispatches publish-conditions.yml at :18
 #: every hour from the session that watches the pull request, and runs 617 to 624 (2026-10-10, 11:20 to 18:19 UTC) began
 #: 55.6 to 63.0 minutes apart (Measured from the Actions API's created_at). A restart of that session's container then
 #: delayed the 23:18 UTC tick by 56 minutes, so run 629 (22:18) was followed by run 631 (00:15), 1 h 57 min apart
@@ -730,9 +729,8 @@ def _set_aside(aside: list[HourlyRun]) -> str:
     else:
         what = f"{runs} built on another commit{' or naming none' if None in by_commit else ''}: {', '.join(parts)}"
     return (
-        f"; set aside {what}, because a soak covers only the code its builds ran (decision 112: a fresh soak on the "
-        "final branch). A commit whose hourly lane is the same counts once named with --commit (decision 142 restarts "
-        "the soak only for a push that changes the lane)"
+        f"; set aside {what}, because a soak covers only the code its builds ran. A commit whose hourly lane is the "
+        "same counts once named with --commit (only a push that changes the lane restarts the soak)"
     )
 
 
@@ -827,7 +825,7 @@ class Listed:
     new: str | None = None
     # Set when parity.py ran with --keys-only: the sides that hold it, whose records were not written.
     held_by: list[str] | None = None
-    # Standard S3's two facts, which parity.py writes on a difference one of parity.EXACT_COPY_REASONS explains: the
+    # The exact-copy standard's two facts, which parity.py writes on a difference one of parity.EXACT_COPY_REASONS explains: the
     # record on the other side it is an exact copy of, and the field paths on which the two differ.
     exact_copy_of: str | None = None
     differs_from_exact_copy: list[str] | None = None
@@ -861,12 +859,12 @@ class KeyRow:
 
     @property
     def safety_accepted(self) -> list[str]:
-        """The safety groups of listed differences standard S3 accepts: exact copies a hiker sees the same value on."""
+        """The safety groups of listed differences the exact-copy standard accepts: exact copies a hiker sees the same value on."""
         return sorted({group for item in self.listed if not item.open_because for group in item.safety})
 
     @property
     def blocks_go(self) -> bool:
-        """This report's reading of decision 30 item 2, for the maintainer to confirm: a key blocks go when it
+        """This report's reading of the gate, for the maintainer to confirm: a key blocks go when it
         differs, when nothing was compared, or when a dbt writer owns it and no result compared its file. A key the
         dbt path does not write is listed with its reason and does not block."""
         return self.verdict in ("differs", "not_compared") or self.why in ("writer_without_result", "soak_not_covered")
@@ -888,7 +886,7 @@ class KeyRow:
 
 
 def is_new_data(reason: str) -> bool:
-    """A difference parity.py explains as decision 31's new data: a record from a source today's exporters never
+    """A difference parity.py explains as new data: a record from a source today's exporters never
     read, which no old record can be compared with, so no field of it "changed"."""
     return reason.startswith(PARITY_NEW_DATA_REASON)
 
@@ -917,12 +915,12 @@ def _difference(item: dict, reason: str | None = None) -> Listed:
 
 
 def open_because(item: Listed, key: str | None = None) -> str | None:
-    """Why a listed difference in the file at `key` comes to the maintainer, or None where standard S3 accepts it.
+    """Why a listed difference in the file at `key` comes to the maintainer, or None where the exact-copy standard accepts it.
 
     The module docstring, "WHICH LISTED DIFFERENCES COME TO THE MAINTAINER": one on no safety field is accepted, and
     one on a safety field only when its reason is an exact copy's and the copy carries, on every safety field, the
     value of the record it copies, so a hiker sees the same value. An exact copy parity.py names no partner for (a
-    result written before S3, or a partner not on its side exactly once) is open: what the hiker sees is unread."""
+    result written before the standard, or a partner not on its side exactly once) is open: what the hiker sees is unread."""
     if not item.safety:
         return None
     groups = ", ".join(item.safety)
@@ -1135,7 +1133,7 @@ def _table(rows: list[KeyRow]) -> list[str]:
 def _listed(items: list[Listed]) -> list[str]:
     """The listed differences, one bullet per (reason, safety groups, changed fields, why open), the open ones first.
 
-    An open one on a safety field is flagged for approval one row at a time; one standard S3 accepts says so, once."""
+    An open one on a safety field is flagged for approval one row at a time; one the exact-copy standard accepts says so, once."""
     groups: dict[tuple, list[str]] = {}
     for item in items:
         key = (not item.open_because, item.reason, tuple(item.safety), tuple(item.fields), item.open_because or "")
@@ -1146,7 +1144,7 @@ def _listed(items: list[Listed]) -> list[str]:
             flag = f" (**safety: {', '.join(safety)}**, open because {opened}: approve each row on its own)"
         elif safety:
             flag = (
-                f" (safety: {', '.join(safety)}, accepted without row review by standard S3: each is an exact copy of a "
+                f" (safety: {', '.join(safety)}, accepted without row review by the exact-copy standard: each is an exact copy of a "
                 "record that still publishes, and carries its value on every safety field)"
             )
         else:
@@ -1175,7 +1173,7 @@ def render_markdown(rows: list[KeyRow], unmatched: list[dict], new_keys: list[Db
     lines = [
         "# Go/no-go gate: every R2 key today's pipeline publishes",
         "",
-        f'Decision 30, item 2 (pipeline/ELT.md, "The go/no-go gate"). {len(rows)} keys, from parity results in '
+        f'pipeline/ELT.md, "The go/no-go gate". {len(rows)} keys, from parity results in '
         f"`{inputs['parity_dir']}` ({inputs['results']} families) and the dbt manifest `{inputs['dbt_manifest']}`"
         + (
             f", and {inputs['hourly_runs']} hourly comparisons on real data in `{inputs['hourly_dir']}`, "
@@ -1195,10 +1193,10 @@ def render_markdown(rows: list[KeyRow], unmatched: list[dict], new_keys: list[Db
         f"**{len(safety_rows)} key(s) differ on a safety field**, and {len(explained_safety)} more carry an explained "
         "difference on one that stays open, so it comes to the maintainer: ELT.md approves safety fields one row at a "
         f"time, never in bulk. {len(accepted_copies)} explained difference(s) on a safety field are accepted without "
-        "row review by standard S3 (the maintainer's poll of 2026-10-11): each is an exact copy of a record that "
+        "row review by the exact-copy standard: each is an exact copy of a record that "
         "still publishes, carrying its value on every safety field, so a hiker sees the same value.",
         "",
-        f"**{sum(row.blocks_go for row in rows)} key(s) block go** on this report's reading of decision 30 (for the "
+        f"**{sum(row.blocks_go for row in rows)} key(s) block go** on this report's reading of the gate (for the "
         "maintainer to confirm): a key that differs, that nothing was compared for, or that a dbt writer owns with no "
         "parity result. A key the dbt path does not write is listed with its reason and does not block.",
         "",
@@ -1310,7 +1308,7 @@ def summary_markdown(report: dict) -> str:
                 "### The gate's per-key report",
                 "",
                 f"- {sum(report['counts'].values())} keys today's pipeline publishes: {counts}.",
-                f"- **{len(report['blocking'])} block go** on this report's own reading of decision 30, for the "
+                f"- **{len(report['blocking'])} block go** on this report's own reading of the gate, for the "
                 "maintainer to confirm.",
                 "",
             ]
@@ -1346,7 +1344,7 @@ def main(argv: list[str] | None = None) -> int:
         default=None,
         help="the commit whose soak is judged, its sha in full or its first 7 characters or more: only runs built on it "
         "cover the soak (default: the newest ua run's commit). Give it again for a commit whose hourly lane is the "
-        "same, which decision 142 does not restart the soak for",
+        "same, which does not restart the soak",
     )
     args = parser.parse_args(argv)
     if args.commits and args.hourly_dir is None:

@@ -7,8 +7,8 @@ organization's name on a hiker's phone. There is no crash to notice:
 
 - A steward whose data does not ship, named anyway, with a licence beside it.
   GATC and NYS OPRHP were the first two, both fetched for review only
-  pending a licence answer; GATC's water list and alerts ship since decision
-  75 (2026-10-04), and test_names_no_steward_that_is_fetch_and_review_only
+  pending a licence answer; GATC's water list and alerts ship since
+  2026-10-04, and test_names_no_steward_that_is_fetch_and_review_only
   now asks the rule of every steward.
 - A steward whose data DOES ship, omitted, when its licence obliges the
   attribution the omission removes.
@@ -102,10 +102,10 @@ class TestTermsTravelWithTheData:
 
     def test_florida_state_parks_ships_with_the_one_credit_its_three_rows_give(self):
         """The real registry, as it stands on 2026-10-15. A steward's credit prints only where every shipping row
-        gives the same one (_unanimous()). FDEP's park boundaries, added for decision 185, credited the Division of
+        gives the same one (_unanimous()). FDEP's park boundaries credited the Division of
         Recreation and Parks' Office of Park Planning where the two status rows credit the Division, so the sources
         screen named Florida State Parks with no credit at all, though the boundaries' own terms ask for
-        "Acknowledgement of the Originator" (review finding S3-1 of 2026-10-15)."""
+        "Acknowledgement of the Originator"."""
         real = json.loads((ROOT / "sources.json").read_text())
         out = export_sources.build_output(real)
 
@@ -578,8 +578,8 @@ class TestAgainstTheRealRegistry:
         assert not named & review_only
 
     def test_names_gatc_now_that_its_water_and_alerts_ship(self):
-        """GATC moved from review-only to shipped on 2026-10-04 (decision 75:
-        its water list placed from its own miles, its alerts as facts and a
+        """GATC moved from review-only to shipped on 2026-10-04
+        (its water list placed from its own miles, its alerts as facts and a
         link), the same turn OPRHP's and NYNJTC's lines took below. A steward
         whose data is on a hiker's phone is named."""
         named = {s["name"] for s in self.real()["stewards"]}
@@ -770,9 +770,9 @@ class TestAgainstTheRealRegistry:
 
 
 class TestTheExportersPathNamesOnlyWhatItsFilesCarry:
-    """Decision 196 (the maintainer's poll, 2026-10-14). Production's phone files
-    come from today's exporters until the cutover, and they read no club layer,
-    file, page, PDF, podcast feed or club notice of decision 53's and 54's. On
+    """Production's phone files come from today's exporters until the cutover,
+    and they read no club layer, file, page, PDF, podcast feed or club
+    notice. On
     the registry of 2026-10-14 the every-row count named 111 stewards against
     the 28 whose data production's files carry (build_output() in memory), so
     main() counts only the rows an exporter reads."""
@@ -945,53 +945,11 @@ class TestTheRegistryTheConsoleReads:
         Spelled out rather than counted, because the point of the case is that
         a registration cannot arrive without somebody writing its id down: a
         length assertion alone would pass for any seventeen, including
-        seventeen typos. 30 until 2026-10-03, when decision 53's JSON API
-        notice sources registered four more (FMST, FoOT, PA DCNR, TEHCC).
+        seventeen typos.
         """
         orgs = self.real()["organizations"]
 
-        # 52 since decision 53's ArcGIS closure and warning layers (2026-10-03) registered 18
-        # stewards with no row before, 62 since decision 54's places wave registered 10, and
-        # 77 since its trail-line rows (2026-10-03) registered 15: ATA, Austin PARD,
-        # the Bay Area Ridge Trail Council, Chesapeake Conservancy, the City of Des Moines,
-        # GMC, Indiana and Iowa DNR, Lake County MN, OCTA, ONDA, Oregon Metro, SHTA, TKO and TPWD.
-        # 78 since decision 54's points of interest (2026-10-03) registered org:cfpa.
-        # 79 since its second batch of points registered org:blackhillstrails.
-        # 92 since decision 53's page and post notices for folders n to z and _shared/ (2026-10-03)
-        # registered 13 more; their other 4 stewards (Indiana DNR, SHTA, TKO, TPWD) already had rows.
-        # 104 since its pages, feeds and WordPress sources in folders a to m (phase B, 2026-10-03)
-        # registered 12 more; their other 3 stewards (ATA, CFPA, GMC) already had rows.
-        # 113 since decision 54's wave 3 content feeds (section C, 2026-10-04) registered Save Mount
-        # Diablo (its podcast) and NMVFO (its Hike New Mexico pages), and waves 2 and 3's GIS files
-        # (2026-10-04) registered 7: the Bartram Trail Conference, the Condor Trail Association, the
-        # Hoosier Hikers Council, MDHTA, OCVT, the Potomac Heritage Trail Association and RMFI.
-        # 116 since decision 54's waves 4 and 5 content pages and PDFs (section K, 2026-10-04) registered
-        # the Mazamas (its Hike List View), the Randolph Mountain Club (its Recommended Hikes PDF) and the
-        # Keystone Trails Association (its Favorite Hikes in Pennsylvania), 117 since its third batch
-        # registered the Friends of the Blue Hills (its Suggested Hikes page), and 118 since its fourth
-        # registered the Wasatch Mountain Club (its Hiking Trail Database PDF), and 119 since its fifth
-        # registered the Carolina Mountain Club (its Lookout Tower Challenge), and 120 since its sixth
-        # registered the Tennessee Trails Association (its 36 Great Hikes form), and 121 since decision 76
-        # (section B, 2026-10-04) registered the U.S. Census Bureau (org:census), for the TIGER/Line state
-        # boundaries a state-wide notice is placed by. Recounted from the merged registry 2026-10-05.
-        # 122 since decision 54's wave 6 (2026-10-08) registered Parks & Trails New York (org:ptny), for
-        # its view of the Empire State Trail's closed sections. 134 since decision 122 (the maintainer's poll,
-        # 2026-10-09) registered the first batch of 12 candidate stewards, every layer held while each one's
-        # trail_orgs.json row waits for the maintainer's review. 135 since the same day registered the NYS Canal
-        # Corporation (org:nyscanal), held like the rest. 142 since review page 02's held loads registered 7 more
-        # candidate stewards (Illinois DNR, NETT, the Eastern Trail Alliance, Maine Huts & Trails, RCTC, the
-        # Peninsula Trails Coalition and Maricopa County Parks). 143 since decision 126 (the maintainer's
-        # poll, 2026-10-09) registered the Trust for Public Land (org:tpl) for ParkServe's parks, held. 144 since
-        # section K's hand-back (2026-10-10) registered the Smoky Mountains Hiking Club (org:smhc) for its 900
-        # Miler Club list, a workbook, and 145 since it registered the Roanoke Appalachian Trail Club (org:ratc)
-        # for its 14 AT Hikes page, once the club's robots.txt answered.
-        # And section K's per-site readers (the same day) registered four more: the Old Dominion Appalachian
-        # Trail Club (org:odatc) for its circuit hikes page, the Susquehanna Appalachian Trail Club (org:satc) for
-        # its 'Hiking In Central Pennsylvania' directory, the Colorado Fourteeners Initiative (org:cfi) for its
-        # peak pages' recommended routes, and the Iditarod Historic Trail Alliance (org:iditarod) for its Visitor
-        # Guide's passport stamp sites: 149. 150 since wave 6's rows (2026-10-11, review page 02, P10)
-        # registered the Illinois Department of Transportation (org:idot) for its Bicycle Facility Inventory
-        # System, which carries the Grand Illinois Trail's only published line, held.
+        # Recounted from the registry 2026-10-11; git holds which registration added each.
         assert len(orgs) == 150
         assert {org["steward_id"] for org in orgs} == {
             "org:akstateparks",
@@ -1122,7 +1080,7 @@ class TestTheRegistryTheConsoleReads:
             "org:wmc",
             "org:wsprc",
             "org:wta",
-            # Decision 122 (2026-10-09): batch 01's candidate stewards, every layer held.
+            # Candidate stewards, every layer held while each one's trail_orgs.json row waits.
             "org:dlnhc",
             "org:flstateparks",
             "org:gap",
@@ -1136,7 +1094,6 @@ class TestTheRegistryTheConsoleReads:
             "org:tahoepyramid",
             "org:vtrans",
             "org:nyscanal",
-            # Review page 02 (2026-10-09): 7 more candidate stewards, every layer held.
             "org:ildnr",
             "org:nett",
             "org:easterntrail",
@@ -1144,9 +1101,9 @@ class TestTheRegistryTheConsoleReads:
             "org:rctc",
             "org:peninsulatrails",
             "org:maricopaparks",
-            # Decision 126 (2026-10-09): the Trust for Public Land, for ParkServe's parks, held.
+            # The Trust for Public Land, for ParkServe's parks, held.
             "org:tpl",
-            # Wave 6's rows (2026-10-11, review page 02, P10): IDOT, for its Bicycle Facility Inventory System, held.
+            # IDOT, for its Bicycle Facility Inventory System, held.
             "org:idot",
         }
 

@@ -108,7 +108,7 @@ jobs:
           # export_spurs.py to the same destination partition (#501), and the
           # edit that breaks that agreement is a docs-only pull request.
           #
-          # channels.json too (decision 44's pointer, at the repository root):
+          # channels.json too (the versions pointer, at the repository root):
           # test_publish_channels.py reads it as publish.py --channels will,
           # and the pull request that moves it - a promotion or a rollback -
           # changes nothing else.
@@ -165,8 +165,7 @@ jobs:
         if: steps.scope.outputs.run == 'true'
         run: python -m ruff format --check .
 
-      # THE dbt GENERATORS' OUTPUT, which is not committed (pipeline/ELT.md
-      # decision 91): tests here walk the models on disk, so they are written
+      # THE dbt GENERATORS' OUTPUT, which is not committed: tests here walk the models on disk, so they are written
       # first, on this job's Python, which carries dlt (requirements-dev.in).
       # tests/conftest.py refuses to start without them.
       - name: Generate the dbt models (generate_dbt.py)
@@ -178,8 +177,8 @@ jobs:
         run: python -m pytest -v
 
   # The dbt transform layer (pipeline/DBT.md's CI plan, #100), on dbt v2:
-  # the full `dbt` 2.0.6 distribution, one version everywhere. ELT.md
-  # decision 32 chose it over dbt-oss 2.0.5, which also ran this job green
+  # the full `dbt` 2.0.6 distribution, one version everywhere. It was
+  # chosen over dbt-oss 2.0.5, which also ran this job green
   # and stays the documented fallback (requirements-dbt.in says how). Its
   # own job because requirements-dbt.txt shares nothing with the pytest
   # job's set beyond duckdb. Same no-`if:`-on-the-job rule as above. The job
@@ -423,9 +422,9 @@ jobs:
 
       # DBT'S PACKAGES, CACHED, for the reason dbt's driver and spatial build
       # are (their restore step, further up): `dbt deps` reads
-      # packages.yml's packages (four since decision 102) from hub.getdbt.com
+      # packages.yml's packages from hub.getdbt.com
       # and their tarballs from codeload.github.com, so every run needed both
-      # hosts up (ARCH-6 of the PR #1805 review; soak run 538's log shows the
+      # hosts up (soak run 538's log shows the
       # hourly lane installing the three it had then, at 01:19:19 on
       # 2026-10-05). The key hashes packages.yml and package-lock.yml, which
       # between them pin every version, so a hit is what deps would write.
@@ -539,8 +538,7 @@ jobs:
           else
             (cd "$base/pipeline/dbt" && dbt deps --profiles-dir .)
           fi
-          # The base's own generators over the base's own registry (decision
-          # 91); a base from before it carries their output committed instead.
+          # The base's own generators over the base's own registry; a base from before it carries their output committed instead.
           if [ -f "$base/pipeline/generate_dbt.py" ]; then
             (cd "$base/pipeline" && "$RUNNER_TEMP/extract/bin/python" generate_dbt.py)
           fi
@@ -548,7 +546,7 @@ jobs:
           python check_contract_versions.py --head dbt/target/manifest.json --base "$base/pipeline/dbt/target/manifest.json"
 
       # THE BASE AGAIN, WITH ELEMENTARY'S CHECKS IN IT (the
-      # maintainer's poll of 2026-10-08: "Run all of them that have been
+      # maintainer, 2026-10-08: "Run all of them that have been
       # modified, and downstream models"). On a pull request the build below
       # runs only the checks `state:modified+` reaches from the base, which
       # needs a base manifest that holds them: the step above parses the base
@@ -610,8 +608,8 @@ jobs:
         if: steps.scope.outputs.run == 'true'
         run: python make_dbt_fixtures.py
 
-      # A PULL REQUEST STARTS FROM MAIN'S LAST BUILD WHEN IT CAN (decision 210,
-      # the maintainer's poll of 2026-10-15: "In this PR anyway"). The build
+      # A PULL REQUEST STARTS FROM MAIN'S LAST BUILD WHEN IT CAN (the
+      # maintainer, 2026-10-15). The build
       # step below took 16 min 7 s on 2a826f01 (Pipeline tests run
       # 38773605297), and every pull request paid all of it. A push to main
       # keeps its warehouse and manifest (the two steps after the build); here
@@ -687,16 +685,15 @@ jobs:
       # Python step is an entry in build_marts.STEPS, never a step here.
       #
       # ELEMENTARY'S CHECKS, LAST: on a pull request whose base parsed, only
-      # those on what the pull request changed and below it (--checks-base,
-      # decision 111); otherwise every one, said here and by build_marts.py.
+      # those on what the pull request changed and below it (--checks-base);
+      # otherwise every one, said here and by build_marts.py.
       # Every check took 718 s and 802 s of this build in a sandbox
       # (build_marts.py's docstring), 13 to 19 minutes on a runner by its
       # sums, which is what a pull request no longer pays for checks it
       # cannot have changed: with one mart's SQL changed, the pass ran that
       # mart's 6 checks in 27.5 s (Measured 2026-10-09 in the same sandbox).
       #
-      # A STATE BUILD, when the decision above named main's target/ (decision
-      # 210): only what changed since main's build, what reads the clock and
+      # A STATE BUILD, when the step above named main's target/: only what changed since main's build, what reads the clock and
       # what a Python step rewrote from a changed input, with what each feeds;
       # every step and every pub_ writer still runs, so the parity step below
       # compares every file. build_marts.py's docstring, "A PULL REQUEST
@@ -793,8 +790,7 @@ jobs:
       # box: two conditions builds in one warehouse, the history
       # on, the second after those two invented edits. Both sources are held
       # with their reasons and carry their last good rows, and every
-      # conditions writer still writes, where until decision 81 the build
-      # failed and wrote nothing. Measured 2026-10-05 in a four-core sandbox
+      # conditions writer still writes. Measured 2026-10-05 in a four-core sandbox
       # shared with other builds: its five tests took 350 s, and 496 s on a
       # busier run, the fixture load and both builds included.
       - name: A club held for its rows (tests/test_dbt_notice_source_held_for_its_rows_builds.py)
@@ -817,7 +813,7 @@ jobs:
           # The fixture load imports dlt, which only the extract venv holds.
           OURHIKE_DBT="$(command -v dbt)" OURHIKE_EXTRACT_PYTHON="$RUNNER_TEMP/extract/bin/python" "$RUNNER_TEMP/pipeline/bin/python" -m pytest -o addopts="" -q -p no:cacheprovider tests/test_dbt_club_tables_absent_builds.py
 
-      # Decision 100's freshness (the maintainer's poll of 2026-10-07): a
+      # The notices' freshness (the maintainer, 2026-10-07): a
       # notice source turns red once it has gone 24 hours without being read
       # or confirmed unchanged, measured from the extract's run log because a
       # FRESH check leaves `_loaded_at` at its last load
@@ -856,7 +852,7 @@ jobs:
         if: steps.scope.outputs.run == 'true'
         run: OURHIKE_DBT="$(command -v dbt)" "$RUNNER_TEMP/pipeline/bin/python" -m pytest -o addopts="" -q -p no:cacheprovider tests/test_dbt_evaluator_exceptions.py
 
-      # Decision 197: every model has one column carrying an unfiltered
+      # Every model has one column carrying an unfiltered
       # unique and not_null at error, a generate_surrogate_key column where
       # the key takes several, unless seeds/model_key_exceptions.csv records
       # why not. The evaluator step below counts a key but reads neither a
@@ -867,7 +863,7 @@ jobs:
         if: steps.scope.outputs.run == 'true'
         run: OURHIKE_DBT="$(command -v dbt)" "$RUNNER_TEMP/pipeline/bin/python" -m pytest -o addopts="" -q -p no:cacheprovider tests/test_dbt_every_model_keyed.py
 
-      # Decision 204 (the maintainer, 2026-10-15: "Every test should have both
+      # Two thresholds on every test (the maintainer, 2026-10-15: "Every test should have both
       # the warning and error thresholds"): every test this project and the
       # evaluator declare carries `warn_if` and `error_if` in the `>N` form,
       # and OURHIKE_DATA_ENV decides who stops on an error. The test reads the
@@ -879,7 +875,7 @@ jobs:
         if: steps.scope.outputs.run == 'true'
         run: OURHIKE_DBT="$(command -v dbt)" "$RUNNER_TEMP/pipeline/bin/python" -m pytest -o addopts="" -q -p no:cacheprovider tests/test_dbt_test_thresholds.py
 
-      # Decision 204 on a real build: the podcasts mart from raw rows that tell
+      # The environment switch on a real build: the podcasts mart from raw rows that tell
       # one key twice, built as CI builds it (the duplicates test is an error
       # and the mart is skipped) and as production does (it warns, the mart
       # builds, and build_marts.py's relabelled_errors() reports it as an
@@ -936,7 +932,7 @@ jobs:
           # a file in git.
           "$RUNNER_TEMP/pipeline/bin/python" parity.py --json-dir data/processed/parity nearby_trails --new data/processed/dbt/nearby_trails.geojson
           "$RUNNER_TEMP/pipeline/bin/python" parity.py --json-dir data/processed/parity network_overview --new data/processed/dbt/network_overview.geojson
-          # The A.T.'s files, on the fixture's layers (ATC's are not in git); parity.py applies decision 8's 6 dp to the old side.
+          # The A.T.'s files, on the fixture's layers (ATC's are not in git); parity.py applies the 6 dp cut to the old side.
           "$RUNNER_TEMP/pipeline/bin/python" parity.py --json-dir data/processed/parity trails --new data/processed/dbt/trails.geojson
           "$RUNNER_TEMP/pipeline/bin/python" parity.py --json-dir data/processed/parity trail_miles --new data/processed/dbt/trail_miles.json
           "$RUNNER_TEMP/pipeline/bin/python" parity.py --json-dir data/processed/parity trails_overview --new data/processed/dbt/trails_overview.geojson
@@ -987,7 +983,7 @@ jobs:
           "$RUNNER_TEMP/pipeline/bin/python" parity.py --json-dir data/processed/parity places --new data/processed/dbt/places.json
           # The challenges list, from the club folders and publishers.json in
           # git, against the POIs and centerline compared above. The ATC's list
-          # publishes (ELT.md decision 47, on the maintainer's authorisation),
+          # publishes (on the maintainer's authorisation),
           # so nothing is held back today. A challenge may_publish would hold
           # back is explained only where the warehouse's
           # int_challenges__resolved record for it equals today's.
@@ -1002,7 +998,7 @@ jobs:
           # Stage 6's v2 files, each against the v1 file this
           # same run wrote beside it, which the lines above hold to today's
           # exporters: every elevation, mile and coordinate a v2 decodes to
-          # must be v1's, at decision 8's 6 decimals for a coordinate.
+          # must be v1's, at 6 decimals for a coordinate.
           # parity.py decodes each file itself, so these read only JSON.
           "$RUNNER_TEMP/pipeline/bin/python" parity.py --json-dir data/processed/parity elevation_v2 --new data/processed/dbt/elevation_profile_v2.json
           "$RUNNER_TEMP/pipeline/bin/python" parity.py --json-dir data/processed/parity trail_miles_v2 --new data/processed/dbt/trail_miles_v2.json

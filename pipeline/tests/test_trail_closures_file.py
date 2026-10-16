@@ -69,7 +69,7 @@ def test_every_geos_operation_on_the_hourly_path_before_the_writers_is_tried_rat
 
 
 def test_a_shade_is_the_area_as_its_source_drew_it_never_grown():
-    """Decision 191: the hatch must not reach past the closure's edge onto an open trail, which the 100 m growth
+    """The hatch must not reach past the closure's edge onto an open trail, which the 100 m growth
     conditions/notices.json gives an area for a planned route would. The shade comes from the cut, which reads the
     source's own area (int_closures__trail_closure_areas), and the macro's ungrown branch grows nothing."""
     cut = CUT.read_text(encoding="utf-8")

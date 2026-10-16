@@ -397,7 +397,7 @@ PROFILE_WRITERS = {
 
 
 def test_a_profile_whose_null_share_test_failed_keeps_the_buckets_last_copy_only_after_a_partial_build(project):
-    """Decision 194: each writer wrote a mostly null profile and its own null-share test refused it. After
+    """Each writer wrote a mostly null profile and its own null-share test refused it. After
     build_marts.py's PARTIAL_EXIT both keys keep the bucket's last copy, whatever is on disk under their names; without
     it the publish refuses. build-reference.yml's monthly publish never sees that refusal: its build job fails on the
     exit, and `publish` needs the build job, so the whole last good release stays."""

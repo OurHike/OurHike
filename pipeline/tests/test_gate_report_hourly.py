@@ -1,6 +1,6 @@
 """gate_report.py --hourly-dir: the six conditions keys judged by their hourly comparisons on real data (soak_coverage()).
 
-Open question 17, the maintainer's poll of 2026-10-10: "Compare every soak hour". A key the monthly lane compares
+The maintainer, 2026-10-10: "Compare every soak hour". A key the monthly lane compares
 nothing for stops blocking go only when every run of the soak's last SOAK_HOURS compared it clean, none more than
 SOAK_MAX_GAP_HOURS apart; one difference anywhere makes it differ. Each run here is what the parity job uploads: its
 run.json (hourly_parity.py's HOURLY_FORMAT) and parity.py's keys-only result beside it.
@@ -177,7 +177,7 @@ def test_two_missing_hours_in_a_row_are_a_gap_the_soak_has_to_cover_again(tmp_pa
 
 def test_dispatch_jitter_and_one_missing_hour_still_cover_the_soak(tmp_path):
     """SOAK_MAX_GAP_HOURS takes the jitter the soak's routine shows (55.6 to 63.0 minutes between runs 617 and 624) and
-    one missed hour (decision 158: run 629 at 22:18 and run 631 at 00:15 UTC, a container restart between them). Two in a
+    one missed hour (run 629 at 22:18 and run 631 at 00:15 UTC, a container restart between them). Two in a
     row are refused, in the test above."""
     root = tmp_path / "jitter"
     for index in range(73):
@@ -193,7 +193,7 @@ def test_a_soak_shorter_than_SOAK_HOURS_keeps_the_key_blocking(tmp_path):
 
 
 def test_only_the_ua_legs_runs_cover_the_soak_and_any_legs_difference_still_counts(tmp_path):
-    """Decision 46 soaks the UA leg (SOAK_LEG): a production run in the hour UA missed does not fill it, and a
+    """The soak is the UA leg's (SOAK_LEG): a production run in the hour UA missed does not fill it, and a
     production run that differed makes the key differ all the same."""
     root = _soak(tmp_path / "hole", skip=(30, 31))
     for hour in (30, 31):
@@ -211,9 +211,9 @@ def test_only_the_ua_legs_runs_cover_the_soak_and_any_legs_difference_still_coun
 
 
 def test_a_soak_run_on_an_older_commit_never_covers_the_newest_one(tmp_path):
-    """The 2026-10-15 review's finding S2-2: 73 clean hours built on one commit and a single hour on the next read
-    `clear`, as if the 72 hours had run the newest code. Decision 112 asks for a fresh soak on the final branch, and
-    decisions 142 and 148 restart it on a push that changes the hourly lane. Each run.json names the commit its build
+    """73 clean hours built on one commit and a single hour on the next must not read `clear`, as if the 72 hours had
+    run the newest code: the soak must be fresh on the final branch, and restarts on a push that changes the hourly
+    lane. Each run.json names the commit its build
     ran (check-conditions.yml passes github.sha, and take-bundle refuses a bundle another commit's build put), so the
     soak judged is the newest ua run's commit, and every other commit's run is set aside and said."""
     root = _soak(tmp_path, commit=OTHER)
@@ -230,7 +230,7 @@ def test_a_soak_run_on_an_older_commit_never_covers_the_newest_one(tmp_path):
 
 def test_another_branchs_ua_runs_never_fill_an_hour_of_the_soak(tmp_path):
     """gh run download of every check-conditions run fetches other branches' hourly-parity-ua too: two of them in the
-    judged commit's two missing hours (decision 158 allows one) leave the gap a gap."""
+    judged commit's two missing hours (the gap allows one) leave the gap a gap."""
     root = _soak(tmp_path, skip=(30, 31))
     for hour in (30, 31):
         _run(root, hour, {"closures": "equal"}, commit=OTHER)
@@ -242,8 +242,8 @@ def test_another_branchs_ua_runs_never_fill_an_hour_of_the_soak(tmp_path):
 
 
 def test_the_commit_judged_can_be_named_and_a_commit_whose_hourly_lane_is_the_same_added(tmp_path):
-    """--commit names the commit judged, in full or by its first seven characters or more. Decision 142 restarts the
-    soak only for a push that changes the hourly lane, so a second --commit counts a commit the person running the gate
+    """--commit names the commit judged, in full or by its first seven characters or more. Only a push that changes
+    the hourly lane restarts the soak, so a second --commit counts a commit the person running the gate
     vouches for, and the answer names both."""
     root = _soak(tmp_path, hours=40, commit=OTHER)
     _soak(root, hours=31, start=41)
@@ -322,7 +322,7 @@ def test_comparisons_of_two_empty_files_count_only_for_a_family_the_monthly_rule
     assert _row(rows, "conditions/work_projects.json").why == "soak_not_covered"
     assert "equal, no records" not in _row(rows, "conditions/work_projects.json").detail
 
-    # Decision 162 lists it, with its reason.
+    # Listed, with its reason.
     monkeypatch.setitem(gate_report.MAY_COMPARE_NO_RECORDS, "work_projects", "the reviewed file holds no rows")
     rows, _, _ = key_rows(TODAY, [WORK], {}, runs)
     assert not _row(rows, "conditions/work_projects.json").blocks_go

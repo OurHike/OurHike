@@ -73,7 +73,7 @@ def test_the_weather_job_looks_up_and_saves_one_key_over_the_paths_the_condition
 
 
 def test_the_weather_workflow_prepares_productions_lines_under_the_key_the_production_leg_restores():
-    """Decision 213, Q11: the conditions job's production leg restores `<PREFIX>production-`, so an hour there cuts its
+    """The conditions job's production leg restores `<PREFIX>production-`, so an hour there cuts its
     areas only if something saves under that prefix, which the build job, preparing UA's release, never does."""
     lookup, save = _caching(_steps(WEATHER, "production-lines"))
     (restore,) = _caching(_steps(CONDITIONS, "publish"))

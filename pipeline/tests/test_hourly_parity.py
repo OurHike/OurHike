@@ -219,7 +219,7 @@ def test_a_family_whose_input_was_not_this_hours_says_why_it_was_not_compared(tm
 
 
 def test_a_writer_the_build_held_back_is_not_compared_rather_than_a_difference(tmp_path):
-    """Decision 81: the key keeps the bucket's last copy, which this hour's answers did not make."""
+    """The key keeps the bucket's last copy, which this hour's answers did not make."""
     out = tmp_path / "bundle"
     document = hourly_parity.bundle(
         _answers(tmp_path / "answers"),

@@ -549,7 +549,7 @@ if selected_has dbt; then
     else
       step "dbt deps"            "${dbt_cmd[@]}" deps --profiles-dir .
     fi
-    # Decision 144: every file the packages shipped matches dbt/packages.sha256,
+    # Every file the packages shipped matches dbt/packages.sha256,
     # as CI's dbt job checks, before dbt reads one.
     step "dbt packages pinned"   env -C pipeline "$PY" check_dbt_packages.py
     step "dbt parse"             "${dbt_cmd[@]}" parse --profiles-dir .

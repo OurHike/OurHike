@@ -1,7 +1,7 @@
 """lib/section_closures.py: an organization's closure notice closes the one line set that carries the section it names.
 
 Shapes from UA's files of 2026-10-15 (release 2026-10-10-2's nearby_trails.geojson, conditions/notices.json):
-USFS's "TUSCARORA - DOLL RIDGE" lines, PATC's page notice, and the near-misses measure_section_closures.py listed.
+USFS's "TUSCARORA - DOLL RIDGE" lines, PATC's page notice, and near-misses the rule refuses.
 """
 
 from lib.section_closures import evaluate, line_sets, section_names, words

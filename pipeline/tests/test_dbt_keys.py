@@ -154,6 +154,7 @@ GEOMETRY_FREE_STEP_TABLES = {
     "osm_water_grade",
     "poi_photos",
     "long_path_guide",
+    "section_closures",
 }
 
 

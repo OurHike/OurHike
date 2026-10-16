@@ -248,6 +248,7 @@ jobs:
             pipeline/step_dem_sampling.py
             pipeline/step_weather_squares.py
             pipeline/step_closure_trail_lines.py
+            pipeline/step_section_closures.py
             pipeline/prepare_closure_trail_lines.py
             pipeline/step_form_route.py
             pipeline/export_suggested_hikes.py

@@ -344,6 +344,43 @@ describe('a long-term closed trail', () => {
   })
 })
 
+describe('a section an organization’s own notice closed (decision 213)', () => {
+  // What dbt's int_trail_lines__network_section_closures ships: USFS drew the
+  // line, PATC's notice named its section closed, and the reason is PATC's
+  // own sentence, verbatim.
+  const SECTION_CLOSED = {
+    ...NEARBY_LINE,
+    source: 'usfs_trails',
+    name: 'TUSCARORA - DOLL RIDGE',
+    trailStatus: 'closed',
+    closureKind: 'section',
+    closureReason:
+      'The Tuscarora Trail section just west of Massanutten Mountain is closed due to loss of landowner permission.',
+    closureSource: 'patc_tuscarora_updates',
+  }
+
+  it('says who closed it in their words, with no “temporarily” their notice did not say', () => {
+    const detail = buildLineDetail(
+      SECTION_CLOSED,
+      {},
+      [],
+      'imperial',
+      'Appalachian Trail',
+      undefined,
+      {
+        ...SOURCES,
+        usfs_trails: { attribution: 'USDA Forest Service' },
+        patc_tuscarora_updates: {
+          attribution: 'Potomac Appalachian Trail Club (Tuscarora Trail Committee)',
+        },
+      },
+    )
+    expect(detail.closureLine).toBe(
+      'Closed by Potomac Appalachian Trail Club (Tuscarora Trail Committee) · The Tuscarora Trail section just west of Massanutten Mountain is closed due to loss of landowner permission.',
+    )
+  })
+})
+
 describe('a temporarily closed area on a trail (#1142)', () => {
   // What the exporter ships on an area-derived closed record: the closure
   // LAYER's own registry key and the closing org's reason, verbatim -

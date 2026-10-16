@@ -419,6 +419,9 @@ jobs:
         id: build-marts
         env:
           OURHIKE_DATA_ENV: ua
+          # step_section_closures reads UA's published conditions/notices.json
+          # from here (decisions 212 and 213); unset, it closes no section.
+          DATA_BASE_URL: ${{ vars.DATA_BASE_URL }}
           R2_RAW_BUCKET: ${{ secrets.R2_RAW_BUCKET }}
           DESTINATION__FILESYSTEM__CREDENTIALS__AWS_ACCESS_KEY_ID: ${{ secrets.R2_RAW_ACCESS_KEY_ID }}
           DESTINATION__FILESYSTEM__CREDENTIALS__AWS_SECRET_ACCESS_KEY: ${{ secrets.R2_RAW_SECRET_ACCESS_KEY }}

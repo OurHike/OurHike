@@ -745,6 +745,21 @@ STEPS: list[Step] = [
         ),
         reads_no_model=True,
     ),
+    # Decisions 212 and 213 (#1801 — The junction graph routes hikers onto the
+    # Tuscarora's Doll Ridge section, which PATC says is closed for loss of
+    # landowner permission): the network lines an organization's own notice
+    # closes by naming their section, from the conditions/notices.json the
+    # hourly lane published, which the monthly lane reads from the bucket
+    # (OURHIKE_DATA_ENV and DATA_BASE_URL); under --fixtures,
+    # make_dbt_fixtures.py's copy. Before step_node_lines, so the graph refuses
+    # the lines it closes. No file closes nothing, and never stops the build.
+    Step(
+        name="step_section_closures",
+        table="section_closures",
+        command=("step_section_closures.py", "--warehouse", "{warehouse}"),
+        fixture_args=("--notices", "{raw_dir}/section_closures/notices.json"),
+        lane_args=((MONTHLY, ("--from-bucket",)),),
+    ),
     # TN04: every routable trail part cut where int_trail_network__cuts says,
     # by build_trail_graph.py's own _split_all, from warehouse inputs alone (so
     # no fixture_args). Before step_dem_sampling, whose input

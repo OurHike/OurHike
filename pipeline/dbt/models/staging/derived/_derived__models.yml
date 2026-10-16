@@ -70,6 +70,39 @@ models:
       - name: loaded_at
         description: When step_closure_trail_lines wrote the row, UTC.
         data_tests: [not_null]
+  - name: stg_derived__section_closures
+    data_tests:
+      # Warns if the dedupe drops a row: two notices naming one section.
+      - equal_rowcount_to_raw:
+          arguments:
+            compare_model: source('derived', 'section_closures')
+    description: >
+      The network lines an organization's own notice closes by naming their
+      section (decisions 212 and 213), from step_section_closures's
+      derived.section_closures: the line, the closing notice, its source and
+      its title. Read by int_trail_lines__network_section_closures.
+    columns:
+      - name: section_closure_key
+        description: >
+          The row's key (decision 40): dbt_utils.generate_surrogate_key over
+          the table's name and the line's key.
+        data_tests: [not_null, unique]
+      - name: trail_segment_key
+        description: The line's key in int_trail_lines__network_area_closures.
+        data_tests: [not_null, unique]
+      - name: notice_id
+        description: The closing notice's id in conditions/notices.json.
+        data_tests: [not_null]
+      - name: closure_source
+        description: The closing notice's source key.
+        data_tests: [not_null]
+      - name: closure_reason
+        description: The closing notice's title, verbatim.
+      - name: line_set
+        description: The layer and name of the line set closed.
+      - name: loaded_at
+        description: When step_section_closures wrote the row, UTC.
+        data_tests: [not_null]
   - name: stg_derived__weather_squares
     data_tests:
       # Warns if the dedupe drops any row, which for one document per

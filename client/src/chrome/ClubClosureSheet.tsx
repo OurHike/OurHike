@@ -26,6 +26,7 @@
 // reported March 5, 2026. It may no longer apply.", as it does in the list.
 
 import { longDate } from '../lib/atcNoticeText'
+import { DATA_BUILT_URL } from '../lib/dataPages'
 import { noticeOrgLabel } from '../lib/notices'
 import type { TrailClosure } from '../lib/publishedConditions'
 import { possessive, type Stewards } from '../lib/stewards'
@@ -73,7 +74,21 @@ export function ClubClosureSheet({
       </p>
 
       {generatedAt !== null && (
-        <p className="closure-sheet__age">{`Gathered by OurHike on ${longDate(generatedAt)}.`}</p>
+        // Where OurHike got it, and a way to how it gathers and checks it
+        // (Q24 of #1805, the maintainer's "All three as drawn"). "Published
+        // notices" rather than the frame's "feed": some organizations
+        // publish a page or a PDF, not a feed (pipeline/extract/).
+        <p className="closure-sheet__age">
+          {`Gathered by OurHike on ${longDate(generatedAt)} from ${orgs} own published notices. `}
+          <a
+            className="closure-sheet__how"
+            href={DATA_BUILT_URL}
+            target="_blank"
+            rel="noreferrer"
+          >
+            How OurHike gathers and checks this ›
+          </a>
+        </p>
       )}
     </div>
   )

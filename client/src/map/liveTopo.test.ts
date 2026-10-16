@@ -96,7 +96,10 @@ import {
   HAZARD_FILL_LAYER_ID,
   HAZARD_POINT_LAYER_ID,
 } from './hazardAreaLayers'
-import { CLUB_CLOSURE_SHADE_LAYER_ID } from './clubClosureLayers'
+import {
+  CLUB_CLOSURE_FAR_LAYER_ID,
+  CLUB_CLOSURE_SHADE_LAYER_ID,
+} from './clubClosureLayers'
 
 // The live background exists because a raster mosaic of pre-rendered US Topo
 // quads cannot be restyled, cannot be read at a zoom it was not drawn for, and
@@ -355,6 +358,10 @@ describe('the live topographic background', () => {
       // under a closed bridge's cross falls back to its dot.
       closureMarkId(CLUB_CLOSURE_LAYER_ID),
       closurePointId(CLUB_CLOSURE_LAYER_ID),
+      // And their small ✕ at z5 and z6 (Q22), which collides to thin itself.
+      // It stops at z7, where the pins start, so in practice it never meets
+      // one; it is here because the order says it could.
+      CLUB_CLOSURE_FAR_LAYER_ID,
       WARNING_LAYER_ID,
       closureMarkId(ATC_UPDATE_LAYER_ID),
       ATC_UPDATE_POINT_LAYER_ID,
@@ -943,6 +950,8 @@ describe('the offline-only background', () => {
       // hiker with no signal still has them.
       ...bandLayers(CLUB_CLOSURE_LAYER_ID),
       closurePointId(CLUB_CLOSURE_LAYER_ID),
+      // And their small ✕ at z5 and z6 (Q22), from the same kept file.
+      CLUB_CLOSURE_FAR_LAYER_ID,
       WARNING_LAYER_ID,
       // The hiker's mark itself, over the warning pins (v1.3.2 release
       // review): a 44 px filled warning pin hid the 36 px mark entirely.

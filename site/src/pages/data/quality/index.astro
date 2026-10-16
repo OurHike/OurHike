@@ -38,8 +38,26 @@
 // this page with the docs to docs.ourhike.org, and Base.astro writes the
 // site's nav and footer links on it as full ourhike.org addresses, since
 // that host has none of the site's other pages.
+import { readFileSync } from 'node:fs'
+import { resolve } from 'node:path'
 import Base from '../../../layouts/Base.astro'
 import DataNav from '../../../components/DataNav.astro'
+import { providersByKey } from '../../../lib/dataQualitySummary.mjs'
+
+// WHO A FLAGGED FEED BELONGS TO, for the summary at the top (Q24 of #1805):
+// pipeline/sources.json's `provider` for each source key, read when the site
+// is built (the site builds from a checkout of the whole repository, in
+// pages.yml and pr-preview.yml alike). A build without the file still builds:
+// the summary then names a flagged feed by its folder, as the table name has
+// it, rather than by a provider nobody looked up.
+let providers = {}
+try {
+  providers = providersByKey(
+    JSON.parse(readFileSync(resolve(process.cwd(), '../pipeline/sources.json'), 'utf8')),
+  )
+} catch {
+  providers = {}
+}
 
 const title = 'Data quality — OurHike'
 const description =
@@ -109,6 +127,20 @@ const description =
         their rows.
       </p>
     </header>
+
+    <section
+      class="dq-panel dq-sum"
+      data-slot="summary"
+      aria-labelledby="dq-sum-title"
+      hidden
+    >
+    </section>
+    <script
+      type="application/json"
+      id="dq-providers"
+      is:inline
+      set:html={JSON.stringify(providers).replace(/</g, '\\u003c')}
+    />
 
     <section class="dq-runs" aria-label="The two builds">
       <article class="dq-panel dq-run" data-card="monthly">

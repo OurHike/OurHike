@@ -20,6 +20,10 @@ import Base from '../layouts/Base.astro'
 import Contours from '../components/Contours.astro'
 import { ORGS, orgCountLine } from '../lib/heroOrgs.mjs'
 
+// Base.astro's `docs`, for the data pages' line under "What works today":
+// a home page is never a /data/ page, so it is PUBLIC_DOCS_ORIGIN or nothing.
+const docs = import.meta.env.PUBLIC_DOCS_ORIGIN ?? ''
+
 // The title and the description are the H1's other half and were left behind
 // when #1059 fixed the H1 itself: the rotation below stopped implying an
 // A.T.-only product on the page, while the two strings a search result, a
@@ -179,6 +183,19 @@ const ORG_COUNT_LINE = orgCountLine(ORGS)
           <li>App-store versions for iOS and Android — in progress</li>
         </ul>
       </div>
+      {
+        /* THE WAY IN TO THE DATA PAGES (Q24 of #1805 — dlt → dbt re-platform
+           as one go/no-go change: the maintainer chose "All three as drawn",
+           2026-10-15). Before it the footer was the only link, at 4,622 px of
+           a 4,915 px page on a 390 px phone (q24_frames.html, measured
+           2026-10-15). `docs` as the footer has it: docs.ourhike.org once
+           pages.yml finds that host serving the data pages, else this host. */
+      }
+      <p class="works-data">
+        Where the trail data comes from, how it is built, and how its checks went
+        on the last build: <a href={`${docs}/data/how/`}>How the data is built →</a>
+        · <a href={`${docs}/data/quality/`}>Data quality →</a>
+      </p>
     </div>
   </section>
 

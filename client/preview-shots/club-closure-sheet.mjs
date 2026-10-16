@@ -16,7 +16,10 @@
 //     Parks’ notice, not OurHike’s. OurHike has not checked the trail
 //     itself, and does not work out detours - follow their notice, or the
 //     signage on the ground."
-//  4. "Gathered by OurHike on" and the file's date.
+//  4. "Gathered by OurHike on" and the file's date, then "from Example County
+//     Parks’ own published notices." and the link "How OurHike gathers and
+//     checks this ›" to the site's "How the data is built" (Q24 of #1805,
+//     the maintainer's "All three as drawn", 2026-10-15).
 //
 // The line it closes is under the sheet on a phone, where the other
 // closures stay drawn above it; club-closures-on-the-map.mjs shows that
@@ -37,10 +40,10 @@ import {
 import { seedStewards } from './fixtures/stewards.mjs'
 
 export const caption =
-  'A club closure’s sheet, opened by a tap on its crossed-out line (the maintainer’s S6, 2026-10-11): the row the planned-hike list shows for the notice, greyed with “Its source gives no date. It may no longer apply.”, and the note that it is the organization’s notice and that OurHike works out no detour. The closure and its organization are invented examples.'
+  'A club closure’s sheet, opened by a tap on its crossed-out line (the maintainer’s S6, 2026-10-11): the row the planned-hike list shows for the notice, greyed with “Its source gives no date. It may no longer apply.”, and the note that it is the organization’s notice and that OurHike works out no detour. Last line: when OurHike gathered it, from the organization’s own published notices, and the link “How OurHike gathers and checks this ›” (Q24). The closure and its organization are invented examples.'
 
 export const alt =
-  'The map screen with a sheet over its lower part headed "Closure notice". Under the heading one row: a Closure tag and the title "Example Canyon Trail closed (example)" in grey, "Example County Parks" beneath, and a grey box reading "Its source gives no date. It may no longer apply." Below it a note: "This is Example County Parks’ notice, not OurHike’s. OurHike has not checked the trail itself, and does not work out detours — follow their notice, or the signage on the ground." Then "Gathered by OurHike on" and a date. Above the sheet the map shows the invented closures crossed out.'
+  'The map screen with a sheet over its lower part headed "Closure notice". Under the heading one row: a Closure tag and the title "Example Canyon Trail closed (example)" in grey, "Example County Parks" beneath, and a grey box reading "Its source gives no date. It may no longer apply." Below it a note: "This is Example County Parks’ notice, not OurHike’s. OurHike has not checked the trail itself, and does not work out detours — follow their notice, or the signage on the ground." Then "Gathered by OurHike on" a date "from Example County Parks’ own published notices." and a green link "How OurHike gathers and checks this ›". Above the sheet the map shows the invented closures crossed out.'
 
 /** As club-closures-on-the-map.mjs: vector basemap tiles at z13. */
 export const wait = 22000

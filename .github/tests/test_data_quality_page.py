@@ -168,11 +168,12 @@ def test_the_docs_land_beside_the_page_and_leave_it_alone(tmp_path: Path, workfl
         tmp_path,
         workflow,
         assemble,
-        site={"index.html": "home", "data/quality/index.html": "the page"},
+        site={"index.html": "home", "data/quality/index.html": "the page", "data/how/index.html": "how"},
         docs={"index.html": "the docs", "assets/index.js": "js"},
     )
     assert done.returncode == 0, done.stdout + done.stderr
     assert (tmp_path / "_site" / "data" / "quality" / "index.html").read_text() == "the page"
+    assert (tmp_path / "_site" / "data" / "how" / "index.html").read_text() == "how"
     assert (tmp_path / "_site" / "data" / "index.html").read_text() == "the docs"
 
 
@@ -186,7 +187,7 @@ def test_a_site_that_puts_anything_else_under_data_is_refused(tmp_path: Path, wo
         docs={"index.html": "the docs"},
     )
     assert done.returncode != 0
-    assert "::error::site/dist holds data/index.html beside data/quality/" in done.stdout
+    assert "::error::site/dist holds data/index.html beside data/quality/ and data/how/" in done.stdout
     assert (tmp_path / "_site" / "data" / "index.html").read_text() == "a stray", "refused before the docs were copied"
 
 
@@ -202,6 +203,20 @@ def test_docs_that_bring_a_quality_folder_are_refused(tmp_path: Path, workflow: 
     assert done.returncode != 0
     assert "::error::The dbt docs hold a quality/ of their own" in done.stdout
     assert (tmp_path / "_site" / "data" / "quality" / "index.html").read_text() == "the page"
+
+
+@pytest.mark.parametrize(("workflow", "assemble"), SITE_BUILDS)
+def test_docs_that_bring_a_how_folder_are_refused(tmp_path: Path, workflow: str, assemble: str):
+    done = _assemble(
+        tmp_path,
+        workflow,
+        assemble,
+        site={"data/how/index.html": "how"},
+        docs={"index.html": "the docs", "how/index.html": "the docs' own"},
+    )
+    assert done.returncode != 0
+    assert "::error::The dbt docs hold a how/ of their own" in done.stdout
+    assert (tmp_path / "_site" / "data" / "how" / "index.html").read_text() == "how"
 
 
 @pytest.mark.parametrize(("workflow", "assemble"), SITE_BUILDS)

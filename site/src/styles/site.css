@@ -616,6 +616,15 @@ a:hover {
     center / contain no-repeat;
 }
 
+/* The line under "What works today" into the data pages (Q24). */
+.works-data {
+  margin: 28px 0 0;
+  max-width: 62ch;
+  font-size: 16px;
+  line-height: 1.6;
+  color: var(--fg-2);
+}
+
 .checks--pending li::before {
   border-radius: 50%;
   background: var(--fg-3);
@@ -1690,6 +1699,66 @@ a:hover {
   border: 1px solid var(--border-1);
   border-radius: 14px;
   padding: 18px 20px;
+}
+
+/* ---- the summary (Q24): what is on the map, and how its last build went ---- */
+
+.dq-sum {
+  margin: 0 0 22px;
+}
+
+.dq-sum__title {
+  font-size: 20px;
+  margin: 0 0 10px;
+}
+
+.dq-sum__rows {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: 12px;
+}
+
+.dq-sum__row p {
+  margin: 0;
+  font-size: 15px;
+  line-height: 1.55;
+}
+
+.dq-sum__head {
+  color: var(--fg-2);
+}
+
+.dq-sum__head strong {
+  color: var(--fg-1);
+}
+
+/* Failed and warned are said in words too, so the tones are an aid only. */
+.dq-sum__bad {
+  color: var(--danger);
+  font-weight: 700;
+}
+
+.dq-sum__warn {
+  color: var(--fg-1);
+  font-weight: 600;
+}
+
+.dq-sum__orgs,
+.dq-sum__note {
+  margin: 14px 0 0;
+  font-size: 14px;
+  line-height: 1.55;
+  color: var(--fg-2);
+}
+
+.dq-sum__orgs strong {
+  color: var(--fg-1);
+}
+
+.dq-sum__note {
+  font-size: 13px;
 }
 
 /* ---- the two builds ---- */

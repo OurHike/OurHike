@@ -16,6 +16,7 @@
 // redraws when it changes size.
 
 import { FLAGGED_AS, chartControls, formatTickLabel, initialChart } from "./dataQuality.mjs";
+import { orgCounts } from "./dataQualitySummary.mjs";
 
 const ESCAPES = { "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" };
 
@@ -569,4 +570,35 @@ export function nearestPoint(xs, x) {
   let best = 0;
   for (let i = 1; i < xs.length; i += 1) if (Math.abs(xs[i] - x) < Math.abs(xs[best] - x)) best = i;
   return best;
+}
+
+/**
+ * The block at the top of the page (dataQualitySummary.mjs's buildSummary):
+ * one row per thing on the map with its status words, then the organizations
+ * a lane flagged. Its own tones, never its colour alone: each failing or
+ * warning phrase also says "failed" or "warned" in words.
+ */
+export function renderSummary(summary) {
+  if (!summary) return "";
+  const row = (r) => html`<li class="dq-sum__row" id="dq-sum-${r.id}">
+<p class="dq-sum__head">${
+    r.rest
+      ? html`<strong>Everything else</strong> · ${r.when}: ${r.rest.join(", ")}`
+      : html`<strong>${r.label ?? name(r.mart)}</strong> · ${r.when}`
+  }</p>
+<p class="dq-sum__status">${r.status.map(
+    (part, i) => html`${i > 0 ? (r.status[i - 1].tone === "ok" || part.tone === "ok" ? " · " : ", ") : ""}<span class="dq-sum__${part.tone}">${part.text}</span>`,
+  )}${
+    r.mostly
+      ? html` — ${r.mostly.text} ${r.mostly.columns.map((column, i) => html`${i > 0 ? ", " : ""}${name(column)}`)}.`
+      : ""
+  }${r.seeWhich ? html` <a href="#dq-look-title">See which ↓</a>` : ""}</p>
+</li>`;
+  const orgs = (o) => html`<p class="dq-sum__orgs"><strong>By organization, ${o.when}:</strong> checks flagged a feed from ${o.flagged.length} ${o.flagged.length === 1 ? "organization" : "organizations"}: ${o.flagged.map(
+    (entry, i) => html`${i > 0 ? "; " : ""}${entry.org} (${orgCounts(entry)})`,
+  )}.</p>`;
+  return html`<h2 class="dq-sum__title" id="dq-sum-title">${summary.title}</h2>
+<ul class="dq-sum__rows">${summary.rows.map(row)}</ul>
+${summary.orgs.map(orgs)}
+${summary.orgs.length ? html`<p class="dq-sum__note">${summary.orgNote}</p>` : ""}`.text;
 }

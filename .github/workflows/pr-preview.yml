@@ -707,12 +707,13 @@ jobs:
           # map rather than anything saying the docs are broken.
           # check_docs_site.py refuses the missing part instead, and with
           # --served a script, worker or WASM file from another origin.
-          # data/quality/ is the site's, as in pages.yml, and the same two
-          # refusals keep the site and the docs from replacing each other.
+          # data/quality/ and data/how/ are the site's, as in pages.yml, and
+          # the same refusals keep the site and the docs from replacing each
+          # other.
           if [ -e _site/data ]; then
-            strays=$(find _site/data -mindepth 1 -maxdepth 1 ! -name quality -printf '%f ')
+            strays=$(find _site/data -mindepth 1 -maxdepth 1 ! -name quality ! -name how -printf '%f ')
             if [ -n "$strays" ]; then
-              echo "::error::site/dist holds data/${strays% } beside data/quality/, and data/ is the dbt docs' path. Move one of them."
+              echo "::error::site/dist holds data/${strays% } beside data/quality/ and data/how/, and data/ is the dbt docs' path. Move one of them."
               exit 1
             fi
           fi
@@ -721,6 +722,10 @@ jobs:
           : "${DOCS_DIR:?the docs step named no directory}"
           if [ -e "$DOCS_DIR/quality" ]; then
             echo "::error::The dbt docs hold a quality/ of their own, which is the data-quality page's path. Move one of them."
+            exit 1
+          fi
+          if [ -e "$DOCS_DIR/how" ]; then
+            echo "::error::The dbt docs hold a how/ of their own, which is the How the data is built page's path. Move one of them."
             exit 1
           fi
           cp -r "$DOCS_DIR"/. _site/data/

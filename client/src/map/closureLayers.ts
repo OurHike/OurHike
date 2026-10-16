@@ -27,7 +27,7 @@ import { poiPinAt } from './poiPinProbe'
 import { isBroadAdvisory } from '../lib/closureSpan'
 import { trailSlice, type TrailIndex } from '../lib/trailPosition'
 import { whenStyleReady } from './styleReady'
-import { CLUB_CLOSURE_LAYER_ID } from './styleIds'
+import { CLUB_CLOSURE_FAR_LAYER_ID, CLUB_CLOSURE_LAYER_ID } from './styleIds'
 
 export const CLOSURE_SOURCE_ID = 'closures'
 
@@ -176,9 +176,14 @@ export function clubClosureIdAt(
   map: MapLibreMap,
   point: { x: number; y: number },
 ): string | null {
-  const layers = [CLUB_CLOSURE_LAYER_ID, closurePointId(CLUB_CLOSURE_LAYER_ID)].filter(
-    (layer) => map.getLayer(layer) !== undefined,
-  )
+  // And the small ✕ of z5 and z6 (Q22, map/clubClosureLayers.ts's
+  // buildClubClosureFarLayer): a tap on the ✕ that won its spot opens that
+  // closure's sheet, the same sheet as at z7.
+  const layers = [
+    CLUB_CLOSURE_LAYER_ID,
+    closurePointId(CLUB_CLOSURE_LAYER_ID),
+    CLUB_CLOSURE_FAR_LAYER_ID,
+  ].filter((layer) => map.getLayer(layer) !== undefined)
   if (layers.length === 0) return null
   const [feature] = map.queryRenderedFeatures(closureTapBox(point), { layers })
   const id = feature?.properties?.[CLUB_CLOSURE_ID_PROPERTY]

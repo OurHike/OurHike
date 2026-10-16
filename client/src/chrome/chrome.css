@@ -2030,6 +2030,13 @@
   color: var(--fg-2);
 }
 
+/* How OurHike gathers and checks a notice (Q24): the site's page, in the
+   brand's link ink, on the age line it explains. */
+.closure-sheet__how {
+  color: var(--brand-primary);
+  font-weight: 600;
+}
+
 /* ---------- Route entrance sheet (RouteEntranceSheet.tsx, #755) ---------- */
 
 /* The closure sheet's frame with the brand's top rule instead of the danger

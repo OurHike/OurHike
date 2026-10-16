@@ -17,15 +17,22 @@
 // downloaded nothing and the section renders nothing for nobody. The real
 // list is whatever the pinned release publishes.
 //
+// AND THE SITE'S TWO DATA PAGES (Q24 of #1805 — dlt → dbt re-platform as one
+// go/no-go change: the maintainer chose "All three as drawn", 2026-10-15).
+// Under the framing line: "How OurHike gathers these organizations’ data, and
+// how its checks went on the last build:" and two links in the cards' own
+// style, "How the data is built ›" and "Data quality ›". The framing line now
+// says "Every link on a card below", since these two are OurHike's own.
+//
 // Nothing here reaches an account, a hiker's own report, a dispersed
 // campsite or a real location fix (.claude/skills/pr-screenshot/SKILL.md).
 
 import { seedStewards } from './fixtures/stewards.mjs'
 
 export const caption =
-  'Where this map comes from — the organization’s own buttons (#1574)'
+  'Where this map comes from — the organization’s own buttons (#1574), and under the framing line the two links to the site’s data pages, “How the data is built ›” and “Data quality ›” (Q24)'
 export const alt =
-  'The "Where this map comes from" section of the More tab: a framing line saying each organization sets its own licence and that every link opens the organization’s own site, OurHike taking no cut; then a card for the Appalachian Trail Conservancy with its licence and a "Become a Member ›" link, and a card for the New York-New Jersey Trail Conference with two layers, an authoritative tier, its recorded terms, and two links, "Donate Today ›" and "Trail Maps ›"'
+  'The "Where this map comes from" section of the More tab: a framing line saying each organization sets its own licence and that every link on a card opens the organization’s own site, OurHike taking no cut; then the line "How OurHike gathers these organizations’ data, and how its checks went on the last build:" over two green links, "How the data is built ›" and "Data quality ›"; then a card for the Appalachian Trail Conservancy with its licence and a "Become a Member ›" link, and a card for the New York-New Jersey Trail Conference with two layers, an authoritative tier, its recorded terms, and two links, "Donate Today ›" and "Trail Maps ›"'
 
 export default async function drive(page) {
   await seedStewards(page)
@@ -41,5 +48,9 @@ export default async function drive(page) {
   // being in the DOM is the whole of "the cards are up".
   const storeLink = page.getByRole('link', { name: 'Trail Maps ›' })
   await storeLink.waitFor()
-  await storeLink.scrollIntoViewIfNeeded()
+  // The heading at the top of the frame, so the data pages' line under the
+  // framing text and both cards are in it together.
+  await page
+    .getByRole('heading', { name: 'Where this map comes from' })
+    .evaluate((heading) => heading.scrollIntoView({ block: 'start' }))
 }

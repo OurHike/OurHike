@@ -81,7 +81,7 @@ def test_the_bar_leads_the_body_and_names_the_site_and_both_data_pages():
     body = page.split("<body>", 1)[1]
     assert body.lstrip().startswith('<nav class="ourhike-bar" aria-label="OurHike">')
     assert '<a class="ourhike-bar__home" href="https://ourhike.org/">OurHike</a>' in body
-    assert '<a class="ourhike-bar__tab" href="/data/" aria-current="page">How the data is built</a>' in body
+    assert '<a class="ourhike-bar__tab" href="/data/how/" aria-current="page">How the data is built</a>' in body
     assert '<a class="ourhike-bar__tab" href="/data/quality/">Data quality</a>' in body
 
 

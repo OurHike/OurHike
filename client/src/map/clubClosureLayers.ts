@@ -39,8 +39,10 @@
 // review saw its 1,661 closures draw as black-and-white smudges over the West
 // from the opening camera in (rendered at z5 to z7 the same day). The other
 // closure feeds were already held off those zooms by their own sources and
-// map/style.ts's clamps. Whether a closure should say anything below the seam
-// is the maintainer's call, and this does not make it: no mark starts lower.
+// map/style.ts's clamps. The maintainer then made the call this left open
+// (Q22, 2026-10-15): below the seam each closure says one thing, a small ✕
+// at z5 and z6, thinned - the last section of this file, on a source of its
+// own. Nothing of the drawing above starts lower.
 //
 // AN AREA NO MAPPED TRAIL RUNS INSIDE IS SHADED (decision 191, the poll of
 // 2026-10-14, "Shade them, no edge", from open-questions-1014.html's frame
@@ -84,7 +86,7 @@ import type { NoticeGeometryValue } from '../lib/noticeGeometry'
 import { CLUB_CLOSURE_ID_PROPERTY } from './closureLayers'
 import { redLightActive, sheetIsDark } from './sheetInks'
 import type { SheetAppearance } from './sheets'
-import { CLUB_CLOSURE_LAYER_ID } from './styleIds'
+import { CLUB_CLOSURE_FAR_LAYER_ID, CLUB_CLOSURE_LAYER_ID } from './styleIds'
 
 export const CLUB_CLOSURE_SOURCE_ID = 'club-closures'
 
@@ -372,4 +374,147 @@ export function buildClubClosureLayers(
       CLUB_CLOSURE_POINT_FILTER,
     ),
   ]
+}
+
+// ---------------------------------------------------------------------------
+// FARTHER OUT, ONE SMALL ✕ PER CLOSURE, THINNED (Q22 of #1805 — dlt → dbt
+// re-platform as one go/no-go change: the maintainer chose "A small mark from
+// z5", then variant A, "small ✕, thinned", from q22_frames.html, 2026-10-15).
+// At z5 and z6 every club closure, of every organization, gets one small ✕
+// at one representative point (`clubClosureFarPoint`), on a source of its
+// own, so the line source's `tolerance: 0` and the clamp above are not
+// touched. The ✕s take part in symbol collision, so where closures crowd
+// (north-central Washington's fire closures) the first ✕ keeps its place and
+// the rest are dropped: a dense area reads as a few ✕s, never a blot. A ✕
+// that won its spot stands for itself and, silently, for the ones it hid;
+// the maintainer took that over the counted variant knowing it (the frame's
+// own caption: "The closures it hid get no sheet until you zoom in").
+//
+// They stop where the drawing above starts: maxzoom CLOSURE_MARK_MIN_ZOOM
+// (exclusive), so at z7 they are gone and the paper, trace, bold far mark and
+// point crosses take over. No zoom draws both.
+//
+// In the closure ink on the sheet's paper, never the closure red: #1677 took
+// red off the crossed-out mark because every trail is that red by default
+// (CLOSURE_COLOR's comment in lib/closureStyle.ts), so a red ✕ would vanish
+// on a red trail.
+//
+// @unvalidated: every size below (the ✕'s 7.2 px, its 2 px padding, its
+// 1.5 px paper ring) was picked off the renders of 2026-10-15 in headless
+// Chromium to read as legible but quieter than the z7 far mark
+// (CLOSURE_MARK_SIZE, about 16 px of ink). What would settle them: a look on
+// a real phone at arm's length, outdoors, over the West at z5 - nobody has
+// done it.
+// ---------------------------------------------------------------------------
+
+/** The far-out marks' own source: one Point per closure. */
+export const CLUB_CLOSURE_FAR_SOURCE_ID = 'club-closures-far'
+
+/** The id of the far-out marks' layer: map/styleIds.ts's, which
+ *  map/closureLayers.ts's tap reads in the launch bundle. */
+export { CLUB_CLOSURE_FAR_LAYER_ID }
+
+/** The first zoom the far-out mark draws at: the maintainer's "from z5". It
+ *  stops at CLOSURE_MARK_MIN_ZOOM (maxzoom is exclusive). */
+export const CLUB_CLOSURE_FAR_MIN_ZOOM = 5
+
+/** The small cross's `icon-size`: the chain's own cross at full size, about
+ *  7.2 px of ink (CLOSURE_CROSS_ARM + CLOSURE_CROSS_STROKE / 2, twice), under
+ *  half the z7 far mark's. @unvalidated (the section's header). */
+export const CLUB_CLOSURE_FAR_CROSS_SIZE = 1
+
+/** The small cross's collision padding in CSS px. @unvalidated (the
+ *  section's header). */
+export const CLUB_CLOSURE_FAR_CROSS_PADDING = 2
+
+/** The small cross's paper ring, a little wider than the chain's
+ *  CLOSURE_CROSS_HALO_WIDTH because far out it sits on the map, often on a
+ *  red trail, not on the closure's own paper. @unvalidated (the section's
+ *  header). */
+export const CLOSURE_CROSS_HALO_WIDTH_FAR = 1.5
+
+/** The point a closure's far-out mark sits at: halfway along a line
+ *  closure's longest run (measured in degrees, which is enough to pick a
+ *  spot on the line), a point closure's (first) point, the middle of a
+ *  shaded area's outer ring's box. Null for a geometry with no coordinates. */
+export function clubClosureFarPoint(geometry: NoticeGeometryValue): Position | null {
+  const g = geometry as { type: string; coordinates: unknown }
+  if (g.type === 'Point') return g.coordinates as Position
+  if (g.type === 'MultiPoint') return (g.coordinates as Position[])[0] ?? null
+  if (g.type === 'Polygon' || g.type === 'MultiPolygon') {
+    const ring =
+      g.type === 'Polygon'
+        ? (g.coordinates as Position[][])[0]
+        : (g.coordinates as Position[][][])[0]?.[0]
+    if (ring === undefined || ring.length === 0) return null
+    const xs = ring.map((p) => p[0])
+    const ys = ring.map((p) => p[1])
+    return [
+      (Math.min(...xs) + Math.max(...xs)) / 2,
+      (Math.min(...ys) + Math.max(...ys)) / 2,
+    ]
+  }
+  let best: Position[] | null = null
+  let bestLength = -1
+  for (const run of runsOf(geometry)) {
+    let length = 0
+    for (let i = 1; i < run.length; i += 1) {
+      length += Math.hypot(run[i][0] - run[i - 1][0], run[i][1] - run[i - 1][1])
+    }
+    if (length > bestLength) [best, bestLength] = [run, length]
+  }
+  if (best === null || best.length === 0) return null
+  let left = bestLength / 2
+  for (let i = 1; i < best.length; i += 1) {
+    const step = Math.hypot(best[i][0] - best[i - 1][0], best[i][1] - best[i - 1][1])
+    if (step >= left && step > 0) {
+      const t = left / step
+      return [
+        best[i - 1][0] + t * (best[i][0] - best[i - 1][0]),
+        best[i - 1][1] + t * (best[i][1] - best[i - 1][1]),
+      ]
+    }
+    left -= step
+  }
+  return best[best.length - 1]
+}
+
+/** An empty source, filled with `clubClosureFarPoint`'s points once the
+ *  closures land (map/clubClosureTaps.ts's attachClubClosureData), for
+ *  `buildClubClosureSource`'s reason. No `attribution`, for the same. */
+export function buildClubClosureFarSource(): GeoJSONSourceSpecification {
+  return {
+    type: 'geojson',
+    data: { type: 'FeatureCollection', features: [] },
+  }
+}
+
+/** The far-out marks, z5 to z6: the small ✕ in the closure ink on the
+ *  sheet's paper, thinned by collision. `icon-allow-overlap` and
+ *  `icon-ignore-placement` stay false, as the z7 far mark's do
+ *  (CLOSURE_MARK_PADDING's reason), so a ✕ that would overlap one already
+ *  placed is dropped and a ✕ that is placed holds its spot. */
+export function buildClubClosureFarLayer(
+  ground: string,
+  ink: string,
+): LayerSpecification {
+  return {
+    id: CLUB_CLOSURE_FAR_LAYER_ID,
+    type: 'symbol',
+    source: CLUB_CLOSURE_FAR_SOURCE_ID,
+    minzoom: CLUB_CLOSURE_FAR_MIN_ZOOM,
+    maxzoom: CLOSURE_MARK_MIN_ZOOM,
+    layout: {
+      'icon-image': CLOSURE_CROSS_ICON_ID,
+      'icon-size': CLUB_CLOSURE_FAR_CROSS_SIZE,
+      'icon-allow-overlap': false,
+      'icon-ignore-placement': false,
+      'icon-padding': CLUB_CLOSURE_FAR_CROSS_PADDING,
+    },
+    paint: {
+      'icon-color': ink,
+      'icon-halo-color': ground,
+      'icon-halo-width': CLOSURE_CROSS_HALO_WIDTH_FAR,
+    },
+  }
 }

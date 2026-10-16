@@ -37,6 +37,7 @@
 // greyed before it starts. It counts as a closure, tag and order, only from
 // the day before its start (lib/noticeCurrency.ts's `obstructsOn`).
 
+import { DATA_BUILT_URL } from '../lib/dataPages'
 import { longDate } from '../lib/atcNoticeText'
 import { HAZARD_ADVISORIES, longDay } from '../lib/hazardAreas'
 import { notCurrent, obstructsOn, standingLine, startsAhead } from '../lib/noticeCurrency'
@@ -388,7 +389,17 @@ export function PlannedNoticeList({
           downloaded no notices to date (decision 77), so it says nothing
           about when they were gathered. */}
       {generatedAt !== null ? (
-        <p className="closure-sheet__age">{`Gathered by OurHike on ${longDate(generatedAt)}.`}</p>
+        <p className="closure-sheet__age">
+          {`Gathered by OurHike on ${longDate(generatedAt)} from each organization’s own published notices. `}
+          <a
+            className="closure-sheet__how"
+            href={DATA_BUILT_URL}
+            target="_blank"
+            rel="noreferrer"
+          >
+            How OurHike gathers and checks these ›
+          </a>
+        </p>
       ) : planned.hikes.length > 0 ? (
         <p className="closure-sheet__age">
           OurHike can’t tell when these notices were gathered.

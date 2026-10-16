@@ -209,6 +209,23 @@ class TestPromoting:
         assert history["moves"][-1]["reason"] == "promoted from ua"
         assert _json(s3_client, "environments/ua/channels.json") == {"ua": {"v1": NEW}}, "UA's pointer is left alone"
 
+    def test_a_promoted_release_is_listed_in_productions_index_so_no_publish_mints_its_id_again(self, s3_client):
+        """publish.py mints ids from releases/index.json (lib/releases.next_release_id): an unlisted promoted id
+        is one production's next publish that day could mint, landing its copies on the promoted folder."""
+        _stage(s3_client, data_env.UA, NEW)
+        s3_client.put_object(
+            Bucket=BUCKET, Key="releases/index.json", Body=json.dumps({"releases": [{"id": OLD, "created_at": "x"}]}).encode()
+        )
+
+        result = _promote(s3_client, target=data_env.PRODUCTION, release=NEW)
+
+        assert result["indexed"] is True
+        assert releases.index_ids(_json(s3_client, "releases/index.json")) == [OLD, NEW]
+        assert releases.next_release_id(releases.index_ids(_json(s3_client, "releases/index.json"))) != NEW
+        again = _promote(s3_client, target=data_env.PRODUCTION, release=NEW)
+        assert again["indexed"] is False
+        assert releases.index_ids(_json(s3_client, "releases/index.json")) == [OLD, NEW]
+
     def test_a_copy_that_does_not_verify_writes_no_manifest_and_moves_no_pointer(self, s3_client, monkeypatch):
         _stage(s3_client, data_env.UA, NEW)
         real_copy = s3_client.copy_object

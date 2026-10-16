@@ -33,7 +33,9 @@ THREE RULES, each with a test in tests/test_channels.py:
   object arrived at the source's size and, where the source's ETag is a plain
   MD5, the same ETag, before it moves the pointer. A copy that does not
   verify moves nothing. The folder's manifest is copied last, so a manifest
-  in the target means every object before it landed.
+  in the target means every object before it landed. The release is then
+  listed in the target's releases/index.json, so no later publish there
+  mints its id again (_list_in_index).
 
 WHO CALLS IT. build-reference.yml's last job moves UA's pointer once every
 check in that run has passed. promote-data.yml, behind the production
@@ -331,6 +333,7 @@ def promote(
         copied = len(objects)
         checked_by_etag = sum(1 for entry in objects.values() if "-" not in (entry.get("etag") or "-").strip('"'))
 
+    listed = _list_in_index(s3_client, bucket, target, release, manifest, now)
     move = move_pointer(
         environment=target,
         release=release,
@@ -341,7 +344,31 @@ def promote(
         provenance=provenance,
         now=now,
     )
-    return {**move, "copied": copied, "checked_by_etag": checked_by_etag}
+    return {**move, "copied": copied, "checked_by_etag": checked_by_etag, "indexed": listed}
+
+
+def _list_in_index(s3_client, bucket: str, environment: str, release: str, manifest: dict | None, now) -> bool:
+    """Add `release` to `environment`'s releases/index.json when it is not listed, and say whether it was added.
+
+    WHY A PROMOTED RELEASE MUST BE LISTED: publish.py mints the next id from
+    the ids this index lists (lib/releases.next_release_id), and a folder is
+    immutable only because no id is minted twice. A release promoted on the
+    day UA minted it, and missing from production's index, is an id
+    production's next publish that day could mint again, and its copies would
+    land on the promoted folder's keys."""
+    key = data_env.scope_key(environment, releases.RELEASE_INDEX_KEY)
+    index = publish.load_remote_json(s3_client, bucket, key)
+    if release in releases.index_ids(index):
+        return False
+    version = (manifest or {}).get("version")
+    updated = releases.append_release(
+        index,
+        release_id=release,
+        version=version if isinstance(version, str) else "",
+        created_at=(now or datetime.now(timezone.utc)).isoformat(),
+    )
+    s3_client.put_object(Bucket=bucket, Key=key, Body=json.dumps(updated, indent=2).encode("utf-8"))
+    return True
 
 
 def _release_keys(manifest: dict | None) -> list[str]:

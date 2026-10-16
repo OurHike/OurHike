@@ -175,6 +175,7 @@ models:
           this layer.
         data_tests: [not_null, unique]
       - name: source_id
+        description: The trail segment's OBJECTID in DEC's layer.
         data_tests: [not_null, unique]
   - name: stg_dec__backcountry_features
     data_tests:

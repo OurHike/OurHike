@@ -156,6 +156,7 @@ models:
           this layer.
         data_tests: [not_null, unique]
       - name: source_id
+        description: The bridge's GlobalID in ATC's layer.
         data_tests: [not_null, unique]
   - name: stg_atc__centerline_segments
     data_tests:
@@ -266,6 +267,7 @@ models:
           this layer.
         data_tests: [not_null, unique]
       - name: source_id
+        description: The club section's GlobalID in ATC's layer.
         data_tests: [not_null, unique]
   - name: stg_atc__half_mile_markers
     data_tests:
@@ -287,8 +289,10 @@ models:
           this layer.
         data_tests: [not_null, unique]
       - name: source_id
+        description: The marker's Point_ID in ATC's layer, which has no GlobalID.
         data_tests: [not_null, unique]
       - name: measure_mi
+        description: The marker's A.T. mile on ATC's own scale (`measure`), the mile every published point of interest and elevation profile is placed by.
         data_tests: [not_null]
       - name: source_row
         description: >
@@ -314,4 +318,5 @@ models:
           this layer.
         data_tests: [not_null, unique]
       - name: source_id
+        description: The treadway segment's GlobalID in ATC's layer.
         data_tests: [not_null, unique]

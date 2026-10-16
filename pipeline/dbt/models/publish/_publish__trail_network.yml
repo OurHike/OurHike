@@ -1,8 +1,6 @@
 version: 2
 
-# The trail_network family's phone files (stage 3 of #1793 — Rebuild the data
-# platform as dlt → dbt: seven contracted marts, a monthly refresh, published
-# docs, and lighter phone downloads): the junction graph a day hike routes
+# The trail_network family's phone files: the junction graph a day hike routes
 # over, which build_trail_graph.py and cut_trail_graph.py write today.
 # parity.py compares each dbt-written file with build_trail_graph.py's on the
 # same lines.
@@ -14,6 +12,7 @@ models:
       text (`nodes`, then `edges`), which phone_file's json_document format
       writes verbatim. parity.py compares it with build_trail_graph.py's,
       the nodes whole and the edges by position.
+      Refreshed monthly, with its lane's build.
     config:
       access: public
       contract:
@@ -34,6 +33,7 @@ models:
       one column, the whole bare array as text, which phone_file's
       json_document format writes verbatim. Entry i is edge i's vertices.
       parity.py compares it with build_trail_graph.py's, entry by entry.
+      Refreshed monthly, with its lane's build.
     config:
       access: public
       contract:
@@ -56,9 +56,7 @@ exposures:
       lengths and attribution, which PlanKindSheet reads at launch to say
       whether a day hike is on offer and client/src/lib/trailGraph.ts paths
       over. Published by publish-vector-data.yml from build_trail_graph.py's
-      file until stage 4 of #1793 — Rebuild the data platform as dlt → dbt:
-      seven contracted marts, a monthly refresh, published docs, and lighter
-      phone downloads — moves it to this writer's; the current
+      file until the cutover — moves it to this writer's; the current
       client reads its 1-degree cells (trail_graph_cells), which
       cut_trail_graph.py cuts from it.
     depends_on:

@@ -1,8 +1,6 @@
 version: 2
 
-# tl-at's unit tests for the trail_lines family's A.T. models (stage 3 of
-# #1793 — Rebuild the data platform as dlt → dbt: seven contracted marts, a
-# monthly refresh, published docs, and lighter phone downloads). Each test
+# tl-at's unit tests for the trail_lines family's A.T. models. Each test
 # names the pytest cases it holds the SQL to, one row per case where the
 # model's rows are independent, keyed `<pytest file>::<case>`, and one test
 # per case where they are not (a club's runs, a chain's number). Rows keyed

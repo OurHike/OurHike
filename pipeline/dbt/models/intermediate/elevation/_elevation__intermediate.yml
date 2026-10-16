@@ -320,7 +320,7 @@ models:
       `seam` block reports it, one row (EL13 of pipeline/ELT.md's ledger,
       export_network_profile.measure_seams): shared nodes, coincident ones,
       steps, steps over the dead band, and the median, 95th percentile and
-      largest step, nearest-rank. Writing the manifest is stage 4's.
+      largest step, nearest-rank. Writing the manifest is left to the cutover.
     data_tests:
       # Each count is a subset of the one before it.
       - dbt_utils.expression_is_true:

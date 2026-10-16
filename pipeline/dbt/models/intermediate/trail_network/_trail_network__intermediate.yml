@@ -1,8 +1,6 @@
 version: 2
 
-# The trail_network family (stage 3 of #1793 — Rebuild the data platform as
-# dlt → dbt: seven contracted marts, a monthly refresh, published docs, and
-# lighter phone downloads): the junction graph a day hike routes over, which
+# The trail_network family: the junction graph a day hike routes over, which
 # build_trail_graph.py builds today. The rules are pipeline/ELT.md's TN rows,
 # applied in that file's order: the routable lines, the cuts
 # (with TN04's cutting in step_node_lines), the node grid and the

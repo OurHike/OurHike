@@ -3,13 +3,18 @@ version: 2
 models:
   - name: podcasts
     description: >
-      The podcast episodes picked for hikes, one row per episode, as the
-      phone lists them (podcasts/episodes.json, written by
-      pub_podcasts_episodes). Each is anchored to the hikes, the A.T. mile
-      ranges or the published POIs it talks about, and carries each other
-      podcast app's own link for it. Every row of
-      reference/podcast_episodes.json, because a build in which any row has a
+      One row per episode. Key: `spotify_id`. Refreshed monthly. Phone file:
+      podcasts/episodes.json (pub_podcasts_episodes).
+
+      The podcast episodes picked for hikes, as the phone lists them. Each is
+      anchored to the hikes, the A.T. mile ranges or the published POIs it
+      talks about, and carries each other podcast app's own link for it. Every
+      row of reference/podcast_episodes.json: a build in which any row has a
       problem fails at int_podcasts__checked's test.
+
+      Versioned: phones read v1. A removed, renamed or retyped column ships as
+      a new version beside v1, never as a change to it; an added column is not
+      breaking.
     config:
       access: public
       contract:

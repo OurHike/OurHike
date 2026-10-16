@@ -3,10 +3,19 @@ version: 2
 models:
   - name: sources
     description: >
-      Every source the registry registers, one row per layer or feed, with
-      the record of the steward it is credited to on a hiker's phone. The
-      steward's columns are null for a provider that ships nothing.
-      stewards.json and registry.json are written from it.
+      One row per registered source. Key: `source_key`. Refreshed monthly.
+      Phone files: registry.json (pub_registry) and stewards.json
+      (pub_stewards).
+
+      Every source the registry registers, one row per layer or feed, with the
+      record of the steward it is credited to on a hiker's phone, and whether
+      it may publish. The steward's columns are null for a provider that ships
+      nothing. This is the one mart that keeps rows whose source may not
+      publish, because it is where that flag is read.
+
+      Versioned: phones read v1. A removed, renamed or retyped column ships as
+      a new version beside v1, never as a change to it; an added column is not
+      breaking.
     config:
       access: public
       contract:

@@ -24,7 +24,8 @@
 -- `updated_at` is `modified`, NYNJTC's site-local time written as UTC
 -- to the second: a known error of a few hours, carried, as _as_utc_stamp()
 -- carries it. Nothing here places, classifies or reviews a post:
--- that is int_closures__unioned's null `obstructs_trail`, by decision 7.
+-- that is int_closures__unioned's null `obstructs_trail`, which lands it in
+-- warnings.
 --
 -- STRICTER THAN THE PYTHON, deliberately, each a post the Python would read:
 -- two posts with one slug are a problem here, where the cache keeps whichever
@@ -113,7 +114,7 @@ named_tags as (
 -- locality_of(): a taxonomy's names that are not blank, each once, in the
 -- order the post first names them.
 -- features/ORG_NOTICES.md section 4's left-hand side, for
--- conditions/notices.json's `org_terms` place (phase D): each
+-- conditions/notices.json's `org_terms` place: each
 -- post's trail and park tags as `taxonomy:slug`, keyed on the taxonomy and
 -- the slug and never the term id or the bare slug (section 4's three
 -- properties), trail tags first and each in the post's own order. No term is

@@ -3,14 +3,21 @@ version: 2
 models:
   - name: trail_lines
     description: >
-      Every line a phone draws from a trail file, one row per published line
-      (pipeline/ELT.md, "The eleven marts"): the A.T.'s centerline chains,
-      side trails and spurs, which trails.geojson carries, and every other
-      organization's lines, which nearby_trails.geojson carries. Keyed by
-      `trail_line_id`; `published_id` is the `id` both files publish, which
-      spurs.json and trail_miles.json key their records by too. Only rows whose source may publish
-      (int_sources__publication). trails.geojson, trail_miles.json and
-      spurs.json are written from it.
+      One row per published line. Key: `trail_line_id`; `published_id` is the
+      `id` the phone files publish. Refreshed monthly. Phone files:
+      trails.geojson (pub_trails_geojson), nearby_trails.geojson
+      (pub_nearby_trails), trail_miles.json (pub_trail_miles, v1;
+      pub_trail_miles_v2, v2) and spurs.json (pub_spurs).
+
+      Every line a phone draws from a trail file: the A.T.'s centerline
+      chains, side trails and spurs, which trails.geojson carries, and every
+      other organization's lines, which nearby_trails.geojson carries.
+      spurs.json and trail_miles.json key their records by `published_id` too.
+      Only rows whose source may publish (int_sources__publication).
+
+      Versioned: phones read v1. A removed, renamed or retyped column ships as
+      a new version beside v1, never as a change to it; an added column is not
+      breaking.
     config:
       access: public
       contract:
@@ -20,7 +27,7 @@ models:
     # reading this mart pins it, ref('trail_lines', v=1). v2
     # (trail_lines_v2.sql) carries each centerline chain's vertex miles as
     # whole thousandths of a mile, for the packed v2/trail_miles.json that
-    # pub_trail_miles_v2 writes beside v1 (stage 6 of #1793; pipeline/ELT.md,
+    # pub_trail_miles_v2 writes beside v1 (pipeline/ELT.md,
     # "Making the download smaller"). v1 stays the latest version, so an
     # unpinned ref reads v1; v2 is a version ahead of it until a v2 release
     # ships. dbt 2.0.6 builds trail_lines_v1 and trail_lines_v2 and keeps

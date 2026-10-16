@@ -1,6 +1,5 @@
 -- int_elevation__final: the elevation mart's rows before their row dates, every
--- contracted column but _first_seen_at and _changed_at. This is what
--- models/marts/elevation/elevation.sql held until decision 57;
+-- contracted column but _first_seen_at and _changed_at. The
 -- int_elevation__history snapshots it, and the mart reads that snapshot.
 --
 -- The elevation mart: one sample per row on a profiled line, keyed by

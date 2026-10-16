@@ -1,6 +1,6 @@
 -- elevation v2's whole thousandths of a mile and tenths of a foot, each
 -- divided back by 1,000 or 10, are the doubles a phone reads out of v1's
--- elevation_profile.json, on every sample (stage 6 of #1793): what
+-- elevation_profile.json, on every sample: what
 -- client/src/lib/elevationProfile.ts does to v2/elevation_profile.json, and
 -- IEEE 754 rounds the division to the double nearest the quotient, as
 -- JSON.parse rounds v1's decimal text. An elevation is null in v2 exactly

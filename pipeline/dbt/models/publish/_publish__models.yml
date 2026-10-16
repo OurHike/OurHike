@@ -8,6 +8,7 @@ models:
       materialisation copies to processed_dir/podcasts_episodes.json as one
       JSON document. parity.py compares it with export_podcasts.py's file,
       record by record, in the dbt job.
+      Refreshed monthly, with its lane's build.
     config:
       access: public
       contract:
@@ -27,6 +28,7 @@ models:
       Writes stewards.json, "Where this map comes from" on the phone (#927),
       from the sources mart: one record per steward whose data reaches a
       hiker. parity.py compares it with export_sources.py's build_output().
+      Refreshed monthly, with its lane's build.
     config:
       access: public
       contract:
@@ -41,6 +43,7 @@ models:
       Writes registry.json, the org console's list of every registered
       source (#929), from the sources mart. parity.py compares it with
       export_sources.py's build_registry().
+      Refreshed monthly, with its lane's build.
     config:
       access: public
       contract:
@@ -68,7 +71,7 @@ exposures:
       outside every release folder (client/src/lib/dataRelease.ts's
       ROOT_SCOPED_PREFIXES), rewritten in place, so a bad upload is served
       until the next one. Uploaded by publish-podcasts.yml from
-      export_podcasts.py's file until stage 4 of #1793 moves the upload to
+      export_podcasts.py's file until the cutover moves the upload to
       this writer's.
     depends_on:
       - ref('podcasts', v=1)
@@ -105,8 +108,7 @@ exposures:
       map comes from: one card per registered steward, with its own licence
       and its own donate line): the sources screen's list. Only stewards with a shipping source are on it,
       credits.ts's rule taken whole. Published in the release folder by
-      publish-vector-data.yml from export_sources.py's file until stage 4 of
-      #1793 moves it to this writer's.
+      publish-vector-data.yml from export_sources.py's file until the cutover moves it to this writer's.
     depends_on:
       - ref('sources', v=1)
       - ref('pub_stewards')
@@ -126,7 +128,7 @@ exposures:
       The org console: two seats over one registry, where approving a source
       opens a pull request and never changes a phone): an admin surface, not
       a hiker's. Published in the release folder by publish-vector-data.yml
-      from export_sources.py's file until stage 4 of #1793.
+      from export_sources.py's file until the cutover.
     depends_on:
       - ref('sources', v=1)
       - ref('pub_registry')

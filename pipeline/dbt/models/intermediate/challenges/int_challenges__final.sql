@@ -1,6 +1,5 @@
 -- int_challenges__final: the challenges mart's rows before their row dates,
--- every contracted column but _first_seen_at and _changed_at. This is what
--- models/marts/challenges/challenges.sql held until decision 57;
+-- every contracted column but _first_seen_at and _changed_at. The
 -- int_challenges__history snapshots it, and the mart reads that snapshot.
 --
 -- The challenges clubs put on their own trails (#1780 — Let a club publish a

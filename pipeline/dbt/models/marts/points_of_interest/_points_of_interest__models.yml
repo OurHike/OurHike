@@ -3,14 +3,23 @@ version: 2
 models:
   - name: points_of_interest
     description: >
-      Every POI a phone is given, one row each, keyed by the id it publishes
-      under: the A.T. family's (the eight poi_<type>.geojson files), the
-      other organizations' (nearby_poi.geojson) and the tombstones of every
-      POI the identity ledger has retired (retired_poi.geojson). Only rows
-      whose source may publish (int_sources__publication). Geometry is
-      `geom_geojson` text at the precision each file prints. The safety
-      fields are each a test here, and pipeline/ELT.md's "The eleven marts"
-      says why each one.
+      One row per published POI. Key: `poi_id` (and `poi_key`). Refreshed
+      monthly. Phone files: the eight poi_<type>.geojson files
+      (pub_poi_<type>), nearby_poi.geojson (pub_nearby_poi) and
+      retired_poi.geojson (pub_retired_poi); v2 of each beside v1.
+
+      Every POI a phone is given, keyed by the id it publishes under: the A.T.
+      family's (the eight poi_<type>.geojson files), the other organizations'
+      (nearby_poi.geojson) and the tombstones of every POI the identity ledger
+      has retired (retired_poi.geojson). Only rows whose source may publish
+      (int_sources__publication). Geometry is `geom_geojson` text at the
+      precision each file prints. The safety fields (capacity, water distance
+      and its source, elevation) are each held by a test: absent means
+      unknown, never zero.
+
+      Versioned: phones read v1. A removed, renamed or retyped column ships as
+      a new version beside v1, never as a change to it; an added column is not
+      breaking.
     config:
       access: public
       contract:
@@ -21,7 +30,7 @@ models:
     # (points_of_interest_v2.sql) holds each POI's position once, as
     # geom_geojson at 6 decimals, for the v2/poi_<type>.geojson and
     # v2/nearby_poi.geojson files the pub_poi_<type>_v2 and pub_nearby_poi_v2
-    # writers write beside v1 (stage 6 of #1793; pipeline/ELT.md, "Making the
+    # writers write beside v1 (pipeline/ELT.md, "Making the
     # download smaller"). v1 stays the latest version, so an unpinned ref
     # reads v1; v2 is a version ahead of it until a v2 release ships. dbt
     # 2.0.6 builds points_of_interest_v1 and points_of_interest_v2 and keeps

@@ -1,10 +1,7 @@
 -- NYS Parks' statewide trail network, keyed on GlobalID, with
 -- its geometry. `globalid` and `geom` are carried for
--- int_trail_lines__network_unioned, which publishes these lines from stage 3 of
--- #1793 — Rebuild the data platform as dlt → dbt: seven contracted marts, a
--- monthly refresh, published docs, and lighter phone downloads. Until then
--- this model was attributes only and the lines stayed in the Python spatial
--- scripts. `globalid` is also what lib/feature_id.py builds the published
+-- int_trail_lines__network_unioned, which publishes these lines. `globalid` is
+-- also what lib/feature_id.py builds the published
 -- `id` from, so it is staged as itself and not only inside the key.
 --
 -- 16,641 polyline segments, measured 2026-08-18, and the largest single

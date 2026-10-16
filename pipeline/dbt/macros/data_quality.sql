@@ -80,8 +80,8 @@
     `level_tests` below, or a singular test whose meta says scores_a_level),
     writes no value, a level being no count of rows.
 
-    FRESHNESS IS dbt's SOURCE FRESHNESS, one check per source (decision 203,
-    the maintainer, 2026-10-15: freshness is OurHike's own last successful
+    FRESHNESS IS dbt's SOURCE FRESHNESS, one check per source (the
+    maintainer, 2026-10-15: freshness is OurHike's own last successful
     read of a source, never the source's own dates). build_marts.py runs
     `dbt source freshness` right before this file, on the lane's sources
     (its freshness_selection()), and Elementary's end-of-run hook writes a
@@ -98,8 +98,7 @@
     and 47,250, which this subtraction gives to the second, truncated as dbt
     does). Its `expected_max` is the source's error limit in seconds, the
     limit the page quotes; for a source with no error limit, one whose
-    sources.json row says reaches_hikers false, until decision 204 revisits
-    that rule, it is the warning limit. `expected_min` is null:
+    sources.json row says reaches_hikers false, it is the warning limit. `expected_min` is null:
     an age has no lower edge. `since` is null too, because the value already
     is how long. `metric` is last_read_age and `test` source_freshness, names
     this file gives, as dbt gives the measurement none. A source counts, and
@@ -145,7 +144,7 @@
     column_anomalies test, as the page's "column measures" count them).
 
     THE FILE (format ourhike-data-quality/1; the contract the page is built
-    against is decision 102's, and departures from it are named here):
+    against, with its departures named here):
     - `lane`: `monthly` or `hourly`; `built_at`: when this pass started, the
       last dbt command of the build, UTC to the second.
     - `totals` and `kinds`: checks, passed, warned, failed, errored; kinds
@@ -807,7 +806,8 @@ issues as (
             when counted.metric in ('{{ whole_metrics | join("', '") }}')
                 then to_json(cast(round(anomalous.metric_value) as bigint))
             when counted.metric in ('{{ count_metrics | join("', '") }}') then to_json(round(anomalous.metric_value, 3))
-            -- A level (macros/test_levels.sql) is no count of rows, so no value.
+            -- A level (macros/test_levels.sql) is no count of rows, so no
+            -- value.
             when counted.scores_a_level then null
             when counted.kind = 'dbt_tests' then to_json(counted.failures)
             when counted.kind = 'schema' and counted.test_type = 'dbt_test' then to_json(counted.failures)

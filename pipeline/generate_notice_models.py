@@ -122,9 +122,9 @@ import yaml
 # quoted into a model's comment or description is published there.
 from check_docs_site import SHAPES as DOCS_SITE_SHAPES
 
-# Elementary's checks on a raw table, and the freshness every source reads from the run log (decision
-# 203): one home for both generators.
-from make_dbt_staging import LOADED_AT_QUERY, MONTHLY_FRESHNESS_DAYS, raw_table_checks
+# Elementary's checks on a raw table, the freshness every source reads from the run log, and how a registry note
+# is quoted: one home for both generators.
+from make_dbt_staging import LOADED_AT_QUERY, MONTHLY_FRESHNESS_DAYS, raw_table_checks, registry_words
 
 PIPELINE_DIR = Path(__file__).resolve().parent
 DBT_DIR = PIPELINE_DIR / "dbt"
@@ -615,7 +615,7 @@ def _measured(source: NoticeSource) -> str:
     notes = (source.entry or {}).get("notes") or ""
     for sentence in re.split(r"(?<=\.)\s+", notes):
         if re.search(r"\b(distinct on|unique on)\b", sentence):
-            return _publishable(sentence.strip())
+            return _publishable(registry_words(sentence.strip()))
     return "no count is recorded on its sources.json row"
 
 

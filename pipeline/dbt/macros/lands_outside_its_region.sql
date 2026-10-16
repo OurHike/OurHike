@@ -432,8 +432,7 @@ coalesce(
     from (macros/generated_regions.sql), read off the rows a build landed,
     never off a server's returnExtentOnly answer, which can lie: USFWS's
     trail segments answered lat -24.99 to 90 for vertices at 13.64 to 63.20
-    (pipeline/ELT.md, "What wave 1's live reads found that phase C must
-    honour", 2026-10-03).
+    (read 2026-10-03).
 
     With `cleared_column`, a column of `relation` marking a row whose point
     was cleared as outside its box (point_outside_its_region), it also

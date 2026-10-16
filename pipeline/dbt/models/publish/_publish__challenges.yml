@@ -8,6 +8,7 @@ models:
       phone_file materialisation copies to processed_dir/challenges.json as
       one JSON document. parity.py compares it with export_challenges.py's
       build_output(), record by record, in the dbt job.
+      Refreshed monthly, with its lane's build.
     config:
       access: public
       contract:
@@ -39,9 +40,7 @@ exposures:
       CHALLENGES_KEY. In the release folder, `@release optional`: a release
       with none reads as "no challenges yet". Published by
       publish-vector-data.yml from export_challenges.py's file (publish.py
-      collects challenges_manifest.json) until stage 4 of #1793 — Rebuild
-      the data platform as dlt → dbt: seven contracted marts, a monthly
-      refresh, published docs, and lighter phone downloads moves the upload
+      collects challenges_manifest.json) until the cutover moves the upload
       to this writer's.
     depends_on:
       - ref('challenges', v=1)

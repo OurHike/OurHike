@@ -1,6 +1,6 @@
 -- The points_of_interest mart's v2, for the eight
--- v2/poi_<type>.geojson files and v2/nearby_poi.geojson (stage 6 of #1793;
--- pipeline/ELT.md, "Making the download smaller", tier (a): "6 decimals" and
+-- v2/poi_<type>.geojson files and v2/nearby_poi.geojson (pipeline/ELT.md,
+-- "Making the download smaller", tier (a): "6 decimals" and
 -- "one copy of each coordinate"). The same rows as v1, every column as v1
 -- has it, except that a POI's position is held once, as `geom_geojson`, at 6
 -- decimals; v1's `lat` and `lon` columns are gone.

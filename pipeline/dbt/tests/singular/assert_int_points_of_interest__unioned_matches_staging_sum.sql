@@ -8,10 +8,7 @@
 -- which is the duplication that makes the test worth having: a branch
 -- dropped from the union without being dropped here fails immediately, and
 -- a branch added to the union without being added here does too. Twenty-one
--- branches since stage 3 of #1793 — Rebuild the data platform as dlt → dbt:
--- seven contracted marts, a monthly refresh, published docs, and lighter
--- phone downloads (thirteen before it, as assert_int_pois_unioned_matches_
--- staging_sum), a twenty-second for the wave 1 point layers,
+-- hand-staged branches, a twenty-second for the generated club point layers,
 -- which reads every one of them through int_points_of_interest__club_points,
 -- and a twenty-third for GATC's water list.
 with expected as (

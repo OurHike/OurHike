@@ -3,14 +3,18 @@ version: 2
 models:
   - name: challenges
     description: >
-      The challenges clubs put on their own trails (#1780 — Let a club
-      publish a challenge — places on its own trails that hikers opt into and
-      tag at camp — starting with the ATC's A.T. Summer Bucket List): one row
-      per challenge that resolved against the published POIs and the A.T.
-      centerline and whose source may publish, keyed by its id, with its
-      sections and items as the JSON challenges.json carries. Each item's
-      places carry the published POI's own mile, coordinate and name.
-      challenges.json is written from it by pub_challenges.
+      One row per challenge. Key: `challenge_id`. Refreshed monthly. Phone
+      file: challenges.json (pub_challenges).
+
+      The challenges clubs put on their own trails: each challenge that
+      resolved against the published POIs and the A.T. centerline and whose
+      source may publish, with its sections and items as the JSON
+      challenges.json carries. Each item's places carry the published POI's
+      own mile, coordinate and name.
+
+      Versioned: phones read v1. A removed, renamed or retyped column ships as
+      a new version beside v1, never as a change to it; an added column is not
+      breaking.
     config:
       access: public
       contract:

@@ -1,6 +1,5 @@
 -- int_podcasts__final: the podcasts mart's rows before their row dates, every
--- contracted column but _first_seen_at and _changed_at. This is what
--- models/marts/podcasts/podcasts.sql held until decision 57;
+-- contracted column but _first_seen_at and _changed_at. The
 -- int_podcasts__history snapshots it, and the mart reads that snapshot.
 --
 -- The podcast episodes picked for hikes (#1683): every row of

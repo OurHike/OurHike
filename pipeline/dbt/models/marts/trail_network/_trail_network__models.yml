@@ -3,15 +3,21 @@ version: 2
 models:
   - name: trail_network
     description: >
-      The junction graph a day hike routes over, one row per edge: a piece
-      of a maintained trail line between two junctions, carrying its parent
-      line's id, source, name and blaze, in the order trail_graph.json lists
-      the edges (pipeline/ELT.md, "The eleven marts"). Built from the
-      trail_lines mart's network lines and the A.T.'s centerline and side
-      trails, as build_trail_graph.py builds it from nearby_trails.geojson
-      and trails.geojson today. trail_graph.json and
-      trail_graph_geometry.json are written from it; cut_trail_graph.py cuts
-      both into 1-degree cells.
+      One row per junction-graph edge. Key: `edge_id` (and `edge_index`, its
+      order). Refreshed monthly. Phone files: trail_graph.json
+      (pub_trail_graph) and trail_graph_geometry.json
+      (pub_trail_graph_geometry); cut_trail_graph.py cuts both into 1-degree
+      cells.
+
+      The junction graph a day hike routes over: each edge is a piece of a
+      maintained trail line between two junctions, carrying its parent line's
+      id, source, name and blaze, in the order trail_graph.json lists the
+      edges. Built from the trail_lines mart's network lines and the A.T.'s
+      centerline and side trails.
+
+      Versioned: phones read v1. A removed, renamed or retyped column ships as
+      a new version beside v1, never as a change to it; an added column is not
+      breaking.
     config:
       access: public
       contract:

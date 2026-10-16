@@ -1,8 +1,6 @@
 version: 2
 
-# The places family's phone file (stage 3 of #1793 — Rebuild the data
-# platform as dlt → dbt: seven contracted marts, a monthly refresh, published
-# docs, and lighter phone downloads): places.json, which export_places.py
+# The places family's phone file: places.json, which export_places.py
 # writes today. parity.py compares the dbt-written file with the Python's.
 models:
   - name: pub_places
@@ -13,6 +11,7 @@ models:
       out a field it has no value for, which COPY's JSON format cannot do.
       parity.py compares it with export_places.py's file record by record,
       keyed on `id`, in order.
+      Refreshed monthly, with its lane's build.
     config:
       access: public
       contract:
@@ -41,7 +40,7 @@ exposures:
       (client/src/lib/places.ts, PLACES_KEY in client/src/lib/config.ts), and
       its answer becomes the map's fallback centre whenever GPS has no fix.
       Published in the release folder by publish-vector-data.yml from
-      export_places.py's file until stage 4 of #1793 moves it to this
+      export_places.py's file until the cutover moves it to this
       writer's.
     depends_on:
       - ref('places', v=1)

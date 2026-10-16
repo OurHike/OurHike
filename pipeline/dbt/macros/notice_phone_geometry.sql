@@ -1,7 +1,7 @@
 {#-
     notice_phone_geometry(geom): a club notice's own geometry as
     conditions/notices.json carries it (pub_conditions_notices, whose header
-    has the measurements; decision 77, the maintainer's poll of 2026-10-05).
+    has the measurements; the maintainer's poll of 2026-10-05).
     `geom` is a valid geometry in EPSG:4326. The result is in EPSG:4326 at 5
     decimal places, and may be empty, which the writer answers by keeping the
     full shape. A macro so that
@@ -36,7 +36,7 @@
     in a CASE, DuckDB computed it each time (measured 2026-10-05, about 1.6
     times as long). @unvalidated: what this costs the hourly build. On the
     live file's geometries, in a shared sandbox (load average 12 to 18), the
-    shaping before decision 77 took 7.4 s and this 36 to 39 s (measured
+    earlier 10 m shaping took 7.4 s and this 36 to 39 s (measured
     2026-10-05), and publish-conditions.yml's build step, capped at 4
     minutes, already took 162 to 171 s on soak runs 532 to 536
     (pipeline/ELT.md). Nobody has measured it on a runner against the
@@ -65,7 +65,7 @@
     divide by zero.
 
     A LINE OR A POINT is not grown: Douglas-Peucker at 10 m with the topology
-    preserved, in EPSG:5070 as before decision 77, then 5 decimal places.
+    preserved, in EPSG:5070, then 5 decimal places.
 
     AN AREA THE MAP SHADES (`grown=false`, the maintainer's
     poll of 2026-10-14, "Shade them, no edge"; int_closures__area_trail_cuts)

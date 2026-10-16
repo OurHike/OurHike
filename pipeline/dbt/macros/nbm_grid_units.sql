@@ -1,7 +1,7 @@
 {#-
     A lon/lat polygon in NOAA's NBM grid units, as lib/nbm_grid.py's
     overlapping() transforms an NWS alert's polygon before it tests the
-    squares (#1793, stage 3): each vertex projected onto the grid's
+    squares: each vertex projected onto the grid's
     Lambert conformal plane (var nbm_grid_proj4, on GRIB's sphere), then
     col = (x - origin_x) / square_m and row = (origin_y - y) / square_m, so
     square (row, col) is the box from (col, row) to (col + 1, row + 1).

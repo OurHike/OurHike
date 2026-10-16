@@ -2,8 +2,8 @@
 -- v2/nearby_poi.geojson (the v2 of the points_of_interest mart):
 -- the other organizations' POIs as v1's nearby_poi.geojson carries them, in
 -- the same order, with each position held once, as the point's coordinates
--- at 6 decimals, and no `lat` and `lon` properties (stage 6 of #1793;
--- pipeline/ELT.md, "Making the download smaller"). Every other property is
+-- at 6 decimals, and no `lat` and `lon` properties (pipeline/ELT.md, "Making
+-- the download smaller"). Every other property is
 -- v1's (pub_nearby_poi.sql), left out where it is null as v1 leaves it out.
 -- NYNJTC's Long Path guide's waypoints come last with the guide's own
 -- fields, lp_section to water_reliability, as v1's do.

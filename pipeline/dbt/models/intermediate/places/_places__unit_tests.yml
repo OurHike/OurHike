@@ -1,8 +1,6 @@
 version: 2
 
-# The places family's unit tests (stage 3 of #1793 — Rebuild the data platform
-# as dlt → dbt: seven contracted marts, a monthly refresh, published docs, and
-# lighter phone downloads), one per case of tests/test_export_places.py, named
+# The places family's unit tests, one per case of tests/test_export_places.py, named
 # for it, on the model where that case's rule now lives. Each expectation is
 # what export_places.py answers on the same rows: tests/test_dbt_places_parity.py
 # writes each test's given rows out as the files the exporter reads, runs it,
@@ -505,7 +503,8 @@ unit_tests:
       "MEMORY" note) and the line crossing it is measured piece by piece:
       the same 3.0 miles, centroid and box as the uncut park.
     # A dbt 2.0.6 unit test's vars are its overrides alone, so every var the
-    # model reads is listed, as places_a_point_s_miles_are_bounded_by_places_trail_radius_miles lists them.
+    # model reads is listed, as places_a_point_s_miles_are_bounded_by_places_trail_radius_miles
+    # lists them.
     overrides:
       vars:
         places_trail_radius_miles: 5.0

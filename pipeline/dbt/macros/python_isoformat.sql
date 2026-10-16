@@ -1,7 +1,7 @@
 {#-
     Python's datetime.fromisoformat() and date.fromisoformat(), as
     lib/atc_updates.py reads ATC's dateModified and a reviewed file's
-    reviewed_at, for the gate that moved to SQL (#1793, stage 3).
+    reviewed_at, for the gate that moved to SQL.
 -#}
 
 {#- datetime.fromisoformat(text) as a TIMESTAMPTZ: the instant, for a stamp

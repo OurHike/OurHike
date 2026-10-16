@@ -99,7 +99,7 @@ fields as (
     left join reviewed on pages.slug = reviewed.atc_id
 ),
 
--- CL08's agreed_mile(): the first reference, when every reference names the
+-- agreed_mile(): the first reference, when every reference names the
 -- same (start, end). Python compares the numbers, so the key is each
 -- number's shortest text, which is one text per double.
 spans as (

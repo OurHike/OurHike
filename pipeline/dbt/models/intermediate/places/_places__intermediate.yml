@@ -1,8 +1,6 @@
 version: 2
 
-# The places family's intermediates (stage 3 of #1793 — Rebuild the data
-# platform as dlt → dbt: seven contracted marts, a monthly refresh, published
-# docs, and lighter phone downloads): export_places.py's rules in SQL, PL01 to
+# The places family's intermediates: export_places.py's rules in SQL, PL01 to
 # PL11 in pipeline/ELT.md's ledger, in the order build_output() applies them.
 # Each model's header says which rule it holds and what it rests on.
 models:

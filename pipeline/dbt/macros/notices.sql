@@ -97,8 +97,8 @@
 {%- endmacro %}
 
 {#- The day a source's text value starts with, as TIMESTAMP at midnight, or
-    null: notice_instant()'s last reading. The maintainer, on wave 6's page
-    02 (P13, poll of 2026-10-11): "Fix the dates! the reader should be able
+    null: notice_instant()'s last reading. The maintainer (poll of
+    2026-10-11): "Fix the dates! the reader should be able
     to handle different format".
 
     THE DAY COMES FIRST, in one of four shapes, case and space aside:
@@ -124,7 +124,7 @@
     allowed), a parenthesis, or a space and a letter, so a stated end
     followed by its caveat reads as that end. IDPR's area restrictions state
     Grimes Cr-Clear Cr Area Closure's Date_Order_Expires as '3/26/2027
-    (annual renewal expected)' (1 of the 20 rows in wave 6's saved read of
+    (annual renewal expected)' (1 of the 20 rows in the saved read of
     2026-10-09), which read as no date until 2026-10-11, so the notice
     greyed 90 days after its EditDate (2026-03-30), on 2026-06-28, though
     its order states that it runs to 2027-03-26. Measured on that read's

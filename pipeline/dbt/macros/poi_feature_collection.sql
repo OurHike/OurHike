@@ -1,6 +1,6 @@
 {#-
     One poi_<type>.geojson document from the points_of_interest mart, for the
-    eight pub_poi_<type> writers: today's shape (decision 44 makes it v1), as
+    eight pub_poi_<type> writers: today's shape (v1), as
     export_poi.py's write_poi_type() has GDAL's GeoJSON driver write it. A
     FeatureCollection named for the type; each feature carries every one of
     POI_COLUMNS in their order, null where a POI has none, and its point.

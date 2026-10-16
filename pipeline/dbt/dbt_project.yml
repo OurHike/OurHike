@@ -21,9 +21,9 @@ models:
       # Renames, casts, the key and the dedupe only, as views.
       # No staging model joins another relation: counted 2026-10-09, 64 stg_
       # models union several base models and every other one reads a single
-      # relation. Decision 40 moved stg_opentrail__waypoints's seed
-      # lookup, once the sanctioned exception, to
-      # int_points_of_interest__classified. Seven base models are tables by
+      # relation. stg_opentrail__waypoints's seed lookup lives in
+      # int_points_of_interest__classified, so staging joins nothing. Seven base models are tables
+      # by
       # their own config: generate_notice_models.py's TABLE_BASES,
       # base_ourhike__disputes, base_ourhike__notes, and since 2026-10-11 the
       # one steward's areas layer the same generator stages
@@ -70,9 +70,8 @@ models:
     +schema: elementary
     +enabled: "{{ env_var('OURHIKE_ELEMENTARY', 'false') == 'true' }}"
 
-# The row-history snapshots, one per mart (macros/row_history.sql):
-# Which amends decision 52, puts them in the intermediate layer,
-# so they build into the `intermediate` schema as int_<mart>__history. Each
+# The row-history snapshots, one per mart (macros/row_history.sql), in the
+# intermediate layer, so they build into the `intermediate` schema as int_<mart>__history. Each
 # holds the mart's whole row and `_row_hash`, so `check` on that one column
 # opens a new version exactly when the hash moves, and `invalidate` sets
 # dbt_valid_to on a key that leaves the mart, keeping its last content.
@@ -139,10 +138,10 @@ seeds:
 #   switch would publish it.
 # - So do the tests outside publish/ whose own YAML or config() sets
 #   `severity: error`: 40 YAML entries and 15 singular tests (counted
-#   2026-10-15 with decision 208 built: YAML tests under models/, seeds/ and
+#   2026-10-15: YAML tests under models/, seeds/ and
 #   snapshots/ but models/publish/, Elementary's checks left out, and
-#   tests/singular/ files whose config() says so; 30 and 14 before it added
-#   10 and 1), most of them the invariants a hiker's safety turns on
+#   tests/singular/ files whose config() says so), most of them the invariants a hiker's safety
+#   turns on
 #   in the points_of_interest, places, trail_lines and elevation marts (a
 #   mile only on the A.T., a capacity absent or at least 1, a water
 #   distance never without its source) and the tests of the conditions
@@ -228,7 +227,8 @@ vars:
   # 17.07 s in the hook with it and 0.22 s without (measured 2026-10-08), and
   # a fixture build runs 16 dbt commands, Elementary's checks pass among them
   # (18 at 3133c11a and 19 since the freshness run, counted
-  # 2026-10-15 in two fixture builds' logs). The hook still writes a `dbt source freshness` run's results with
+  # 2026-10-15 in two fixture builds' logs). The hook still writes a `dbt source freshness` run's
+  # results with
   # this set, a row a source into dbt_source_freshness_results, with
   # max_loaded_at_time_ago_in_s left null (measured 2026-10-15 on dbt 2.0.6
   # and Elementary 0.26.0): macros/data_quality.sql counts those rows as each
@@ -297,7 +297,7 @@ vars:
 
   # lib/podcasts.py's two scalar rules, read by int_podcasts__checked.
   # tests/test_dbt_podcasts_parity.py holds them to the Python constants
-  # until stage 5 of #1793 deletes the Python, when these become the one home.
+  # until the Python is deleted, when these become the one home.
   podcast_spotify_id_pattern: "^[0-9A-Za-z]{22}$"
   podcast_max_at_mile: 2300
 
@@ -351,8 +351,8 @@ vars:
   nbm_grid_square_m: 2539.703
   # The trail_lines network's constants (tl-net), read by the
   # int_trail_lines__network_* models and held to the Python's own by
-  # tests/test_dbt_trail_lines_network_parity.py until stage 5 of #1793
-  # deletes the Python: export_trails.py's DEFAULT_SIMPLIFY_TOLERANCE_M and
+  # tests/test_dbt_trail_lines_network_parity.py until the Python is deleted: export_trails.py's
+  # DEFAULT_SIMPLIFY_TOLERANCE_M and
   # OVERVIEW_SIMPLIFY_TOLERANCE_M, lib/duplicates.py's two, and
   # export_nearby_trails.py's others under their own names. Each one's
   # evidence is beside it in the Python.
@@ -384,10 +384,10 @@ vars:
   # 3,554.09 miles; int_closures__area_trail_cuts' header has how).
   area_closure_edge_m: 2.0
 
-  # The trail_lines family (stage 3 of #1793). First, export_elevation.py's
+  # The trail_lines family. First, export_elevation.py's
   # marker calibration of the A.T. mile axis, read by the
   # int_trail_lines__mile_axis_* models and held to the Python constants by
-  # tests/test_dbt_trail_lines_parity.py until stage 5 deletes the Python,
+  # tests/test_dbt_trail_lines_parity.py until the Python is deleted,
   # when these become the one home.
   #
   # SPRINGER_LONLAT and KATAHDIN_LONLAT: the straight axis the merged pieces
@@ -409,10 +409,10 @@ vars:
   mile_axis_holdout_max_p95_mi: 0.25
   mile_axis_holdout_max_mi: 1.0
 
-  # points_of_interest (#1793, stage 3): the constants the POI rules read,
+  # points_of_interest: the constants the POI rules read,
   # each the Python's own, held to it by
-  # tests/test_dbt_points_of_interest_parity.py until stage 5 deletes the
-  # Python and these become the one home. The measurement behind each is on
+  # tests/test_dbt_points_of_interest_parity.py until the Python is deleted and these become the
+  # one home. The measurement behind each is on
   # the Python constant it names.
   poi_corridor_buffer_miles: 30            # lib/corridor.py BUFFER_MILES
   poi_metres_per_degree: 111320.0          # lib/spurs.py METERS_PER_DEGREE, distance_m()'s scale
@@ -425,14 +425,14 @@ vars:
   # this is its one home.
   notice_state_simplify_tolerance_m: 250.0
   notice_state_edge_margin_m: 500.0
-  # Decision 77 (the maintainer's poll, 2026-10-05: "Grow and simplify areas
-  # at 100 m"): how far conditions/notices.json's areas are grown outward,
+  # The maintainer's poll, 2026-10-05: "Grow and simplify areas at 100 m": how far
+  # conditions/notices.json's areas are grown outward,
   # and then how far the simplifier may move their edges
   # (macros/notice_phone_geometry.sql). The maintainer's number, chosen for
   # the file's size. pipeline/ELT.md's row 77 measured soak run 536's file,
   # 24,966,662 bytes and 6,203,870 gzipped at 10 m, at 9,706,068 and
   # 1,692,475 re-simplified at 100 m, its lines at 100 m too. With the lines
-  # left at 10 m, as decision 77 has them, UA's file of 2026-10-05
+  # left at 10 m, UA's file of 2026-10-05
   # (24,966,875 bytes) came to 10,832,088 and 2,008,557 gzipped (measured;
   # pub_conditions_notices' header has how).
   notice_area_m: 100.0
@@ -619,10 +619,10 @@ vars:
   trail_lines_club_milepost_half_width_mi: 0.25
   trail_lines_club_springer_mile: 0.0
 
-  # The elevation family, the A.T. half (stage 3 of #1793):
+  # The elevation family, the A.T. half:
   # export_elevation.py's two constants, read by int_elevation__sample_points
   # and int_elevation__profile and held to the Python by
-  # tests/test_dbt_elevation_parity.py until stage 5 deletes the Python.
+  # tests/test_dbt_elevation_parity.py until the Python is deleted.
   #
   # SAMPLE_INTERVAL_METERS: one DEM read every 25 m of trail. Kept, not
   # thinned: thinning to 50 m cut the measured 520,757 ft of total gain by
@@ -647,14 +647,14 @@ vars:
   elevation_profile_max_null_share: "{{ env_var('OURHIKE_ELEVATION_PROFILE_MAX_NULL_SHARE', '0.01') }}"
   # The places family (pl), read by int_places__resolved and the pub_places
   # writer, and held to export_places.py's PLACE_TRAIL_RADIUS_MILES by
-  # tests/test_dbt_places_parity.py until stage 5 of #1793 deletes the
-  # Python. @unvalidated, as the Python says: five miles is a round number
+  # tests/test_dbt_places_parity.py until the Python is deleted. @unvalidated, as the Python says:
+  # five miles is a round number
   # chosen so a Community at the foot of a ridge counts the trail on the
   # ridge, and what would settle it is the median distance from a published
   # trailhead or Community to its nearest published line, measurable from
   # the same two tables int_places__resolved joins. places.json prints it as
   # `trailRadiusMiles`, so a screen says what was measured rather than
-  # "nearby". The long-trail threshold is TL12's,
+  # "nearby". The long-trail threshold is
   # trail_lines_network_named_trail_threshold_miles above.
   places_trail_radius_miles: 5.0
   # The most vertices one piece of a park polygon holds when
@@ -671,10 +671,8 @@ vars:
 
   # The suggested_hikes family (sh), read by the int_suggested_hikes__ models
   # and the pub_suggested_hikes and pub_highlights writers, and held to the
-  # Python by tests/test_dbt_suggested_hikes_parity.py until stage 5 of #1793
-  # — Rebuild the data platform as dlt → dbt: seven contracted marts, a
-  # monthly refresh, published docs, and lighter phone downloads — deletes
-  # it. Each is export_suggested_hikes.py's, lib/hike_route_builder.py's,
+  # Python by tests/test_dbt_suggested_hikes_parity.py until the cutover deletes it. Each is
+  # export_suggested_hikes.py's, lib/hike_route_builder.py's,
   # lib/trail_graph_route.py's or lib/highlights.py's constant under its own
   # name, and its evidence is beside it there: every grading band is
   # @unvalidated or calibrated against the 113 published tracks, as its own
@@ -712,8 +710,8 @@ vars:
 
   # The challenges family (ch): lib/challenges.py's and export_challenges.py's
   # constants, read by the int_challenges__ models and held to the Python's
-  # own by tests/test_dbt_challenges_parity.py until stage 5 of #1793 deletes
-  # the Python. Lists keep the Python's order, because a refusal message
+  # own by tests/test_dbt_challenges_parity.py until the Python is deleted. Lists keep the Python's
+  # order, because a refusal message
   # prints them in it.
   challenges_match_kinds:
     - place
@@ -778,10 +776,7 @@ vars:
   # The trail_network family (tl-net), the junction graph a day hike routes
   # over: build_trail_graph.py's constants, read by the int_trail_network__
   # models and held to the Python's own by
-  # tests/test_dbt_trail_network_parity.py until stage 5 of #1793 — Rebuild
-  # the data platform as dlt → dbt: seven contracted marts, a monthly
-  # refresh, published docs, and lighter phone downloads — deletes the
-  # Python.
+  # tests/test_dbt_trail_network_parity.py until the cutover deletes the Python.
   #
   # AT_GRAPH_SOURCES: the trails.geojson sources that become edges, the
   # centerline and the blue-blazed side trails; road approaches and anything
@@ -858,7 +853,7 @@ vars:
     # not_null constraint for the second, enforced contract or not (its
     # "mixed method", int_model_test_summary.sql and base_node_columns.sql,
     # 1.4.0). Its default also counts dbt_utils.unique_combination_of_columns,
-    # which decision 197 does not: the maintainer, 2026-10-15, "Every dbt
+    # which the one-key rule does not: the maintainer, 2026-10-15, "Every dbt
     # model should have a unique id that is unique and not null", and of a
     # key over several columns, "Multi column is fine if it is based on the
     # dbt generate surrogate key macro". The evaluator reads neither a test's

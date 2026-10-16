@@ -29,7 +29,7 @@
 -- parts each on their own, in order. One count differs and no edge does: an
 -- A.T. line with no geometry is counted 'empty' here, where at_lines_of()
 -- drops it before routable_lines() counts anything. The counts are not
--- published yet (trail_graph_manifest.json's stats are stage 4's).
+-- published yet (trail_graph_manifest.json's stats are left to the cutover).
 --
 -- `trail_id` IS THE LINE'S PUBLISHED ID, the mart's `published_id`: the `id`
 -- nearby_trails.geojson and trails.geojson publish, which build_trail_graph.py

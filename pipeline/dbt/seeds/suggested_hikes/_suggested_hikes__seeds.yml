@@ -12,9 +12,7 @@ seeds:
       publisher's own word in `publishedDifficulty`. A label with no row
       here has no slug: the card prints no badge rather than a guessed one.
       tests/test_dbt_suggested_hikes_parity.py holds this file to
-      DIFFICULTY_SLUGS until stage 5 of #1793 — Rebuild the data platform
-      as dlt → dbt: seven contracted marts, a monthly refresh, published
-      docs, and lighter phone downloads deletes the Python.
+      DIFFICULTY_SLUGS until the Python is deleted.
     config:
       column_types:
         difficulty_label: varchar

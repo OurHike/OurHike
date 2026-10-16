@@ -3,12 +3,21 @@ version: 2
 models:
   - name: suggested_hikes
     description: >
-      The hikes a phone is offered, one row per hike, keyed by the id it
-      publishes under. Two kinds, by `phone_file`: a hike somebody wrote up
-      (NYNJTC's Hike Finder export today), whose route ships, with every
-      field the shelf and its detail print; and a stretch of the A.T. from
-      OurHike's curated highlights, resolved against the published POIs. Only
-      rows whose source may publish (int_sources__publication).
+      One row per hike. Key: `hike_id`. Refreshed monthly. Phone files:
+      suggested_hikes.json (pub_suggested_hikes),
+      suggested_hikes_detail_<n>.json (pub_suggested_hikes_detail) and
+      highlights.json (pub_highlights).
+
+      The hikes a phone is offered, keyed by the id it publishes under. Two
+      kinds, by `phone_file`: a hike somebody wrote up (NYNJTC's Hike Finder
+      export today), whose route ships, with every field the shelf and its
+      detail print; and a stretch of the A.T. from OurHike's curated
+      highlights, resolved against the published POIs. Only rows whose source
+      may publish (int_sources__publication).
+
+      Versioned: phones read v1. A removed, renamed or retyped column ships as
+      a new version beside v1, never as a change to it; an added column is not
+      breaking.
     config:
       access: public
       contract:

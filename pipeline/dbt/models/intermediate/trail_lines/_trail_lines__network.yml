@@ -1,8 +1,6 @@
 version: 2
 
-# The network half of the trail_lines port (stage 3 of #1793 — Rebuild the
-# data platform as dlt → dbt: seven contracted marts, a monthly refresh,
-# published docs, and lighter phone downloads): every other organization's
+# The network half of the trail_lines port: every other organization's
 # trail lines, which export_nearby_trails.py exports today. The rules are
 # pipeline/ELT.md's TL rows for that file, applied in its order.
 models:

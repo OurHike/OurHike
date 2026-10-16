@@ -3,13 +3,19 @@ version: 2
 models:
   - name: places
     description: >
-      Every place a hiker can name before anything is downloaded, one row
-      each: the parks, towns, trailheads, parking areas and long trails
-      first run's "where do you hike?" searches (places.json, written by
-      pub_places). Every figure is the publisher's own word or a measurement
-      over lines this build published, and `trail_miles` is null on every
-      row when there were none to measure. Only rows whose source may
+      One row per place. Key: `place_id`. Refreshed monthly. Phone file:
+      places.json (pub_places).
+
+      Every place a hiker can name before anything is downloaded: the parks,
+      towns, trailheads, parking areas and long trails the first-run "where do
+      you hike?" search offers. Every figure is the publisher's own word or a
+      measurement over lines this build published, and `trail_miles` is null
+      on every row when there were none to measure. Only rows whose source may
       publish (int_sources__publication).
+
+      Versioned: phones read v1. A removed, renamed or retyped column ships as
+      a new version beside v1, never as a change to it; an added column is not
+      breaking.
     config:
       access: public
       contract:

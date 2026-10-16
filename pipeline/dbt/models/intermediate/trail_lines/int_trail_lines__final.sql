@@ -1,6 +1,5 @@
 -- int_trail_lines__final: the trail lines mart's rows before their row dates,
--- every contracted column but _first_seen_at and _changed_at. This is what
--- models/marts/trail_lines/trail_lines.sql held until decision 57;
+-- every contracted column but _first_seen_at and _changed_at. The
 -- int_trail_lines__history snapshots it, and the mart reads that snapshot.
 --
 -- Every line a phone draws from a trail file, one row per published line

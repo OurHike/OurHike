@@ -1,8 +1,6 @@
 version: 2
 
-# The network half of the trail_lines family's phone files (stage 3 of #1793
-# — Rebuild the data platform as dlt → dbt: seven contracted marts, a
-# monthly refresh, published docs, and lighter phone downloads): every other
+# The network half of the trail_lines family's phone files: every other
 # organization's trail lines, which export_nearby_trails.py and cut_cells.py
 # write today. parity.py compares each dbt-written file with the Python's.
 models:
@@ -14,6 +12,7 @@ models:
       processed_dir/nearby_trails.geojson as one GeoJSON FeatureCollection.
       parity.py compares it with export_nearby_trails.py's file, feature by
       feature, keyed on `properties.id`.
+      Refreshed monthly, with its lane's build.
     config:
       access: public
       contract:
@@ -38,6 +37,7 @@ models:
       with export_nearby_trails.py's file feature by feature, keyed on each
       feature's (source, name, blaze_color, trail_status), with a
       MultiLineString's parts compared as a set.
+      Refreshed monthly, with its lane's build.
     config:
       access: public
       contract:
@@ -67,7 +67,7 @@ exposures:
       can freeze or crash it; it is what nearby_trails.pmtiles is cut from,
       and build_trail_graph.py and fetch_trail_water.py read it. Published in
       the release folder by publish-vector-data.yml from
-      export_nearby_trails.py's file until stage 4 of #1793 moves it to this
+      export_nearby_trails.py's file until the cutover moves it to this
       writer's.
     depends_on:
       - ref('trail_lines', v=1)
@@ -138,7 +138,7 @@ exposures:
       NETWORK_OVERVIEW_KEY), fetched whole on launch: the through routes
       named and cased, everything else as haze. Published in the release
       folder by publish-vector-data.yml from export_nearby_trails.py's file
-      until stage 4 of #1793 moves it to this writer's.
+      until the cutover moves it to this writer's.
     depends_on:
       - ref('pub_network_overview')
     config:

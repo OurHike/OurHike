@@ -36,12 +36,13 @@
 --   every generated club  a raw table this warehouse does not hold
 --   notice source         (int_closures__notice_tables: one waiting its turn in
 --                         the 4-hourly notices legs, one the served copy left
---                         out, or every one in a build without the notices,
---                         decision 61), whatever the run log says; then no
+--                         out, or every one in a build without the
+--                         notices), whatever the run log says; then no
 --                         rows, unless the run that last loaded its table
---                         read a count of zero from the source itself (the
---                         dlt skill's rule 4: an allowed zero needs the
---                         upstream's own count). A table a leg withdrew or
+--                         read a count of zero from the source itself (an
+--                         allowed
+--                         zero needs the upstream's own count). A table a leg
+--                         withdrew or
 --                         has not loaded reads as no rows (macros/notices.sql's
 --                         notice_raw_table), so it is held here, never read
 --                         as nothing closed. One row that may not publish
@@ -49,7 +50,7 @@
 --                         inactive, rescinded or not yet started notice)
 --                         holds that row back and not its source; one key two
 --                         different raw rows share (`key_versions`) holds the
---                         source, which decision 40 allows only for exact
+--                         source, since a key allows only exact
 --                         copies, and its exactness test warns rather than
 --                         stopping every club's build
 -- and EVERY SOURCE, FOR ANY ONE OF ITS ROWS (decision
@@ -57,16 +58,15 @@
 -- rest"; review finding ARCH-1 of PR #1805 — dlt → dbt re-platform as one
 -- go/no-go change):
 --   wording               a row that holds its source's own wording in a
---                         published column (int_warnings__wording_leaks,
---                         decision 55)
+--                         published column (int_warnings__wording_leaks)
 --   region                a row whose geometry reaches outside the box its
 --                         source publishes in, the lon/lat swap test
 --                         (int_closures__rows_outside_region)
 -- Both read the rows before this gate, which the marts are built from, so
 -- neither can read the marts. Each test of theirs warns, so the log names
 -- the rows and build_marts.py turns the run red after everything else has
--- published. Until decision 81 each failed the build, and five of the soak's
--- first ten runs (525 to 527 and 530 here, 531 in a writer) published
+-- published. A failing check once failed the build instead, and five of the
+-- soak's first ten runs (525 to 527 and 530 here, 531 in a writer) published
 -- nothing for anyone over one source's rows.
 -- And, before any of those, a source int_sources__publication does not let
 -- publish, or has no row for. A non-finite number is held because
@@ -77,8 +77,8 @@
 -- The test below warns rather than fails, because failing the build would
 -- hold back every source for one.
 --
--- THE REGISTERED SOURCES COME FROM THE REGISTRY AND THE RUN LOG (decision
--- 53, phase C): one row for every sources.json key that
+-- THE REGISTERED SOURCES COME FROM THE REGISTRY AND THE RUN LOG: one
+-- row for every sources.json key that
 -- seeds/notice_readers.csv names as a closures or warnings resource
 -- (generate_notice_models.py writes it from the extract's own declarations),
 -- so a source registered in a club's closures.py or warnings.py gets its
@@ -459,7 +459,7 @@ judged as (
                 then
                     counts.rows_conflicting || ' of ' || counts.rows_total
                     || ' ' || gated_sources.source_key || ' notices share '
-                    || 'their key with a raw row that differs (decision 40 '
+                    || 'their key with a raw row that differs (a key '
                     || 'allows only exact copies), so which one is current '
                     || 'cannot be told'
             when

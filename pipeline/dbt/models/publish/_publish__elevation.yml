@@ -8,6 +8,7 @@ models:
       the phone_file materialisation writes to
       processed_dir/elevation_profile.json as it is. parity.py compares it
       with export_elevation.py's profile, record by record.
+      Refreshed monthly, with its lane's build.
     config:
       access: public
       contract:
@@ -59,11 +60,12 @@ models:
   - name: pub_elevation_profile_v2
     description: >
       Writes v2/elevation_profile.json, the A.T.'s elevation profile packed
-      as delta-coded columns of whole numbers (stage 6 of #1793), from v2 of
+      as delta-coded columns of whole numbers, from v2 of
       the elevation mart: one row, which phone_file writes to
       processed_dir/elevation_profile_v2.json as one JSON object of its
       columns. parity.py's elevation_v2 family decodes it and compares every
       sample with v1's elevation_profile.json.
+      Refreshed monthly, with its lane's build.
     config:
       access: public
       contract:
@@ -127,6 +129,7 @@ models:
       array with one entry per edge of int_trail_network__edges in edge_index
       order, [gain_ft, loss_ft] or null. parity.py compares it with
       export_network_elevation.py's array, entry by entry.
+      Refreshed monthly, with its lane's build.
     config:
       access: public
       contract:
@@ -157,6 +160,7 @@ models:
       int_trail_network__edges in edge_index order, the edge's samples or
       null. parity.py compares it with export_network_profile.py's array,
       entry by entry.
+      Refreshed monthly, with its lane's build.
     config:
       access: public
       contract:
@@ -193,7 +197,7 @@ exposures:
       estimate built on it. Part of the safety core every phone holds whole
       (pipeline/ELT.md, "Making the download smaller", tier (a)). Published
       in the release folder by publish-vector-data.yml from
-      export_elevation.py's file until stage 4 of #1793 moves it to this
+      export_elevation.py's file until the cutover moves it to this
       writer's.
     depends_on:
       - ref('elevation', v=1)
@@ -222,7 +226,7 @@ exposures:
       trail_graph_elevation_cell_<cell>.json shards, keyed by edge.
       Published by publish-vector-data.yml from export_network_elevation.py's
       file, held back whole when any of the graph's sources may not reach
-      hikers (publish.py), until stage 4 of #1793 moves it to this writer's.
+      hikers (publish.py), until the cutover moves it to this writer's.
     # The writer alone: the climbs are a protected intermediate, which no
     # exposure may depend on, until the trail_network mart carries them.
     depends_on:
@@ -234,7 +238,7 @@ exposures:
         cadence: monthly
         # No published gain figure exists for any trail of the
         # network's own, so the 3 m dead band checked on the A.T. is
-        # unchecked here, and the manifest says so; stage 4 writes it.
+        # unchecked here, and the manifest says so; the cutover writes it.
         estimate: true
   - name: trail_graph_profile_json
     label: trail_graph_profile.json
@@ -248,8 +252,7 @@ exposures:
       climb comes from trail_graph_elevation.json, never from summing this
       file. A phone reads it through cut_trail_graph.py's
       trail_graph_profile_cell_<cell>.json shards. Published by
-      publish-vector-data.yml from export_network_profile.py's file until
-      stage 4 of #1793 moves it to this writer's; its manifest's `seam` block
+      publish-vector-data.yml from export_network_profile.py's file until the cutover moves it to this writer's; its manifest's `seam` block
       is int_elevation__seam_measurement.
     depends_on:
       - ref('elevation', v=1)
@@ -272,7 +275,7 @@ exposures:
       v2 of elevation_profile.json: the same A.T. samples, as
       delta-coded columns of whole thousandths of a mile and tenths of a foot,
       published beside v1 at v2/elevation_profile.json under the release
-      folder (stage 6 of #1793; pipeline/ELT.md, "Making the download
+      folder (pipeline/ELT.md, "Making the download
       smaller"). A phone reads it only once its build reads schema version v2
       and channels.json names a v2 release; every other phone keeps reading
       v1's elevation_profile.json, which is still written. Part of the safety

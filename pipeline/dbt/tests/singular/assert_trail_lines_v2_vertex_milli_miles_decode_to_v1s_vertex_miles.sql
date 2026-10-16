@@ -1,6 +1,6 @@
 -- trail_lines v2's whole thousandths of a mile, each divided back by 1,000,
--- are v1's vertex miles exactly, double for double, on every line (stage 6
--- of #1793). That division is what client/src/lib/trailMiles.ts does to
+-- are v1's vertex miles exactly, double for double, on every line. That
+-- division is what client/src/lib/trailMiles.ts does to
 -- v2/trail_miles.json, and IEEE 754 rounds it to the double nearest the
 -- quotient; v1's file prints each mile so that JSON.parse reads back the
 -- same double. So a row here is a vertex whose mile a v2 phone would hold

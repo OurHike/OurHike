@@ -15,8 +15,7 @@
     asking the bucket (client/src/map/networkTiles.ts), so its tiles can be
     from an older release than its graph, and a line must keep its id across
     the cutover. Whether it should ever move to its stable GlobalID is the
-    maintainer's question, with a plan for phones holding both
-    (pipeline/ELT.md's TL05).
+    maintainer's question, with a plan for phones holding both.
 
     THE CASE IS DECLARED, NOT READ. dlt's sql_ci_v1 naming lands `GlobalID`,
     `GLOBALID` and `globalid` as one lower-case column, so a layer's spelling

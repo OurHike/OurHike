@@ -1,9 +1,8 @@
 {{ config(materialized='table') }}
 -- Every generated club notice source's rows
 -- (int_closures__club_notices_unioned, pipeline/generate_notice_models.py),
--- read by the phase C rules
--- (pipeline/ELT.md, "Every club's closures and alerts", phase C): one row per
--- notice, in the closures family's columns, with whether it blocks the trail
+-- read by the rules below: one row per notice, in the closures family's
+-- columns, with whether it blocks the trail
 -- and, where it may not publish as current, why. Nothing is dropped here; the
 -- finals leave out a row whose `held_because` is set, so the reason stays
 -- readable in the warehouse.
@@ -11,25 +10,21 @@
 -- THE RULES, each held by a unit test in _closures__intermediate.yml:
 --
 -- 1. A NOTICE IS KEPT WHATEVER ITS OWN DATES SAY.
---    ONE WHOSE STATED END HAS PASSED is never read as current. The
---    maintainer's frame A (poll of 2026-10-10): a notice past its own end
---    date stays in the list, greyed, rather than leaving it. Until then this
---    rule held such a notice back, so UA's notices.json of 2026-10-10 17:24
---    UTC carried none of them: 0 of its 1,464 rows with an end date had one
---    already past. Standing Stone's closure pages, which still serve
---    closures that ended in 2022 and 2023 (phase A), now reach a phone that
---    way. conditions/notices.json's `current_until` is that end day
+--    ONE WHOSE STATED END HAS PASSED is never read as current, but stays in
+--    the list, greyed, rather than leaving it (the maintainer's poll of
+--    2026-10-10). Standing Stone's closure pages, which still serve
+--    closures that ended in 2022 and 2023, reach a phone that way.
+--    conditions/notices.json's `current_until` is that end day
 --    (macros/notice_current_until.sql), and the phone greys the notice after
 --    it on its own clock, so a phone offline for days greys it on the day,
 --    which a build-time hold could not. Rule 3 below still reads it. Its end
 --    is the day of `ends_at` in UTC.
---    ONE WHOSE OWN START IS STILL AHEAD PUBLISHES NOW, AS UPCOMING: the
---    maintainer's frame B for wave 6's page 01, P3 (poll of 2026-10-11, "show
---    it now, as upcoming"). Until then this rule held it while its UTC start
---    day was more than one day ahead (Yellowstone's bear management areas,
---    New Jersey's WMA restrictions, King County's alerts and IDPR's emergency
---    closures state one), so a phone that last connected before that day
---    never showed it. It now carries its own `starts_on`, and
+--    ONE WHOSE OWN START IS STILL AHEAD PUBLISHES NOW, AS UPCOMING (the
+--    maintainer's poll of 2026-10-11, "show it now, as upcoming"), so a
+--    phone that last connected before that day still shows it
+--    (Yellowstone's bear management areas, New Jersey's WMA restrictions,
+--    King County's alerts and IDPR's emergency closures state one). It
+--    carries its own `starts_on`, and
 --    `obstructs_trail` is rule 3's, read without regard to the start: a
 --    closure that starts next month publishes `obstructs_trail` true today.
 --    THE PHONE DECIDES THE DAY IT CLOSES, the other half of the same answer:
@@ -50,9 +45,8 @@
 --    notice with no end and no edit date carries a null one; until its
 --    start the phone's tag says what it is.
 --    ONE WHOSE OWN WORDS STATE A SEASON IS READ IN THE SEASON THAT HAS NOT
---    ENDED (pipeline/ELT.md, "Status, water and expiry rules", rule 4: an
---    expiry "neither infinite nor last year's date"; the review of
---    2026-10-15, S1-3). A source whose seeds/notice_source_fields.csv row
+--    ENDED: an expiry is "neither infinite nor last year's date" (the review
+--    of 2026-10-15). A source whose seeds/notice_source_fields.csv row
 --    names a `season` field states there, in words, a period that recurs
 --    every year ('December 1 - April 30'), beside the dated instance it
 --    last set: COTREX's Closure_Period, beside last season's Start_Date and
@@ -71,19 +65,19 @@
 --    overwrote in October 2025 ('SCs_All_COTREX_Oct2025_…'), and nobody has
 --    asked COTREX whether each closure is set again this season.
 --    ONE WHOSE OWN TITLE STATES ITS END ENDS THEN, or on its own end date
---    where that is later (rule 13, the maintainer's poll of
---    2026-10-15): 'Closed Until 2027', '(2026-2027)', 'Sept. 8, 2026 through
+--    where that is later (the maintainer's poll of 2026-10-15): 'Closed Until
+--    2027', '(2026-2027)', 'Sept. 8, 2026 through
 --    June 2027' (macros/notice_title_end_day.sql, which says what it reads
 --    and what it refuses). A month alone is its last day and a year alone
 --    its December 31, toward caution. `ends_on` is that later day, so rule 3
 --    and `current_until` read it as they read any end: a title that names a
 --    passed end greys its row, one that names a later end keeps it current
---    past its edit date's 90 days. Until then only a duration a title states
---    ('closed for 3 to 6 months', macros/notice_current_until.sql) was read.
+--    past its edit date's 90 days. A duration a title states ('closed for 3
+--    to 6 months') is read by macros/notice_current_until.sql.
 --
 --    A RECURRING SEASON PUBLISHES ONLY FROM 30 DAYS BEFORE IT STARTS
---    (rule 9, the maintainer's poll of 2026-10-15, "Hold until
---    a month before", over the recommended "publish when read"). A row
+--    (the maintainer's poll of 2026-10-15, "Hold until a month before",
+--    over the recommended "publish when read"). A row
 --    whose own words state a season, as above, and whose `starts_on` is
 --    more than `notice_season_lead_days` after the build's UTC date is held,
 --    for every source with a season field. From that day it publishes as
@@ -100,12 +94,12 @@
 --    holds those 99 until their 30th day before: each is a season's start
 --    (Reasoned: every one of the 108 rows stating a range had its own end
 --    already passed, and a start that far ahead is no row's own).
---    ONE WHOSE OWN DATES CONTRADICT EACH OTHER CLOSES NO TRAIL (status rule
---    1's contradiction test, for the shape the review of 2026-10-15 found,
---    S2-5): an end before its own start, or a start or an end before 1900
+--    ONE WHOSE OWN DATES CONTRADICT EACH OTHER CLOSES NO TRAIL (the shape
+--    the review of 2026-10-15 found): an end before its own start, or a start
+--    or an end before 1900
 --    (Yellowstone's GALLATIN states an end of 0023-11-10). Its
---    `obstructs_trail` is null, so decision 7 lands it in warnings as not
---    reviewed, both dates kept for the phone to show. It is read after a
+--    `obstructs_trail` is null, so it lands in warnings as not reviewed, both
+--    dates kept for the phone to show. It is read after a
 --    season moves the dates, so a season that wraps the year (COTREX's
 --    'Seasonal Waterfowl Closure of Boat Ramps', stated 2025-11-01 to
 --    2025-03-14) is read in its season, not as a contradiction. Live,
@@ -144,13 +138,13 @@
 --    'Nonmotorized' never read as 'motorized'. `code`: exact, on a source
 --    whose every stated status is a `code` word or an `unspecified` one, a
 --    coded yes/no flag (VTrans's isActive 0 and 1, and -1 its coded
---    Unknown, which the review of 2026-10-15 found turned the source's one
---    active closure into a notice and published its 19 inactive rows, S2-1),
+--    Unknown, which once turned the source's one active closure into a
+--    notice and published its 19 inactive rows),
 --    so a scale that uses 0 (Michigan's burn permits, 0 to 3 with no legend)
 --    is never read as a flag. A QUALIFYING WORD INSIDE A `not_a_qualifier`
 --    PHRASE QUALIFIES NOTHING: 'closed until further notice' is closed, 'no
 --    detour available' names no way around, and 'authorized personnel only'
---    bars every hiker (the review of 2026-10-15, S2-3), where 'notice',
+--    bars every hiker, where 'notice',
 --    'detour' and 'only' elsewhere qualify a closing word beside them
 --    ('Hiker Notice: … vehicular closure', 'Closure with Detour', 'Foot
 --    only').
@@ -177,7 +171,7 @@
 --       Nonmotorized' (read live 2026-10-14). A phrase that names both
 --       kinds of use, or closes the trail to everyone, bars every use
 --       ('motorized and non-motorized use', 'closed to all users', 'closed to
---       the public'; the review of 2026-10-15, S2-2), where the bare
+--       the public'), where the bare
 --       'non-motorized' does not: IDPR's Lightning Creek 419 order says
 --       'non-motorized use no longer prohibited'. Held, the word in the
 --       reason.
@@ -215,8 +209,8 @@
 --           the way around, so its title's closing word names what the line
 --           avoids and closes nothing (rule 5's reading of a
 --           layer's name as every row's words): CDTC's 'Reroutes' line
---           'Hopewell Lake Construction Closure', which the rule 8
---           would otherwise cross out. A START STATED IN THE
+--           'Hopewell Lake Construction Closure', which the closing
+--           word would otherwise cross out. A START STATED IN THE
 --           TITLE: a `states_a_start` word there qualifies the closing word
 --           only where no day follows it. Where one does ('Hunting Closure
 --           beginning 9/1', 'Closed (Beginning Oct. 28, 2026)'), that day is
@@ -226,9 +220,8 @@
 --           closes, and its `starts_on` is the later of its own start and
 --           that day, so the phone closes the trail from the day before it
 --           as for any start; so does a c1 row whose
---           category's 'closure' closes by that title. Until the review of
---           2026-10-15 (S1-4) such a row was a notice for ever, IATA's two
---           hunting closures among them;
+--           category's 'closure' closes by that title, as IATA's two hunting
+--           closures do;
 --       c3. where its status says nothing and its category holds no word, A
 --           LAYER CLOSES BY ITS OWN NAME ONLY IF THAT NAME SAYS SO (the poll
 --           of 2026-10-15): the placed row's layer is named for closures, its
@@ -236,8 +229,8 @@
 --           no `not_a_closure` word, no `a_way_around` word and no start it
 --           states no day for, and the row is no site. A title that names a
 --           way around is the way around: PCTA's 'Closure Line' layer draws
---           its detours ('Rattlesnake Flats detour'), which its name crossed
---           out until the review of 2026-10-15 (S2-4). Named so on
+--           its detours ('Rattlesnake Flats detour'), which its name would
+--           otherwise cross out. Named so on
 --           2026-10-15: IDPR's 'Emergency Route Closures', Santa Clara's
 --           'Areas Closed to the Public', Yosemite's 'Trail Closures
 --           (Yosemite)', Superior's 'Closure_Point', Region 6's
@@ -256,9 +249,8 @@
 --       'Horse Camp Trail' is a trail and 'Trail Creek Trailhead' a site,
 --       'Luzerne Horse Trail Campground and Trailhead' two sites, and 'Trail
 --       & Parking Area Closure' a trail and a site, so the trail is closed
---       (the decision row's "unless its title … names a trail"; until the
---       review of 2026-10-15, S1-2, the title's last-named thing alone
---       decided, and IATA's 'Trail & Parking Area Closure' read as a site).
+--       ("unless its title … names a trail"; IATA's 'Trail & Parking Area
+--       Closure' is a trail and a site).
 --       Or where its own site type names one (site_type: USFS's recreation
 --       sites' 'Campground Camping'); or where it has a site type that names
 --       no trail and no hiker's use, and its title and category name none
@@ -269,8 +261,8 @@
 --       lakes and beaches, scenic byways, OHV and snow-play areas, caves,
 --       and 55 typed 'Intermediate Parent Group', some of which are areas
 --       ('Joyce Kilmer-Slickrock Wilderness Area') and some roads; whether
---       an area so typed should close is the maintainer's (the review of
---       2026-10-15, S1-2), @unvalidated until then. Or where its category
+--       an area so typed should close is the maintainer's call (the review of
+--       2026-10-15), @unvalidated until then. Or where its category
 --       or its layer's own name is a site's ('Trailhead', Florida's
 --       'Campground Status') and neither its title, its category nor its
 --       type names a trail. A `bars_every_use` word lifts it, the site's
@@ -284,10 +276,10 @@
 --       Districts'), where 'Area and Road Closures …' names the area and
 --       closes; a line or a point that names a road still closes its own
 --       place (IDPR's road orders, as the maintainer chose). A LAYER'S OWN
---       NAME COUNTS AS WORDS OF EVERY ROW IN IT here (rule 5):
+--       NAME COUNTS AS WORDS OF EVERY ROW IN IT here:
 --       Santa Clara's 'Areas Closed to the Public' names an area, so its
 --       polygon titled 'Summit Road' is a closed area like its 64 siblings.
---       A ROAD IN A WARNINGS LAYER IS A ROAD EVENT (the rule 8
+--       A ROAD IN A WARNINGS LAYER IS A ROAD EVENT (the
 --       refined, the poll of 2026-10-15, "Roads stay notices"): a row its
 --       source files under warnings whose title, category or status names
 --       a road ('road', 'hwy', a status's 'all-lanes-closed') and none of
@@ -306,7 +298,7 @@
 --       speaks again where the row's own narrative holds a closing word
 --       that follows no activity: IATA's four 'Hunting Closure beginning …'
 --       titles beside 'The Trail section … is closed Sept. 1 - Jan. 5 for
---       private hunting' still close (the rule 15). 'Camping'
+--       private hunting' still close. 'Camping'
 --       is not listed: the seed reads it as a site already, to the same end
 --       ('Tanque Verde Fall Camping Closure').
 --       A STATUS SAYS NOTHING where it holds no word of the vocabulary but a
@@ -317,22 +309,22 @@
 --       placed row's title" reads: King County's 'Cedar River Trail closed
 --       due to flood damage …', AlertType 'Hazard', closes by its title. A
 --       status that holds a word still speaks ('Closure with Detour' keeps
---       a title's 'closed' from closing). Until the review of 2026-10-15
---       (S1-1) a status no word read, and a blank status on a source that
---       states one on other rows (Missouri's; 5 of
---       Yellowstone's bear management areas), kept the title from speaking.
+--       a title's 'closed' from closing). A blank status on a source that
+--       states one on other rows (Missouri's; 5 of Yellowstone's bear
+--       management areas) says nothing too, so the title speaks.
 --       A category holding any other word of the vocabulary still keeps the
---       title from speaking ('Alert', 'Planned', 'Partial'); until decision
---       213's rule 2 a restriction word did too, and USFS R04's 'Roaring
---       River & William Pogue NRT Trail Closure' was a notice.
+--       title from speaking ('Alert', 'Planned', 'Partial'); a restriction
+--       word does not,
+--       so USFS R04's 'Roaring River & William Pogue NRT Trail Closure'
+--       closes.
 --    d. A NOTICE nobody reviewed, otherwise (miss rather than
 --       cry wolf).
---    A HAZARD AREA (rule 6) is read by its hazard category alone, never by
+--    A HAZARD AREA is read by its hazard category alone, never by
 --    the vocabulary: 'Open' on a shooting range is the hazard, not its
 --    absence.
 -- 3. A NOTICE CLOSES THE TRAIL BY ITS OWN WORDS, WHATEVER FILE ITS SOURCE IS
---    REGISTERED UNDER, AND NEVER ONCE ITS OWN END HAS PASSED (decision 213,
---    rule 8, the maintainer's poll of 2026-10-15: "a row's own words decide
+--    REGISTERED UNDER, AND NEVER ONCE ITS OWN END HAS PASSED (the
+--    maintainer's poll of 2026-10-15: "a row's own words decide
 --    whether it closes"). `obstructs_trail` is true only where rule 2 reads
 --    `closes_trail`, nothing holds it, its own dates do not contradict each
 --    other (rule 1, notice_dates_contradict()), and its own end day, a
@@ -347,8 +339,8 @@
 --    lines, and CDPR 'Full Closure' beside a passed StatusReopenDate is the
 --    same shape (pipeline/ELT.md, "Status, water and expiry rules", rule 1):
 --    a notice past its end lands in warnings, kept and not current, never in
---    closures. Everything else is null, which decision 7 lands in warnings
---    as not reviewed.
+--    closures. Everything else is null, which lands in warnings as not
+--    reviewed.
 -- 4. PLACE ONLY FROM THE SOURCE'S OWN GEOMETRY, OR ITS STEWARD'S OWN AREA.
 --    `geom_geojson` is the staging model's own geometry, never a match of
 --    `locality` or a title against a place table: a notice with none is
@@ -356,8 +348,8 @@
 --    (ORG_NOTICES.md section 3). A reviewed term table, the other way phase
 --    C allows, does not exist for any of these sources yet.
 --    A POINT INSIDE EXACTLY ONE OF ITS STEWARD'S OWN AREAS TAKES THAT AREA,
---    the maintainer's answer to Q3 (poll of 2026-10-11, "Its own boundary",
---    decision 185), chosen as a rule for every steward rather than one for
+--    the maintainer's poll of 2026-10-11 ("Its own boundary"), chosen as a
+--    rule for every steward rather than one for
 --    Florida: a notice whose own geometry is a point, of a source
 --    seeds/notice_steward_areas.csv links to a layer of its own steward's
 --    areas, and inside exactly one area int_closures__steward_areas lets
@@ -367,8 +359,8 @@
 --    so does a line, an area, and a point of a source no seed row names.
 --    The one source named is Florida's day-use status layer, whose points
 --    carry no park id (read live 2026-10-11), placed by FDEP's park
---    boundaries, so a closed park closes the trails inside its boundary
---    (page 01's P5, frame A). Measured twice on 2026-10-11, on
+--    boundaries, so a closed park closes the trails inside its boundary.
+--    Measured twice on 2026-10-11, on
 --    the live layers' 176 status points and 179 boundaries: for the poll's
 --    picture, 169 of the 176 inside exactly one, 33 of the 35 parks closed
 --    then; read again at 18:52 UTC for this rule, 173 inside exactly one
@@ -425,7 +417,7 @@
 --    (seeds/notice_source_fields.csv), so their dates are null, never a
 --    season OurHike supplied.
 --
--- 7. STANDING CLOSED LAND HAS NO CLOCK (rule 14, the
+-- 7. STANDING CLOSED LAND HAS NO CLOCK (the
 --    maintainer's poll of 2026-10-15; the reading of hazard areas
 --    made general). `stands_until_lifted` is true on a row that closes the
 --    trail (rule 3) where its own words say it is land closed until its
@@ -467,8 +459,8 @@
 -- else on the row says what it is, and a layer's own name often says less
 -- ('Locations').
 --
--- `issuer` IS THE AGENCY THAT ISSUED A COMPILED LAYER'S ORDER (decision 213,
--- rule 21, the maintainer's poll of 2026-10-15), where the layer's rows name
+-- `issuer` IS THE AGENCY THAT ISSUED A COMPILED LAYER'S ORDER (the
+-- maintainer's poll of 2026-10-15), where the layer's rows name
 -- it: the field seeds/notice_issuers.csv names, staged as `issuer` on that
 -- source alone, shown by the label the layer's own domain gives its code
 -- ('3-BLM' is 'Bureau of Land Management'), else as the row writes it
@@ -494,7 +486,7 @@ category_labels as (
 ),
 
 -- The label a compiled layer's own coded-value domain gives the code its
--- issuer field holds (seeds/notice_issuers.csv; decision 213, rule 21).
+-- issuer field holds (seeds/notice_issuers.csv).
 issuer_labels as (
     select
         source_key,

@@ -4,8 +4,8 @@
 -- publish without a person, NYNJTC's Trail Alerts, NYS Parks' temporary
 -- closed areas, OurHike's own verified closures, and every other club's
 -- notice its club files under closures or whose own words close the trail
--- (int_closures__club_notices, the phase C and the rule
--- 8; a club's other warnings.py notices are int_warnings__unioned's).
+-- (int_closures__club_notices; a club's other warnings.py notices are
+-- int_warnings__unioned's).
 -- Nothing is filtered here but ATC's refused automatic rows (their branch
 -- says why). Each branch keeps
 -- its source's own words and adds what the split needs:
@@ -61,7 +61,7 @@ ourhike as (
 ),
 
 -- A club notice whose own words close the trail is a closure whatever file
--- its source is registered under (rule 8, the maintainer's poll
+-- its source is registered under (the maintainer's poll
 -- of 2026-10-15: "a row's own words decide whether it closes"); every other
 -- notice its source files under warnings is int_warnings__unioned's.
 club_notices as (
@@ -212,8 +212,8 @@ from ourhike
 
 union all by name
 
--- Every generated club notice source's closures-type notices (decision 53,
--- phase C): `obstructs_trail` is true only where the source's own status or
+-- Every generated club notice source's closures-type notices:
+-- `obstructs_trail` is true only where the source's own status or
 -- category says closed and its own end has not passed, and null otherwise,
 -- so most land in warnings as not reviewed.
 select

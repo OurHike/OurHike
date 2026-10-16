@@ -3,15 +3,21 @@ version: 2
 models:
   - name: closures
     description: >
-      What blocks the trail, from every source that says so:
-      one row per organization notice, closed area or OurHike closure whose
-      `obstructs_trail` is true, from a source that passed
-      int_closures__gate and may publish, and the last good rows of a notice
-      source the gate holds this build, marked with `carried_since` (decision
-      53, phase D). Rebuilt whole each run, so a lifted closure leaves it,
-      and the warnings mart, in the same run.
-      conditions/atc_updates.json, conditions/nynjtc_alerts.json and
-      conditions/closures.json are written from it with the warnings mart.
+      One row per closure. Key: `closure_id`. Refreshed hourly. Phone files:
+      conditions/notices.json, conditions/atc_updates.json,
+      conditions/nynjtc_alerts.json and conditions/closures.json, each written
+      with the warnings mart.
+
+      What blocks the trail, from every source that says so: each organization
+      notice, closed area or OurHike closure whose `obstructs_trail` is true,
+      from a source that passed int_closures__gate and may publish. A notice
+      source the gate holds this build keeps its last good rows, marked with
+      `carried_since`. Rebuilt whole each run, so a lifted closure leaves this
+      mart and the warnings mart in the same run.
+
+      Versioned: phones read v1. A removed, renamed or retyped column ships as
+      a new version beside v1, never as a change to it; an added column is not
+      breaking.
     config:
       access: public
       contract:

@@ -34,8 +34,8 @@
     early, the side a hiker in front of a closed trail is safer on
     (Reasoned).
 
-    AN UPCOMING NOTICE IS NO EXCEPTION. Since the maintainer's frame B for
-    wave 6's page 01, P3 (poll of 2026-10-11), a notice whose own start is
+    AN UPCOMING NOTICE IS NO EXCEPTION. Since the maintainer's poll of
+    2026-10-11, a notice whose own start is
     still ahead publishes now (int_closures__club_notices' rule 1), and its
     day is still the first of the four above: so one with no end, no stated
     duration and no edit date carries null, and one edited more than 90 days

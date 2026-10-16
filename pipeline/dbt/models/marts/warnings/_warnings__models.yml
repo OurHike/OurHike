@@ -3,17 +3,25 @@ version: 2
 models:
   - name: warnings
     description: >
-      What a hiker should know that does not block the trail:
-      organization notices that do not obstruct it or that nobody has
-      classified (unknown lands here, never dropped), NWS's
-      relayed alerts, and OurHike's serious reports. No hazard POIs:
-      ELT.md's warnings ledger, "No hazard POI exists to port". Every row's source may publish, and a
-      notice's source passed int_closures__gate, or is held by it and the
-      row is that source's last good one, marked with `carried_since`
-      (phase D). The hazard areas (hunting areas,
+      One row per warning. Key: `warning_id`. Refreshed hourly. Phone files:
+      conditions/notices.json, conditions/atc_updates.json,
+      conditions/nynjtc_alerts.json and conditions/closures.json (each with
+      the closures mart), and conditions/weather_alerts.json
+      (pub_conditions_weather_alerts).
+
+      What a hiker should know that does not block the trail: organization
+      notices that do not obstruct it or that nobody has classified (unknown
+      lands here, never dropped), NWS's relayed alerts, and OurHike's serious
+      reports. Every row's source may publish, and a notice's source passed
+      int_closures__gate, or is held by it and the row is that source's last
+      good one, marked with `carried_since`. The hazard areas (hunting areas,
       shooting sites and burned areas, seeds/notice_hazard_areas.csv) land
       here and never in the closures mart. Rebuilt whole each run, as the
       closures mart is.
+
+      Versioned: phones read v1. A removed, renamed or retyped column ships as
+      a new version beside v1, never as a change to it; an added column is not
+      breaking.
     config:
       access: public
       contract:

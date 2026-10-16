@@ -1,6 +1,6 @@
 version: 2
 
-# The points_of_interest family's seeds (#1793, stage 3). Each transcribes a
+# The points_of_interest family's seeds. Each transcribes a
 # constant of today's exporters, and tests/test_dbt_points_of_interest_parity.py
 # holds each to the Python it came from, so a change on one side fails CI
 # until the other side follows. They become the one home of each rule when

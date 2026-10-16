@@ -37,7 +37,7 @@ models:
       - name: updated_at
         description: ATC's own last edit of the notice, as the reviewer wrote it.
       - name: problems
-        description: Every problem with the row, each prefixed by its label, in row_problems()'s order, then CL04's repeat.
+        description: Every problem with the row, each prefixed by its label, in row_problems()'s order, then the repeated-id check.
       - name: problem
         description: The same problems joined by " | ", or null where the row is fine.
       - name: published_row
@@ -127,8 +127,8 @@ models:
       reads them and shaped as published_rows() publishes them,
       with why a post cannot be read in `problems`. int_closures__gate holds
       NYNJTC's file back on any problem, or on a category with no posts.
-    # DECISION 208 (the maintainer's poll, 2026-10-15, "Hold at last good
-    # copy"): these four tests are errors in every environment, as
+    # HOLD AT LAST GOOD COPY (the maintainer's poll, 2026-10-15): these four
+    # tests are errors in every environment, as
     # int_closures__gate's are. pub_conditions_notices reads this model, and
     # so does int_closures__unioned, above the gate, so in production and UA
     # a failure here holds all nine pub_conditions_* files at their last good
@@ -290,8 +290,7 @@ models:
       current. Nothing is dropped here;
       the finals leave out a held row. Place is the source's own geometry,
       but for a point inside exactly one of its steward's own areas, which
-      takes that area (rule 4, the maintainer's answer to Q3, poll of
-      2026-10-11).
+      takes that area (rule 4, the maintainer's poll of 2026-10-11).
     columns:
       - name: notice_id
         description: "`<source key>:<the source's own id>`, unique across every source."
@@ -320,8 +319,8 @@ models:
       - name: reads_as
         description: >
           What the notice's own words read as against seeds/notice_words.csv
-          (rule 2, the first that holds): not_current, nothing_for_a_hiker
-          (decision 165 made general), closes_trail, or notice. A hazard area
+          (rule 2, the first that holds): not_current, nothing_for_a_hiker,
+          closes_trail, or notice. A hazard area
           reads notice (rule 6 reads its category).
         data_tests:
           - not_null
@@ -352,7 +351,7 @@ models:
         description: >
           How many different raw rows share the notice's key, counted by its
           base model before the dedupe; int_closures__gate holds a source with
-          any over one (decision 40 allows only exact copies).
+          any over one (a key allows only exact copies).
       - name: geom_geojson
         description: >
           The notice's place, in OGC:CRS84 as GeoJSON: the source's own
@@ -371,7 +370,7 @@ models:
   - name: int_closures__steward_areas
     description: >
       The areas that may place a notice's point (int_closures__club_notices'
-      rule 4; the maintainer's answer to Q3, poll of 2026-10-11): one row per
+      rule 4; the maintainer's poll of 2026-10-11): one row per
       notice source seeds/notice_steward_areas.csv links to a layer of its own
       steward's areas, and per area of that layer whose layer may publish,
       whose key one raw row holds, and which is a polygon. Each carries the
@@ -394,7 +393,7 @@ models:
 
   - name: int_closures__window_carried
     description: >
-      A feed is a window, not a list (phase C): every notice of
+      A feed is a window, not a list: every notice of
       a `window` source (seeds/notice_readers.csv) that the previous build's
       closures or warnings mart held and this build's read no longer
       carries, with its last content, unless a person marked it lifted
@@ -413,8 +412,8 @@ models:
 
   - name: int_closures__held_carried
     description: >
-      A notice source int_closures__gate holds back keeps its last good rows
-      (phase D): every row of such a source that the previous
+      A notice source int_closures__gate holds back keeps its last good rows:
+      every row of such a source that the previous
       build's closures or warnings history held as current, with every
       column the mart had, and `carried_since`, the start of the first build
       that carried it. Only a source the extract declares a notice resource
@@ -469,9 +468,8 @@ models:
       # the run red after the publish (its PARTIAL_EXIT). No severity of its
       # own: a warning in production and UA, which build on,
       # and an error in dev and CI, where no fixture row should land outside
-      # its box. The marts' own region tests failed at error in production
-      # until decision 81, and stopped every hourly file (soak runs 525 to
-      # 527).
+      # its box. When the marts' own region tests failed at error in
+      # production, they stopped every hourly file (soak runs 525 to 527).
       - dbt_utils.expression_is_true:
           arguments:
             expression: "false"
@@ -510,15 +508,14 @@ models:
       # @unvalidated, half is the lead's pick). Measured: the fixture build of
       # 76e71a8d held 110 of its 326 sources, every one absent from the
       # fixture warehouse (34%), and UA's hourly page of 2026-10-15 04:38 UTC
-      # showed this test passing. Decision 208 leaves it on the project's
-      # switch (below).
+      # showed this test passing. It stays on the project's switch (below).
       - rows_named:
           name: int_closures__gate_holds_no_source
           arguments:
             named: "not passed"
             error_share: 0.5
-    # DECISION 208 (the maintainer's poll, 2026-10-15, "Hold at last good
-    # copy"): every other test of this model is an error in every
+    # HOLD AT LAST GOOD COPY (the maintainer's poll, 2026-10-15): every
+    # other test of this model is an error in every
     # environment, as the closures and warnings marts' are (dbt_project.yml,
     # the comment above `data_tests:`): the six below, and the singular tests
     # assert_a_notice_source_whose_raw_table_is_absent_is_held and
@@ -540,7 +537,7 @@ models:
       - name: source_key
         description: >
           The source: one row for every registered notice source
-          seeds/notice_readers.csv names (phase C), held where
+          seeds/notice_readers.csv names, held where
           its raw table is not in this warehouse or the run log never shows
           it being read, and one each for
           OurHike's closures and reports, NWS's alerts and
@@ -672,8 +669,8 @@ models:
         data_tests: [not_null]
   - name: int_closures__trail_closure_areas
     description: >
-      Every club notice that closes an area, as its source drew it
-      (S6): the closures mart's rows
+      Every club notice that closes an area, as its source drew it:
+      the closures mart's rows
       and the warnings mart's club notices of a notice source whose own
       `obstructs_trail` is true, ATC's excepted, whose geometry made valid
       has dimension 2, kept as its polygons alone, with its bounding box.
@@ -683,8 +680,8 @@ models:
       model's header says why). Its tests warn rather than fail: this builds
       in stage A, where a failure would stop every conditions file of the
       hour, and the marts' own keys already hold each id to one row. They
-      stay at warn in every environment, a recorded exception (decision 197,
-      the maintainer's "Keep warn, a recorded exception", and
+      stay at warn in every environment, a recorded exception (the
+      maintainer's "Keep warn, a recorded exception", and
       seeds/model_key_exceptions.csv), with the project's two thresholds
       declared; `stays_at_warn` keeps build_marts.py and the
       data-quality file from reporting them as errors.
@@ -738,9 +735,9 @@ models:
       operation is in TRY() and its tests warn: a failure here would stop
       every conditions file of the hour, where an area it cannot cut is only
       left out. Its consistency test names each row whose stretches and
-      shade disagree, and is an error when every row does (decision 204,
-      tests/generic/rows_named.sql); its key tests stay at warn, decision
-      197's recorded exception.
+      shade disagree, and is an error when every row does
+      (tests/generic/rows_named.sql); its key tests stay at warn, a recorded
+      exception.
     data_tests:
       - rows_named:
           name: int_closures__area_trail_cuts_draws_each_area_one_way
@@ -857,8 +854,8 @@ unit_tests:
       Each expected problem is the Python's, with values rendered as JSON;
       tests/test_dbt_conditions_parity.py runs row_problems() over these same
       rows and fails where the two disagree, except row 36, a source_url with
-      a leading space, and rows 39-42, links back into the app (decision 94:
-      the app's own site, a link with no host, a sign-in token on another
+      a leading space, and rows 39-42, links back into the app (the
+      app's own site, a link with no host, a sign-in token on another
       site, and the app's host in capitals with a trailing dot), which this
       model refuses on purpose. Rows 0, 1, 3, 7-12, 37 and 43 are fine: a real
       update, a point closure, the far end of the trail, the six categories
@@ -2135,7 +2132,7 @@ unit_tests:
     description: >
       file_problems()'s two checks of the file itself, on one row with no
       work project: a `rows` that is not a list, and the retired
-      `ua_sample_rows` (maintainer decision 2026-09-09), in that order.
+      `ua_sample_rows` (retired by the maintainer, 2026-09-09), in that order.
     model: int_closures__work_projects_checked
     given:
       - input: ref('base_ourhike__work_projects')
@@ -2182,18 +2179,17 @@ unit_tests:
 
   - name: int_closures__club_notices_keeps_an_ended_notice_without_closing_and_holds_back_what_its_status_says_is_not_current
     description: >
-      The phase C rules on a club notice, one row each, its words
-      read against the one vocabulary decision 190 made of the per-source
-      seeds: a stated end date already past no longer holds the notice back
-      (the maintainer's frame A, 2026-10-10: it stays, greyed on the phone
+      The club notice rules, one row each, its words read against one
+      vocabulary for every source: a stated end date already past no longer holds the notice back
+      (the maintainer, 2026-10-10: it stays, greyed on the phone
       by conditions/notices.json's current_until), and USFS R06's 'Active'
       fire closure or CDPR's 'Full Closure' beside it is never read as
       closed now; the same row before its end, or with none, closes the
       trail; a status that says not current (CDPR's OPEN) holds it; a
       partial closure is a notice; a rescinded order is held; a seasonal
       closure whose own start has not come publishes and closes the trail
-      now, as one whose start has come does (the maintainer's frame B for
-      wave 6's page 01, P3, 2026-10-11: the phone closes it from the day
+      now, as one whose start has come does (the maintainer,
+      2026-10-11: the phone closes it from the day
       before its start); a notice its club files under warnings closes a
       trail where its own words do (rule 8: TDEC's 'closed');
       place is the source's own geometry or nothing, its
@@ -2204,22 +2200,22 @@ unit_tests:
       with its category in the reason, one whose category is listed
       (compared without case or surrounding space) is not, and a hazard
       source listed for every row (BAER) keeps every row.
-      Wave 6's statuses read as the maintainer answered on 2026-10-11:
-      Missouri's Archived alone is held (P1), its blank status shows and its
+      Club statuses read as the maintainer answered on 2026-10-11:
+      Missouri's Archived alone is held, its blank status shows and its
       Closed closes, even before its start; a Missouri trailhead's Open is
       held and its Closed, a site's, is a notice; Michigan's '-1' rows,
       whose own category is 'Motorized', are nothing for a hiker on both
-      layers (P4) and its Temporarily Closed values close, compared without
-      case or surrounding space; Florida's closed park closes (P5; with no
+      layers and its Temporarily Closed values close, compared without
+      case or surrounding space; Florida's closed park closes (with no
       steward's areas given here it keeps its own point, which the
       placement test below moves) and its open park is held; the Great
       Allegheny Passage's Hidden is held whatever its category says, as is
-      its Cleared, and its Fully Obstructed closes (P6); NETT's bridges, a
-      layer with no status field, close by their own words ('collapsed',
-      P11), its layer's name 'NET_KML_DAMAGED_BRIDGES' saying no closure;
+      its Cleared, and its Fully Obstructed closes; NETT's bridges, a
+      layer with no status field, close by their own words ('collapsed'),
+      its layer's name 'NET_KML_DAMAGED_BRIDGES' saying no closure;
       VTrans's isActive 0 is held and its 1, titled 'Closure' as the live
       row is, closes by its title, its layer's name 'Notice Line' saying
-      no closure (the poll of 2026-10-15). NGPC's Cowboy Trail sections (P7+P8 ship them): a
+      no closure (the poll of 2026-10-15). NGPC's Cowboy Trail sections ship: a
       Condition of 'Not Passable' or 'Impassable' closes the trail however
       Road_Status reads, its 'Open' included, because those words outrank a
       status (the Niobrara Bridge section), compared without case or
@@ -2561,12 +2557,12 @@ unit_tests:
       comparison flipped goes red: an 'Active' closure (placed, as every
       R06 row is, so its fire closure layer's own name closes it) that
       ended yesterday still closes the trail, and one that ended the day
-      before is kept but no longer closes it (rule 3; neither is held, rule 1 since the
-      maintainer's frame A of 2026-10-10); a notice starting tomorrow, the
+      before is kept but no longer closes it (rule 3; neither is held, rule 1, the
+      maintainer, 2026-10-10); a notice starting tomorrow, the
       day after, or next month publishes now with its own `starts_on`, and
       an 'Active' closure among them publishes `obstructs_trail` true, its
-      start read by the phone (rule 1 since the maintainer's frame B of
-      2026-10-11 for wave 6's page 01, P3); an order rescinded the day before
+      start read by the phone (rule 1, the maintainer,
+      2026-10-11); an order rescinded the day before
       yesterday or yesterday is held, and one rescinded today or tomorrow is
       not, the same day of margin an end date has. Every stated time is noon
       UTC, so each row's day is the same in every US zone.
@@ -2627,8 +2623,7 @@ unit_tests:
 
   - name: int_closures__club_notices_places_a_point_inside_exactly_one_of_its_stewards_own_areas_by_that_area
     description: >
-      Rule 4, the maintainer's answer to Q3 (poll of 2026-10-11, "Its own
-      boundary"): a point of a source int_closures__steward_areas gives areas
+      Rule 4, the maintainer's poll of 2026-10-11 ("Its own boundary"): a point of a source int_closures__steward_areas gives areas
       for, inside exactly one of them, takes that area's own outline as its
       place, word for word, and names it in `placed_by`, whichever of the
       areas it is; a point inside two areas, and one inside none, keep their
@@ -2672,8 +2667,8 @@ unit_tests:
 
   - name: int_closures__club_notices_reads_a_notice_by_its_own_words_against_one_vocabulary_for_every_source
     description: >
-      Decision 190 (the maintainer's poll of 2026-10-14: "Do by their own
-      words. But make this logic that applies everywhere."), rule 2 in
+      The maintainer's poll of 2026-10-14: "Do by their own words. But make
+      this logic that applies everywhere." Rule 2 in
       order, on rows modelled on the live reads of 2026-10-14. IDPR's
       route orders close by their own words or their layer's own name, the
       one barring any use whose note calls the trail non-motorized among
@@ -3044,9 +3039,8 @@ unit_tests:
 
   - name: int_closures__club_notices_closes_by_a_status_no_word_reads_a_listed_trail_and_a_title_s_stated_start
     description: >
-      The closures the review of 2026-10-15 found read as notices (its
-      S1-1, S1-2, S1-4, S2-1 to S2-4), on rows modelled on the live read of
-      that day or on the review's probes, on a build pinned to that day. A
+      The closures the review of 2026-10-15 found read as notices, on rows
+      modelled on the live read of that day or on the review's probes, on a build pinned to that day. A
       status no word of the vocabulary reads ('Hazard', a workflow's
       'Final', an empty one beside 'Final') says nothing, so the title
       closes, where 'Closure with Detour' still speaks; FLTC's 'previous
@@ -3624,8 +3618,8 @@ unit_tests:
 
   - name: int_closures__club_notices_reads_a_stated_season_in_the_season_that_has_not_ended_and_dates_that_contradict_as_closing_nothing
     description: >
-      Rule 1's season and contradiction tests (the review of 2026-10-15,
-      S1-3 and S2-5) on a build pinned to 2026-10-15. A row whose season
+      Rule 1's season and contradiction tests (the review of 2026-10-15)
+      on a build pinned to 2026-10-15. A row whose season
       field states a range of days with no year, once its own end has
       passed, is read in the season that has not ended: Filoha Meadows'
       October 1 - June 30 is under way (2026-10-01 to 2027-06-30), a winter
@@ -4160,7 +4154,7 @@ unit_tests:
 
   - name: int_closures__gate_reads_its_sources_from_the_registry_and_the_run_log
     description: >
-      The phase C: every registered notice source gets a gate row
+      Every registered notice source gets a gate row
       without an edit here, and an unregistered key gets none (held back by
       the marts' inner join, never published unchecked). One whose table the
       run log never shows the extract loading (never run, or only ever
@@ -4319,7 +4313,7 @@ unit_tests:
         - {source_key: nws_alerts, club: nws, passed: true, held_because: null}
         - {source_key: 'reference/work_projects.json', club: ourhike, passed: true, held_because: null}
         - {source_key: club_with_rows, club: a, rows_total: 2, passed: true, held_because: null}
-        - {source_key: club_with_conflicts, club: a, rows_total: 2, passed: false, held_because: '1 of 2 club_with_conflicts notices share their key with a raw row that differs (decision 40 allows only exact copies), so which one is current cannot be told'}
+        - {source_key: club_with_conflicts, club: a, rows_total: 2, passed: false, held_because: '1 of 2 club_with_conflicts notices share their key with a raw row that differs (a key allows only exact copies), so which one is current cannot be told'}
         - {source_key: club_proven_empty, club: a, rows_total: 0, passed: true, held_because: null}
         - {source_key: club_unproven_empty, club: a, rows_total: 0, passed: false, held_because: 'club_unproven_empty has no rows, and no count of zero from the source itself backs that, so the read may have broken or not happened yet'}
         - {source_key: club_never_loaded, club: a, rows_total: 0, passed: false, held_because: 'the run log shows no run that loaded raw_a__club_never_loaded or found it unchanged, so nothing says club_never_loaded was read'}
@@ -4539,7 +4533,7 @@ unit_tests:
 
   - name: int_closures__held_carried_keeps_the_last_good_rows_of_a_source_the_gate_holds
     description: >
-      The phase D: a source the gate holds this build keeps the
+      A source the gate holds this build keeps the
       rows the previous build's history held as current, every column read
       back out of the saved row, from either mart: ATC's with its A.T. miles,
       NYNJTC's from the warnings history. Nothing is carried for a source the
@@ -4620,8 +4614,8 @@ unit_tests:
 
   - name: int_closures__held_carried_keeps_a_carried_notice_whose_own_end_has_passed_as_no_longer_closing
     description: >
-      A notice past its own end date is kept, not dropped (the maintainer's
-      frame A, 2026-10-10; int_closures__club_notices' rule 1), and rule 3
+      A notice past its own end date is kept, not dropped (the maintainer,
+      2026-10-10; int_closures__club_notices' rule 1), and rule 3
       reads a carried one again: an obstructing closure that ended two days
       ago stays carried although its source cannot be read, moves to the
       warnings mart and no longer closes the trail, not reviewed, as a fresh
@@ -4673,10 +4667,9 @@ unit_tests:
     description: >
       A closure whose own start is a week or a month ahead is carried as it
       was saved, in the closures mart and still closing the trail, as a
-      fresh read of it now publishes (the maintainer's frame B for wave 6's
-      page 01, P3, 2026-10-11: shown now as upcoming, and closed by the
-      phone from the day before its start). Before it, rule 1's start hold
-      dropped such a carried row whose start was more than a day ahead. The
+      fresh read of it now publishes (the maintainer,
+      2026-10-11: shown now as upcoming, and closed by the phone from the
+      day before its start). The
       dates are relative to the build, as the test above's are.
     model: int_closures__held_carried
     given:
@@ -4718,8 +4711,8 @@ unit_tests:
 
   - name: int_closures__gate_holds_a_source_whose_row_leaks_its_wording_or_lands_outside_its_region
     description: >
-      Decision 81 (the maintainer's poll, 2026-10-05: "Hold that source and
-      publish the rest"): a club notice source with a row that holds its own
+      The maintainer's poll, 2026-10-05: "Hold that source and publish the
+      rest": a club notice source with a row that holds its own
       wording in a published column, and one with a row outside the box it
       publishes in, are each held with that reason, the count and the first
       row, where until then either test failed the whole build. A clean club
@@ -5021,7 +5014,7 @@ unit_tests:
   - name: int_closures__area_trail_cuts_crosses_out_the_at_like_any_trail
     model: int_closures__area_trail_cuts
     description: >
-      Decision 192 ("Yes, like any trail"): the A.T.'s own line, from the
+      "Yes, like any trail" (the maintainer's poll, 2026-10-14): the A.T.'s own line, from the
       release's trails.geojson, is cut inside a club's area as the nearby
       line beside it is, each its own stretch in line id order, so the
       phone crosses out the A.T. where it runs inside the area.

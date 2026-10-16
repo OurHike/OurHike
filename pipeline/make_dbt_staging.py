@@ -674,7 +674,7 @@ class Table:
             )
         text = entry.get("key_comment") or entry.get("id_comment")
         if text:
-            return text
+            return registry_words(text)
         home = "key_fields" if "key_fields" in entry else "id_fields" if entry.get("id_fields") else "id_field"
         return f"the registry's `{home}`; its row records no measurement of it."
 
@@ -801,6 +801,24 @@ def tables() -> list[Table]:
     if refused:
         raise KeyRefused("no staging without a measured key:\n  " + "\n  ".join(refused))
     return found
+
+
+#: A numbered decision, poll question or work wave as a registry note cites it ("decision 40", "decision 54's wave 1",
+#: "Q3"). A note copied into a model's description drops these: the docs say what the data is, and the decision log is
+#: git history. The publication rule reads a row's `licence` for its rulings and never these descriptions.
+_NUMBERED_REFERENCE = re.compile(
+    r"\s*\((?:decisions? \d+[a-z]?(?:\([a-z]\))?(?:(?:, | and | or )\d+[a-z]?)*|Q\d+)\)"
+    r"|\b[Dd]ecisions? \d+[a-z]?(?:''|')s (?:waves? \d+(?: and \d+)? )?"
+    r"|,? (?:per|under|by) decisions? \d+[a-z]?(?:\([a-z]\))?"
+)
+#: Any other mention, mid-sentence ("what decision 40 asks of a key"), reads as the rule it names.
+_OTHER_REFERENCE = re.compile(r"\b[Dd]ecisions? \d+[a-z]?(?:\([a-z]\))?\b")
+
+
+def registry_words(text: str) -> str:
+    """A registry note as a model's description quotes it, without the numbered references it cites."""
+    text = _NUMBERED_REFERENCE.sub(lambda match: "the " if "'s " in match.group(0) else "", text)
+    return _OTHER_REFERENCE.sub("the maintainer's rule", text)
 
 
 def _comment(text: str, indent: str = "") -> str:

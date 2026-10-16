@@ -727,22 +727,32 @@ the keys `client/src/lib/config.ts` declares plus every cell shard by its shape,
 whole files by name with the reason. The client half is `client/src/lib/useTrailGraph.ts`
 (`features/HIKE_PLANNING.md`, *The graph a phone keeps is the cells it planned in*).
 
-## The dbt transform layer (#100, Phase A)
+## The dbt transform layer
 
-**The rebuild this layer is moving to is [ELT.md](ELT.md)**: dlt for every extract, dbt 2.0.6 and eleven contracted marts, planned 2026-10-01 under **#1793 — Rebuild the data platform as dlt → dbt: seven contracted marts, a monthly refresh, published docs, and lighter phone downloads**. Most of it is built on that pull request's branch, and ELT.md's "Phases" and "Work in flight" say what is not. What follows is how the layer runs on that branch.
-
-[ELT.md](ELT.md) is the design, and [DBT.md](DBT.md) the history of the dbt layer's first phases. After a fetch:
+[ELT.md](ELT.md) is the design: dlt reads every source into a private raw store, dbt 2.0.6
+builds eleven contracted marts, and `pub_` writer models write the phone files, built under
+**#1793 — Rebuild the data platform as dlt → dbt: seven contracted marts, a monthly refresh,
+published docs, and lighter phone downloads**. [DBT.md](DBT.md) is the history of the dbt
+layer's first phases. The skills `.claude/skills/dlt/SKILL.md` and
+`.claude/skills/dbt/SKILL.md` say how to work on each half. To build on fixtures, from
+`pipeline/`:
 
 ```
+python generate_dbt.py                                        # the generated staging and notice models
 python make_dbt_fixtures.py                                   # or real files under data/raw/
 python -m extract._fixtures --raw-dir data/raw --warehouse data/warehouse.duckdb   # the extract, in fixture mode
 (cd dbt && dbt deps --profiles-dir .)                         # once, from the committed package pins
-python build_marts.py --fixtures                              # seed, the build in stages around the Python steps, the pub_ writers last
+python build_marts.py --fixtures                              # seeds, the build in stages around the Python steps, the pub_ writers last
 ```
 
-`build_marts.py` is the one home of the build order (pipeline/ELT.md, "Python steps, outside dbt"): one `dbt build` cannot reach a model downstream of a step's `derived` table before the step has run.
-
-What loads is decided by `sources.json`'s registry and the club folders under `pipeline/extract/` that claim its keys (ELT.md, "The folder contract"), never a glob. The build lands the eleven marts in the `marts` schema (`points_of_interest` was `dim_pois` until 2026-10-01) and the `pub_` writers' files under `data/processed/dbt/`. The release build (`publish-vector-data.yml`) still publishes the exporters' files, `export_poi.py`'s among them. CI runs the same sequence against synthetic fixtures (`make_dbt_fixtures.py`) in the `dbt` job of `pipeline-tests.yml`; lint with `sqlfluff lint dbt/models dbt/tests` from `pipeline/`, which needs `dbt deps` to have run and no warehouse (`.sqlfluff`'s header).
+`build_marts.py` owns the build order, because one `dbt build` cannot reach a model downstream
+of a Python step's `derived` table before the step has run. What loads is decided by
+`sources.json`'s registry, never a glob. The build lands the eleven marts in the `marts` schema
+and the writers' files under `data/processed/dbt/`. The release build
+(`publish-vector-data.yml`) still publishes the exporters' files. CI runs the same sequence in
+the `dbt` job of `pipeline-tests.yml`, and `scripts/test.sh` runs it locally; lint with
+`sqlfluff lint dbt/models dbt/tests` from `pipeline/`, which needs `dbt deps` to have run and no
+warehouse (`.sqlfluff`'s header).
 
 ## Next steps
 

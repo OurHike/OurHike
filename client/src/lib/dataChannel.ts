@@ -1,8 +1,10 @@
 // Reading the pointer, `channels.json`: what lib/dataRelease.ts
-// decides a session's release FROM, read on launch and recorded for the next
-// one. dataRelease.ts holds the synchronous half - the mirror read that fixes
-// this session's release before the first URL is built - and this module the
-// asynchronous half, which nothing needs until after launch.
+// decides a session's release FROM. Read twice over a phone's life: on a
+// first run, before the app renders, and taken for that session
+// (firstRunRelease, which main.tsx awaits); and on every launch after,
+// recorded for the next one (readDataChannel). dataRelease.ts holds the
+// synchronous half - the mirror read that fixes a later session's release
+// before the first URL is built - and this module the asynchronous half.
 //
 // A MODULE OF ITS OWN, AND LOADED WITH import(), for the launch budget
 // (features/LAUNCH_BUDGET.md §3, scripts/check-build-output.mjs): dataRelease
@@ -19,27 +21,43 @@
 // the same reason. Measured 2026-10-15 the same way: the eager closure was
 // 244,748-244,759 bytes over three builds before it and 244,745-244,755 over
 // four after, inside that drift, and this chunk went from 898 bytes to 1,035.
+//
+// The first-run read went in here too, and main.tsx imports this module with
+// import() before it renders. Measured 2026-10-16 the same way, one build
+// each: the eager closure was 245,210 bytes before it and 245,521 after (the
+// adoption switch in dataRelease.ts and main.tsx's wait are the eager part).
 
 import { del, get, set } from 'idb-keyval'
 
 import {
+  adoptFirstRunRelease,
   asRecord,
   BASE_ENVIRONMENT,
   CHANNEL_RECORD_KEY,
   CHANNELS_KEY,
   type ChannelRecord,
   DATA_SCHEMA_VERSION,
+  FIRST_RUN_READ_TIMEOUT_MS,
   mirrorStore,
   readMirror,
   RELEASE_ID,
+  SESSION_FOLLOWS_POINTER,
 } from './dataRelease'
+
+/** lib/dataRefresh.ts's RELEASE_KEY: where a completed download is recorded.
+ *  Spelled out rather than imported, because importing that module here
+ *  reshaped the eager chunks: the eager closure measured 246,355 bytes
+ *  compressed with the import and 245,521 without, against the 245,760-byte
+ *  budget (scripts/check-build-output.mjs, one build each, 2026-10-16).
+ *  dataRelease.firstRun.test.ts holds the two equal. */
+export const DOWNLOAD_RECORD_KEY = 'ourhike:trail-data-release'
 
 function writeMirror(record: ChannelRecord): void {
   try {
     mirrorStore()?.setItem(CHANNEL_RECORD_KEY, JSON.stringify(record))
   } catch {
     // A mirror that cannot be written costs the next launch the record's
-    // release, which then reads the compiled fallback - the state
+    // release, which then reads the compiled floor - the state
     // dataRelease.ts was in before the pointer existed - until the record
     // repairs it.
   }
@@ -284,7 +302,7 @@ async function forget(): Promise<void> {
  *
  * A PHONE NEVER ENDS WITH NO DATA BECAUSE OF THIS. Missing, malformed or
  * unreachable, a pointer changes nothing: the record keeps the last release
- * this phone verified, and with no record the compiled fallback stands. An
+ * this phone verified, and with no record the compiled floor stands. An
  * entry naming a release whose manifest does not resolve is never recorded.
  * Never rejects; a caller may drop the promise.
  *
@@ -361,4 +379,92 @@ export async function readDataChannel(
   }
   writeMirror(record)
   return answer('recorded', entry)
+}
+
+/** What a first run's pointer read did. Every outcome but `adopted` leaves
+ *  this session on the compiled floor; `recorded` has made the pointer's
+ *  release the next launch's, as readDataChannel would have. */
+export type FirstRunOutcome =
+  | ChannelOutcome
+  /** Not a first run: the phone follows a pointer already, or holds a
+   *  record or a download, or IndexedDB could not say whether it does. */
+  | 'not-first-run'
+  /** The browser reports no network, so nothing was asked. */
+  | 'offline'
+  /** Recorded, and this session reads it. */
+  | 'adopted'
+
+/**
+ * On a first run, read `channels.json` at `base` BEFORE the app renders and
+ * make the release it names this session's, once that release's manifest
+ * resolves (the maintainer, 2026-10-16: "first run, pointer first").
+ * main.tsx awaits it, bounded by FIRST_RUN_READ_TIMEOUT_MS on its own side
+ * too, so a chunk that never loads cannot hold the first frame either.
+ *
+ * A FIRST RUN is a phone with nothing to lose: no pointer record (mirror or
+ * IndexedDB) and no completed download (DOWNLOAD_RECORD_KEY).
+ * A phone holding data keeps today's order - the floor this launch, the
+ * pointer recorded for the next, and the hiker asked before anything they
+ * hold is replaced (#919 — A published data fix reaches no phone that
+ * already has the app, because the download asks whether there is trail
+ * data and never which) - because adopting a release under data already
+ * downloaded from another would be the replacement that decision forbids.
+ *
+ * Offline, a pointer that is missing, malformed or slow, a release that does
+ * not resolve, and IndexedDB refusing the record all leave this session on
+ * the compiled floor, DATA_RELEASE, which every deploy checks resolves. The
+ * whole read, pointer and manifest, shares one deadline. Never rejects.
+ */
+export async function firstRunRelease(
+  base: string,
+  { timeoutMs = FIRST_RUN_READ_TIMEOUT_MS }: { timeoutMs?: number } = {},
+): Promise<FirstRunOutcome> {
+  if (base === '') return 'unconfigured'
+  if (SESSION_FOLLOWS_POINTER) return 'not-first-run'
+  try {
+    if (navigator.onLine === false) return 'offline'
+  } catch {
+    // No navigator to ask: try the network and let it answer.
+  }
+  try {
+    if (
+      (await get(CHANNEL_RECORD_KEY)) != null ||
+      (await get(DOWNLOAD_RECORD_KEY)) != null
+    )
+      return 'not-first-run'
+  } catch {
+    return 'not-first-run'
+  }
+
+  const controller = new AbortController()
+  const deadline = setTimeout(() => controller.abort(), timeoutMs)
+  try {
+    let text: string | null
+    try {
+      text = await textWithin(`${base}/${CHANNELS_KEY}`, controller.signal, {
+        cache: 'no-store',
+      })
+    } catch {
+      return 'unreachable'
+    }
+    if (text === null) return 'unreachable'
+    const entry = entryIn(text)
+    if (entry === null) return 'malformed'
+    if (!(await resolves(base, entry, controller.signal))) return 'unresolved'
+    const record: ChannelRecord = {
+      release: entry,
+      schema: DATA_SCHEMA_VERSION,
+      environment: BASE_ENVIRONMENT,
+      at: Date.now(),
+    }
+    try {
+      await set(CHANNEL_RECORD_KEY, record)
+    } catch {
+      return 'unstorable'
+    }
+    writeMirror(record)
+    return adoptFirstRunRelease(record) ? 'adopted' : 'recorded'
+  } finally {
+    clearTimeout(deadline)
+  }
 }

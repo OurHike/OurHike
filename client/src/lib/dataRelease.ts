@@ -4,183 +4,64 @@
 /// <reference types="vite/client" />
 
 /**
- * Which published dataset this build reads. Since 2026-10-02 the answer has
- * two parts (pipeline/ELT.md, "Versions and channels").
+ * Which published dataset this build reads. Two parts (pipeline/ELT.md,
+ * "Versions and channels"; the maintainer, 2026-10-16).
  *
- * THE POINTER. A committed `channels.json` at the repository root names, per
- * data environment and per schema version, the release folder a phone reads:
- * `{"production": {"v1": "<id>"}, "ua": {"v1": "<id>"}}`. Phones read the
- * copy at the data base, beside `latest.json`, never this commit's, and only
- * the release train puts it there, by running `publish.py --channels`
- * (RELEASING.md §10: no workflow runs that yet). Moving an entry is a reviewed
- * commit, so the 2026-09-09 reason for a committed pin below still holds: the
- * dataset changes only with a commit, a review and history. What changes is
- * that the commit no longer needs an app release. lib/dataChannel.ts's
- * `readDataChannel` reads the uploaded copy; what it names becomes this
- * phone's release from its NEXT launch, never mid-session.
+ * THE POINTER. Each data environment's `channels.json`, in the bucket beside
+ * its `latest.json`, names per schema version the release folder its phones
+ * read: `{"ua": {"v1": "<id>"}}`. That bucket copy is the only copy; no file
+ * in this repository names it. pipeline/channels.py moves it:
+ * build-reference.yml's last job moves UA's once a monthly build has passed
+ * every check it runs, and promote-data.yml, behind the production
+ * environment's reviewer, copies a release UA was tested on into production
+ * and moves production's. Each move is appended to `channels_history.json`
+ * beside it. A phone reads the pointer on a first run before it renders
+ * (lib/dataChannel.ts's firstRunRelease) and takes the release it names; on
+ * every later launch it reads it again (readDataChannel), and a newer release
+ * becomes the phone's from the NEXT launch, never mid-session, with the hiker
+ * asked before data they hold is replaced (lib/dataRefresh.ts; #919 — A
+ * published data fix reaches no phone that already has the app, because the
+ * download asks whether there is trail data and never which).
  *
- * THE COMPILED FALLBACK, `DATA_RELEASE` below, is what a session reads when
- * this phone has never recorded a pointer it could verify: a first run, a
- * phone that has never reached `channels.json`, or a record that did not
- * survive - including one lib/dataChannel.ts forgot because its release's
- * own manifest answered 404. It is kept for exactly that, and
- * `pages.yml` and `ua.yml` still assert it resolves, because a first run that
- * cannot reach the pointer reads it.
+ * THE FLOOR, `DATA_RELEASE` below: the known-good release a session reads
+ * when it has no verified pointer entry and cannot get one - a first run
+ * that is offline, or whose pointer is missing, malformed, slow or names a
+ * release that does not resolve, or a phone whose record was forgotten
+ * because its release's own manifest answered 404. So it moves only when the
+ * data format does (a new DATA_SCHEMA_VERSION), or when the folder it names
+ * stops being one a phone can use; moving the data a phone reads is the
+ * pointer's job, not a commit's.
  *
- * WHY A COMMITTED CONSTANT rather than a repository variable, which is the
- * one question DATA_RELEASES.md left open and the maintainer settled on
- * 2026-09-09: a variable would let the dataset every hiker receives change
- * with no commit, no review and no history. A constant puts the release in
- * `git log`, makes it revertable with `git revert`, and puts it structurally
- * out of reach of every pipeline workflow - they all run `contents: read`.
- * `channels.json` is the same argument made for a file a phone can read
- * without an app release.
+ * IT MUST RESOLVE IN EVERY ENVIRONMENT A BUILD DEPLOYS AGAINST: UA is a
+ * prefix in the same bucket with its own `releases/` tree, so the two sets of
+ * ids drift (measured 2026-09-09: production 14 releases, UA 31, 10 in
+ * common). `pages.yml` and `ua.yml` each assert this folder's manifest
+ * resolves against their OWN base and fits a launch (check 22) before
+ * deploying, and the same of the release their uploaded pointer names, so a
+ * wrong floor costs a red deploy rather than a hiker's map.
  *
- * WHAT MERGING IT DOES, amended from §4's first draft by RELEASING.md: the
- * merge deploys to UA, and a tagged release is what puts the new dataset in
- * front of hikers. So this constant selects a dataset; promoting it still
- * gets a real client fetching it through a real browser first.
+ * WHY 2026-10-10-2. build-reference.yml run 2 (38044889854) staged it in UA
+ * on 2026-10-10, from the dbt path, green in every job with all 41 parity
+ * families matching. Measured 2026-10-15 against its folder: 4,449
+ * artifacts; its network sketch 2,710,574 bytes, under
+ * lib/artifactBudget.ts's LAUNCH_ARTIFACT_BUDGET_BYTES, where 2026-10-03-2's
+ * was 41,216,145 and every UA phone declined it (review 5528343443 on
+ * PR #1805); check 22 passes, the largest file a phone fetches whole being
+ * trail_graph_cell_n37w108.json at 29,993,542; check 2 finds 32 of the 35
+ * keys config.ts declares, the other three the background tiers packages.ts
+ * withdraws; check 20 finds every cell its four cell indexes name; and all
+ * 199 hikes in suggested_hikes.json have their detail. Production held no
+ * release at all when this was written (measured 2026-10-09, after the
+ * bucket move of 2026-10-02 copied nothing), so pages.yml refuses a
+ * production deploy of this floor until promote-data.yml has copied it there.
  *
- * THE ID MUST EXIST IN BOTH DATA ENVIRONMENTS, which §4 does not say and
- * which is a consequence of features/DATA_ENVIRONMENTS.md arriving after it.
- * UA is a prefix in the same bucket with its own `releases/` tree, written by
- * its own publishes, so the two sets drift - measured 2026-09-09, production
- * held 14 releases and UA 31, with only 10 ids in common. A pin naming an id
- * one environment lacks fails that environment's deploy.
- *
- * Nothing here has to remember that: `pages.yml` and `ua.yml` each assert
- * this folder's manifest resolves against their OWN base before deploying, so
- * a wrong pin costs a red deploy rather than a hiker's map. They assert the
- * same of `channels.json`'s entry for this build's schema version, and that
- * the copy uploaded at that base, where one is, names the same release.
- *
- * Both also refuse a build whose DATA_RELEASE is not that
- * entry. A first run reads this constant and every launch after it has read
- * the pointer takes the entry, so two different values are a phone that
- * changes release on its second launch. This line therefore moves in one
- * commit with UA's entry, because ua.yml deploys every push to `main`, and
- * production's entry names the same release before a tag
- * (.github/scripts/check_pin_matches_channels.py, RELEASING.md §10).
- *
- * 2026-09-24-2 IS v1.3.2's DATA, minted by that release train on 2026-09-24.
- * Production's -1 is the vector data (both DEM variants had published flat
- * before it, so its folder carries them) and -2 the basemap: the last folder
- * of the day again, for the reason below. UA held no 2026-09-24 folder at all
- * when production minted these - its ids are its own sequence - so the train
- * ran two UA publishes that day to mint UA's -1 and -2 before this line moved,
- * rather than pin an id one environment lacked. Production's folder also
- * carries the elevation and profile cells now: its vector publish ran with
- * `include_elevation: true`, which the 2026-09-16-4 entry below names as the
- * one thing that would close that gap.
- *
- * 2026-09-16-4 WAS IN BOTH ENVIRONMENTS, minted by the v1.3.1 release train.
- * The pin was `2026-09-14` - v1.3.0's data - until that line moved, and the
- * previous entry's point still holds: nothing chooses a release id.
- * `lib/releases.next_release_id` returns `date.today()`, and no publishing
- * workflow takes an id input.
- *
- * WHY THE `-4` SUFFIX, which is the part that surprised the session that cut
- * this release. A release folder is IMMUTABLE, so `next_release_id` reads the
- * ids already used and a second publish on one day gets `-2` rather than
- * overwriting the morning's. Four production publishes on 2026-09-16 therefore
- * minted four folders, each complete because `_stage_release` copies EVERY
- * artifact from its flat key rather than a delta:
- *
- *   -1  basemap          -3  vector data (trails, POIs, hikes, graph)
- *   -2  dem_light        -4  dem canonical
- *
- * So the pinnable folder is the LAST one of the day, not the first, and a
- * session that pins `releases/<today>/` before every family has published
- * ships a folder holding whatever had landed by the morning. Measured on
- * 2026-09-16: `releases/2026-09-16/` held a fresh basemap and byte-identical
- * copies of v1.3.0's trails, POIs, hikes, graph and both DEMs.
- *
- * WHY PINNING IT IS SAFE, measured 2026-09-16 rather than assumed. Both
- * environments return 200 for `releases/2026-09-16-4/manifest.json`, and
- * production's folder holds **2,158 artifacts** against UA's 3,166. That
- * difference is NOT empty in the direction the 2026-09-14 entry above called
- * the one that matters, and it is worth naming rather than rounding to safe:
- *
- *   505  trail_graph_elevation_cell_*.json   UA only
- *   505  trail_graph_profile_cell_*.json     UA only
- *     1  suggested_hikes_detail_*.json       UA only (201 against 200)
- *
- * The 1,010 elevation and profile cells are the STATUS QUO rather than a
- * regression: production carried zero of them at `2026-09-14` too, the
- * elevation leg is opt-in and this release's publishes ran with
- * `include_elevation: false`. lineClimb.ts answers `none` for a line with no
- * climb figures, which is the state its own tests and
- * `preview-shots/long-path-line-sheet.mjs` already describe. The one extra
- * hike detail is two independent builds minutes apart; each environment's
- * `suggested_hikes.json` references its own folder's details, so neither
- * client asks for a file its own release lacks.
- *
- * WHAT WOULD MAKE THAT SENTENCE STRONGER, and does not exist: a production
- * publish with `include_elevation: true`, which would cost ~40 minutes and is
- * the only way the two environments hold the same set. Nobody has decided
- * whether production should carry elevation at all - it never has.
- *
- * WHAT WOULD HAVE CAUGHT THE MISMATCH EARLIER, and does not exist:
- * `pipeline/tests/test_release_pin_contract.py` asserts this id is *shaped*
- * like one a publish could write, never that either environment actually
- * carries it. Only `pages.yml`'s pre-deploy guard does that, which is late -
- * it is a red deploy rather than a red test. @unvalidated whether a test
- * could check it honestly at all: a suite that reads the live bucket would
- * fail on a network blip and would couple `pytest` to R2's availability,
- * which is why the guard sits where it does. What would settle it: deciding
- * whether the release train should assert the pin resolves before it tags,
- * which is cheaper than either and is nobody's file yet.
- *
- * THE PIN MOVED TO 2026-10-03 ahead of production, on the branch of
- * PR #1805 — dlt → dbt re-platform as one go/no-go change. UA's refill
- * (publish-vector-data.yml run 37097659154) replaced UA's tree, so
- * `2026-09-24-2` no longer resolves there and client-tests.yml's flow-data
- * job read a 404. Measured 2026-10-03: UA's `releases/2026-10-03/manifest.json`
- * answers 200 with 2,875 artifacts, none of them elevation or profile cells
- * (the refill ran without the elevation leg, as every publish before it did);
- * production answers 404. So pages.yml's guard refuses a production deploy,
- * and pr-preview.yml previews UA for this pin (#1374 — One pathway from first
- * run to a walk finished: the front-end rebuild from the ClaudeDesign flow
- * review). No promotion can fix that: under DATA_RELEASES.md §4 (amended
- * 2026-10-02) a promotion is a channels.json commit and a
- * `publish.py --channels` dispatch, which refuses unless the release's
- * manifest is in that environment's own tree, and a release id is the date
- * of the publish that wrote it (pipeline/lib/releases.py's `next_release_id`).
- * Production needs a publish of its own, and a pin both environments hold.
- * Measured 2026-10-09, it holds no release at all: data.ourhike.org's
- * `latest.json` lists 8 `conditions/` files, and `releases/index.json`,
- * `channels.json` and `releases/2026-09-24-2/manifest.json` answer 404 -
- * the bucket move of 2026-10-02, which copied nothing by the maintainer's choice
- * ("No need to copy that data over"; OurHike has no users yet).
- *
- * THEN TO 2026-10-03-2, the same day, because 2026-10-03 had no climb and
- * flow-data's nine elevation tests failed on it. publish-vector-data.yml run
- * 37114537637 ran with include_elevation and staged 2026-10-03-2: 4,436
- * artifacts in UA, 1,561 of them elevation or profile files, among them
- * elevation_profile.json and trail_graph_elevation.json (Measured 2026-10-03).
- *
- * THEN TO 2026-10-10-2, because 2026-10-03-2 declines its own network sketch.
- * Its manifest lists network_overview.geojson at 41,216,145 bytes decoded,
- * over lib/artifactBudget.ts's LAUNCH_ARTIFACT_BUDGET_BYTES (33,554,432), so
- * the app declines it at the manifest and the opening map draws the A.T.
- * alone. UA serves no channels.json (a 404), so that was every UA phone
- * (review 5528343443 on PR #1805; Measured 2026-10-15). The oversized sketch
- * was main's three-decimal cut (c85ab715), fixed on this branch by 70153e89
- * and 4724d46f on 2026-10-05, after this line last moved.
- *
- * build-reference.yml run 2 (38044889854) staged 2026-10-10-2 in UA on
- * 2026-10-10, from the dbt path, green in every job with all 41 parity
- * families matching. Measured 2026-10-15
- * against its folder: 4,449 artifacts, every key 2026-10-03-2 lists among
- * them (eleven v2 files and two hike details are the rest); its sketch
- * 2,710,574 bytes; check 22 passes, the largest file a phone fetches whole
- * being trail_graph_cell_n37w108.json at 29,993,542; check 2 finds 32 of the
- * 35 keys config.ts declares, the other three the background tiers
- * packages.ts withdraws, as for 2026-10-03-2; check 20 finds every cell its
- * four cell indexes name; and all 199 hikes in suggested_hikes.json have their
- * detail. UA's environments/ua/latest.json names it. Production holds no
- * release at all, so its channels.json entry stays where the release train
- * left it (RELEASING.md §10).
+ * WHY A RELEASE ID IS WHAT IT IS: lib/releases.next_release_id mints
+ * `<date>` and `<date>-2`, `-3` for later publishes the same day, each folder
+ * complete and immutable, so the folder to name is the LAST one of a day's
+ * publishes, not the first (measured 2026-09-16: `releases/2026-09-16/` held a
+ * fresh basemap and the previous release's copies of everything else).
+ * `pipeline/tests/test_release_pin_contract.py` asserts this id is shaped
+ * like one a publish could write; only the deploy guards check it exists.
  *
  * @see pipeline/DATA_RELEASES.md §4, pipeline/R2_LAYOUT.md
  */
@@ -318,24 +199,69 @@ export function readMirror(): ChannelRecord | null {
 const SESSION_RECORD = readMirror()
 
 /**
- * The release this session reads, decided once when this module loads and
- * never changed until the page reloads: the pointer entry this phone last
- * verified, or the compiled fallback when it has none.
+ * The release this session reads: the pointer entry this phone last verified,
+ * or, with none, the compiled floor - until a first run's pointer read
+ * replaces the floor (adoptFirstRunRelease), which can only happen before the
+ * first release URL is built. After that it never changes until the page
+ * reloads.
  *
  * NEVER MID-SESSION, and that is the safety property rather than a
  * simplification. Every release URL the app builds comes from this one value,
  * and an artifact is verified against its release's manifest; a session that
  * moved release between building the two would reject bytes it fetched
  * correctly, or hold half of one release and half of another. So a pointer
- * read this launch is recorded for the next one (lib/dataChannel.ts's
- * readDataChannel).
+ * read on any launch but a first run is recorded for the next one
+ * (lib/dataChannel.ts's readDataChannel).
+ *
+ * `let`, not `const`, for adoptFirstRunRelease alone. An ES module export is
+ * a live binding, so every importer reads the adopted value.
  */
-export const SESSION_RELEASE: string = SESSION_RECORD?.release ?? DATA_RELEASE
+export let SESSION_RELEASE: string = SESSION_RECORD?.release ?? DATA_RELEASE
 
 /** Whether SESSION_RELEASE came from the pointer rather than the compiled
- *  fallback. lib/dataRefresh.ts reads it: a session on the fallback must not
- *  offer that fallback over data a pointer brought (see availableRefresh). */
-export const SESSION_FOLLOWS_POINTER: boolean = SESSION_RECORD !== null
+ *  floor. lib/dataRefresh.ts reads it: a session on the floor must not
+ *  offer that floor over data a pointer brought (see availableRefresh). */
+export let SESSION_FOLLOWS_POINTER: boolean = SESSION_RECORD !== null
+
+/** Set once this session's release has been used to build a URL, or the app
+ *  has started rendering (sealSessionRelease); adoptFirstRunRelease refuses
+ *  from then on. */
+let sealed = false
+
+/** No first-run adoption after this. main.tsx calls it as it renders. */
+export function sealSessionRelease(): void {
+  sealed = true
+}
+
+/**
+ * How long a first run waits for the pointer, and the release manifest it
+ * names, before it renders on the compiled floor instead.
+ *
+ * @unvalidated - picked, not measured. The wait is a blank screen on a first
+ * launch only, so it is short beside CHANNEL_READ_TIMEOUT_MS's 20 seconds
+ * (lib/dataChannel.ts): a phone that installed the app a moment ago reached
+ * the network, and two small reads either answer in well under this or are
+ * on a captive portal that will never answer. What would settle it: first-run
+ * timings for the pointer and manifest reads from real phones at real
+ * trailheads, which nobody has collected.
+ */
+export const FIRST_RUN_READ_TIMEOUT_MS = 4_000
+
+/**
+ * Make `record` this session's release, on a first run only: true when it
+ * did. Refused once anything has built a release URL or the app has started
+ * rendering, once the session already follows a pointer, and for a record
+ * that does not read as this build's (asRecord). lib/dataChannel.ts's
+ * firstRunRelease calls it after the record is written and its release's
+ * manifest has resolved.
+ */
+export function adoptFirstRunRelease(record: ChannelRecord): boolean {
+  if (sealed || SESSION_FOLLOWS_POINTER || asRecord(record) === null) return false
+  SESSION_RELEASE = record.release
+  SESSION_FOLLOWS_POINTER = true
+  RELEASE_MANIFEST_PATH = `releases/${record.release}/manifest.json`
+  return true
+}
 
 /**
  * Keys that stay at the bucket root rather than moving into the release
@@ -373,9 +299,9 @@ export const SESSION_FOLLOWS_POINTER: boolean = SESSION_RECORD !== null
 // `podcasts/` joined on 2026-09-26 (#1683): the episodes picked for each hike,
 // written by pipeline/export_podcasts.py on a person's dispatch. The
 // maintainer chose a LIVE list - an episode added to the reviewed file
-// reaches a phone on its next fetch - and a list inside the pinned folder
-// would reach nobody until this file's DATA_RELEASE moved, which is an app
-// release per episode.
+// reaches a phone on its next fetch - and a list inside a release folder
+// would reach nobody until a new release was staged and pointed at, which
+// is a monthly build per episode.
 const ROOT_SCOPED_PREFIXES = ['conditions/', 'photos/', 'archive/', 'podcasts/'] as const
 const ROOT_SCOPED_KEYS = ['latest.json'] as const
 
@@ -386,8 +312,10 @@ export function isReleaseScoped(key: string): boolean {
 }
 
 /** Where `key` lives, relative to the bucket base: under this session's
- *  release folder (SESSION_RELEASE), or at the root. */
+ *  release folder (SESSION_RELEASE), or at the root. Seals the session's
+ *  release: a URL built from it is one a later adoption would contradict. */
 export function releasePath(key: string): string {
+  sealed = true
   return isReleaseScoped(key) ? `releases/${SESSION_RELEASE}/${key}` : key
 }
 
@@ -413,7 +341,14 @@ export function releasePath(key: string): string {
  * SINCE DECISION 44 it is the session's release (SESSION_RELEASE), which is
  * what "lib/dataRefresh.ts reads the pointed-to build's manifest" comes to:
  * #919's update check reads this through lib/dataManifest.ts, so the row
- * offers a newer build from the launch that follows the pointer to it. A
- * constant still, because the session's release never moves.
+ * offers a newer build from the launch that follows the pointer to it. Fixed
+ * once sealed, because the session's release never moves after that.
  */
-export const RELEASE_MANIFEST_PATH = `releases/${SESSION_RELEASE}/manifest.json`
+export let RELEASE_MANIFEST_PATH = `releases/${SESSION_RELEASE}/manifest.json`
+
+/** RELEASE_MANIFEST_PATH, for building a URL: seals the session's release as
+ *  releasePath does. */
+export function releaseManifestPath(): string {
+  sealed = true
+  return RELEASE_MANIFEST_PATH
+}

@@ -2,9 +2,9 @@
 //
 // pipeline/ELT.md, "Versions and channels": on launch, when online, the app
 // reads `channels.json` and takes its environment's entry for its schema version; offline or unreachable, the
-// release it last read; on a first run with no record, the compiled
-// DATA_RELEASE; and an entry naming a release that does not resolve keeps the
-// last good one.
+// release it last read; with no record, the compiled DATA_RELEASE (a first
+// run reads the pointer before rendering: dataRelease.firstRun.test.ts); and
+// an entry naming a release that does not resolve keeps the last good one.
 //
 // THE PROPERTY EVERY CASE BELOW IS HELD TO: a phone never ends with no data
 // because a pointer was missing, malformed or unreachable. Each failure is
@@ -163,7 +163,7 @@ describe('the releases these tests name', () => {
 })
 
 describe('which release a session reads', () => {
-  it('is the compiled DATA_RELEASE on a first run, with no pointer recorded', async () => {
+  it('is the compiled DATA_RELEASE when the module loads with no pointer recorded', async () => {
     const release = await launch()
 
     expect(release.SESSION_RELEASE).toBe(release.DATA_RELEASE)
@@ -781,35 +781,22 @@ describe('forgetting a recorded release whose folder is gone', () => {
   })
 })
 
-describe('the committed pointer, /channels.json', () => {
-  // From the working directory, as lib/buildInfo.test.ts resolves
-  // package.json: vitest hands back no file:// import.meta.url, and the suite
-  // runs from client/ or from the repository root.
-  const path = [join(cwd(), '..', 'channels.json'), join(cwd(), 'channels.json')].find(
-    (candidate) => existsSync(candidate),
-  ) as string
-  const committed = JSON.parse(readFileSync(path, 'utf-8')) as Record<
-    string,
-    Record<string, string>
-  >
-
-  it('names a release id for this build schema version in both data environments', () => {
-    for (const environment of ['production', 'ua']) {
-      expect(committed[environment]?.v1).toMatch(/^\d{4}-\d{2}-\d{2}(-\d+)?$/)
-    }
-  })
-
+describe('the pointer pipeline/channels.py writes', () => {
+  // Each environment's channels.json in the bucket holds only its own entries
+  // since 2026-10-16, still keyed by environment, because every build in the
+  // field reads document[its environment][its schema version].
   it('is read by the same code a phone runs', async () => {
     const release = await launch()
-    const entry = committed.production.v1
     serve({
-      [`${BASE}/channels.json`]: pointer(JSON.stringify(committed)),
-      [`${BASE}/releases/${entry}/manifest.json`]: releaseManifest(entry),
+      [`${BASE}/channels.json`]: pointer(
+        `${JSON.stringify({ production: { v1: NEWER } }, null, 2)}\n`,
+      ),
+      [`${BASE}/releases/${NEWER}/manifest.json`]: releaseManifest(NEWER),
     })
 
     expect(await release.readDataChannel(BASE)).toEqual({
       outcome: 'recorded',
-      recorded: entry,
+      recorded: NEWER,
     })
   })
 })

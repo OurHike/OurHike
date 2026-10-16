@@ -33,7 +33,7 @@
 // run. Name that reason on the line.
 
 import type { DetailLevel } from './downloadDetail'
-import { DATA_SCHEMA_VERSION, RELEASE_MANIFEST_PATH, releasePath } from './dataRelease'
+import { DATA_SCHEMA_VERSION, releaseManifestPath, releasePath } from './dataRelease'
 
 const RAW_BASE: string = import.meta.env.VITE_DATA_BASE_URL ?? ''
 
@@ -50,7 +50,7 @@ export function dataUrl(key: string): string {
 /** The manifest for the pinned release - see dataRelease.RELEASE_MANIFEST_PATH
  *  for why this is not the root `latest.json`. */
 export function releaseManifestUrl(): string {
-  return `${DATA_BASE_URL}/${RELEASE_MANIFEST_PATH}`
+  return `${DATA_BASE_URL}/${releaseManifestPath()}`
 }
 
 /** Mirrors publish.py's BACKGROUND_ARCHIVES. */

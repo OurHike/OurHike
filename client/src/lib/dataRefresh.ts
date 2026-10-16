@@ -121,9 +121,11 @@ export interface SessionRelease {
   release: string
 }
 
-const THIS_SESSION: SessionRelease = {
-  followsPointer: SESSION_FOLLOWS_POINTER,
-  release: SESSION_RELEASE,
+/** Read when asked rather than when this module loads, because a first run
+ *  can adopt the pointer's release after that (dataRelease.ts's
+ *  adoptFirstRunRelease). */
+function thisSession(): SessionRelease {
+  return { followsPointer: SESSION_FOLLOWS_POINTER, release: SESSION_RELEASE }
 }
 
 /** A connection good enough to spend megabytes on without asking twice.
@@ -231,7 +233,7 @@ function rollUp(changes: ArtifactChange[]): {
 export function availableRefresh(
   stored: StoredRelease | null,
   snapshot: PublishedSnapshot,
-  session: SessionRelease = THIS_SESSION,
+  session: SessionRelease = thisSession(),
 ): AvailableRefresh | null {
   // Nothing downloaded yet, or a manifest that could not be read. The first
   // case is downloadTrailData's job; the second is not a claim about anything.

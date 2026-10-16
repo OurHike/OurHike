@@ -36,23 +36,10 @@ describe('phoneFileKey', () => {
   })
 
   it('REFRESHABLE_KEYS asks for v2/ keys exactly when DATA_SCHEMA_VERSION is v2', () => {
-    // Today v1: pages.yml and ua.yml refuse a build whose channels.json entry
-    // for DATA_SCHEMA_VERSION does not resolve, and no v2 release exists yet.
+    // Today v1: no v2 release exists yet.
     const schema: string = DATA_SCHEMA_VERSION
     const v2 = REFRESHABLE_KEYS.filter((key) => key.startsWith('v2/'))
     expect(v2.length).toBe(schema === 'v2' ? V2_PHONE_FILE_KEYS.size : 0)
-  })
-
-  it('channels.json names a release for DATA_SCHEMA_VERSION in every environment, as the deploy guards require', () => {
-    const channels = JSON.parse(
-      readFileSync(resolve(process.cwd(), '../channels.json'), 'utf8'),
-    ) as Record<string, Record<string, string>>
-    for (const [environment, entries] of Object.entries(channels)) {
-      expect([environment, typeof entries[DATA_SCHEMA_VERSION]]).toEqual([
-        environment,
-        'string',
-      ])
-    }
   })
 })
 

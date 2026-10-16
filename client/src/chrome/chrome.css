@@ -186,7 +186,7 @@
   margin-right: 6px;
 }
 
-/* A club's own line (decision 64): the tag the card the maintainer chose
+/* A club's own line: the tag the card the maintainer chose
    from drew beside the trail's name, small capitals on the sunken panel, so
    a hiker comparing two sheets can tell a club line from the network's at a
    glance; the sentence after it says what the tag means. */
@@ -2030,7 +2030,7 @@
   color: var(--fg-2);
 }
 
-/* How OurHike gathers and checks a notice (Q24): the site's page, in the
+/* How OurHike gathers and checks a notice: the site's page, in the
    brand's link ink, on the age line it explains. */
 .closure-sheet__how {
   color: var(--brand-primary);
@@ -2782,7 +2782,7 @@
   color: var(--fg-1);
 }
 
-/* ---------- Notices for your planned hikes (#1805, decision 66) ---------- */
+/* ---------- Notices for your planned hikes (#1805) ---------- */
 
 /* One section per hike planned in the next 7 days, its name and days as the
    heading the rows sit under - the mock's "Notices for your maps" card,
@@ -2814,8 +2814,8 @@
 
 /* The mock's `.tag`: a small mono label ahead of the title. Two registers and
    no more - the sunken sage one for a notice, and the caution tint for a
-   closure or an area advisory (decision 67's "Advisory"), and for a closure's
-   "Starts Oct 20" before its start (P3's frame B, whose wireframe drew that
+   closure or a hazard area's advisory ("Advisory"), and for a closure's
+   "Starts Oct 20" before its start (the maintainer's frame B, whose wireframe drew that
    tag blue: no blue register exists, so it takes the closure's). Semantic
    tokens, so both flip with the theme and the text keeps `--fg-1`'s contrast
    on them; never the closure band's red, because an advisory is not a
@@ -2836,8 +2836,8 @@
   background: var(--surface-warning);
 }
 
-/* The source's own category under a row's title (decision 78): card N2's
-   frame A, the maintainer's pick on 2026-10-05, draws it as the card's warn
+/* The source's own category under a row's title: the frame
+   the maintainer picked on 2026-10-05 draws it as the card's warn
    line, a caution-tinted strip the row's width. The tint is
    `--surface-warning` and the text `--fg-1`, for the reason the warm tag
    above gives, so "Closed" keeps its contrast in both themes. */
@@ -2857,7 +2857,7 @@
   gap: var(--space-2, 8px);
 }
 
-/* Decision 67's line on a tapped stretch's card: the advice first, in the
+/* A hazard area's line on a tapped stretch's card: the advice first, in the
    card's own body size, with the warm tag ahead of it. */
 .line-sheet__advisory {
   margin: 0;
@@ -4036,7 +4036,7 @@ a.poi-card__credit::after {
   border-radius: 10px;
 }
 
-/* Decision 65's season caution on a plumbed tap: the unverified line's
+/* The season caution on a plumbed tap: the unverified line's
    panel, with a left rule in the warning ink, so it reads as a second and
    different claim beside "nobody has confirmed this one" rather than as more
    of the same sentence. Not the trails-closed line's full weight: the tap may

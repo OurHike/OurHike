@@ -137,8 +137,8 @@ export interface Conditions {
    */
   orgNotices: readonly OrgNotice[]
   /**
-   * Every club's notices, from conditions/notices.json (#1805, decision 53
-   * phase D), or null when that file has not reached this phone.
+   * Every club's notices, from conditions/notices.json (#1805)
+   * , or null when that file has not reached this phone.
    *
    * NULL IS THE ORDINARY STATE WHILE THE EXPORTERS PUBLISH: no exporter
    * writes the file, only the dbt path does, so on such a bucket it 404s and
@@ -147,14 +147,14 @@ export interface Conditions {
    * club has a notice - and the two are kept apart for that reason.
    *
    * The map's A.T. bands and dots still come from `atcUpdates`: ATC's own
-   * file, unchanged (decision 51), is what draws them.
+   * file, unchanged, is what draws them.
    */
   clubNotices: readonly OrgNotice[] | null
   /** When conditions/notices.json was baked, for the panel's "as of". */
   clubNoticesGeneratedAt: Date | null
   /**
    * Whether the bucket has said it serves conditions/notices.json, though
-   * this phone may not have downloaded it (decision 77): what keeps the
+   * this phone may not have downloaded it: what keeps the
    * notices panel the planned-hike one on a phone with nothing planned,
    * which downloads nothing. False until a HEAD request answers 200, and
    * never set back by a 404 or a dead spot, as a held list is never taken
@@ -178,8 +178,8 @@ export interface Conditions {
    */
   clubNoticesMissing: boolean
   /**
-   * Decision 67's hunting areas, shooting sites and burned areas, from
-   * conditions/hazard_areas.json (decision 84), read whatever is planned,
+   * The hunting areas, shooting sites and burned areas, from
+   * conditions/hazard_areas.json, read whatever is planned,
    * or null when that file has not reached this phone. Like `clubNotices`,
    * never set back to null by a 404 or a dead spot, and null is "no
    * answer", never "no hazard area": chrome/noticesPanel.tsx then draws the
@@ -188,7 +188,7 @@ export interface Conditions {
   hazardFile: PublishedConditions<OrgNotice> | null
   /**
    * Every club closure, from conditions/trail_closures.json (the
-   * maintainer's S6, poll of 2026-10-11), read whatever is planned, as
+   * maintainer's closure-map standard, poll of 2026-10-11), read whatever is planned, as
    * `hazardFile` is, or null when that file has not reached this phone. Never
    * set back to null by a 404 or a dead spot: null is "no answer", never "no
    * closure", and the map then draws no club closure, as before the file.
@@ -233,7 +233,7 @@ export interface Conditions {
  *   behaves as before.
  * @param hikePlanned Whether the hiker has any hike planned
  *   (lib/dayHikes.ts's `anyHikePlanned`): conditions/notices.json, about
- *   2 MB gzipped, is downloaded only while it is true (decision 77), and the
+ *   2 MB gzipped, is downloaded only while it is true, and the
  *   moment it turns true, not at the next hourly read. Defaults to true for
  *   the same reason `ready` does.
  */
@@ -469,7 +469,7 @@ export function useConditions(
 
   // Every club's notices in one file (#1805), in an effect of its own so
   // that planning a hike reads it at once without re-reading the rest.
-  // DOWNLOADED ONLY WHILE A HIKE IS PLANNED (decision 77): it is about 2 MB
+  // DOWNLOADED ONLY WHILE A HIKE IS PLANNED: it is about 2 MB
   // gzipped, and only the planned-hike panel and the areas drawn for it read
   // it. With nothing planned, lib/publishedNotices.ts's readPublishedNotices
   // reads the copy this phone kept, if any, and asks the bucket with a HEAD
@@ -480,16 +480,16 @@ export function useConditions(
   // launch budget (lib/publishedNotices.ts says why); a chunk that cannot
   // load reads as no file, exactly as a 404 does.
   //
-  // THE HAZARD AREAS RIDE THE SAME EFFECT, PLANNED OR NOT (decision 84):
+  // THE HAZARD AREAS RIDE THE SAME EFFECT, PLANNED OR NOT:
   // conditions/hazard_areas.json is read on each run of this effect - at
-  // launch, on each refresh and visibility read, as notices.json was before
-  // decision 77, and once more when planning changes - with the same rule
+  // launch, on each refresh and visibility read, as notices.json was before it
+  // waited on a plan, and once more when planning changes - with the same rule
   // that a null keeps what this phone holds. ON A PROMISE OF ITS OWN: at a
   // weak-signal trailhead the areas waited behind a planned hike's download
   // of notices.json (UA's was 11,811,546 bytes on 2026-10-09), or behind the
   // HEAD with nothing planned.
   //
-  // AND THE CLUB CLOSURES, THE SAME WAY (the maintainer's S6, 2026-10-11):
+  // AND THE CLUB CLOSURES, THE SAME WAY (the maintainer's closure-map standard, 2026-10-11):
   // conditions/trail_closures.json on a promise of its own, read whatever is
   // planned, a null keeping what this phone holds.
   useEffect(() => {

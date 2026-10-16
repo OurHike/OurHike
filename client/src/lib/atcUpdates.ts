@@ -150,7 +150,7 @@ export type AtcCategory =
  *
  * No start to wait for: conditions/atc_updates.json carries none
  * (pipeline/dbt's pub_conditions_atc_updates), so no ATC band is upcoming. A
- * club's closure that has not started (P3) is read through
+ * club's closure that has not started is read through
  * lib/noticeCurrency.ts's `obstructsOn` instead.
  */
 export function obstructsTheTrail(update: AtcUpdate): boolean {
@@ -304,8 +304,8 @@ function unchecked(update: AtcUpdate): string {
 }
 
 /**
- * The tail a banner grows when the notice may no longer apply: decision 157,
- * the maintainer's poll of 2026-10-11. `stale` is the verdict that greys the
+ * The tail a banner grows when the notice may no longer apply: the
+ * maintainer's poll of 2026-10-11. `stale` is the verdict that greys the
  * same notice in "Notices for your planned hikes" and on its own sheet, its
  * row's `current_until` in conditions/notices.json against the phone's day
  * (lib/noticeCurrency.ts), so the header never reads at full voice what the

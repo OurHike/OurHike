@@ -1,9 +1,9 @@
-// Which clubs' notices a hiker sees (#1805, decision 66).
+// Which clubs' notices a hiker sees (#1805).
 //
 // The maintainer's answer, by poll on 2026-10-04, in their own words: "Every
 // notice that touches a planned hike in the next 7 days. for a long hike get
 // everything along the planned hike in the next 7". conditions/notices.json
-// carries every club's notices - 129 clubs once decision 53's phases land -
+// carries every club's notices - 129 clubs at the last count -
 // and a list of all of them is the feed features/ORG_NOTICES.md §9 warns a
 // warning surface turns into. This module is the rule that keeps it a
 // warning: the notices that touch what the hiker is about to walk, and
@@ -40,12 +40,12 @@
 //
 //  - `at_miles` (ATC): its miles overlap a long hike's planned miles, or its
 //    stretch of the A.T. centerline meets a day hike's route;
-//  - `geometry` (a club's own polygon, line or point, decision 67's hazard
+//  - `geometry` (a club's own polygon, line or point, the hazard
 //    areas among them): it meets the route within `NOTICE_REACH_FEET`;
 //  - `unplaced` and `org_terms`: the club that posted it maintains a trail
 //    the route uses. ORG_NOTICES.md §4's rule is that "an unmapped term
 //    places nothing", so an `org_terms` notice is read as unplaced unless
-//  - RULE 19 (decision 213, the maintainer's poll of 2026-10-15, "Park-term
+//  - RULE 19 (the maintainer's poll of 2026-10-15, "Park-term
 //    table (Recommended)"): its place carries `areas`, the park areas a
 //    reviewed table (pipeline/dbt/seeds/notice_park_terms.csv) maps every
 //    one of its `park:` terms to. Then it touches a route only if the club
@@ -67,7 +67,7 @@
 // type); a file without the field keeps the provider match, so a missing
 // field shows a notice rather than hiding one.
 //
-// EXCEPT A STATE-WIDE ONE, PLACED BY ITS STATE (decision 76, the maintainer's
+// EXCEPT A STATE-WIDE ONE, PLACED BY ITS STATE (the maintainer's
 // poll of 2026-10-04 from statewide_notice_mock.html's frame A): BLM's Utah
 // fire restrictions name no shape, and apply to all of BLM's land in Utah. An
 // agency's unplaced notice whose row names `states`
@@ -108,11 +108,11 @@
 // AND IN TIME: a notice whose own start is after the hike's last planned day
 // does not touch it. Most notices state no start, and then only the place
 // decides. One that starts on or before that day touches it though the start
-// is still ahead of today (P3, the maintainer's frame B, 2026-10-11): it is
+// is still ahead of today (the maintainer's frame B, 2026-10-11): it is
 // shown now, marked with its start, and closes the trail only from the day
-// before it (lib/noticeCurrency.ts's `obstructsOn` says why that day). Before
-// P3 the pipeline held such a notice back until the day before its start
-// (pipeline/dbt's int_closures__club_notices, rule 1), so a phone that last
+// before it (lib/noticeCurrency.ts's `obstructsOn` says why that day). Until
+// 2026-10-11 the pipeline held such a notice back until the day before its
+// start (pipeline/dbt's int_closures__club_notices), so a phone that last
 // connected earlier never showed it.
 // ITS OWN END NEVER HIDES IT (the maintainer's frame A, 2026-10-10):
 // a notice past its end date stays in the panel, greyed with one line saying
@@ -174,7 +174,7 @@ import type { RouteLeg } from './trailGraph'
 import { trailPointAtMile, trailSlice, type TrailIndex } from './trailPosition'
 import type { Trip } from './trips'
 
-/** Today and the six days after it. The maintainer's number (decision 66). */
+/** Today and the six days after it. The maintainer's number. */
 export const NOTICE_WINDOW_DAYS = 7
 
 /**
@@ -230,7 +230,7 @@ export interface PlannedHikeNotices {
    *  agency's (the module comment's "clubs only"). */
   fromClubs: TrailNotice[]
   /** An agency's state-wide notices for a state the route is in, on the
-   *  agency's trails (decision 76). */
+   *  agency's trails. */
   stateWide: TrailNotice[]
 }
 
@@ -537,7 +537,7 @@ function stateParts(area: NoticeStateArea): {
 }
 
 /** Whether some vertex of the route is inside one of the notice's states by
- *  more than that state's margin (the module comment's decision 76). */
+ *  more than that state's margin (the module comment's state-wide rule). */
 function routeInItsStates(notice: TrailNotice, stretch: PlannedStretch): boolean {
   for (const area of notice.state_areas ?? []) {
     const { parts, bounds } = stateParts(area)
@@ -559,7 +559,7 @@ function routeInItsStates(notice: TrailNotice, stretch: PlannedStretch): boolean
   return false
 }
 
-/** Rule 19 (the module comment's): whether a route meets one of the park
+/** The park-term rule (the module comment's): whether a route meets one of the park
  *  areas an `org_terms` notice names, as their bounding boxes. True with no
  *  areas, which narrows nothing, and true for a route this phone cannot
  *  draw, which cannot be tested. */

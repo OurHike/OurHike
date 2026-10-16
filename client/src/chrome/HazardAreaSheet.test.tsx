@@ -4,7 +4,7 @@ import { HazardAreaSheet } from './HazardAreaSheet'
 import type { TrailNotice } from '../lib/notices'
 import type { Stewards } from '../lib/stewards'
 
-// Decision 67's card (#1805): the kind of area, an Advisory, what to do, and
+// The hazard area card (#1805): the kind of area, an Advisory, what to do, and
 // that the trail stays open - the mock's option A - then who published it.
 
 const STEWARDS: Stewards = [
@@ -59,7 +59,7 @@ describe('HazardAreaSheet', () => {
     expect(sheet.textContent).not.toMatch(/\bclosed\b/i)
   })
 
-  // Decision 99 (poll, 2026-10-07): the hiker tapped the area, not a stretch,
+  // The maintainer's poll of 2026-10-07: the hiker tapped the area, not a stretch,
   // so its card talks about the area; "This stretch…" is the tapped line's.
   it('talks about the area the hiker tapped, never a stretch of trail', () => {
     render(

@@ -64,7 +64,7 @@ interface RawSample {
 }
 
 /**
- * `v2/elevation_profile.json` (decision 44, stage 6 of #1793): the samples
+ * `v2/elevation_profile.json` (#1793): the samples
  * v1's array carries, as three columns of whole numbers rather than one
  * object per sample (pipeline/dbt/models/publish/pub_elevation_profile_v2.sql
  * writes it):

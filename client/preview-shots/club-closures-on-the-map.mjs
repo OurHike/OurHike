@@ -1,11 +1,11 @@
-// Every club closure on the map (the maintainer's polls of 2026-10-11: Q2
-// "Build the map file now", and standard S6 as drawn in s6-map.html; of
-// 2026-10-14: decision 191, "Shade them, no edge"; and of 2026-10-15:
-// decision 198, "B: bold ✕ until chain fits"), from
+// Every club closure on the map (the maintainer's polls of 2026-10-11:
+// "Build the map file now", and the closure-map standard as drawn in
+// s6-map.html; of 2026-10-14: "Shade them, no edge"; and of 2026-10-15:
+// "B: bold ✕ until chain fits"), from
 // conditions/trail_closures.json, read at launch with no hike planned.
 //
-// WHAT A REVIEWER SHOULD CHECK IN THE FRAME, against S6's "the standard,
-// drawn" and lib/closureStyle.ts's crossed-out mark (a band of the sheet's
+// WHAT A REVIEWER SHOULD CHECK IN THE FRAME, against the closure-map
+// standard as drawn and lib/closureStyle.ts's crossed-out mark (a band of the sheet's
 // paper, a dotted trace on it, a chain of small dark crosses along it), and
 // open-questions-1014.html's section 2, frame A, for the shade:
 //
@@ -13,7 +13,8 @@
 //     along its own line.
 //  2. Middle right: "Example Lake State Park closed", an area closure, drawn
 //     as the two trail stretches cut inside the park, each crossed out. The
-//     park's edge is not drawn: S6's mock drew it, and said "mock only".
+//     park's edge is not drawn: the standard's mock drew it, and said
+//     "mock only".
 //  3. Lower left: "Bridge out at Example Creek", a point closure, one larger
 //     cross - the far mark, at the point.
 //  4. Bottom: "Example Canyon Trail closed", a closure the list greys (its
@@ -23,16 +24,16 @@
 //     closed lands", an area no mapped trail runs inside, drawn as the area
 //     itself in a light diagonal stone hatch with NOTHING on its edge - no
 //     line, no crosses - so a road or a trail along it still reads open.
-//     NEW with decision 191: before it, this area drew nowhere.
+//     Before area shading, this area drew nowhere.
 //  6. Left of the middle, above the bridge: "Washout on Example Spring
 //     Trail", a 41 m line closure, 5.5 px at this zoom and too short for the
-//     chain, drawn as one larger cross like the bridge's. NEW with decision
-//     198: before it, a closure this short was a white stub with a grey dot
+//     chain, drawn as one larger cross like the bridge's. Before the
+//     bold ✕ stayed on for short closures, a closure this short was a white stub with a grey dot
 //     or two and no cross at all (fixtures/clubClosures.mjs's
 //     shortClosureRow, added on the wire for this recipe alone).
 //
-// No A.T. is in the frame, and none can be: decision 192's crossed-out A.T.
-// is a stretch like the park's two, and what makes it the A.T. is the red
+// No A.T. is in the frame, and none can be: an A.T. stretch crossed out by a
+// club's area closure is a stretch like the park's two, and what makes it the A.T. is the red
 // line under it, which the phone draws from the release, never from this
 // fixture (fixtures/clubClosures.mjs says why).
 //
@@ -59,7 +60,7 @@ import {
 } from './fixtures/clubClosures.mjs'
 
 export const caption =
-  'Every club closure on the map, from conditions/trail_closures.json read at launch with no hike planned (the maintainer’s S6, 2026-10-11, decision 191, 2026-10-14, and decision 198, 2026-10-15): a line closure crossed out along its own line, an area closure’s two trail stretches inside the park, one cross for a bridge out, a closure the list greys drawn at the same full strength, an area with no trail inside shaded with a light hatch and nothing on its edge, and, new, a 41 m washout too short for the chain of crosses drawn as one larger cross (decision 198). Every closure and organization is an invented example, over farmland.'
+  'Every club closure on the map, from conditions/trail_closures.json read at launch with no hike planned (the maintainer’s closure-map standard, 2026-10-11, with the bold ✕ kept for short closures, 2026-10-15): a line closure crossed out along its own line, an area closure’s two trail stretches inside the park, one cross for a bridge out, a closure the list greys drawn at the same full strength, an area with no trail inside shaded with a light hatch and nothing on its edge, and, new, a 41 m washout too short for the chain of crosses drawn as one larger cross. Every closure and organization is an invented example, over farmland.'
 
 export const alt =
   'The map screen at zoom 13 over farmland. Four invented closures are drawn with the crossed-out mark: near the top a long line drawn as a pale band carrying a dotted dark line with a chain of small dark x marks along it; to the right of the middle two short stretches meeting at a point, drawn the same way; lower left a single larger dark x with a pale edge; and near the bottom another long line, drawn exactly as the first. Left of the middle, above the lower-left one, a second single larger dark x with a pale edge marks a closure only a few pixels long. Below the two stretches, to the right, an irregular area is filled with thin grey-brown diagonal lines on a faint wash, with no outline. No sheet is open.'
@@ -68,7 +69,7 @@ export const alt =
  *  for a frame at this zoom. */
 export const wait = 22000
 
-/** The fixture's five closures, and decision 198's short one on top. */
+/** The fixture's five closures, and one too short for the chain on top. */
 export const before = (page) => routeTrailClosures(page, [shortClosureRow()])
 
 export default async function drive(page) {

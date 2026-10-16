@@ -340,7 +340,7 @@ describe('rows nobody here has read (#963)', () => {
     expect(atcUpdateBanner(ahead, 480, 'NOBO', 'ATC')).toContain('not checked by OurHike')
   })
 
-  // Decision 157: a notice the planned-hike list has greyed never reads at
+  // A notice the planned-hike list has greyed never reads at
   // full voice on the header either.
   it('ends with "may no longer apply" when its notices.json row has gone grey', () => {
     const here = atcUpdateBanner(update(), 480, 'NOBO', 'ATC', 'imperial', true)

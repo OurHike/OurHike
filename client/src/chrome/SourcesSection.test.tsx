@@ -187,7 +187,7 @@ describe('the sources section', () => {
     ])
   })
 
-  it('says, over the two links, what the site’s data pages answer (Q24 of #1805)', () => {
+  it('says, over the two links, what the site’s data pages answer', () => {
     render(<SourcesSection stewards={BOTH} />)
 
     expect(
@@ -287,7 +287,7 @@ describe('the sources section', () => {
   it('renders no link for a grant that names other screens and not this one', () => {
     const { container } = render(<SourcesSection stewards={[ELSEWHERE_ONLY]} />)
 
-    // On the card: the site's two data pages sit above the cards (Q24).
+    // On the card: the site's two data pages sit above the cards.
     expect(container.querySelectorAll('.sources__card a')).toHaveLength(0)
   })
 

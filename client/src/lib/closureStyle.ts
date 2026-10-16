@@ -16,7 +16,7 @@
 //  4. THE MARK - one larger ✕ per closed run below CLOSURE_NEAR_MIN_ZOOM,
 //     where the run is too short on screen to carry a chain. On the clubs'
 //     feed it stays on past that zoom for a closure whose longest run is
-//     still too short for the chain (decision 198, CLOSURE_MARK_UNTIL_CROSSES).
+//     still too short for the chain (CLOSURE_MARK_UNTIL_CROSSES).
 //
 // THE MAINTAINER'S CHOICE OF 2026-09-26, after four earlier spellings of the
 // band had failed: "The route closure is not readable. The alternating colors
@@ -69,11 +69,10 @@
 // Only the id, the source, the filter and the spacing may differ, and the
 // zooms a feed starts or stops at, which map/style.ts sets for the network's
 // and map/clubClosureLayers.ts for the clubs' (nothing below the pin seam),
-// and, on the clubs' feed alone, how long the far mark stays (`markUntil`,
-// decision 198).
+// and, on the clubs' feed alone, how long the far mark stays (`markUntil`).
 //
 // A CLOSURE AT A POINT IS THE FAR MARK, AT THE POINT (the maintainer's
-// standard S6, poll of 2026-10-11: "a point one ✕"). A bridge out has no run
+// closure-map standard, poll of 2026-10-11: "a point one ✕"). A bridge out has no run
 // to knock out of a trail, so it is drawn as the one mark the far zooms
 // already teach, from CLOSURE_MARK_MIN_ZOOM in and at every zoom after, since
 // there is no chain to hand over to. Only the clubs' feed carries points, so
@@ -153,7 +152,7 @@ export const CLOSURE_MARK_MIN_ZOOM = 7
  * #1805 — dlt → dbt re-platform as one go/no-go change, counted tile by tile
  * and rendered 2026-10-15). So the clubs' far mark does not stop here:
  * it stays on a closure until its longest run is CLOSURE_MARK_UNTIL_CROSSES
- * chain crosses long (decision 198). The other feeds still hand over here.
+ * chain crosses long. The other feeds still hand over here.
  *
  * TWO STEPS OF THE DERIVATION ARE WRONG. The value was not moved for them:
  * the look the maintainer chose on 2026-09-26 was rendered handing over at
@@ -303,7 +302,7 @@ export const CLOSURE_MARK_PADDING = 6
 
 /**
  * How many chain crosses long a club closure's longest run has to be on
- * screen before its far mark lets go of it (decision 198, the maintainer's
+ * screen before its far mark lets go of it (the maintainer's
  * poll of 2026-10-15: "B: bold ✕ until chain fits"). One chain cross is
  * closureCrossImageSize() at that zoom's CLOSURE_CROSS_SIZE: 11.2 px at z11,
  * 12.6 at z12 and 14 from CLOSURE_FULL_WIDTH_ZOOM in.
@@ -418,8 +417,8 @@ export interface ClosureLayerOptions {
   spacingScale?: number
   /** The feature property saying the first zoom the chain can carry that
    *  feature. Given, the far mark has no maxzoom and stays on each feature
-   *  until then (`closureMarkUntilFilter`); only the clubs' feed gives one
-   *  (decision 198). Omitted, it hands over at CLOSURE_NEAR_MIN_ZOOM. */
+   *  until then (`closureMarkUntilFilter`); only the clubs' feed gives one.
+   * Omitted, it hands over at CLOSURE_NEAR_MIN_ZOOM. */
   markUntil?: string
 }
 
@@ -446,7 +445,7 @@ export function buildClosureLayers(
   } = options
   const restrict = filter === undefined ? {} : { filter: filter as never }
   // The far mark hands over to the chain at one zoom, or at each feature's
-  // own (decision 198).
+  // own.
   const until = markUntil === undefined ? undefined : closureMarkUntilFilter(markUntil)
   const markFilter =
     until === undefined

@@ -1,9 +1,9 @@
 // docs.ourhike.org/data/quality/'s "Needs a look" rows on a laptop, drawn from the
-// INVENTED light files in site/src/lib/dataQualityExamples.mjs (pipeline/ELT.md
-// decision 102) that fixtures/dataQuality.mjs serves by default.
+// INVENTED light files in site/src/lib/dataQualityExamples.mjs that
+// fixtures/dataQuality.mjs serves by default.
 //
-// WHAT CHANGED, AND IS IN THIS FRAME. Decision 130, the maintainer's poll of
-// 2026-10-09: a row quotes the range expected from the builds before, the band
+// WHAT CHANGED, AND IS IN THIS FRAME. The maintainer's poll of 2026-10-09: a
+// row quotes the range expected from the builds before, the band
 // the chart draws at the same build, where it quoted the range Elementary
 // scored the value against, which counts the value itself. So the row on
 // preview_fixture__trails reads "4,118 rows in this build, below the usual

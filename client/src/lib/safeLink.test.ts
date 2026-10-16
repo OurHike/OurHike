@@ -35,7 +35,7 @@ describe('isSafeLink', () => {
   })
 })
 
-// SEC-3 of PR #1805's second review, and decision 94: a data link back into
+// A finding of PR #1805's second security review: a data link back into
 // the app opens it in a new tab, and auth-js 2.115.0 (implicit flow,
 // detectSessionInUrl) signs that tab in from an `access_token` and
 // `refresh_token` in the URL's fragment or query - as whoever minted them.
@@ -64,7 +64,7 @@ describe('isSafeLink refuses a link back into the app', () => {
   })
 
   it('refuses an https: link with no slashes, which an https page resolves against itself', () => {
-    // The dbt ATC check's scheme regex and NYNJTC's starts_with(link, 'http') both pass this one (SEC-3).
+    // The dbt ATC check's scheme regex and NYNJTC's starts_with(link, 'http') both pass this one.
     expect(new URL(`https:#${SESSION}`, APP).origin).toBe('https://ourhike.org')
     expect(isSafeLink(`https:#${SESSION}`, APP)).toBe(false)
     expect(isSafeLink('https:example.org/reroute', APP)).toBe(false)

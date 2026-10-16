@@ -231,8 +231,8 @@ export interface StoredPoi {
    */
   trailsClosedWithinM?: number
   /**
-   * Why this water point is a tap the hiker should not count on (decision 65,
-   * the maintainer's poll of 2026-10-04) - pipeline/dbt's `water_caution`.
+   * Why this water point is a tap the hiker should not count on (the
+   * maintainer's poll of 2026-10-04) - pipeline/dbt's `water_caution`.
    *
    * `'no_shutoff_season'` is the only value: a plumbed tap or fountain whose
    * agency's layer does not say when it is shut off for the season. The
@@ -488,7 +488,7 @@ function waterDistanceProp(value: unknown): number | undefined {
 /**
  * Where a POI is, as [lat, lon], or null when the feature does not say.
  *
- * TWO SHAPES (decision 44, stage 6 of #1793). A v1 file carries the position
+ * TWO SHAPES (#1793). A v1 file carries the position
  * twice, as `geometry` and again as `lat`/`lon` properties, and this build
  * reads the properties, exactly as every earlier build did, so a v1 file
  * reads the same numbers it always has. A v2 file (`v2/poi_<type>.geojson`,
@@ -568,7 +568,7 @@ function readPois(text: string, fallbackType: PoiType): StoredPoi[] {
     // the units the hiker chose - see lib/nearbyClause.ts.
     const nearby = readNearbyList(props.nearby)
     const type = typeof props.poi_type === 'string' ? props.poi_type : fallbackType
-    // Decision 65's season caution, only on water and only the one value this
+    // The season caution, only on water and only the one value this
     // build can word: a caution read off a shelter, or a word nobody wrote a
     // sentence for, would be a display outrunning its source.
     const waterCaution =

@@ -1,4 +1,4 @@
-// Decision 31's map shot for the `national` region box, its contiguous part
+// The map shot for the `national` region box, its contiguous part
 // west of the `eastern` box: the West, at zoom 2.9 (fixtures/regionCamera.mjs
 // says what the set is for).
 //
@@ -27,7 +27,7 @@
 // NO CLUB CLOSURE DRAWS HERE, since thread 4279229785 of the collaborator's
 // review of #1805 — dlt → dbt re-platform as one go/no-go change: the clubs'
 // paper, trace and shade start at zoom 7 with their marks, and the small ✕
-// each closure gets farther out (Q22, the maintainer's variant A) starts at
+// each closure gets farther out (the maintainer's variant A) starts at
 // zoom 5 (map/clubClosureLayers.ts). Before it, the Pacific Northwest's fire
 // closures drew at this zoom as black-and-white smudges over the threads;
 // club-closures-far-out.mjs photographs the same ground at z6.

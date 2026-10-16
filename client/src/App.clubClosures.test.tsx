@@ -1,4 +1,4 @@
-// Every club closure, end to end through the shell (the maintainer's S6, poll
+// Every club closure, end to end through the shell (the maintainer's closure-map standard, poll
 // of 2026-10-11): conditions/trail_closures.json read at launch with no hike
 // planned, crossed out on the canvas, and a tap on one opening its row.
 //
@@ -152,7 +152,7 @@ describe('every club closure on the map, from conditions/trail_closures.json', (
   )
 
   it(
-    'shades the area no trail runs inside, with its hatch on the map before it lands, and opens its row from a tap inside it (decision 191)',
+    'shades the area no trail runs inside, with its hatch on the map before it lands, and opens its row from a tap inside it',
     async () => {
       const rows = trailClosureRows()
       const map = await renderApp()

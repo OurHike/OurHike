@@ -616,7 +616,7 @@ a:hover {
     center / contain no-repeat;
 }
 
-/* The line under "What works today" into the data pages (Q24). */
+/* The line under "What works today" into the data pages. */
 .works-data {
   margin: 28px 0 0;
   max-width: 62ch;
@@ -1619,7 +1619,7 @@ a:hover {
   color: var(--fg-chrome-3);
 }
 
-/* ---------- Data quality (/data/quality/, pipeline/ELT.md decision 102) ----------
+/* ---------- Data quality (/data/quality/, pipeline/ELT.md "The data checks") ----------
  *
  * Mock B's layout - the maintainer's pick by poll, 2026-10-07 - in this
  * file's aliases. Everything is `.dq-` prefixed and used by that page alone.
@@ -1701,7 +1701,7 @@ a:hover {
   padding: 18px 20px;
 }
 
-/* ---- the summary (Q24): what is on the map, and how its last build went ---- */
+/* ---- the summary: what is on the map, and how its last build went ---- */
 
 .dq-sum {
   margin: 0 0 22px;

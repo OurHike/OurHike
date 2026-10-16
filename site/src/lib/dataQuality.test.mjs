@@ -1,8 +1,8 @@
 // /data/quality/'s rules, from invented example files (dataQualityExamples.mjs),
 // one block per state the page draws: not configured, reading, nothing
 // published, a fetch that failed, a file of the wrong format, one lane only,
-// learning, all green, and something to look at (pipeline/ELT.md decision 102,
-// step 4). The markup is dataQualityHtml.test.mjs's; this is what the page says.
+// learning, all green, and something to look at. The markup is
+// dataQualityHtml.test.mjs's; this is what the page says.
 
 import { describe, expect, it } from "vitest";
 import {
@@ -214,7 +214,7 @@ describe("the page, state by state", () => {
         "Learning, 3 of 11 monthly builds: until then its anomaly checks can't flag anything.",
       );
     }
-    // Each source's freshness has a fixed limit since decision 203, so its passes mean what they say from the start.
+    // Each source's freshness has a fixed limit, so its passes mean what they say from the start.
     expect(tile(view, "freshness").learning).toBeNull();
     expect(tile(view, "schema").learning).toBeNull();
     expect(tile(view, "dbt_tests").learning).toBeNull();
@@ -280,7 +280,7 @@ describe("the page, state by state", () => {
         "Null rate: 4.2% in this build, flagged as high. No earlier range to compare it with.",
       );
       expect(columns).toBe("Its columns changed since the last build.");
-      // A source's freshness (decision 203) in the maintainer's frame's words, and no since: the value is how long.
+      // A source's freshness in the maintainer's frame's words, and no since: the value is how long.
       expect(late).toBe("Read or confirmed 13 h ago · limit 24 h.");
       expect(view.sections.items.map((item) => item.since)).toEqual([
         "Since this build",
@@ -581,7 +581,7 @@ describe("the Show menu", () => {
   });
 });
 
-describe("the band and the triangles on the heavy files (decision 118)", () => {
+describe("the band and the triangles on the heavy files", () => {
   it("flags the newest point of every history a warned or failed entry reports, and no point of a mart's own row count", () => {
     const { charts } = manyView().sections;
     for (const [file, lane] of [
@@ -604,7 +604,7 @@ describe("the band and the triangles on the heavy files (decision 118)", () => {
   });
 });
 
-describe("the range a Needs a look row quotes (decision 130)", () => {
+describe("the range a Needs a look row quotes", () => {
   /** The light monthly page, with `change` made to its file first. */
   const lightPage = (change = () => {}) => {
     const file = examples.monthlyWithWarnings();
@@ -627,7 +627,7 @@ describe("the range a Needs a look row quotes (decision 130)", () => {
   it("quotes, on every heavy-file row with a history, the band its chart draws at the point Elementary flagged", () => {
     const { items, charts } = manyView().sections;
     const charted = items.filter((item) => item.chart !== null);
-    // 22: the 30 there were before decision 203, less the 8 freshness entries, which have no history any more.
+    // 22: the 30 there were before freshness became our last read, less the 8 freshness entries, which have no history any more.
     expect(charted).toHaveLength(22);
     for (const item of charted) {
       const chart = charts.get(item.chart);
@@ -745,7 +745,7 @@ describe("Chart buttons", () => {
   });
 
   it("show a mart's highest version's row count when it has two, in either order, and list both in the menu", () => {
-    // trail_lines_v1 is written beside trail_lines_v2 until its deprecation_date (decision 44), and v2 holds v1's
+    // trail_lines_v1 is written beside trail_lines_v2 until its deprecation_date, and v2 holds v1's
     // rows by an equal_rowcount test; the series the mart's button keeps is the one that outlives the other.
     const file = examples.monthlyManyProblems();
     const rowCount = (series) => series.mart === "trail_network" && series.metric === "row_count" && series.column === null;
@@ -922,7 +922,7 @@ describe("formatting", () => {
   });
 });
 
-describe("each source's freshness (decision 203)", () => {
+describe("each source's freshness", () => {
   const items = (view) => view.sections.items.filter((item) => item.kind === "Freshness");
 
   it("words each row as the maintainer's frame did: hours on the hourly run, days on the monthly build", () => {
@@ -1023,7 +1023,7 @@ describe("a row's point, at the file's precision (the review of 2026-10-15, thre
   });
 });
 
-describe("each source's last post (decision 213's rule 23: no gap warning, the last post shown)", () => {
+describe("each source's last post (no gap warning, the last post shown)", () => {
   const POSTS = [
     { source: "dec_hiking_trails", title: "DEC hiking trails", edited_on: "2026-09-18" },
     { source: "oprhp_trail_closures", title: "OPRHP temporary trail closures", edited_on: "2026-10-07" },

@@ -77,7 +77,7 @@ export interface TappedLine {
   /** The other trail on this stretch of treadway, on a shared-ground half
    *  (#1384, map/sharedGround.ts); null on every plain line. */
   sharedWith: string | null
-  /** `club` on a club's own line, drawn and never routed (decision 64);
+  /** `club` on a club's own line, drawn and never routed;
    *  null on every network and A.T. line, which carry no `line_kind`. */
   lineKind: string | null
   /** Whether the tap landed on the trail's BADGE rather than its line
@@ -206,7 +206,7 @@ function asTappedLine(
     // The other trail on this stretch, on a shared-ground half (#1384,
     // map/sharedGround.ts); absent on every plain line.
     sharedWith: stringProp(feature.properties, 'concurrent_with'),
-    // A club's own line (decision 64): pipeline/dbt's nearby_trails.geojson
+    // A club's own line: pipeline/dbt's nearby_trails.geojson
     // marks it, and lib/lineDetail.ts says what that means for the hiker.
     lineKind: stringProp(feature.properties, 'line_kind'),
     at: nearestVertex(feature.geometry, near),
@@ -233,7 +233,7 @@ export function tappedLineAt(
   // reason and one more: both are safety marks drawn ON the line, and a tap
   // on barrier tape that opened the trail's blaze sheet instead of the
   // closure would answer the wrong question on the one path that is about
-  // danger. A club's closure (the maintainer's S6, 2026-10-11) is the same
+  // danger. A club's closure (the maintainer's closure-map standard, 2026-10-11) is the same
   // mark on the same line, and yields the line for the same reason.
   if (closureIdAt(map, point) !== null) return null
   if (clubClosureIdAt(map, point) !== null) return null

@@ -1,12 +1,12 @@
 // A hunting area drawn over the A.T. on a phone with no hike planned
-// (#1805, decision 84).
+// (#1805).
 //
-// WHY THIS SCREEN NEEDED A CAMERA. Decision 77 has a phone download
-// conditions/notices.json only once a hike is planned, and decision 67's
-// hunting areas, shooting sites and burned areas were drawn from that file
+// WHY THIS SCREEN NEEDED A CAMERA. A phone downloads
+// conditions/notices.json only once a hike is planned, and the hazard areas -
+// hunting areas, shooting sites and burned areas - were drawn from that file
 // alone, so a phone with nothing planned drew none of them, and a tapped
 // stretch inside one lost its advisory. The maintainer's answer (poll,
-// 2026-10-05, Q5): "Their own small file, read at launch" -
+// 2026-10-05): "Their own small file, read at launch" -
 // conditions/hazard_areas.json, which lib/publishedNotices.ts reads whatever
 // is planned. No recipe photographed a hazard area on the map before this
 // one: planned-hike-notices.mjs shows the hunting area's row in the panel,
@@ -15,7 +15,7 @@
 // WHAT A REVIEWER SHOULD CHECK IN THE FRAME:
 //
 //  1. The map at Bear Mountain at z13 with an area drawn under the trails,
-//     in decision 67's hunting colour, around the A.T. over the summit. No
+//     in the hunting colour, around the A.T. over the summit. No
 //     hike is planned: nothing is seeded, and conditions/notices.json is
 //     answered 404 below, so the area can only have come from the hazard
 //     file.
@@ -174,7 +174,7 @@ export function hazardAreasDocument() {
 }
 
 export const caption =
-  'A hunting area drawn over the A.T. at Bear Mountain with no hike planned, from conditions/hazard_areas.json, and its sheet: hunting allowed, the trail stays open (decision 84, #1805). The area is an invented example.'
+  'A hunting area drawn over the A.T. at Bear Mountain with no hike planned, from conditions/hazard_areas.json, and its sheet: hunting allowed, the trail stays open (#1805). The area is an invented example.'
 
 export const alt =
   'The map screen over Bear Mountain State Park at zoom 13, with an invented hunting area drawn around the summit as a pale square with a dashed orange edge, under the red trail lines, and over the lower part of the map a sheet headed "Hunting allowed" with an Advisory tag, the title "Bear Mountain hunting area (example)", a sentence saying the trail stays open, a line saying the publisher gives no season dates, and "From" with the publisher’s name. No hike is planned.'

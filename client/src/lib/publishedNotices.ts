@@ -1,4 +1,4 @@
-// conditions/notices.json, read and checked (#1805, decision 53 phase D).
+// conditions/notices.json, read and checked (#1805).
 //
 // Its own module, imported by lib/useConditions.ts behind import(), for the
 // launch budget's reason (lib/noticeSelection.ts's header has the numbers):
@@ -8,13 +8,13 @@
 // conditions file takes (its `readPublished`, which also says whether an
 // empty answer means the bucket serves no such file).
 //
-// ONLY ONCE A HIKE IS PLANNED (decision 77, the maintainer's poll of
+// ONLY ONCE A HIKE IS PLANNED (the maintainer's poll of
 // 2026-10-05): the file was 24,966,662 bytes, 6,203,870 gzipped, on soak run
 // 536, and every phone fetched it on each conditions refresh.
 // `readPublishedNotices` downloads it only for a phone with a hike planned;
 // any other phone asks the bucket whether it serves the file, and no more.
 //
-// AND THE STATES' SHAPES BESIDE IT (decision 76): conditions/notice_states.json,
+// AND THE STATES' SHAPES BESIDE IT: conditions/notice_states.json,
 // read here in the same breath and attached to each state-wide notice as its
 // `state_areas`, so lib/plannedNotices.ts can ask whether a planned route is
 // in one of its states. Here, behind the same import(), rather than one more
@@ -22,23 +22,24 @@
 // and this adds no launch byte. Its key is here too, for the same reason;
 // pipeline/tests/test_published_key_contract.py reads this file for it.
 //
-// AND THE HAZARD AREAS AT LAUNCH, WHATEVER IS PLANNED (decision 84, the
-// maintainer's poll of 2026-10-05, Q5: "Their own small file, read at
+// AND THE HAZARD AREAS AT LAUNCH, WHATEVER IS PLANNED (the
+// maintainer's poll of 2026-10-05: "Their own small file, read at
 // launch"): conditions/hazard_areas.json, the rows of notices.json that carry
-// decision 67's `hazard`, written by pipeline/dbt's
-// pub_conditions_hazard_areas. Decision 77 left a phone with nothing planned
+// the hazard areas' `hazard`, written by pipeline/dbt's
+// pub_conditions_hazard_areas. Fetching notices.json only for a plan left a
+// phone with nothing planned
 // without notices.json, and so without the hunting areas, shooting sites and
 // burned areas the map draws from it. `fetchPublishedHazardAreas` reads this
 // file, and lib/useConditions.ts calls it on every read, planned or not, as
-// every phone read notices.json before decision 77, on a promise of its own
+// every phone read notices.json before it waited on a plan, on a promise of its own
 // so that nothing about notices.json holds it back; its key is here for the
 // reason the states' key is.
 //
 // AND EVERY CLUB CLOSURE AT LAUNCH, FOR THE MAP (the maintainer's polls of
-// 2026-10-11: Q2 "Build the map file now", and standard S6 as drawn):
+// 2026-10-11: "Build the map file now", and the closure-map standard as drawn):
 // conditions/trail_closures.json, the rows of notices.json that close a
 // trail, each with the shape the map crosses it out as, or, for an area no
-// mapped trail runs inside, shades it as (decision 191). Read like the
+// mapped trail runs inside, shades it as. Read like the
 // hazard areas, whatever is planned, by `fetchPublishedTrailClosures`; ATC's
 // rows are not in it, because ATC's own band already draws them.
 
@@ -92,19 +93,19 @@ function deadline(ms: number): { signal: AbortSignal; clear: () => void } {
   return { signal: controller.signal, clear: () => clearTimeout(timer) }
 }
 
-/** The shapes of the states a state-wide notice names (decision 76): written
+/** The shapes of the states a state-wide notice names: written
  *  by pipeline/dbt's pub_conditions_notice_states, on the dbt path only, so
  *  a bucket without it serves a 404 and no state-wide notice shows - as
- *  decision 68 left them. */
+ *  before state shapes existed. */
 export const PUBLISHED_NOTICE_STATES_KEY = 'conditions/notice_states.json'
 
-/** Decision 67's hazard notices in a file of their own (decision 84): on the
+/** The hazard notices in a file of their own: on the
  *  dbt path only, so a bucket without it (production until the cutover)
  *  serves a 404, and the map draws the areas from notices.json where that
  *  file has reached this phone, as it did before this file existed. */
 export const PUBLISHED_HAZARD_AREAS_KEY = 'conditions/hazard_areas.json'
 
-/** Every club closure the map crosses out (the maintainer's S6, 2026-10-11),
+/** Every club closure the map crosses out (the maintainer's closure-map standard, 2026-10-11),
  *  rewritten hourly. On the dbt path only, like the two keys above, so a
  *  bucket without it serves a 404 and the map draws no club closure, as
  *  before this file existed. */
@@ -140,14 +141,14 @@ function isoDayOrNull(value: unknown): string | null {
  * Category values that stand for no category, compared whole after trimming
  * and ignoring case, never as a part of a longer value.
  *
- * Decision 78 shows a notice's category under its title, so a source's blank
+ * The panel shows a notice's category under its title, so a source's blank
  * spelled as a word read as a category it chose. Reviewed against soak run
  * 536's file on 2026-10-05: Midpen's preserve-access layer sends "None" (2
  * rows) and Santa Clara County Parks' closed areas send "na" (4 rows). "n/a"
  * and "null" are in no row there, and are listed as the same blank spelled
  * the other usual ways. NOT "unknown": it is one of USFS's recreation-site
  * `openstatus` values, the Forest Service's own status for a site, as
- * "unreachable" and "not cleared" are, and decision 78 shows it as sent.
+ * "unreachable" and "not cleared" are, and the panel shows it as sent.
  */
 const NO_CATEGORY: ReadonlySet<string> = new Set(['none', 'na', 'n/a', 'null'])
 
@@ -177,7 +178,7 @@ function pageUrlOrNull(value: unknown): string | null {
   }
 }
 
-/** Rule 19's park areas (decision 213), or null for none: absent, empty, or
+/** The park areas a reviewed park term maps to, or null for none: absent, empty, or
  *  any one unreadable. All or nothing, because the areas narrow which hikes
  *  are shown the notice, and a list missing one park would hide it from a
  *  hike in that park; with none it shows as an unmapped notice does. */
@@ -246,7 +247,7 @@ function validPlace(value: unknown): NoticePlace {
   return { kind: 'unplaced' }
 }
 
-/** Decision 76's `states`: the two-letter codes a row carries, or nothing -
+/** A state-wide notice's `states`: the two-letter codes a row carries, or nothing -
  *  an unreadable code is left out, and a row left with none is an ordinary
  *  unplaced notice. */
 function validStates(value: unknown): { states?: string[] } {
@@ -353,7 +354,7 @@ export function validNotice(value: unknown): OrgNotice | null {
 }
 
 /**
- * Every club's notices (#1805, decision 53 phase D), or null if there isn't a
+ * Every club's notices (#1805), or null if there isn't a
  * usable file.
  *
  * Null is the ordinary state on a bucket the exporters still publish: no
@@ -397,7 +398,7 @@ async function readNotices(
 }
 
 /**
- * conditions/hazard_areas.json's notices (decision 84), or null if there
+ * conditions/hazard_areas.json's notices, or null if there
  * isn't a usable file - read by the same row reader as notices.json, which
  * the pipeline writes the same rows for, and holding only rows that carry a
  * `hazard` this build knows: a row that does not is no area to draw.
@@ -470,8 +471,7 @@ function everyPart(coordinates: unknown, part: (value: unknown) => boolean): boo
  * notice's own line) and an `area` (the trail stretches the pipeline cut
  * inside it), a Point or MultiPoint for a `point`, as pipeline/dbt's
  * pub_conditions_trail_closures writes one (the map crosses each of its
- * points), and a Polygon or MultiPolygon for a `shade` (the area itself,
- * decision 191). Checked whole here because every closure shares one GeoJSON
+ * points), and a Polygon or MultiPolygon for a `shade` (the area itself). Checked whole here because every closure shares one GeoJSON
  * source on the map (map/clubClosureLayers.ts), and one row's unreadable
  * coordinates must not cost the others their marks.
  */
@@ -505,7 +505,7 @@ const CLOSURE_SHAPES: ReadonlySet<string> = new Set(['line', 'area', 'point', 's
  *  - `obstructs_trail` not true: a row that does not close the trail is no
  *    closure to draw, and a crossed-out trail that is open is the false
  *    alarm CLAUDE.md's "miss rather than cry wolf" rules out;
- *  - a `hazard`: decision 67's areas are never drawn as closed
+ *  - a `hazard`: the hazard areas are never drawn as closed
  *    (lib/hazardAreas.ts says why);
  *  - ATC's own rows, whose band map/atcUpdateLayers.ts already draws from
  *    ATC's own file: a second mark on the same stretch would open a second
@@ -535,7 +535,7 @@ const AREA_SHAPES: ReadonlySet<unknown> = new Set(['area', 'shade'])
 /**
  * conditions/trail_closures.json as it arrived, with the area closures it
  * could not draw this hour carried over from the copy this phone kept
- * (decision 213, Q11, the maintainer's poll of 2026-10-15, "Now, in this
+ * (the maintainer's poll of 2026-10-15, "Now, in this
  * PR"). pipeline/dbt's pub_conditions_trail_closures lists in `uncut_areas`
  * every area closure standing this hour that its cut has no row for: all of
  * them in an hour with no trail lines to cut against (`areas_cut` false),
@@ -581,7 +581,7 @@ export function keepUncutAreas(
 }
 
 /**
- * conditions/trail_closures.json's closures (the maintainer's S6), or null if
+ * conditions/trail_closures.json's closures (the maintainer's closure-map standard), or null if
  * there isn't a usable file. Every row the map cannot draw is refused one at
  * a time (`validTrailClosure`), never the file. An area closure the file
  * could not draw this hour is the one the kept copy drew (`keepUncutAreas`).
@@ -593,7 +593,7 @@ export function keepUncutAreas(
  *
  * Within MANIFEST_READ_TIMEOUT_MS, as the hazard areas are. UA's first
  * published file, of 2026-10-14 18:15 UTC, is 3,165,161 bytes and 633,700 on
- * the wire (its latest.json); the 156 areas decision 191 shades add 32,244
+ * the wire (its latest.json); the 156 shaded areas add 32,244
  * gzipped at level 6 (Measured that evening on the areas' own outlines,
  * pipeline/dbt's pub_conditions_trail_closures says how), about 665,900 in
  * all, which 20 s lets through above about 266 kbps. Slower than that, a
@@ -623,7 +623,7 @@ export async function fetchPublishedTrailClosures(
 
 /**
  * Whether the bucket serves conditions/notices.json, asked with a HEAD
- * request, so no byte of the file is downloaded (decision 77). False for a
+ * request, so no byte of the file is downloaded. False for a
  * 404, a dead spot or no bucket, which the caller reads as "not said", never
  * as "not served".
  *
@@ -654,7 +654,7 @@ export async function noticesListed(): Promise<boolean> {
 }
 
 /**
- * conditions/notices.json as decision 77 has a phone read it: downloaded
+ * conditions/notices.json as a phone reads it: downloaded
  * only while `hikePlanned`, within NOTICES_DOWNLOAD_TIMEOUT_MS. With nothing
  * planned it is the copy this phone kept, read with no request
  * (lib/conditionsCache.ts keeps one only under its size ceiling), and

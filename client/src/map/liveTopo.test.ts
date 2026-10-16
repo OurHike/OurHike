@@ -352,13 +352,13 @@ describe('the live topographic background', () => {
       closureMarkId('nearby-long-term-closure-band'),
       closureMarkId(CLOSURE_LAYER_ID),
       closureMarkId(LONG_TERM_CLOSURE_LAYER_ID),
-      // Every club's closures (the maintainer's S6, 2026-10-11): the far mark
+      // Every club's closures (the maintainer's closure-map standard, 2026-10-11): the far mark
       // like the four above, and the one cross at a point closure, which
       // always draws and holds its place (map/clubClosureLayers.ts), so a pin
       // under a closed bridge's cross falls back to its dot.
       closureMarkId(CLUB_CLOSURE_LAYER_ID),
       closurePointId(CLUB_CLOSURE_LAYER_ID),
-      // And their small ✕ at z5 and z6 (Q22), which collides to thin itself.
+      // And their small ✕ at z5 and z6, which collides to thin itself.
       // It stops at z7, where the pins start, so in practice it never meets
       // one; it is here because the order says it could.
       CLUB_CLOSURE_FAR_LAYER_ID,
@@ -747,7 +747,7 @@ describe('the offline-only background', () => {
       // is a visibility flip, not an add and remove, so it is in the stack
       // whether or not it is drawn.
       DROUGHT_LAYER_ID,
-      // Decision 67's hazard areas (#1805): a hunting area, a shooting site
+      // The hazard areas (#1805): a hunting area, a shooting site
       // or a burned area a downloaded trail crosses, washed under every
       // trail line so the line is drawn over it whole. They survive the
       // subtraction for the closures' reason: the area comes from the
@@ -945,12 +945,12 @@ describe('the offline-only background', () => {
       ...bandLayers('nearby-long-term-closure-band'),
       ...bandLayers(CLOSURE_LAYER_ID),
       ...bandLayers(LONG_TERM_CLOSURE_LAYER_ID),
-      // Every club's closures (the maintainer's S6), then their point cross:
+      // Every club's closures (the maintainer's closure-map standard), then their point cross:
       // conditions/trail_closures.json is kept on the phone (#447), so a
       // hiker with no signal still has them.
       ...bandLayers(CLUB_CLOSURE_LAYER_ID),
       closurePointId(CLUB_CLOSURE_LAYER_ID),
-      // And their small ✕ at z5 and z6 (Q22), from the same kept file.
+      // And their small ✕ at z5 and z6, from the same kept file.
       CLUB_CLOSURE_FAR_LAYER_ID,
       WARNING_LAYER_ID,
       // The hiker's mark itself, over the warning pins (v1.3.2 release

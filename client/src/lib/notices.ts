@@ -298,7 +298,7 @@ export function noticeBandId(notice: TrailNotice): string {
  * stewards.json lists the provider, else as the row gives it ("BLM"). The
  * maintainer chose this on 2026-10-05, from a frame of a hazard-area sheet
  * reading "oprhp_hunting_areas' layer": UA's stewards.json came from a
- * release built before decision 67's hazard sources were registered.
+ * release built before the hazard sources were registered.
  */
 export function noticeOrgLabel(stewards: Stewards): (notice: TrailNotice) => string {
   const label = sourceOrgLabel(stewards)
@@ -468,11 +468,11 @@ export interface NewNotices {
   /** The newest edit per organization, which is what a dismissal is recorded
    *  against. One watermark per key, never one shared - see
    *  `noticeSilenceKey`. A notice counted from when OurHike first saw it
-   *  (decision 87) has a watermark of its own, under a key
+   *  has a watermark of its own, under a key
    *  lib/noticeSelection.ts's `newClubNotices` names. */
   newestBySource: Map<string, Date>
   /** True when a counted notice gave no date of its own and is counted from
-   *  when OurHike first saw it (decision 87): the banner then names no verb,
+   *  when OurHike first saw it: the banner then names no verb,
    *  never "issued", since nobody said when it was issued. */
   seen?: boolean
   /** The registry provider a counted organization's rows carry
@@ -494,7 +494,7 @@ export interface NewNotices {
  *
  * A notice with no `updated_at` is never counted here. With
  * conditions/notices.json, lib/noticeSelection.ts's `newClubNotices` counts
- * one from when OurHike first saw it (decision 87), through this function.
+ * one from when OurHike first saw it, through this function.
  */
 export function newNoticesSince(
   notices: readonly TrailNotice[],
@@ -582,7 +582,7 @@ export function newNoticeLabel(newNotices: NewNotices, stewards: Stewards): stri
     ),
   ]
   const { count } = newNotices
-  // Decision 87: no verb when any counted notice is new only because OurHike
+  // No verb when any counted notice is new only because OurHike
   // first saw it - "issued" would claim a date nobody gave, and "New notice"
   // alone is true of every one counted. It said "seen" until the word-choice
   // review of #1805 (2026-10-09), which read as "you saw it", the opposite

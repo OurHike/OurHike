@@ -58,12 +58,12 @@ const THIS_SURFACE = 'sources_screen'
  * card actually carries a link - which is the same rule, kept.
  */
 const FRAMING = 'Each organization below sets its own licence for the data it publishes.'
-// "On a card" since Q24 put the site's two data pages under this line: those
+// "On a card" since the site's two data pages went under this line: those
 // are OurHike's own pages, and "every link below" would have taken them in.
 const FRAMING_LINKS =
   'Every link on a card below opens the organization’s own site — OurHike takes no cut and holds no money.'
 
-/** The line over the two links to the site's data pages (Q24). */
+/** The line over the two links to the site's data pages. */
 export const DATA_PAGES_LINE =
   'How OurHike gathers these organizations’ data, and how its checks went on the last build:'
 
@@ -101,7 +101,7 @@ export function SourcesSection({ stewards }: SourcesSectionProps) {
         {anyLink ? `${FRAMING} ${FRAMING_LINKS}` : FRAMING}
       </p>
 
-      {/* HOW OURHIKE GATHERS IT, AND HOW THE CHECKS WENT (Q24 of #1805, the
+      {/* HOW OURHIKE GATHERS IT, AND HOW THE CHECKS WENT (the
           maintainer's "All three as drawn", 2026-10-15): the site's two data
           pages, in this screen's own link style. Not "every hour": the
           hourly schedule ran at a median of one run every 4 hours when it

@@ -88,7 +88,7 @@ export const NEARBY_LONG_TERM_CLOSURE_LAYER_ID = 'nearby-long-term-closure-band'
 export const NETWORK_OVERVIEW_LAYER_ID = 'network-overview-line'
 export const NETWORK_OVERVIEW_CLOSURE_LAYER_ID = 'network-overview-closure-band'
 /** Every club's closures, from conditions/trail_closures.json (the
- *  maintainer's S6, 2026-10-11; map/clubClosureLayers.ts). Its feed alone
+ *  maintainer's closure-map standard, 2026-10-11; map/clubClosureLayers.ts). Its feed alone
  *  also carries points, drawn on lib/closureStyle.ts's `closurePointId`. */
 export const CLUB_CLOSURE_LAYER_ID = 'club-closure-band'
 

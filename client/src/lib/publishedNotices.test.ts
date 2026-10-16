@@ -27,7 +27,7 @@ describe('a category', () => {
 
   it('that is a placeholder (None, na, n/a, null), in any case, is no category', () => {
     // Midpen's preserve-access layer sends "None" and Santa Clara County
-    // Parks' sends "na" (soak run 536); decision 78 would show either under
+    // Parks' sends "na" (soak run 536); the category line would show either under
     // the title as if the source had named a category.
     expect(category('None')).toBeNull()
     expect(category('na')).toBeNull()
@@ -95,7 +95,7 @@ describe('a current_until', () => {
   })
 })
 
-// Decision 213's rule 14: standing closed land carries `standing` true and no
+// Standing closed land carries `standing` true and no
 // current_until. Only a literal true is a claim.
 describe('an issuer', () => {
   it('is kept, trimmed, where the file names one, and absent otherwise', () => {
@@ -210,7 +210,7 @@ describe('a geometry place', () => {
   })
 })
 
-describe('an org_terms place’s park areas (rule 19, decision 213)', () => {
+describe('an org_terms place’s park areas', () => {
   const harriman = {
     place_id: 'oprhp_park_polygons:20',
     name: 'Harriman',

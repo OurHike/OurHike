@@ -117,7 +117,7 @@ describe('tapping a line', () => {
     )
   })
 
-  it('carries a club line’s mark to the sheet, so it can say the line is not routed (decision 64)', () => {
+  it('carries a club line’s mark to the sheet, so it can say the line is not routed', () => {
     const map = buildMap()
     const onSelect = vi.fn()
     map.renderedFeatures.set(BLAZE_LAYER_ID, [

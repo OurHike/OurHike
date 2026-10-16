@@ -1,4 +1,4 @@
-// Decision 31's map shot for the `us_and_territories` region box, its western
+// The map shot for the `us_and_territories` region box, its western
 // Pacific part: Guam and the Northern Mariana Islands, at zoom 6.5
 // (fixtures/regionCamera.mjs says what the set is for).
 //
@@ -7,8 +7,8 @@
 // the territories `us_and_territories` (lat -20 to 72, any longitude), and its
 // header says why NPS's trails need it: measured from lat -14.37 to 65.85 and
 // lon -170.77 to 145.73, American Samoa to the Marianas. The same box holds
-// every generated places and elevation source (pipeline/ELT.md, "Region boxes
-// from vertices") and NPS's campgrounds. Its own ground is what `national`
+// every generated places and elevation source
+// (pipeline/dbt/macros/lands_outside_its_region.sql) and NPS's campgrounds. Its own ground is what `national`
 // (lat 18 to 72, lon -180 to -64) leaves out, and this frame is that ground
 // in the western Pacific, at lon 145, far outside the national box.
 // map-region-territories-samoa.mjs is its part in the South Pacific.

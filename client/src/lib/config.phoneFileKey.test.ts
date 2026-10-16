@@ -1,4 +1,4 @@
-// phoneFileKey and V2_PHONE_FILE_KEYS (decision 44, stage 6 of #1793): which
+// phoneFileKey and V2_PHONE_FILE_KEYS (#1793): which
 // key a build fetches for each phone file, and the promise that a v2 key is
 // fetched only for a file this build has a v2 reader for.
 

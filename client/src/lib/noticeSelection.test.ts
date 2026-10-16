@@ -46,7 +46,7 @@ function row(
 /** The phone's own calendar day the rows' `current_until` is read against. */
 const TODAY = '2026-10-10'
 
-describe('which file decision 67’s areas are drawn from (decision 84)', () => {
+describe('which file the hazard areas are drawn from', () => {
   const area = (id: string): TrailNotice =>
     row(`oprhp_hunting_areas:${id}`, null, {
       hazard: 'hunting',
@@ -143,7 +143,7 @@ describe('noticeNotCurrent, the verdict ATC’s tapped sheet takes from notices.
   })
 })
 
-// Decision 87 (the maintainer, 2026-10-05): a notice with no `updated_at` of
+// The maintainer's poll of 2026-10-05: a notice with no `updated_at` of
 // its own counts as new for the banner only if OurHike first saw it after
 // its source's earliest row in the same file, and is never worded
 // "issued" (it was worded "seen" until the word-choice review of
@@ -189,7 +189,7 @@ function count(shown: readonly TrailNotice[], file: readonly TrailNotice[] = sho
   return newClubNotices(shown, firstSeenRule(file), NOW, readNoticeSilence)
 }
 
-describe('the banner and a notice with no date of its own (decision 87)', () => {
+describe('the banner and a notice with no date of its own', () => {
   afterEach(() => localStorage.clear())
 
   it('does not light for a file’s initial load, a build’s two marts a second apart among it', () => {
@@ -265,7 +265,7 @@ describe('the banner and a notice with no date of its own (decision 87)', () => 
 // raw key for a key no steward claims, while every other notice surface reads
 // the row's own `provider` first (lib/notices.ts's noticeOrgLabel, the
 // maintainer's choice of 2026-10-05). UA's stewards.json named none of
-// decision 67's hazard sources then, so a hunting area on a planned hike
+// the hazard sources then, so a hunting area on a planned hike
 // would have been announced as "oprhp_hunting_areas · ...".
 describe('the banner names a source no steward claims through the row’s provider', () => {
   afterEach(() => localStorage.clear())
@@ -302,7 +302,7 @@ describe('the banner names a source no steward claims through the row’s provid
     expect(newNoticeLabel(found!, WITH_PARKS)).toBe(`${PARKS_NAME} · New notice issued`)
   })
 
-  it('names a notice counted from when OurHike first saw it the same way (decision 87)', () => {
+  it('names a notice counted from when OurHike first saw it the same way', () => {
     const found = count([
       hunting('1', '2026-10-03T20:24:05Z'),
       hunting('2', '2026-10-04T22:01:56Z'),

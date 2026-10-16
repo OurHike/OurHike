@@ -78,7 +78,7 @@ function lastRead(table, status, seconds, limit) {
  * floors a count's. None at the first point, whose one value has no spread.
  * A point counts toward its own band, so none can fall outside its band
  * before the NEEDED-th. The page draws each point against the band stored at
- * the point before it (decision 118), so an early point can sit outside the
+ * the point before it, so an early point can sit outside the
  * band drawn there, as 7 Feb 2026's does here. Computed rather than typed, so
  * the example's band and its last entry's expected range agree.
  */

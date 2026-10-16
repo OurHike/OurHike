@@ -1,5 +1,5 @@
 // The hatch a club's area closure is shaded with where no mapped trail runs
-// inside it (decision 191, the maintainer's poll of 2026-10-14, "Shade them,
+// inside it (the maintainer's poll of 2026-10-14, "Shade them,
 // no edge"), as pixels, and the one poke that registers it on a live map.
 // map/clubClosureLayers.ts decides where it is drawn and why; this file only
 // turns the chosen frame into a pattern image, the division map/closureCross.ts

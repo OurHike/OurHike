@@ -1,9 +1,9 @@
 // Notices for your planned hikes, with closures that have not started yet
-// (P3, the maintainer's frame B, poll of 2026-10-11: "Shown now, marked with
+// (the maintainer's frame B, poll of 2026-10-11: "Shown now, marked with
 // its start. It closes the trail only from its start day.").
 //
-// WHAT A REVIEWER SHOULD CHECK IN THE FRAME, against frame B of the wave 6
-// page 01 wireframe and client/src/lib/noticeCurrency.ts's `startsAhead` and
+// WHAT A REVIEWER SHOULD CHECK IN THE FRAME, against frame B of the
+// maintainer's "show it now, as upcoming" wireframe (2026-10-11) and client/src/lib/noticeCurrency.ts's `startsAhead` and
 // `obstructsOn`:
 //
 //  1. One section, the invented "Example Creek loop (example)", planned four
@@ -46,7 +46,7 @@ import {
 import { seedStewards } from './fixtures/stewards.mjs'
 
 export const caption =
-  'Notices for your planned hikes with closures that have not started yet — shown now, tagged with the day each starts, and sorted with the closures only from the day before it (P3, the maintainer’s frame B). Every organization and notice is an invented example.'
+  'Notices for your planned hikes with closures that have not started yet — shown now, tagged with the day each starts, and sorted with the closures only from the day before it (the maintainer’s frame B). Every organization and notice is an invented example.'
 
 export const alt =
   'The notices panel headed "Notices for your planned hikes", with one section for the day hike "Example Creek loop (example)" in four days. First a Closure row, "Bridge out at Mill Creek (example)", from Example County Parks. Then "Rim Trail closed for footbridge repair (example)" from Example Trail Club, tagged "Starts" and tomorrow’s date, with its from and until dates. Then a Notice row, "Trail crew on the Example Creek Trail this week (example)". Last, "Emergency closure, Example Creek Trail (example)", tagged "Starts" and the date three days from now, with "from" and that date, and Example State Parks under it. Every organization and notice is an invented example.'

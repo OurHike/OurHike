@@ -4,7 +4,7 @@
 // is a closure to draw. Neither is in the launch bundle
 // (features/LAUNCH_BUDGET.md §3): map/style.ts loads behind the map screen.
 //
-// THE STANDARD IS S6, AS THE MAINTAINER DREW IT (s6-map.html, adopted by poll
+// THE CLOSURE-MAP STANDARD, AS THE MAINTAINER DREW IT (s6-map.html, adopted by poll
 // about 17:45 UTC): every closure in conditions/trail_closures.json, crossed
 // out with the mark every other closure feed wears (lib/closureStyle.ts). A
 // line closure is crossed out along its own line; an area closure's trails
@@ -17,7 +17,7 @@
 // lines with the rest, and these layers sit above the A.T.'s own line in
 // map/style.ts.
 //
-// A CLOSURE TOO SHORT FOR THE CHAIN KEEPS THE BOLD ✕ (decision 198, the poll
+// A CLOSURE TOO SHORT FOR THE CHAIN KEEPS THE BOLD ✕ (the poll
 // of 2026-10-15, "B: bold ✕ until chain fits"). The chain of small crosses
 // puts none on a run shorter than about 9.33 px, and club closures run down
 // to 4.5 m, so the far mark does not stop at CLOSURE_NEAR_MIN_ZOOM here: each
@@ -40,11 +40,11 @@
 // from the opening camera in (rendered at z5 to z7 the same day). The other
 // closure feeds were already held off those zooms by their own sources and
 // map/style.ts's clamps. The maintainer then made the call this left open
-// (Q22, 2026-10-15): below the seam each closure says one thing, a small ✕
+// (2026-10-15): below the seam each closure says one thing, a small ✕
 // at z5 and z6, thinned - the last section of this file, on a source of its
 // own. Nothing of the drawing above starts lower.
 //
-// AN AREA NO MAPPED TRAIL RUNS INSIDE IS SHADED (decision 191, the poll of
+// AN AREA NO MAPPED TRAIL RUNS INSIDE IS SHADED (the poll of
 // 2026-10-14, "Shade them, no edge", from open-questions-1014.html's frame
 // A): its own outline, a `shade` row, filled with a light diagonal hatch in
 // the design system's stone and nothing drawn on its edge, so an open trail
@@ -61,7 +61,7 @@
 // sheet says it may no longer apply.
 //
 // THE ROUTER DOES NOT READ ANY OF THIS. A route still goes through a closure
-// drawn here until a later change (the maintainer's Q2 answer, "Build the map
+// drawn here until a later change (the maintainer's answer, "Build the map
 // file now", whose option said so); the closure's sheet says OurHike does not
 // work out detours.
 
@@ -90,7 +90,7 @@ import { CLUB_CLOSURE_FAR_LAYER_ID, CLUB_CLOSURE_LAYER_ID } from './styleIds'
 
 export const CLUB_CLOSURE_SOURCE_ID = 'club-closures'
 
-/** The hatch over an area no mapped trail runs inside (decision 191). Here
+/** The hatch over an area no mapped trail runs inside. Here
  *  and not in map/styleIds.ts, which the launch bundle carries: nothing
  *  there needs it. */
 export const CLUB_CLOSURE_SHADE_LAYER_ID = 'club-closure-shade'
@@ -191,7 +191,7 @@ export const CLUB_CLOSURE_POINT_FILTER: unknown[] = ['==', ['geometry-type'], 'P
  * needs is the closing organization's name on the closure, which its sheet
  * gives (chrome/ClubClosureSheet.tsx).
  *
- * `tolerance: 0`, SO NO CLOSURE IS DROPPED AT A FAR ZOOM (decision 198).
+ * `tolerance: 0`, SO NO CLOSURE IS DROPPED AT A FAR ZOOM.
  * MapLibre tiles a GeoJSON source with @maplibre/geojson-vt, which leaves out
  * any line part shorter than the source's tolerance (6.1.1's tile.ts,
  * `addLine`), 0.375 CSS px by default, and the far mark is placed on the
@@ -281,7 +281,7 @@ function chainCrossPx(zoom: number): number {
 /**
  * The first whole zoom, from CLOSURE_NEAR_MIN_ZOOM in, at which a line
  * closure's longest run is CLOSURE_MARK_UNTIL_CROSSES chain crosses long on
- * screen, and so the far mark lets go of it (decision 198); null for a
+ * screen, and so the far mark lets go of it; null for a
  * closure that is not a line. Read off the geometry alone, never the notice,
  * so a closure the list greys is drawn as any other.
  */
@@ -295,7 +295,7 @@ export function clubClosureChainFrom(geometry: NoticeGeometryValue): number | nu
 }
 
 /**
- * One cross at each point closure (the maintainer's S6: "a point one ✕"),
+ * One cross at each point closure (the maintainer's closure-map standard: "a point one ✕"),
  * and one at each point of a MultiPoint: lib/closureStyle.ts's far mark -
  * its image, size, ink and paper halo - placed at the point, with the id
  * `closurePointId` gives.
@@ -377,7 +377,7 @@ export function buildClubClosureLayers(
 }
 
 // ---------------------------------------------------------------------------
-// FARTHER OUT, ONE SMALL ✕ PER CLOSURE, THINNED (Q22 of #1805 — dlt → dbt
+// FARTHER OUT, ONE SMALL ✕ PER CLOSURE, THINNED (#1805 — dlt → dbt
 // re-platform as one go/no-go change: the maintainer chose "A small mark from
 // z5", then variant A, "small ✕, thinned", from q22_frames.html, 2026-10-15).
 // At z5 and z6 every club closure, of every organization, gets one small ✕

@@ -1,5 +1,5 @@
-// What chrome/noticesPanel.tsx loads behind import() (#1805): decision 66's
-// selection rule and decision 67's hazard areas, with the geometry under
+// What chrome/noticesPanel.tsx loads behind import() (#1805): the planned-hike
+// selection rule and the hazard areas, with the geometry under
 // them, shaped into the two answers the panel hook memoizes.
 //
 // WHY A SEPARATE ENTRY POINT. The panel hook is on the first frame's path,
@@ -42,16 +42,14 @@ export interface Routing {
 
 /**
  * How far after its source's earliest `first_seen_at` a notice's own must
- * fall to count as first seen in a later build (decision 87).
+ * fall to count as first seen in a later build.
  *
  * Not zero, because one build stamps one source's rows a moment apart: each
  * mart's row history is snapshotted on its own clock, and on soak run 536's
  * file (2026-10-05) the closures mart's rows of five sources read 22:01:55
  * and their warnings mart's rows 22:01:56, both from the build that first
  * loaded them (Measured: 1 s). Sixteen minutes is publish-conditions.yml's cap
- * on the whole job (`timeout-minutes: 16`: 10 until decision 103 raised the
- * build step's own cap, 15 until decision 201 made room for the steps after
- * the publish), which one build's snapshots cannot outlast, and the job
+ * on the whole job (`timeout-minutes: 16`), which one build's snapshots cannot outlast, and the job
  * shares the publish-data concurrency group, so two builds never overlap
  * (Reasoned). .github/tests/test_conditions_build_budget.py holds the two
  * equal.
@@ -71,7 +69,7 @@ function seenTime(notice: TrailNotice): number | null {
 }
 
 /**
- * Decision 87 (the maintainer, 2026-10-05): when a notice with no date of its
+ * The maintainer's poll of 2026-10-05: when a notice with no date of its
  * own counts as new for the banner - when OurHike first saw it, but only if
  * that was after its source's earliest row in the same file, measured over
  * every row of `notices`, the whole file, and not only the rows a panel
@@ -109,7 +107,7 @@ export const SEEN_WATERMARK = ':seen'
  * What the "new notices" banner counts with conditions/notices.json: the
  * shown notices with an `updated_at` of their own as lib/notices.ts's
  * `newNoticesSince` counts them, and those without one from when OurHike
- * first saw them, where `firstSeenAt` (decision 87's rule) says that counts.
+ * first saw them, where `firstSeenAt` says that counts.
  * Worded with no verb, never "issued", when any of those is counted
  * (`NewNotices.seen`).
  *
@@ -160,8 +158,8 @@ export function newClubNotices(
   }
 }
 
-/** Decision 66's panel: the hikes and their notices, and every notice it
- *  shows once - what the "new notices" dot counts, with decision 87's rule
+/** The planned-hike panel: the hikes and their notices, and every notice it
+ *  shows once - what the "new notices" dot counts, with the first-seen rule
  *  for a notice that gives no date of its own. */
 export function plannedView({
   graph,
@@ -215,18 +213,18 @@ export function plannedView({
 }
 
 /**
- * Decision 67's areas a trail on this phone runs through, and the
+ * The hazard areas a trail on this phone runs through, and the
  * advisories for a tapped place on a trail: each drawn area it is inside or
  * beside (lib/hazardAreas.ts). Null with neither file here.
  *
- * FROM ONE FILE, so no area is drawn twice (decision 84): the areas are in
+ * FROM ONE FILE, so no area is drawn twice: the areas are in
  * both conditions/hazard_areas.json, read whatever is planned, and
- * notices.json, read once a hike is planned (decision 77), and one build
+ * notices.json, read once a hike is planned, and one build
  * writes the same rows to both. The newer of the two by `generated_at`, the
  * hazard file on a tie, so a copy of notices.json this phone kept from
- * before decision 77 never outranks a fresh hazard file. With only
+ * before notices.json waited on a plan never outranks a fresh hazard file. With only
  * notices.json here - a bucket without the hazard file, production until
- * the cutover - the areas come from it, as before decision 84: a missing
+ * the cutover - the areas come from it, as before the hazard file existed: a missing
  * hazard file is never read as no hazard area.
  *
  * An area whose own notice no longer reads as current on `today` (the
@@ -268,7 +266,7 @@ export function hazardView(
  * while it reads as current or no row carries a verdict.
  *
  * ATC's sheet reads its notice from conditions/atc_updates.json, whose shape
- * decision 51 keeps as it is, so that file carries no `current_until`. The
+ * is kept as it is for installed phones, so that file carries no `current_until`. The
  * same notice's row in notices.json does, under the same id
  * (`atc_trail_updates:<atc_id>`, lib/notices.ts's `atcUpdateAsNotice`), and
  * that is the verdict the panel's list greys it by: the sheet takes it from

@@ -1,4 +1,4 @@
-// The small ✕ every club closure gets at z5 and z6 (Q22 of #1805 — dlt → dbt
+// The small ✕ every club closure gets at z5 and z6 (#1805 — dlt → dbt
 // re-platform as one go/no-go change: the maintainer's variant A, "small ✕,
 // thinned", 2026-10-15): the layer as the built style holds it, where its one
 // point per closure sits, the source it is filled into, its repaint on a sheet

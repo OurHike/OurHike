@@ -100,7 +100,7 @@ describe('parseProfile', () => {
   })
 })
 
-// v2/elevation_profile.json (decision 44, stage 6 of #1793): the same samples
+// v2/elevation_profile.json (#1793): the same samples
 // as delta-coded columns of whole numbers. Elevation and miles are safety
 // fields, so the v2 file has to fill exactly the arrays v1's does - not
 // arrays close to them - and a DEM gap has to stay a gap.

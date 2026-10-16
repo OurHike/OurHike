@@ -422,7 +422,7 @@ export interface LegendProps {
   /** The row's words when the list is the planned-hike panel (#1805), which
    *  shows the row whatever `noticeCount` is - see MapScreen's own prop. */
   noticeRowLabel?: string
-  /** The "Read all" door beside that row (decision 213's Q20) - see
+  /** The "Read all" door beside that row - see
    *  MapScreen's own prop. Both set, the row is drawn. */
   readAllNoticesLabel?: string
   onReadAllNotices?: () => void
@@ -934,8 +934,8 @@ export function Legend({
             {newNoticeCount > 0 && ` · ${newNoticeCount} new`}
           </button>
         )}
-      {/* BESIDE IT, THE DOOR TO EVERY CLUB'S NOTICES NO MAP DRAWS (decision
-          213, the maintainer's Q20, "Keep a 'Read all' door (Recommended)"):
+      {/* BESIDE IT, THE DOOR TO EVERY CLUB'S NOTICES NO MAP DRAWS (the
+          maintainer's poll of 2026-10-15, "Keep a 'Read all' door (Recommended)"):
           the planned-hike row above shows only what touches a hike planned
           in the next 7 days, and with none planned a hiker had no screen
           listing them at all. The old row's own words and class. */}

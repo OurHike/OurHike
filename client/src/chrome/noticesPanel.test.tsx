@@ -268,7 +268,7 @@ describe('a second publisher, through the same hook', () => {
   })
 })
 
-describe('with conditions/notices.json (#1805, decision 66)', () => {
+describe('with conditions/notices.json (#1805)', () => {
   // NOW is noon UTC on 2026-08-13, which is that same calendar day in every
   // zone from UTC-11 to UTC+11, so a day hike dated that day is in the window.
   const TODAY = '2026-08-13'
@@ -369,7 +369,7 @@ describe('with conditions/notices.json (#1805, decision 66)', () => {
     expect(list.type.displayName).toBe('Deferred(PlannedNoticeList)')
   })
 
-  // Decision 77: a phone downloads conditions/notices.json only once a hike
+  // A phone downloads conditions/notices.json only once a hike
   // is planned, and lib/useConditions.ts says when the bucket serves it
   // anyway (`clubNoticesListed`, a HEAD request's answer).
   function listedPanel(dayHikes: readonly DayHike[]) {
@@ -613,7 +613,7 @@ describe('with conditions/notices.json (#1805, decision 66)', () => {
   })
 })
 
-describe('the "Read all" door beside the planned-hike row (decision 213’s Q20)', () => {
+describe('the "Read all" door beside the planned-hike row', () => {
   // The maintainer, 2026-10-15, "Keep a 'Read all' door (Recommended)": every
   // club's notices no map draws, planned or not, behind a row of their own.
   function doorPanel(
@@ -702,8 +702,8 @@ describe('the "Read all" door beside the planned-hike row (decision 213’s Q20)
   })
 })
 
-describe('decision 67’s areas from conditions/hazard_areas.json (decision 84)', () => {
-  // Decision 77 downloads notices.json only once a hike is planned, and the
+describe('the hazard areas from conditions/hazard_areas.json', () => {
+  // A phone downloads notices.json only once a hike is planned, and the
   // areas were drawn from it alone, so a phone with nothing planned drew
   // none. These hold the panel to the maintainer's answer: the areas' own
   // file, read whatever is planned, and never an area drawn twice.
@@ -802,7 +802,7 @@ describe('decision 67’s areas from conditions/hazard_areas.json (decision 84)'
     expect(result.current.hazardAdvisoriesAt([-77, 34.305])).toHaveLength(1)
   })
 
-  it('takes the areas from whichever file is newer, so a copy kept from before decision 77 never outranks a fresh hazard file', async () => {
+  it('takes the areas from whichever file is newer, so a copy kept from before notices.json waited on a plan never outranks a fresh hazard file', async () => {
     const older = new Date(NOW.getTime() - 30 * 86_400_000)
     const fresh = hazardPanel({
       clubNotices: [huntingArea('kept-copy')],
@@ -835,7 +835,7 @@ describe('decision 67’s areas from conditions/hazard_areas.json (decision 84)'
   })
 })
 
-describe('the "new notices" banner with conditions/notices.json (decision 87)', () => {
+describe('the "new notices" banner with conditions/notices.json', () => {
   // A notice with no `updated_at` of its own counts as new only if OurHike
   // first saw it after its source's earliest row in the file, and is
   // announced with no verb, never "issued".

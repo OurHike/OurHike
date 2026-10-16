@@ -16,7 +16,7 @@ import {
  * docs.ourhike.org/data/quality/'s controls, driven the way a reader drives them -
  * the keyboard first - against an INVENTED pair of files with 43 entries and
  * 38 series (site/src/lib/dataQualityExamples.mjs). The maintainer's round-3
- * choice (pipeline/ELT.md decision 102, 2026-10-08): every failure listed and
+ * choice: every failure listed and
  * the warnings folded by kind; a Show menu above the chart; a Chart button on
  * each row with a history and on each mart, kept in step with the menu. And
  * its answers to round 3's forks (2026-10-08): the first chart's own button

@@ -76,8 +76,8 @@ export function conditionsCacheKey(key: string): string {
  * few hundred rows of short JSON", and it deleted the first two above on
  * every download: a planned hike's closures vanished at its first relaunch
  * with no signal, and offline place search had nothing to search.
- * notices.json has been bigger still, 24,966,662 bytes on soak run 536
- * (decision 77), and this keeps that with a quarter to spare.
+ * notices.json has been bigger still, 24,966,662 bytes on soak run 536,
+ * and this keeps that with a quarter to spare.
  *
  * Above it the gap remains: lib/publishedConditions.ts, lib/placesData.ts
  * and lib/weatherData.ts do not weigh what they fetch, so a document over the

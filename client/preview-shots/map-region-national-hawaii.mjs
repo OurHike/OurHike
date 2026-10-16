@@ -1,4 +1,4 @@
-// Decision 31's map shot for the `national` region box, its Hawaii part, at
+// The map shot for the `national` region box, its Hawaii part, at
 // zoom 5.5 (fixtures/regionCamera.mjs says what the set is for;
 // map-region-national-west.mjs why the box is shot in parts).
 //

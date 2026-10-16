@@ -1,4 +1,4 @@
-// conditions/notices.json only once a hike is planned (#1805, decision 77).
+// conditions/notices.json only once a hike is planned (#1805).
 //
 // The file was 24,966,662 bytes, 6,203,870 gzipped, on soak run 536, and
 // every phone fetched it on every conditions refresh. These hold the hook to
@@ -65,7 +65,7 @@ function noticeRequests(spy: MockInstance<typeof fetch>): string[] {
     .map(([, init]) => init?.method ?? 'GET')
 }
 
-describe('conditions/notices.json and a planned hike (decision 77)', () => {
+describe('conditions/notices.json and a planned hike', () => {
   let spy: MockInstance<typeof fetch>
   afterEach(() => vi.restoreAllMocks())
 
@@ -236,7 +236,7 @@ describe('clubNoticesMissing, for a planned hike with no copy of notices.json on
   })
 })
 
-describe('conditions/hazard_areas.json, read at launch whatever is planned (decision 84)', () => {
+describe('conditions/hazard_areas.json, read at launch whatever is planned', () => {
   const HAZARD_URL = 'https://data.example/conditions/hazard_areas.json'
 
   /** An invented hunting area and a row with no hazard, which the reader
@@ -367,7 +367,7 @@ describe('conditions/hazard_areas.json, read at launch whatever is planned (deci
   })
 })
 
-describe('conditions/trail_closures.json, read at launch whatever is planned (the maintainer’s S6, 2026-10-11)', () => {
+describe('conditions/trail_closures.json, read at launch whatever is planned (the maintainer’s closure-map standard, 2026-10-11)', () => {
   const CLOSURES_URL = 'https://data.example/conditions/trail_closures.json'
   /** Every row of the hand-made file reads: one of each shape it draws. */
   const CLOSURE_ROWS = trailClosuresDocument().closures.length

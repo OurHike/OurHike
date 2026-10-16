@@ -1,4 +1,4 @@
-// Every club closure on a live map (the maintainer's S6, 2026-10-11): pushing
+// Every club closure on a live map (the maintainer's closure-map standard, 2026-10-11): pushing
 // the closures onto the source map/clubClosureLayers.ts declares, and the tap
 // that opens a closure's sheet. Loaded by MapView the first time there is a
 // closure to draw, as map/hazardAreaTaps.ts is for the hazard areas, so the
@@ -44,7 +44,7 @@ export interface ClubClosureFeatureCollection {
  * (map/clubClosureLayers.ts): a line or an area's cut stretches along the
  * crossed-out mark, a point as one cross (a MultiPoint as one at each of its
  * points), a shade's polygon as the hatch. A line closure also carries the
- * zoom its chain takes over from its far mark (decision 198), worked out from
+ * zoom its chain takes over from its far mark, worked out from
  * its geometry alone.
  */
 export function clubClosureFeatureCollection(
@@ -125,7 +125,7 @@ export function attachClubClosureData(
  * and yields, so a touch on a crossed-out stretch opens the closure's sheet
  * and not the trail's.
  *
- * A SHADED AREA IS LAST IN LINE (decision 191), as a hazard area is
+ * A SHADED AREA IS LAST IN LINE, as a hazard area is
  * (map/hazardAreaTaps.ts) and for its reason: an area is the largest thing
  * on the map and the least specific, so every mark inside it wins first,
  * the ATC band, a waypoint dot, a trail line and a shooting site's dot

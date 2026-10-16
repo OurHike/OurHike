@@ -161,7 +161,7 @@ function Notice({
 
           The bare field, not lib/noticeCurrency.ts's `obstructsOn`: these rows
           are ATC's and NYNJTC's own files, which carry no start, so none is
-          upcoming (P3's frame B). A row with a start would need a third
+          upcoming (the maintainer's frame B). A row with a start would need a third
           sentence, since "didn't report the trail blocked" is false of a
           closure that begins next week. */}
       <p className="atc-notices__passability">

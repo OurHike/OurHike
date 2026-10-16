@@ -1,11 +1,10 @@
 // docs.ourhike.org/data/quality/'s chart on a laptop, drawn from the INVENTED light
-// files in site/src/lib/dataQualityExamples.mjs (pipeline/ELT.md decision
-// 102) that fixtures/dataQuality.mjs serves by default, so the chart is the
+// files in site/src/lib/dataQualityExamples.mjs that fixtures/dataQuality.mjs serves by default, so the chart is the
 // rows of preview_fixture__trails, the series the maintainer's poll on the
 // band was drawn from.
 //
-// WHAT CHANGED, AND IS IN THIS FRAME. Decision 118, the maintainer's poll of
-// 2026-10-09 ("A: band from before"): the shaded band at each point is the
+// WHAT CHANGED, AND IS IN THIS FRAME. The maintainer's poll of 2026-10-09
+// ("A: band from before"): the shaded band at each point is the
 // band Elementary stored at the point before it. So at 7 Oct 2026, where the
 // rows fall to 4,118, the band stays level at September's 5,199 to 5,322
 // instead of fanning down to meet the fall, and the axis stops at 5,500

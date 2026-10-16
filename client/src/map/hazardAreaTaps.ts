@@ -1,4 +1,4 @@
-// Decision 67's hazard areas on a live map (#1805): pushing the drawn areas
+// The hazard areas on a live map (#1805): pushing the drawn areas
 // onto the source map/hazardAreaLayers.ts declares, and the tap that opens an
 // area's card. Loaded by MapView the first time there is an area to draw,
 // so a phone whose trails cross none never parses it (features/LAUNCH_BUDGET.md
@@ -70,8 +70,8 @@ export function hazardIdAt(
  * all the trail line
  * itself, whose card carries this area's advisory for the stretch inside it
  * (chrome/tappedLinePanel.tsx). Only a touch on the area and nothing else
- * opens the area's own card - nothing else but a club's shaded closure
- * (decision 191), the other area last in line, which wins where the two
+ * opens the area's own card - nothing else but a club's shaded closure,
+ * the other area last in line, which wins where the two
  * overlap: a closure outranks an advisory on the same ground
  * (map/clubClosureTaps.ts).
  *

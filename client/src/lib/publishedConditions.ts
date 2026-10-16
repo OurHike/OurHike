@@ -47,7 +47,7 @@ export const PUBLISHED_NOTES_KEY = 'conditions/notes.json'
 export const PUBLISHED_DISPUTES_KEY = 'conditions/disputes.json'
 export const PUBLISHED_WORK_PROJECTS_KEY = 'conditions/work_projects.json'
 export const PUBLISHED_NYNJTC_ALERTS_KEY = 'conditions/nynjtc_alerts.json'
-/** Every club's notices in one file (#1805, decision 53 phase D): written by
+/** Every club's notices in one file (#1805): written by
  *  pipeline/dbt's pub_conditions_notices on the dbt path only, so a bucket
  *  the exporters still publish serves a 404 here and the app reads the two
  *  files above instead (lib/useConditions.ts). Read by lib/publishedNotices.ts,
@@ -390,7 +390,7 @@ export async function fetchPublishedAtcUpdates(
  * is the rule `lib/closureBanner.ts` already lives by for a closure whose
  * band cannot be placed.
  */
-/** One park area an `org_terms` notice names (rule 19, decision 213): its
+/** One park area an `org_terms` notice names: its
  *  places.json id and name, and that place's bounding box as
  *  `[west, south, east, north]` in degrees. */
 export interface NoticeParkArea {
@@ -401,7 +401,7 @@ export interface NoticeParkArea {
 
 export type NoticePlace =
   | { kind: 'at_miles'; start: number; end: number }
-  /** A club's own tags as `taxonomy:slug`. `areas`, rule 19 (decision 213):
+  /** A club's own tags as `taxonomy:slug`. `areas`:
    *  the park areas a reviewed table (pipeline/dbt/seeds/
    *  notice_park_terms.csv) maps every one of its `park:` terms to, each
    *  places.json's bounding box; absent where any park term is unmapped. */
@@ -412,11 +412,11 @@ export type NoticePlace =
   | { kind: 'geometry'; geometry: NoticeGeometryValue }
   | { kind: 'unplaced' }
 
-/** Decision 67's hazard areas: an area a hiker walks into, drawn where a
+/** The hazard areas: an area a hiker walks into, drawn where a
  *  downloaded trail crosses it, and never a closure. */
 export type NoticeHazard = 'hunting' | 'shooting' | 'burned_area'
 
-/** One state of conditions/notice_states.json (decision 76), as
+/** One state of conditions/notice_states.json, as
  *  pipeline/dbt's pub_conditions_notice_states writes it: the shape of a
  *  state a state-wide notice names, simplified for a phone, and how far
  *  inside it a route has to be before it counts as in the state. Never
@@ -461,7 +461,7 @@ export interface OrgNotice {
   /**
    * Whether the notice closes the trail, as published, and NOT whether it
    * does today: conditions/notices.json carries it true for a closure whose
-   * own start is still ahead (P3, the maintainer's frame B, 2026-10-11).
+   * own start is still ahead (the maintainer's frame B, 2026-10-11).
    * Read it through lib/noticeCurrency.ts's `obstructsOn`, which holds it
    * back until the day before `starts_on`, so no surface calls a closure in
    * force that another calls upcoming.
@@ -474,7 +474,7 @@ export interface OrgNotice {
   source_url: string | null
   review_state: 'reviewed' | 'unreviewed'
 
-  // ---- conditions/notices.json only (#1805, decision 53 phase D). Absent on
+  // ---- conditions/notices.json only (#1805). Absent on
   // the two older files' rows, and every reader treats absent as unknown.
 
   /** The extract folder that landed it, `trail_orgs.json`'s slug. */
@@ -487,7 +487,7 @@ export interface OrgNotice {
    *  notice to a planned hike only where it is placed; null or absent keeps
    *  the older rule, which matches it by provider. */
   steward_kind?: 'club' | 'agency' | null
-  /** Decision 76: the two-letter codes of the states an agency's state-wide
+  /** The two-letter codes of the states an agency's state-wide
    *  notice speaks for (pipeline/dbt/seeds/notice_states.csv), absent on
    *  every other row. */
   states?: string[]
@@ -496,7 +496,7 @@ export interface OrgNotice {
    *  state with no shape this phone holds is left out, so its notice shows
    *  to no hike there (lib/plannedNotices.ts). */
   state_areas?: NoticeStateArea[]
-  /** Decision 67's kind of area, or null for an ordinary notice. */
+  /** The kind of hazard area, or null for an ordinary notice. */
   hazard?: NoticeHazard | null
   /** The notice's own start and end days, ISO, where the club states them:
    *  the UTC day of the source's own instant (pipeline/dbt's
@@ -516,13 +516,13 @@ export interface OrgNotice {
    * as it always did.
    */
   current_until?: string | null
-  /** True on standing closed land (decision 213, rule 14): land its steward
+  /** True on standing closed land: land its steward
    *  serves as closed on every read, stating no date of any kind, which the
    *  pipeline gives no `current_until` (pipeline/dbt's
-   *  int_closures__club_notices, rule 7). lib/noticeCurrency.ts's
+   *  int_closures__club_notices). lib/noticeCurrency.ts's
    *  `standingLine` is what a hiker reads under it. Absent on every other row. */
   standing?: boolean
-  /** Decision 213, rule 21: the agency that issued an order its publisher
+  /** The agency that issued an order its publisher
    *  compiles ('Bureau of Land Management' on a Utah FFSL row), from the
    *  row's own issuer field (pipeline/dbt/seeds/notice_issuers.csv). The
    *  sheet reads "<issuer> order, via <publisher>". Absent on every other
@@ -531,8 +531,8 @@ export interface OrgNotice {
   /** When OurHike last read the source and found this, ISO UTC: the run
    *  log's latest read that loaded it or found it unchanged. */
   checked_at?: string | null
-  /** When OurHike first saw the row, and when it last changed (decisions 52
-   *  and 57); null in a build without its row history. */
+  /** When OurHike first saw the row, and when it last changed (the mart's
+   *  row dates); null in a build without its row history. */
   first_seen_at?: string | null
   changed_at?: string | null
   /** Set when OurHike could not use the source's latest read and kept its
@@ -541,10 +541,10 @@ export interface OrgNotice {
 }
 
 /**
- * How a club closure is drawn on the map (the maintainer's standard S6, poll
+ * How a club closure is drawn on the map (the maintainer's closure-map standard, poll
  * of 2026-10-11): crossed out along its own line, crossed out along the trail
  * stretches the pipeline cut inside its area, or one cross at its point, and
- * one at each point of a MultiPoint. And `shade` (decision 191, the
+ * one at each point of a MultiPoint. And `shade` (the
  * maintainer's poll of 2026-10-14, "Shade them, no edge"): an area no mapped
  * trail runs inside, its own Polygon or MultiPolygon drawn as a light hatch
  * with no mark on its edge, so an open trail along the edge never reads as

@@ -2,8 +2,8 @@
 // thread 4279229785 of the collaborator's review of #1805 — dlt → dbt
 // re-platform as one go/no-go change.
 //
-// WHAT THE FRAME HAS TO SHOW: one small ✕ per club closure, thinned (Q22 of
-// the same pull request: the maintainer's variant A, "small ✕, thinned",
+// WHAT THE FRAME HAS TO SHOW: one small ✕ per club closure, thinned (the
+// maintainer's variant A, "small ✕, thinned",
 // 2026-10-15, from q22_frames.html). At z5 and z6 each closure gets the
 // chain's own cross, about 7.2 px of ink, in the closure ink on a paper ring,
 // at one point on it (map/clubClosureLayers.ts's buildClubClosureFarLayer);
@@ -45,7 +45,7 @@ import { openMapAt } from './fixtures/regionCamera.mjs'
 export const camera = { center: [-120.8, 47.5], zoom: 6 }
 
 export const caption =
-  'North-central Washington at zoom 6, over UA’s real club closures (Q22, variant A): each closure gets one small black ✕ on a white ring, and where closures crowd the ✕s are thinned so they never pile up, so the fire closures over the Cascades read as a scatter of ✕s, not as the black-and-white smudges of before. A tap on a ✕ opens that closure’s sheet. The drive waits for conditions/trail_closures.json, so a frame with no ✕s means the file did not load. From zoom 7 the ✕s give way to the bold ✕ and the point crosses.'
+  'North-central Washington at zoom 6, over UA’s real club closures (variant A): each closure gets one small black ✕ on a white ring, and where closures crowd the ✕s are thinned so they never pile up, so the fire closures over the Cascades read as a scatter of ✕s, not as the black-and-white smudges of before. A tap on a ✕ opens that closure’s sheet. The drive waits for conditions/trail_closures.json, so a frame with no ✕s means the file did not load. From zoom 7 the ✕s give way to the bold ✕ and the point crosses.'
 
 export const alt =
   'The map screen over north-central Washington at zoom 6: the trail network as thin red lines over the Cascades and the Columbia Basin, with small black ✕ marks on white rings scattered over the mountains, spaced apart so none touch.'

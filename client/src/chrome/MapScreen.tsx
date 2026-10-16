@@ -270,7 +270,7 @@ export interface MapScreenProps {
    *  whose notice a band belongs to. */
   atcUpdateSheet?: ReactNode
   /**
-   * Decision 67's hunting areas, shooting sites and burned areas a trail on
+   * The hunting areas, shooting sites and burned areas a trail on
    * this phone runs through (#1805, lib/hazardAreas.ts). Drawn under the
    * trail and never as a closure.
    */
@@ -281,7 +281,7 @@ export interface MapScreenProps {
   hazardAreaSheet?: ReactNode
   /**
    * Every club closure that closes the trail today, from
-   * conditions/trail_closures.json (the maintainer's S6, 2026-10-11),
+   * conditions/trail_closures.json (the maintainer's closure-map standard, 2026-10-11),
    * crossed out on the map (map/clubClosureLayers.ts).
    */
   clubClosures?: readonly TrailClosure[]
@@ -423,8 +423,8 @@ export interface MapScreenProps {
   /** The full list of notices, or null when it is closed. */
   noticeList?: ReactNode
   /**
-   * The Legend row's words when the list is the planned-hike panel (#1805,
-   * decision 66), or undefined for today's "Read all N trail notices".
+   * The Legend row's words when the list is the planned-hike panel (#1805),
+   * or undefined for today's "Read all N trail notices".
    *
    * Set, the row shows whatever `noticeCount` says - zero included - because
    * the panel's honest empty state ("no hike planned in the next 7 days") is
@@ -432,8 +432,8 @@ export interface MapScreenProps {
    */
   noticeRowLabel?: string
   /**
-   * The "Read all" door beside the planned-hike row (decision 213, the
-   * maintainer's Q20, 2026-10-15): its words, or undefined for no door, and
+   * The "Read all" door beside the planned-hike row (the
+   * maintainer's poll of 2026-10-15): its words, or undefined for no door, and
    * what a tap does. Every club's notices that no map draws, planned or not
    * (chrome/noticesPanel.tsx says which).
    */
@@ -1847,13 +1847,13 @@ export function MapScreen({
                 this is about a stretch of trail, so it sits where the search
                 sheet does and needs none of that. */}
             {atcUpdateSheet}
-            {/* Decision 67's area card (#1805), in the same slot: an area
+            {/* The hazard area card (#1805), in the same slot: an area
                 anchors to no single point on the canvas either. */}
             {hazardAreaSheet}
             {/* The two safety sheets (#1373, F12), in the same slot family:
                 a stretch of tape and a pin, neither anchored to a card. */}
             {closureSheet}
-            {/* A club closure's sheet (the maintainer's S6), beside the
+            {/* A club closure's sheet (the maintainer's closure-map standard), beside the
                 tape's: the same mark, from a club's own notice. */}
             {clubClosureSheet}
             {warningSheet}

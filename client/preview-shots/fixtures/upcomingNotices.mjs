@@ -1,4 +1,4 @@
-// Fixtures for planned-hike-notices-upcoming.mjs (P3, the maintainer's frame
+// Fixtures for planned-hike-notices-upcoming.mjs (the maintainer's frame
 // B, poll of 2026-10-11): one invented day hike planned four days from today,
 // and a conditions/notices.json holding four invented notices on its route -
 // a closure in force, a closure starting tomorrow, an ordinary notice, and a

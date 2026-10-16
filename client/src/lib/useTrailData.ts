@@ -581,7 +581,7 @@ export function useTrailData(
     const controller = new AbortController()
     let wanted = true
 
-    // The pointer (decision 44, channels.json), read here because this is
+    // The pointer (channels.json), read here because this is
     // the check that runs on launch when online. What it names is this
     // phone's release from the NEXT launch, never this one (lib/dataRelease.ts
     // says why), so nothing below waits on it. It never rejects; the import

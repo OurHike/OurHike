@@ -1,7 +1,7 @@
 // A hand-made conditions/trail_closures.json for club-closures-on-the-map.mjs
 // and for the client's tests (src/lib/publishedNotices.trailClosures.test.ts
 // holds every row here to the reader), written to the file's contract before
-// any pipeline wrote one (the maintainer's S6, 2026-10-11):
+// any pipeline wrote one (the maintainer's closure-map standard, 2026-10-11):
 //
 //   { "generated_at": "...", "closures": [row, ...] }
 //
@@ -11,7 +11,7 @@
 // own LineString or MultiLineString), "area" (a MultiLineString of the trail
 // stretches the pipeline cut inside the area), "point" (a Point, or a
 // MultiPoint, which pipeline/dbt writes as "point" too and the map crosses at
-// each of its points), or "shade" (decision 191, 2026-10-14: the Polygon of
+// each of its points), or "shade" (2026-10-14: the Polygon of
 // an area no mapped trail runs inside, which the map hatches).
 //
 // FIVE CLOSURES, ONE OF EACH KIND THE STANDARD DRAWS: a line, an area's cut
@@ -20,10 +20,10 @@
 // apply."), which the map draws with the same full mark - the maintainer's
 // "B: same mark" - and an area with no trail inside, shaded.
 //
-// NO A.T. UNDER ANY OF THEM. Decision 192 crosses out the A.T. like any trail
-// inside a club's area, and the pipeline cuts its stretch into the area's
+// NO A.T. UNDER ANY OF THEM. A club's area closure crosses out the A.T. like
+// any trail inside it, and the pipeline cuts its stretch into the area's
 // MultiLineString beside the others, so in this file it would be one more
-// stretch, drawn the same. What would show the decision is the mark lying
+// stretch, drawn the same. What would show that is the mark lying
 // over the A.T.'s own red line, and the phone draws that line from the
 // release's trails.geojson, which lib/trailData.ts holds to the hash its
 // manifest names (and takes unchecked where the manifest names none). So an
@@ -189,7 +189,7 @@ export function trailClosureRows() {
       }),
       shape: 'line',
     }),
-    // An area closure no mapped trail runs inside (decision 191, "Shade
+    // An area closure no mapped trail runs inside ("Shade
     // them, no edge"): a preserve's closed lands, drawn as the area itself,
     // hatched, with nothing on its edge, below the park's stretches.
     shade: row({
@@ -223,7 +223,7 @@ export function trailClosureRows() {
 /**
  * A sixth closure, for club-closures-on-the-map.mjs alone: a 41 m washout,
  * too short for the chain of crosses at the recipe's z13 (5.5 px, where the
- * chain needs 9.33), so it shows decision 198's bold ✕ (the maintainer's poll
+ * chain needs 9.33), so it shows the bold ✕ (the maintainer's poll
  * of 2026-10-15, "B: bold ✕ until chain fits"). Before it, a run this short
  * drew as a white stub with a grey dot or two and no ✕. Kept out of
  * trailClosureRows(), which every client test of the file reads in full: the

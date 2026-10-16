@@ -145,7 +145,7 @@ import {
 import { CAMERA_ZOOM_TILE_OFFSET } from '../lib/archiveCoverage'
 
 /** The one point cross in the style: the clubs' feed alone carries points
- *  (the maintainer's S6, map/clubClosureLayers.ts). */
+ *  (the maintainer's closure-map standard, map/clubClosureLayers.ts). */
 const CLUB_CLOSURE_POINT_LAYER_ID = closurePointId(CLUB_CLOSURE_LAYER_ID)
 import {
   NEARBY_TRAIL_LABEL_LAYER_ID,
@@ -518,8 +518,8 @@ describe('buildMapStyle', () => {
     // And nothing else in the style places the cross along a line, so the
     // sweep above is over the whole set rather than the four it knows. The
     // clubs' feed adds one cross per point closure, right after its mark
-    // (the maintainer's S6), and one small ✕ per closure at z5 and z6 right
-    // after that (Q22).
+    // (the maintainer's closure-map standard), and one small ✕ per closure at z5 and z6 right
+    // after that.
     const chains = style()
       .layers.filter(
         (l) =>
@@ -543,7 +543,7 @@ describe('buildMapStyle', () => {
     )
   })
 
-  it('crosses a club\u2019s closure out over the A.T.\u2019s own line, which a club\u2019s area now closes like any trail (decision 192)', () => {
+  it('crosses a club\u2019s closure out over the A.T.\u2019s own line, which a club\u2019s area now closes like any trail', () => {
     // The pipeline cuts the A.T.'s stretch inside a club's area with the
     // rest (prepare_closure_trail_lines.py), and the mark has to be drawn
     // over the line it closes, or the A.T. would read open through it.
@@ -562,7 +562,7 @@ describe('buildMapStyle', () => {
     }
   })
 
-  it('shades a club\u2019s area with no trail inside under every trail line, mark and pin, over the hazard areas (decision 191)', () => {
+  it('shades a club\u2019s area with no trail inside under every trail line, mark and pin, over the hazard areas', () => {
     // "Shade them, no edge": a trail along or just inside the area is drawn
     // over the hatch whole, and nothing that says closed or warns is ever
     // under it. Over the hazard areas' three layers, the weaker claim.

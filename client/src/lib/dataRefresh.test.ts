@@ -270,7 +270,7 @@ describe('reading the connection', () => {
   })
 })
 
-// Decision 44: which release a session reads is the pointer's, or the compiled
+// Which release a session reads is the pointer's, or the compiled
 // fallback where this phone has no pointer record (lib/dataRelease.ts).
 describe('a session reading the compiled fallback', () => {
   const held = { 'poi_water.geojson': 'aaa' }
@@ -298,9 +298,9 @@ describe('a session reading the compiled fallback', () => {
 
   it('offers what it always offered over data the compiled pin brought', () => {
     const fromPin = { ...stored('v1', held), fromPointer: false }
-    const writtenBeforeDecision44 = stored('v1', held)
+    const writtenBeforeThePointer = stored('v1', held)
     expect(availableRefresh(fromPin, newer, onFallback)?.version).toBe('v2')
-    expect(availableRefresh(writtenBeforeDecision44, newer, onFallback)?.version).toBe(
+    expect(availableRefresh(writtenBeforeThePointer, newer, onFallback)?.version).toBe(
       'v2',
     )
   })
@@ -349,7 +349,7 @@ describe('a move to a release minted before the one held', () => {
     expect(older('2026-09-24-10', '2026-09-24-2')).toBe(true)
   })
 
-  it('does not mark older a record from before decision 44, which names no release', () => {
+  it('does not mark older a record from before the pointer, which names no release', () => {
     const offer = availableRefresh(stored('v1', held), moved, following('2026-01-01'))
     expect(offer?.older).toBe(false)
   })
@@ -387,7 +387,7 @@ describe('what a finished download records', () => {
     })
   })
 
-  it('reads back a record written before decision 44, which carries neither stamp', async () => {
+  it('reads back a record written before the pointer, which carries neither stamp', async () => {
     idb.store.set(RELEASE_KEY, {
       version: 'v1',
       hashes: { 'trails.geojson': 'aaa' },

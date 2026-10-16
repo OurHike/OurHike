@@ -1,6 +1,5 @@
 // docs.ourhike.org/data/quality/'s Show menu open on a laptop, drawn from the
-// INVENTED many-problems files in site/src/lib/dataQualityExamples.mjs
-// (pipeline/ELT.md decision 102).
+// INVENTED many-problems files in site/src/lib/dataQualityExamples.mjs.
 //
 // WHAT CHANGED, AND IS IN THIS FRAME. The review of #1805 (2026-10-15, thread
 // 4279330043): UA's hourly file put 127 options under one "Needs a look"
@@ -8,7 +7,7 @@
 // order of the five kinds of check - "Needs a look · Volume", then
 // "Needs a look · Anomalies" here, the two kinds with a history in these
 // files - and "Every finished table" stays last. Freshness has no group: a
-// source's freshness has no history to chart since decision 203.
+// source's freshness is our last read of it, which has no history to chart.
 //
 // WHY A RECIPE OF ITS OWN. Every other frame shows the menu closed, and a
 // closed menu shows one option. The list is drawn in the site's own type on

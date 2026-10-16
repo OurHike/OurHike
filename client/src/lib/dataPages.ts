@@ -1,5 +1,5 @@
-// The site's two pages about OurHike's data, linked from the app (Q24 of
-// #1805 — dlt → dbt re-platform as one go/no-go change: the maintainer chose
+// The site's two pages about OurHike's data, linked from the app
+// (#1805 — dlt → dbt re-platform as one go/no-go change: the maintainer chose
 // "All three as drawn", 2026-10-15). Before this the app had no way to them,
 // and on the site the only one was the footer, at 94% of the way down a
 // phone's home page (q24_frames.html, measured 2026-10-15).

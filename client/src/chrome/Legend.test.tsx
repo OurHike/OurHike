@@ -1099,7 +1099,7 @@ describe('the way to every ATC notice (#687)', () => {
     expect(onOpenNotices).toHaveBeenCalledTimes(1)
   })
 
-  it('draws the "Read all" door right after the planned-hike row, and reports its tap (decision 213’s Q20)', async () => {
+  it('draws the "Read all" door right after the planned-hike row, and reports its tap', async () => {
     const onReadAllNotices = vi.fn()
     render(
       <Legend

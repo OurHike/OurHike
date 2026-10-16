@@ -1,5 +1,5 @@
-// Whether a line a hiker will walk meets a place a notice names (#1805,
-// decision 66 and 67).
+// Whether a line a hiker will walk meets a place a notice names (#1805):
+// the planned-hike panel and the hazard areas.
 //
 // Two questions in this app turn on it, and both are asked of geometry the
 // phone already holds rather than of anything a server answers:
@@ -311,7 +311,7 @@ export function linesMeetParts(
 
   // ONLY WHAT IS NEAR THE ROUTE IS MEASURED. A shape can be a state's worth
   // of polygons - Utah FFSL's fire-restriction order 19 is 899 polygons and
-  // 53,358 vertices after decision 77's shaping, its box all of Utah - and
+  // 53,358 vertices after the phone shaping, its box all of Utah - and
   // measuring every piece of a hike against every edge of it took 1.5 to
   // 1.8 s per call on the main thread (measured 2026-10-05 in vitest here,
   // a sandbox and not a phone). So a polygon is tested for containment only
@@ -398,7 +398,7 @@ export function linesMeetGeometry(
 
 /**
  * Whether a place is inside one of a geometry's polygons AND farther than
- * `marginMetres` from every edge of it - decision 76's question of a state's
+ * `marginMetres` from every edge of it - the state-wide notice rule's question of a state's
  * simplified shape (lib/plannedNotices.ts). A place near an edge answers no,
  * on purpose: the shape is a simplification, and near its edge it cannot
  * tell one state from the next.

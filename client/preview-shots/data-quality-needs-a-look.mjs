@@ -1,6 +1,6 @@
 // docs.ourhike.org/data/quality/'s "Needs a look" on a laptop, on a bad day:
 // drawn from the INVENTED many-problems files in
-// site/src/lib/dataQualityExamples.mjs (pipeline/ELT.md decision 102).
+// site/src/lib/dataQualityExamples.mjs.
 //
 // WHAT CHANGED, AND IS IN THIS FRAME. The maintainer's round-3 choice by
 // poll on 2026-10-08: every check that failed or could not run is listed in

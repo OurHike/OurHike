@@ -1,5 +1,4 @@
-// Fixtures for planned-hike-notices.mjs (#1805, decisions 66, 67, 76 and
-// 78): a long hike and two day hikes planned in the next 7 days, a
+// Fixtures for planned-hike-notices.mjs (#1805): a long hike and two day hikes planned in the next 7 days, a
 // conditions/notices.json holding notices that touch them and notices that do
 // not, the conditions/notice_states.json a state-wide notice is placed by, and
 // the steward list that names each organization.
@@ -22,9 +21,9 @@
 //    loop walks the Long Path NYNJTC maintains;
 //  - an invented day hike on BLM's trails in Utah (Canyon rim loop, today)
 //    with an invented Forest Service campground on its line, whose category
-//    "closed" reads "Closed" under its title (decision 78), and BLM's
-//    invented state-wide Utah notice, its where line reading "All of Utah"
-//    (decision 76): an agency's unplaced notice placed by its state;
+//    "closed" reads "Closed" under its title, and BLM's
+//    invented state-wide Utah notice, its where line reading "All of Utah":
+// an agency's unplaced notice placed by its state;
 //  - and NOT the far club's notice or the shooting site 2 degrees away: a
 //    notice that touches no planned hike is not in the panel.
 //
@@ -229,7 +228,7 @@ export function noticesDocument() {
         source_url:
           'https://www.blm.gov/programs/fire/regional-info/utah/fire-restrictions',
       }),
-      // Decision 78's row (card N2, frame A): a recreation site whose
+      // A row showing its source's own category: a recreation site whose
       // category is USFS's own `openstatus`, lower-case as the layer sends
       // it, which the panel shows as "Closed" under the title. The site is
       // invented and sits on the Canyon rim loop's line, the midpoint of its

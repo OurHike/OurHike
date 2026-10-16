@@ -1,10 +1,9 @@
-// The card over a tapped hunting area, shooting site or burned area (#1805,
-// decision 67).
+// The card over a tapped hunting area, shooting site or burned area (#1805).
 //
-// The mock the maintainer chose (decisions-64-67-mock.html §4, option A):
+// The mock the maintainer chose (the hazard-area mock's §4, option A):
 // the kind of area as the heading, an Advisory tag, one or two sentences of
 // what to do, and that the trail stays open - about the area, the thing the
-// hiker tapped (`areaBody`, decision 99), where a tapped stretch's sheet says
+// hiker tapped (`areaBody`), where a tapped stretch's sheet says
 // "This stretch…" (`body`). Then who published the area, its own
 // dates where it gives them, and its page. Never "closed": an area a hiker
 // walks into is not a closure, and lib/hazardAreas.ts says why that line is

@@ -1,4 +1,4 @@
-// Putting decision 67's hazard areas on the map (#1805): the source, the
+// Putting the hazard areas on the map (#1805): the source, the
 // layers, and the two imperative pokes the shell makes at a live map.
 //
 // The drawing is the one the maintainer chose (decisions-64-67-mock.html §4,
@@ -104,7 +104,7 @@ export function hazardTapBox(point: { x: number; y: number }): [PointLike, Point
  * point layer alone, in the touch-target box.
  *
  * A DOT IS A MARK, NOT AN AREA, so it wins the touch over every area it sits
- * in - a hazard area, and a club's shaded closure (decision 191), which
+ * in - a hazard area, and a club's shaded closure, which
  * yields to marks (map/clubClosureTaps.ts). map/hazardAreaTaps.ts asks this
  * before it yields to the shade, and map/clubClosureTaps.ts asks it before
  * the shade answers. Before both did, a site inside a shaded closure could

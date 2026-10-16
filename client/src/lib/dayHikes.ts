@@ -310,7 +310,7 @@ export const EMPTY_DAY_HIKES: DayHikeStore = { hikes: [], openId: null }
 /**
  * Whether the hiker has any hike planned: a day hike laid out as a plan, or a
  * long hike that is not a recorded walk, dated or not. The one home of that
- * rule (#1805, decision 77): lib/plannedNotices.ts's `nothing_planned` is
+ * rule (#1805): lib/plannedNotices.ts's `nothing_planned` is
  * exactly its negation, lib/useConditions.ts downloads conditions/notices.json
  * only while it is true, and chrome/noticesPanel.tsx keeps the planned-hike
  * panel without that file only while it is false. Here, beside the store the

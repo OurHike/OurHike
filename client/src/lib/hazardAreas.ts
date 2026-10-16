@@ -1,4 +1,4 @@
-// Hunting areas, shooting sites and burned areas (#1805, decision 67).
+// Hunting areas, shooting sites and burned areas (#1805).
 //
 // The maintainer, by poll on 2026-10-04 from decisions-64-67-mock.html §4:
 // "A warning where a downloaded trail crosses one" - the area is drawn, the
@@ -63,7 +63,7 @@ export interface HazardAdvisory {
   body: string
   /** On the area's own card (chrome/HazardAreaSheet.tsx), which the hiker
    *  opened by tapping the area, not a trail: the same advice about the area.
-   *  Decision 99 (poll, 2026-10-07, option A of hazard_card_wording.html):
+   *  The maintainer's poll of 2026-10-07 (option A of hazard_card_wording.html):
    *  the card used to print `body`, "This stretch crosses…", about a stretch
    *  nobody tapped. */
   areaBody: string
@@ -76,7 +76,8 @@ export interface StretchAdvisory extends HazardAdvisory {
   /** lib/noticeCurrency.ts's line when the area's own notice no longer reads
    *  as current on the phone's day, so the stretch's card greys the advisory
    *  as the area's card would; null or absent while it reads as current.
-   *  Null for every area a build publishes while decision 156 stands: no
+   *  Null for every area a build publishes: a hazard area stays current while
+   *  its layer serves it, so no
    *  hazard row carries `current_until` (chrome/HazardAreaSheet.tsx's
    *  header says why). */
   notCurrent?: string | null

@@ -1,4 +1,4 @@
-// Every club closure on the map (the maintainer's S6, poll of 2026-10-11),
+// Every club closure on the map (the maintainer's closure-map standard, poll of 2026-10-11),
 // as the map draws it and as a touch reaches it: the layers, the filters as
 // MapLibre's own tiler hands them features, the source the closures land in,
 // and the one-touch-one-sheet order every handler keeps around them.
@@ -158,7 +158,7 @@ beforeEach(() => {
 })
 
 describe('how a club closure is drawn', () => {
-  it('crosses a line closure out with exactly the mark every closure feed wears, but for its zooms and how long its far mark stays (decision 198)', () => {
+  it('crosses a line closure out with exactly the mark every closure feed wears, but for its zooms and how long its far mark stays', () => {
     // "Only the id, the source, the filter and the spacing may differ, and
     // the zooms a feed starts or stops at ... and, on the clubs' feed alone,
     // how long the far mark stays" (lib/closureStyle.ts): held as equality
@@ -225,7 +225,7 @@ describe('how a club closure is drawn', () => {
     expect(drawnBy(CLUB_CLOSURE_LINE_FILTER)).toEqual([line.notice_id, area.notice_id])
     expect(drawnBy(CLUB_CLOSURE_POINT_FILTER)).toEqual([point.notice_id])
     // And the source the style declares is there before any closure lands,
-    // keeping every line however short (decision 198).
+    // keeping every line however short.
     expect(buildClubClosureSource()).toEqual({
       type: 'geojson',
       data: { type: 'FeatureCollection', features: [] },
@@ -263,7 +263,7 @@ describe('how a club closure is drawn', () => {
     expect(drawnBy(CLUB_CLOSURE_SHADE_FILTER)).toEqual([])
   })
 
-  it('shades an area no trail runs inside on the hatch layer alone, never along the crossed-out mark (decision 191)', () => {
+  it('shades an area no trail runs inside on the hatch layer alone, never along the crossed-out mark', () => {
     // "Shade them, no edge": the polygon must reach the fill and nothing
     // that draws a line, or its edge would read as a closed trail.
     const { line, shade } = closures()
@@ -333,7 +333,7 @@ describe('how a club closure is drawn', () => {
       [closureMarkId(CLUB_CLOSURE_LAYER_ID)]: CLOSURE_MARK_MIN_ZOOM,
       [POINT_LAYER_ID]: CLOSURE_MARK_MIN_ZOOM,
     })
-    // And none stops: the far mark stays as decision 198 set it.
+    // And none stops: the far mark stays on, as set for short closures.
     expect(club.map((each) => each.maxzoom)).toEqual(club.map(() => undefined))
   })
 
@@ -383,7 +383,7 @@ describe('how a club closure is drawn', () => {
     // paint expression reading something off the feature; there is none, and
     // the only opacity anywhere is the trace's constant, the same on every
     // closure feed. The one property a layer reads is the far mark's handover
-    // zoom (decision 198), and it is worked out from the line alone, so the
+    // zoom, and it is worked out from the line alone, so the
     // greyed closure and the same line with every date given carry the same.
     const built = JSON.stringify(buildClubClosureLayers(GROUND, INK))
     expect(new Set(built.match(/\["get","[^"]*"\]/g))).toEqual(
@@ -435,7 +435,7 @@ describe('how a club closure is drawn', () => {
   })
 })
 
-describe('a closure too short for the chain keeps the bold ✕ (decision 198)', () => {
+describe('a closure too short for the chain keeps the bold ✕', () => {
   // Finding F1 of the client review of #1805 — dlt → dbt re-platform as one
   // go/no-go change: from z11 the only ✕ on a club closure was the chain,
   // which puts none on a short run, and below z11 a line under 0.375 px was
@@ -617,7 +617,7 @@ describe('putting the closures on a live map', () => {
     attachClubClosureData(map as never, [line, area, point])
 
     // A line closure and an area's stretches also carry the zoom their chain
-    // takes over (decision 198): both at CLOSURE_NEAR_MIN_ZOOM, the line 61
+    // takes over: both at CLOSURE_NEAR_MIN_ZOOM, the line 61
     // px long there and the park's longer stretch 31, each past 2.5 chain
     // crosses of 11.2 px. A point carries none.
     expect(map.sourceData.get(CLUB_CLOSURE_SOURCE_ID)).toEqual({
@@ -793,7 +793,7 @@ describe('touching a club closure', () => {
 
   const shaded = (id: string) => [{ properties: { [CLUB_CLOSURE_ID_PROPERTY]: id } }]
 
-  it('opens a shaded area’s sheet from a touch inside it, the same sheet its list row opens (decision 191)', () => {
+  it('opens a shaded area’s sheet from a touch inside it, the same sheet its list row opens', () => {
     const map = tappableMap()
     const onSelect = vi.fn()
     attachClubClosureTaps(map as unknown as MapLibreMap, onSelect)
@@ -926,7 +926,7 @@ describe('touching a club closure', () => {
 })
 
 describe('routing, which this change leaves alone', () => {
-  it('reads no club closure in any router module: a route still goes through a drawn closure (the maintainer’s Q2, 2026-10-11)', () => {
+  it('reads no club closure in any router module: a route still goes through a drawn closure (the maintainer’s poll of 2026-10-11)', () => {
     // "Build the map file now", whose option said routes still go through
     // these closures until a later change. Held here as the router's
     // modules never naming the file, its reader or its layers, so the day

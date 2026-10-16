@@ -1528,8 +1528,8 @@ function App() {
   // notices - and when something last reached the server. See
   // lib/useConditions.ts for the two tiers behind the first two.
   /**
-   * Whether the hiker has opened the legend's "Read all" door (decision 213,
-   * the maintainer's Q20 of 2026-10-15): conditions/notices.json is then
+   * Whether the hiker has opened the legend's "Read all" door (the
+   * maintainer's poll of 2026-10-15): conditions/notices.json is then
    * downloaded with no hike planned too, for the list behind it. Session-lived
    * on purpose: a later launch asks again only if the hiker does.
    */
@@ -1561,9 +1561,8 @@ function App() {
   } = useConditions(
     online,
     afterFirstFrame,
-    // Decision 77: conditions/notices.json only once a hike is planned, or
-    // once the hiker opens the legend's "Read all" door for it (decision
-    // 213's Q20, `allNoticesAsked` below).
+    // conditions/notices.json only once a hike is planned, or once the hiker
+    // opens the legend's "Read all" door for it (`allNoticesAsked` below).
     anyHikePlanned(tripStore.trips, dayHikeStore.hikes) || allNoticesAsked,
   )
 
@@ -3324,10 +3323,10 @@ function App() {
         // short form - "ATC", "NYNJTC" - which is what a line read while
         // walking needs, and it is theirs rather than an abbreviation this app
         // invented.
-        // Decision 157: the header ends "may no longer apply" whenever the
+        // The header ends "may no longer apply" whenever the
         // notice's row in conditions/notices.json has gone grey on this
         // phone's day, so it never reads at full voice what the planned-hike
-        // list greys. Without that file (decision 77: nothing planned) there
+        // list greys. Without that file (nothing planned) there
         // is no verdict, and the line reads as before.
         const row = clubNotices?.find(
           (notice) => notice.notice_id === atcBandId(atc.update),
@@ -3501,7 +3500,7 @@ function App() {
     trailIndex,
     bbox,
     now,
-    // Decision 66's panel and decision 67's areas (#1805), from
+    // The planned-hike panel and the hazard areas (#1805), from
     // conditions/notices.json when it has reached this phone: the hikes it
     // picks notices for, and the trails it checks an area against. The graph
     // with its vertices where the builder has pulled them, else the topology
@@ -3513,10 +3512,10 @@ function App() {
     // notices.json this phone does not hold says so on the legend row and
     // at the top of the list.
     clubNoticesMissing,
-    // Decision 84: the hazard areas from their own file, read whatever is
+    // The hazard areas from their own file, read whatever is
     // planned, so a phone with no hike planned still draws them.
     hazardFile,
-    // The maintainer's S6 (2026-10-11): every club closure, crossed out on
+    // The closure-map standard (2026-10-11): every club closure, crossed out on
     // the map from its own file, whatever is planned.
     closureFile,
     trips: tripStore.trips,
@@ -3769,7 +3768,7 @@ function App() {
   }, [])
 
   const line = useTappedLinePanel({
-    // Decision 67's drawn areas (#1805), whose advisory the card prints on
+    // The drawn hazard areas (#1805), whose advisory the card prints on
     // the stretch inside one.
     hazardAdvisoriesAt: atc.hazardAdvisoriesAt,
     spurs,

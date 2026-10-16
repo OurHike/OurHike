@@ -288,7 +288,7 @@ export const LineSheet = screen(
   () => import('../chrome/LineSheet').then((m) => m.LineSheet),
   'LineSheet',
 )
-// Decision 66's planned-hike panel and decision 67's area card (#1805), each
+// The planned-hike panel and the hazard area card (#1805), each
 // opened by a tap and rendered by chrome/noticesPanel.tsx only then - so the
 // first frame parses neither, for the reason the list above them is here.
 // The A.T. band's sheet and the workday pin's joined them in the same
@@ -314,7 +314,7 @@ export const WorkdaySheet = screen(
   () => import('../chrome/WorkdaySheet').then((m) => m.WorkdaySheet),
   'WorkdaySheet',
 )
-// A club closure's sheet (the maintainer's S6, 2026-10-11), opened only by a
+// A club closure's sheet (the maintainer's closure-map standard, 2026-10-11), opened only by a
 // tap on its mark, for the reason the two above are deferred.
 export const ClubClosureSheet = screen(
   () => import('../chrome/ClubClosureSheet').then((m) => m.ClubClosureSheet),

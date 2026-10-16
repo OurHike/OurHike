@@ -1,4 +1,4 @@
-// Decision 31's map shot for the `us_and_territories` region box, its South
+// The map shot for the `us_and_territories` region box, its South
 // Pacific part: American Samoa, at zoom 6.5 (fixtures/regionCamera.mjs says
 // what the set is for; map-region-territories-marianas.mjs what the box holds).
 //

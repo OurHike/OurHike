@@ -1,5 +1,5 @@
 // Which club closures the map crosses out, and the sheet a tap on one opens
-// (the maintainer's S6, poll of 2026-10-11): every closure in
+// (the maintainer's closure-map standard, poll of 2026-10-11): every closure in
 // conditions/trail_closures.json that closes the trail on the phone's own
 // day - from the day before its own start - greyed in the list or not, and
 // its own row of the planned-hike list in a sheet.

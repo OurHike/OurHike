@@ -7,8 +7,8 @@
 // interpolations are escaped unless they are themselves `html` output, so a
 // table name from the file cannot become markup by somebody forgetting to
 // escape it. Names come from a build, not a person, but the page is on the
-// app's origin, where a signed-in hiker's session is kept (pipeline/ELT.md
-// decision 93), so it is held to the rule anyway.
+// app's origin, where a signed-in hiker's session is kept (the security review of
+// #1805), so it is held to the rule anyway.
 //
 // The chart is drawn at the pixel width it is given, not scaled from a fixed
 // viewBox: mock B's 960-wide drawing shrunk onto a 390 px phone set its 12 px
@@ -294,7 +294,7 @@ ${s.lastPosts.length ? renderLastPosts(s.lastPosts) : ""}`.text;
 }
 
 /**
- * Each source's last post (decision 213's rule 23, the maintainer's poll of
+ * Each source's last post (the maintainer's poll of
  * 2026-10-15: "Not now, show last post"): the newest edit date each published
  * source's own layer states, as information. No status, icon or colour, and
  * no warning for a long gap: how often a source posts is not checked here.

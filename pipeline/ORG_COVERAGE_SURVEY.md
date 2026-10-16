@@ -8,68 +8,46 @@ orgs' trail data came from) and [../features/ORG_BULK_LOAD.md](../features/ORG_B
 
 **The row-level data was `reference/org_coverage.json`:** one row per organisation × data
 type, 2,670 rows, each with its status, evidence, grade and note. This file is the narrative over
-it. Neither file decides anything. Phase 1 of **#1793 — Rebuild the data platform as dlt → dbt:
-seven contracted marts, a monthly refresh, published docs, and lighter phone downloads** wrote the
-`pipeline/extract/<club>/` files from the JSON. Decision 88 (`pipeline/ELT.md`, 2026-10-06) then
-retired the JSON and moved every note into one file,
-[`extract/not_available.toml`](extract/not_available.toml), which is now the one home of what
-each managing club does not publish; a club's resource files stay in its folder. git keeps the
-JSON: `git show bcc70dd0:pipeline/reference/org_coverage.json`, which is what a citation of it
-below means.
+it. Neither file decides anything. The first extract files of **#1793 — Rebuild the data
+platform as dlt → dbt: seven contracted marts, a monthly refresh, published docs, and lighter
+phone downloads** were written from the JSON; the JSON was then retired, and
+[`extract/not_available.toml`](extract/not_available.toml) is now the one home of what each
+managing org does not publish. git keeps the JSON: `git show
+bcc70dd0:pipeline/reference/org_coverage.json`, which is what a citation of it below means.
 
-Written 2026-10-01 from live probes made that day. It is kept in the tense it was written in.
+Written 2026-10-01 from live probes made that day, and kept in the tense it was written in.
 Every count is the audit's own, taken from public metadata on 2026-10-01; none was re-taken
-for this file.
+for this file. For what OurHike does with the findings now, read
+[ELT.md](ELT.md): "Who may publish" and "Rules we follow".
 
 ## What was asked
 
-The maintainer, 2026-10-01, unprompted (decision 15 in that issue's planning log): *"Part of
-this work should recheck that each org has all the potential data loaded. I think a lot of the
-orgs have data available that we haven't included yet."* Asked when, the maintainer chose
-**now, in this plan**.
+The maintainer, 2026-10-01: *"Part of this work should recheck that each org has all the
+potential data loaded. I think a lot of the orgs have data available that we haven't included
+yet."*
 
-Three decisions shape what "each org" and "all the data" mean:
+- **A census by data type.** Every org answers each of ten types: `trail_lines`,
+  `points_of_interest`, `elevation`, `closures`, `warnings`, `places`, `suggested_hikes`,
+  `podcasts`, `challenges` and `photos`. A type it does not publish becomes a dated note saying
+  when that was confirmed. Those ten types are the survey's columns.
+- **Every org, not only the registered ones.** The first pass covered the 30 providers in
+  `sources.json`; the maintainer widened it to all 173 rows of `reference/trail_orgs.json`
+  (built under **#1543 — 165 trail organizations exist and the registry knows 14, with no way
+  to load the rest that does not cost one pull request each**), to load every org and dedupe
+  after the load.
+- **The candidate trails.** `reference/trail_candidates.json` lists 153 trails of 40 miles or
+  more that the emblem catalogue does not carry. 103 have a steward who is not in
+  `trail_orgs.json`: 95 stewards, all surveyed here. The other 50 have a steward who is; §9
+  says whether that steward's survey reached each trail.
+- **Do not give up early on GIS.** GIS data is almost always published somewhere reusable, so
+  no GIS-shaped row is accepted as NOT_PUBLISHED until a fixed checklist has been worked (§2).
 
-- **Decision 12:** *"I think it would be better to have 1 folder per org. Then in each folder,
-  there should always be the same # of files, 1 for each data type being extracted. If that
-  datatype isn't available, then the file should have the note detailing when that was
-  confirmed."* So the survey is a census by data type, and a NOT_PUBLISHED row is the text of a
-  future dated note.
-- **Decision 13:** the club file set is `trail_lines`, `points_of_interest`, `elevation`,
-  `closures`, `warnings`, `places`, `suggested_hikes`, `podcasts`, `challenges` and `photos`,
-  plus `org.py`. Those ten types are the survey's columns.
-- **Decision 14:** *"we should probably add data checks to make sure each of the different
-  file types have been created."*
-
-Round 5 widened the scope part-way through. The first audit covered only the 30 providers in
-`sources.json`, and the maintainer interrupted it: *"We have more than 7 clubs now. Are you
-missing the others? We also didn't load all the clubs at your urging. We should just load ALL
-the clubs now and handle any deduplication after the extract-load."* So the survey covers all
-173 rows of `reference/trail_orgs.json`, built under **#1543 — 165 trail organizations exist
-and the registry knows 14, with no way to load the rest that does not cost one pull request
-each**.
-
-The same relayed request added the candidate trails: *"Check the 153 candidate trails in
-trail_candidates.json. Check that those haven't already ran before doing the audit."*
-`reference/trail_candidates.json` lists 153 trails of 40 miles or more that the emblem
-catalogue does not carry. 103 of them have a steward who is not in `trail_orgs.json`: 95
-stewards, all surveyed here. The other 50 have a steward who is; §9 says whether that
-steward's survey reached each trail.
-
-Round 8 came last, and it changes how every licence line below reads:
-
-- **Decision 20** (*"DEC is allowed if it is part of their GIS clearinghouse"*) and
-  **decision 22** (*"And the same goes for OPRHP"*): a NYS DEC or NYS OPRHP dataset listed in
-  the NYS GIS Clearinghouse may be published. These are maintainer decisions, not grants. The
-  items' own `licenseInfo` still says "not for distribution", and that text stays quoted beside
-  the decision.
-- **Decision 21(a):** a GIS layer an org publishes itself on a public endpoint is presumed
-  reusable with attribution (`licence_basis: public_gis`). Explicit restrictive text is still
-  extracted and staged, and goes to the maintainer as **one batched question** (§6). The
-  presumption does not reach photographs, podcast audio or page prose (Reasoned in the log,
-  not decided).
-- **Decision 21(b):** *"Make sure for all of these orgs that you dont give up to easily."* No
-  GIS-shaped row is accepted as NOT_PUBLISHED until a fixed checklist has been worked (§2).
+How every licence line below reads now: a NYS DEC or OPRHP dataset listed in the NYS GIS
+Clearinghouse may be published, by the maintainer's ruling, with its own restrictive words
+quoted beside it; and a GIS layer an org publishes itself on an anonymous public endpoint is
+presumed reusable with credit (`licence_basis: public_gis`). The presumption does not reach
+photographs, podcast audio or page prose. Explicit restrictive text was put to the maintainer
+as one batched question (§6), now answered.
 
 ---
 
@@ -122,7 +100,7 @@ What the matrix says, counted from `bcc70dd0:pipeline/reference/org_coverage.jso
 Three things the AVAILABLE column is **not**, so nobody reads it as more than it says:
 
 1. **Not licensed.** AVAILABLE means the data exists publicly. Whether OurHike may publish it
-   is the `sources` mart's `may_publish`, decided by decisions 20–22 and §6.
+   is the `sources` mart's `may_publish` (ELT.md, "Who may publish").
 2. **Not always the org's own.** 144 AVAILABLE status cells across the audit and persistence
    tables say "via" another folder: a land manager or partner publishes data about this org's
    trail (counted by pattern over the files, superseded cells included).
@@ -176,20 +154,11 @@ Three things the AVAILABLE column is **not**, so nobody reads it as more than it
   only as far as the item's own text goes. A few Measured rows rest on WebFetch's summarising
   model or a search index; their `grade_detail` says so.
 
-### Runs that were lost and redone, said plainly
+### What had only one look
 
-- **The first registered-provider run was lost to an interrupt.** The maintainer's Round 5
-  message stopped it while it covered only the 30 `sources.json` providers. It was rerun as
-  b1–b7, beside the new c-batches.
-- **Most skeptic passes were rerun after a usage limit.** The orchestrating session reports
-  that a usage limit stopped the first round of skeptic passes, and the file times agree: b1,
-  b2, b6 and c9 finished both passes before 04:30 UTC, and every other skeptic section was
-  written between 07:42 and 08:39 UTC (Reasoned from the times plus the session's
-  account). c19's survey is itself a rerun: its file says an earlier attempt fetched pages from
-  04:00 to 04:26 UTC and wrote nothing.
-- **c11 and c12 have no "## Skeptic pass" at all.** The workflow marked both batches light
-  and skipped the second agent for them. Their 49 orgs' verdicts are one agent's. c12 was also
-  left out of the persistence pass (§2), so its rows had neither second look.
+c11 (the 21 National Historic Trail orgs) and c12 (umbrellas, route-only trails and
+aggregators) had no skeptic pass, so their 49 orgs' verdicts are one agent's. c12 was also left
+out of the persistence pass (§2).
 
 ### Constraints met on the way
 
@@ -200,9 +169,6 @@ Three things the AVAILABLE column is **not**, so nobody reads it as more than it
   (Measured by six persistence batches).
 - **The NPS Data API's `DEMO_KEY` ran out within each batch** (`x-ratelimit-limit: 10`). A
   production fetch needs a registered api.data.gov key.
-- Several batch files carry an aside about the dbt version. Decisions 17 and 19 settled it as
-  dbt-oss 2.0.5 everywhere, one version, and decision 32 then moved that one version to the
-  full `dbt` 2.0.6.
 
 ### From markdown to rows
 
@@ -217,7 +183,7 @@ personal ArcGIS account name and named private individual was replaced by a desc
 
 ---
 
-## 2. The persistence pass (decision 21b)
+## 2. The persistence pass
 
 **Rows checked: 202. Rows flipped: 148 (73%).** In `bcc70dd0:pipeline/reference/org_coverage.json` 203 rows carry
 `persisted: true`, because q01's one USFS elevation verdict covers both USFS candidate-trail
@@ -278,11 +244,10 @@ loaded today).
 **What it did not check**, by its own selection rule:
 
 - **c12's 132 GIS-shaped give-up rows.** Umbrellas and route-only trails get no club folder
-  (decision 18), so no NOT_AVAILABLE note will quote them. The aggregators `osm`, `outerspatial`
+  so no NOT_AVAILABLE note will quote them. The aggregators `osm`, `outerspatial`
   and `avenza` are among them.
 - **182 elevation rows for non-agency orgs.** Clubs rarely publish a DEM and USGS 3DEP covers
-  the ground, but decision 21(b) names elevation as GIS-shaped, so these rows have not met its
-  bar.
+  the ground, but elevation is GIS-shaped, so these rows have not met the checklist's bar.
 - **No photos, podcasts, challenges or suggested_hikes row**, by design: they are not GIS.
 
 ---
@@ -311,7 +276,7 @@ loaded today).
 | `sources.json` `azgeo_arizona_trail` | Loads layer 5, the ATA's *connector* trails (228.9 mi). The trail is layer 3 (44 passages, 831.6 mi), in the Arizona Trail Association's own org, so the `steward` and the state-publication licence argument are wrong too | b7, c10 |
 | `blm_trails` | Says "no name field"; layer 7 has `ROUTE_PRMRY_NM` on 14,599 of 19,532 features. Carries no motorized exclusion: 10,224 rows are motorized, which **#1711 — Ship only hiking trails: remove NH GRANIT, and drop USFS motorized trails nationwide** applied to USFS only | b6 |
 | `usfs_trails` freshness | The ETag `"1a7709d0"` stood still while the count moved 86,329 → 86,417. It is not a change marker | b6 |
-| `dec_licence` | Says DEC's terms are "genuinely UNSTATED". True of the on-prem services; DEC's AGOL copies of the same data state restrictive terms (§6). Decision 20 now rules on them | b3 |
+| `dec_licence` | Says DEC's terms are "genuinely UNSTATED". True of the on-prem services; DEC's AGOL copies of the same data state restrictive terms (§6). The clearinghouse ruling now covers them | b3 |
 | DEC "Trailhead" layer (`dec_backcountry_features/2`) | Holds 10,644 campground infrastructure points, 37 of them trailheads. DEC's trailheads are in layer 0 | b3 |
 | `oprhp_trail_closures` | Its own item has an empty `licenseInfo`; `oprhp_licence` was read from the trails item | b4 |
 | `nyc_public_restrooms` | `dataset_id: i7jb-7jku` but `url` points at `hjae-yuav`, a different dataset | b5 |
@@ -389,7 +354,7 @@ open (b7's recommendation, Reasoned).
   **PR #1798 — Challenges: a club's list of places on its own trails, joined and tagged at
   camp, starting with the ATC's Summer Bucket List**) needs places with published POIs.
   PCTA's 2,600 Miler, NCTA's Hike 100 and the rest are completion programmes (b7).
-- **Decision 7 sends most ATC closures to `warnings`.** All 7 `Closure` rows in
+- **Most ATC closures land in `warnings`, because closures and warnings split on `obstructs_trail`.** All 7 `Closure` rows in
   `atc_updates.json` carry `obstructs_trail: false`; only 4 `Detour` rows are `true` (b1).
 - **Walls move during a day.** `northcountrytrail.org` and `tahoerimtrail.org` answered
   WordPress REST early and Cloudflare 403 hours later. A run that gets 403 must report UNKNOWN,
@@ -500,37 +465,37 @@ mistake. Each batch stopped on reading the rule.
 
 | kind | where | what it blocks |
 |---|---|---|
-| **The four `refuse` rows** | `rtc`: TrailLink terms are personal and non-commercial, consent required; RTC's own ArcGIS org (252 services) carries a "contact RTC" licence. `onda`: guidebook, GPS data and water caching behind a waiver form. `avenza`: terms forbid automated access; USFS maps frozen there since April 2026. `buckeye`: BTA's terms and its own layer's "Permission … is required before use!" | Round 5's "note now, load on permission" stands. Two copies would route around a refusal unless the steward agrees: Oregon State Parks' "Oregon Desert Trail" item and ODNR's 1,288.7-mi Buckeye Trail line. ONDA's own public `ODT Tracks` layer (28 sections, no licence) asked a different question: does the waiver govern it, or decision 21(a)? (p06). Decision 39 answered it on 2026-10-01: a club's own public ArcGIS layer counts as published whatever its website's waiver says, so `ODT Tracks` is extracted. Whether it may publish while `onda` is a `refuse` row is put to the maintainer in `pipeline/ELT.md`'s open questions. c12 recommends `_shared/rtc/` and `_shared/avenza/`, since decision 18 keeps umbrellas and aggregators out of club folders |
-| **No-automation terms** | ADK (no bots, scripts or scrapers; written permission); ATC's website terms (2025-11-21: no "systematic or automated data collection"), which cover `lib/atc_scrape.py` and rest on **#458 — Confirm with the ATC what may be republished from their Trail Updates**; WTA (Crawl-delay 60; internal use only); Save Mount Diablo; Tennessee Trails Association (robots.txt names ClaudeBot); Colorado Mountain Club (§3(e)); OuterSpatial (robots.txt disallows ClaudeBot; personal, non-commercial); COTREX app terms | Extraction waits for written permission (decision 39, 2026-10-01: no-automation terms mean ask, and the plan drafts each request). ATC's trail-updates scrape stays as today, on **#458 — Confirm with the ATC what may be republished from their Trail Updates** |
+| **The four `refuse` rows** | `rtc`: TrailLink terms are personal and non-commercial, consent required; RTC's own ArcGIS org (252 services) carries a "contact RTC" licence. `onda`: guidebook, GPS data and water caching behind a waiver form. `avenza`: terms forbid automated access; USFS maps frozen there since April 2026. `buckeye`: BTA's terms and its own layer's "Permission … is required before use!" | Round 5's "note now, load on permission" stands. Two copies would route around a refusal unless the steward agrees: Oregon State Parks' "Oregon Desert Trail" item and ODNR's 1,288.7-mi Buckeye Trail line. ONDA's own public `ODT Tracks` layer (28 sections, no licence) asked a different question: does the waiver govern it, or the GIS presumption? (p06). The maintainer answered on 2026-10-01: a club's own public ArcGIS layer counts as published whatever its website's waiver says, so `ODT Tracks` is extracted. Whether it may publish while `onda` is a `refuse` row was answered later: it stays held until ONDA agrees. c12 recommends `_shared/rtc/` and `_shared/avenza/`, since only managing orgs get club folders, which keeps umbrellas and aggregators out of club folders |
+| **No-automation terms** | ADK (no bots, scripts or scrapers; written permission); ATC's website terms (2025-11-21: no "systematic or automated data collection"), which cover `lib/atc_scrape.py` and rest on **#458 — Confirm with the ATC what may be republished from their Trail Updates**; WTA (Crawl-delay 60; internal use only); Save Mount Diablo; Tennessee Trails Association (robots.txt names ClaudeBot); Colorado Mountain Club (§3(e)); OuterSpatial (robots.txt disallows ClaudeBot; personal, non-commercial); COTREX app terms | Extraction waits for written permission (the maintainer's ruling of 2026-10-01: no-automation terms mean ask, and each request is drafted for the maintainer to send). ATC's trail-updates scrape stays as today, on **#458 — Confirm with the ATC what may be republished from their Trail Updates** |
 | **Consent or negotiated licence** | Trail Finder and Maine Trail Finder (UVTA): "may not be … redistributed by third-parties without the express written consent"; Maricopa County (written authorisation); SHTA (data request form; its public layers say "internal use"); TKO's Oregon Hikers Field Guide; Ohio to Erie (ClubExpress terms); avalanche.org | A permission ask |
 | **Walls** (Cloudflare, Akamai, Incapsula, Sucuri, SiteGround, WAFs) | `parks.ny.gov`, `floridastateparks.org`, `dem.ri.gov`, `rivcoparks.org`, `sawpa.gov`, `ksoutdoors.gov`, `mass.gov`, `dep.nj.gov`, `depdata.ct.gov`, `outdoornebraska.gov`, `coloradotrail.org`, `greenway.org`, `mountainstoseatrail.org`, `montanatrail.org`, `railtrails.vermont.gov`, `schuylkillriver.org`, `nptrail.org`, the Mountaineers, `foothillstrail.org`'s REST API, `olympicdiscoverytrail.org` (after about six requests), and several umbrellas | UNKNOWN rows (§10) |
-| **Hosts that filter by user agent** | `tnstateparks.com` refuses an identified bot and serves a Chrome UA; `www.fws.gov` does the opposite; `dec.ny.gov`, `parks.ny.gov` and `empiretrail.ny.gov` challenge a browser imitation but serve an honest UA; LSHT's ClubExpress files need a browser UA plus a session cookie; CFI's sitemap rejects some non-browser UAs | Decided 2026-10-01 (decision 39): the pipeline never imitates a browser and always sends its own honest user agent, so `tnstateparks.com` and LSHT's files hold until the org answers. The honest-UA hosts need nothing |
-| **Waiver gates** | ONDA (above; its own public ArcGIS layer is extracted under decision 39, and the waivered files are not); Greater Hells Canyon Council's Blue Mountains Trail maps and databook; Ala Kahakai Trail Association's Waikapuna land (a waiver for access, which a `places` row must carry) | Not signed |
+| **Hosts that filter by user agent** | `tnstateparks.com` refuses an identified bot and serves a Chrome UA; `www.fws.gov` does the opposite; `dec.ny.gov`, `parks.ny.gov` and `empiretrail.ny.gov` challenge a browser imitation but serve an honest UA; LSHT's ClubExpress files need a browser UA plus a session cookie; CFI's sitemap rejects some non-browser UAs | Decided 2026-10-01: the pipeline never imitates a browser and always sends its own honest user agent, so `tnstateparks.com` and LSHT's files hold until the org answers. The honest-UA hosts need nothing |
+| **Waiver gates** | ONDA (above; its own public ArcGIS layer is extracted, because an org's own public ArcGIS layer counts as published, and the waivered files are not); Greater Hells Canyon Council's Blue Mountains Trail maps and databook; Ala Kahakai Trail Association's Waikapuna land (a waiver for access, which a `places` row must carry) | Not signed |
 | **Paid apps and products** | FarOut (Foothills, STC, WVSTA, MSTA, CTF, FMST, Sheltowee), Avenza (MATC, Cohos), OutraGIS ($10 Sheltowee files), onX (Montana Trail 406), Bigfoot mapset ($20), Beartooth High Route map pack ($20), Cohos map ($16.95 / $16.99), FLTC map zips, WVSTA guidebook, LIGTC maps, Uwharrie Trailblazers map ($10), Coeur d'Alene GPS files, Trailforks (RMC) | Not bought. Republishing something a club also sells is a question to ask first |
 | **Geocaching and closed apps** | PA DCNR GeoTrail (geocaching.com terms unread), Maine GeoTour (geocaching.com login), NH State Parks on Goosechase, Millstone Valley audio tour on TravelStorys, RMFI's podcast on Spotify only | Not fetched |
 | **Members-only and social** | TEHCC post bodies; LIGTC's "Members-Only" newsletter (publicly linked); Facebook for dozens of clubs, including the only closure channel for the Tanglefoot, the Pinhoti, the GWT and the San Diego Trans-County Trail; GHCC's Instagram | Meta's terms bar automated collection (Reasoned; not re-read) |
 
 ---
 
-## 6. Explicit restrictions — one question for the maintainer
+## 6. Explicit restrictions, and how they were answered
 
-Decision 21(a) presumes public GIS reusable, and sends every layer whose own text restricts
-reuse to the maintainer as one batched question. These are all of them, from every audit and
+Public GIS is presumed reusable, and every layer whose own text restricts reuse went to the
+maintainer as one batched question. These are all of them, from every audit and
 persistence file. Each is extracted and staged; `may_publish` stays false for these rows only
 until the question is answered. Quotes are verbatim from the item's `licenseInfo`, read
 2026-10-01, unless the row says otherwise.
 
-| layer | org / row | where | the words | decision 20/22? |
+| layer | org / row | where | the words | clearinghouse ruling? |
 |---|---|---|---|---|
-| DEC Trails | nysdec | item `ab5d56644a404b41bac8d72f32017e4e` | "Data is not for distribution to third parties." | **Yes, 20** |
-| NYS State Land Assets (lean-tos, campsites, towers, vistas, parking) | nysdec | item `c756ab8f4b654789812c1b9d6d783640` | "Data may NOT be distributed outside DEC without permission … Secondary distribution of the data is not allowed." | **Yes, 20** |
-| NYS DEC Lands | nysdec | item `84b4cce8a8974c31a1c5584540f3aaae` | "Secondary Distribution of the data is not allowed." | **Yes, 20** |
-| Campsite Amenities; Forest Ranger Contact | nysdec | items `5da7d4e7aaf640c0bd0b85ddb11601af`, `9eb7c613f65240a4bb5f309622c48ded` | "Data is not for distribution to third parties." | **Yes, 20.** Ranger names and numbers are never extracted |
-| Wildlife Management Units; Wildlife Management Areas | nysdec (LIGTC warnings) | items `fb5f181f7ee440409487f86a06371972`, `0ad51574122f43e586975c96643f4287` | "Secondary Distribution of the data is not allowed." | **Yes, 20** |
+| DEC Trails | nysdec | item `ab5d56644a404b41bac8d72f32017e4e` | "Data is not for distribution to third parties." | **Yes** (DEC) |
+| NYS State Land Assets (lean-tos, campsites, towers, vistas, parking) | nysdec | item `c756ab8f4b654789812c1b9d6d783640` | "Data may NOT be distributed outside DEC without permission … Secondary distribution of the data is not allowed." | **Yes** (DEC) |
+| NYS DEC Lands | nysdec | item `84b4cce8a8974c31a1c5584540f3aaae` | "Secondary Distribution of the data is not allowed." | **Yes** (DEC) |
+| Campsite Amenities; Forest Ranger Contact | nysdec | items `5da7d4e7aaf640c0bd0b85ddb11601af`, `9eb7c613f65240a4bb5f309622c48ded` | "Data is not for distribution to third parties." | **Yes** (DEC). Ranger names and numbers are never extracted |
+| Wildlife Management Units; Wildlife Management Areas | nysdec (LIGTC warnings) | items `fb5f181f7ee440409487f86a06371972`, `0ad51574122f43e586975c96643f4287` | "Secondary Distribution of the data is not allowed." | **Yes** (DEC) |
 | Small Game Seasons | nysdec | item `2f30f0cb2be74779a6be889714ca6a95` | "Secondary Distribution of the data is not allowed." | **No.** Not found in the clearinghouse; stays under `dec_licence`'s 2026-08-25 authorisation (**#1019 — A survey's proposed ring decides which of NYS Parks' and NYNJTC's trails ship, and DEC's ship not at all**) |
 | Fire Danger Rating Areas (JSON, not a clearinghouse item) | nysdec | `https://api.nysmesonet.org/data/firewx/GetFDRA/` | Mesonet policy forbids redistribution "without the express prior written consent of RFSUNY" | **No.** Whether a DEC rating is "Mesonet Data" is `@unvalidated` |
-| NY State Parks Property | nysparks | item `bb2dfa2c…` | "Credit source of NY State Parks. Do not redistribute." | **Yes, 22** |
-| OPRHP layers incl. `EST_Public` (Empire State Trail), hunting areas, greenways | nysparks | OPRHP org `1xFZPtKn1wKC6POA` | "for informational and non-commercial purposes", with attribution to OPRHP | **Yes, 22.** The same text `oprhp_licence` already records as a grant with two conditions |
+| NY State Parks Property | nysparks | item `bb2dfa2c…` | "Credit source of NY State Parks. Do not redistribute." | **Yes** (OPRHP) |
+| OPRHP layers incl. `EST_Public` (Empire State Trail), hunting areas, greenways | nysparks | OPRHP org `1xFZPtKn1wKC6POA` | "for informational and non-commercial purposes", with attribution to OPRHP | **Yes** (OPRHP). The same text `oprhp_licence` already records as a grant with two conditions |
 | PR: WI Park Closures PUBLIC READ view | wi-dnr | item `2a0f013583dc452e938aead18cbf71f3` | "It is not intended for reuse and is subject to be changed or removed without notice." | No |
 | Pacific Northwest National Scenic Trail (USFS R6) | pnta | `services1.arcgis.com/gGHDlz6USftL5Pau/arcgis/rest/services/Pacific_Northwest_National_Scenic_Trail/FeatureServer/0` | "not intended for trip planning or to determine public access along the trail" | No. A use caveat on a federal work |
 | Oregon NHT and the other NHT alignments | NHT orgs | item `beea1da3fccd493b8c9090c774d829f4` | "This data set should not be displayed or used at scales that exceed 1:100,000." | No. A display limit |
@@ -576,13 +541,15 @@ applications"; NJDEP's hosted trails item says "should not be used for orienteer
 attribution, publish only the layers whose words limit *sale* or *profit*, or hold every one
 until its publisher answers?
 
-**Answered by the maintainer, 2026-10-01, by poll** (decisions 36–38 in `pipeline/ELT.md`):
+**Answered by the maintainer, 2026-10-01, by poll:**
 profit-, sale- and commercial-limited layers publish with attribution, because OurHike is
 non-commercial, and California State Parks' "altered" does not cover reprojection, tiling or
-simplification for display (36); internal-use, not-for-distribution and all-rights-reserved
+simplification for display; internal-use, not-for-distribution and all-rights-reserved
 layers on anonymous public GIS endpoints publish under the GIS presumption, against their own
-words (37); conditions publish and are honoured downstream, and a condition that cannot be met
-holds its layer, as the Pacific Northwest Trail's "not intended for trip planning" does (38).
+words; conditions publish and are honoured downstream, and a condition that cannot be met
+holds its layer, as the Pacific Northwest Trail's "not intended for trip planning" does.
+Since then, a layer's words are read by class rather than row by row (ELT.md, "Who may
+publish").
 Person fields, the four `refuse` orgs without permission, and items that are not anonymous
 public endpoints stay out. The table above stays as the record of what each layer's own text
 says.
@@ -611,8 +578,8 @@ For whoever next edits `reference/trail_orgs.json`, `org_channels.json` or
 
 | row | fix | from |
 |---|---|---|
-| `nysdec` | `licence_basis: public_domain` → `maintainer_clearinghouse`, dated 2026-10-01 (decision 20). No state work is public domain by default | b3 |
-| `nysparks` | the same (decision 22); `type` is a state agency, not a clearinghouse. b4 also suggested the folder slug `oprhp`; the folder is `nysparks`, because a club folder takes its catalogue row's slug (`pipeline/ELT.md`, "Folder name = `trail_orgs.json` slug") | b4 |
+| `nysdec` | `licence_basis: public_domain` → `maintainer_clearinghouse`, dated 2026-10-01 (the clearinghouse ruling). No state work is public domain by default | b3 |
+| `nysparks` | the same; `type` is a state agency, not a clearinghouse. b4 also suggested the folder slug `oprhp`; the folder is `nysparks`, because a club folder takes its catalogue row's slug (`pipeline/ELT.md`, "Folder name = `trail_orgs.json` slug") | b4 |
 | `usgs-tnm` | The hold reason ("no URL to fetch on a schedule") is contradicted: the MapServer answers, 607,202 segments, `MAX(loaddate)` 2026-09-14 | c14 |
 | `nps` | "21 NHT stewards … point here" is false for 16 unit codes (§3c) | c11 |
 | `smd` | `licence: unstated` should say the terms forbid automated access | c6 |
@@ -812,7 +779,7 @@ key, not another automated pass.
 - **Nothing was checked on a phone.** Several §3a items say what the registry or the layer holds
   and stop short of the published file (`@unvalidated` where they say so).
 - **Licences beyond GIS were not read row by row.** Pages, photos, podcasts and challenge
-  programmes keep their own licence questions under decision 21(a).
+  programmes keep their own licence questions: the GIS presumption does not reach them.
 - **No social media was read**, by rule.
 - **The persistence pass skipped c12, non-agency elevation rows, and every non-GIS type** (§2).
 - **c11 and c12 had no skeptic** (§1).

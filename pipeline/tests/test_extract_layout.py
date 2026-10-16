@@ -247,6 +247,15 @@ def test_every_registry_row_the_extract_reads_yields_one_resource_per_read_in_it
     assert answer.claims.count(row["key"]) == 1
 
 
+def test_every_registry_row_the_extract_reads_says_where_its_data_comes_from_in_plain_words():
+    """A row's `notes` is its provenance: what the source is, when it was read, and what a hiker's safety turns on.
+    It names the choice it rests on, never a decision number a reader would have to look up."""
+    missing = sorted(row["key"] for row in REGISTRY_ROWS if not (row.get("notes") or "").strip())
+    assert not missing, f"rows the extract reads with no `notes`: {missing}"
+    numbered = sorted(row["key"] for row in REGISTRY_ROWS if re.search(r"\b[Dd]ecisions? \d", row.get("notes") or ""))
+    assert not numbered, f"notes citing a decision number rather than stating the choice: {numbered}"
+
+
 def test_every_read_names_a_reader_and_no_url():
     """Builders take keys: an option holding a URL would fetch an upstream the registry row does not register."""
     from extract._readers import READERS

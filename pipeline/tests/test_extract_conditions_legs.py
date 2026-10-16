@@ -2,7 +2,7 @@
 
 Each leg is one job's share of the hourly lane for one data environment, in
 a dlt pipeline of its own (`LEGS`), so production's and UA's OurHike rows
-never share a raw table. Decision 61 splits the lane between two jobs
+never share a raw table. The lane is split between two jobs
 (job_of()): the conditions legs keep HOURLY_JOB_TABLES, and the notices legs
 take every other club's and agency's notices. A leg isolates each upstream
 (read_each): one club's failed, slow or refused read is left out with its
@@ -142,7 +142,7 @@ def store(tmp_path):
     return {"url": (tmp_path / "raw-store").as_uri(), "dir": str(tmp_path / "pipelines")}
 
 
-#: The leg the club cases run on: a club's notices are the notices legs' since decision 61.
+#: The leg the club cases run on: a club's notices are the notices legs'.
 CLUBS = "notices_ua"
 #: The leg OurHike's own rows run on.
 CONDITIONS = "conditions_ua"
@@ -190,7 +190,7 @@ def test_a_conditions_leg_carries_the_hourly_lane_and_leaves_a_monthly_layer_out
 
 
 def test_the_conditions_legs_read_the_hourly_job_tables_and_the_notices_legs_every_other_hourly_resource(store):
-    """Decision 61's split, by job_of(): OurHike's rows and NYNJTC's alerts stay hourly, a club's notices move to
+    """The split between the two jobs, by job_of(): OurHike's rows and NYNJTC's alerts stay hourly, a club's notices move to
     the notices legs, and a monthly layer is on neither."""
     resources = (ourhike_closures("u1", count=1), nynjtc_alerts("n1", count=1), club_closures("usfs", "f1", count=1))
 
@@ -208,13 +208,13 @@ def test_the_conditions_legs_read_the_hourly_job_tables_and_the_notices_legs_eve
 
 
 def test_a_conditions_legs_warehouse_leaves_out_a_notice_table_its_store_kept_from_before_the_split(tmp_path, monkeypatch):
-    """The conditions legs' stores still hold the 80 notice layers they loaded before decision 61, frozen at the
+    """The conditions legs' stores still hold the 80 notice layers they loaded before the split, frozen at the
     move; read as this hour's, they would be days old. The command line's warehouse load takes the leg's job's
     tables alone, and only their run log rows."""
     usfs = club_closures("usfs", "f1", count=1)
     store, warehouse = (tmp_path / "store").as_uri(), tmp_path / "warehouse.duckdb"
     with monkeypatch.context() as before:
-        before.setitem(_run.HOURLY_JOB_TABLES, usfs.table, "on the conditions legs before decision 61")
+        before.setitem(_run.HOURLY_JOB_TABLES, usfs.table, "on the conditions legs before the split")
         run_pipeline(CONDITIONS, store, resources=[ourhike_closures("o1", count=1), usfs], pipelines_dir=str(tmp_path / "dlt"))
     resources = [ourhike_closures("o1", count=1), usfs]
     monkeypatch.setattr(_run, "discover", list)
@@ -506,7 +506,7 @@ def test_ourhikes_own_rows_refused_by_the_run_check_refuse_the_whole_leg(store):
 
 
 def test_a_failed_read_on_the_conditions_leg_is_its_own_too(store):
-    """NYNJTC's alerts stay on the conditions legs (decision 61), and a failure there still holds back nobody else."""
+    """NYNJTC's alerts stay on the conditions legs, and a failure there still holds back nobody else."""
     leg(store, ourhike_closures("o1", count=1), nynjtc_alerts("n1", count=1), name=CONDITIONS)
 
     report = leg(store, ourhike_closures("o1", "o2", count=2), nynjtc_alerts(error="NYNJTC answered 503"), name=CONDITIONS)
@@ -673,7 +673,7 @@ def _a_run_log(seed: int) -> tuple[list[dict], set[str]]:
 
 @dataclass(frozen=True)
 class _SharedTableAnswer(ClubAnswer):
-    """One of two resources landing one table, as each club folder's org resource lands raw_extract__orgs."""
+    """One of two resources landing one table, as each club's catalogue row lands raw_extract__orgs."""
 
     label: str = ""
 

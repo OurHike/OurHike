@@ -1,10 +1,10 @@
 """The U.S. Census Bureau's TIGER/Line state boundaries, `raw_census__census_tiger_states`: kept, and no longer read.
 
-Decision 76 (pipeline/ELT.md, 2026-10-04): a state-wide agency notice, such as
+The rule (pipeline/ELT.md, 2026-10-04): a state-wide agency notice, such as
 BLM's Utah fire restrictions, shows to a hike planned in that state that walks
 that agency's trails. The phone has to tell whether a route is in a state, and
 nothing it held could, so it gets the states' shapes. A federal statistical
-agency is no club, so the file sits in _shared/ (decision 18).
+agency is no club, so the file sits in _shared/.
 
 `places` is the type because a state is a named area, and the type sets the
 lane; no places model reads this table. Its one reader is

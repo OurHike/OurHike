@@ -1,5 +1,5 @@
 """Portland Parks & Recreation: the trail closures and delays page, hourly, extracted here once for every club
-that draws on it (decision 53 phase B, 2026-10-03); fpc/ carries the `via` note naming it.
+that draws on it (read 2026-10-03); not_available.toml says fpc draws on it.
 
 - `portland_parks_trail_closures`: https://www.portland.gov/parks/nature/trail-closures-and-delays,
   one PageNotice (extract/_notices.py).
@@ -11,8 +11,8 @@ Corridor Trail, Marquam Nature Park, Forest Park (the Ridge Trail parking area o
 indefinitely'), 'Wildwood Trail at mile 15.2 - Caution', River View Natural Area and Whitaker Ponds.
 Its weak ETag and Last-Modified are both the render time (1791038341 is 2026-10-03 14:39:01 UTC, the
 inventory), so neither is trusted. The Forest Park sections are FPC's; caution entries are warnings, split
-in dbt (decision 7). No terms-of-use page exists (the footer's 'Terms and policies' covers ADA,
-captioning, privacy and the site), so it publishes on decision 53's facts and a link.
+in dbt. No terms-of-use page exists (the footer's 'Terms and policies' covers ADA,
+captioning, privacy and the site), so it publishes as facts and a link.
 """
 
 from extract._kinds import page_notice

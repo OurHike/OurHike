@@ -73,21 +73,21 @@ def test_every_fixture_file_with_a_resource_lands_whole(fixtures):
     )
     fetched = [r for r in resources if not isinstance(r, answered) and not isinstance(r, JSON_API_KINDS)]
     assert len(fetched) == 430, (
-        "61 monthly layers and OPRHP's temporary closures on the hourly lane, and decision 53's 76 ArcGIS "
-        "closure and warning layers: 70 hourly, 3 daily, 3 monthly, and decision 54's 83 places layers, all "
-        "monthly, its 100 trail-line layers, all monthly (wave 6 added the Empire State Trail's two, "
-        "oprhp_est_segments and oprhp_est_connectors), and its 70 point layers, all monthly (wave 6 added "
-        "the Empire State Trail's, oprhp_est_trail_features), and wave 6's 2 hourly closure layers "
-        "(ptny_est_closures, oprhp_est_under_construction), and decision 122's first batch of candidate "
-        "stewards, in extract/_shared/ until their trail_orgs.json rows of 2026-10-11 gave each a folder: "
+        "61 monthly layers and OPRHP's temporary closures on the hourly lane, and the club notices' 76 ArcGIS "
+        "closure and warning layers: 70 hourly, 3 daily, 3 monthly, and the layer survey's 83 places layers, all "
+        "monthly, its 100 trail-line layers, all monthly (with the Empire State Trail's two, "
+        "oprhp_est_segments and oprhp_est_connectors), and its 70 point layers, all monthly (with "
+        "the Empire State Trail's, oprhp_est_trail_features), and the Empire State Trail's 2 hourly closure layers "
+        "(ptny_est_closures, oprhp_est_under_construction), and the first candidate "
+        "stewards, in extract/_shared/ until their trail_orgs.json rows of 2026-10-11 gave each its own answers: "
         "18 hourly closure and warning layers (6 of them hunting areas) "
         "and 5 monthly point layers, with the NYS Canal Corporation's condition survey (hourly) and water "
         "fountains (monthly), and review page 02's NorthEast Texas Trail Coalition layers: its damaged "
-        "bridges (hourly) and trail points (monthly), and decision 126's ParkServe parks (monthly), and section K's "
+        "bridges (hourly) and trail points (monthly), and TPL's ParkServe parks (monthly), and the "
         "7 photo layers (monthly): ATA's six and RCO's camping photos, and IDOT's bicycle inventory "
         "(idot_bike_inventory, monthly), registered with IDOT's own trail_orgs.json row on 2026-10-11, and "
         "FDEP's park boundaries (fl_state_parks_park_boundaries, daily), which place Florida's closed parks "
-        "(decision 185, 2026-10-11)"
+        "(2026-10-11)"
     )
     for resource in fetched:
         expected = len(json.loads(fixture_file(root / "raw", resource.key).read_text())["features"])
@@ -100,7 +100,7 @@ NOTICE_PDFS = {"bmta_alerts_pdf", "foot_hiker_alert_mm195", "tatc_ridgerunner_re
 
 
 def test_every_notice_page_and_feed_lands_the_rows_its_answers_make_and_each_page_row_a_title(fixtures):
-    """Decision 53 phase B: each PageNotice and FeedNotices resource with a conditions/notices/ file lands exactly
+    """Each PageNotice and FeedNotices resource with a conditions/notices/ file lands exactly
     the file's `rows` (one a page, one an item for a feed), and a page's row carries a title, so a page whose region
     or title the reader cannot find fails here rather than in a live run. The four PDFs are the only notice
     resources with no file."""
@@ -143,7 +143,7 @@ def test_two_category_files_of_one_site_answer_together_and_a_post_both_carry_on
 
 
 def test_a_wordpress_rows_person_fields_never_reach_the_raw_store(fixtures):
-    """Decision 59: OHTA's, TEHCC's, TKO's and PNTA's post bodies carried telephone numbers and an e-mail address on
+    """The person-field rule: OHTA's, TEHCC's, TKO's and PNTA's post bodies carried telephone numbers and an e-mail address on
     2026-10-03, and RATC's e-mail addresses and telephone numbers on 2026-10-10, so their rows list `content` and
     `excerpt` as person_fields, and the table lands without them."""
     root, counts = fixtures
@@ -177,7 +177,7 @@ def test_atcs_z_centerline_lands_its_z_and_its_rows_with_no_geometry(fixtures):
 
 
 def test_a_club_trail_line_layers_person_fields_never_land_and_the_fields_its_row_clears_do(fixtures):
-    """Decision 54's trail lines: a row's `person_fields` never reach the raw table, and its `not_person_fields` do.
+    """The club trail lines: a row's `person_fields` never reach the raw table, and its `not_person_fields` do.
 
     NCTA's spurs name surveyors in `source` (an ordinary name, so only the row's
     list catches it) and carry land-holder classes in `owner` (person-shaped by
@@ -296,7 +296,7 @@ JSON_API_ROWS = {
     "raw_tehcc__tehcc_wiki_announcements": 2,
     "raw_ouachita__foot_trail_condition_report": 3,
     "raw_fmst__fmst_helene_status": 3,
-    # Section C's content feeds and APIs (decision 54 wave 3, 2026-10-04): each podcast feed's two fixture
+    # The content feeds and APIs (2026-10-04): each podcast feed's two fixture
     # episodes (make_dbt_fixtures.py's _podcast_feed), TEHCC's template pages and NPS's five lists, two rows each.
     "raw_nysdec__dec_does_what_podcast": 2,
     "raw_mohonk__mohonk_walk_back_in_time_podcast": 2,
@@ -344,8 +344,8 @@ def test_the_json_api_notice_sources_land_from_their_answers_with_no_nps_key_in_
     assert {table: counts[table] for table in JSON_API_ROWS} == JSON_API_ROWS
 
 
-def test_section_cs_content_lands_no_author_or_guest_and_none_of_the_prose_a_row_names_as_personal(fixtures):
-    """Decision 59 at the warehouse, for decision 54 wave 3's content: no episode's author, creator or guest tag lands
+def test_the_content_feeds_land_no_author_or_guest_and_none_of_the_prose_a_row_names_as_personal(fixtures):
+    """The person-field rule at the warehouse, for the content feeds: no episode's author, creator or guest tag lands
     on any feed; the fixture number in an episode's notes and a hike page's body (555-0100) lands only where the row's
     `person_fields` do not name that prose; NPS's audio transcripts land nowhere."""
     root, _ = fixtures
@@ -370,7 +370,7 @@ def test_section_cs_content_lands_no_author_or_guest_and_none_of_the_prose_a_row
         assert "transcript" not in columns("raw_nps__nps_multimedia_audio")
 
 
-# Decision 54's waves 2 and 3 (section G, 2026-10-04): each GIS file and geographic API, the rows its fixture answers
+# The GIS files and geographic APIs (2026-10-04): each GIS file and geographic API, the rows its fixture answers
 # hold (make_dbt_fixtures.py's _gis_file_documents() and _geo_api_documents()). Catamount's main trail lands 3 rows
 # with 2 exact copies among them, a KMZ and a zipped GPX arrive whole as ASCII-only zips, and a location with no
 # coordinate lands with no geometry rather than being dropped. FMST's sheet opens with a title line
@@ -409,7 +409,7 @@ GIS_AND_GEO_API_ROWS = {
     "raw_mtsg__mtsg_map_locations": 3,
     "raw_nps__nps_api_places": 3,
     "raw_nps__nps_api_campgrounds": 2,
-    # Review page 02 (decision 122, 2026-10-09): the Baker Trail's GeoJSON, in extract/rctc/ since its row (2026-10-11).
+    # Review page 02 (2026-10-09): the Baker Trail's GeoJSON, in extract/rctc/ since its row (2026-10-11).
     "raw_rctc__rctc_baker_trail_geojson": 3,
 }
 
@@ -430,7 +430,7 @@ def test_every_gis_file_and_geographic_api_lands_from_its_answers_and_no_person_
 
 
 def test_every_club_page_read_for_its_points_lands_the_rows_its_own_parser_makes(fixtures):
-    """Section S's pages (decision 54's wave 5), answered from conditions/page_points/: each lands exactly its file's
+    """Section S's pages (the layer survey), answered from conditions/page_points/: each lands exactly its file's
     `rows` through the site's own parser, a point with no fix lands with no geometry, and AMC Berkshire's parking
     page, which its notice reads too, still lands that notice's one row from the same body."""
     root, counts = fixtures
@@ -455,10 +455,10 @@ def test_every_club_page_read_for_its_points_lands_the_rows_its_own_parser_makes
     assert palmetto == (2, 10, 0)
 
 
-# Decision 54's waves 4 and 5, the content types' pages (section K, 2026-10-04): each ContentPages resource lands the
+# The content types' pages (2026-10-04): each ContentPages resource lands the
 # rows its site parser reads from make_dbt_fixtures.py's invented markup (K_PAGES_ROWS), and nothing outside its
 # type's columns. Its PDFs (extract/_pdf_content.py) have no fixture: fixture mode's Python need not have pypdf.
-#: The module section K's page reader lives in, which is what separates its tables from JSON_API_ROWS'.
+#: The module the content page reader lives in, which is what separates its tables from JSON_API_ROWS'.
 SECTION_K_MODULES = frozenset({"extract._pages_content"})
 
 
@@ -478,7 +478,7 @@ def test_every_content_page_lands_the_rows_its_site_parser_reads_and_only_its_ty
 
 
 def test_a_notice_feed_lands_no_creator_and_no_prose_and_a_page_lands_its_own_title_and_date(fixtures):
-    """Decision 55 and rule 8 at the warehouse: the fixture feed's `dc:creator` and `description` arrive nowhere."""
+    """Facts and a link, and the person-field rule, at the warehouse: the fixture feed's `dc:creator` and `description` arrive nowhere."""
     root, _ = fixtures
     with duckdb.connect(str(root / "warehouse.duckdb"), read_only=True) as con:
         feed = {row[0] for row in con.execute("describe raw.raw_cvatc__cvatc_news").fetchall()}
@@ -593,7 +593,7 @@ def test_the_work_projects_stand_in_lands_in_place_of_the_empty_reviewed_file(fi
     """reference/work_projects.json's `rows` are empty by the maintainer's decision of 2026-08-20 on #760, so CI's
     work_projects family compared both writers on none. Fixture mode reads make_dbt_fixtures.py's invented rows
     (lib/work_projects.FIXTURE_STAND_IN) in its place, under the same table, and parity.py's old side reads the same file
-    (tests/test_gate_report.py), so the family compares rows (decisions 162 and 199). Fixtures without the stand-in land
+    (tests/test_gate_report.py), so the family compares rows. Fixtures without the stand-in land
     git's file, as before."""
     root, counts = fixtures
     (resource,) = [
@@ -704,7 +704,7 @@ def test_a_return_z_layer_is_answered_as_esri_json_with_its_z_and_lands_with_it(
 def test_a_page_query_sent_as_a_post_form_is_paged_by_its_form():
     """A layer that names 150 fields pages past GET_URL_LIMIT, so query_page() POSTs; fixture mode reads the form.
 
-    Found when PA DCNR's state park buildings (120-odd fields, decision 54's points of interest) failed
+    Found when PA DCNR's state park buildings (120-odd fields, a points-of-interest layer) failed
     fixture mode with "it ignores resultOffset": every POSTed page was answered as offset 0.
     """
     from lib.arcgis import GET_URL_LIMIT, iter_layer_pages

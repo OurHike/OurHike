@@ -1,6 +1,6 @@
 """Tennessee Department of Environment and Conservation: closures, extracted here once for every club
-that draws on it (decision 53 phase B, 2026-10-03). Its steward has no club folder (decision 18), so
-it lives in _shared/, and each club's own file carries a `via` note naming it (decision 34).
+that draws on it (read 2026-10-03). Its steward is no managing club, so
+it lives in _shared/, and each club that draws on it says so in not_available.toml.
 
 - `tdec_trail_closures`: TDEC trail closures (Tennessee State Parks),
   `TDEC_Trail_Closures_Public/FeatureServer/0`.

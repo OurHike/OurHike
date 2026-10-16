@@ -1,4 +1,4 @@
-"""extract/_gis_files.py and extract/_ogc.py, decision 54's waves 2 and 3, against mocked servers.
+"""extract/_gis_files.py and extract/_ogc.py, the GIS file and geographic API readers, against mocked servers.
 
 Each reader is asked for its rows directly, or run through the hourly lane into
 a `file://` raw store under tmp_path where dlt and the warehouse are the
@@ -563,7 +563,7 @@ def test_a_sheet_whose_header_sits_under_a_title_line_keeps_both_ends_of_a_segme
     assert knob["feature_index"] == 2
     assert knob["geometry"] == {"type": "Point", "coordinates": [-83.4, 35.6]}
     assert knob["property_Latitude"] is None
-    # The sheet's own date, from the cell after its as_of_label above the header (decision 72).
+    # The sheet's own date, from the cell after its as_of_label above the header.
     assert (gap["source_as_of"], knob["source_as_of"]) == ("1/1/2026", "1/1/2026")
 
 

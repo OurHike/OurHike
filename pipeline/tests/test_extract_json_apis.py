@@ -1,9 +1,9 @@
-"""extract/_json_apis.py, the JSON API notice readers (ELT.md decision 53, phase B), against mocked servers.
+"""extract/_json_apis.py, the JSON API notice readers, against mocked servers.
 
 Each reader is run through the hourly lane into a `file://` raw store under
 tmp_path, as tests/test_extract_run.py runs the ArcGIS ones, or asked for its
 rows directly where only the read is in question. requests_mock answers as
-each upstream did when the decision 53 inventory read it on 2026-10-03; the
+each upstream did when the notices inventory read it on 2026-10-03; the
 bodies are invented and shaped like those answers. Nothing reaches the
 network: conftest.py's socket guard stays on.
 

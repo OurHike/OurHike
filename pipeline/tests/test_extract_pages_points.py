@@ -1,4 +1,4 @@
-"""extract/_pages_points.py, decision 54's wave 5 (section S): the points clubs print on their own pages, against
+"""extract/_pages_points.py: the points clubs print on their own pages, against
 mocked servers.
 
 Each parser is handed a page shaped like the one it was written against (read live on 2026-10-04, each
@@ -601,7 +601,7 @@ def test_a_page_honours_its_rows_crawl_delay_and_the_default_gap_where_it_asks_n
     assert resource("mdhta_trail_guide_points").part == "points"
 
 
-# --- Maine Huts & Trails' hut pages (P12) ---------------------------------------------------------------------------
+# --- Maine Huts & Trails' hut pages ---------------------------------------------------------------------------------
 #
 # The shape read on 2026-10-11 off the 4 pages mainehuts.org's hut-sitemap.xml lists: one <h1>, "(Closed)" after the
 # name on Grand Falls Hut's; an "Accomodations" <dl> (the site's spelling) of Capacity and Number of bunkrooms; a

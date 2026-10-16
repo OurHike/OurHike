@@ -258,7 +258,7 @@ def test_every_registry_row_the_extract_reads_says_where_its_data_comes_from_in_
 
 def test_no_not_available_row_cites_a_decision_number_or_a_deleted_club_file():
     """A note states the choice it rests on, and names a club's answer as <folder>.<type> (the file's header says so):
-    the per-org files are gone, so a path like `nps/warnings.py` leads nowhere."""
+    the per-org files are gone, so a path like `nps.warnings` leads nowhere."""
     text = NOT_AVAILABLE_PATH.read_text(encoding="utf-8")
     assert not re.findall(r"\b[Dd]ecisions? \d", text)
     types = "|".join(FILE_TYPES)
@@ -507,7 +507,7 @@ def test_every_registry_key_is_claimed_or_still_listed_as_not_yet_extracted():
         f"claimed and still listed as not yet extracted - take these off NOT_YET_EXTRACTED: {sorted(claimed & NOT_YET_EXTRACTED)}"
     )
     missing = sorted(registry - claimed - NOT_YET_EXTRACTED)
-    assert not missing, f"sources.json keys no club folder claims: {missing}"
+    assert not missing, f"sources.json keys no org reads: {missing}"
     stale = sorted(NOT_YET_EXTRACTED - registry)
     assert not stale, f"NOT_YET_EXTRACTED names keys sources.json no longer has: {stale}"
 
@@ -859,7 +859,7 @@ def _repository_imports(start: list[Path]) -> set[str]:
 
 
 def test_every_module_the_extract_imports_is_pinned_in_its_own_requirements():
-    """The extract job installs requirements-extract.txt and nothing else, so a club file must import nothing more.
+    """The extract job installs requirements-extract.txt and nothing else, so the extract's modules must import nothing more.
 
     A fetcher's module pulled in for one constant brings its imports along:
     export_weather_alerts.py imports shapely, which is why the NWS endpoint and
@@ -957,7 +957,7 @@ def test_shared_folders_never_share_a_name_with_a_club_and_each_resource_names_i
     Every managing club, folder or not: a club with no resource file today may get one, and its folder that name."""
     clubs = managing_clubs()
     for shared in SHARED_FILES:
-        assert shared.club not in clubs, f"_shared/{shared.club}/ has a club folder's name"
+        assert shared.club not in clubs, f"_shared/{shared.club}/ has a club's name"
         if shared.resources:
             assert shared.type in TYPES, f"_shared/{shared.club}/{shared.path.name} declares no TYPE among {TYPES}"
             assert shared.claims or shared.unregistered, (

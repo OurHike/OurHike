@@ -11,7 +11,7 @@ A lane is one scheduled extract job and the cadences it carries (LANES):
 (LEGS) is one job's share of the hourly lane for one data environment, as a
 dlt pipeline of its own: a conditions leg reads the upstreams that stay
 hourly (HOURLY_JOB_TABLES), a notices leg every other club's and agency's
-notices, every 4 hours (decision 61, job_of()). `--help` describes each
+notices, every 4 hours (job_of()). `--help` describes each
 flag; `--summary` is written on a refused run too.
 
 The steps, as pipeline/ELT.md designs them in "Change checks, verdicts and
@@ -39,7 +39,7 @@ A leg, and the monthly lane (ISOLATING_LANES), isolates each upstream
 (_extract_and_load()): one that fails or is refused is left out while the
 rest load, and the run exits PARTIAL_EXIT (3), unless every one refused has a
 sources.json row saying reaches_hikers false (exit_status()). The monthly
-lane's job turns that red; a leg's job only warns on it (decisions 100 and 101), and
+lane's job turns that red; a leg's job only warns on it, and
 dbt's source freshness turns a refused notice source red once it has gone 24
 hours without a `loaded` or `skipped` row in this log
 (dbt/macros/last_read_or_confirmed_at.sql, run by publish-conditions.yml
@@ -54,7 +54,7 @@ lane, and a lane for `weekly` resources.
 
 THE AS-LANDED COPY (--as-landed, refresh-reference.yml's monthly run) stands
 in for the as-sent copy so parity.py, for ELT.md's go/no-go gate, can run
-today's exporters on exactly the rows dbt read (decision 30). Each ArcGIS,
+today's exporters on exactly the rows dbt read. Each ArcGIS,
 Socrata and opentrail resource that ran is written back out as its fetcher's
 GeoJSON file (as_landed_path()) and uploaded to
 `<bucket-url>/as_landed/<load_id>/` after the load commits and the run log is
@@ -136,11 +136,11 @@ from lib.source_registry import is_arcgis_feature_layer, is_external_source  # n
 # `weekly` and tests/test_extract_layout.py refuses a resource that is.
 LANES = {"monthly": ("monthly",), "hourly": ("hourly", "daily")}
 
-# THE HOURLY LANE IS READ BY TWO JOBS (decision 61, the maintainer by poll,
+# THE HOURLY LANE IS READ BY TWO JOBS (the maintainer by poll,
 # 2026-10-04): the conditions job, publish-conditions.yml, hourly, and the
 # notices job, extract-notices.yml, every 4 hours with up to an hour to read.
 # A resource's job is job_of(): the conditions job keeps HOURLY_JOB_TABLES,
-# the upstreams the conditions bake published before decision 53, and the
+# the upstreams the conditions bake published before the club notices, and the
 # notices job takes every other hourly or daily resource, so a club source
 # wired later goes to the notices job without being named anywhere.
 # tests/test_extract_layout.py holds the split against discover().
@@ -177,9 +177,9 @@ LEGS = {
 
 #: THE CONDITIONS JOB'S OWN UPSTREAMS, by raw table, each with why it stays
 #: hourly. Exactly what the conditions legs read at 52835a44 that the bake had
-#: published before decision 53 (every other hourly resource there was a
-#: decision 53 phase B layer, landed 2026-10-03), and the seven sources
-#: int_closures__gate types by hand. Decision 61 keeps these in the short
+#: published before the club notices (every other hourly resource there was a
+#: club notice layer, landed 2026-10-03), and the seven sources
+#: int_closures__gate types by hand. These stay in the short
 #: hourly job because what a storm or a moderator's closure turns on cannot
 #: wait four hours: most severe thunderstorm warnings last less than that, and
 #: a verified closure would take up to about 5 hours to reach a phone.
@@ -194,7 +194,7 @@ HOURLY_JOB_TABLES: dict[str, str] = {
     "raw_atc__atc_updates": "ATC's reviewed trail updates file, reference/atc_updates.json (#460)",
     "raw_atc__atc_trail_updates": "ATC's reviewed trail updates, one row per update (#460)",
     "raw_atc__atc_trail_updates_pages": "what ATC's site shows since the review, which the bake has published since #963",
-    "raw_nynjtc__nynjtc_trail_alerts": "NYNJTC's trail alerts (#1078), published by the bake before decision 53",
+    "raw_nynjtc__nynjtc_trail_alerts": "NYNJTC's trail alerts (#1078), published by the bake before the club notices",
     "raw_nynjtc__nynjtc_trail_alerts_terms": "NYNJTC's alert taxonomy terms, daily, which place NYNJTC's alerts",
     "raw_nysparks__oprhp_trail_closures": (
         "OPRHP's temporary trail closures (#1152 - Move OPRHP's temporary closures onto the conditions clock, "
@@ -204,7 +204,7 @@ HOURLY_JOB_TABLES: dict[str, str] = {
 
 
 def job_of(resource: Resource) -> str:
-    """Which job reads this hourly-lane resource (decision 61): CONDITIONS_JOB for HOURLY_JOB_TABLES, else NOTICES_JOB."""
+    """Which job reads this hourly-lane resource: CONDITIONS_JOB for HOURLY_JOB_TABLES, else NOTICES_JOB."""
     return CONDITIONS_JOB if resource.table in HOURLY_JOB_TABLES else NOTICES_JOB
 
 
@@ -222,7 +222,7 @@ def job_of(resource: Resource) -> str:
 # has never been written. The limit came from soak run 506
 # (publish-conditions.yml 37154645937, 2026-10-03), which met 70 new hourly
 # layers at once and overran its step; those layers are the notices job's
-# since decision 61, and a conditions leg carries twelve tables.
+# since the split into two jobs, and a conditions leg carries twelve tables.
 # Run 505, an hour before 506, read 13 and loaded them inside 58 s, so twelve
 # at once fit the step (Reasoned from that one run).
 #
@@ -234,7 +234,7 @@ def job_of(resource: Resource) -> str:
 # 50 minutes: up to 10 for the change checks (LEG_CHECK_SECONDS) and 30 for
 # the reads, so about 9 are left for the sync and the load, and 150 new
 # tables at that rate take about 2.4 of them. At 150 a run, the 80 layers
-# decision 61 moved here and phase B's 181 page, feed and WordPress sources
+# moved here in the split and the 181 page, feed and WordPress notice sources
 # come on in two runs, where 10 a run would take 27. What would settle it:
 # the "Seconds:" line of the first two notices runs' summaries, against the
 # tables each took on. Those runs came on 2026-10-04: the copies notices runs
@@ -254,7 +254,7 @@ NEW_TABLES_PER_LEG_RUN: dict[str, int | None] = {CONDITIONS_JOB: None, NOTICES_J
 # budget that followed ran past the extract step's 4-minute cap. Run 510's 89
 # checks, a folder per thread, took well under this (Reasoned from its 2 m
 # 49 s whole step). 45 is @unvalidated: the step summary's "change checks"
-# timing settles whether it is too tight. Its twelve tables since decision 61
+# timing settles whether it is too tight. Its twelve tables since the split
 # hold no page behind a Crawl-delay.
 #
 # The notices job's 600, Reasoned from the registry at 377e981a and
@@ -318,7 +318,7 @@ KEPT_LOG_TABLE = "_extract_kept_log"
 ALSO_READS: dict[str, dict[str, str]] = {
     "monthly": {
         "raw_nysparks__oprhp_trail_closures": (
-            "OPRHP's temporary closures land on the hourly lane (nysparks/closures.py; #1152 - Move OPRHP's "
+            "OPRHP's temporary closures land on the hourly lane (nysparks.closures; #1152 - Move OPRHP's "
             "temporary closures onto the conditions clock, where a safety layer belongs), and the monthly "
             "nearby_trails.geojson still reads them for apply_area_closures()' tape through "
             "stg_oprhp__trail_closures (tl-net, 2a65c736). Read again here, at the monthly build's own time, "
@@ -326,9 +326,9 @@ ALSO_READS: dict[str, dict[str, str]] = {
             "table a monthly-lane dbt source reads, in this branch's manifest"
         ),
         "raw_ngpc__ngpc_cowboy_trail_improvements": (
-            "NGPC's 29 Cowboy Trail sections land on the hourly lane as closures (ngpc/closures.py), and are the "
-            "Cowboy Trail's line too: not_available.toml's [ngpc.trail_lines] SHARES them, the maintainer's P8 on "
-            "wave 6's review page 01 (2026-10-11). make_dbt_staging.py stages this copy for the monthly trail_lines "
+            "NGPC's 29 Cowboy Trail sections land on the hourly lane as closures (ngpc.closures), and are the "
+            "Cowboy Trail's line too: not_available.toml's [ngpc.trail_lines] SHARES them, by the maintainer's choice "
+            "of 2026-10-11. make_dbt_staging.py stages this copy for the monthly trail_lines "
             "nodes under a source table and base model of its own (its docstring, 'A LANE COPY'), so the notices' "
             "hourly nodes keep reading the hourly copy"
         ),
@@ -506,7 +506,7 @@ def cross_lane_resources(lane: str, resources: list[Resource], own: list[Resourc
 
 
 #: The raw store's prefix for dlt's files, inside the private bucket: raw
-#: under `raw/` (ELT.md decision 43) and one prefix per dlt pipeline (ELT.md,
+#: under `raw/` (ELT.md) and one prefix per dlt pipeline (ELT.md,
 #: "Storage tiers": `dlt/<pipeline>/raw/<table>/…`), where dlt itself adds
 #: the dataset, `raw`, and the table.
 RAW_STORE_PREFIX = "raw/dlt"

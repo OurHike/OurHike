@@ -1,6 +1,5 @@
 """Midpeninsula Regional Open Space District: closures, extracted here once for every club that draws
-on it (decision 53 phase B, 2026-10-03). Its steward has no club folder (decision 18), so it lives
-in _shared/, and each club's own file carries a `via` note naming it (decision 34).
+on it (read 2026-10-03). Its steward is no managing club, so it lives in _shared/, and each club that draws on it says so in not_available.toml.
 
 - `midpen_preserve_access`: Midpen preserve access, `Preserve_Access_(public)/FeatureServer/0`.
 

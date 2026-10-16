@@ -1,7 +1,7 @@
-"""Decision 54 wave 5's page readers for the content types (section K): the suggested hikes, challenges, podcasts and
+"""The page readers for the content types: the suggested hikes, challenges, podcasts and
 photos a club publishes as web pages, one parser per site.
 
-pipeline/ELT.md, "Loading everything the clubs publish (decision 54)", wave 5, is the plan: "a parser per site". A
+pipeline/ELT.md is the plan: "a parser per site". A
 page is written for people, so no generic reader can tell one hike on it from the next; each site's parser below
 knows where that site puts its items and what facts it states, and refuses rather than guesses when the page has
 changed shape. The parsers are small on purpose: a shared DOM (`parse_html`), the facts' patterns (`miles`, `feet`),
@@ -10,7 +10,7 @@ and one function a site.
     content_pages(key)        a site's page, or its index and the item pages it links, one row per item its
                               site parser (SITE_PARSERS) reads
 
-WHAT A ROW CARRIES: FACTS AND THE LINK (decision 55, the maintainer's poll of 2026-10-03, and the round brief's
+WHAT A ROW CARRIES: FACTS AND THE LINK (the maintainer's poll of 2026-10-03, and the brief's
 item 3). A row is one item: its name, the place the page puts it in, its numbers with their units, a date where the
 page states one, and the link a hiker follows. No description, no turn-by-turn text, no paragraph lands in any
 column: each type's columns are an allowlist (TYPE_COLUMNS, plus the few each site's parser declares), a parser
@@ -19,13 +19,13 @@ caught a paragraph in a name fails its test rather than publishing the club's wo
 it was read from beside it (`distance_text` beside `distance_mi`), so a value this module read wrongly can be
 checked against what the page said, and a figure the page states ambiguously ('1.300 feet') lands as its text with
 no number: absent means unknown, never a guess (CLAUDE.md). A coordinate lands only where the page's own data states
-one (decision 54's rule: "never geocoded from a name").
+one (the layer survey's rule: "never geocoded from a name").
 
-PEOPLE NEVER LAND (decision 59). A challenge's finisher roster is never read at all, an episode's guests and a
+PEOPLE NEVER LAND. A challenge's finisher roster is never read at all, an episode's guests and a
 photo's uploader are person fields, and a page that names a person beside an item (a hike's leader, a route's
 author) has that left out by its parser, which reads named facts and nothing else.
 
-POLITE, AND ONE READ A RUN. Each reader is decision 53's notice source (extract/_notices.py's _NoticeSource): every
+POLITE, AND ONE READ A RUN. Each reader is a notice source (extract/_notices.py's _NoticeSource): every
 request sends lib/user_agent.py's agent through the polite() gate, held at least the host's robots.txt
 Crawl-delay, or DEFAULT_HOST_GAP_SECONDS where it asks none, after the last request to that host ended; a 401, 403,
 429 or 451, a challenge header or page, and a redirect to another host raise NoticeUnreadable and are never solved
@@ -35,7 +35,7 @@ row's own host, and never a URL with a query string unless its entry in SITE_PAR
 allows one (`queries`).
 
 THE CHANGE CHECK is the read: the rows are parsed and hashed, and FRESH only when they hash as the last load's
-(_NoticeSource's default, `trust_validators` False). Decision 53's inventory found most HTML validators lie (the
+(_NoticeSource's default, `trust_validators` False). The notices inventory found most HTML validators lie (the
 request time as Last-Modified, a render-time ETag; extract/_notices.py's PageNotice docstring lists them), and the
 dlt skill's rule 4 forbids a site-wide validator deciding FRESH, so no page validator decides it here. The lane is
 the type's, monthly (extract/_contract.py's CADENCE_BY_TYPE); nothing here rides the hourly lane.
@@ -44,7 +44,7 @@ THE COUNT is the number of items the page lists, read from the same answer the r
 A page that lists none has changed shape and raises: none of these types may be empty (extract/_contract.py's
 MAY_BE_EMPTY), and an empty list from a redesigned page looks the same as an empty list from a club with no hikes.
 
-THE LIVE READS behind each parser were section K's of 2026-10-04 (the round brief for decision 54's waves 4 and 5),
+THE LIVE READS behind each parser were of 2026-10-04,
 one request per URL under lib/user_agent.py's agent, robots.txt first; each sources.json row's `notes` records what
 its read found, and each parser's docstring the markup it reads.
 """
@@ -555,7 +555,7 @@ def checked_row(key: str, type_: str, columns: dict[str, str], row: dict) -> dic
     MAX_FACT_CHARS on its own, and they land joined by '; ', since two facts side by side are not a paragraph.
     """
     if extra := sorted(set(row) - set(columns)):
-        raise ValueError(f"{key}: the parser returned {extra}, outside {type_}'s columns (decision 55)")
+        raise ValueError(f"{key}: the parser returned {extra}, outside {type_}'s columns")
     checked = {}
     for name in columns:
         value = row.get(name)
@@ -1854,7 +1854,7 @@ def _ota_sections(page: Page, fetch) -> list[dict]:
     its label: the miles ('48' over 'Miles of Trail'), the difficulty ('MODERATE' over 'Difficulty') and the ascent
     each way ('4200′' over 'N to S ascent', and 'S to N ascent'). Those, the section's name as the directory writes
     it (its number left off) and the link are read; the Trail Conditions, Trail Geography and land-manager paragraphs
-    are not (the conditions are decision 53's ota_*_conditions rows). A section page with no 'Miles of Trail' raises.
+    are not (the conditions are the ota_*_conditions rows). A section page with no 'Miles of Trail' raises.
     """
     sections_found: list[tuple[str, str, str | None]] = []
     group = None
@@ -2069,7 +2069,7 @@ def _trustees_hikers_top_ten(page: Page, fetch) -> list[dict]:
     return rows
 
 
-# --- Challenges: a challenge's own list of places, one row a place (decision 3: "a club's list of places") ------
+# --- Challenges: a challenge's own list of places, one row a place ("a club's list of places") ------
 
 
 _GATC_PEAK = re.compile(r"(?P<name>.+) - (?P<feet>[\d,]+) ft\.?")

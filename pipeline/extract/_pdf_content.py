@@ -1,7 +1,7 @@
-"""Decision 54 wave 4's PDF readers for the content types (section K): the suggested hikes and challenges a club
+"""The PDF readers for the content types: the suggested hikes and challenges a club
 publishes as PDFs, one parser per document family.
 
-pipeline/ELT.md, "Loading everything the clubs publish (decision 54)", wave 4, is the plan: "a parser per document
+pipeline/ELT.md is the plan: "a parser per document
 family; a PDF that only a person can read stays a note". extract/_kinds.py's ClubPdf (GATC's water sources) is the
 pattern, and lib/club_pdfs.py's rule is this module's: a parser reads the layout it was written for and REFUSES
 RATHER THAN RELABELS when the layout changes (PdfLayoutChanged), so a redrawn document never lands its columns under
@@ -11,7 +11,7 @@ the wrong names. A scanned PDF has no text layer and parses to nothing, which re
                               parser (PDF_FAMILIES) reads
 
 WHAT A ROW CARRIES is extract/_pages_content.py's rule, the same allowlist (its TYPE_COLUMNS, the family's own
-`columns`, and DOCUMENT_COLUMNS): facts and the link, never the document's prose (decision 55), and a text value
+`columns`, and DOCUMENT_COLUMNS): facts and the link, never the document's prose, and a text value
 longer than its MAX_FACT_CHARS raises. Each row also carries its document's manifest (DOCUMENT_COLUMNS: the URL, the
 validators, the sha256, the byte count and the date the PDF's own metadata states), so the date a club put on its
 file is in the warehouse. A PDF's metadata names a person more often than not (RMC's /Author is a member's name,
@@ -21,7 +21,7 @@ THE CHANGE CHECK IS PER FILE, as the round brief asks: a conditional GET with th
 FRESH; on a 200 the marker is the file's ETag, else its Last-Modified with its Content-Length, and a host that sends
 neither answers UNKNOWN, so the file is read every run. A family read through an index page (a club's page linking
 one PDF a hike) checks every file the index links, and the index's own link set is part of the marker, so a PDF
-added or dropped is STALE. A static file's validators are the file's (decision 53's inventory measured strong ETags
+added or dropped is STALE. A static file's validators are the file's (the notices inventory measured strong ETags
 on four clubs' PDFs; extract/_notices.py's PageNotice docstring), unlike an HTML page's, which is why a validator
 decides FRESH here and not in the page readers. That they move only with the file is @unvalidated for each host;
 what would settle it is a 304 followed, on the next 200, by an unchanged sha256.

@@ -26,7 +26,7 @@ monthly tables at stage 3's first step, once its three go/no-go runs pass
 (ELT.md, "DuckLake at phases 3 and 4").
 
 THE SERVED COPY (`serve`, `add-served`) is how the hourly build reads a
-notices leg (decision 61). The notices job, extract-notices.yml, writes its
+notices leg. The notices job, extract-notices.yml, writes its
 store every 4 hours, in runs that may overlap publish-conditions.yml's. A
 `replace` load deletes a table's files before it writes the new ones, and
 the run log lands after both (extract/_run.py's _extract_and_load()), so a
@@ -289,7 +289,7 @@ def load_warehouse(
     leg_tables()): only those, and only their run log rows, are loaded. A
     leg's store keeps every table it ever loaded, one whose resource has
     moved to the other job included: the conditions legs' stores keep the 80
-    notice layers decision 61 moved to the notices legs, frozen at the last
+    notice layers moved to the notices legs, frozen at the last
     run before the move, and reading them would serve rows days old as this
     hour's.
     """
@@ -415,7 +415,7 @@ SERVED_OLDER_EXIT, SERVED_NONE_EXIT = 5, 6
 SERVED_STALE_HOURS = 8
 SERVED_STALE_EXIT = 7
 #: A LEG WITH NO SERVED COPY COUNTS AS ONE OLDER THAN SERVED_STALE_HOURS ONCE
-#: IT HAS OWED A COPY THAT LONG (decision 96, the maintainer's poll of
+#: IT HAS OWED A COPY THAT LONG (the maintainer's poll of
 #: 2026-10-06: "Red after 8 h, like stale"). Before it, `none` read as a
 #: cold start however long it lasted, so the hourly run stayed green while a
 #: copy 8 h 01 min old turned it red (review finding PY-3 of PR #1805 — dlt →
@@ -885,11 +885,11 @@ def raw_inputs_root(steps_url: str, raw_run: str) -> str:
 
 
 def _same_bucket(bucket_url: str, steps_url: str) -> None:
-    """The step cache shares the raw store's bucket and key (decision 43), so its paths go through the same client."""
+    """The step cache shares the raw store's bucket and key, so its paths go through the same client."""
     raw, steps = urlsplit(bucket_url), urlsplit(steps_url)
     local = ("", "file")
     if (raw.scheme in local) != (steps.scheme in local) or (raw.scheme not in local and raw.netloc != steps.netloc):
-        raise ValueError(f"{steps_url} is not in the raw store's bucket ({bucket_url}); one key reads both (decision 43)")
+        raise ValueError(f"{steps_url} is not in the raw store's bucket ({bucket_url}); one key reads both")
 
 
 def _sha256(fs, path: str) -> str:
@@ -1262,7 +1262,7 @@ def main(argv: list[str] | None = None) -> int:
         command.add_argument("--bucket-url", required=True, help="the lane's raw store, as extract/_run.py was given it")
         command.add_argument("--pipelines-dir", help="dlt's working directory (default: dlt's own)")
         if pinned:
-            command.add_argument("--steps-url", required=True, help="the step cache: <bucket>/steps (decision 43)")
+            command.add_argument("--steps-url", required=True, help="the step cache: <bucket>/steps")
             command.add_argument("--raw-run", required=True, help="the extract run's run_id")
         return command
 

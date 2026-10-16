@@ -103,102 +103,88 @@ The maintainer asked whether dlt has a skill set to add, and chose by poll
 ```
 pipeline/
   .dlt/config.toml   # committed: telemetry off, naming, file format. Never credentials
+  sources.json       # the registry: one row per upstream; its `extract` field says who reads it and how
+  reference/trail_orgs.json  # one row per org; `reviewed_files` for a club's reviewed OurHike files
   extract/
-    _contract.py     # TYPES, FILE_TYPES, NotAvailable, discover(), the lane and claim maps
-    _kinds.py        # one builder per source kind
+    _contract.py     # TYPES, FILE_TYPES, NotAvailable, SameAs, discover(), the lane and claim maps
+    _readers.py      # READERS (reader name -> builder) and build(): a registry row's `extract` -> Resources
+    _kinds.py        # one builder per source kind (and _notices.py, _content.py, … for the rest)
     _run.py          # change checks -> extract -> normalize -> run check -> load
-    _warehouse.py    # raw store -> warehouse.duckdb `raw` (load_raw.py's successor)
-    _shared/         # free-form: national services, aggregators, OurHike's own data, not_clubs.py
-    not_available.toml  # every club's notes and shares, one row per club x type (decision 88)
-    atc/  nysdec/  … # a managing club's resource files, one per type it publishes
+    _warehouse.py    # raw store -> warehouse.duckdb `raw`
+    _shared/         # free-form Python: national services, aggregators, OurHike's own data, not_clubs.py
+    not_available.toml  # every club's notes and shares, one row per club and type
 ```
 
+There is no folder per org. **Every org is read the same way, from the
+registry**: a `sources.json` row that the extract reads carries one field,
+
+```json
+"extract": {"org": "amc", "type": "closures",
+            "reads": [{"reader": "page_notice", "wp_page": 27, "crawl_delay": 3.0}]}
+```
+
+`org` is the club's `trail_orgs.json` slug with `-` written `_`; `type` is one
+of the ten types below; each entry of `reads` is one resource, the builder
+named by `reader` called with the row's key and the entry's other fields. A
+key read two ways (a WordPress site's posts and its taxonomy terms) has two
+entries. `same_as` on the same field lists republished copies of the row's
+dataset, noted and never loaded. A reviewed OurHike file under
+`pipeline/reference/` has no `sources.json` row, so its club's
+`trail_orgs.json` row lists it in `reviewed_files`, with the same `type` and
+`reads`. `extract/_readers.py` is the whole loader; nothing in it is keyed to
+an org, a row or a reader.
+
 **Never `pipeline/dlt/`.** Scripts run from `pipeline/`, which is first on
-`sys.path`, so a `dlt/` folder there would shadow `import dlt` (decision 12).
+`sys.path`, so a `dlt/` folder there would shadow `import dlt`.
 
-**Every managing club answers every type** (decisions 18 and 88): 145 clubs
-from `trail_orgs.json` at 23fca25, which is its 173 rows minus 12
-`national_umbrella`, 13 `route_only` and 3 `aggregator`. A club with no
-resource file has no folder: 103 have one (counted 2026-10-06). Umbrellas and route-only trails get one dated line each in
-`_shared/not_clubs.py`. Aggregators (`osm`, `outerspatial`, `avenza`) live in
-`_shared/`. Anything real an umbrella publishes, such as a podcast, goes in
-`_shared/` too.
-
-**The folder name is `trail_orgs.json`'s `slug` with `-` written `_`**, because
-Python cannot import a hyphen. No slug has an underscore, so the mapping
-reverses exactly (measured 2026-10-01). There is no `__init__.py`: a folder
-holds its resource files and nothing else.
-
-**Each of the ten types is answered exactly once** (decision 13, as decision 88
-amends it), by `<folder>/<type>.py` or by the row `[<folder>.<type>]` of
-`not_available.toml`, and the layout test fails a type answered by neither or
-by both. The eleventh type, `org`, is the club's catalogue row:
-`discover()` makes one for every managing club from `trail_orgs.json`
-(`catalogue_row()` in `_kinds.py`), so nobody writes it.
+**Every managing club answers each of the ten types exactly once**: by its
+registry rows for that type, or by the row `[<folder>.<type>]` of
+`not_available.toml` (a dated note, or a share naming a sibling type whose
+rows also feed this one), never both and never neither. Umbrellas, route-only
+trails and aggregators are not managing clubs: they get one dated line each in
+`_shared/not_clubs.py`, or a `_shared/` folder. The eleventh type, `org`, is
+the club's catalogue row, which `discover()` makes from `trail_orgs.json`.
+The layout test holds all of it.
 
 | type | feeds | lane |
 |---|---|---|
 | `org` (the catalogue row, made by `discover()`) | `sources` | monthly |
-| `trail_lines.py` | `trail_lines`, `trail_network`, elevation calibration | monthly |
-| `points_of_interest.py` | `points_of_interest` | monthly |
-| `elevation.py` | `elevation` (3DEP itself is `_shared/usgs/`) | monthly |
-| `closures.py` · `warnings.py` | `closures` · `warnings` | **hourly** |
-| `places.py` | `places` | monthly |
-| `suggested_hikes.py` | `suggested_hikes` | monthly |
-| `podcasts.py` · `challenges.py` | `podcasts` · `challenges` | monthly |
-| `photos.py` | photo manifest rows, never pixels | monthly |
+| `trail_lines` | `trail_lines`, `trail_network`, elevation calibration | monthly |
+| `points_of_interest` | `points_of_interest` | monthly |
+| `elevation` | `elevation` (3DEP itself is `_shared/usgs/`) | monthly |
+| `closures` · `warnings` | `closures` · `warnings` | **hourly** |
+| `places` | `places` | monthly |
+| `suggested_hikes` | `suggested_hikes` | monthly |
+| `podcasts` · `challenges` | `podcasts` · `challenges` | monthly |
+| `photos` | photo manifest rows, never pixels | monthly |
 
-`trail_network` and `sources` have no file: dbt derives them. The lane
-belongs to the type. Each answer is exactly one of:
+The lane belongs to the type; a read that differs sets `cadence_override` with
+a `cadence_reason` in its `reads` entry. A key read once and refused since is
+`Kept` (`_contract.py`): no lane reads it and builds keep its last committed
+table; only the maintainer rules a key kept.
 
-- **A resource file, `CLAIMS` + `RESOURCES`**: the `sources.json` keys it owns,
-  and a `Resource` for each. It may carry `SAME_AS` notes for the copies it
-  does not extract, or be `SAME_AS` alone, when a republished copy of another
-  resource's dataset is all the org publishes for this type. A claimed key it
-  read once and may not read again is `KEPT` instead, never both: a `Kept` in
-  `_contract.py` holding a dated note that quotes the refusal in `terms`. No
-  lane reads it, and builds and pins go on reading its last committed table,
-  so only the maintainer may rule a key kept (TIGER's states, open question 16).
-- **A share row, `shares = "<type>"`**: a sibling type's resource file also
-  feeds this type. One upstream is one resource and one raw table even when it
-  feeds two types, so `[atc.warnings]` holds `shares = "closures"` and claims
-  nothing.
-- **A note row**: a dated note (below).
+**`not_available.toml` is one file for every club**, sorted by club, then
+type, a blank line between rows. Git merges edits to neighbouring rows but
+refuses two new rows inserted at the same place (measured 2026-10-06), so
+sessions adding rows in parallel hand them to one session to write. Its
+header says how to retire a row.
 
-**`not_available.toml` is one file for every club**, so two sessions adding
-notes for different clubs both edit it. Its rows are sorted by club, then type,
-and a blank line separates each. Measured 2026-10-06 on a two-row copy: git
-merged an edit to one row with an edit to the next, and refused two new rows
-inserted between the same two rows. So sessions that add rows in parallel
-(a wave's workers) hand them to one session to write, as `sources.json` rows
-are handed to the lead. Its header comment says how `discover()` and the layout test read it, and how
-to retire a row.
-
-**A builder takes a `sources.json` key, never a URL.** A club file therefore
-cannot fetch anything the registry does not hold, and every new upstream is a
+**A builder takes a `sources.json` key, never a URL**, so the extract cannot
+fetch anything the registry does not hold, and every new upstream is a
 `sources.json` row first, with its licence established and recorded
 ([CONTRIBUTING.md](../../../CONTRIBUTING.md), "A note on data and licences").
 
 **A builder imports nothing the extract job does not install.** The job
-installs `requirements-extract.txt` alone, while the pipeline suite's
-environment holds every build dependency, so an import that only the build
-jobs pin passes every test and fails the job. Borrowing one constant from a
-fetcher brings that fetcher's imports with it: `export_weather_alerts.py`
-imports shapely, so the NWS endpoint and its response check moved to
-`lib/nws_alerts.py`. `tests/test_extract_layout.py` walks the extract's own
-imports and fails on one with no pin.
+installs `requirements-extract.txt` alone, so an import only the build jobs
+pin passes every test and fails the job. `tests/test_extract_layout.py` walks
+the extract's imports and fails on one with no pin.
 
-**Raw tables are named `raw_<folder>__<key>`**, passed to dlt as `table_name=`
-exactly as written. A real run keeps that name under both `snake_case` and
-`sql_ci_v1`, but dlt's `normalize_table_identifier()` called on its own
-collapses the `__` to `raw_nysdec_dec_lean_tos` (measured 2026-10-01, dlt
-1.30.0), so no code here builds a table name by calling it. **A key may not
-start with a digit**: a run normalizes the name as a path split on `__` and
-escapes such a segment, so `raw_usgs__3dep_13_current` landed as
-`raw_usgs___3dep_13_current` and the run check, counting the name as written,
-refused the monthly lane for an empty table it had loaded (run 37058045092,
-2026-10-02). `raw_table()` refuses such a key, and the layout test holds every
-resource's table to dlt's own `normalize_path`.
+**Raw tables are named `raw_<org>__<key>`**, passed to dlt as `table_name=`
+exactly as written; `normalize_table_identifier()` called on its own would
+collapse the `__` (measured 2026-10-01, dlt 1.30.0). **A key may not start
+with a digit**: dlt escapes such a segment, so `raw_usgs__3dep_13_current`
+landed as `raw_usgs___3dep_13_current` (2026-10-02). `raw_table()` refuses
+such a key, and the layout test holds every table to dlt's `normalize_path`.
 
 ## One extraction per upstream dataset
 

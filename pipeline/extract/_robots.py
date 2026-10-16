@@ -29,7 +29,7 @@ run_pipeline() calls forget() as each run starts. Then, for every request:
   `crawl_delay`), and a session nobody made polite keeps the robots.txt's
   own, through the same per-host gate. Counting the fetch costs a run one
   more Crawl-delay per host that asks one: 60 s at most among the delays
-  sources.json and the club files hold (bmta's, wta's and tta's hosts;
+  sources.json and the registry rows hold (bmta's, wta's and tta's hosts;
   Reasoned from those numbers, 2026-10-09).
 - /robots.txt itself is always allowed (RFC 9309, section 2.2.2).
 A redirect that requests follows inside one request is not checked again:
@@ -68,7 +68,7 @@ robots.txt that earlier sessions here read names either: two reads, of 56
 hosts on 2026-10-04 and of 25 on 2026-10-03, some hosts in both, searched
 2026-10-09 (Measured); the registry's resources ask 147 hosts.
 
-ONE RULING OVERRIDES A DISALLOW (RULED_HOSTS): decision 85, the maintainer's
+ONE RULING OVERRIDES A DISALLOW (RULED_HOSTS): the maintainer's
 poll of 2026-10-05, for api.weather.gov, whose robots.txt reads
 `User-agent: *` / `Disallow: /` while NWS documents the API for applications.
 Its robots.txt is still read, and a Crawl-delay it ever asks is still kept.
@@ -97,7 +97,7 @@ MAX_BYTES = 500 * 1024
 #: Hosts whose robots.txt Disallow the maintainer has ruled on, each with the ruling (the module docstring).
 RULED_HOSTS = {
     "api.weather.gov": (
-        "decision 85, the maintainer's poll of 2026-10-05: NWS documents the API for application clients, so the "
+        "the maintainer's poll of 2026-10-05: NWS documents the API for application clients, so the "
         "host-wide `Disallow: /` is read as aimed at crawlers of the host"
     ),
 }

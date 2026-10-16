@@ -1804,25 +1804,25 @@ def test_the_org_row_carries_the_licence_of_every_key_the_club_claims():
         "dec_viewing_areas",
         "dec_parking_areas",
         "dec_backcountry_features",
-        # nysdec/warnings.py's two, decision 53 phase B (2026-10-03); decision 63 (2026-10-04) ships the HAB
+        # nysdec.warnings's two (2026-10-03); the publication review (2026-10-04) ships the HAB
         # reports and holds the big-game seasons until their season text is parsed.
         "nysdec_hab_reports",
         "nysdec_big_game_seasons",
-        # nysdec/closures.py's backcountry page, decision 53 phase B and decision 55 (2026-10-03): registered, not shipped.
+        # nysdec.closures's backcountry page (2026-10-03): registered, not shipped.
         "nysdec_adk_backcountry",
-        # Decision 54's places layers (nysdec/places.py, registered 2026-10-03).
+        # The places layers (nysdec.places, registered 2026-10-03).
         "dec_lands",
         "dec_conservation_easements",
         "dec_wildlife_management_areas",
         "dec_adirondack_park_boundary",
         "dec_catskill_park_boundary",
-        # nysdec/podcasts.py's feed, decision 54 wave 3, section C (registered 2026-10-04, not shipped).
+        # nysdec.podcasts's feed (registered 2026-10-04, not shipped).
         "dec_does_what_podcast",
     }
     assert claims["dec_does_what_podcast"]["type"] == "podcasts"
     assert claims["dec_does_what_podcast"]["reaches_hikers"] is False
     assert claims["dec_lands"]["type"] == "places"
-    # Flipped 2026-10-04 under decision 63, once int_places__club_units read the places union; DEC's
+    # Flipped 2026-10-04 by the publication review, once int_places__club_units read the places union; DEC's
     # conservation easements stay held (no place_kind filter is built for them).
     assert claims["dec_lands"]["reaches_hikers"] is True
     assert claims["dec_conservation_easements"]["reaches_hikers"] is False
@@ -1853,7 +1853,7 @@ def test_a_podcast_feed_lands_one_row_per_episode_and_never_the_audio(registry, 
 
 
 def test_a_podcast_feed_never_lands_a_tag_that_names_a_person(registry, requests_mock):
-    """PodcastFeed, which atc/podcasts.py reads The Green Tunnel with, leaves out every tag in PERSON_TAGS, as its
+    """PodcastFeed, which atc.podcasts reads The Green Tunnel with, leaves out every tag in PERSON_TAGS, as its
     subclass PodcastEpisodes does: RSS's <author> is an e-mail address, and itunes:owner carries one."""
     item = (
         "<item><guid>g-1</guid><title>One</title><author>someone@example.org (Some One)</author>"
@@ -2259,7 +2259,7 @@ def test_a_club_pdf_lands_its_parsed_rows_each_with_the_documents_manifest(regis
     assert [row["mile"] for row in rows] == [0.8, 7.3, 0.2, 2.8, 38.0, 80.7]
     assert rows[0]["_document"]["etag"] == '"w1"' and rows[0]["_document"]["bytes"] == 14
     assert rows[0]["_document"]["last_modified"] == "Mon, 02 Mar 2026 00:00:00 GMT", "the club's own date is in the warehouse"
-    # The HTTP date is the file's; the title is what says how old the data in it is (decision 75).
+    # The HTTP date is the file's; the title is what says how old the data in it is.
     assert rows[0]["_document"]["title"] == "Fixture Water Update May 2011.xlsx"
     assert rows[0]["_document"]["created"] == "2026-03-02T15:00:00-05:00"
 
@@ -2267,7 +2267,7 @@ def test_a_club_pdf_lands_its_parsed_rows_each_with_the_documents_manifest(regis
 def test_a_club_pdfs_own_title_and_creation_date_are_read_through_pypdf_and_a_pdf_stating_neither_reads_as_none():
     """club_pdf_document_info on PDFs written here with pypdf, which the pipeline suite now installs (WF4 of the PR
     #1805 review). The first is GATC's case with an invented title: a title naming an older year than the file's
-    HTTP date (decision 75). Unreadable bytes are None for both, never a failed load."""
+    HTTP date. Unreadable bytes are None for both, never a failed load."""
     from io import BytesIO
 
     import pypdf

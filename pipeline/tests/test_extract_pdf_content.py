@@ -1,8 +1,7 @@
-"""extract/_pdf_content.py, decision 54 wave 4's PDF readers for the content types (section K), against mocked
-servers and invented text layers.
+"""extract/_pdf_content.py, the PDF readers for the content types, against mocked servers and invented text layers.
 
 A family's parser is run over a PdfFacts (extract/_notices.py's text layer and metadata dates) shaped like the live
-document's (section K's reads of 2026-10-04, each sources.json row's `notes`), so these tests need no pypdf: the
+document's (the reads of 2026-10-04, each sources.json row's `notes`), so these tests need no pypdf: the
 reader's own read_pdf is swapped for one that hands back the invented layer. Nothing reaches the network:
 conftest.py's socket guard stays on.
 

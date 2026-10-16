@@ -1,7 +1,7 @@
 """The listing of USGS's staged NHD subregion GeoPackages, as `raw_usgs__nhd_hu4_gpkg`: every object, never a zip.
 
 NHD is the retired dataset fetch_trail_water.py derives site water from, as
-21 subregion zips of about 270 MB each, which stay files (decision 4). What
+21 subregion zips of about 270 MB each, which stay files. What
 lands is the bucket's record of every subregion's zip, `.xml` and `.jpg`, so
 a republished subregion shows as a moved ETag. Measured 2026-10-01: 735
 objects, 245 of them zips, and none of the corridor's 21 modified since

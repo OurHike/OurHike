@@ -1,7 +1,7 @@
-"""Decision 54 wave 3's content readers (section C): podcasts without their people, NPS's content lists, and
+"""The content readers: podcasts without their people, NPS's content lists, and
 narrower reads of kinds that already exist.
 
-pipeline/ELT.md, "Loading everything the clubs publish (decision 54)", wave 3, is the plan: the feeds and APIs
+pipeline/ELT.md is the plan: the feeds and APIs
 the clubs publish for suggested hikes, podcasts, challenges and photos. Each reader here is a subclass of a kind
 that already reads its platform, and changes only what that kind could not do, so the paging, the change check
 and the count-as-proof are the ones already tested (extract/_kinds.py, extract/_json_apis.py):
@@ -20,11 +20,11 @@ and the count-as-proof are the ones already tested (extract/_kinds.py, extract/_
                                   MediawikiAnnouncements)
 
 WHY NOT podcast_feed AS IT IS. PodcastFeed lands every child of an <item> as a column, which is how nothing a
-feed carries is dropped before dbt, and also how a person lands: the live reads of 2026-10-04 (section C's
-worker, under lib/user_agent.py's agent, robots.txt first) found an item's `itunes:author` holding the guests'
+feed carries is dropped before dbt, and also how a person lands: the live reads of 2026-10-04 (under
+lib/user_agent.py's agent, robots.txt first) found an item's `itunes:author` holding the guests'
 names (AMC's Unlikely Stories, on 11 of 11 items; NHPR's Something Wild, its hosts' names on every item) and staff e-mail addresses (USGS's Outstanding in the Field, on 11 of 11 items), RSS
 `<author>` holding an e-mail address (Unlikely Stories, 11 of 11), `dc:creator` naming a person (BLM's On the
-Ground, The Trustees' feed) and `podcast:person` naming each guest (USGS). Decision 59 and the dlt skill's
+Ground, The Trustees' feed) and `podcast:person` naming each guest (USGS). The dlt skill's
 "People never ship, and are never loaded" leave those out by an explicit list, before dlt sees the row, so
 PodcastEpisodes drops PERSON_TAGS, then whatever extract/_kinds.py's PersonRule leaves out: the registry row's own
 `person_fields` (an episode description that carries an e-mail address or a telephone number, measured per feed
@@ -72,7 +72,7 @@ class PodcastEpisodes(_kinds.PodcastFeed):
     - PEOPLE (the module docstring). The tags are dropped before the row is built, and a `person_fields` name is
       the column as it would land (`description`, `content_encoded`, `itunes_summary`): a feed whose episode
       notes carry an e-mail address or a telephone number lists every column that repeats them, because
-      decision 59 leaves such a column out whole rather than redacting it.
+      The person-field rule leaves such a column out whole rather than redacting it.
     - AN ATTRIBUTE IS A VALUE. `itunes:image` and `podcast:transcript` carry their URL in `href` and `url` and
       no text, so PodcastFeed's text-only read landed them empty; here an element with no text lands the first
       of `href` and `url` it has.
@@ -209,7 +209,7 @@ class RepeatedId(RuntimeError):
 def _repeated(fields: list[str], value: str, first: dict, again: dict) -> str:
     """The refusal's words for two items under one key: the key, and the names of the fields the two differ in.
 
-    Names only, never what either copy holds, so no person field's value reaches a log (decision 59).
+    Names only, never what either copy holds, so no person field's value reaches a log.
     """
     differing = sorted(
         name
@@ -243,8 +243,8 @@ class NpsContent(_json_apis.NpsAlerts):
     one key still refuse, naming the fields they differ in and never the values (_repeated).
 
     THE SCOPE is the registry row's: national when it names no park codes, or the codes another row lists in
-    `park_codes`, named by `park_codes_from` (nps_alerts' map, the one home for which club folder draws on
-    which park, decision 34). A row is landed as NPS serves it, nested lists and objects as JSON, except the
+    `park_codes`, named by `park_codes_from` (nps_alerts' map, the one home for which club draws on
+    which park). A row is landed as NPS serves it, nested lists and objects as JSON, except the
     top-level fields extract/_kinds.py's PersonRule leaves out before dlt sees the row: its row's `person_fields`,
     matched in any case, and a field named like a person's. A gallery asset's own `credit` and
     `constraintsInfo` are that photo's credit line and licence and land as they are: no park's or site's
@@ -433,7 +433,7 @@ class MediawikiTemplatePages(_json_apis.MediawikiAnnouncements):
     for a template other than the one a notice row reads on the same wiki.
 
     One wiki's api.php is one URL, and two templates on it are two datasets: TEHCC's `Template:Announcement`
-    pages are its notices (decision 53), its `Template:Trail` and `Template:Hike` pages its trail and hike
+    pages are its notices, its `Template:Trail` and `Template:Hike` pages its trail and hike
     write-ups. `part` is the template, so the layout test's one-extraction rule tells the reads apart by what
     the server is asked for, as it tells NYNJTC's posts from its terms.
     """

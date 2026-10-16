@@ -1,4 +1,4 @@
-"""extract/_sheet_content.py, the workbook readers for section K's hand-back, against mocked servers and invented cells.
+"""extract/_sheet_content.py, the workbook readers, against mocked servers and invented cells.
 
 Each family's parser runs over cells laid out as the live workbook's were on 2026-10-10 (SMHC's 900 Miler list, an
 .xls; WMC's hike ratings, an .xlsx), with invented names and numbers. sheet_cells() and the reader open .xlsx files

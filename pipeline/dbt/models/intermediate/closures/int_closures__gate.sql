@@ -487,8 +487,7 @@ judged as (
                 then
                     wording_leaks.rows_leaking || ' '
                     || gated_sources.source_key || ' row(s) hold the '
-                    || 'source''s own wording in a published column '
-                    || ', the first '
+                    || 'source''s own wording in a published column, the first '
                     || wording_leaks.first_row || ', so none of its rows is '
                     || 'published (int_warnings__wording_leaks names each)'
             when coalesce(outside_region.rows_outside, 0) > 0

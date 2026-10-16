@@ -1576,7 +1576,7 @@ judged as (
                     'its season starts on ' || starts_on || ', more than '
                     || '{{ var('notice_season_lead_days') }} days after this '
                     || 'build: a recurring season publishes from that many '
-                    || 'days before it starts (rule 9)'
+                    || 'days before it starts'
             {{ notice_date_holds('build_date', 'rescinded_on') }}
         end as held_because,
         {{ notice_has_ended('ends_on', 'build_date') }} as has_ended,

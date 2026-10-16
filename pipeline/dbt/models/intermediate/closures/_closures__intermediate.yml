@@ -3488,7 +3488,7 @@ unit_tests:
           where false
     expect:
       rows:
-        - {notice_id: 'cotrex_seasonal_closures:thirty_one_days_ahead', obstructs_trail: null, held_because: 'its season starts on 2026-11-15, more than 30 days after this build: a recurring season publishes from that many days before it starts (rule 9)', starts_on: '2026-11-15'}
+        - {notice_id: 'cotrex_seasonal_closures:thirty_one_days_ahead', obstructs_trail: null, held_because: 'its season starts on 2026-11-15, more than 30 days after this build: a recurring season publishes from that many days before it starts', starts_on: '2026-11-15'}
         - {notice_id: 'cotrex_seasonal_closures:thirty_days_ahead', obstructs_trail: true, held_because: null, starts_on: '2026-11-14'}
         - {notice_id: 'cotrex_seasonal_closures:under_way', obstructs_trail: true, held_because: null, starts_on: '2026-10-01'}
         - {notice_id: 'idpr_area_restrictions:no_season', obstructs_trail: true, held_because: null, starts_on: '2027-03-01'}

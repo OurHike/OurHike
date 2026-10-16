@@ -85,8 +85,7 @@ refused_publication as (
                     )
                     || ', so its steward does not show this '
                     || classified.poi_type
-                    || ' point, and a pin claims no more than its steward '
-                    || ''
+                    || ' point, and a pin claims no more than its steward'
             else
                 'not public: '
                 || json_extract_string(

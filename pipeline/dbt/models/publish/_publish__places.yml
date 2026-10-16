@@ -44,7 +44,7 @@ exposures:
       export_places.py's file until stage 4 of #1793 moves it to this
       writer's.
     depends_on:
-      - ref('places')
+      - ref('places', v=1)
       - ref('pub_places')
     config:
       meta:
@@ -85,7 +85,7 @@ unit_tests:
       macros:
         python_run_stamp: "'2026-09-10T12:00:00Z'"
     given:
-      - input: ref('places')
+      - input: ref('places', v=1)
         format: sql
         rows: |
           select
@@ -128,7 +128,7 @@ unit_tests:
       macros:
         python_run_stamp: "'2026-09-10T12:00:00Z'"
     given:
-      - input: ref('places')
+      - input: ref('places', v=1)
         rows: []
       - input: ref('int_places__lines')
         rows: []
@@ -146,7 +146,7 @@ unit_tests:
       macros:
         python_run_stamp: "'2026-09-10T12:00:00Z'"
     given:
-      - input: ref('places')
+      - input: ref('places', v=1)
         rows: []
       - input: ref('int_places__lines')
         rows: []

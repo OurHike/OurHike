@@ -23,4 +23,4 @@ select
         ),
         '[]'
     ) as geometry_json
-from {{ ref('trail_network') }}
+from {{ ref('trail_network', v=1) }}

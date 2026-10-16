@@ -12,7 +12,7 @@ select
     'edge' as what,
     edges.edge_id as id,
     trail_line.trail_line_id
-from {{ ref('trail_network') }} as edges
+from {{ ref('trail_network', v=1) }} as edges
 inner join {{ ref('trail_lines', v=1) }} as trail_line
     on edges.trail_id = trail_line.published_id
 where trail_line.line_kind = 'club'

@@ -16,6 +16,13 @@ models:
       access: public
       contract:
         enforced: true
+    # Phones read v1, and every writer pins it, ref('trail_network', v=1). A removed,
+    # renamed or retyped column ships as a v2 beside v1 until v1's
+    # deprecation_date; check_contract_versions.py holds that in CI.
+    latest_version: 1
+    versions:
+      - v: 1
+        defined_in: trail_network
     data_tests:
       # Elementary's checks (pipeline/ELT.md, "The checks, and
       # where each goes"), each with its two thresholds and run by build_marts.py after the

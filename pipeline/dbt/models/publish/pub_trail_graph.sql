@@ -59,7 +59,7 @@ edges as (
             || ']',
             '[]'
         ) as edges
-    from {{ ref('trail_network') }}
+    from {{ ref('trail_network', v=1) }}
 )
 
 select

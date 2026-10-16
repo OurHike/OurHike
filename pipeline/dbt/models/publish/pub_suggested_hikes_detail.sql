@@ -17,7 +17,7 @@
 -- detailKeyFor's `<source>:<digits>`. Nothing is written when no hike ships,
 -- as for the shelf (pub_suggested_hikes).
 with hikes as (
-    select * from {{ ref('suggested_hikes') }}
+    select * from {{ ref('suggested_hikes', v=1) }}
     where phone_file = 'suggested_hikes'
 )
 

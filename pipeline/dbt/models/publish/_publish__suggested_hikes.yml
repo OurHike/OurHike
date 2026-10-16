@@ -81,7 +81,7 @@ exposures:
       contracted marts, a monthly refresh, published docs, and lighter phone
       downloads moves it to this writer's.
     depends_on:
-      - ref('suggested_hikes')
+      - ref('suggested_hikes', v=1)
       - ref('pub_suggested_hikes')
     config:
       meta:
@@ -104,7 +104,7 @@ exposures:
       exporter's own write_detail_objects()), so the key below names a family:
       `{number}` is each hike's number.
     depends_on:
-      - ref('suggested_hikes')
+      - ref('suggested_hikes', v=1)
       - ref('pub_suggested_hikes_detail')
     config:
       meta:
@@ -128,7 +128,7 @@ exposures:
       published docs, and lighter phone downloads — moves it to this
       writer's.
     depends_on:
-      - ref('suggested_hikes')
+      - ref('suggested_hikes', v=1)
       - ref('pub_highlights')
     config:
       meta:

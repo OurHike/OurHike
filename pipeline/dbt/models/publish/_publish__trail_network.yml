@@ -62,7 +62,7 @@ exposures:
       client reads its 1-degree cells (trail_graph_cells), which
       cut_trail_graph.py cuts from it.
     depends_on:
-      - ref('trail_network')
+      - ref('trail_network', v=1)
       - ref('int_trail_network__nodes')
       - ref('pub_trail_graph')
     config:
@@ -84,7 +84,7 @@ exposures:
       Published by publish-vector-data.yml from build_trail_graph.py's file
       until stage 4 moves it to this writer's.
     depends_on:
-      - ref('trail_network')
+      - ref('trail_network', v=1)
       - ref('pub_trail_graph_geometry')
     config:
       meta:
@@ -109,7 +109,7 @@ exposures:
     # The edges it is cut from, not a writer: each writer is one exposure's
     # (tests/test_dbt_publish_writers.py), and this file's writer is Python.
     depends_on:
-      - ref('trail_network')
+      - ref('trail_network', v=1)
     config:
       meta:
         r2_keys:

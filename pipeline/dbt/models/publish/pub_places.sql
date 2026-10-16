@@ -21,7 +21,7 @@
 {%- set run_stamp = "cast(" ~ python_run_stamp() ~ " as timestamptz)" %}
 {%- set stamp = python_utc_seconds(run_stamp) %}
 with places as (
-    select * from {{ ref('places') }}
+    select * from {{ ref('places', v=1) }}
 ),
 
 records as (

@@ -14,7 +14,7 @@
 -- be placed is dropped and named (int_suggested_hikes__highlights' warn
 -- test), never published with an end guessed.
 with highlights as (
-    select * from {{ ref('suggested_hikes') }}
+    select * from {{ ref('suggested_hikes', v=1) }}
     where phone_file = 'highlights'
 )
 

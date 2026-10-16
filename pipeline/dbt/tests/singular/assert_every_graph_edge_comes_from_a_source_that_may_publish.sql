@@ -11,7 +11,7 @@
 select
     edges.edge_id,
     edges.source_key
-from {{ ref('trail_network') }} as edges
+from {{ ref('trail_network', v=1) }} as edges
 left join {{ ref('int_sources__publication') }} as publishable
     on edges.source_key = publishable.source_key
 where not coalesce(publishable.may_publish, false)

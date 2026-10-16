@@ -14,7 +14,7 @@ with numbered as (
         count(*) as edges,
         coalesce(max(edge_index), -1) as last_index,
         count(distinct edge_index) as distinct_indexes
-    from {{ ref('trail_network') }}
+    from {{ ref('trail_network', v=1) }}
 )
 
 select

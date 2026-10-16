@@ -101,6 +101,13 @@ export interface NoticeListProps {
    * in it. The rows, the note and the age lines are the same either way.
    */
   plannedNoticesMissing?: boolean
+  /**
+   * The sentence in place of the rows while the notices this list was
+   * opened for are not on the phone yet - the "Read all" door's, before
+   * conditions/notices.json has arrived (chrome/noticesPanel.tsx) - because
+   * "OurHike is holding no trail notices" would then be false.
+   */
+  waiting?: string
   onClose: () => void
 }
 
@@ -198,6 +205,7 @@ export function NoticeList({
   extent,
   now,
   plannedNoticesMissing = false,
+  waiting,
   onClose,
 }: NoticeListProps) {
   const [showEverything, setShowEverything] = useState(false)
@@ -268,9 +276,11 @@ export function NoticeList({
         // this component can only honestly make the first. The shell does not
         // mount it at all when the fetch failed.
         <p className="atc-notices__empty">
-          {notices.length === 0
-            ? 'OurHike is holding no trail notices.'
-            : 'No trail notices on the stretch you are looking at.'}
+          {waiting !== undefined
+            ? waiting
+            : notices.length === 0
+              ? 'OurHike is holding no trail notices.'
+              : 'No trail notices on the stretch you are looking at.'}
         </p>
       ) : (
         <ul className="atc-notices__list">

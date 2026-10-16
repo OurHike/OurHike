@@ -432,6 +432,14 @@ export interface MapScreenProps {
    */
   noticeRowLabel?: string
   /**
+   * The "Read all" door beside the planned-hike row (decision 213, the
+   * maintainer's Q20, 2026-10-15): its words, or undefined for no door, and
+   * what a tap does. Every club's notices that no map draws, planned or not
+   * (chrome/noticesPanel.tsx says which).
+   */
+  readAllNoticesLabel?: string
+  onReadAllNotices?: () => void
+  /**
    * How many notices this screen is holding that their publisher touched in
    * the last 72 hours and the hiker has not already silenced (lib/notices.ts,
    * #687). Zero, or the shell not passing it, renders no dot.
@@ -982,6 +990,8 @@ export function MapScreen({
   onOpenNotices,
   noticeList,
   noticeRowLabel,
+  readAllNoticesLabel,
+  onReadAllNotices,
   newNoticeCount = 0,
   newNoticeLabel,
   trailDataUpdate,
@@ -1998,6 +2008,8 @@ export function MapScreen({
             downloadActivity={downloadActivity}
             noticeCount={noticeCount}
             noticeRowLabel={noticeRowLabel}
+            readAllNoticesLabel={readAllNoticesLabel}
+            onReadAllNotices={onReadAllNotices}
             newNoticeCount={newNoticeCount}
             onOpenNotices={onOpenNotices}
           />

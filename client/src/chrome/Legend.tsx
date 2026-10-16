@@ -422,6 +422,10 @@ export interface LegendProps {
   /** The row's words when the list is the planned-hike panel (#1805), which
    *  shows the row whatever `noticeCount` is - see MapScreen's own prop. */
   noticeRowLabel?: string
+  /** The "Read all" door beside that row (decision 213's Q20) - see
+   *  MapScreen's own prop. Both set, the row is drawn. */
+  readAllNoticesLabel?: string
+  onReadAllNotices?: () => void
 }
 
 /**
@@ -482,6 +486,8 @@ export function Legend({
   newNoticeCount = 0,
   onOpenNotices,
   noticeRowLabel,
+  readAllNoticesLabel,
+  onReadAllNotices,
 }: LegendProps) {
   // Red light draws every line one red-amber before the blaze switch is
   // consulted (map/style.ts's blazeLineColor), so the Blaze colors switch
@@ -928,6 +934,16 @@ export function Legend({
             {newNoticeCount > 0 && ` · ${newNoticeCount} new`}
           </button>
         )}
+      {/* BESIDE IT, THE DOOR TO EVERY CLUB'S NOTICES NO MAP DRAWS (decision
+          213, the maintainer's Q20, "Keep a 'Read all' door (Recommended)"):
+          the planned-hike row above shows only what touches a hike planned
+          in the next 7 days, and with none planned a hiker had no screen
+          listing them at all. The old row's own words and class. */}
+      {readAllNoticesLabel !== undefined && onReadAllNotices !== undefined && (
+        <button type="button" className="legend__atc-link" onClick={onReadAllNotices}>
+          {readAllNoticesLabel}
+        </button>
+      )}
 
       {/* Which categories are drawn. Under the grid rather than in it, because it
           is not a category: it cuts across every row at once. NOT gated on there

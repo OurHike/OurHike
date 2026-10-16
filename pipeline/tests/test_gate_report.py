@@ -207,7 +207,7 @@ def test_a_keys_only_result_says_its_records_were_withheld_and_which_side_lacks_
 
 
 def test_an_explained_safety_difference_is_listed_for_approval_on_its_own_row():
-    explained = {**_difference("properties.confidence"), "reason": "expected, an exact copy"}
+    explained = {**_difference("properties.confidence"), "reason": "expected by the exact-copy dedupe"}
     rows, _, _ = key_rows(TODAY, DBT, {"poi_water": _result("poi_water", "poi_water.geojson", explained=[explained])})
     water = next(row for row in rows if row.key == "poi_water.geojson")
     assert (water.verdict, water.safety) == ("equal_apart_from_listed", ["confidence"])
@@ -266,7 +266,7 @@ def _nearby(poi: list[dict], trails: list[dict]) -> dict:
 
 
 def test_an_explained_difference_on_no_safety_field_is_accepted_without_row_review():
-    renamed = _explained("properties.id x", ["properties.name"], "expected, an exact copy", held_by="new")
+    renamed = _explained("properties.id x", ["properties.name"], "expected by the exact-copy dedupe", held_by="new")
     row = _nearby([renamed], [])["nearby_poi.geojson"]
 
     assert (row.verdict, row.safety, row.safety_accepted, row.listed[0].open_because) == (

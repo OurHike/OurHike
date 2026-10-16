@@ -5,12 +5,12 @@
 # data platform as dlt → dbt: seven contracted marts, a monthly refresh,
 # published docs, and lighter phone downloads). sqlfluff-templater-dbt
 # compiles through dbt-core 1.x, and the maintainer chose one dbt version
-# everywhere: dbt v2 (the full dbt 2.0.6 since decision 32; dbt-oss 2.0.5
+# everywhere: dbt v2 (the full dbt 2.0.6; dbt-oss 2.0.5
 # before it), with no dbt-core beside it. The jinja templater needs no dbt
 # and no warehouse; CI still runs the lint last in its job, so a failed build
 # reports first (pipeline-tests.yml's sqlfluff step says why).
 #
-# `dbt lint` reads this file too (decision 33 runs it beside SQLFluff in the
+# `dbt lint` reads this file too (it runs beside SQLFluff in the
 # CI job). It warns that it supports only SQLFluff's `dbt` templater and
 # carries on, and it is not the enforced lint: measured 2026-10-01 on dbt
 # 2.0.6, it failed a planted CP01 but passed a planted LT01 that SQLFluff
@@ -72,7 +72,7 @@ exclude_rules = ST06
 # unlinted file, and SQLFluff says so only as a warning, so the step stays
 # green: int_podcasts__checked.sql, 20,789 bytes, was skipped that way
 # (2026-10-01, sqlfluff 4.3.0). The skip guards against parser lock on
-# generated SQL, and since decision 91 the lint covers generate_dbt.py's
+# generated SQL, and the lint covers generate_dbt.py's
 # models as well as the hand-written ones: 1,168 generated files beside 345
 # (counted 2026-10-09), the largest generated one 26,232 bytes, which the
 # default would skip unlinted. Keeping 0 is a bet that no generated file

@@ -251,7 +251,7 @@ def _by_edge(entries: list) -> dict:
 #: short: a monthly run lists it once per edge that rounds differently, about 590,000 of UA's 3,552,477 (Reasoned from
 #: the 1,104,236 edges with a non-zero figure, each figure's fraction taken as uniform).
 CLIMB_ROUNDED_UP_REASON = (
-    "expected, rounded toward caution: the dbt writer rounds an edge's "
+    "expected by rounding toward caution: the dbt writer rounds an edge's "
     "gain and loss up to the whole foot, export_network_elevation.py to the nearest; each figure the same or one more"
 )
 
@@ -527,7 +527,7 @@ STAGING_KEY = re.compile(r"[0-9a-f]{32}")
 #: of that model, and tests/test_dbt_trail_lines_network_parity.py holds it to
 #: a pair of files instead.
 NETWORK_COPY_REASON = (
-    "expected, an exact copy: staging keeps one of a layer's exact copies, the lowest Socrata or server row id "
+    "expected by the exact-copy dedupe: staging keeps one of a layer's exact copies, the lowest Socrata or server row id "
     "(macros/duckdb__deduplicate.sql), where export_nearby_trails.py draws every copy. Measured 2026-10-03 on NYC "
     "Open Data's live rows: nyc_dot_greenways repeats 10 segments on 54 rows and nyc_parks_trails 4 on 8, each copy "
     "differing only in Socrata's row id"
@@ -713,7 +713,7 @@ def _nearby_trails_reasons(old: dict, new: dict) -> dict[str, str]:
 
 #: Why a sketch group of today's draws a part more often than the dbt writer's (_overview_copy_reasons()).
 OVERVIEW_COPY_REASON = (
-    "expected, an exact copy, as NETWORK_COPY_REASON is for the lines: write_overview() draws a part for each line "
+    "expected by the exact-copy dedupe, as NETWORK_COPY_REASON is for the lines: write_overview() draws a part for each line "
     "of a group, so today's sketch draws a line export_nearby_trails.py publishes twice, an exact copy, twice, where "
     "staging keeps one copy and the dbt writer draws it once. Explained only where the two groups draw the same "
     "parts and today's draws some of them more often. Monthly run 30's two: alaska_trails' 7 exact copies, 2 of "
@@ -760,12 +760,12 @@ def _network_overview_reasons(old: dict, new: dict) -> dict[str, str]:
 #: the case where the two writers answer that way.
 PLACES_REASONS = {
     "new_source": (
-        "expected, new data no exporter publishes: a trailhead, parking lot or town from a club point layer "
+        "expected by the new-data rule: a trailhead, parking lot or town from a club point layer "
         "no exporter reads (int_points_of_interest__club_points), so there "
         "is no old record to compare it with; new_data_report.py counts its layer under nearby_poi"
     ),
     "club_places": (
-        "expected, new data no exporter publishes: a park or town from a club "
+        "expected by the new-data rule: a park or town from a club "
         "places layer (int_places__club_units), which no exporter reads, so there is no old record to compare it "
         "with; new_data_report.py counts its layer under places"
     ),
@@ -807,7 +807,7 @@ def _places_reasons(old: dict, new: dict) -> dict[str, str]:
 #: Why a long trail's `trailMiles` can be shorter in the dbt writer's places.json than in today's.
 #: tests/test_dbt_places_parity.py holds it to a network file with a copy in it.
 PLACES_COPY_REASON = (
-    "expected, an exact copy: staging keeps one of a layer's exact copies, where today's network file draws every "
+    "expected by the exact-copy dedupe: staging keeps one of a layer's exact copies, where today's network file draws every "
     "copy, and export_places.load_named_trails() sums a long trail's miles over every line drawn under its name. "
     "Explained only for a `trail:` place in both files that differs in `trailMiles` alone, where today's network file "
     "draws a line of that source and name more than once with one geometry, and export_places' own measure of those "
@@ -875,7 +875,7 @@ def _trail_miles_counting_copies(keys: set[tuple[str, str]]) -> dict[tuple[str, 
 #: Why a trailhead's, parking lot's or town's `trailMiles` can be smaller in the dbt writer's places.json than in
 #: today's. tests/test_dbt_places_parity.py holds it to a network file with a copy inside a point's disc.
 PLACES_DISC_COPY_REASON = (
-    "expected, an exact copy: staging keeps one of a layer's exact copies, where today's network file draws every "
+    "expected by the exact-copy dedupe: staging keeps one of a layer's exact copies, where today's network file draws every "
     "copy, and export_places.measure() sums every line inside a point place's PLACE_TRAIL_RADIUS_MILES disc. "
     "Explained only for a place in both files with no bbox and no `trail:` id that differs in `trailMiles` alone, where "
     "export_places.measure() run again on today's two line files gives today's miles with every line counted and the "
@@ -1591,7 +1591,7 @@ def _poi_id(feature: dict) -> str:
 #: The opening every new-data reason carries: a record from a source today's exporters never read, which parity
 #: cannot check (pipeline/ELT.md, "The go/no-go gate") and new_data_report.py counts. gate_report.py lists every
 #: difference so explained once, as new data, and never as a safety field changed.
-NEW_DATA_REASON = "expected, new data no exporter publishes"
+NEW_DATA_REASON = "expected by the new-data rule"
 
 #: Why a club's own line is in the dbt writers' nearby_trails.geojson and network_overview.geojson and in neither of
 #: today's (the maintainer, 2026-10-04: "draw now, route later"). Starts with NEW_DATA_REASON:
@@ -1607,7 +1607,7 @@ CLUB_LINE_REASON = (
 #: where the two writers answer that way, so none outlives its reason.
 POI_REASONS = {
     "exact_copy": (
-        "expected, an exact copy, accepted as an improvement on 2026-10-02: staging removes a row that is an "
+        "expected by the exact-copy dedupe, accepted as an improvement on 2026-10-02: staging removes a row that is an "
         "exact copy of another in every column but the server's own row id (ELT.md, 'A dedupe may only remove "
         "exact copies, and the build proves it'), keeping the lowest OBJECTID, where export_nearby_poi.py "
         "publishes every copy as a pin of its own at the same spot"
@@ -1626,7 +1626,7 @@ POI_REASONS = {
         "site stays in none, so its site_id, site_role and site_name are null"
     ),
     "seasonal_tap": (
-        "expected, a tap with no shutoff season ships with a caution: a plumbed tap or fountain whose layer records "
+        "expected by the seasonal-tap rule, a tap with no shutoff season ships with a caution: a plumbed tap or fountain whose layer records "
         "no shutoff season, which export_nearby_poi.py holds back as a water holdback (sources.json's "
         "oprhp_water_holdback), ships as unconfirmed water carrying water_caution 'no_shutoff_season' "
         "(int_points_of_interest__cautioned), where its steward's own public flag shows it; only a "
@@ -1634,14 +1634,14 @@ POI_REASONS = {
         "that caution"
     ),
     "steward_hides": (
-        "expected, a pin claims no more than its steward: a water point whose steward's own public flag does not show it is held "
+        "expected by the steward's own flag, a pin claims no more than its steward: a water point whose steward's own public flag does not show it is held "
         "(int_points_of_interest__publishable, var poi_types_held_when_steward_hides), where export_nearby_poi.py's "
         "public_verdict() keeps it at low confidence because that layer's flag sets confidence rather than "
         "filtering (sources.json's public_flag_sets_confidence); only a record today's file holds and the dbt "
         "writer's lacks, of such a layer with no confidence floor, of a held type, rated low"
     ),
     "exact_copy_site": (
-        "expected, as an exact copy staging removes is: the POI is in both files and only its site "
+        "expected by the exact-copy dedupe, as an exact copy staging removes is: the POI is in both files and only its site "
         "differs, by exactly what lib/poi_sites.py's group_place_sites() makes of today's records once the copies "
         "staging removed are gone. Today's file folds a privy or fountain and its exact copy, same name and same "
         "spot, into one site (the copy riding the other's pin); with the copy gone the site is gone, and site_id, "

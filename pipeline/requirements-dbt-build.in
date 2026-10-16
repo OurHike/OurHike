@@ -1,5 +1,5 @@
 # What dbt's sdist needs in order to build, pinned and hashed like everything
-# it builds (pipeline/ELT.md decision 144). requirements-dbt.txt's hashes
+# it builds. requirements-dbt.txt's hashes
 # cover dbt's sdist and every wheel, and they do not reach this: the 2.0.6
 # sdist's pyproject.toml declares `requires = ["packaging>=24"]` for its build
 # backend, and pip installs a build's requirements into a throwaway

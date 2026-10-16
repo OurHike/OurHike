@@ -4,7 +4,7 @@
 # requirements.in on purpose: the pytest job never needs dbt, and the dbt job
 # never needs rasterio/pillow/pmtiles.
 #
-# HASH-PINNED (pipeline/ELT.md decision 144, the maintainer's poll of
+# HASH-PINNED (the maintainer,
 # 2026-10-09): the page dbt writes for ourhike.org/data/ comes from this
 # install, and that page shares an origin with the app's signed-in session.
 # So requirements-dbt.txt is compiled with --generate-hashes, which lists the
@@ -30,7 +30,7 @@ duckdb==1.5.5
 # dbt v2, the full `dbt` distribution, one version everywhere with no
 # dbt-core 1.x beside it (#1793 — Rebuild the data platform as dlt → dbt:
 # seven contracted marts, a monthly refresh, published docs, and lighter phone
-# downloads; decision 32 in its planning log). The maintainer chose it over
+# downloads). The maintainer chose it over
 # the Apache-2.0 `dbt-oss`: "We get expanded features that way I believe".
 # It is licensed under the dbt Product Licensing Agreement, not an open-source
 # licence - its PyPI metadata carries no licence field at all. That agreement

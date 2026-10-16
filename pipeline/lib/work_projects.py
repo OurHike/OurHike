@@ -166,7 +166,7 @@ def file_problems(document: dict) -> list[str]:
     # docstring for the decision.
     if "ua_sample_rows" in document:
         problems.append(
-            "ua_sample_rows is retired (the maintainer, 2026-09-09): no invented workday may reach a hiker "
+            "ua_sample_rows is retired (maintainer decision 2026-09-09): no invented workday may reach a hiker "
             "in ANY environment, so `rows` is the only list. Move a real club's row into `rows`, or delete the key"
         )
 

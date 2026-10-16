@@ -14,9 +14,9 @@
 monthly = "2026-10-07, refresh-reference.yml run 37614075245 (monthly run 25), which saved 9 snapshot tables, 26,016,290 rows"
 conditions_ua = "2026-10-03, publish-conditions.yml run 37151246098 (soak run 505), which saved 2 snapshot tables, 457 rows"
 
-# The same stores, by the same names, once Elementary's history (decision 102)
+# The same stores, by the same names, once Elementary's history
 # has been saved there: each names the run whose save first wrote its
-# elementary.json. Every store above was saved before decision 102, so each
+# elementary.json. Every store above was saved before Elementary's history was kept, so each
 # holds a history.json and no elementary.json, and the first run with
 # Elementary there starts that history, with a warning, which is not a loss.
 # Once a store is listed here, a missing elementary.json is refused as lost
@@ -33,4 +33,4 @@ conditions_ua = "by 2026-10-08 22:52 UTC: publish-conditions.yml run 596 (379302
 # (24), which the hourly stores do. At least 2: the current save and the one
 # it was built on.
 [keep_saves]
-monthly = 3  # decision 206 (the maintainer's poll, 2026-10-15): the newest and two back
+monthly = 3  # the maintainer, 2026-10-15: the newest and two back

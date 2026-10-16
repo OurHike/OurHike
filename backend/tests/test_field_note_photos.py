@@ -277,3 +277,28 @@ def test_a_bucket_that_cannot_be_reached_is_not_named_to_the_author(client, db_s
     # The sentence still stands, and no photo is claimed for it.
     assert db_session.get(FieldNote, note_id).photo_uploaded_at is None
     assert _public_note(client, note_id)["photo_url"] is None
+
+
+def test_the_bucket_put_for_a_note_photo_runs_off_the_event_loop(client, r2, monkeypatch):
+    """A 2 MiB R2 put on the loop thread stalls every other request (#1753)."""
+    import asyncio
+
+    from app.routers import field_notes as field_notes_router
+
+    on_loop: list[bool] = []
+    real = field_notes_router.store_photo_object
+
+    def watching(*args, **kwargs):
+        try:
+            asyncio.get_running_loop()
+            on_loop.append(True)
+        except RuntimeError:
+            on_loop.append(False)
+        return real(*args, **kwargs)
+
+    monkeypatch.setattr(field_notes_router, "store_photo_object", watching)
+    author = str(uuid.uuid4())
+    note_id = _file_note(client, author)
+
+    assert _upload(client, note_id, author).status_code == 200
+    assert on_loop == [False]

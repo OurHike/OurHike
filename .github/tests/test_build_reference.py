@@ -145,13 +145,13 @@ def test_dlt_and_dbt_telemetry_are_off_for_every_job(workflow):
         assert "RUNTIME__DLTHUB_TELEMETRY" not in (job.get("env") or {}), f"{job_id} overrides it"
 
 
-def test_only_the_publish_job_holds_the_public_buckets_keys_or_the_write_switch(workflow):
+def test_only_the_publish_and_pointer_jobs_hold_the_public_buckets_keys_or_the_write_switch(workflow):
     assert workflow["permissions"] == {"contents": "read"}
     for job_id, job in workflow["jobs"].items():
         holds = _secrets(job) & PUBLIC_BUCKET_SECRETS
         writes = "R2_WRITE_ENABLED" in yaml.safe_dump(job)
         assert "permissions" not in job, f"{job_id} widens the workflow's permissions"
-        if job_id == "publish":
+        if job_id in ("publish", "pointer"):
             assert holds == PUBLIC_BUCKET_SECRETS and writes
         else:
             assert not holds and not writes, f"{job_id} holds {sorted(holds)} or R2_WRITE_ENABLED"
@@ -785,3 +785,33 @@ def test_the_monthly_parity_runs_every_family_ci_runs_except_the_hourly_conditio
 
     assert HOURLY_FAMILIES <= set(ci), "a conditions family left CI's step; HOURLY_FAMILIES is stale"
     assert _lane_families() == {family: entry for family, entry in ci.items() if family not in HOURLY_FAMILIES}
+
+
+# --- UA's pointer ---
+
+
+def test_uas_pointer_moves_only_after_every_check_in_the_run_has_passed(workflow):
+    """The maintainer, 2026-10-16: UA moves automatically when the monthly build passes every check it runs, and a
+    failed check leaves the pointer unchanged. `success()` is every job in `needs` succeeding."""
+    job = workflow["jobs"]["pointer"]
+    checks = {"build", "publish", "confirm", "parity", "parity-report"}
+
+    assert set(job["needs"]) == checks
+    assert job["if"] == "${{ success() && needs.build.outputs.partial != 'true' && needs.publish.outputs.release != '' }}"
+    assert "always()" not in job["if"] and "cancelled()" not in job["if"]
+    # Every job that checks something is one it waits on, so a check added later fails here until it gates the move.
+    gating = {job_id for job_id in workflow["jobs"] if job_id not in ("pointer", "maintain", "held-back")}
+    assert gating == checks
+
+
+def test_uas_pointer_is_moved_to_the_release_this_runs_publish_staged_and_to_no_other_environment(workflow):
+    job = workflow["jobs"]["pointer"]
+    step = next(step for step in job["steps"] if "channels.py" in str(step.get("run")))
+
+    assert job["environment"] == "ua"
+    assert job["concurrency"] == {"group": "publish-data", "cancel-in-progress": False}
+    assert step["run"].startswith('python channels.py move --environment ua --release "$RELEASE"')
+    assert step["env"]["RELEASE"] == "${{ needs.publish.outputs.release }}"
+    assert workflow["jobs"]["publish"]["outputs"]["release"] == "${{ steps.publish.outputs.release }}"
+    publish_step = next(step for step in workflow["jobs"]["publish"]["steps"] if step.get("id") == "publish")
+    assert publish_step["run"] == "python publish.py", "the step whose $GITHUB_OUTPUT carries `release=`"

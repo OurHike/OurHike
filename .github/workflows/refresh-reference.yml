@@ -23,10 +23,10 @@
 #     raw_run. Both of its publish steps ("Publish to UA" and "Put the podcast
 #     list in place on UA") set OURHIKE_DATA_ENV to the literal `ua`.
 #     publish.py scopes every key it writes by that value (lib/data_env.py).
-#   - Phones follow channels.json, which only the release
-#     train uploads (`publish.py --channels`).
-#   - Promotion is the release train's, built from this run's pinned inputs
-#     (steps/raw_inputs/<raw_run>/), so what is promoted is what UA showed.
+#   - Phones follow their environment's channels.json. build-reference.yml's
+#     last job moves UA's, and only UA's, once every check in that run has
+#     passed; production's moves only by promote-data.yml, behind the
+#     production environment's reviewer, which copies the release UA showed.
 #
 # FOUR JOBS, EACH HOLDING ONLY ITS OWN CREDENTIALS:
 #   extract   R2_RAW_* and HIKEFINDER_PASSWORD, no public-bucket key. Lands

@@ -102,23 +102,7 @@ navigation as (
         *,
         case
             when
-                coalesce(
-                    not st_isempty(reduced)
-                    and list_bool_and(
-                        list_transform(
-                            st_dump(reduced),
-                            lambda part: (
-                                st_xmin(struct_extract(part, 'geom'))
-                                < st_xmax(struct_extract(part, 'geom'))
-                            )
-                            or (
-                                st_ymin(struct_extract(part, 'geom'))
-                                < st_ymax(struct_extract(part, 'geom'))
-                            )
-                        )
-                    ),
-                    false
-                )
+                {{ every_part_has_extent('reduced') }}
                 then reduced
             else geom
         end as navigation_line

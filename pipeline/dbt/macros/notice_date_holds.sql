@@ -76,3 +76,18 @@
         false
     )
 {%- endmacro %}
+
+{#- A carried notice judged against its own end, as a fresh read of it
+    would be: one whose end has passed (`has_ended`, notice_has_ended())
+    moves to the warnings mart, closes nothing and is not reviewed; every
+    other carried row keeps its mart and its claim. Selected over a CTE that
+    has `mart`, `obstructs_trail`, `review_state` and `has_ended`.
+
+    Example: select {{ notice_carried_as_judged() }} from judged -#}
+{% macro notice_carried_as_judged() -%}
+    case when has_ended then 'warnings' else mart end as mart,
+    case when has_ended then null else obstructs_trail end as obstructs_trail,
+    case when has_ended then 'not_reviewed' else review_state end
+        as review_state,
+    * exclude (mart, obstructs_trail, review_state, has_ended)
+{%- endmacro %}

@@ -64,23 +64,7 @@ reduced as (
 judged as (
     select
         *,
-        coalesce(
-            not st_isempty(reduced)
-            and list_bool_and(
-                list_transform(
-                    st_dump(reduced),
-                    lambda part: (
-                        st_xmin(struct_extract(part, 'geom'))
-                        < st_xmax(struct_extract(part, 'geom'))
-                    )
-                    or (
-                        st_ymin(struct_extract(part, 'geom'))
-                        < st_ymax(struct_extract(part, 'geom'))
-                    )
-                )
-            ),
-            false
-        ) as is_drawable
+        {{ every_part_has_extent('reduced') }} as is_drawable
     from reduced
 ),
 

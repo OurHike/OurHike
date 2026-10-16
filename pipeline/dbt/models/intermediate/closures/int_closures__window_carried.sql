@@ -110,10 +110,5 @@ carried as (
 -- A carried closure whose own end has passed since it was read no longer
 -- closes the trail: it moves to the warnings mart with `obstructs_trail`
 -- null and `not_reviewed`, as int_closures__held_carried judges a held one.
-select
-    case when has_ended then 'warnings' else mart end as mart,
-    case when has_ended then null else obstructs_trail end as obstructs_trail,
-    case when has_ended then 'not_reviewed' else review_state end
-        as review_state,
-    * exclude (mart, obstructs_trail, review_state, has_ended)
+select {{ notice_carried_as_judged() }}
 from carried

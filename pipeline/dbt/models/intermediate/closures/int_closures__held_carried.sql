@@ -183,10 +183,5 @@ judged as (
     from read_back
 )
 
-select
-    case when has_ended then 'warnings' else mart end as mart,
-    case when has_ended then null else obstructs_trail end as obstructs_trail,
-    case when has_ended then 'not_reviewed' else review_state end
-        as review_state,
-    * exclude (mart, obstructs_trail, review_state, has_ended)
+select {{ notice_carried_as_judged() }}
 from judged

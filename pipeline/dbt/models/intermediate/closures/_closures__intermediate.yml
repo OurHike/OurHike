@@ -3473,6 +3473,8 @@ unit_tests:
         rows: []
       - input: ref('notice_category_labels')
         rows: []
+      - input: ref('notice_issuers')
+        rows: []
       - input: ref('int_closures__steward_areas')
         format: sql
         rows: |
@@ -3756,6 +3758,9 @@ unit_tests:
     overrides:
       vars:
         notices_build_date: "2026-10-15"
+        # Overriding vars replaces them all in a unit test: rule 9's lead, set past
+        # every row's start so this test reads the other rules alone.
+        notice_season_lead_days: 1000
     given:
       - input: ref('int_closures__club_notices_unioned')
         rows:

@@ -1204,6 +1204,8 @@ unit_tests:
         python_run_stamp: "'2026-10-15T12:00:00Z'"
         when_row_history_is_off: ""
     given:
+      - input: ref('notice_park_terms')
+        rows: []
       - input: ref('closures', v=1)
         format: sql
         rows: |

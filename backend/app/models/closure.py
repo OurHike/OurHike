@@ -62,7 +62,7 @@ class Closure(Base):
     # app/models/report.py for why.
     id = Column(String, primary_key=True, default=lambda: str(uuid.uuid4()))
 
-    reported_by = Column(String, ForeignKey("profiles.id"), nullable=False)
+    reported_by = Column(String, ForeignKey("profiles.id"), nullable=False, index=True)
     reported_at = Column(DateTime, nullable=False, default=utc_now)
 
     # Deliberate MVP minimalism, not a Trail table - multi-trail stays

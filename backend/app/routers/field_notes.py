@@ -23,7 +23,7 @@ from sqlalchemy.orm import Session
 
 from app.core.assignments import stood_behind
 from app.core.auth import get_current_user, get_current_user_optional, require_role
-from app.core.disputes import DisputeInput, dispute_state
+from app.core.disputes import DISPUTE_DECAY_DAYS, DisputeInput, dispute_state
 from app.core.orm import commit_and_refresh, get_or_404
 from app.core.photos import (
     ALLOWED_CONTENT_TYPE,
@@ -291,8 +291,16 @@ def list_disputes(db: Session = Depends(get_db)) -> list[DisputeOut]:
     corroboration mean anything and is exactly what FieldNoteOut withholds
     (§6, #252) - so the rule runs here and a verdict goes out.
     """
+    now = utc_now()
+    # The window is applied here as well as in `dispute_state` (#1757): a note
+    # older than DISPUTE_DECAY_DAYS can neither dispute (decay) nor clear (a
+    # confirmation only clears a dispute older than itself, and every dispute
+    # that still counts is inside the window), so dropping it changes no
+    # verdict - `test_core_disputes.py` pins the rule - and keeps the scan from
+    # growing with every note ever written.
+    window_start = now - timedelta(days=DISPUTE_DECAY_DAYS)
     hidden_excluded = db.query(FieldNote).filter(FieldNote.hidden_at.is_(None), FieldNote.poi_id.isnot(None))
-    notes = hidden_excluded.filter(FieldNote.observation.isnot(None)).all()
+    notes = hidden_excluded.filter(FieldNote.observation.isnot(None), FieldNote.observed_at >= window_start).all()
 
     # Every current assignment, once, rather than a query per note: a
     # maintainer's word outweighs the count and the covering test is a range
@@ -340,7 +348,6 @@ def list_disputes(db: Session = Depends(get_db)) -> list[DisputeOut]:
             )
         )
 
-    now = utc_now()
     out: list[DisputeOut] = []
     for poi_id, inputs in sorted(by_poi.items()):
         state = dispute_state(inputs, now)

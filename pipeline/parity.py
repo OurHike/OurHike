@@ -1960,6 +1960,10 @@ def _held_csi_water_reasons(old: dict, new: dict, pois: dict | None = None) -> d
     return reasons
 
 
+#: What _published_network()'s child process runs, with the folder to write into as its one argument.
+NETWORK_SCRIPT = "import sys; from pathlib import Path; import export_nearby_trails as m; m.OUT_DIR = Path(sys.argv[1]); m.main()"
+
+
 @functools.cache
 def _published_network() -> Path:
     """nearby_trails.geojson as export_nearby_trails.main() writes it, in a folder kept for this process.
@@ -1968,17 +1972,46 @@ def _published_network() -> Path:
     (NETWORK_LINES_PATH), and export_nearby_poi.py clips its amenities to that ring and marks the trailheads whose every
     line is closed. A publish run writes the file first, so the old documents are built with it there, as the dbt
     models are built with int_trail_lines__network_published.
+
+    IN A CHILD PROCESS, so the exporter's memory goes back when it exits. Run in this process, it stayed resident under
+    whatever ran next: on make_dbt_fixtures.py's files the process held 171 MB after main() returned, against an
+    exporter peak of 177 MB and 56 MB for the junction graph built alone (Measured 2026-10-17, python 3.13). On the
+    whole network the exporter peaks at 11,072 MB on a 15,990 MB runner (export_nearby_trails.py's
+    TILES_CHUNK_VERTICES note), and since 18e03306 parity_lane.py's `graph` group runs it before
+    build_trail_graph.build() in one process (_todays_line_ids()). Build-reference run 2 (38044889854), before that
+    commit, ran the group in 37 minutes; runs 5 and 6 (38971424159, 38999687558) lost the runner at 60 and 57 minutes
+    with no output. That the lost runner was out of memory is Reasoned from those numbers, not seen in a log: the
+    progress lines (lib/progress.py) and the exporter's own, passed through below, are what will show it.
+
+    The exporter's console is kept in `export_nearby_trails.log` beside the file; only its progress lines, which carry
+    no record, go to this process's stdout.
     """
-    import contextlib
-    import io
+    import subprocess
     import tempfile
 
-    import export_nearby_trails
+    from lib import progress
 
     out = Path(tempfile.mkdtemp(prefix="parity-network-"))
-    with contextlib.redirect_stdout(io.StringIO()):
-        export_nearby_trails.OUT_DIR = out
-        export_nearby_trails.main()
+    log = out / "export_nearby_trails.log"
+    progress.report("export_nearby_trails.main(): starting, in a child process")
+    with log.open("w", encoding="utf-8") as console:
+        child = subprocess.Popen(
+            [sys.executable, "-c", NETWORK_SCRIPT, str(out)],
+            cwd=Path(__file__).resolve().parent,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.STDOUT,
+            text=True,
+            encoding="utf-8",
+        )
+        for text in child.stdout:
+            console.write(text)
+            if text.startswith("  ["):
+                print(f"  export_nearby_trails {text.strip()}", file=sys.__stdout__ or sys.stdout, flush=True)
+        code = child.wait()
+    progress.report(f"export_nearby_trails.main(): exit {code}")
+    if code != 0:
+        tail = "".join(log.read_text(encoding="utf-8").splitlines(keepends=True)[-20:])
+        raise RuntimeError(f"export_nearby_trails.main() exited {code}; the last of its console ({log}):\n{tail}")
     return out / "nearby_trails.geojson"
 
 
@@ -2449,13 +2482,18 @@ def _trail_graph_built(new_dir: Path) -> tuple[list, list, list]:
     import io
 
     import build_trail_graph
+    from lib import progress
 
+    progress.report("build_trail_graph.build(): starting")
     with contextlib.redirect_stdout(io.StringIO()):
         collection = build_trail_graph.load_input(new_dir / build_trail_graph.INPUT_NAME)
         at_collection = build_trail_graph.load_at_lines(new_dir / build_trail_graph.TRAILS_NAME)
         graph, _ = build_trail_graph.build(collection, at_collection)
+    del collection, at_collection
+    progress.report("build_trail_graph.build(): built")
     geometry = [edge.pop("geometry") for edge in graph["edges"]]
     graph, geometry = json.loads(json.dumps(graph)), json.loads(json.dumps(geometry))
+    progress.report("build_trail_graph.build(): read back as JSON")
     return graph["nodes"], graph["edges"], geometry
 
 
@@ -2555,10 +2593,12 @@ def _todays_line_ids(new_dir: Path) -> dict[str, str]:
     graph neither repeats a reason nor reads the old side's input as the writer's defect. Today's file is the run the
     nearby_trails family compares (_network_old()); the dbt writer's is build_trail_graph.py's INPUT_NAME."""
     import build_trail_graph
+    from lib import progress
 
     today = _network_line_ids(_network_old("nearby_trails.geojson"))
     dbt = _network_line_ids(json.loads((new_dir / build_trail_graph.INPUT_NAME).read_text(encoding="utf-8")))
     explained = _line_id_reasons(today, dbt)
+    progress.report("today's line ids: read")
     return {
         dbt[line][0]: today[line][0]
         for line in today.keys() & dbt.keys()

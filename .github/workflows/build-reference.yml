@@ -769,6 +769,11 @@ jobs:
     # 22 more on nearby_trails' comparison: its 36.8 minutes in run 29, less
     # network_overview's 14.3 over the same exporter run (Reasoned).
     # @unvalidated as a whole until a run reports every group's time.
+    # The step prints a line per family and per graph sub-step with its
+    # elapsed time and memory (pipeline/lib/progress.py): runs 5 and 6
+    # (38971424159, 38999687558) lost the `graph` runner with no output, which
+    # parity.py's _published_network() now answers by running the network
+    # exporter, 11 GB at its peak, in a child process of its own.
     timeout-minutes: 180
     strategy:
       fail-fast: false

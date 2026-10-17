@@ -213,6 +213,41 @@ def test_the_network_families_read_the_one_run_published_network_keeps(tmp_path,
     assert parity._network_old("network_overview.geojson")["file"] == "overview"
 
 
+# A stand-in for NETWORK_SCRIPT: writes the file, prints one of the exporter's progress lines and one other line.
+FAKE_NETWORK_SCRIPT = (
+    "import sys; from pathlib import Path; out = Path(sys.argv[1]); "
+    "(out / 'nearby_trails.geojson').write_text('{\"file\": \"from the child\"}'); "
+    "print('  [    0.1s] cutting the vector tiles (rss 1 MB, peak 1 MB)'); print('  some_layer: 3 of 4 features kept')"
+)
+
+
+def test_published_network_runs_the_exporter_in_a_child_process_and_passes_on_only_its_progress_lines(monkeypatch, capfd):
+    # In this process the exporter's memory stayed resident under the junction graph's build (_published_network()).
+    import export_nearby_trails
+
+    monkeypatch.setattr(export_nearby_trails, "main", lambda: pytest.fail("the exporter ran in the parity process"))
+    monkeypatch.setattr(parity, "NETWORK_SCRIPT", FAKE_NETWORK_SCRIPT)
+
+    path = parity._published_network.__wrapped__()
+
+    assert json.loads(path.read_text(encoding="utf-8")) == {"file": "from the child"}
+    printed = capfd.readouterr().out
+    assert "export_nearby_trails [    0.1s] cutting the vector tiles" in printed
+    assert "features kept" not in printed
+    assert "features kept" in (path.parent / "export_nearby_trails.log").read_text(encoding="utf-8")
+
+
+def test_published_network_refuses_a_child_that_fails(monkeypatch):
+    monkeypatch.setattr(parity, "NETWORK_SCRIPT", "import sys; print('no raw layer'); sys.exit(3)")
+
+    with pytest.raises(RuntimeError, match=r"exited 3(.|\n)*no raw layer"):
+        parity._published_network.__wrapped__()
+
+
+def test_the_child_process_runs_export_nearby_trails_main_into_the_folder_it_is_handed():
+    assert "import export_nearby_trails as m; m.OUT_DIR = Path(sys.argv[1]); m.main()" in parity.NETWORK_SCRIPT
+
+
 # --- joining the groups ---------------------------------------------------------
 
 

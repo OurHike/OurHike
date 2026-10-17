@@ -28,6 +28,14 @@ sampling behind the graph's climbs. The graph group runs the network's
 exporter once more, for the line ids its edges are compared under
 (parity.py's _todays_line_ids()): about the exporter's 13 minutes above
 added to that group (Reasoned), rather than one group waiting on another.
+That run is a child process (parity.py's _published_network()), so its
+memory, 11 GB at its peak on the whole network, is not still held when the
+graph is built.
+
+EVERY FAMILY PRINTS A START AND AN END LINE to the job log, with the elapsed
+time and the memory so far (lib/progress.py), and so do the graph's
+sub-steps, because each family's own console goes to a file and a runner
+that is lost leaves nothing in it.
 
 EACH FAMILY STILL SEES THE MODULES AS A PROCESS OF ITS OWN WOULD. The old sides
 set module paths on the exporters they run (export_poi's NETWORK_LINES_PATH,
@@ -62,6 +70,8 @@ import sys
 import traceback
 from collections.abc import Callable, Iterator
 from pathlib import Path
+
+from lib import progress
 
 PIPELINE = Path(__file__).resolve().parent
 
@@ -241,6 +251,7 @@ def run_group(group: str, out: Path, main: Callable[[list[str]], int] | None = N
     (out / "results").mkdir(parents=True, exist_ok=True)
     summary = {}
     for family in GROUPS[group]:
+        progress.report(f"{family}: starting")
         code = run_family(family, out, main)
         name, _ = FAMILIES[family]
         summary[family] = {
@@ -250,10 +261,10 @@ def run_group(group: str, out: Path, main: Callable[[list[str]], int] | None = N
             "log": f"{family}.txt",
         }
         _write_summary(out, group, summary)
-        print(f"{family}: {summary[family]['status']}", flush=True)
         # The family's two documents are garbage now; a process of its own
         # would have handed their memory back by exiting.
         gc.collect()
+        progress.report(f"{family}: {summary[family]['status']}")
     return summary
 
 

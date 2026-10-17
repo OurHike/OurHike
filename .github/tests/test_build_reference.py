@@ -721,6 +721,10 @@ def test_every_monthly_parity_run_writes_keys_only_into_the_uploaded_folder(work
     work = tmp_path / "work"
     work.mkdir()
     shutil.copyfile(LANE, work / "parity_lane.py")
+    # parity_lane.py's progress lines (lib/progress.py), which the job log shows family by family.
+    (work / "lib").mkdir()
+    shutil.copyfile(LANE.parent / "lib" / "__init__.py", work / "lib" / "__init__.py")
+    shutil.copyfile(LANE.parent / "lib" / "progress.py", work / "lib" / "progress.py")
     (work / "parity.py").write_text(STUB_PARITY)
     python = tmp_path / "runner" / "pipeline" / "bin" / "python"
     python.parent.mkdir(parents=True)

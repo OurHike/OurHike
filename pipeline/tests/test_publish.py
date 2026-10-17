@@ -21,7 +21,7 @@ from boto3.s3.transfer import TransferConfig
 from moto import mock_aws
 
 import publish
-from lib import data_change, data_env
+from lib import client_contract, data_change, data_env
 from lib.photo_store import PHOTOS_DIRNAME, photo_digest, photo_key
 from lib.r2_keys import assert_valid_keys
 
@@ -2243,6 +2243,75 @@ def test_the_release_folder_manifest_is_stored_as_json_so_the_cdn_compresses_it(
     assert "artifacts" in json.loads(stored["Body"].read())
 
 
+# --- The pin behind an environment's data: latest.json's raw_run ---
+#
+# prune_raw_store.py keeps the pin an environment's latest.json names, and its
+# stored warehouse; build-reference.yml's "Publish to UA" sets OURHIKE_RAW_RUN
+# to the raw_run it built from (lib/releases.RAW_RUN_FIELD says why).
+
+PINNED_RAW_RUN = "20261009T223039.840094Z"
+
+
+def _stored_json(s3_client, key: str = "latest.json") -> dict:
+    return json.loads(s3_client.get_object(Bucket=BUCKET, Key=key)["Body"].read())
+
+
+def test_a_build_from_a_pin_records_its_raw_run_in_latest_json_and_in_the_release_folder(monkeypatch, s3_client, local_artifacts):
+    monkeypatch.setenv(publish.RAW_RUN_ENV_VAR, PINNED_RAW_RUN)
+
+    result = publish.publish(local_artifacts, s3_client=s3_client, bucket=BUCKET)
+
+    assert result["raw_run"] == PINNED_RAW_RUN and _stored_json(s3_client)["raw_run"] == PINNED_RAW_RUN
+    folder = _stored_json(s3_client, f"releases/{result['release']}/manifest.json")
+    assert folder["raw_run"] == PINNED_RAW_RUN, "the release folder staged from it names the same pin"
+
+
+def test_a_publish_that_is_not_a_build_from_a_pin_carries_the_raw_run_forward(monkeypatch, s3_client, local_artifacts, tmp_path):
+    """A weather, conditions or basemap publish changes other files, and the monthly files still came from that pin."""
+    monkeypatch.setenv(publish.RAW_RUN_ENV_VAR, PINNED_RAW_RUN)
+    publish.publish(local_artifacts, s3_client=s3_client, bucket=BUCKET)
+    monkeypatch.delenv(publish.RAW_RUN_ENV_VAR)
+    changed = tmp_path / "trails.geojson"
+    changed.write_text('{"type": "FeatureCollection", "features": [{"id": "new"}]}')
+    local_artifacts["trails.geojson"]["sha256"] = publish.sha256_file(changed)
+
+    result = publish.publish(local_artifacts, s3_client=s3_client, bucket=BUCKET)
+
+    assert result["version_written"] and _stored_json(s3_client)["raw_run"] == PINNED_RAW_RUN
+
+
+def test_an_environment_no_build_from_a_pin_published_to_names_no_raw_run(s3_client, local_artifacts):
+    """Absent, never a guess: production's case until a promotion is built from a pin."""
+    result = publish.publish(local_artifacts, s3_client=s3_client, bucket=BUCKET)
+
+    assert result["raw_run"] is None and "raw_run" not in _stored_json(s3_client)
+
+
+def test_the_same_bytes_from_a_later_pin_write_no_version_and_latest_json_keeps_the_pin_that_built_them(
+    monkeypatch, s3_client, local_artifacts
+):
+    """Never a no-op version, so latest.json goes on naming the earlier pin; build-reference.yml's maintain job passes
+    its own raw_run too, and prune_raw_store.py keeps both."""
+    monkeypatch.setenv(publish.RAW_RUN_ENV_VAR, PINNED_RAW_RUN)
+    publish.publish(local_artifacts, s3_client=s3_client, bucket=BUCKET)
+    monkeypatch.setenv(publish.RAW_RUN_ENV_VAR, "20261103T051512.000001Z")
+
+    result = publish.publish(local_artifacts, s3_client=s3_client, bucket=BUCKET)
+
+    assert not result["version_written"]
+    assert result["raw_run"] == PINNED_RAW_RUN == _stored_json(s3_client)["raw_run"]
+
+
+@pytest.mark.parametrize("value", ["20261009T223039Z", "20261009T223039.840094Z; touch PWNED", "../20261009T223039.840094Z"])
+def test_a_raw_run_that_is_not_an_extract_runs_id_refuses_before_anything_uploads(monkeypatch, s3_client, local_artifacts, value):
+    monkeypatch.setenv(publish.RAW_RUN_ENV_VAR, value)
+
+    with pytest.raises(publish.UnknownRawRun, match="not an extract run's id"):
+        publish.publish(local_artifacts, s3_client=s3_client, bucket=BUCKET)
+
+    assert s3_client.list_objects_v2(Bucket=BUCKET).get("KeyCount", 0) == 0
+
+
 def test_a_failed_artifact_upload_fails_the_publish_rather_than_moving_the_pointer(s3_client, many_artifacts):
     """A worker's exception is the publish's exception. Swallowed, the run
     would go on to write a `latest.json` naming a version whose bytes are not
@@ -2476,3 +2545,100 @@ def test_the_client_publish_builds_waits_long_enough_for_a_server_side_copy(monk
     assert built[0].read_timeout == publish.PUBLISH_READ_TIMEOUT_S
     assert publish.PUBLISH_READ_TIMEOUT_S > 60
     assert built[0].max_pool_connections == publish.PUBLISH_POOL_CONNECTIONS
+
+
+# --- check 22 before a release folder is staged ---------------------------------
+#
+# UA's release 2026-10-03-2 was staged with a 41,216,145-byte
+# network_overview.geojson against the client's 33,554,432-byte launch budget,
+# and every UA phone declined it at the manifest (review 5528343443 on PR #1805,
+# Measured 2026-10-15). publish() now runs check 22 on the folder it would
+# stage, before its first artifact upload (refuse_over_launch_budget).
+
+#: A key the client at this checkout fetches whole, so check 22 weighs it.
+WHOLE = "network_overview.geojson"
+
+
+def _sized(tmp_path, name: str, size_bytes: int) -> dict[str, dict]:
+    """An entry whose manifest says it is `size_bytes` decoded. Check 22 weighs
+    the published figure, as a phone does at the manifest, so the file on disk
+    can stay a few bytes."""
+    path = tmp_path / name.replace("/", "_")
+    path.write_text('{"type": "FeatureCollection", "features": []}')
+    return {name: {"path": str(path), "sha256": publish.sha256_file(path), "size_bytes": size_bytes}}
+
+
+def _seed_latest(s3_client, artifacts: dict[str, dict]) -> None:
+    s3_client.put_object(Bucket=BUCKET, Key="latest.json", Body=json.dumps({"version": "seeded", "artifacts": artifacts}))
+
+
+def test_the_weighed_key_is_one_the_client_fetches_whole():
+    assert WHOLE in client_contract.expected_client_keys()
+
+
+def test_a_release_over_the_launch_budget_is_refused_before_anything_is_uploaded(s3_client, local_artifacts, tmp_path, capsys):
+    budget = client_contract.launch_artifact_budget()
+
+    with pytest.raises(RuntimeError, match="was not staged and no artifact was uploaded"):
+        publish.publish(
+            {**local_artifacts, **_sized(tmp_path, WHOLE, budget + 1)}, sidecars={}, photos={}, s3_client=s3_client, bucket=BUCKET
+        )
+
+    assert _keys_in(s3_client) == []
+    out = capsys.readouterr().out
+    assert f"::error title={WHOLE} is over the launch budget::{budget + 1:,} bytes decoded" in out
+
+
+def test_a_release_at_the_launch_budget_is_staged_with_its_size(s3_client, local_artifacts, tmp_path):
+    budget = client_contract.launch_artifact_budget()
+
+    result = publish.publish(
+        {**local_artifacts, **_sized(tmp_path, WHOLE, budget)}, sidecars={}, photos={}, s3_client=s3_client, bucket=BUCKET
+    )
+
+    folder = s3_client.get_object(Bucket=BUCKET, Key=f"releases/{result['release']}/manifest.json")
+    assert json.loads(folder["Body"].read())["artifacts"][WHOLE]["size_bytes"] == budget
+
+
+def test_a_file_carried_forward_over_the_budget_refuses_the_next_release(s3_client, local_artifacts):
+    """A folder holds every artifact latest.json lists, not only this run's,
+    so a file this run did not build is weighed too."""
+    budget = client_contract.launch_artifact_budget()
+    _seed_latest(s3_client, {WHOLE: {"sha256": "0" * 64, "size_bytes": budget + 1}})
+
+    with pytest.raises(RuntimeError, match=WHOLE):
+        publish.publish(local_artifacts, sidecars={}, photos={}, s3_client=s3_client, bucket=BUCKET)
+
+    assert _keys_in(s3_client) == ["latest.json"]
+
+
+def test_a_conditions_publish_stages_no_folder_so_nothing_over_the_budget_holds_it_back(s3_client, tmp_path):
+    """The hourly lane: `conditions/` never enters a release folder, so a file
+    over the budget that latest.json still lists cannot hold back a closure."""
+    budget = client_contract.launch_artifact_budget()
+    _seed_latest(s3_client, {WHOLE: {"sha256": "0" * 64, "size_bytes": budget + 1}})
+    path = tmp_path / "closures.json"
+    path.write_text(json.dumps({"items": []}))
+
+    result = publish.publish(
+        {"conditions/closures.json": {"path": str(path), "sha256": publish.sha256_file(path)}},
+        sidecars={},
+        photos={},
+        s3_client=s3_client,
+        bucket=BUCKET,
+    )
+
+    assert result["version_written"] is True
+    assert result["release_artifacts"] == []
+    assert not [key for key in _keys_in(s3_client) if key.startswith("releases/")]
+
+
+def test_a_file_with_no_published_size_is_left_to_the_phone(s3_client, local_artifacts, tmp_path):
+    """Check 22 skips an entry with no `size_bytes`, and so does the refusal:
+    the client weighs such a body once it arrives (lib/artifactBudget.ts)."""
+    entry = _sized(tmp_path, WHOLE, 0)
+    del entry[WHOLE]["size_bytes"]
+
+    result = publish.publish({**local_artifacts, **entry}, sidecars={}, photos={}, s3_client=s3_client, bucket=BUCKET)
+
+    assert WHOLE in result["release_artifacts"]

@@ -6,6 +6,12 @@ import App from './App.tsx'
 import { ErrorBoundary, ScreenFailed } from './chrome/ErrorBoundary'
 import { applyTheme, systemPrefersDark } from './lib/theme'
 import { LAUNCH_MARKS, markLaunch } from './lib/launchMarks'
+import { DATA_BASE_URL, DATA_CONFIGURED } from './lib/config'
+import {
+  FIRST_RUN_READ_TIMEOUT_MS,
+  SESSION_FOLLOWS_POINTER,
+  sealSessionRelease,
+} from './lib/dataRelease'
 
 // The first line of this app's own code to run, and the first of the seven
 // moments features/LAUNCH_BUDGET.md §3 budgets (#1299, lib/launchMarks.ts;
@@ -38,24 +44,45 @@ applyTheme(systemPrefersDark() ? 'dark' : 'light', document)
 // It cannot offer the tab bar, because at this level the thing that renders the
 // tab bar is what failed. What it does promise is that something is on screen
 // with words on it, rather than the blank page React's default unmount leaves.
-createRoot(document.getElementById('root')!).render(
-  <StrictMode>
-    <ErrorBoundary
-      fallback={() => (
-        <ScreenFailed
-          what="OurHike"
-          // There is no tab bar at this level - the thing that renders it is
-          // what failed - so the default "switch tabs" line would be an
-          // instruction with nothing to tap. Closing and reopening works
-          // offline: the app shell is served by the service worker on the
-          // web, and shipped inside the binary in the Capacitor shells
-          // (#101, where WKWebView has no service worker at all) - either
-          // way nothing on the phone is touched by a restart.
-          recovery="Close the app fully and open it again. That works without any signal."
-        />
-      )}
-    >
-      <App />
-    </ErrorBoundary>
-  </StrictMode>,
-)
+//
+// FIRST RUN, POINTER FIRST (lib/dataChannel.ts's firstRunRelease): a phone
+// that follows no pointer yet asks for channels.json before anything builds
+// a release URL, so a new install starts on the release its environment
+// names rather than the compiled floor. Bounded here as well as inside, so a
+// chunk that never arrives costs FIRST_RUN_READ_TIMEOUT_MS and no more.
+const firstRun: Promise<unknown> =
+  SESSION_FOLLOWS_POINTER || !DATA_CONFIGURED
+    ? Promise.resolve()
+    : Promise.race([
+        import('./lib/dataChannel').then((channel) =>
+          channel.firstRunRelease(DATA_BASE_URL),
+        ),
+        new Promise((settle) => setTimeout(settle, FIRST_RUN_READ_TIMEOUT_MS)),
+      ]).catch(() => {})
+
+void firstRun.then(render)
+
+function render() {
+  sealSessionRelease()
+  createRoot(document.getElementById('root')!).render(
+    <StrictMode>
+      <ErrorBoundary
+        fallback={() => (
+          <ScreenFailed
+            what="OurHike"
+            // There is no tab bar at this level - the thing that renders it is
+            // what failed - so the default "switch tabs" line would be an
+            // instruction with nothing to tap. Closing and reopening works
+            // offline: the app shell is served by the service worker on the
+            // web, and shipped inside the binary in the Capacitor shells
+            // (#101, where WKWebView has no service worker at all) - either
+            // way nothing on the phone is touched by a restart.
+            recovery="Close the app fully and open it again. That works without any signal."
+          />
+        )}
+      >
+        <App />
+      </ErrorBoundary>
+    </StrictMode>,
+  )
+}

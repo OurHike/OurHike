@@ -1,0 +1,742 @@
+"""The extract contract: what a club answers for each type, and how a run finds it.
+
+Every managing organisation in reference/trail_orgs.json answers each of the
+ten FILE_TYPES exactly once, in one of two homes:
+
+    the registry         a sources.json row whose `extract` field names the
+                         org, the type and how to read the row
+                         (extract/_readers.py), or, for a reviewed OurHike file
+                         under pipeline/reference/, an entry of the org's
+                         trail_orgs.json `reviewed_files`. All of one org's rows
+                         for one type together are its answer for that type: the
+                         keys it claims and a Resource for each read. A row may
+                         also list `same_as` copies of its dataset, noted and
+                         never loaded.
+    a row of             extract/not_available.toml, [<folder>.<type>]: a
+    not_available.toml   dated note (a NotAvailable: nothing this pipeline may
+                         load for the type, as of the day a person looked), or
+                         a share (`shares = "<type>"`: a sibling type whose
+                         resources also feed this type, so a key is still
+                         claimed once)
+
+and the eleventh type, `org`, with the catalogue row discover() makes for every
+managing club. The org's folder name is its trail_orgs.json slug with `-`
+written `_`; it is only a name now, used in table names and the registry, not
+a directory.
+
+A builder takes a key, never a URL (extract/_kinds.py), so the extract cannot
+fetch an upstream sources.json does not register - CONTRIBUTING.md's "establish
+its licence first and record it", enforced by construction.
+
+_shared/ is the exception: national services, aggregators and OurHike's own
+data, one free-form Python file each, read by discover_shared().
+
+`discover()` reads the registry and the rows; tests/test_extract_layout.py
+holds the shape; extract/_run.py runs what they declare.
+"""
+
+from __future__ import annotations
+
+import importlib.util
+import json
+from dataclasses import dataclass, field, replace
+from datetime import date
+from pathlib import Path
+from types import ModuleType
+
+import tomllib
+
+from lib.freshness_state import Freshness
+
+EXTRACT_DIR = Path(__file__).parent
+PIPELINE_DIR = EXTRACT_DIR.parent
+TRAIL_ORGS_PATH = PIPELINE_DIR / "reference" / "trail_orgs.json"
+REGISTRY_PATH = PIPELINE_DIR / "sources.json"
+
+# Every managing club's notes and shares, one row per club and type. Its header comment is the format.
+NOT_AVAILABLE_FILE = "not_available.toml"
+
+TYPES = (
+    "org",
+    "trail_lines",
+    "points_of_interest",
+    "elevation",
+    "closures",
+    "warnings",
+    "places",
+    "suggested_hikes",
+    "podcasts",
+    "challenges",
+    "photos",
+)
+
+# The ten types a managing club answers, each with registry rows or a row of
+# not_available.toml. `org` is not among them: discover() makes every managing
+# club's catalogue row from trail_orgs.json.
+FILE_TYPES = tuple(type_ for type_ in TYPES if type_ != "org")
+
+CADENCES = ("hourly", "daily", "weekly", "monthly")
+
+# The lane belongs to the type. Closures and warnings
+# are the two safety types a hiker reads as "now", so they ride the hourly
+# lane; everything else a club publishes is monthly. A resource that differs
+# says why on itself (Resource.cadence_reason), and the layout test refuses an
+# override without one.
+DEFAULT_CADENCE = "monthly"
+CADENCE_BY_TYPE = {"closures": "hourly", "warnings": "hourly"}
+
+# Types whose honest row count can be zero: every closure lifted is exactly
+# what an empty closures table looks like. A layer outside these types may
+# still be empty when its sources.json entry says `may_be_empty: true`. An
+# allowed zero still needs the upstream's own count read in the same run
+# (extract/_run.py's run check), because an empty answer from a failed fetch
+# looks the same as a quiet trail; Resource.zero_proof says which kinds read
+# such a count.
+MAY_BE_EMPTY = frozenset({"closures", "warnings"})
+
+# A resource filed under another type, for that type's lane, says what its
+# rows are (Resource.holds, with holds_reason), and the run check judges its
+# table as that type's: whether it may land empty, and the shrink floor
+# (Resource.may_be_empty). Its lane, job and cadence stay those of the type it
+# is filed under. FDEP's park boundaries are the one: a places layer filed
+# under fl_state_parks' closures, so that the notices job reads it and the
+# hourly build that places each closed park by its own boundary holds it. A
+# boundary layer landed empty or halved is a read gone wrong, never every
+# closure lifted, and as a closures table it would have loaded, un-placing
+# every closed Florida park until the next read. The layout test holds `holds`
+# to a type outside MAY_BE_EMPTY: it can only take that allowance away.
+
+# @unvalidated: the age at which a "not available" note must be looked at
+# again. 180 days is a round number, not a measurement; what would settle it
+# is how often the next re-survey after ORG_COVERAGE_SURVEY.md overturns a
+# note of a given age. A stale note fails the monthly note-ageing job, never a
+# pull request (ELT.md, "The data checks", check 3).
+RECHECK_AFTER_DAYS = 180
+
+# Not a club: national services, aggregators and OurHike's own data (ELT.md,
+# "_shared/"). Free-form, and outside the rule that a club answers each type once.
+SHARED_FOLDER = "_shared"
+
+# trail_orgs.json types that are not managing clubs: umbrellas, route-only
+# trails and aggregators publish through somebody else, so each gets one dated
+# line in _shared/not_clubs.py instead. Every other row is a managing
+# organisation, which answers every type: registry rows or a row of
+# not_available.toml, and a catalogue row.
+NOT_CLUB_TYPES = frozenset({"national_umbrella", "route_only", "aggregator"})
+
+# The fields a row of not_available.toml may carry, by its kind. Anything else
+# is refused where the row is read, because a misspelt `terms` would otherwise
+# drop a refusal's quoted words without a sound.
+NOTE_FIELDS = frozenset({"confirmed", "recheck_after_days", "summary", "checked", "where", "terms", "reason"})
+SHARE_FIELDS = frozenset({"shares", "summary"})
+
+
+def folder_for_slug(slug: str) -> str:
+    """The folder a trail_orgs.json slug lives in: `-` written `_`.
+
+    Python cannot import a hyphen. None of the 173 slugs holds an underscore
+    (measured 2026-10-01, ELT.md), so the mapping reverses exactly, which
+    slug_for_folder relies on and the layout test checks.
+    """
+    return slug.replace("-", "_")
+
+
+def slug_for_folder(folder: str) -> str:
+    return folder.replace("_", "-")
+
+
+def raw_table(folder: str, key: str) -> str:
+    """`raw_<folder>__<key>`, the raw table a club's resource lands in.
+
+    Passed to dlt as `table_name`, which a run keeps as written, though
+    `normalize_table_identifier()` called alone would collapse the `__` to one
+    underscore (measured 2026-10-01, dlt 1.30.0, ELT.md "Folder name =
+    trail_orgs.json slug"). A file-path key loses `.json` and `reference/`:
+    `reference/challenges/atc` lands as `raw_atc__challenges_atc`, and the
+    registry's own `sources.json` as `raw_registry__sources`.
+    """
+    key = key.removeprefix("reference/").removesuffix(".json").replace("/", "_")
+    # dlt escapes a `__`-separated segment that starts with a digit with a
+    # leading underscore: `raw_usgs__3dep_13_current` landed as
+    # `raw_usgs___3dep_13_current`, and every check reading the name as
+    # written found nothing (measured 2026-10-02, dlt 1.30.0).
+    # tests/test_extract_layout.py holds every table to dlt's normalize_path.
+    if key[:1].isdigit():
+        raise ValueError(f"{folder}/{key}: a raw table's key may not start with a digit; dlt would rename the table")
+    return f"raw_{folder}__{key.replace('-', '_')}"
+
+
+@dataclass(frozen=True)
+class NotAvailable:
+    """Nothing this pipeline may load from this org for this type, as of `confirmed`.
+
+    Three cases share the shape: not published; published but refused, the
+    refusing words quoted in `terms`; or published and not landed yet,
+    `reason` saying what landing waits on (usually a sources.json row, since a
+    builder takes a registered key). `checked` lists what a person looked at,
+    so the next person can repeat it, and `where` the URLs.
+
+    A note says what was checked, never that a search happened that did not.
+    The layout test checks a note's shape only, so whether the search was done
+    is a reviewer's check (ELT.md, "A GIS-shaped type is not given up early").
+    """
+
+    confirmed: date
+    checked: tuple[str, ...]
+    where: tuple[str, ...]
+    recheck_after_days: int = RECHECK_AFTER_DAYS
+    terms: str | None = None
+    reason: str | None = None
+
+    def problems(self, today: date) -> list[str]:
+        """Why this note is not a well-formed note, or [] when it is."""
+        problems = []
+        if self.confirmed > today:
+            problems.append(f"confirmed {self.confirmed} is in the future")
+        if not self.checked or not all(isinstance(item, str) and item.strip() for item in self.checked):
+            problems.append("checked must list what was looked at")
+        if not self.where or not all(isinstance(url, str) and url.startswith("https://") for url in self.where):
+            problems.append("where must list https URLs")
+        if self.recheck_after_days <= 0:
+            problems.append("recheck_after_days must be positive")
+        return problems
+
+    def overdue(self, today: date) -> bool:
+        """True once the note is past its recheck date: news for the monthly job, not a pull request failure."""
+        return (today - self.confirmed).days > self.recheck_after_days
+
+
+@dataclass(frozen=True)
+class NotClub:
+    """Why a trail_orgs.json row answers no type: one dated line in _shared/not_clubs.py.
+
+    An umbrella or a route-only trail publishes through somebody else, so it
+    has nothing of its own to extract. `why` is the reason in this file's own
+    words; `terms` quotes a refusal verbatim where the row carries one (RTC's).
+    """
+
+    type: str
+    confirmed: date
+    why: str
+    terms: str | None = None
+
+
+@dataclass(frozen=True)
+class SameAs:
+    """A republished copy of a dataset another resource already extracts: noted, never loaded.
+
+    Each upstream dataset is extracted once, under its steward (the
+    maintainer: "Are we landing the same data, multiple times? We
+    shouldn't."). A copy, such as an ArcGIS Online twin of an on-prem layer, is
+    listed in the original's registry row (`extract.same_as`) so nobody adds it
+    as a second resource. It ages like a NotAvailable: once its publisher edits
+    it apart from the original, it is an independent dataset and gets a
+    resource of its own.
+    """
+
+    original: str  # the claimed key whose resource extracts the dataset
+    copy: tuple[str, ...]  # the copy's URLs or ArcGIS item ids
+    confirmed: date
+    checked: tuple[str, ...]  # what shows it is the same data
+    recheck_after_days: int = RECHECK_AFTER_DAYS
+
+    def problems(self, today: date) -> list[str]:
+        problems = []
+        if self.confirmed > today:
+            problems.append(f"confirmed {self.confirmed} is in the future")
+        if not self.copy or not self.checked:
+            problems.append("a SAME_AS note names the copy and what shows it is the same data")
+        if self.recheck_after_days <= 0:
+            problems.append("recheck_after_days must be positive")
+        return problems
+
+
+@dataclass(frozen=True)
+class Kept:
+    """A claimed key that no lane reads any more, whose last committed table every build goes on reading.
+
+    For an upstream that loaded and then refused us in a way that is never
+    routed around, such as a robots.txt that came to disallow our agent,
+    where the maintainer has ruled that the last copy may stand in for it
+    (census_tiger_states: pipeline/ELT.md's open question 16, answered by
+    the maintainer's poll of 2026-10-10, "Keep the last copy"). The file that
+    read the key still claims it, so its sources.json row keeps the licence
+    and the terms, and the layout test still finds one home for it; the file
+    declares no resource for it, so no lane asks the host anything. What a
+    build reads is extract/_warehouse.py's committed_tables(): a table's
+    latest `loaded` run that committed, which a later run that never names
+    the table does not move. Every pin copies it like any other table, and
+    the purge reads it by its sources.json row (tests/test_extract_pin.py
+    and tests/test_purge_person_fields.py hold both).
+
+    Unlike Unavailable below, which withdraws a table nobody can read now,
+    this keeps one: the ruling is that the last rows are still true enough.
+
+    `note` says why reading stopped: what refused it, verbatim, in `terms`;
+    why the last copy may stand in, and what reading again waits on, in
+    `reason`; and when to look again, `confirmed` + `recheck_after_days`. It
+    ages like any note (pipeline/ELT.md, "The data checks", check 3).
+    """
+
+    key: str
+    note: NotAvailable
+
+
+class Unavailable(Exception):
+    """A change check's answer that the upstream cannot be read here, and that its own rule leaves out of the lane.
+
+    Not a fourth Freshness: FRESH says "checked, nothing changed" and keeps
+    the last rows; this says nobody can tell. extract/_run.py leaves the
+    resource out and logs it `unavailable`, and extract/_warehouse.py
+    withdraws the table rather than serve its last rows as current: absent
+    means unknown, never zero (CLAUDE.md). Two raise it today:
+    ConditionsQuery.change_check (extract/_kinds.py), for a table
+    export_conditions.py's PENDING_READER_SETUP lists: notes and disputes are
+    omitted while `field_notes` is not readable, and closures and reports
+    carry on; and the NPS readers' change checks (extract/_json_apis.py),
+    while NPS_API_KEY is unset. Any other failure raises as itself and stops
+    the lane.
+    """
+
+
+@dataclass(frozen=True)
+class Carried:
+    """What extract/_run.py hands a resource that reads only what moved (Resource.carries), before its read.
+
+    `committed` is the resource's table as its last committed load left it,
+    dlt's own columns dropped (extract/_run.py's committed_rows()); empty on a
+    first run. `progress` is what an earlier read that ran out of budget kept
+    (Incomplete below), never landed. `seconds` is the read's budget from the
+    moment it is handed this, or None for none, in which case the read reads
+    everything it needs and never answers Incomplete.
+    """
+
+    committed: tuple[dict, ...] = ()
+    progress: tuple[dict, ...] = ()
+    seconds: float | None = None
+
+
+class Proofs(dict):
+    """What a read records of its upstream's own word, by table: the count, as the mapping itself, and `edited`.
+
+    The mapping is what rows() has always filled: `proofs[self.table]`, the
+    upstream's own count read in the same run, which extract/_run.py's
+    run_check() holds a zero and a shrink to. `edited` holds, by table, the
+    time the upstream states its data was last edited, as it states it:
+    ArcGIS's `editingInfo.dataLastEditDate`, in epoch milliseconds, which
+    ArcgisLayer.rows() reads from the layer metadata it reads anyway.
+    extract/_run.py's write_run_log() logs both on the run's `_extract_runs`
+    row. A dict, so a kind that records only a count, and a test that passes
+    `{}`, read and write it as before: a plain dict simply records no date.
+    """
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.edited: dict[str, int] = {}
+
+
+class Incomplete(Exception):
+    """A carrying resource's read that ran out of budget before it had every row its table must hold.
+
+    Nothing lands: the table keeps its last committed rows, or on a first run
+    stays not yet loaded, because a partial set landed under `replace` would
+    read as the whole and drop every row not reached yet. `progress` is every
+    row read so far, which extract/_run.py keeps in `_extract_progress` for a
+    later read to carry until the table loads. `read` and `needed` are how
+    many rows this run read and how many it still lacks, for the summary.
+    """
+
+    def __init__(self, message: str, progress: list[dict], read: int, needed: int):
+        super().__init__(message)
+        self.progress, self.read, self.needed = progress, read, needed
+
+
+@dataclass(frozen=True)
+class Resource:
+    """One upstream, landing as one raw table. Subclassed per source kind in extract/_kinds.py.
+
+    `club` and `type` are filled in by discover() from the registry row's
+    `extract` (or, for a catalogue row, from the club it is made for), so the
+    table name, the cadence and the lane all follow from the org and the type,
+    and cannot disagree with them.
+    """
+
+    key: str
+    club: str | None = None
+    type: str | None = None
+    cadence_override: str | None = None
+    cadence_reason: str | None = None
+    # Left out of repr, so definition_digest() (extract/_run.py), which hashes repr, moved for no resource when these
+    # were added: they judge a read and decide nothing a read lands.
+    holds: str | None = field(default=None, repr=False)
+    holds_reason: str | None = field(default=None, repr=False)
+
+    @property
+    def table(self) -> str:
+        if self.club is None:
+            raise ValueError(f"{self.key}: table asked for before discover() placed the resource")
+        return raw_table(self.club, self.key)
+
+    @property
+    def name(self) -> str:
+        """The dlt resource name, which is also where its marker lives in dlt state: the table, unless shared."""
+        return self.table
+
+    @property
+    def part(self) -> str:
+        """Which part of its key's upstream this resource reads, when one key feeds two: "" for the whole of it.
+
+        NYNJTC's Trail Alerts is the case: one registry row, read as its posts
+        (hourly) and as the site's taxonomy terms (daily), two resources and two
+        tables. The layout test's one-extraction rule tells them apart by this.
+        """
+        return ""
+
+    @property
+    def schema_contract(self) -> dict | None:
+        """dlt's schema contract for the table, or None for dlt's default."""
+        return None
+
+    @property
+    def cadence(self) -> str:
+        if self.cadence_override is not None:
+            return self.cadence_override
+        return CADENCE_BY_TYPE.get(self.type or "", DEFAULT_CADENCE)
+
+    @property
+    def rows_type(self) -> str | None:
+        """The type its rows are: `holds` where the resource says (MAY_BE_EMPTY's comment), else its file's type."""
+        return self.holds or self.type
+
+    @property
+    def may_be_empty(self) -> bool:
+        return self.rows_type in MAY_BE_EMPTY
+
+    def change_check(self, recorded: dict | None) -> tuple[Freshness, dict | None]:
+        """Our code, before dlt: (verdict, the upstream marker it compared).
+
+        FRESH leaves the resource out of the run, and only FRESH does: STALE
+        and UNKNOWN both fetch, and a check that errors is UNKNOWN
+        (lib/freshness_state.py: "THE FAILURE THAT MATTERS is a false
+        'fresh'"). The base answers STALE, which costs a read and nothing else.
+        """
+        return Freshness.STALE, None
+
+    @property
+    def carries(self) -> bool:
+        """Whether a run reads this through rows_carried(): only what moved, the rest carried from the last load.
+
+        Such a resource still lands its whole table every run, under `replace`,
+        so the run check, a refused load and a skipped resource behave as for
+        any other; only the read is smaller. ATC's trail-updates pages are the
+        one (extract/_kinds.py's AtcTrailUpdatePages).
+        """
+        return False
+
+    @property
+    def exact_proof(self) -> bool:
+        """Whether the upstream's own count is exactly the rows the table must hold, so more rows refuse too.
+
+        False for a count read beside the rows, such as ArcGIS's
+        `returnCountOnly`, where a feature added between the count and the
+        last page is not an error. True where the rows are built from the
+        same answer the count is read from, so a difference either way is
+        this code's mistake.
+        """
+        return False
+
+    @property
+    def zero_proof(self) -> str | None:
+        """The upstream's own count this kind reads, in words, or None where the count it records is its own.
+
+        A table that may be empty (MAY_BE_EMPTY, or a sources.json row's
+        `may_be_empty`) may land zero rows only beside the upstream's own
+        count, read in the same run, saying zero (pipeline/ELT.md, "A full
+        reload that cannot empty a safety table"). A count is the upstream's
+        when the upstream states it (ArcGIS's `returnCountOnly`, WordPress's
+        `X-WP-Total`) or when it is the length of a whole answer in a fixed
+        format that the reader refuses in any other shape (NWS's
+        FeatureCollection, an RSS channel). A count this code makes of what it
+        parsed out of a page written for people is not: a page whose layout
+        moved parses to none exactly as a page with nothing on it does.
+
+        extract/_run.py's run_check() refuses a zero from a kind whose answer
+        here is None, whatever `proofs` holds, and keeps the shrink floor on
+        such a table where it may be empty, since its shrink is no better
+        proven than its zero. None is the default, so a kind nobody has
+        checked is refused rather than trusted; each kind that reads a real
+        count declares it on its own class, and
+        tests/test_extract_zero_proofs.py pins which kinds do.
+        """
+        return None
+
+    def rows(self, proofs: dict[str, int]):
+        """Yield the upstream's rows, recording the upstream's own count in `proofs[self.table]` where it has one.
+
+        A run passes a Proofs, whose `edited` takes the upstream's own data
+        edit time where the kind reads one (ArcgisLayer's).
+        """
+        raise NotImplementedError
+
+    def rows_carried(self, proofs: dict[str, int], carried: Carried):
+        """rows(), for a resource that `carries`: read only what moved since `carried`, and yield the whole table.
+
+        Raises Incomplete, landing nothing, when `carried.seconds` ran out
+        before every row the table must hold had been read.
+        """
+        raise NotImplementedError
+
+    def column_hints(self) -> dict:
+        """dlt column hints for this table. Asked for only when the resource runs."""
+        return {}
+
+
+@dataclass
+class ClubFile:
+    """One club's answer for one type, as discover() read it.
+
+    Three homes give one: the club's registry rows for the type (`path` is
+    sources.json, or trail_orgs.json for a type whose only reads are reviewed
+    files); a row of not_available.toml, a note or a share (`path` is that file,
+    and `summary` the row's prose); or the catalogue row discover() makes for
+    every managing club (`path` is reference/trail_orgs.json). A _shared/ file
+    is a fourth, outside the one-answer-per-type rule (`path` is the file).
+    """
+
+    club: str
+    type: str
+    path: Path
+    claims: tuple[str, ...] = ()
+    resources: tuple[Resource, ...] = ()
+    shares: str | None = None
+    note: NotAvailable | None = None
+    same_as: tuple[SameAs, ...] = ()
+    # A _shared/ input with no sources.json row says why here, and claims nothing:
+    # its fetcher's own constant is its one home (ELT.md, "What moves").
+    unregistered: str | None = None
+    # A not_available.toml row's prose.
+    summary: str | None = None
+    # Claimed keys no longer read, each with the note saying why (Kept): their last committed tables stand.
+    kept: tuple[Kept, ...] = ()
+
+    @property
+    def form(self) -> str:
+        """Which shape the answer takes, or "invalid" when it takes none or several.
+
+        SAME_AS notes ride a claiming answer, for the copies it does not
+        extract; a _shared/ file may hold them alone.
+        """
+        forms = [
+            name
+            for name, present in (
+                ("claims", bool(self.claims) or bool(self.resources)),
+                ("shares", self.shares is not None),
+                ("note", self.note is not None),
+            )
+            if present
+        ]
+        if not forms and self.same_as:
+            return "same_as"
+        if len(forms) != 1 or (self.same_as and forms[0] != "claims"):
+            return "invalid"
+        return forms[0]
+
+    @property
+    def is_row(self) -> bool:
+        """Whether this answer is a row of not_available.toml rather than a file of its own."""
+        return self.path.name == NOT_AVAILABLE_FILE
+
+
+def managing_folders(trail_orgs: Path = TRAIL_ORGS_PATH) -> list[str]:
+    """The folder name of every managing club in trail_orgs.json: each row whose `type` is not in NOT_CLUB_TYPES."""
+    orgs = json.loads(trail_orgs.read_text(encoding="utf-8"))["orgs"]
+    return sorted(folder_for_slug(row["slug"]) for row in orgs if row.get("type") not in NOT_CLUB_TYPES)
+
+
+def _same_as(original: str, note: dict) -> SameAs:
+    """One entry of a registry row's `extract.same_as`, its ISO date read as a date."""
+    if unknown := sorted(set(note) - {"copy", "confirmed", "checked", "recheck_after_days"}):
+        raise ValueError(f"{original}: {unknown} is not a field of a same_as note")
+    return SameAs(
+        original=original,
+        copy=tuple(note.get("copy", ())),
+        confirmed=date.fromisoformat(note["confirmed"]),
+        checked=tuple(note.get("checked", ())),
+        recheck_after_days=note.get("recheck_after_days", RECHECK_AFTER_DAYS),
+    )
+
+
+def registry_claims(registry: Path = REGISTRY_PATH, trail_orgs: Path = TRAIL_ORGS_PATH) -> list[tuple[str, str, str]]:
+    """(org, type, key) for every key the registry gives a club, in read_registry()'s order, without building a reader."""
+    claims = [
+        (row["extract"]["org"], row["extract"]["type"], row["key"])
+        for row in json.loads(registry.read_text(encoding="utf-8"))["sources"]
+        if "extract" in row
+    ]
+    for org in json.loads(trail_orgs.read_text(encoding="utf-8"))["orgs"]:
+        claims += [(folder_for_slug(org["slug"]), entry["type"], entry["path"]) for entry in org.get("reviewed_files", ())]
+    return claims
+
+
+def read_registry(registry: Path = REGISTRY_PATH, trail_orgs: Path = TRAIL_ORGS_PATH) -> list[ClubFile]:
+    """Every club's answer that the registry gives: one ClubFile per org and type, from every row's `extract`.
+
+    The rows of one org and type are gathered in sources.json's order, each
+    row's key claimed once and built once per entry of its `reads`; then each
+    org's trail_orgs.json `reviewed_files`, in their order. The same rule
+    builds every org: nothing here is keyed to an org, a row or a reader.
+    extract/_readers.py says what a row's `extract` holds.
+    """
+    from extract._readers import EXTRACT_FIELDS, REVIEWED_FIELDS, build  # it imports the reader modules, which import this
+
+    answers: dict[tuple[str, str], ClubFile] = {}
+
+    def answer(org: str, type_: str, path: Path) -> ClubFile:
+        return answers.setdefault((org, type_), ClubFile(club=org, type=type_, path=path))
+
+    for row in json.loads(registry.read_text(encoding="utf-8"))["sources"]:
+        spec = row.get("extract")
+        if spec is None:
+            continue
+        key = row["key"]
+        if unknown := sorted(set(spec) - EXTRACT_FIELDS):
+            raise ValueError(f"{key}: {unknown} is not a field of `extract` ({sorted(EXTRACT_FIELDS)})")
+        found = answer(spec["org"], spec["type"], registry)
+        found.claims += (key,)
+        found.resources += tuple(build(key, read, spec["org"], spec["type"]) for read in spec["reads"])
+        found.same_as += tuple(_same_as(key, note) for note in spec.get("same_as", ()))
+    for org in json.loads(trail_orgs.read_text(encoding="utf-8"))["orgs"]:
+        folder = folder_for_slug(org["slug"])
+        for reviewed in org.get("reviewed_files", ()):
+            if unknown := sorted(set(reviewed) - REVIEWED_FIELDS):
+                raise ValueError(f"{org['slug']}: {unknown} is not a field of a reviewed_files entry")
+            found = answer(folder, reviewed["type"], trail_orgs)
+            found.claims += (reviewed["path"],)
+            found.resources += tuple(build(reviewed["path"], read, folder, reviewed["type"]) for read in reviewed["reads"])
+    return list(answers.values())
+
+
+def _load_module(path: Path, folder: str) -> ModuleType:
+    """Import one _shared/ file by path. Its folders hold no __init__.py on purpose, so a folder is its files alone."""
+    spec = importlib.util.spec_from_file_location(f"extract._shared.{folder}.{path.stem}", path)
+    if spec is None or spec.loader is None:
+        raise ImportError(f"cannot load {path}")
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    return module
+
+
+def read_shared_file(path: Path) -> ClubFile:
+    """One _shared/ file.
+
+    A _shared/ file is free-form Python: its type is the `TYPE` it declares,
+    and it may say UNREGISTERED. Its folder plays the club's part in the table
+    name (`raw_<folder>__<key>`), which is why the layout test holds _shared/
+    folder names apart from club names. A file with no `TYPE` (a `notes.py`)
+    declares no resource.
+    """
+    folder = path.parent.name
+    module = _load_module(path, folder)
+    type_ = getattr(module, "TYPE", None)
+    resources = tuple(replace(resource, club=folder, type=type_) for resource in getattr(module, "RESOURCES", ()) or ())
+    return ClubFile(
+        club=folder,
+        type=type_,
+        path=path,
+        claims=tuple(getattr(module, "CLAIMS", ()) or ()),
+        resources=resources,
+        note=getattr(module, "NOT_AVAILABLE", None),
+        same_as=tuple(getattr(module, "SAME_AS", ()) or ()),
+        unregistered=getattr(module, "UNREGISTERED", None),
+        kept=tuple(getattr(module, "KEPT", ()) or ()),
+    )
+
+
+def _row_value(path: Path, club: str, type_: str, row: dict, field: str, kind: type):
+    """One field of a not_available.toml row, refused unless it is a `kind` (exactly, for a date and an int)."""
+    value = row[field]
+    # A TOML datetime is a date too, and a bool an int, so those two check the exact type.
+    if (type(value) is not kind) if kind in (date, int) else not isinstance(value, kind):
+        raise ValueError(f"{path.name} [{club}.{type_}]: `{field}` is {value!r}, which is not a {kind.__name__}")
+    return value
+
+
+def read_not_available(path: Path) -> list[ClubFile]:
+    """Every row of not_available.toml, as a ClubFile each, in the file's order.
+
+    A row holding `shares` is a share; any other row is a note. A field outside
+    its kind's NOTE_FIELDS or SHARE_FIELDS, or of the wrong type, is refused
+    here, naming the row. A note's `checked` and `where` default to empty so
+    that NotAvailable.problems() names what is missing, row by row, in the
+    layout test. A table written twice is TOML's own error: tomllib refuses it.
+    """
+    if not path.exists():
+        return []
+    rows = []
+    for club, types in tomllib.loads(path.read_text(encoding="utf-8")).items():
+        if not isinstance(types, dict) or not all(isinstance(row, dict) for row in types.values()):
+            raise ValueError(f"{path.name}: [{club}] must hold one table per type, [{club}.<type>]")
+        for type_, row in types.items():
+            fields = SHARE_FIELDS if "shares" in row else NOTE_FIELDS
+            if unknown := sorted(set(row) - fields):
+                kind = "share" if "shares" in row else "note"
+                raise ValueError(f"{path.name} [{club}.{type_}]: {unknown} is not a field of a {kind} row ({sorted(fields)})")
+            summary = _row_value(path, club, type_, row, "summary", str) if "summary" in row else None
+            if "shares" in row:
+                shares = _row_value(path, club, type_, row, "shares", str)
+                rows.append(ClubFile(club=club, type=type_, path=path, shares=shares, summary=summary))
+                continue
+            if "confirmed" not in row:
+                raise ValueError(f"{path.name} [{club}.{type_}]: a note needs `confirmed`, the day a person looked")
+            optional = {
+                field: _row_value(path, club, type_, row, field, kind)
+                for field, kind in (("recheck_after_days", int), ("terms", str), ("reason", str))
+                if field in row
+            }
+            note = NotAvailable(
+                confirmed=_row_value(path, club, type_, row, "confirmed", date),
+                checked=tuple(_row_value(path, club, type_, row, "checked", list)) if "checked" in row else (),
+                where=tuple(_row_value(path, club, type_, row, "where", list)) if "where" in row else (),
+                **optional,
+            )
+            rows.append(ClubFile(club=club, type=type_, path=path, note=note, summary=summary))
+    return rows
+
+
+def discover(root: Path = EXTRACT_DIR, trail_orgs: Path = TRAIL_ORGS_PATH, registry: Path = REGISTRY_PATH) -> list[ClubFile]:
+    """Every managing club's answer for every type, ordered by club, then by type.
+
+    The registry's answers (read_registry()), the rows of `root`'s
+    not_available.toml, and a catalogue row for every managing club in
+    `trail_orgs`. Nothing is merged: a type answered twice comes back twice,
+    for the layout test to refuse.
+    """
+    from extract._kinds import catalogue_row  # extract/_kinds.py imports this module
+
+    files = read_registry(registry, trail_orgs)
+    files += read_not_available(root / NOT_AVAILABLE_FILE)
+    catalogue = catalogue_row()
+    files += [
+        ClubFile(club=folder, type="org", path=trail_orgs, resources=(replace(catalogue, club=folder, type="org"),))
+        for folder in managing_folders(trail_orgs)
+    ]
+    # Stable, so an answer given twice keeps the registry's before the row.
+    return sorted(files, key=lambda club_file: (club_file.club, f"{club_file.type}.py"))
+
+
+def shared_folders(root: Path = EXTRACT_DIR) -> list[Path]:
+    """Every folder under _shared/: national services, aggregators and OurHike's own data (ELT.md, "_shared/")."""
+    shared = root / SHARED_FOLDER
+    if not shared.is_dir():
+        return []
+    return sorted(p for p in shared.iterdir() if p.is_dir() and not p.name.startswith(("_", ".")))
+
+
+def discover_shared(root: Path = EXTRACT_DIR) -> list[ClubFile]:
+    """Every file in every _shared/ folder, in a stable order. not_clubs.py sits beside the folders and declares none."""
+    return [read_shared_file(path) for folder in shared_folders(root) for path in sorted(folder.glob("*.py"))]
+
+
+def all_resources(files: list[ClubFile]) -> list[Resource]:
+    """Every Resource the answers declare. A share adds none: its sibling's resource is the one row."""
+    return [resource for club_file in files for resource in club_file.resources]

@@ -19,9 +19,10 @@ import { CLOSURE_LAYER_ID } from './lib/closureStyle'
 import { CLOSURE_ID_PROPERTY } from './map/closureLayers'
 import { WARNING_ID_PROPERTY, WARNING_LAYER_ID } from './map/warningLayers'
 import { renderedMap } from './test/liveMap'
-import { appHarness, openMapTab } from './test/appHarness'
+import { appHarness, latOfMile, openMapTab } from './test/appHarness'
 import { CLOSURE_SOURCE_ID } from './map/closureLayers'
 import { WARNING_SOURCE_ID } from './map/warningLayers'
+import { DAY_HIKES_KEY } from './lib/dayHikes'
 
 vi.mock('maplibre-gl', () => import('./test/mocks/maplibre-gl'))
 vi.mock('idb-keyval', () => ({
@@ -445,6 +446,79 @@ describe('every ATC notice is readable, drawn or not', () => {
     await waitFor(() => {
       expect(screen.queryByRole('button', { name: /trail notice/ })).toBe(null)
     })
+  })
+})
+
+// Option A of the maintainer's poll of 2026-10-09, end to end. What only this
+// file can catch is App.tsx handing lib/useConditions.ts's
+// `clubNoticesMissing` to chrome/noticesPanel.tsx: each half has its own
+// suite, and a shell that dropped the prop between them would leave both green.
+describe('a planned hike whose conditions/notices.json is not on this phone', () => {
+  /** An invented day hike, planned: nobody's walk. */
+  const PLANNED_HIKE = {
+    id: 'planned-1',
+    name: 'Fixture loop',
+    date: '2026-08-29',
+    segments: [
+      [
+        { coord: [-77, latOfMile(2)], poiId: null },
+        { coord: [-77, latOfMile(3)], poiId: null },
+      ],
+    ],
+    figures: {
+      miles: 1,
+      legs: [
+        { name: 'Fixture Trail', source: 'centerline', blaze_color: null, miles: 1 },
+      ],
+    },
+    looped: false,
+    recorded: 'planned',
+  }
+
+  it('labels the legend row "Notices for your planned hikes: not on this phone yet" and opens the warning over ATC’s list', async () => {
+    app.store.set(DAY_HIKES_KEY, { hikes: [PLANNED_HIKE], openId: null })
+    // ATC's file arrives; conditions/notices.json fails as in a dead spot,
+    // and this phone kept no copy of it.
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async (input: RequestInfo | URL) => {
+        const url = String(input)
+        if (url.endsWith('conditions/notices.json'))
+          throw new TypeError('Failed to fetch')
+        if (!url.endsWith('conditions/atc_updates.json')) {
+          return new Response(null, { status: 404 })
+        }
+        return new Response(
+          JSON.stringify({
+            generated_at: '2026-08-12T00:00:00Z',
+            reviewed_at: '2026-08-12T00:00:00Z',
+            atc_updates: [UNDRAWN_UPDATE],
+          }),
+          { status: 200 },
+        )
+      }),
+    )
+    await renderApp()
+
+    await userEvent.click(await screen.findByRole('button', { name: 'Legend' }))
+    await userEvent.click(
+      await screen.findByRole(
+        'button',
+        { name: 'Notices for your planned hikes: not on this phone yet' },
+        { timeout: 5_000 },
+      ),
+    )
+
+    const list = screen.getByRole('dialog', { name: 'Trail notices this phone has' })
+    expect(
+      within(list).getByText(
+        'This phone has no notices for your planned hikes yet. Connect once to get them. Until then, a closure on your hike will not show here.',
+      ),
+    ).toBeInTheDocument()
+    expect(
+      within(list).getByRole('heading', { name: 'Trail notices this phone has' }),
+    ).toBeInTheDocument()
+    expect(within(list).getByText('Hurricane Helene Storm Damage')).toBeInTheDocument()
   })
 })
 

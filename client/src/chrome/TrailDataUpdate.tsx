@@ -92,6 +92,10 @@ export function TrailDataUpdate({
 
   const size = describeSize(update.bytes)
   const serious = update.severity === CONSEQUENTIAL
+  // A release minted before the one this phone holds is a rollback the
+  // pointer made (lib/dataRefresh.ts's `older`). Offered all the same, but
+  // "newer" would be false, so it is named as the change it is.
+  const heading = update.older ? 'Changed trail data' : 'Newer trail data'
 
   return (
     <div
@@ -99,7 +103,7 @@ export function TrailDataUpdate({
       aria-live="polite"
     >
       <p className="trail-data-update__what">
-        <strong>Newer trail data</strong> · {describeChange(update)}
+        <strong>{heading}</strong> · {describeChange(update)}
       </p>
       {/* The cost, and only where it is worth a hiker's attention. `size` is
           null when the manifest publishes no size for one of the changed

@@ -1,0 +1,304 @@
+version: 2
+
+models:
+  - name: pub_elevation_profile
+    description: >
+      Writes elevation_profile.json, the A.T.'s elevation profile, from the
+      elevation mart's 'AT' line: one row holding the whole document, which
+      the phone_file materialisation writes to
+      processed_dir/elevation_profile.json as it is. parity.py compares it
+      with export_elevation.py's profile, record by record.
+      Refreshed monthly, with its lane's build.
+    config:
+      access: public
+      contract:
+        enforced: true
+    data_tests:
+      # The text is JSON, and its top level is the array the phone's
+      # parseProfile() requires (anything else reads as no profile).
+      - dbt_utils.expression_is_true:
+          arguments:
+            expression: "json_valid(profile_json) and json_type(cast(profile_json as json)) = 'ARRAY'"
+      # A MOSTLY UNMEASURED PROFILE NEVER REPLACES A GOOD ONE (the maintainer's poll of 2026-10-14, "Toward caution"): more than
+      # var elevation_profile_max_null_share of the samples with no height (a
+      # record whose elevation_ft is null or missing) fails this writer, at
+      # ERROR. dbt tests a model after building it, so the file is written by
+      # then: build_marts.py's failed_writers() counts this test as the
+      # writer's own, removes the file and exits PARTIAL_EXIT, and
+      # publish.py's collect_dbt_phone_files() never reads it, keeping the
+      # bucket's last copy of elevation_profile.json under
+      # OURHIKE_BUILD_PARTIAL and refusing to publish without it. In
+      # build-reference.yml the build job fails on that exit and `publish`
+      # needs it, so the monthly lane's whole release waits and the last
+      # good one stays. Not keep_last_file: this writer always selects one
+      # row, `[]` when the mart has no A.T. row (int_elevation__final's
+      # both-sources rule, an honest "no profile" the phone reads as one),
+      # and an empty profile has no null share to fail. The mart's
+      # Elementary null_percent check on elevation_ft is warn-level and
+      # needs a history of builds to score against, so it never held a file.
+      - dbt_utils.expression_is_true:
+          name: pub_elevation_profile_leaves_no_more_than_its_share_of_heights_null
+          arguments:
+            expression: >-
+              json_array_length(cast(profile_json as json))
+              - len(list_filter(
+                cast(json_extract(cast(profile_json as json), '$[*].elevation_ft') as double[]),
+                lambda height: height is not null
+              ))
+              <= {{ var('elevation_profile_max_null_share') }} * json_array_length(cast(profile_json as json))
+          config:
+            severity: error
+    columns:
+      - name: profile_json
+        description: >
+          The file: a JSON array of {"distance_mi", "elevation_ft"} records
+          in mile order, "part_start": true on the first sample of each piece
+          only, with json.dumps's separators.
+        data_type: varchar
+        data_tests: [not_null, unique]
+  - name: pub_elevation_profile_v2
+    description: >
+      Writes v2/elevation_profile.json, the A.T.'s elevation profile packed
+      as delta-coded columns of whole numbers, from v2 of
+      the elevation mart: one row, which phone_file writes to
+      processed_dir/elevation_profile_v2.json as one JSON object of its
+      columns. parity.py's elevation_v2 family decodes it and compares every
+      sample with v1's elevation_profile.json.
+      Refreshed monthly, with its lane's build.
+    config:
+      access: public
+      contract:
+        enforced: true
+    data_tests:
+      # One mile and one elevation per sample, so a reader that walks the
+      # two lists together never pairs a mile with another sample's height.
+      - dbt_utils.expression_is_true:
+          arguments:
+            expression: "len(d_milli_mi) = len(e_deci_ft)"
+      # Every step after the first runs forward: v1's miles strictly
+      # increase within the line.
+      - dbt_utils.expression_is_true:
+          arguments:
+            expression: "len(list_filter(d_milli_mi[2:], lambda step: step <= 0)) = 0"
+      # v1's null-share test on the same samples (its comment
+      # says how a failure keeps the last good file): e_deci_ft is null
+      # exactly where a sample has no height, so a v2 phone never gets the
+      # mostly unmeasured profile v1's writer refused.
+      - dbt_utils.expression_is_true:
+          name: pub_elevation_profile_v2_leaves_no_more_than_its_share_of_heights_null
+          arguments:
+            expression: >-
+              len(e_deci_ft) - len(list_filter(e_deci_ft, lambda step: step is not null))
+              <= {{ var('elevation_profile_max_null_share') }} * len(e_deci_ft)
+          config:
+            severity: error
+    columns:
+      - name: format
+        description: >
+          2. A v1 file is a bare array, so client/src/lib/elevationProfile.ts
+          tells the two apart by this member.
+        data_type: integer
+        data_tests:
+          - not_null
+          - unique
+          - accepted_values:
+              arguments:
+                values: [2]
+      - name: d_milli_mi
+        description: >
+          Each sample's mile in thousandths of a mile: the first as itself,
+          every later one as its step from the sample before.
+        data_type: bigint[]
+      - name: e_deci_ft
+        description: >
+          Each sample's elevation in tenths of a foot, null where the DEM has
+          no answer (never 0); every other one as its step from the last
+          sample before it that has an elevation, the first such as itself.
+        data_type: integer[]
+      - name: part_start
+        description: >
+          The index, from 0, of each sample that begins a piece of the
+          centerline (#559), ascending.
+        data_type: bigint[]
+
+  - name: pub_trail_graph_elevation
+    description: >
+      Writes trail_graph_elevation.json, each junction-graph edge's climb,
+      from int_elevation__edge_climbs: one row holding the whole document, an
+      array with one entry per edge of int_trail_network__edges in edge_index
+      order, [gain_ft, loss_ft] or null. parity.py compares it with
+      export_network_elevation.py's array, entry by entry.
+      Refreshed monthly, with its lane's build.
+    config:
+      access: public
+      contract:
+        enforced: true
+    data_tests:
+      # JSON, an array, and one entry per edge: an array of another length
+      # would print one trail's climb against another's name.
+      - dbt_utils.expression_is_true:
+          arguments:
+            expression: >-
+              json_valid(climbs_json) and json_type(cast(climbs_json as json)) = 'ARRAY'
+              and json_array_length(cast(climbs_json as json))
+                = (select count(*) from {{ ref('int_trail_network__edges') }})
+    columns:
+      - name: climbs_json
+        description: >
+          The file: a JSON array, entry i edge i's [gain_ft, loss_ft] in whole
+          feet or null where nobody measured it, with no spaces, as
+          json.dumps(climbs, separators=(",", ":")) writes it.
+        data_type: varchar
+        data_tests: [not_null, unique]
+
+  - name: pub_trail_graph_profile
+    description: >
+      Writes trail_graph_profile.json, each junction-graph edge's dense
+      profile in whole feet, from the elevation mart's edge rows: one row
+      holding the whole document, an array with one entry per edge of
+      int_trail_network__edges in edge_index order, the edge's samples or
+      null. parity.py compares it with export_network_profile.py's array,
+      entry by entry.
+      Refreshed monthly, with its lane's build.
+    config:
+      access: public
+      contract:
+        enforced: true
+    data_tests:
+      - dbt_utils.expression_is_true:
+          arguments:
+            expression: >-
+              json_valid(profiles_json) and json_type(cast(profiles_json as json)) = 'ARRAY'
+              and json_array_length(cast(profiles_json as json))
+                = (select count(*) from {{ ref('int_trail_network__edges') }})
+    columns:
+      - name: profiles_json
+        description: >
+          The file: a JSON array, entry i edge i's samples in whole feet from
+          its start to its end, a DEM hole as null in its place, or null for
+          an edge the DEM covers none of, with no spaces, as
+          json.dumps(profiles, separators=(",", ":")) writes it.
+        data_type: varchar
+        data_tests: [not_null, unique]
+
+exposures:
+  - name: elevation_profile_json
+    label: elevation_profile.json
+    type: application
+    maturity: medium
+    owner:
+      name: OurHike
+    description: >
+      The A.T. elevation profile, about 139,000 samples 25 m apart, which the
+      phone's elevation ribbon draws and counts climb over
+      (client/src/lib/elevationProfile.ts, lib/elevationGain.ts), so it
+      reaches a hiker's sense of how much climbing is ahead and the pace
+      estimate built on it. Part of the safety core every phone holds whole
+      (pipeline/ELT.md, "Making the download smaller", tier (a)). Published
+      in the release folder by publish-vector-data.yml from
+      export_elevation.py's file until the cutover moves it to this
+      writer's.
+    depends_on:
+      - ref('elevation', v=1)
+      - ref('pub_elevation_profile')
+    config:
+      meta:
+        r2_keys: [elevation_profile.json]
+        format: json
+        offline_tier: safety_core
+        # @unvalidated as a budget: release 2026-09-24-2's measured
+        # transfer_bytes for this file (pipeline/ELT.md, "What a phone
+        # downloads today"), not a ceiling anyone chose.
+        size_budget_bytes: 921533
+        cadence: monthly
+  - name: trail_graph_elevation_json
+    label: trail_graph_elevation.json
+    type: application
+    maturity: medium
+    owner:
+      name: OurHike
+    description: >
+      Each junction-graph edge's climb, [gain_ft, loss_ft] or null,
+      index-aligned with trail_graph.json: what a day-hike card prices a
+      walk's climb and its Naismith time from, a route with one null edge
+      having no climb figure. A phone reads it through cut_trail_graph.py's
+      trail_graph_elevation_cell_<cell>.json shards, keyed by edge.
+      Published by publish-vector-data.yml from export_network_elevation.py's
+      file, held back whole when any of the graph's sources may not reach
+      hikers (publish.py), until the cutover moves it to this writer's.
+    # The writer alone: the climbs are a protected intermediate, which no
+    # exposure may depend on, until the trail_network mart carries them.
+    depends_on:
+      - ref('pub_trail_graph_elevation')
+    config:
+      meta:
+        r2_keys: [trail_graph_elevation.json]
+        format: json
+        cadence: monthly
+        # No published gain figure exists for any trail of the
+        # network's own, so the 3 m dead band checked on the A.T. is
+        # unchecked here, and the manifest says so; the cutover writes it.
+        estimate: true
+  - name: trail_graph_profile_json
+    label: trail_graph_profile.json
+    type: application
+    maturity: medium
+    owner:
+      name: OurHike
+    description: >
+      Each junction-graph edge's dense profile in whole feet, index-aligned
+      with trail_graph.json, which the ribbon on a day hike draws; route
+      climb comes from trail_graph_elevation.json, never from summing this
+      file. A phone reads it through cut_trail_graph.py's
+      trail_graph_profile_cell_<cell>.json shards. Published by
+      publish-vector-data.yml from export_network_profile.py's file until the cutover moves it to this writer's; its manifest's `seam` block
+      is int_elevation__seam_measurement.
+    depends_on:
+      - ref('elevation', v=1)
+      - ref('pub_trail_graph_profile')
+    config:
+      meta:
+        r2_keys: [trail_graph_profile.json]
+        format: json
+        cadence: monthly
+        # As trail_graph_elevation.json's.
+        estimate: true
+        route_gain_source: trail_graph_elevation.json
+  - name: elevation_profile_json_v2
+    label: v2/elevation_profile.json
+    type: application
+    maturity: low
+    owner:
+      name: OurHike
+    description: >
+      v2 of elevation_profile.json: the same A.T. samples, as
+      delta-coded columns of whole thousandths of a mile and tenths of a foot,
+      published beside v1 at v2/elevation_profile.json under the release
+      folder (pipeline/ELT.md, "Making the download
+      smaller"). A phone reads it only once its build reads schema version v2
+      and channels.json names a v2 release; every other phone keeps reading
+      v1's elevation_profile.json, which is still written. Part of the safety
+      core every phone holds whole, tier (a).
+    depends_on:
+      - ref('elevation', v=2)
+      - ref('pub_elevation_profile_v2')
+    config:
+      meta:
+        r2_keys: [v2/elevation_profile.json]
+        format: json
+        offline_tier: safety_core
+        # @unvalidated as a budget: report 5's measured packing of release
+        # 2026-09-24-2's profile on the wire (pipeline/ELT.md, "Before and
+        # after, first run"), not a ceiling anyone chose.
+        size_budget_bytes: 219158
+        cadence: monthly
+        # The mart columns this file's writer reads, in Elementary's type words, which
+        # exposure_schema_validity checks on the mart. It can only because this is
+        # the one phone file reading that mart: with more, Elementary 0.26.0 needs
+        # context["render"], which dbt 2.0.6 lacks.
+        referenced_columns:
+          - {column_name: line_id, data_type: string}
+          - {column_name: seq, data_type: numeric}
+          - {column_name: part_start, data_type: boolean}
+          - {column_name: distance_milli_mi, data_type: numeric}
+          - {column_name: elevation_deci_ft, data_type: numeric}

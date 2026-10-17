@@ -423,6 +423,7 @@ import { useTrailGraph } from './lib/useTrailGraph'
 import { orgLabelFrom, orgProviderFrom, trailSourceTableFrom } from './lib/stewards'
 import {
   EMPTY_DAY_HIKES,
+  anyHikePlanned,
   loadDayHikes,
   logWalk,
   saveDayHikeOpenId,
@@ -510,7 +511,13 @@ import type { FieldNoteContext, ReportAnchor } from './chrome/FieldNoteSection'
 import { PressPlate } from './chrome/PressPlate'
 import { closureBanner, closureLanes, type RankedClosure } from './lib/closureBanner'
 import { projectClosures } from './lib/closureProjection'
-import { atcUpdateBanner, atcUpdateLanes, type RankedAtcUpdate } from './lib/atcUpdates'
+import {
+  atcBandId,
+  atcUpdateBanner,
+  atcUpdateLanes,
+  type RankedAtcUpdate,
+} from './lib/atcUpdates'
+import { isCurrentOn } from './lib/noticeCurrency'
 import { ATC_SOURCE_KEY } from './lib/notices'
 import { useNoticesPanel } from './chrome/noticesPanel'
 import { useAlertSheets } from './chrome/alertSheetsPanel'
@@ -544,7 +551,7 @@ import {
   type PlannedHike,
 } from './lib/plannedHike'
 import { closureBands } from './map/closureLayers'
-import { corridorWithHighlights, EMPTY_CORRIDOR } from './map/corridorLayers'
+import { corridorWithHighlights, EMPTY_CORRIDOR } from './map/corridorFeatures'
 import {
   isSeriousWarning,
   placeAll,
@@ -1520,6 +1527,15 @@ function App() {
   // What the trail is like right now - closures, reports, the ATC's own
   // notices - and when something last reached the server. See
   // lib/useConditions.ts for the two tiers behind the first two.
+  /**
+   * Whether the hiker has opened the legend's "Read all" door (the
+   * maintainer's poll of 2026-10-15): conditions/notices.json is then
+   * downloaded with no hike planned too, for the list behind it. Session-lived
+   * on purpose: a later launch asks again only if the hiker does.
+   */
+  const [allNoticesAsked, setAllNoticesAsked] = useState(false)
+  const askAllNotices = useCallback(() => setAllNoticesAsked(true), [])
+
   const {
     closures,
     reports,
@@ -1530,13 +1546,25 @@ function App() {
     atcUpdates,
     atcReviewedAt,
     orgNotices,
+    clubNotices,
+    clubNoticesGeneratedAt,
+    clubNoticesListed,
+    clubNoticesMissing,
+    hazardFile,
+    closureFile,
     drought,
     droughtWeek,
     workProjects,
     workProjectsGeneratedAt,
     lastSyncedAt,
     markSynced,
-  } = useConditions(online, afterFirstFrame)
+  } = useConditions(
+    online,
+    afterFirstFrame,
+    // conditions/notices.json only once a hike is planned, or once the hiker
+    // opens the legend's "Read all" door for it (`allNoticesAsked` below).
+    anyHikePlanned(tripStore.trips, dayHikeStore.hikes) || allNoticesAsked,
+  )
 
   /**
    * This phone's own just-written notes, echoed locally (FIELD_NOTES.md).
@@ -3245,6 +3273,11 @@ function App() {
    *  change, same shape as `noticeOrg` above. */
   const trailSources = useMemo(() => trailSourceTableFrom(stewards), [stewards])
 
+  /** The phone's calendar day, which a notice's `current_until` is read
+   *  against (lib/noticeCurrency.ts): a string, so the banner memo below
+   *  runs again once a day for it, not on every tick of the clock. */
+  const noticeDay = localDay(now)
+
   const { closureAhead, advisoryAhead } = useMemo(() => {
     if (fixMile === null) return { closureAhead: null, advisoryAhead: null }
 
@@ -3290,12 +3323,21 @@ function App() {
         // short form - "ATC", "NYNJTC" - which is what a line read while
         // walking needs, and it is theirs rather than an abbreviation this app
         // invented.
+        // The header ends "may no longer apply" whenever the
+        // notice's row in conditions/notices.json has gone grey on this
+        // phone's day, so it never reads at full voice what the planned-hike
+        // list greys. Without that file (nothing planned) there
+        // is no verdict, and the line reads as before.
+        const row = clubNotices?.find(
+          (notice) => notice.notice_id === atcBandId(atc.update),
+        )
         return atcUpdateBanner(
           atc.update,
           fixMile,
           heading,
           noticeOrg(ATC_SOURCE_KEY),
           units,
+          row !== undefined && !isCurrentOn(row, noticeDay),
         )
       }
       return null
@@ -3315,7 +3357,16 @@ function App() {
     // walking, because `fixMile` and `heading` change with every fix; stuck
     // for a hiker standing still or without a fix, which is when somebody is
     // most likely to be reading it.
-  }, [noticeOrg, placedClosures, atcUpdates, fixMile, heading, units])
+  }, [
+    noticeOrg,
+    placedClosures,
+    atcUpdates,
+    fixMile,
+    heading,
+    units,
+    clubNotices,
+    noticeDay,
+  ])
 
   /**
    * Every published report placed on the mile axis.
@@ -3449,6 +3500,29 @@ function App() {
     trailIndex,
     bbox,
     now,
+    // The planned-hike panel and the hazard areas (#1805), from
+    // conditions/notices.json when it has reached this phone: the hikes it
+    // picks notices for, and the trails it checks an area against. The graph
+    // with its vertices where the builder has pulled them, else the topology
+    // alone, which routes nothing - the panel then says so.
+    clubNotices,
+    clubNoticesGeneratedAt,
+    clubNoticesListed,
+    // Option A of the maintainer's poll of 2026-10-09: a planned hike whose
+    // notices.json this phone does not hold says so on the legend row and
+    // at the top of the list.
+    clubNoticesMissing,
+    // The hazard areas from their own file, read whatever is
+    // planned, so a phone with no hike planned still draws them.
+    hazardFile,
+    // The closure-map standard (2026-10-11): every club closure, crossed out on
+    // the map from its own file, whatever is planned.
+    closureFile,
+    trips: tripStore.trips,
+    dayHikes: dayHikeStore.hikes,
+    graph: dayHikeIndex ?? graphIndex,
+    clubSections,
+    onAskAllNotices: askAllNotices,
   })
   /** The closure tape's and the warning pin's sheets (#1373, F12) - the two
    *  the map drew marks for and never opened. */
@@ -3694,6 +3768,9 @@ function App() {
   }, [])
 
   const line = useTappedLinePanel({
+    // The drawn hazard areas (#1805), whose advisory the card prints on
+    // the stretch inside one.
+    hazardAdvisoriesAt: atc.hazardAdvisoriesAt,
     spurs,
     pois,
     units,
@@ -6546,6 +6623,8 @@ function App() {
     selectedPoiId !== null ||
     line.mapScreen.lineSheet != null ||
     atc.mapScreen.atcUpdateSheet != null ||
+    atc.mapScreen.hazardAreaSheet != null ||
+    atc.mapScreen.clubClosureSheet != null ||
     atc.mapScreen.noticeList != null ||
     workday.mapScreen.workdaySheet != null ||
     alertSheets.sheetOpen

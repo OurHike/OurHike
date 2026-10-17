@@ -217,6 +217,65 @@ and a `::regclass` cast both raise on a relation that is not there — which is 
 production database looks like between an exporter landing on `main` and a human dispatching
 `migrate.yml` for it.
 
+#### Two paths, one switch (#1793)
+
+**#1793 — Rebuild the data platform as dlt → dbt: seven contracted marts, a monthly
+refresh, published docs, and lighter phone downloads** adds a second way to produce the same
+files, and `publish-conditions.yml` chooses between them with one value per environment,
+`PHONE_FILES`:
+
+- **`exporters`** is everything above. Production keeps it until the cutover in **#1811 —
+  Fast follows after PR #1805's dlt → dbt re-platform: the hiker's own download choice, the
+  cutover, and what the port found in today's code**. The cutover is one line
+  (`PRODUCTION_PHONE_FILES`), and so is the rollback; a dispatch picks either with
+  `phone_files`.
+- **`dbt`** is ELT.md's hourly lane, which UA runs. Per leg: dlt reads OurHike's own rows
+  through these same queries (`extract/_shared/ourhike/`), NWS, ATC, NYNJTC, OPRHP's trail
+  closures and the work projects into the private raw store, one dlt pipeline per leg
+  (`conditions_production`, `conditions_ua`); the newest served copy of every other club's
+  notices is added beside them (below); `build_marts.py --lane hourly` builds the `closures`
+  and `warnings` marts and their `pub_` writers; and `publish.py` runs with
+  `OURHIKE_PHONE_FILES=dbt`, taking `closures.json`, `reports.json`, `atc_updates.json` and
+  `nynjtc_alerts.json` from the writers while the exporters still write the files no writer
+  owns yet (drought, notes and disputes among them).
+
+**Two jobs feed the hourly lane.** Every club's and agency's notices are read by a job of
+their own, `extract-notices.yml`, every 4 hours with up to an hour to read. This hourly job
+keeps what a storm or a moderator's closure turns on: NWS's alerts, OurHike's own moderated
+closures and reports, and ATC's and NYNJTC's notices, which with OPRHP's closures and the
+work projects are the twelve tables `extract/_run.py`'s `HOURLY_JOB_TABLES` names. The
+notices job reads the rest into its own legs' stores (`notices_production`, `notices_ua`),
+then copies what a build reads, write-once, under each store's `served/`
+(`extract/_warehouse.py`, "THE SERVED COPY"), and this job adds the newest copy to its
+warehouse each hour. So the closures and warnings marts carry every club's notices hourly, as
+old as that job's last read: up to about 4 hours, plus however late GitHub fires its cron,
+and the phone already says how old. The copy exists because a notices load deletes a table's
+files before it writes the new ones; reading the store while one commits could find a
+closures layer half gone. A copy that will not read falls back to the one before, and the
+run goes red after publishing; no copy at all yet is a warning. Neither stops this job's own
+publish, and in both the build saves no row history, so a notice missing for an hour is never
+recorded as lifted.
+
+**One club's failure is its own on the dbt path, and OurHike's is still everyone's.** A leg
+reads each upstream separately, within a 150-second budget (1,800 seconds on a notices leg),
+and one that fails, runs out of time or is refused by the run check is left out, with its last
+committed table standing and the run turned red after the rest has published. That keeps the
+bake's own carry-forward for ATC and NYNJTC. OurHike's own closures and reports keep the rule
+above, "either of them failing the same check is a regression and still stops the run": a
+carried-forward table would publish under a new `generated_at`, an "as of" fresher than its
+data.
+
+**The production leg runs only from `main`.** A dispatch from any other ref, or one from
+`main` asking for `ua`, publishes UA alone (`.github/tests/test_conditions_production_leg_needs_main.py`).
+That is what lets the UA soak dispatch the dbt path from a pull request's branch without that
+branch ever writing what hikers read.
+
+**The budget.** On the runner, 28 green UA dispatches (2026-10-04 to 06) took the whole job
+288 to 383 s, the extract step 60 to 98 s and the build step 134 to 203 s (Measured from the
+Actions API's step times). The job's cap is 16 minutes, held by
+`.github/tests/test_conditions_build_budget.py`. On the fixtures the four files came out with
+no differences from today's exporters (`parity.py`).
+
 ### 3. How the client reads it
 
 Two tiers, and the second is optional:

@@ -78,7 +78,6 @@ import {
   crowdingByPoi,
 } from './poiCrowding'
 import { whenStyleReady } from './styleReady'
-
 // The ids, the seam and the locate zoom live in poiIds.ts, a module of their
 // own, so the shell reads them without bringing this module and what it
 // imports into the eager chunk (features/LAUNCH_BUDGET.md §4.4: a constant

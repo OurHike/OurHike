@@ -222,6 +222,24 @@ const SOURCES: TrailSourceTable = {
   },
 }
 
+describe('a club’s own line', () => {
+  it('marks a club line so the sheet can say it is drawn and not routed', () => {
+    expect(buildLineDetail({ ...NEARBY_LINE, lineKind: 'club' }, {}, []).isClubLine).toBe(
+      true,
+    )
+  })
+
+  it('marks no network line, and no line of a release that predates the mark', () => {
+    expect(buildLineDetail(NEARBY_LINE, {}, []).isClubLine).toBe(false)
+    expect(buildLineDetail({ ...NEARBY_LINE, lineKind: null }, {}, []).isClubLine).toBe(
+      false,
+    )
+    expect(
+      buildLineDetail({ ...NEARBY_LINE, lineKind: 'network' }, {}, []).isClubLine,
+    ).toBe(false)
+  })
+})
+
 describe('a nearby trail’s sheet', () => {
   it('names its length and its park on one line', () => {
     const detail = buildLineDetail(NEARBY_LINE, {}, [], 'imperial', 'Appalachian Trail')
@@ -323,6 +341,43 @@ describe('a long-term closed trail', () => {
       const detail = buildLineDetail({ ...NEARBY_LINE, trailStatus: status }, {}, [])
       expect(detail.closureLine).toBe('Closed')
     }
+  })
+})
+
+describe('a section an organization’s own notice closed', () => {
+  // What dbt's int_trail_lines__network_section_closures ships: USFS drew the
+  // line, PATC's notice named its section closed, and the reason is PATC's
+  // own sentence, verbatim.
+  const SECTION_CLOSED = {
+    ...NEARBY_LINE,
+    source: 'usfs_trails',
+    name: 'TUSCARORA - DOLL RIDGE',
+    trailStatus: 'closed',
+    closureKind: 'section',
+    closureReason:
+      'The Tuscarora Trail section just west of Massanutten Mountain is closed due to loss of landowner permission.',
+    closureSource: 'patc_tuscarora_updates',
+  }
+
+  it('says who closed it in their words, with no “temporarily” their notice did not say', () => {
+    const detail = buildLineDetail(
+      SECTION_CLOSED,
+      {},
+      [],
+      'imperial',
+      'Appalachian Trail',
+      undefined,
+      {
+        ...SOURCES,
+        usfs_trails: { attribution: 'USDA Forest Service' },
+        patc_tuscarora_updates: {
+          attribution: 'Potomac Appalachian Trail Club (Tuscarora Trail Committee)',
+        },
+      },
+    )
+    expect(detail.closureLine).toBe(
+      'Closed by Potomac Appalachian Trail Club (Tuscarora Trail Committee) · The Tuscarora Trail section just west of Massanutten Mountain is closed due to loss of landowner permission.',
+    )
   })
 })
 

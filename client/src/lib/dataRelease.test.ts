@@ -16,6 +16,7 @@ import {
   RELEASE_MANIFEST_PATH,
   isReleaseScoped,
   releasePath,
+  releaseSortsBefore,
 } from './dataRelease'
 
 const BASE = 'https://cdn.example.org'
@@ -73,6 +74,32 @@ describe('the pin itself', () => {
   it('names the release folder its own manifest lives in', () => {
     expect(RELEASE_MANIFEST_PATH).toBe(`releases/${DATA_RELEASE}/manifest.json`)
   })
+})
+
+// lib/releases.next_release_id's order, which lib/dataRefresh.ts reads to
+// keep a rollback from being called newer.
+describe('releaseSortsBefore, the order release ids are minted in', () => {
+  it.each([
+    ['2026-09-23-4', '2026-09-24'],
+    ['2026-09-24', '2026-09-24-2'],
+    ['2026-09-24-2', '2026-09-24-10'],
+    ['2025-12-31-9', '2026-01-01'],
+  ])('puts %s before %s, and not the other way round', (earlier, later) => {
+    expect(releaseSortsBefore(earlier, later)).toBe(true)
+    expect(releaseSortsBefore(later, earlier)).toBe(false)
+  })
+
+  it('puts no id before itself', () => {
+    expect(releaseSortsBefore('2026-09-24-2', '2026-09-24-2')).toBe(false)
+  })
+
+  it.each(['', 'latest', '../2026-09-24', '2026-09-24-', '2026-09-24\n'])(
+    'knows nothing older than or before %j, which is not an id',
+    (other) => {
+      expect(releaseSortsBefore(other, '2026-09-24')).toBe(false)
+      expect(releaseSortsBefore('2026-09-24', other)).toBe(false)
+    },
+  )
 })
 
 describe('the URLs config.ts builds from it', () => {

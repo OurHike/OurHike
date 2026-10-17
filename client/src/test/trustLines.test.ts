@@ -53,6 +53,10 @@ const TRUST_LINES: ReadonlyArray<{ selector: string; says: string }> = [
     selector: '.day-hike-panel__unknown',
     says: 'that this phone cannot price the climb',
   },
+  {
+    selector: '.notice__not-current',
+    says: 'that a closure or notice may no longer apply, and from when',
+  },
 ]
 
 const SRC = resolve(process.cwd(), 'src')

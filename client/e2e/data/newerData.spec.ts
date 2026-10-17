@@ -35,12 +35,17 @@
 import { test, expect, type Page } from '@playwright/test'
 import { seedPreferences, bootFreshPage } from '../support/seed'
 import { writeIDBEntries } from '../support/idb'
-import { releaseArtifactUrl } from '../support/dataPreflight'
+import { followedPointerRecord, releaseArtifactUrl } from '../support/dataPreflight'
 
 /** `lib/dataRefresh.ts`'s RELEASE_KEY — the wire contract this spec writes,
  *  not a module it imports, for the reason support/seed.ts gives about its
  *  own three keys. */
 const RELEASE_KEY = 'ourhike:trail-data-release'
+
+/** `lib/dataRelease.ts`'s CHANNEL_RECORD_KEY: the pointer record in
+ *  IndexedDB, and its localStorage mirror under the same name. A wire
+ *  contract, as RELEASE_KEY is. */
+const CHANNEL_RECORD_KEY = 'ourhike:data-channel'
 
 /**
  * A release record that cannot match whatever the bucket is serving today.
@@ -71,8 +76,39 @@ async function refuseTheCommitPath(page: Page): Promise<void> {
   await page.route('**/poi_*.*', (route) => route.abort())
 }
 
+/**
+ * ONE RELEASE FOR EVERY LAUNCH, which the pointer otherwise splits in two.
+ *
+ * The seeded download record makes this phone "not a first run"
+ * (lib/dataChannel.ts's firstRunRelease), so with no pointer record its first
+ * launch reads the compiled floor and its update check records channels.json's
+ * release for the next launch. Once UA's channels.json named a release
+ * (2026-10-17-2, first served 2026-10-17; 404 before), the second launch read
+ * a different release from the first, whose manifest carries a different
+ * `version` (measured 2026-10-17: 2026-10-10-2 is ea1b393b-…, 2026-10-17-2 is
+ * e95ca3fc-…) - so a "Not now" given to the floor's version did not silence
+ * the pointer's, correctly, by dismissRelease's own contract. The "Not now"
+ * test failed on whether readDataChannel's 851 KB manifest read finished
+ * before the cold boot: in CI against the bucket it did, through the
+ * sandbox's slower proxy it did not.
+ *
+ * So the phone already follows the pointer, as every phone that has launched
+ * once since a pointer existed does, and both launches read the same release.
+ * With no resolvable pointer this seeds nothing and both read the floor.
+ */
+async function aPhoneFollowingThePointer(page: Page): Promise<void> {
+  const record = followedPointerRecord()
+  if (record === null) return
+  await writeIDBEntries(page, [[CHANNEL_RECORD_KEY, record]])
+  await page.addInitScript(({ key, value }) => localStorage.setItem(key, value), {
+    key: CHANNEL_RECORD_KEY,
+    value: JSON.stringify(record),
+  })
+}
+
 async function aPhoneHoldingAnOlderRelease(page: Page): Promise<void> {
   await seedPreferences(page)
+  await aPhoneFollowingThePointer(page)
   await writeIDBEntries(page, [[RELEASE_KEY, A_DOWNLOAD_THAT_PREDATES_THE_PUBLISH]])
   await refuseTheCommitPath(page)
   await page.goto('/')

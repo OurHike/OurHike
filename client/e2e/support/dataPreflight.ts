@@ -86,6 +86,36 @@ export function releaseArtifactUrl(name: string): string | null {
   return base === null ? null : `${base}/releases/${sessionRelease()}/${name}`
 }
 
+/**
+ * The pointer record (lib/dataRelease.ts's ChannelRecord) a phone that already
+ * follows this run's pointer holds, or null when channels.json named no
+ * release that resolves and the app reads the floor.
+ *
+ * For a spec that seeds a download record. lib/dataChannel.ts's
+ * firstRunRelease treats any download record as "not a first run", so such a
+ * phone reads the compiled floor on its first launch and records the pointer
+ * for the next one: two launches, two releases, two different manifest
+ * versions. A spec that compares what one launch offered with what the next
+ * one does needs both launches on one release, and this record is how a
+ * phone gets there before the first one.
+ */
+export function followedPointerRecord(): {
+  release: string
+  schema: string
+  environment: string
+  at: number
+} | null {
+  const base = dataBase()
+  const chosen = process.env.FLOW_DATA_RELEASE ?? ''
+  if (base === null || !RELEASE_ID.test(chosen)) return null
+  return {
+    release: chosen,
+    schema: DATA_SCHEMA_VERSION,
+    environment: environmentOf(base),
+    at: 1_700_000_000_000,
+  }
+}
+
 function manifestUrl(): string | null {
   return releaseArtifactUrl('manifest.json')
 }

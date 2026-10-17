@@ -510,7 +510,39 @@ def _stamp_utc(value: datetime | None) -> str | None:
     return aware.astimezone(timezone.utc).isoformat().replace("+00:00", "Z")
 
 
-def _read_rows(conn, sql: str, timestamp_fields: tuple[str, ...]) -> list[dict]:
+def _on_globe(lat, lon) -> bool:
+    """True when the pair is a point on Earth, as `DefaultPlace` already requires.
+
+    Written to read False for a NaN too, though the live schemas' `FiniteFloat`
+    already refuse one - the bounds are the only thing this guards.
+    """
+    return lat is not None and lon is not None and -90 <= lat <= 90 and -180 <= lon <= 180
+
+
+def _null_off_globe(row: dict, lat_key: str, lon_key: str) -> None:
+    """Drop a coordinate pair that is not a point on Earth (#1763).
+
+    The request schemas for reports, field notes and closures accept any finite
+    float, so a row at (1000, -5000) can be verified and baked. MapLibre wraps
+    longitude and clamps latitude, which draws a confident dot at the wrong
+    place - the worse failure under CLAUDE.md's "an honest unknown outranks a
+    confident answer". Both halves go together: one good half of a bad pair
+    places nothing. A row with no usable location exports with none, as the
+    client already reads for a report with no fix. The row itself stays.
+    """
+    lat, lon = row.get(lat_key), row.get(lon_key)
+    if (lat is None and lon is None) or _on_globe(lat, lon):
+        return
+    row[lat_key] = None
+    row[lon_key] = None
+
+
+def _read_rows(
+    conn,
+    sql: str,
+    timestamp_fields: tuple[str, ...],
+    coordinate_pairs: tuple[tuple[str, str], ...] = (),
+) -> list[dict]:
     with conn.cursor() as cur:
         cur.execute(sql)
         columns = [description.name for description in cur.description]
@@ -519,19 +551,26 @@ def _read_rows(conn, sql: str, timestamp_fields: tuple[str, ...]) -> list[dict]:
     for row in rows:
         for field in timestamp_fields:
             row[field] = _stamp_utc(row[field])
+        for lat_key, lon_key in coordinate_pairs:
+            _null_off_globe(row, lat_key, lon_key)
     return rows
 
 
 def read_closures(conn) -> list[dict]:
-    return _read_rows(conn, PUBLIC_CLOSURES_SQL, CLOSURE_TIMESTAMP_FIELDS)
+    return _read_rows(
+        conn,
+        PUBLIC_CLOSURES_SQL,
+        CLOSURE_TIMESTAMP_FIELDS,
+        (("start_lat", "start_lon"), ("end_lat", "end_lon")),
+    )
 
 
 def read_reports(conn) -> list[dict]:
-    return _read_rows(conn, PUBLIC_REPORTS_SQL, REPORT_TIMESTAMP_FIELDS)
+    return _read_rows(conn, PUBLIC_REPORTS_SQL, REPORT_TIMESTAMP_FIELDS, (("lat", "lon"),))
 
 
 def read_notes(conn) -> list[dict]:
-    rows = _read_rows(conn, PUBLIC_NOTES_SQL, NOTE_TIMESTAMP_FIELDS)
+    rows = _read_rows(conn, PUBLIC_NOTES_SQL, NOTE_TIMESTAMP_FIELDS, (("lat", "lon"),))
     # The window function's plumbing must not reach the wire: the client's
     # NoteSummary declares exactly the public nine, and a tenth field would
     # teach it to read what the shape never promised.

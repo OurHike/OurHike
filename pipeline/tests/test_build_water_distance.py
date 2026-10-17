@@ -134,7 +134,7 @@ def test_every_feature_is_listed_and_blanks_carry_reasons():
 
     records = bwd.resolve_layer("shelters", [matched, unmatched], rows)
 
-    assert [record["atc_global_id"] for record in records] == ["g-matched", "g-unmatched"]
+    assert [record["poi_id"] for record in records] == ["atc_shelters:g-matched", "atc_shelters:g-unmatched"]
     resolved, missing = records
     assert resolved["distance_ft"] == 386
     assert resolved["listed_distance_ft"] == 385.7

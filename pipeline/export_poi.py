@@ -470,13 +470,13 @@ ATC_NOTE_FIELD = "Comments"
 # composes every other id.
 SHELTER_SOURCE = "atc_shelters"
 
-# The campsite twin, for the same reason: water_distance.json stores bare
-# GlobalIDs against a `layer` name, and load_water_distances composes the
-# unified id from these two constants.
+# The campsite twin. build_water_distance.py composes the `poi_id` it writes
+# into water_distance.json from these two constants (#1729).
 CAMPSITE_SOURCE = "atc_campsites"
 
 # water_distance.json's `layer` values (sources.json keys) -> the source name
-# unified ids are built from.
+# unified ids are built from. Read by build_water_distance.py, which writes the
+# ledger-shaped `poi_id` on every record.
 WATER_DISTANCE_SOURCES = {"shelters": SHELTER_SOURCE, "campsites": CAMPSITE_SOURCE}
 
 # The source stamped on the water POIs synthesize_csi_water builds from those
@@ -652,7 +652,11 @@ class WaterDistance(NamedTuple):
 
 def load_water_distances(path: Path) -> dict[str, WaterDistance]:
     """water_distance.json's known distances, with their provenance, keyed by
-    the same unified POI id this export writes.
+    the ledger id this export publishes (#1729 re-keyed the file from bare
+    GlobalIDs, as #671 did for capacity). Before it, the id was composed here
+    from `{source}:{atc_global_id}` and compared against record["id"] after
+    apply_ledger_ids might have replaced it, so the first ATC re-key would
+    have dropped every distance without a log line.
 
     Only records that state a distance are returned - the file lists every
     shelter and campsite, the blanks carrying the reason there is no number
@@ -668,10 +672,9 @@ def load_water_distances(path: Path) -> dict[str, WaterDistance]:
     document = json.loads(path.read_text(encoding="utf-8"))
     distances = {}
     for record in document.get("sites", []):
-        source = WATER_DISTANCE_SOURCES.get(record.get("layer"))
-        if source is None or record.get("distance_ft") is None:
+        if record.get("distance_ft") is None:
             continue
-        distances[f"{source}:{record['atc_global_id']}"] = WaterDistance(record["distance_ft"], record.get("provenance") or None)
+        distances[record["poi_id"]] = WaterDistance(record["distance_ft"], record.get("provenance") or None)
     return distances
 
 

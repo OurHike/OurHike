@@ -37,12 +37,23 @@
 // actually is has nowhere else to go, which is exactly why the scheme is
 // checked before it is rendered.
 
+// **And, once its date has passed, that it may no longer apply** (the
+// maintainer's frame A, 2026-10-10). ATC's own file carries no verdict, so
+// the panel hands one over from the same notice's row in
+// conditions/notices.json (lib/noticeSelection.ts's `noticeNotCurrent`): the
+// sheet greys its category and title and prints the line the planned-hike
+// list prints for it, "Last reported June 4, 2026. It may no longer apply."
+// Without that file there is no verdict, and the sheet reads as it always
+// did. The band or dot the hiker tapped is still drawn: drawings are the
+// maintainer's call, and unchanged.
+
 // The formatting lives in lib/atcNoticeText.ts, shared with NoticeList.tsx.
 // Two surfaces rendering the same mile marker to different precision is a
 // hiker reading two claims where there is one.
 import { atcUpdatedAt, longDate, mileRange } from '../lib/atcNoticeText'
 import { isSafeLink } from '../lib/safeLink'
 import type { AtcUpdate } from '../lib/atcUpdates'
+import type { NotCurrent } from '../lib/noticeCurrency'
 import { ATC_SOURCE_KEY } from '../lib/notices'
 import { orgLabelFrom, possessive, type Stewards } from '../lib/stewards'
 
@@ -66,6 +77,13 @@ export interface OrgNoticeSheetProps {
    * which is ugly and true.
    */
   stewards: Stewards
+  /**
+   * The line this notice is shown with once it may no longer apply, from its
+   * row in conditions/notices.json (lib/noticeSelection.ts's
+   * `noticeNotCurrent`), or null while it reads as current and on a phone
+   * without that file, which has no verdict to give.
+   */
+  notCurrent?: NotCurrent | null
   onClose: () => void
 }
 
@@ -73,15 +91,23 @@ export function OrgNoticeSheet({
   update,
   reviewedAt,
   stewards,
+  notCurrent = null,
   onClose,
 }: OrgNoticeSheetProps) {
-  const updatedAt = atcUpdatedAt(update)
+  // The edit date once, in the greyed line where that line carries it.
+  const updatedAt = notCurrent?.saysUpdated ? null : atcUpdatedAt(update)
   const range = mileRange(update)
   const org = orgLabelFrom(stewards)(ATC_SOURCE_KEY)
   const orgs = possessive(org)
 
   return (
-    <div className="closure-sheet" role="dialog" aria-label={`${org} trail update`}>
+    <div
+      className={
+        notCurrent === null ? 'closure-sheet' : 'closure-sheet notice--not-current'
+      }
+      role="dialog"
+      aria-label={`${org} trail update`}
+    >
       <div className="legend__head">
         {/* The organization's own category, verbatim. Not mapped onto
             ClosureReason: that enum would render a Detour as "Closed", which
@@ -105,6 +131,8 @@ export function OrgNoticeSheet({
       <p className="closure-sheet__meta">
         {updatedAt === null ? org : `${org} — updated ${longDate(updatedAt)}`}
       </p>
+
+      {notCurrent !== null && <p className="notice__not-current">{notCurrent.line}</p>}
 
       {isSafeLink(update.source_url) && (
         <a

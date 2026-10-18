@@ -645,7 +645,7 @@ gzip bytes, and this is what is in it that a Today launch does not draw with.
 | `screens/LeaveWithSomeone.tsx` | 2,862 | reached through a module this pass did not trace |
 | `screens/Onboarding.tsx` + `lib/heroPhotos.ts` | 12,167 | first run's entry card, carried by every returning launch |
 | planning: `lib/trailGraph.ts` 10,832, `trailGraphData.ts` 5,553, `suggestedHikes.ts` + `suggestedHikesData.ts` 8,542, `plan.ts` 4,706, `cascade.ts` 4,556, `dayHikeDraft.ts` 4,457, `dayHikeFollow.ts` 2,628, `dayPlanner.ts` 2,271 | 43,545 | `App.tsx`'s planning hooks import them statically; they leave when those hooks become lazily mounted panels (#1746's order) |
-| four layer builders reached for an id: `map/poiLayers.ts` 3,883 (`POI_PIN_MIN_ZOOM`, `LOCATE_MIN_ZOOM`), `map/corridorLayers.ts` 3,197, `map/dayHikeLayers.ts` 2,766 and `map/routeLayers.ts` 2,481 through `chrome/useRouteHover.ts` | 12,327 | this section's own rule, applied to `map/poiLayers.ts` on 2026-10-09 (**#1837 — After a data release changes one piece of a saved hike, the phone strands the rest of the hike offline until every piece is refreshed**, whose store code took the closure to 245,634 bytes compressed, 126 under the line on a plain build and over it on the preview's): its ids, the seam and the locate zoom moved to `map/poiIds.ts`, and App.tsx, `lib/useDrawnPoiCounts.ts`, `map/poiTaps.ts`, `map/trailBadges.ts`, `map/drawnPois.ts` and `map/poiPinProbe.ts` read them there, so no static import from `main.tsx` reaches `poiLayers.ts`. **Measured** the same day by the build check: 243,241 compressed (243,246 with UA's data URL). The other three are not yet moved |
+| four layer builders reached for an id: `map/poiLayers.ts` 3,883 (`POI_PIN_MIN_ZOOM`, `LOCATE_MIN_ZOOM`), `map/corridorLayers.ts` 3,197, `map/dayHikeLayers.ts` 2,766 and `map/routeLayers.ts` 2,481 through `chrome/useRouteHover.ts` | 12,327 | this section's own rule. **Applied 2026-10-05 on PR #1805's branch to all four**: what the shell reads moved to `map/poiIds.ts` (the waypoint ids, the seam and the two zooms), `map/corridorFeatures.ts` (the corridor's GeoJSON, which `App.tsx` builds itself) and `map/dayHikeLayerIds.ts` (two casing ids); `map/routeLayers.ts` was eager only through `map/dayHikeLayers.ts`'s `ROUTE_INK` and left with it, and so did the three modules only `map/poiLayers.ts` reached (`map/stalenessRing.ts`, `map/poiCrowding.ts`, `map/poiIconImages.ts`, 2,458 raw). The leaves bring 1,796 raw back, 1,678 of it the corridor's GeoJSON. `main` made the waypoint half of the same move on 2026-10-09, for **#1837 — After a data release changes one piece of a saved hike, the phone strands the rest of the hike offline until every piece is refreshed**, whose store code took the closure to 245,634 bytes compressed; the branch's module, first named `map/poiLayerIds.ts`, took `main`'s name when the two met. **Measured** on `main` that day by the build check, with only the waypoint ids moved: 243,241 compressed (243,246 with UA's data URL). `scripts/check-build-output.mjs` refuses a string only each builder writes in any eager chunk |
 | `@capacitor/core` | 7,773 | `lib/backgroundGeolocation.ts` and `lib/tracePlatform.ts` import it for `isNativePlatform()`, which `window.Capacitor` answers without the package |
 
 About 138 KB raw of the 756 could leave without a hiker seeing a difference — roughly
@@ -654,7 +654,18 @@ measured per module). The first 50 KB raw of it did, the same day: the sheets be
 `deferredScreen`, which `preloadScreens` already warms on the first idle so a tap after
 it pays nothing, took the closure to 229,145 compressed (**measured**, the build
 check's own walk) — 12,433 bytes for 50,631 raw, a better ratio than the 0.32 guess.
-Still to go: the four ids into leaves; Capacitor behind a check of `window.Capacitor`. The planning modules follow
+What the shell read out of the four layer builders went into leaves on 2026-10-05,
+on branch `claude/intelligent-feynman-sw3ewm` (5a9532b6 against the commit that
+moved them), and the closure went from 245,500 to 241,575 compressed on a plain
+build, 245,513 to 241,584 with `VITE_DATA_BASE_URL` set, and 245,715 to 241,793
+with the preview build's five variables set to placeholders (**measured**, the
+build check's own walk, one machine) — about 3,925 bytes for 13,093 raw, a 0.30
+ratio against the 0.32 the guess above used. The branch head built twice with `VITE_DATA_BASE_URL`
+set read 245,499 and 245,513, so read each pair as a difference rather than a
+constant; why the same source moves by tens of bytes is not checked (the likeliest
+reading is the hashed chunk names the entry's preload map lists). §3's line did
+not move with it; that is the maintainer's to move.
+Still to go: Capacitor behind a check of `window.Capacitor`. The planning modules follow
 their hooks out. What the arithmetic says the closure can be is **about 200 KB
 compressed** with those gone, and not much below it while React DOM (about 52 KB
 compressed) and a shell that holds every flow's handlers stay — which is why §3's line

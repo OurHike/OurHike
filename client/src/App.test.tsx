@@ -8,6 +8,7 @@ import { get, getMany, set, setMany, update } from 'idb-keyval'
 import App from './App'
 import { MockMap, NavigationControl, resetMapLibreMock } from './test/mocks/maplibre-gl'
 import { loadMapEngine } from './map/mapEngineLoader'
+import { preloadScreens } from './screens/deferred'
 // The shared helper this file's own copy became (#331) - two other suites had
 // written the same wait by hand, and one of them had written it wrong.
 import { liveMap } from './test/liveMap'
@@ -65,6 +66,11 @@ beforeEach(async () => {
   // before the deferral. After this file's `vi.mock('maplibre-gl', ...)`, so
   // the engine closes over the mock rather than the real library.
   await loadMapEngine()
+  // And the screens that arrive through import() (#1302), as appHarness.ts
+  // does: without it the first test of a cold run raced the map screen's
+  // chunk and missed the "trail map" region (2 of 9 isolated runs here,
+  // 2026-10-16, each the first after a pause).
+  await preloadScreens()
   vi.mocked(get).mockImplementation((key) => Promise.resolve(store.get(key as string)))
   // `getMany` follows whatever `get` is doing right now, so #1303's one
   // transaction in lib/trailData.ts reads this file's store like every other

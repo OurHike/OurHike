@@ -540,6 +540,16 @@ def write_details(details: list[dict]) -> dict[str, dict]:
 
     So a run killed partway costs this release its prose and nothing else.
     """
+    numbered = number_details(details)
+    DETAIL_MANIFEST_PATH.unlink(missing_ok=True)
+    return write_detail_objects(numbered, DETAIL_DIR)
+
+
+def number_details(details: list[dict]) -> list[tuple[str, dict]]:
+    """Each detail with the number its object's key is named by, in order.
+
+    Raises ValueError on an id that is not `<source>:<number>`, before
+    anything is written (write_details' step 1)."""
     numbered = []
     for detail in details:
         # The record id is "<source>:<n>"; the key is the number alone, which
@@ -560,16 +570,25 @@ def write_details(details: list[dict]) -> dict[str, dict]:
                 f"would answer null for it and no phone would ever fetch the detail this would write"
             )
         numbered.append((number, detail))
+    return numbered
 
-    DETAIL_MANIFEST_PATH.unlink(missing_ok=True)
-    if DETAIL_DIR.exists():
-        for stale in DETAIL_DIR.glob("*.json"):
+
+def write_detail_objects(numbered: list[tuple[str, dict]], directory: Path) -> dict[str, dict]:
+    """Each numbered detail as its own file in `directory`, emptied first, and
+    `{DETAIL_KEY: {path, sha256}}` for each (write_details' step 3).
+
+    publish.py calls this as well, to cut pub_suggested_hikes_detail's one
+    file into these objects (publish.cut_suggested_hike_details), so the
+    exporter's details and the dbt writer's are named and serialised by one
+    function rather than two that could drift apart."""
+    if directory.exists():
+        for stale in directory.glob("*.json"):
             stale.unlink()
-    DETAIL_DIR.mkdir(parents=True, exist_ok=True)
+    directory.mkdir(parents=True, exist_ok=True)
 
     artifacts: dict[str, dict] = {}
     for number, detail in numbered:
-        path = DETAIL_DIR / f"{number}.json"
+        path = directory / f"{number}.json"
         path.write_text(json.dumps(detail, ensure_ascii=False, separators=(",", ":")), encoding="utf-8")
         artifacts[DETAIL_KEY.format(id=number)] = {
             "path": to_manifest_path(path),

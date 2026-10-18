@@ -57,6 +57,7 @@ TONE = {
     "hold": ("moderate", "needs a URL", False),
     "refuse": ("strenuous", "not accepted", False),
     "none": ("info", "nothing to take", False),
+    "retired": ("info", "removed by the maintainer", False),
 }
 
 
@@ -99,6 +100,26 @@ def _licence_finding(org: dict) -> dict:
             "note": "Ships on the maintainer's recorded authorisation rather than on a grant "
             "from the organization. NOT A LICENCE FROM THEM, and a club inheriting "
             "this project has to re-confirm it in its own name.",
+        }
+    if basis == "maintainer_clearinghouse":
+        return {
+            "label": "on our own ruling",
+            "tone": "moderate",
+            "included": True,
+            "note": "A NYS GIS Clearinghouse dataset, published on the maintainer's ruling of "
+            "2026-10-01 against the item's own words, which restrict redistribution and stay "
+            "quoted beside it. NOT A LICENCE FROM THEM, and a club inheriting this project has "
+            "to re-confirm it in its own name.",
+        }
+    if basis == "public_gis":
+        return {
+            "label": "public GIS layer",
+            "tone": "easy",
+            "included": True,
+            "note": "A layer the organization publishes itself, anonymously, on a public GIS "
+            "endpoint, which the maintainer presumes reusable for drawing into a map with "
+            "attribution (2026-10-01). A presumption, not a grant: they still get the final "
+            "say when they approve the proposal.",
         }
     if basis == "unstated":
         return {

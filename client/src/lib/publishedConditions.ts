@@ -34,6 +34,7 @@ import type { NoteSummary } from './fieldNotes'
 import type { WorkProjectSummary } from './workProjects'
 import { DATA_CONFIGURED, dataUrl } from './config'
 import { recallPublished, rememberPublished } from './conditionsCache'
+import type { NoticeGeometryValue } from './noticeGeometry'
 
 /** The keys `pipeline/publish.py` uploads them under. Must match exactly: a
  *  key in that bucket is a URL deployed clients already request, and cannot be
@@ -46,6 +47,12 @@ export const PUBLISHED_NOTES_KEY = 'conditions/notes.json'
 export const PUBLISHED_DISPUTES_KEY = 'conditions/disputes.json'
 export const PUBLISHED_WORK_PROJECTS_KEY = 'conditions/work_projects.json'
 export const PUBLISHED_NYNJTC_ALERTS_KEY = 'conditions/nynjtc_alerts.json'
+/** Every club's notices in one file (#1805): written by
+ *  pipeline/dbt's pub_conditions_notices on the dbt path only, so a bucket
+ *  the exporters still publish serves a 404 here and the app reads the two
+ *  files above instead (lib/useConditions.ts). Read by lib/publishedNotices.ts,
+ *  which the conditions hook imports only when it asks. */
+export const PUBLISHED_NOTICES_KEY = 'conditions/notices.json'
 
 export interface PublishedConditions<T> {
   /** When the bake ran. Rendered to the hiker; see lib/conditionState.ts. */
@@ -115,45 +122,103 @@ export interface PublishedReadOptions {
  * validating it by name means a reports document served where closures were
  * expected reads as "no usable baseline" rather than as an empty trail.
  */
-async function fetchPublished<T>(
+export async function fetchPublished<T>(
   key: string,
-  field:
-    | 'closures'
-    | 'reports'
-    | 'atc_updates'
-    | 'drought'
-    | 'notes'
-    | 'work_projects'
-    | 'disputes'
-    | 'nynjtc_alerts',
+  field: PublishedField,
   signal?: AbortSignal,
   options: PublishedReadOptions = {},
 ): Promise<PublishedConditions<T> | null> {
-  if (!DATA_CONFIGURED) return null
+  return (await readPublished<T>(key, field, signal, options)).published
+}
+
+/** The payload a published document holds, named as the document names it. */
+type PublishedField =
+  | 'closures'
+  | 'reports'
+  | 'atc_updates'
+  | 'drought'
+  | 'notes'
+  | 'work_projects'
+  | 'disputes'
+  | 'nynjtc_alerts'
+  | 'notices'
+  | 'states'
+
+/** `fetchPublished`'s answer, and whether no answer means there is no file. */
+export interface PublishedRead<T> {
+  published: PublishedConditions<T> | null
+  /**
+   * True when `published` is null because there is no file to get: no bucket
+   * was configured at build time, or the bucket answered 404 and this phone
+   * kept no copy. False whenever a copy came back, and when none did because
+   * the request was not made (no signal), failed, timed out, answered any
+   * other error, or brought bytes this build cannot read: on those a later
+   * connection may bring the file. lib/publishedNotices.ts's
+   * `readPublishedNotices` is the reader that needs the difference.
+   */
+  notServed: boolean
+}
+
+/**
+ * What a file that arrived carries over from the copy this phone kept, given
+ * both documents as they are stored: the document to parse and keep in its
+ * place. `kept` is null when this phone kept none. lib/publishedNotices.ts's
+ * `keepUncutAreas` is the one today.
+ */
+export type CarryFromKept = (
+  arrived: Record<string, unknown>,
+  kept: Record<string, unknown> | null,
+) => Record<string, unknown>
+
+/**
+ * `fetchPublished` with the reason a read came back empty: one path, so
+ * that the two can never disagree about what a 404 or a dead spot returns.
+ *
+ * `carry`, when given, rewrites a file that arrived before it is parsed and
+ * kept, from the copy kept before it, so what the phone keeps is what it
+ * shows.
+ */
+export async function readPublished<T>(
+  key: string,
+  field: PublishedField,
+  signal?: AbortSignal,
+  options: PublishedReadOptions = {},
+  carry?: CarryFromKept,
+): Promise<PublishedRead<T>> {
+  if (!DATA_CONFIGURED) return { published: null, notServed: true }
 
   // Offline, nothing is asked for: vite.config.ts precaches the app shell and
   // the glyph ranges and nothing else, so the request cannot be served from
   // anywhere and App.trailData.test.tsx asserts it is not fired. What CAN be
   // served is the copy this phone kept last time it had signal (#447).
-  if (options.online === false) return recalled<T>(key, field)
+  if (options.online === false) {
+    return { published: await recalled<T>(key, field), notServed: false }
+  }
 
   try {
     const response = await fetch(dataUrl(key), { signal })
-    if (!response.ok) return recalled<T>(key, field)
+    if (!response.ok) {
+      const kept = await recalled<T>(key, field)
+      return { published: kept, notServed: kept === null && response.status === 404 }
+    }
 
-    const document = (await response.json()) as Record<string, unknown>
+    const arrived = (await response.json()) as Record<string, unknown>
+    const document =
+      carry === undefined
+        ? arrived
+        : carry(arrived, (await recallPublished(key))?.document ?? null)
     const parsed = parsePublished<T>(document, field)
     // Kept only when it parsed. Storing bytes this build cannot read would
     // give the next offline session a copy that fails the same way, with the
     // previous good one overwritten to do it.
     if (parsed !== null) void rememberPublished(key, document)
-    return parsed ?? (await recalled<T>(key, field))
+    return { published: parsed ?? (await recalled<T>(key, field)), notServed: false }
   } catch {
     // Includes the abort case, which is not an error worth distinguishing:
     // a cancelled read has no baseline to offer either. It does not exclude
     // the kept copy, though - a dead spot mid-fetch is exactly the state
     // this whole path exists for.
-    return recalled<T>(key, field)
+    return { published: await recalled<T>(key, field), notServed: false }
   }
 }
 
@@ -163,15 +228,7 @@ async function fetchPublished<T>(
  *  shape this one refuses, and the refusal has to be the same refusal. */
 async function recalled<T>(
   key: string,
-  field:
-    | 'closures'
-    | 'reports'
-    | 'atc_updates'
-    | 'drought'
-    | 'notes'
-    | 'work_projects'
-    | 'disputes'
-    | 'nynjtc_alerts',
+  field: PublishedField,
 ): Promise<PublishedConditions<T> | null> {
   const cached = await recallPublished(key)
   if (cached === null) return null
@@ -186,15 +243,7 @@ async function recalled<T>(
  */
 function parsePublished<T>(
   document: Record<string, unknown>,
-  field:
-    | 'closures'
-    | 'reports'
-    | 'atc_updates'
-    | 'drought'
-    | 'notes'
-    | 'work_projects'
-    | 'disputes'
-    | 'nynjtc_alerts',
+  field: PublishedField,
 ): PublishedConditions<T> | null {
   if (typeof document?.generated_at !== 'string') return null
   const items = document[field]
@@ -341,10 +390,46 @@ export async function fetchPublishedAtcUpdates(
  * is the rule `lib/closureBanner.ts` already lives by for a closure whose
  * band cannot be placed.
  */
+/** One park area an `org_terms` notice names: its
+ *  places.json id and name, and that place's bounding box as
+ *  `[west, south, east, north]` in degrees. */
+export interface NoticeParkArea {
+  place_id: string
+  name: string
+  bbox: readonly [number, number, number, number]
+}
+
 export type NoticePlace =
   | { kind: 'at_miles'; start: number; end: number }
-  | { kind: 'org_terms'; terms: string[] }
+  /** A club's own tags as `taxonomy:slug`. `areas`:
+   *  the park areas a reviewed table (pipeline/dbt/seeds/
+   *  notice_park_terms.csv) maps every one of its `park:` terms to, each
+   *  places.json's bounding box; absent where any park term is unmapped. */
+  | { kind: 'org_terms'; terms: string[]; areas?: NoticeParkArea[] }
+  /** The source's own geometry, GeoJSON in lon/lat, simplified at 10 m for
+   *  a phone by pub_conditions_notices (#1805). Only conditions/notices.json
+   *  carries it. */
+  | { kind: 'geometry'; geometry: NoticeGeometryValue }
   | { kind: 'unplaced' }
+
+/** The hazard areas: an area a hiker walks into, drawn where a
+ *  downloaded trail crosses it, and never a closure. */
+export type NoticeHazard = 'hunting' | 'shooting' | 'burned_area'
+
+/** One state of conditions/notice_states.json, as
+ *  pipeline/dbt's pub_conditions_notice_states writes it: the shape of a
+ *  state a state-wide notice names, simplified for a phone, and how far
+ *  inside it a route has to be before it counts as in the state. Never
+ *  drawn. */
+export interface NoticeStateArea {
+  /** The two-letter USPS code a notice's `states` names it by. */
+  state: string
+  /** The state's name, as the Census Bureau spells it ("Utah"). */
+  name: string
+  /** A route vertex nearer the shape's edge than this counts for no state. */
+  edge_margin_m: number
+  geometry: NoticeGeometryValue
+}
 
 /**
  * One notice from an organization that is not the ATC, exactly as
@@ -355,10 +440,11 @@ export type NoticePlace =
  * nothing true to put there and absent means unknown. A renderer must show
  * the title alone in that case rather than inventing a word.
  *
- * `obstructsTrail` is false on every published row and the pipeline forces it
- * so - an unreviewed notice may never draw a barrier across a trail. It is
- * carried rather than assumed because a reviewed row will one day be able to
- * say otherwise.
+ * `obstructsTrail` is false on every row of NYNJTC's own file and the pipeline
+ * forces it so - an unreviewed notice may never draw a barrier across a trail.
+ * It is carried rather than assumed because a reviewed row will one day be
+ * able to say otherwise, and because rows of conditions/notices.json already
+ * can, where a source's own status closes the trail (see the field).
  */
 export interface OrgNotice {
   notice_id: string
@@ -372,11 +458,109 @@ export interface OrgNotice {
    *  rather than as a guess. */
   locality: string
   place: NoticePlace
+  /**
+   * Whether the notice closes the trail, as published, and NOT whether it
+   * does today: conditions/notices.json carries it true for a closure whose
+   * own start is still ahead (the maintainer's frame B, 2026-10-11).
+   * Read it through lib/noticeCurrency.ts's `obstructsOn`, which holds it
+   * back until the day before `starts_on`, so no surface calls a closure in
+   * force that another calls upcoming.
+   */
   obstructs_trail: boolean
-  /** The ORG's own last-updated stamp, and the age a hiker cares about. */
-  updated_at: string
-  source_url: string
+  /** The ORG's own last-updated stamp, and the age a hiker cares about.
+   *  Null in conditions/notices.json where the club gives none, which
+   *  renders as no date - never as the day OurHike read it. */
+  updated_at: string | null
+  source_url: string | null
   review_state: 'reviewed' | 'unreviewed'
+
+  // ---- conditions/notices.json only (#1805). Absent on
+  // the two older files' rows, and every reader treats absent as unknown.
+
+  /** The extract folder that landed it, `trail_orgs.json`'s slug. */
+  club?: string
+  /** The registry's provider for its source, the key stewards.json groups
+   *  by - how lib/plannedNotices.ts finds the club that posted it. */
+  provider?: string | null
+  /** Whether a club or an agency posted it (pipeline/dbt/seeds/notice_readers.csv,
+   *  from trail_orgs.json's type). lib/plannedNotices.ts shows an agency's
+   *  notice to a planned hike only where it is placed; null or absent keeps
+   *  the older rule, which matches it by provider. */
+  steward_kind?: 'club' | 'agency' | null
+  /** The two-letter codes of the states an agency's state-wide
+   *  notice speaks for (pipeline/dbt/seeds/notice_states.csv), absent on
+   *  every other row. */
+  states?: string[]
+  /** Those states' shapes, attached on the phone by lib/publishedNotices.ts
+   *  from conditions/notice_states.json - never a field of notices.json. A
+   *  state with no shape this phone holds is left out, so its notice shows
+   *  to no hike there (lib/plannedNotices.ts). */
+  state_areas?: NoticeStateArea[]
+  /** The kind of hazard area, or null for an ordinary notice. */
+  hazard?: NoticeHazard | null
+  /** The notice's own start and end days, ISO, where the club states them:
+   *  the UTC day of the source's own instant (pipeline/dbt's
+   *  int_closures__club_notices), never filled in. A start still after the
+   *  phone's day makes the notice upcoming (lib/noticeCurrency.ts's
+   *  `startsAhead`). */
+  starts_on?: string | null
+  ends_on?: string | null
+  /**
+   * The last day the notice reads as current, an ISO day, or null where it
+   * gives no date that bounds it (pipeline/dbt/macros/notice_current_until.sql:
+   * its own end date, else a duration its title states from its own start,
+   * else its edit date plus 90 days). lib/noticeCurrency.ts compares it with
+   * the phone's own calendar and greys the notice after it (the maintainer's
+   * frame A, 2026-10-10). Absent, not null, on a file written before the
+   * field and on the two older files' rows: no verdict, so the notice reads
+   * as it always did.
+   */
+  current_until?: string | null
+  /** True on standing closed land: land its steward
+   *  serves as closed on every read, stating no date of any kind, which the
+   *  pipeline gives no `current_until` (pipeline/dbt's
+   *  int_closures__club_notices). lib/noticeCurrency.ts's
+   *  `standingLine` is what a hiker reads under it. Absent on every other row. */
+  standing?: boolean
+  /** The agency that issued an order its publisher
+   *  compiles ('Bureau of Land Management' on a Utah FFSL row), from the
+   *  row's own issuer field (pipeline/dbt/seeds/notice_issuers.csv). The
+   *  sheet reads "<issuer> order, via <publisher>". Absent on every other
+   *  row. */
+  issuer?: string
+  /** When OurHike last read the source and found this, ISO UTC: the run
+   *  log's latest read that loaded it or found it unchanged. */
+  checked_at?: string | null
+  /** When OurHike first saw the row, and when it last changed (the mart's
+   *  row dates); null in a build without its row history. */
+  first_seen_at?: string | null
+  changed_at?: string | null
+  /** Set when OurHike could not use the source's latest read and kept its
+   *  last good rows instead: when that began. */
+  carried_since?: string | null
+}
+
+/**
+ * How a club closure is drawn on the map (the maintainer's closure-map standard, poll
+ * of 2026-10-11): crossed out along its own line, crossed out along the trail
+ * stretches the pipeline cut inside its area, or one cross at its point, and
+ * one at each point of a MultiPoint. And `shade` (the
+ * maintainer's poll of 2026-10-14, "Shade them, no edge"): an area no mapped
+ * trail runs inside, its own Polygon or MultiPolygon drawn as a light hatch
+ * with no mark on its edge, so an open trail along the edge never reads as
+ * closed.
+ */
+export type ClosureShape = 'line' | 'area' | 'point' | 'shade'
+
+/**
+ * One row of conditions/trail_closures.json: a conditions/notices.json row
+ * that closes the trail, placed by its own geometry, with the shape it is
+ * drawn as. lib/publishedNotices.ts's `validTrailClosure` is what makes a row
+ * one of these, and refuses any row it cannot draw.
+ */
+export interface TrailClosure extends OrgNotice {
+  shape: ClosureShape
+  place: { kind: 'geometry'; geometry: NoticeGeometryValue }
 }
 
 /**

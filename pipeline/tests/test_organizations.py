@@ -113,8 +113,21 @@ def test_every_source_records_what_its_licence_rests_on():
     the `<x>_licence` blocks, and anything wanting to COUNT them had to decide
     by reading those sentences - "which would print a licence claim for data
     nobody publishes the first time one was reworded".
+
+    `public_gis` (added 2026-10-03) is the presumption for a GIS layer an
+    organization publishes itself, anonymously, on a public endpoint
+    (pipeline/ELT.md, "Who may publish"), which the `publishable_licence_bases`
+    seed admits for GIS kinds. It is not `stated_by_org`, because the organization
+    stated nothing, and not `maintainer_authorisation`, because the
+    presumption is a rule over every such layer rather than one ruling.
+
+    `maintainer_clearinghouse` (added 2026-10-15): a NYS DEC or OPRHP dataset
+    the NYS GIS Clearinghouse lists publishes, against the clearinghouse item's
+    own words (pipeline/ELT.md, "Who may publish"). Like `public_gis` it is the maintainer's reading and not a grant, and
+    it is one ruling over two organizations' datasets, so the test below holds
+    it to their rows.
     """
-    vocabulary = {"stated_by_org", "maintainer_authorisation", "unresolved"}
+    vocabulary = {"stated_by_org", "maintainer_authorisation", "unresolved", "public_gis", "maintainer_clearinghouse"}
     unclassified = [s["key"] for s in REGISTRY["sources"] if s.get("licence_basis") not in vocabulary]
 
     assert unclassified == [], (
@@ -290,9 +303,72 @@ def test_most_of_this_registry_ships_on_the_maintainers_own_word():
 
     This test is expected to change when an organization answers. It should
     change by somebody editing it deliberately, with the org's answer in hand.
+
+    SINCE 2026-10-01 THE REGISTRY HAS GROWN BY HUNDREDS OF ROWS, each registered at
+    `reaches_hikers: false` until a mart reads it, and each counted on one rule:
+    - a federal work is `stated_by_org` on 17 U.S.C. 105, as usfs_licence reads it;
+    - a layer an organization publishes itself, anonymously, on a public endpoint,
+      stating no terms (or only a disclaimer), is `public_gis`, and so is a club's
+      own page, PDF or map route of points;
+    - a notice, page or club hike list that publishes as facts and a link, with
+      terms that restrict copying but not reading quoted on its row, is
+      `maintainer_authorisation`;
+    - a NYS DEC or OPRHP dataset the NYS GIS Clearinghouse lists is
+      `maintainer_clearinghouse`, the maintainer's reading of the clearinghouse
+      item and not a grant;
+    - anything whose terms reserve rights, or that no rule answers yet (podcast
+      feeds, challenge lists), is `unresolved`, its terms quoted on its row.
+    The history of each movement is in git; the counts below are recounted from
+    the registry, and change only when somebody edits them deliberately.
     """
     counts: dict[str, int] = {}
     for source in REGISTRY["sources"]:
         counts[source["licence_basis"]] = counts.get(source["licence_basis"], 0) + 1
 
-    assert counts == {"maintainer_authorisation": 32, "stated_by_org": 30, "unresolved": 1}
+    assert counts == {
+        "maintainer_authorisation": 250,
+        "public_gis": 304,
+        "stated_by_org": 198,
+        "unresolved": 32,
+        "maintainer_clearinghouse": 13,
+    }
+
+
+def test_a_clearinghouse_basis_is_on_a_nys_dec_or_oprhp_row_alone():
+    """The clearinghouse basis covers NYS DEC's and OPRHP's datasets, nobody else's.
+
+    int_sources__publication refuses `maintainer_clearinghouse` on any other organization's row
+    (`clearinghouse_basis_outside_new_york`), which would take that layer off a phone at the next build; this
+    says so at the registration instead. tests/test_trail_orgs.py holds the catalogue's two rows the same way.
+    """
+    ruled = {source["provider"] for source in REGISTRY["sources"] if source["licence_basis"] == "maintainer_clearinghouse"}
+    assert ruled == {"NYS DEC", "NYS OPRHP"}
+    assert {ORGS[steward_id]["provider"] for steward_id in ("org:nysdec", "org:nysoprhp")} == {"NYS DEC", "NYS OPRHP"}
+
+
+#: A club's own page, PDF or map route of points, which int_sources__publication admits under `public_gis` beside the
+#: GIS endpoints.
+CLUB_POINTS_KINDS = frozenset({"page_points", "pdf_points", "json_features"})
+
+
+def test_a_public_gis_page_pdf_or_map_route_is_a_clubs_own_points_and_carries_no_prose():
+    """The `public_gis` presumption reaches the points a club prints on its own page or PDF, and the route its own
+    website's map reads them from: facts only, none of the page's prose. int_sources__publication admits those kinds
+    by `kind` alone, because
+    no model there knows an organization's type, so this holds the rest. Each such row is claimed by a club folder
+    whose trail_orgs.json `type` is a club's (generate_notice_models.py's CLUB_TYPES), and it
+    names no `asset_field` or `facility_field`, the one route by which a club point's own text becomes the
+    sentence on its card (int_points_of_interest__described)."""
+    from extract._contract import discover, slug_for_folder
+    from generate_notice_models import CLUB_TYPES
+
+    types = {row["slug"]: row["type"] for row in json.loads((ROOT / "reference" / "trail_orgs.json").read_text())["orgs"]}
+    folder_of = {key: club_file.club for club_file in discover() for key in club_file.claims}
+    rows = [s for s in REGISTRY["sources"] if s.get("licence_basis") == "public_gis" and s.get("kind") in CLUB_POINTS_KINDS]
+
+    assert len(rows) == 11, sorted(s["key"] for s in rows)
+    org_type = {s["key"]: types.get(slug_for_folder(folder_of.get(s["key"], ""))) for s in rows}
+    not_a_club = {key: kind for key, kind in org_type.items() if kind not in CLUB_TYPES}
+    assert not not_a_club, f"the presumption reaches a club's own points only: {not_a_club}"
+    prose = sorted(s["key"] for s in rows if s.get("asset_field") or s.get("facility_field"))
+    assert not prose, f"a club's points publish as facts only, never a page's text as a card's sentence: {prose}"

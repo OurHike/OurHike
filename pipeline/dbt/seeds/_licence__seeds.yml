@@ -1,0 +1,95 @@
+version: 2
+
+# pipeline/ELT.md's "Who may publish": restrictive words that no ruling answers keep `may_publish`
+# false. int_sources__publication reads both seeds, and its header says how.
+# tests/test_dbt_publication_rule_five.py holds each unit test's mocked seed
+# to these files row for row.
+seeds:
+  - name: licence_restriction_phrases
+    description: >
+      One row per phrase a source's quoted terms (`terms`, `terms_verbatim`)
+      may carry, and what it is: a restriction (commercial, no_reuse,
+      permission, purpose_limited, condition, conduct, cannot_be_met), an
+      ownership or copyright line (ownership), a line that restricts nothing
+      (not_a_restriction: warranty, liability, accuracy, reliance and credit
+      lines, grants, links, and the scope notes "illustrative, informational
+      or planning purposes" and the purposes they name; all
+      cut out of the words before anything else is read), or the backstop
+      (unclassified), read on what every other phrase leaves. A layer's own words are read by class (the maintainer's poll, 2026-10-14),
+      never row by row, so a phrase is written for a class of wording and
+      names the registry row it was first written from, rather than being
+      scoped to one publisher's sentence. Each pattern is a case-insensitive
+      RE2 expression, as DuckDB reads it. @unvalidated as a complete
+      vocabulary: it is what the quoted texts on the registry have needed
+      (95 at 52835a44 on 2026-10-03, re-read over every row on 2026-10-14),
+      and the backstop holds any row whose words it does not explain.
+    config:
+      column_types:
+        restriction: varchar
+        pattern: varchar
+        written_for: varchar
+        why: varchar
+    columns:
+      - name: restriction
+        description: What the phrase is, one of the classes above.
+        data_tests:
+          - not_null
+          - accepted_values:
+              arguments:
+                values:
+                  - commercial
+                  - no_reuse
+                  - permission
+                  - purpose_limited
+                  - condition
+                  - conduct
+                  - cannot_be_met
+                  - ownership
+                  - not_a_restriction
+                  - unclassified
+      - name: pattern
+        description: The phrase, as a case-insensitive RE2 expression.
+        data_tests: [not_null, unique]
+      - name: written_for
+        description: The sources.json key whose quoted words the phrase was written from, where one row was.
+      - name: why
+        description: The words it was written for, quoted, and the decision that reads them.
+  - name: licence_restriction_answers
+    description: >
+      Which decision or recorded ruling answers which restriction, on which
+      licence basis, and the words a row's own `licence` names it by. A
+      restriction a row's terms carry is answered only by a row here whose
+      restriction and basis match and whose `named_by` the row's licence
+      text matches. A class answer (an ownership or copyright
+      line on a public GIS item publishes) names `.*`, which every licence
+      matches, so no row has to name it. No row answers `cannot_be_met` or
+      `unclassified`. A basis that is a maintainer's ruling on the dataset
+      itself answers its own words through publishable_licence_bases'
+      `covers_own_words_named_by` instead, so no row
+      here repeats it.
+    config:
+      column_types:
+        restriction: varchar
+        licence_basis: varchar
+        answered_by: varchar
+        named_by: varchar
+        why: varchar
+    columns:
+      - name: restriction
+        description: The restriction answered, a class of licence_restriction_phrases.
+        data_tests:
+          - not_null
+          - accepted_values:
+              arguments:
+                values: [commercial, no_reuse, permission, purpose_limited, condition, conduct, ownership]
+      - name: licence_basis
+        description: The basis the answer publishes on, or `any`.
+        data_tests: [not_null]
+      - name: answered_by
+        description: The decision of pipeline/ELT.md's decisions table, or the sources.json ruling, that answers it.
+        data_tests: [not_null]
+      - name: named_by
+        description: A case-insensitive RE2 expression a row's `licence` must match to name that answer; `.*` for a class answer, which every row's licence matches.
+        data_tests: [not_null]
+      - name: why
+        description: What the decision says, quoted or paraphrased with its date.

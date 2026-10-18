@@ -227,6 +227,15 @@ jobs:
       # holds different ids - measured 2026-09-09, 31 against production's 14,
       # with 10 in common. Checking each base separately turns "the pin must
       # exist in both" into a red deploy rather than something to remember.
+      # The pin is the compiled floor a first run reads when it cannot read
+      # a channels.json entry (lib/dataRelease.ts).
+      #
+      # AND WHAT IT HOLDS MUST FIT A LAUNCH: check 22 on the manifest just
+      # fetched (.github/scripts/check_launch_budget.py). Release 2026-10-03-2
+      # resolved here and carried a network_overview.geojson over the launch
+      # budget, so every UA phone declined it and its opening map drew the
+      # A.T. alone (review 5528343443 on PR #1805). The step below weighs
+      # the release the uploaded pointer names the same way.
       - name: Confirm the pinned data release exists
         if: steps.can.outputs.deploy == 'true'
         working-directory: client
@@ -243,12 +252,69 @@ jobs:
             exit 1
           fi
           manifest="${DATA_URL%/}/releases/${release}/manifest.json"
-          if curl -fsS --retry 3 --max-time 30 -o /dev/null "$manifest"; then
+          pinned="${RUNNER_TEMP:-/tmp}/pinned-manifest.json"
+          if curl -fsS --retry 3 --max-time 30 -o "$pinned" "$manifest"; then
             echo "Pinned release ${release} resolves at ${DATA_URL%/}."
           else
             echo "::error::DATA_RELEASE is pinned to ${release}, but ${manifest} does not resolve. UA would deploy unable to fetch anything."
             exit 1
           fi
+          python3 ../.github/scripts/check_launch_budget.py "$pinned" --release "$release"
+
+      # THE POINTER, if one is uploaded at this build's base: the release a
+      # phone of this build takes on its first launch, when it can read it,
+      # and on every launch after (lib/dataRelease.ts, lib/dataChannel.ts).
+      # It must resolve here and fit a launch, as the floor must above. The
+      # bucket copy is the only copy (pipeline/channels.py moves it), so this
+      # reads it at the base, never a file in this commit. A 404 passes with
+      # a notice: phones then read the compiled DATA_RELEASE, checked above.
+      # The environment comes off the base as the client reads it:
+      # `.../environments/<name>`, else production.
+      - name: Confirm the uploaded pointer's release exists
+        if: steps.can.outputs.deploy == 'true'
+        working-directory: client
+        env:
+          DATA_URL: ${{ steps.data.outputs.url }}
+        run: |
+          if [ -z "$DATA_URL" ]; then
+            echo "No data source configured - skipping the check."
+            exit 0
+          fi
+          schema=$(sed -n "s/^export const DATA_SCHEMA_VERSION = '\\(.*\\)'$/\\1/p" src/lib/dataRelease.ts)
+          if [ -z "$schema" ]; then
+            echo "::error::Could not read DATA_SCHEMA_VERSION out of client/src/lib/dataRelease.ts. It has been restructured, and this guard must be updated rather than left checking nothing."
+            exit 1
+          fi
+          base="${DATA_URL%/}"
+          environment=production
+          case "$base" in */environments/*) environment="${base##*/environments/}" ;; esac
+          uploaded="${RUNNER_TEMP:-/tmp}/uploaded-channels.json"
+          code=$(curl -sS --retry 3 --max-time 30 -o "$uploaded" -w '%{http_code}' "${base}/channels.json") || code="no answer"
+          case "$code" in
+            200) ;;
+            404)
+              echo "::notice::No channels.json is uploaded at ${base}, so every phone of this build reads the compiled DATA_RELEASE, checked one step earlier, until ${environment}'s pointer is first moved (pipeline/channels.py)."
+              exit 0 ;;
+            *)
+              echo "::error::${base}/channels.json answered ${code}, so this deploy cannot tell which release phones follow."
+              exit 1 ;;
+          esac
+          # The entry is remote text, so it is printed only once it has a
+          # release id's shape: this line is a workflow command.
+          release=$(python3 -c 'import json, re, sys; entry = json.load(open(sys.argv[1]))[sys.argv[2]][sys.argv[3]]; assert re.fullmatch(r"\d{4}-\d{2}-\d{2}(-\d+)?", entry); print(entry)' "$uploaded" "$environment" "$schema" 2>/dev/null) || release=""
+          if [ -z "$release" ]; then
+            echo "::error::${base}/channels.json names no ${schema} release id for ${environment}, so phones of this build would ignore it. Move ${environment}'s pointer with pipeline/channels.py (RELEASING.md §10)."
+            exit 1
+          fi
+          manifest="${base}/releases/${release}/manifest.json"
+          pointed="${RUNNER_TEMP:-/tmp}/pointed-manifest.json"
+          if curl -fsS --retry 3 --max-time 30 -o "$pointed" "$manifest"; then
+            echo "The uploaded channels.json at ${base} points ${environment}'s ${schema} at ${release}, which resolves."
+          else
+            echo "::error::${base}/channels.json points ${environment}'s ${schema} at ${release}, but ${manifest} does not resolve. Phones would refuse it and stay on the release they hold."
+            exit 1
+          fi
+          python3 ../.github/scripts/check_launch_budget.py "$pointed" --release "$release"
 
       - name: Publish UA
         id: deploy

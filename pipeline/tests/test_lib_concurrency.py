@@ -98,8 +98,10 @@ def test_the_batched_buffer_draws_the_stretch_the_geometry_method_drew():
 def test_a_crossing_is_not_a_shared_stretch():
     # Square-on, the piece within 10 m of the other line is ~20 m long -
     # the crossing signature the minimum length exists to drop.
+    # Two blazes, so the pair is built and the piece judged on its length
+    # rather than skipped whole for sharing one paint.
     a = _record("oprhp:1", [(0, 0), (1000, 0)], "Ramapo-Dunderberg Trail")
-    b = _record("oprhp:2", [(500, -300), (500, 300)], "Long Path")
+    b = _record("oprhp:2", [(500, -300), (500, 300)], "Long Path", blaze="Aqua")
 
     pairs, stats = concurrency.find_shared_ground([a, b])
 
@@ -198,7 +200,7 @@ def test_two_halves_in_the_same_paint_are_one_line_spelled_twice():
     pairs, stats = concurrency.find_shared_ground([at, copy])
 
     assert pairs == []
-    assert stats["dropped_same_blaze"] == 1 and stats["stretches"] == 0
+    assert stats["skipped_same_blaze_pairs"] == 1 and stats["stretches"] == 0
 
 
 @pytest.mark.parametrize("blaze", ["Unknown", "None", "Other", None])
@@ -209,7 +211,7 @@ def test_a_half_with_no_paint_to_show_is_not_published(blaze):
     pairs, stats = concurrency.find_shared_ground([at, unpainted])
 
     assert pairs == []
-    assert stats["dropped_unpainted"] == 1
+    assert stats["skipped_unpainted_pairs"] == 1
 
 
 def test_ids_are_unique_and_name_both_records():
@@ -238,3 +240,82 @@ def test_output_is_deterministic_across_input_order():
 def test_the_two_measured_numbers_are_the_ones_the_docstring_argues_for():
     assert concurrency.SHARED_GROUND_TOLERANCE_M == 10.0
     assert concurrency.SHARED_GROUND_MIN_LENGTH_M == 50.0
+
+
+def test_the_batches_change_nothing_but_how_much_is_held_at_once(monkeypatch):
+    """#1796: the pairs are buffered PAIR_BATCH at a time to bound memory, never to change the answer.
+
+    Three overlapping pairs, run with every pair in one batch and then with a
+    batch of one: the features, their ids, their order and every count must be
+    the same, or batching would be a behaviour change smuggled in as a fix.
+    """
+    a = _record("oprhp:1", [(0, 0), (1000, 0)], "Ramapo-Dunderberg Trail")
+    b = _record("oprhp:2", [(0, 5), (600, 5)], "Suffern-Bear Mountain Trail", blaze="Yellow")
+    c = _record("oprhp:3", [(300, -4), (1000, -4)], "Long Path", blaze="Blue")
+    d = _record("oprhp:4", [(0, 8), (900, 8)], "Timp-Torne Trail", blaze="Orange")
+
+    whole, whole_stats = concurrency.find_shared_ground([a, b, c, d])
+    monkeypatch.setattr(concurrency, "PAIR_BATCH", 1)
+    single, single_stats = concurrency.find_shared_ground([a, b, c, d])
+
+    assert len(whole) >= 6, "the fixture must exercise more than one batch at a batch size of one"
+    assert single == whole
+    assert single_stats == whole_stats
+
+
+def test_a_record_longer_than_a_query_chunk_pairs_as_if_it_were_whole(monkeypatch):
+    """#1796: the tree query cuts long records into chunks for speed, never to change the answer.
+
+    A 6 km trail of 1,201 vertices, the shape of a national scenic trail
+    published as one feature, with one trail beside its middle and one
+    crossing its far end. Chunked at 16 vertices and not at all, the features,
+    their ids, their order and every count must be the same.
+    """
+    long_trail = _record("cdtc:1", [(x * 5, 0) for x in range(1201)], "Continental Divide Trail", blaze="Blue")
+    beside = _record("usfs:2", [(2_000, 6), (2_600, 6)], "Garfield Ridge Trail", blaze="Red")
+    crossing = _record("usfs:3", [(5_800, -300), (5_800, 300)], "Crossing Trail", blaze="Yellow")
+    pool = [long_trail, beside, crossing]
+
+    monkeypatch.setattr(concurrency, "QUERY_CHUNK_VERTICES", 16)
+    chunked, chunked_stats = concurrency.find_shared_ground(pool)
+    monkeypatch.setattr(concurrency, "QUERY_CHUNK_VERTICES", 10**9)
+    whole, whole_stats = concurrency.find_shared_ground(pool)
+
+    assert len(chunked) == 2, "the fixture must share one stretch"
+    assert chunked == whole
+    assert chunked_stats == whole_stats
+
+
+def test_pairs_the_blaze_rule_drops_whole_are_never_built_and_change_no_feature(monkeypatch):
+    """#1796: skipping a pair whose every piece the blaze rule would drop changes nothing published.
+
+    Five pairs: the A.T. with a trail in another paint (built), with an
+    unpainted one, and with one in its own white; the A.T. with a trail whose
+    records are one painted and one not (built, because the record nearest a
+    piece decides it); and that trail with the unpainted one, which lies
+    beside both. Run with the skip and with `_dropped_whole` answering None
+    for every pair, the features must be the same and only the counts of what
+    was built move.
+    """
+    at = _record("centerline:1", [(0, 0), (1000, 0)], "Appalachian National Scenic Trail", source="centerline", blaze="White")
+    painted = _record("oprhp:2", [(0, 5), (300, 5)], "Ramapo-Dunderberg Trail", blaze="Red")
+    unpainted = _record("granit:3", [(350, -5), (650, -5)], "MOOSE MTN", source="granit_trails", blaze="Unknown")
+    same = _record("usfs:4", [(700, 4), (1000, 4)], "Garfield Ridge Trail", source="usfs_trails", blaze="White")
+    mixed_painted = _record("oprhp:5", [(0, -8), (400, -8)], "Long Path", blaze="Aqua")
+    mixed_unpainted = _record("oprhp:6", [(600, -8), (1000, -8)], "Long Path", blaze="Unknown")
+    pool = [at, painted, unpainted, same, mixed_painted, mixed_unpainted]
+
+    skipped, skipped_stats = concurrency.find_shared_ground(pool)
+    monkeypatch.setattr(concurrency, "_dropped_whole", lambda donors, partners: None)
+    built, built_stats = concurrency.find_shared_ground(pool)
+
+    assert skipped == built
+    assert sorted({pair["name"] for pair in skipped}) == [
+        "Appalachian National Scenic Trail",
+        "Long Path",
+        "Ramapo-Dunderberg Trail",
+    ]
+    assert (skipped_stats["skipped_unpainted_pairs"], skipped_stats["skipped_same_blaze_pairs"]) == (2, 1)
+    assert (built_stats["skipped_unpainted_pairs"], built_stats["skipped_same_blaze_pairs"]) == (0, 0)
+    for unchanged in ("trails", "nameless_skipped", "stretches", "features", "shared_m"):
+        assert skipped_stats[unchanged] == built_stats[unchanged]

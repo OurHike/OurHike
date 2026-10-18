@@ -63,6 +63,29 @@ describe('fetchPlaces', () => {
     })
   })
 
+  it('keeps a places.json longer than the old 2 MiB ceiling, as both pipelines publish it', async () => {
+    // 2,228,767 bytes from the exporters and 8,404,414 from dbt (UA's
+    // releases 2026-10-03-2 and 2026-10-08, measured 2026-10-09), both over
+    // the 2 MiB lib/conditionsCache.ts used to keep: offline place search had
+    // no copy to search, on either path.
+    const large = {
+      ...DOCUMENT,
+      places: Array.from({ length: 30_000 }, (_, index) => ({
+        ...DOCUMENT.places[0],
+        id: `p${index}`,
+      })),
+    }
+    expect(JSON.stringify(large).length).toBeGreaterThan(2 * 1024 * 1024)
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(() => Promise.resolve(new Response(JSON.stringify(large), { status: 200 }))),
+    )
+
+    await fetchPlaces()
+
+    expect((await recallPlaces())?.places).toHaveLength(30_000)
+  })
+
   it('reads a 404 as nothing, and does not clear the kept copy', async () => {
     store.set(conditionsCacheKey(PLACES_KEY), { document: DOCUMENT, storedAt: 'x' })
     vi.stubGlobal(

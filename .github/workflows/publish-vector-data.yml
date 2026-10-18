@@ -306,6 +306,7 @@ jobs:
       - name: Restore derived water data from the published data
         env:
           DATA_BASE_URL: ${{ vars.DATA_BASE_URL }}
+          DATA_ENVIRONMENT: ${{ inputs.data_environment }}
         run: |
           if [ -z "$DATA_BASE_URL" ]; then
             echo "No DATA_BASE_URL repository variable - derived water starts cold."
@@ -315,7 +316,7 @@ jobs:
           for name in osm_water.geojson osm_water_reach.json trail_water.json; do
             if [ -e "data/raw/$name" ]; then
               echo "$name already present (cache hit) - keeping the local copy."
-            elif curl -fsS --retry 3 -o "data/raw/$name.download" "${DATA_BASE_URL%/}/$name"; then
+            elif curl -fsS --retry 3 -o "data/raw/$name.download" "${DATA_BASE_URL%/}/environments/${DATA_ENVIRONMENT}/$name"; then
               mv "data/raw/$name.download" "data/raw/$name"
               echo "Restored $name from the published data."
             else
@@ -425,6 +426,7 @@ jobs:
         if: inputs.include_photos && !inputs.refetch_photos
         env:
           DATA_BASE_URL: ${{ vars.DATA_BASE_URL }}
+          DATA_ENVIRONMENT: ${{ inputs.data_environment }}
         run: |
           if [ -z "$DATA_BASE_URL" ]; then
             echo "No DATA_BASE_URL repository variable - photo outcomes start cold."
@@ -434,7 +436,7 @@ jobs:
           for name in poi_images_atc.json poi_images.json; do
             if [ -e "data/raw/$name" ]; then
               echo "$name already present (cache hit) - keeping the local copy."
-            elif curl -fsS --retry 3 -o "data/raw/$name.download" "${DATA_BASE_URL%/}/$name"; then
+            elif curl -fsS --retry 3 -o "data/raw/$name.download" "${DATA_BASE_URL%/}/environments/${DATA_ENVIRONMENT}/$name"; then
               mv "data/raw/$name.download" "data/raw/$name"
               echo "Restored $name from the published data."
             else

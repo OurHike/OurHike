@@ -33,7 +33,7 @@
 # rather than SQLAlchemy on purpose" asks. dbt is not an extra here: dlt's
 # dbt helper wants dbt-core 1.x, and dbt runs as its own CLI step on dbt 2
 # (requirements-dbt.in).
-dlt[filesystem,parquet]==1.30.0
+dlt[filesystem,parquet]==1.31.0
 
 # The same ABI-locked pin as requirements.in, for extract/_warehouse.py, which
 # writes the warehouse the dbt job reads.

@@ -430,3 +430,74 @@ def test_the_prompt_and_the_answer_are_not_stored(client, db_session, assist_on,
     stored = " ".join(str(value) for value in row.__dict__.values())
     assert "secret internal server name" not in stored
     assert "Read 312 sections" not in stored
+
+
+def test_a_call_in_flight_is_already_counted_against_the_budget(client, db_session, assist_on, monkeypatch):
+    """#1760: the row used to land after the response, so every request that
+    arrived during the call saw an untouched budget. Read from inside the
+    patched `httpx.post`, which is the moment a second request would run its
+    check. This proves the row exists then - not that two real requests
+    cannot both pass, which needs a concurrent client this suite has not got.
+    """
+    org, person = _org_with_admin(db_session)
+    _opt_in(db_session, org, person)
+    seen: dict[str, int] = {}
+
+    def look_while_in_flight(url, *, timeout, headers, json):
+        seen["spent"] = assist_core.spent_today(db_session, club_id=org.id, client_hash=None)
+        return SimpleNamespace(
+            status_code=200,
+            json=lambda: {"content": [{"type": "text", "text": "ok"}], "usage": {"input_tokens": 120, "output_tokens": 40}},
+        )
+
+    monkeypatch.setattr(assist_core.httpx, "post", look_while_in_flight)
+
+    client.post(
+        f"/clubs/{org.slug}/assist",
+        json={"panel": "registry", "question": "what is there?"},
+        headers=auth_headers(person.id),
+    )
+
+    assert seen["spent"] >= assist_core.MAX_OUTPUT_TOKENS
+    # Settled over the reservation, not added to it.
+    rows = db_session.query(AssistUsage).filter(AssistUsage.club_id == org.id).all()
+    assert [(r.input_tokens, r.output_tokens) for r in rows] == [(120, 40)]
+
+
+def test_a_refused_upstream_call_leaves_no_charge(client, db_session, assist_on, monkeypatch):
+    """A failure with no usage block to settle against is released, so an
+    upstream outage does not spend an organization's day."""
+    org, person = _org_with_admin(db_session)
+    _opt_in(db_session, org, person)
+    monkeypatch.setattr(assist_core.httpx, "post", lambda *a, **k: SimpleNamespace(status_code=529, json=lambda: {}))
+
+    response = client.post(
+        f"/clubs/{org.slug}/assist",
+        json={"panel": "registry", "question": "what is there?"},
+        headers=auth_headers(person.id),
+    )
+
+    assert response.status_code == 502
+    assert db_session.query(AssistUsage).filter(AssistUsage.club_id == org.id).count() == 0
+
+
+def test_a_200_with_an_unreadable_body_keeps_its_reservation(client, db_session, assist_on, monkeypatch):
+    """The call was probably billed and cannot be priced, so the day is
+    charged the estimate - the cautious side."""
+    org, person = _org_with_admin(db_session)
+    _opt_in(db_session, org, person)
+
+    def unreadable():
+        raise ValueError("not json")
+
+    monkeypatch.setattr(assist_core.httpx, "post", lambda *a, **k: SimpleNamespace(status_code=200, json=unreadable))
+
+    response = client.post(
+        f"/clubs/{org.slug}/assist",
+        json={"panel": "registry", "question": "what is there?"},
+        headers=auth_headers(person.id),
+    )
+
+    assert response.status_code == 502
+    row = db_session.query(AssistUsage).filter(AssistUsage.club_id == org.id).one()
+    assert row.output_tokens == assist_core.MAX_OUTPUT_TOKENS

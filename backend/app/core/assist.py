@@ -8,18 +8,30 @@ the most expensive one, and the bill arrives at somebody who did not choose
 it. `ask` takes no model argument, so there is no parameter for a caller to
 reach even if a future router wanted to pass one through.
 
-**THE BUDGET IS CHECKED BEFORE THE CALL AND RECORDED AFTER IT.** Checked
-before, because a budget enforced afterwards is a bill already spent; and
-recorded after with the token counts the API itself reported, because a
-budget enforced against an estimate is wrong in whichever direction the
-estimate is, and the expensive direction is the one estimates favour.
+**THE BUDGET IS CHECKED BEFORE THE CALL, RESERVED BEFORE IT, AND SETTLED
+AFTER IT.** Checked before, because a budget enforced afterwards is a bill
+already spent. Reserved before, because a row that only lands after the
+response leaves a window the length of the call (up to `ASSIST_TIMEOUT_SECONDS`)
+in which every other request sees the same unspent budget and passes. Settled
+after with the token counts the API itself reported, because the settled
+number is what the budget keeps: the reservation is an estimate and is
+overwritten, never added to.
 
-**THE BUDGET CAN BE OVERSHOT BY AT MOST ONE CALL, AND NOT TWICE.** A call's
-cost is not knowable until it has been made, so the check is "have you
-already passed the line" rather than "would this cross it". The alternative -
-holding back a call that might cross it - would refuse a cheap question to an
-organization with budget left, which is the worse of the two failures. The
-ceiling on the overshoot is `MAX_OUTPUT_TOKENS` plus the question's own size.
+**THE BUDGET CAN BE OVERSHOT BY AT MOST ONE CALL, AND NOT TWICE - ON
+POSTGRES.** A call's cost is not knowable until it has been made, so the
+check is "have you already passed the line" rather than "would this cross
+it". The alternative - holding back a call that might cross it - would refuse
+a cheap question to an organization with budget left, which is the worse of
+the two failures. The ceiling on the overshoot is `MAX_OUTPUT_TOKENS` plus the
+question's own size. That only holds because the check and the reservation
+happen under one transaction-scoped advisory lock (`_one_budget_check_at_a_time`),
+which every caller shares because the global ceiling spans all of them. Before
+#1760 the row landed after the response, so N parallel requests all passed and
+the overshoot was N calls; that was reasoned from the code and never
+reproduced against a concurrent client, and the fix is likewise tested only by
+what the rows look like at the moment the model is called, not by a race. On
+an engine with no advisory lock the guarantee is not made - nothing but
+Postgres serves this app.
 
 **A DAY IS A ROLLING 24 HOURS, NOT A CALENDAR ONE.** A calendar day resets at
 an hour somebody has to know, and gives anybody who finds the boundary two
@@ -53,7 +65,7 @@ from dataclasses import dataclass
 from datetime import timedelta
 
 import httpx
-from sqlalchemy import func
+from sqlalchemy import func, text
 from sqlalchemy.orm import Session
 
 from app.config import settings
@@ -76,6 +88,15 @@ ASSIST_TIMEOUT_SECONDS = 25.0
 MAX_OUTPUT_TOKENS = 1_500
 
 BUDGET_WINDOW = timedelta(hours=24)
+
+# What a question costs going in, for the reservation only - the settled row
+# carries the API's own count. Three characters a token rounds toward the
+# expensive side for English prose (the usual figure is about four), so the
+# reservation is more likely too large than too small.
+# @unvalidated - picked, not measured. A week of real `AssistUsage` rows set
+# against the lengths of the prompts that produced them would settle it; until
+# then it only sizes a number that is overwritten a few seconds later.
+CHARS_PER_INPUT_TOKEN = 3
 
 
 class AssistUnavailable(RuntimeError):
@@ -169,6 +190,23 @@ def spent_globally_today(db: Session) -> int:
     )
 
 
+def _one_budget_check_at_a_time(db: Session) -> None:
+    """Hold every other budget check until this transaction commits.
+
+    One key for everyone, not one per club: the global ceiling reads every
+    caller's rows, so a per-club lock would let two clubs pass it together.
+    The critical section is a few queries and an insert, with no network call
+    in it. Released by the `commit()` that publishes the reservation.
+    """
+    if db.get_bind().dialect.name == "postgresql":
+        db.execute(text("SELECT pg_advisory_xact_lock(hashtext('assist-budget'))"))
+
+
+def _release(db: Session, reservation: AssistUsage) -> None:
+    db.delete(reservation)
+    db.commit()
+
+
 def ask(
     db: Session,
     *,
@@ -206,9 +244,14 @@ def ask(
 
     club_id = club.id if club is not None else None
     client_hash = None if club_id is not None else counting_hash(counted_as)
+
+    # The lock is taken before the first read and not released until the
+    # reservation is committed, so a second request's read sees this one.
+    _one_budget_check_at_a_time(db)
     already = spent_today(db, club_id=club_id, client_hash=client_hash)
     budget = budget_for(club_id)
     if already >= budget:
+        db.rollback()
         raise AssistBudgetSpent(
             f"That is {already:,} of today's {budget:,} tokens. It resets 24 hours after each call, "
             "and everything these panels do can be done by hand in the meantime."
@@ -221,11 +264,24 @@ def ask(
     already_globally = spent_globally_today(db)
     global_budget = settings.assist_global_daily_token_budget
     if already_globally >= global_budget:
+        db.rollback()
         raise AssistBudgetSpent(
             f"Every organization and every caller together have spent {already_globally:,} of today's "
             f"{global_budget:,} token ceiling for this deployment. It resets 24 hours after the call "
             "that crossed it, and everything these panels do can be done by hand in the meantime."
         )
+
+    # Reserved at the most this call can cost, so a request arriving while
+    # this one is in flight counts it. Overwritten with the real figures below.
+    reservation = AssistUsage(
+        club_id=club_id,
+        client_hash=client_hash,
+        panel=panel,
+        input_tokens=(len(system) + len(prompt)) // CHARS_PER_INPUT_TOKEN + 1,
+        output_tokens=MAX_OUTPUT_TOKENS,
+    )
+    db.add(reservation)
+    db.commit()
 
     try:
         response = httpx.post(
@@ -245,10 +301,15 @@ def ask(
             },
         )
     except httpx.HTTPError as exc:
-        # No retry. See the module header.
+        # No retry. See the module header. The reservation is released: a
+        # failed call has no usage block to settle it against, and a budget
+        # that charged for answers never received would refuse an
+        # organization for the upstream's outage.
+        _release(db, reservation)
         raise AssistFailed("The assistant did not answer.") from exc
 
     if response.status_code >= 400:
+        _release(db, reservation)
         # The upstream body can carry a key fragment or an account detail, so
         # what reaches a caller is the status and nothing else.
         raise AssistFailed(f"The assistant refused the request ({response.status_code}).")
@@ -263,18 +324,13 @@ def ask(
     except (ValueError, AttributeError, TypeError) as exc:
         raise AssistFailed("The assistant's answer could not be read.") from exc
 
-    # Recorded whatever the answer looked like, including an empty one: the
+    # Settled whatever the answer looked like, including an empty one: the
     # tokens were spent either way, and a budget that only counted useful
-    # answers would not be a budget.
-    db.add(
-        AssistUsage(
-            club_id=club_id,
-            client_hash=client_hash,
-            panel=panel,
-            input_tokens=input_tokens,
-            output_tokens=output_tokens,
-        )
-    )
+    # answers would not be a budget. A 200 whose body cannot be read (raised
+    # above) keeps its reservation: the call was probably billed and we cannot
+    # say for how much, so the day is charged the estimate - the cautious side.
+    reservation.input_tokens = input_tokens
+    reservation.output_tokens = output_tokens
     db.commit()
 
     if not text.strip():

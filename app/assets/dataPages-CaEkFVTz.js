@@ -1,0 +1,1 @@
+var e=`https://ourhike.org/data/how/`,t=`https://ourhike.org/data/quality/`;export{t as n,e as t};

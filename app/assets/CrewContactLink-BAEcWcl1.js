@@ -1,0 +1,1 @@
+import{t as e}from"./jsx-runtime-0qLyIFdj.js";import{Gi as t,Wi as n}from"./main-ybxr2ot3.js";var r=e();function i({contact:e,className:i}){if(e===null||!n(e))return null;let a=t(e)?{target:`_blank`,rel:`noreferrer`}:{};return(0,r.jsx)(`a`,{className:i,href:e,...a,children:`Ask the crew about joining`})}export{i as t};

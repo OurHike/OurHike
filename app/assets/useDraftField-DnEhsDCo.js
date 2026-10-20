@@ -1,0 +1,1 @@
+import{oa as e,ra as t}from"./sheetInks-CPezw_L9.js";var n=e(t(),1);function r(e,t){let[r,i]=(0,n.useState)(e),a=(0,n.useRef)(e),o=(0,n.useRef)(r);o.current=r;let s=(0,n.useRef)(t);return s.current=t,(0,n.useEffect)(()=>{i(e),a.current=e},[e]),{draft:r,setDraft:i,flush:(0,n.useCallback)(()=>{o.current!==a.current&&(a.current=o.current,s.current(o.current))},[])}}export{r as t};

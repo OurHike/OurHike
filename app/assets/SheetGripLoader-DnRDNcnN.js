@@ -1,0 +1,2 @@
+const __vite__mapDeps=(i,m=__vite__mapDeps,d=(m.f||(m.f=["assets/SheetGrip-CKVaPOh1.js","assets/sheetInks-CPezw_L9.js","assets/jsx-runtime-0qLyIFdj.js"])))=>i.map(i=>d[i]);
+import{Rr as e,oa as t,ra as n}from"./sheetInks-CPezw_L9.js";import{t as r}from"./jsx-runtime-0qLyIFdj.js";var i=t(n(),1),a=r();function o(t){let[n,r]=(0,i.useState)(null);return(0,i.useEffect)(()=>{let t=!0;return e(()=>import(`./SheetGrip-CKVaPOh1.js`).then(e=>{t&&r(()=>e.default)}),__vite__mapDeps([0,1,2])).catch(()=>{}),()=>{t=!1}},[]),n===null?null:(0,a.jsx)(n,{...t})}export{o as t};

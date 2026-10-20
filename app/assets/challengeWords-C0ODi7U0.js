@@ -1,0 +1,1 @@
+var e={act:`Tag it`,done:`Tagged`,actAll:`Tag all`,noun:`tag`,nounPlural:`tags`,past:`tagged`,yours:`Your challenges`};export{e as t};

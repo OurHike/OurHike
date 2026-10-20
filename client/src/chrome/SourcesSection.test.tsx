@@ -1,4 +1,5 @@
 import { describe, it, expect, afterEach } from 'vitest'
+import { DATA_BUILT_URL, DATA_QUALITY_URL } from '../lib/dataPages'
 import { render, screen, cleanup } from '@testing-library/react'
 import { SourcesSection } from './SourcesSection'
 import type { Stewards } from '../lib/stewards'
@@ -171,10 +172,36 @@ describe('the sources section', () => {
     expect(container).toBeEmptyDOMElement()
   })
 
-  it('offers no control, because there is nothing here to act on', () => {
+  it('offers no control, and links nowhere but the site’s two data pages while no card carries a link', () => {
     const { container } = render(<SourcesSection stewards={BOTH} />)
 
-    expect(container.querySelectorAll('button, input, select, a')).toHaveLength(0)
+    expect(container.querySelectorAll('button, input, select')).toHaveLength(0)
+    expect(
+      [...container.querySelectorAll('a')].map((a) => [
+        a.textContent,
+        a.getAttribute('href'),
+      ]),
+    ).toEqual([
+      ['How the data is built ›', DATA_BUILT_URL],
+      ['Data quality ›', DATA_QUALITY_URL],
+    ])
+  })
+
+  it('says, over the two links, what the site’s data pages answer', () => {
+    render(<SourcesSection stewards={BOTH} />)
+
+    expect(
+      screen.getByText(
+        'How OurHike gathers these organizations’ data, and how its checks went on the last build:',
+      ),
+    ).toBeInTheDocument()
+    for (const name of ['How the data is built ›', 'Data quality ›']) {
+      const link = screen.getByRole('link', { name })
+      expect(link).toHaveAttribute('target', '_blank')
+      expect(link).toHaveAttribute('rel', 'noreferrer')
+    }
+    expect(DATA_BUILT_URL).toBe('https://ourhike.org/data/how/')
+    expect(DATA_QUALITY_URL).toBe('https://ourhike.org/data/quality/')
   })
 
   it('does not promise anything about donations while no card carries one', () => {
@@ -260,7 +287,8 @@ describe('the sources section', () => {
   it('renders no link for a grant that names other screens and not this one', () => {
     const { container } = render(<SourcesSection stewards={[ELSEWHERE_ONLY]} />)
 
-    expect(container.querySelectorAll('a')).toHaveLength(0)
+    // On the card: the site's two data pages sit above the cards.
+    expect(container.querySelectorAll('.sources__card a')).toHaveLength(0)
   })
 
   it('prints "OurHike takes no cut and holds no money" only once a link is on the screen', () => {

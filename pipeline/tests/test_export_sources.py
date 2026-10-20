@@ -6,8 +6,10 @@ Every failure this file guards is SILENT and prints a wrong sentence under an
 organization's name on a hiker's phone. There is no crash to notice:
 
 - A steward whose data does not ship, named anyway, with a licence beside it.
-  Two of them are in the registry right now (GATC, NYS OPRHP), both fetched
-  for review only pending a licence answer.
+  GATC and NYS OPRHP were the first two, both fetched for review only
+  pending a licence answer; GATC's water list and alerts ship since
+  2026-10-04, and test_names_no_steward_that_is_fetch_and_review_only
+  now asks the rule of every steward.
 - A steward whose data DOES ship, omitted, when its licence obliges the
   attribution the omission removes.
 - A tier or a licence inferred rather than recorded, which reads exactly like
@@ -97,6 +99,18 @@ class TestTermsTravelWithTheData:
         assert len(njdep) == 1, "New Jersey ships, or this test is out of date"
         assert njdep[0]["attribution"] == real["njdep_licence"]["attribution_required"]
         assert njdep[0]["terms"] == real["njdep_licence"]["terms_verbatim"]
+
+    def test_florida_state_parks_ships_with_the_one_credit_its_three_rows_give(self):
+        """The real registry, as it stands on 2026-10-15. A steward's credit prints only where every shipping row
+        gives the same one (_unanimous()). FDEP's park boundaries credited the Division of
+        Recreation and Parks' Office of Park Planning where the two status rows credit the Division, so the sources
+        screen named Florida State Parks with no credit at all, though the boundaries' own terms ask for
+        "Acknowledgement of the Originator"."""
+        real = json.loads((ROOT / "sources.json").read_text())
+        out = export_sources.build_output(real)
+
+        (florida,) = [s for s in out["stewards"] if s["provider"] == "Florida State Parks"]
+        assert florida["attribution"] == "Florida Department of Environmental Protection, Division of Recreation and Parks"
 
 
 class TestWhoGetsNamed:
@@ -547,12 +561,30 @@ class TestAgainstTheRealRegistry:
         self.real()
 
     def test_names_no_steward_that_is_fetch_and_review_only(self):
-        # Measured 2026-08-23: GATC's own licence field says "Nothing from this
-        # source reaches a published artifact until GATC answers a
-        # redistribution ask".
+        """A steward none of whose rows reaches a hiker is not named. This used
+        to be GATC by name (measured 2026-08-23, its licence field said nothing
+        reached a published artifact until GATC answered a redistribution ask);
+        the rule outlived GATC's turn, so it is asked of every steward."""
+        registry = json.loads((ROOT / "sources.json").read_text())
+        stewards: dict[str, bool] = {}
+        for source in registry["sources"]:
+            name = source.get("steward")
+            if name:
+                stewards[name] = stewards.get(name, False) or bool(source.get("reaches_hikers"))
+        review_only = {name for name, ships in stewards.items() if not ships}
         named = {s["name"] for s in self.real()["stewards"]}
 
-        assert not any("Georgia" in n for n in named)
+        assert review_only, "no steward is review-only, so this proves nothing"
+        assert not named & review_only
+
+    def test_names_gatc_now_that_its_water_and_alerts_ship(self):
+        """GATC moved from review-only to shipped on 2026-10-04
+        (its water list placed from its own miles, its alerts as facts and a
+        link), the same turn OPRHP's and NYNJTC's lines took below. A steward
+        whose data is on a hiker's phone is named."""
+        named = {s["name"] for s in self.real()["stewards"]}
+
+        assert "Georgia Appalachian Trail Club" in named
 
     def test_names_the_two_trail_stewards_now_that_their_lines_ship(self):
         """OPRHP and NYNJTC moved from held-back to shipped on 2026-08-24
@@ -737,6 +769,64 @@ class TestAgainstTheRealRegistry:
         assert atc["trust"] is None
 
 
+class TestTheExportersPathNamesOnlyWhatItsFilesCarry:
+    """Production's phone files come from today's exporters until the cutover,
+    and they read no club layer, file, page, PDF, podcast feed or club
+    notice. On
+    the registry of 2026-10-14 the every-row count named 111 stewards against
+    the 28 whose data production's files carry (build_output() in memory), so
+    main() counts only the rows an exporter reads."""
+
+    @staticmethod
+    def mixed() -> dict:
+        return registry(
+            source("agency_trails", "Agency", True, kind="external_arcgis_layer", steward="Agency"),
+            source("club_layer", "Club", True, kind="club_arcgis_layer", steward="Club"),
+            source("club_file", "Club", True, kind="gis_file", steward="Club"),
+            source("club_notices", "Notices Club", True, kind="published_notices", steward="Notices Club"),
+            source("feed", "Podcaster", True, kind="podcast_feed", steward="Podcaster"),
+            # No kind: an ArcGIS feature layer, which fetch_all.py reads.
+            source("centerline", "ATC", True, steward="Appalachian Trail Conservancy"),
+            # The one notices row an exporter reads, by its own module's SOURCE_KEY.
+            source("atc_trail_updates", "ATC", True, kind="published_notices", steward="Appalachian Trail Conservancy"),
+        )
+
+    def test_counts_every_shipping_row_by_default(self):
+        named = {s["provider"] for s in export_sources.build_output(self.mixed())["stewards"]}
+
+        assert named == {"Agency", "Club", "Notices Club", "Podcaster", "ATC"}
+
+    def test_the_exporters_path_names_only_stewards_an_exporter_reads(self):
+        stewards = {s["provider"]: s for s in export_sources.build_output(self.mixed(), exporters_only=True)["stewards"]}
+
+        assert set(stewards) == {"Agency", "ATC"}
+        assert stewards["ATC"]["keys"] == ["atc_trail_updates", "centerline"]
+
+    def test_main_writes_the_exporters_path(self, tmp_path, monkeypatch):
+        path = tmp_path / "sources.json"
+        path.write_text(json.dumps(self.mixed()))
+        monkeypatch.setattr(export_sources, "SOURCES_PATH", path)
+        for name in ("OUT_PATH", "MANIFEST_PATH", "REGISTRY_OUT_PATH", "REGISTRY_MANIFEST_PATH"):
+            monkeypatch.setattr(export_sources, name, tmp_path / f"{name.lower()}.json")
+
+        export_sources.main()
+
+        written = json.loads((tmp_path / "out_path.json").read_text())
+        assert {s["provider"] for s in written["stewards"]} == {"Agency", "ATC"}
+
+    def test_on_the_real_registry_every_steward_named_has_a_row_an_exporter_reads(self):
+        real = json.loads((ROOT / "sources.json").read_text())
+        rows = {s["key"]: s for s in real["sources"]}
+        exporters = export_sources.build_output(real, exporters_only=True)["stewards"]
+        every = export_sources.build_output(real)["stewards"]
+
+        assert len(exporters) < len(every), "the exporters' path names every steward, so this proves nothing"
+        for steward in exporters:
+            assert any(
+                export_sources.read_by_an_exporter(rows[key], export_sources.EXPORTER_SOURCE_KEYS) for key in steward["keys"]
+            ), steward["provider"]
+
+
 def test_each_steward_lists_the_registry_keys_behind_its_layers():
     """The join a graph edge's `source` resolves through (#978): the phone has
     to turn `oprhp_trails` into an organization's name, and the KEY only
@@ -785,17 +875,19 @@ class TestTheRegistryTheConsoleReads:
         return export_sources.build_registry(json.loads((ROOT / "sources.json").read_text()))
 
     def test_names_the_sources_that_reach_no_hiker(self):
-        """The whole reason for a second artifact. GATC and the held-back
-        OPRHP layer are registrations somebody has to be able to see."""
+        """The whole reason for a second artifact. GATC's news feed (held for
+        its mix of news and notices since its water list shipped)
+        and the held-back OPRHP layer are registrations somebody has to be able
+        to see."""
         keys = {row["key"] for row in self.real()["sources"]}
 
-        assert "gatc_water_sources" in keys
+        assert "gatc_news_feed" in keys
         assert "oprhp_park_polygons" in keys
 
     def test_carries_the_flag_rather_than_filtering_on_it(self):
         rows = {row["key"]: row for row in self.real()["sources"]}
 
-        assert rows["gatc_water_sources"]["reaches_hikers"] is False
+        assert rows["gatc_news_feed"]["reaches_hikers"] is False
         assert rows["nynjtc_trail_alerts"]["reaches_hikers"] is True
 
     def test_every_row_carries_the_stable_id_of_its_organization(self):
@@ -857,22 +949,77 @@ class TestTheRegistryTheConsoleReads:
         """
         orgs = self.real()["organizations"]
 
-        assert len(orgs) == 30
+        # Recounted from the registry 2026-10-11; git holds which registration added each.
+        assert len(orgs) == 150
         assert {org["steward_id"] for org in orgs} == {
+            "org:akstateparks",
             "org:alaskatrails",
+            "org:amc",
+            "org:ata",
             "org:atc",
+            "org:austinpard",
             "org:azgeo",
+            "org:bartram",
+            "org:blackhillstrails",
             "org:blm",
+            "org:bmecc",
+            "org:bmta",
+            "org:bta",
+            "org:catamount",
+            "org:cdpr",
+            "org:census",
             "org:cdtc",
+            "org:cfi",
+            "org:cfpa",
+            "org:chesapeakeconservancy",
+            "org:cmc",
+            "org:cohos",
+            "org:condor",
             "org:cpw",
+            "org:ctc",
             "org:ctdeep",
+            "org:cvatc",
+            "org:desmoines",
             "org:duluth",
+            "org:ebrpd",
+            "org:fbh",
+            "org:fltc",
+            "org:fmst",
+            "org:foot",
+            "org:foothills",
+            "org:fpc",
+            "org:fta",
             "org:gatc",
+            "org:gmc",
+            "org:hhc",
+            "org:iata",
+            "org:iditarod",
+            "org:indnr",
+            "org:iowadnr",
+            "org:kingcountyparks",
+            "org:kta",
+            "org:lakecountymn",
+            "org:lsht",
+            "org:madcr",
             "org:massgis",
+            "org:matc",
+            "org:mazamas",
+            "org:mdhta",
+            "org:mcomd",
+            "org:midpen",
             "org:mohonk",
+            "org:mratc",
+            "org:msgtc",
+            "org:msta",
+            "org:mtsg",
+            "org:nbatc",
+            "org:nchpta",
             "org:ncparks",
             "org:ncta",
             "org:ndmc",
+            "org:nhgranit",
+            "org:nifc",
+            "org:nmvfo",
             "org:njdep",
             "org:nps",
             "org:nycdot",
@@ -880,15 +1027,84 @@ class TestTheRegistryTheConsoleReads:
             "org:nynjtc",
             "org:nysdec",
             "org:nysoprhp",
+            "org:octa",
+            "org:ocvt",
+            "org:odatc",
+            "org:odfw",
+            "org:ohta",
+            "org:onda",
+            "org:oregonmetro",
             "org:osm",
+            "org:ota",
+            "org:padcnr",
             "org:pasda",
+            "org:patc",
+            "org:pcf",
             "org:pcta",
+            "org:phta",
+            "org:pnta",
+            "org:portlandparks",
+            "org:ptny",
+            "org:ratc",
+            "org:ridgetrail",
+            "org:rmc",
+            "org:rmfi",
+            "org:satc",
+            "org:sbts",
+            "org:sccparks",
+            "org:shta",
+            "org:smd",
+            "org:smhc",
+            "org:spnhf",
+            "org:sstc",
+            "org:sta",
+            "org:tatc",
+            "org:tdec",
+            "org:tehcc",
+            "org:tko",
+            "org:tpwd",
             "org:trta",
+            "org:trustees",
+            "org:tta",
+            "org:ttc",
             "org:ugrc",
+            "org:usace",
             "org:usfs",
+            "org:usfws",
             "org:usgs",
+            "org:utahffsl",
+            "org:wadnr",
+            "org:waldotrails",
             "org:warco",
             "org:wdnr",
+            "org:wmc",
+            "org:wsprc",
+            "org:wta",
+            # Candidate stewards, every layer held while each one's trail_orgs.json row waits.
+            "org:dlnhc",
+            "org:flstateparks",
+            "org:gap",
+            "org:idpr",
+            "org:midnr",
+            "org:montourtrail",
+            "org:mostateparks",
+            "org:ngpc",
+            "org:oprd",
+            "org:r2r",
+            "org:tahoepyramid",
+            "org:vtrans",
+            "org:nyscanal",
+            "org:ildnr",
+            "org:nett",
+            "org:easterntrail",
+            "org:mainehuts",
+            "org:rctc",
+            "org:peninsulatrails",
+            "org:maricopaparks",
+            # The Trust for Public Land, for ParkServe's parks, held.
+            "org:tpl",
+            # IDOT, for its Bicycle Facility Inventory System, held.
+            "org:idot",
         }
 
     def test_composes_nothing_a_reviewer_would_have_to_check(self):

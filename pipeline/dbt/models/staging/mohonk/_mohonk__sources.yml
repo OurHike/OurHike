@@ -4,17 +4,43 @@ sources:
   - name: mohonk
     description: >
       Mohonk Preserve's public trails-and-carriage-roads extract on their own
-      ArcGIS org, fetched by fetch_external_layers.py into
-      data/raw/external/. Transcribed from sources.json's measured notes.
+      ArcGIS org, landed by the extract's mohonk/ folder
+      (pipeline/extract/mohonk/). Transcribed from sources.json's measured
+      notes.
     schema: raw
-    loaded_at_field: _loaded_at
-    freshness:
-      # As for every source here: this measures load_raw.py's cadence, not
-      # Mohonk's. @unvalidated, same threshold and same open question as
-      # _atc__sources.yml.
-      warn_after: {count: 7, period: day}
+    config:
+      # When the extract last read each table or confirmed it unchanged, from
+      # its run log, never `_loaded_at`: make_dbt_staging.py's
+      # LOADED_AT_QUERY and MONTHLY_FRESHNESS_DAYS say why, and
+      # tests/test_source_freshness.py holds every monthly source to them.
+      loaded_at_query: "{{ last_read_or_confirmed_at(this) }}"
+      freshness:
+        warn_after: {count: 35, period: day}
+        error_after: {count: 62, period: day}
     tables:
       - name: raw_mohonk__mohonk_trails
+        data_tests:
+          # Rows sharing stg_mohonk__trails's key must be exact copies.
+          - duplicates_are_exact:
+              arguments:
+                key_columns: ["'mohonk_trails'", "globalid"]
+          # Elementary's checks (make_dbt_staging.py's raw_table_checks()), each with its two thresholds.
+          - elementary.volume_anomalies:
+              config:
+                severity: error
+                fail_calc: "{{ var('elementary_anomaly_level') }}"
+                warn_if: ">0"
+                error_if: ">1"
+                tags: [elementary_check]
+                enabled: "{{ env_var('OURHIKE_ELEMENTARY_CHECKS', 'false') == 'true' }}"
+          - elementary.schema_changes:
+              config:
+                severity: error
+                fail_calc: "{{ var('elementary_schema_change_level') }}"
+                warn_if: ">0"
+                error_if: ">1"
+                tags: [elementary_check]
+                enabled: "{{ env_var('OURHIKE_ELEMENTARY_CHECKS', 'false') == 'true' }}"
         description: >
           Mohonk Preserve Trails and Carriage Roads (sources.json: discovered
           2026-08-25). 304 polyline segments, measured live that day via

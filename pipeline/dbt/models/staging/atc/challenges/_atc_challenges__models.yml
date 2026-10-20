@@ -1,0 +1,26 @@
+version: 2
+
+models:
+  - name: stg_atc__challenges
+    description: >
+      The ATC's challenge files (reference/challenges/atc/), one row per
+      file, with the extracting folder, the claim, and the file's folder,
+      name and stem beside the JSON its reviewer wrote. Unioned into
+      int_challenges__unioned with every other club's.
+    columns:
+      - name: challenge_file_key
+        description: base_atc__challenges_atc's key.
+        data_tests: [not_null, unique]
+      - name: club
+        description: The extract folder that landed the file, atc.
+      - name: source_key
+        description: >
+          The claim atc/challenges.py lands the folder under,
+          reference/challenges/atc, which int_sources__publication decides
+          publication for.
+      - name: file_folder
+        description: The file's folder, which today's exporter requires to equal the file's `org`.
+      - name: file_name
+        description: The file's name, by which today's exporter orders the files within a folder.
+      - name: file_stem
+        description: The file's name less `.json`, which today's exporter requires to equal the file's `id`.

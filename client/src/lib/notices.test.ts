@@ -278,7 +278,25 @@ describe('naming the organization', () => {
     )
   })
 
-  it('prints the raw key when no steward claims it, rather than guessing', () => {
+  it('names a key no steward claims by the steward of the notice’s own provider', () => {
+    // The hazard-area sheet on UA read "oprhp_hunting_areas' layer" (2026-10-05):
+    // its stewards.json predates the source, but the row carries its provider.
+    expect(
+      noticeOrgLabel(stewards)(
+        orgNotice({ source_key: 'nynjtc_new_layer', provider: 'NYNJTC' }),
+      ),
+    ).toBe('New York-New Jersey Trail Conference')
+  })
+
+  it('names a key no steward claims by the notice’s provider as written when no steward is that provider', () => {
+    expect(
+      noticeOrgLabel(stewards)(
+        orgNotice({ source_key: 'blm_shooting_points', provider: 'BLM' }),
+      ),
+    ).toBe('BLM')
+  })
+
+  it('prints the raw key when no steward claims it and the notice names no provider, rather than guessing', () => {
     // Real when a phone holds a notice artifact and a stewards artifact from
     // different releases. `atc_trail_updates` is ugly and true; a prettified
     // guess would say something nobody stands behind.

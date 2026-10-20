@@ -29,20 +29,33 @@ import yaml
 
 ROOT = Path(__file__).resolve().parent.parent
 
+#: Each suite is one CI job: its workflow file and its job id. The job is
+#: named rather than taken as "the first job with a scope", because one
+#: workflow can carry two suites - pipeline-tests.yml runs the pytest job and
+#: the dbt job, each with its own changed-paths list, and the first-job rule
+#: could only ever read the pytest one. That is how a dbt-only change used to
+#: reach scripts/test.sh as "the pipeline suite" and run no dbt at all
+#: (#1793 — Rebuild the data platform as dlt → dbt: seven contracted marts,
+#: a monthly refresh, published docs, and lighter phone downloads).
 WORKFLOWS = {
-    "client": ".github/workflows/client-tests.yml",
-    "pipeline": ".github/workflows/pipeline-tests.yml",
-    "backend": ".github/workflows/backend-tests.yml",
+    "client": (".github/workflows/client-tests.yml", "test"),
+    "pipeline": (".github/workflows/pipeline-tests.yml", "pytest"),
+    "dbt": (".github/workflows/pipeline-tests.yml", "dbt"),
+    "backend": (".github/workflows/backend-tests.yml", "pytest-postgres"),
 }
 
 
-def scope_for(workflow_path: Path) -> str:
+def scope_for(workflow_path: Path, job_id: str) -> str:
     workflow = yaml.safe_load(workflow_path.read_text())
-    for job in workflow["jobs"].values():
-        for step in job.get("steps", []):
-            if ".github/actions/changed-paths" in str(step.get("uses", "")):
-                return " ".join(str(step["with"]["paths"]).split())
-    raise LookupError(f"{workflow_path} has no changed-paths step")
+    job = workflow["jobs"].get(job_id)
+    if job is None:
+        # A renamed job is an unreadable scope, which both callers already
+        # treat as "run it" or "say so" - never as "unreachable".
+        raise LookupError(f"{workflow_path} has no job {job_id!r}")
+    for step in job.get("steps", []):
+        if ".github/actions/changed-paths" in str(step.get("uses", "")):
+            return " ".join(str(step["with"]["paths"]).split())
+    raise LookupError(f"{workflow_path}'s {job_id!r} job has no changed-paths step")
 
 
 def main(argv: list[str]) -> int:
@@ -51,7 +64,8 @@ def main(argv: list[str]) -> int:
         if suite not in WORKFLOWS:
             print(f"unknown suite {suite!r} - one of {sorted(WORKFLOWS)}", file=sys.stderr)
             return 2
-        scope = scope_for(ROOT / WORKFLOWS[suite])
+        workflow, job_id = WORKFLOWS[suite]
+        scope = scope_for(ROOT / workflow, job_id)
         prefix = "" if len(wanted) == 1 else f"{suite} "
         print(f"{prefix}{scope}")
     return 0

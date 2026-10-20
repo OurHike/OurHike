@@ -68,6 +68,8 @@ location into one place:
 | `updated_at` | the **org's** own last-updated stamp | unchanged |
 | `source_url` | link back to the org's page | unchanged |
 | `review_state` | `reviewed` \| `unreviewed` | unchanged |
+| `steward_kind` | `club` \| `agency`, from `trail_orgs.json`'s `type` (`pipeline/generate_notice_models.py`'s `CLUB_TYPES`); the planned-hike panel shows an agency's notice only where it is placed on or near the route (the maintainer's poll of 2026-10-04) | new |
+| `states` | on a state-wide agency notice's rows only (`pipeline/dbt/seeds/notice_states.csv`: BLM's 12 state fire-restriction pages and CT DEEP's parks emergency message on 2026-10-04), the two-letter codes of the states it speaks for; the panel shows it to a hike planned inside one of them, more than the shape's margin from its edge, that walks that agency's trails, reading the shapes from `conditions/notice_states.json`, which is never drawn (the maintainer's poll of 2026-10-04) | new |
 
 **`notice_id` is namespaced by the source key rather than by a short org name**, because
 the registry key is the thing that already exists, is unique, and is what
@@ -90,8 +92,40 @@ This is the design's one genuinely new idea, and the arm that matters most is th
 ```
 { "kind": "at_miles",  "start": 476.6, "end": 485.8 }              ATC — ships today
 { "kind": "org_terms", "terms": ["trail:brook-trail", …] }         NYNJTC — §4
+{ "kind": "geometry", "geometry": { "type": "Polygon", … } }        the source's own shape
 { "kind": "unplaced" }                                             honest, and common
 ```
+
+**The `geometry` arm** arrived with `conditions/notices.json` (**#1805 — dlt → dbt
+re-platform as one go/no-go change**): a notice whose source
+publishes its own polygon, line or point carries it, shaped for a phone:
+an area grown 100 m outward and simplified at 100 m so that it still covers every point
+of the source's, a line or a point simplified at 10 m
+(`pipeline/dbt/models/publish/pub_conditions_notices.sql` says why). It is the source's
+shape, never one inferred from anything else, so it keeps the rule below. The two older
+files never carry it. One exception keeps it a shape the steward published (the
+maintainer's poll of 2026-10-11): a notice whose own geometry is a
+point inside exactly one of its steward's own areas carries that area, a layer of the same
+steward's (`pipeline/dbt/seeds/notice_steward_areas.csv`;
+`int_closures__club_notices.sql` holds the rule and its measurement). Florida's
+park statuses, placed by FDEP's park boundaries, are the one source it names.
+
+**The map's half: `conditions/trail_closures.json`** (the maintainer's polls of
+2026-10-11). Every row of `notices.json` that obstructs a
+trail, but ATC's, whose band already draws them, is copied into this file unchanged with
+one key added, `shape`: `line` and `point` keep the `geometry` arm as it is, and an
+`area`'s geometry becomes the MultiLineString of the mapped trail stretches inside the
+area as its source drew it, cut every hour against the release's trail lines, its nearby
+trail lines and the A.T.'s own
+(`pipeline/dbt/models/intermediate/closures/int_closures__area_trail_cuts.sql`). An area no
+mapped trail runs inside is a `shade` (the maintainer's poll of 2026-10-14,
+"Shade them, no edge"): its geometry is the area as its source drew it, and the map fills
+it with a light hatch and draws nothing on its edge, so an open trail along the edge never
+reads as closed. A row with no geometry to draw stays in `notices.json`'s list and is not
+drawn, and in an hour with no trail lines to cut against no area is drawn either way. The
+phone reads the file at launch, as it reads `hazard_areas.json`, and draws each with the
+crossed-out mark, or the hatch, from the day before its `starts_on`; a route still goes
+through it.
 
 **ATC's rows become `at_miles` and nothing about their behaviour changes.** That arm is
 the existing mechanism, named. The migration is mechanical and the client's mile
@@ -219,7 +253,9 @@ Two gates, and they are independent — a source can be perfectly placeable and 
 publishable:
 
 1. **`reaches_hikers` in `sources.json`.** Already the mechanism, already enforced by
-   `export_sources.py` refusing to run without it. `nynjtc_trail_alerts` carries `false`.
+   `export_sources.py` refusing to run without it. `nynjtc_trail_alerts` carries `true`: the
+   maintainer authorised it on 2026-08-27 for the facts and a link alone, while NYNJTC's own
+   terms are still asked for (`nynjtc_notices_licence` in `pipeline/sources.json`).
 2. **The licence.** `nynjtc_licence` covers NYNJTC's two public trail extracts "and
    nothing else" and says it must not be read as precedent — so it does not stretch to
    their notices, and that entry says so rather than borrowing it. ATC's own notices ship
@@ -273,8 +309,24 @@ header line. A second org could reach a hiker through those alone, in the honest
   Harriman detour `trail:appalachian-trail`, and the A.T. *does* have a mile axis, so it
   could in principle be placed as `at_miles` — by a person, since NYNJTC publishes no
   mile. Attractive and not obviously right: it would put a second org's word on ATC's
-  surface.
+  surface. **Answered for a club's area closure** (the maintainer, by
+  poll, 2026-10-14: *"Yes, like any trail"*): where the A.T. runs inside a club's closed
+  area it is crossed out like any trail, and the sheet names the closing organization
+  (`pipeline/prepare_closure_trail_lines.py` adds the release's `trails.geojson` to the
+  lines the hourly cut reads). A notice placed on the A.T. by miles is still open.
 - **How many notice sources the banner can carry** before it stops being a warning and
   becomes a feed. Two lanes is today's design; the survey found four orgs that publish.
 - **Whether `unplaced` notices need a locality filter** so a hiker in Georgia is not shown
   a Catskills advisory. The `locality` field exists for this and nothing reads it yet.
+  **Answered** (the maintainer, by poll, 2026-10-04: *"Every notice that
+  touches a planned hike in the next 7 days. for a long hike get everything along the
+  planned hike in the next 7"*), and not with `locality`: once `conditions/notices.json`
+  is on the phone the panel shows only the notices that touch a hike planned in the next
+  seven days, and an unplaced notice touches a hike when the club that posted it
+  maintains a trail the route uses (`client/src/lib/plannedNotices.ts` says how that is
+  read from stewards.json and the A.T.'s club sections). With no hike planned in the
+  window the panel says so and shows nothing — never every club. An agency's
+  notice shows only where it is placed on or near the route, or by its state for a
+  state-wide notice (`states`, above); an agency's unplaced notice is not shown, because an
+  agency is one provider and would otherwise reach every route on its land. `locality` is
+  still not read.

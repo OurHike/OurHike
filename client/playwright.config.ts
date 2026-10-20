@@ -89,10 +89,14 @@ const COMMAND = process.env.CI
  * Three things hold that down, and they are why this is a separate mode
  * rather than more tests in `e2e/`:
  *
- * 1. IT READS THE PINNED RELEASE, never `latest`. `lib/dataRelease.ts`'s
- *    DATA_RELEASE is a committed constant and a release folder is immutable
- *    once written, so the bytes under a run cannot change without a commit
- *    somebody reviewed. This is the whole of why the flakiness is bounded.
+ * 1. IT READS ONE NAMED RELEASE, never `latest`: the one UA's channels.json
+ *    names, which every first run takes, or `lib/dataRelease.ts`'s
+ *    DATA_RELEASE when no entry resolves (e2e/support/dataPreflight.ts works
+ *    out which, once). A release folder is immutable once written, so the
+ *    bytes under a run change only when UA's pointer moves - after a monthly
+ *    build that passed every check (build-reference.yml), or a person's
+ *    rollback - never in the middle of one. That is the whole of why the
+ *    flakiness is bounded.
  * 2. IT IS ITS OWN CI JOB. A bucket outage reds `flow-data` and leaves the
  *    hermetic tests in `flow` green, so the two failures never look alike.
  *    That half was 97 tests when this was written and is 155 across the two

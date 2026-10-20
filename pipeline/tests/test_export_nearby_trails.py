@@ -16,11 +16,13 @@ way. Several tests below exist only to pin that direction.
 """
 
 import json
+import math
 import re
 from pathlib import Path
 
 import pytest
 from pmtiles.reader import MmapSource, Reader
+from shapely import wkt as shapely_wkt
 from shapely.geometry import shape
 
 import export_nearby_trails as ex
@@ -191,9 +193,11 @@ def _run(tmp_path, monkeypatch, sources, features_by_key, mapping=None, centerli
 def test_publishes_the_six_properties_the_client_draws_from(tmp_path, monkeypatch):
     """`length_miles` is the sixth, added by #1516 so a phone can tell a whole
     trail from part of one. It is asserted separately from the exact-equality
-    check below because its value is EPSG:5070's rather than this writer's, and
-    pinning the literal would turn a test of what gets published into a test of
-    the projection."""
+    check below because its value is the WGS84 ellipsoid's rather than this
+    writer's, and pinning the literal would turn a test of what
+    gets published into a test of the geodesic.
+    test_length_miles_is_the_lines_wgs84_geodesic_not_its_epsg5070_length pins
+    the measure."""
     _, body = _run(
         tmp_path,
         monkeypatch,
@@ -1078,11 +1082,9 @@ def test_a_trail_that_only_touches_at_a_point_stays_open(tmp_path, monkeypatch):
     rather than against the boolean. A point is not a walkable section, so
     there is nothing to close.
 
-    NOT the same as a trail running ALONG the boundary, which shapely counts
-    as inside the polygon because a polygon contains its own edge - and which
-    this deliberately leaves closed. A trail coincident with the edge of a
-    closed area is on the line the steward drew, and erring open there would
-    be guessing in the direction that gets somebody hurt.
+    A trail running ALONG the boundary is the next test's case: shapely
+    counts it as inside, because a polygon contains its own edge, and the
+    rule "Only inside closes" (the maintainer, 2026-10-15) opens it.
     """
     touches_the_corner = [(-74.15, 41.15), (-74.10, 41.20)]
     manifest, body = _run(
@@ -1100,6 +1102,31 @@ def test_a_trail_that_only_touches_at_a_point_stays_open(tmp_path, monkeypatch):
     assert feature["properties"]["trail_status"] == "open"
     assert "closure_kind" not in feature["properties"]
     assert manifest["closures"]["closed"] == 0
+
+
+def test_a_trail_along_the_edge_of_a_closed_area_stays_open(tmp_path, monkeypatch):
+    """A trail lying within AREA_EDGE_M (2 m) of the closed area's outline
+    runs along its edge, not inside it, so it ships open, whole. 0.00001 degrees of longitude is 0.84 m at this
+    latitude; the trail beside it 0.0001 in (8.4 m) is inside, and closes."""
+    along_the_west_edge = [(-74.09999, 41.21), (-74.09999, 41.29)]
+    just_inside = [(-74.0999, 41.21), (-74.0999, 41.29)]
+    manifest, body = _run(
+        tmp_path,
+        monkeypatch,
+        [_oprhp_source(), _closure_source()],
+        {
+            "oprhp_trails": [
+                _feature(along_the_west_edge, _oprhp_properties(Name="Edge Trail")),
+                _feature(just_inside, _oprhp_properties(Name="Inner Trail")),
+            ],
+            "oprhp_trail_closures": [_area(CLOSED_SQUARE)],
+        },
+        mapping={"oprhp_trails": {"mapped": {"Red": "Red"}}},
+    )
+
+    status = {feature["properties"]["name"]: feature["properties"]["trail_status"] for feature in body["features"]}
+    assert status == {"Edge Trail": "open", "Inner Trail": "closed"}
+    assert manifest["closures"]["closed"] == 1
 
 
 def test_an_empty_closures_layer_is_a_good_week_not_a_failure(tmp_path, monkeypatch):
@@ -1802,8 +1829,8 @@ def test_every_feature_carries_its_own_length_so_a_phone_can_tell_partial_from_w
     from a steward's stated mileage, which is both why it is the right number
     for a coverage check - it describes the same clipped line the phone holds
     edges of - and why nothing may present it as the steward's claim."""
-    # A degenerate one-point line alongside a real one: `_miles` returns 0.0
-    # for it, and 0 is the value lineClimb treats as "nothing to compare
+    # A degenerate one-point line alongside a real one: it measures 0.0,
+    # and 0 is the value lineClimb treats as "nothing to compare
     # against" rather than as a zero-length trail.
     geojson = ex.records_to_geojson(
         [
@@ -1833,14 +1860,45 @@ def test_every_feature_carries_its_own_length_so_a_phone_can_tell_partial_from_w
     assert "length_miles" in degenerate
 
     # 0.1 degree of latitude is about 6.9 miles. Asserted as a range rather
-    # than a literal because the exact figure is EPSG:5070's, and pinning it
-    # would make this a test of the projection rather than of the writer.
+    # than a literal because the exact figure is the WGS84 geodesic's, which
+    # test_length_miles_is_the_lines_wgs84_geodesic_not_its_epsg5070_length
+    # pins, and pinning it here would make this a test of the measure rather
+    # than of the writer.
     assert 6.5 < real["length_miles"] < 7.5
     assert degenerate["length_miles"] == 0.0
 
     # Two decimals, matching what the client reads and never more precision
     # than the clipped geometry earns.
     assert real["length_miles"] == round(real["length_miles"], 2)
+
+
+# Five miles due north on the WGS84 ellipsoid, each end placed with pyproj's
+# Geod(ellps="WGS84").fwd at azimuth 0, which leaves the longitude unchanged.
+# EPSG:5070 reads the Anchorage line 4.44 miles and the Harriman one 5.04
+# (measured 2026-10-06 with pyproj). The two-part line is the Anchorage one in
+# two halves of 2.5 miles, the second moved a degree east: the jump between
+# the parts is no part of the trail.
+FIVE_MILES_NORTH = {
+    "at Anchorage, Alaska": ("LINESTRING (-149.9 61.2, -149.9 61.27221126419307)", 4.44),
+    "at Harriman, New York": ("LINESTRING (-74.1 41.25, -74.1 41.32245417114151)", 5.04),
+    "in two parts at Anchorage, Alaska": (
+        "MULTILINESTRING ((-149.9 61.2, -149.9 61.23610572896938), (-148.9 61.23610572896938, -148.9 61.27221126419307))",
+        4.44,
+    ),
+}
+
+
+@pytest.mark.parametrize(("wkt", "conus_albers_miles"), FIVE_MILES_NORTH.values(), ids=FIVE_MILES_NORTH.keys())
+def test_length_miles_is_the_lines_wgs84_geodesic_not_its_epsg5070_length(wkt, conus_albers_miles):
+    """The maintainer, 2026-10-06: `length_miles` is measured on the WGS84 ellipsoid, as the graph's edges are. EPSG:5070 is equal-area for the lower 48 only and its metre is not the ground's, so
+    `length_miles` read `conus_albers_miles` here before. The line sheet prints it, and lineClimb compares it with
+    the graph edges' geodesic metres to tell a whole trail from part of one."""
+    geojson = ex.records_to_geojson(
+        [{"id": "north", "source": "oprhp_trails", "name": "Five miles north", "blaze_color": "Red", "wkt": wkt}]
+    )
+
+    (feature,) = geojson["features"]
+    assert feature["properties"]["length_miles"] == 5.0, f"EPSG:5070 reads {conus_albers_miles}"
 
 
 # --- The boundary a reviewed list is about (#1533) -------------------------
@@ -2180,6 +2238,113 @@ def test_the_sketch_is_cut_for_its_own_top_zoom_and_not_the_ats(monkeypatch, tmp
     assert entry["min_feature_m"] == ex.OVERVIEW_MIN_FEATURE_M
 
 
+# --- what the three-decimal cut leaves behind -------------------------------------
+#
+# CDTC publishes the Continental Divide as eight lines, one a state, and five
+# of them are MultiLineStrings carrying closed rings a few metres round as
+# parts of their own (UA's release 2026-10-03-2, read back 2026-10-05: 27
+# rings 0.2 to 21.3 m long, of 3 to 6 vertices, in cdtc_centerline:2, 3, 5, 7
+# and 8). The fixture is that shape at one screen's size: a dense 5 km line,
+# 5 m between vertices with a 2 m wiggle, and a ring about 2 m across, every
+# vertex of the ring inside one 0.001-degree grid cell.
+
+
+def _dense_line_with_a_ring() -> dict:
+    dense = ", ".join(f"{-106.5004 + (i % 2) * 0.00002:.5f} {39.00005 + i * 0.000045:.6f}" for i in range(1000))
+    ring = "-106.4504 39.0204, -106.45038 39.0204, -106.45038 39.02042, -106.4504 39.02042, -106.4504 39.0204"
+    return {
+        "id": "cdt-shaped",
+        "source": "cdtc_centerline",
+        "name": None,
+        "blaze_color": "Unknown",
+        "trail_status": "open",
+        "wkt": f"MULTILINESTRING (({dense}), ({ring}))",
+    }
+
+
+def _sketch_lines(records: list[dict]) -> list[list[list[float]]]:
+    ex.write_overview(records)
+    body = json.loads((ex.OUT_DIR / ex.OVERVIEW_ARTIFACT_NAME).read_text())
+    return [line for feature in body["features"] for line in feature["geometry"]["coordinates"]]
+
+
+def test_no_sketch_line_repeats_the_vertex_before_it_once_cut_to_three_decimals(monkeypatch, tmp_path):
+    monkeypatch.setattr(ex, "OUT_DIR", tmp_path / "processed")
+
+    lines = _sketch_lines([_dense_line_with_a_ring()])
+
+    repeats = [(n, i) for n, line in enumerate(lines) for i in range(1, len(line)) if line[i] == line[i - 1]]
+    assert repeats == [], f"{len(repeats)} vertices repeat the one before them"
+
+
+def test_a_sketch_line_the_three_decimal_cut_leaves_as_one_point_is_not_written(monkeypatch, tmp_path):
+    monkeypatch.setattr(ex, "OUT_DIR", tmp_path / "processed")
+
+    lines = _sketch_lines([_dense_line_with_a_ring()])
+
+    assert all(len({tuple(vertex) for vertex in line}) >= 2 for line in lines)
+    # The dense line is still drawn, from one end to the other; the ring, at
+    # -106.450, is not.
+    (line,) = lines
+    assert (line[0], line[-1]) == ([-106.5, 39.0], [-106.5, 39.045])
+
+
+def test_a_sketch_group_whose_every_line_cuts_to_one_point_writes_no_feature(monkeypatch, tmp_path):
+    monkeypatch.setattr(ex, "OUT_DIR", tmp_path / "processed")
+    # A closed ring a few metres round on a through route, which the floor
+    # never drops, closed where the rest of the trail is open: its own group,
+    # and every vertex of it on the grid point (-74.000, 41.000).
+    run = _chained_run("nynjtc_long_path", "Long Path", -74.0, 41.0, int(ex.NAMED_TRAIL_THRESHOLD_MILES) + 1, "lp")
+    ring = {
+        **_one_named_row("closed-ring", "nynjtc_long_path", "Long Path", -74.0, 41.0, 0),
+        "trail_status": "closed",
+        "wkt": "LINESTRING (-74 41, -73.99998 41, -73.99998 41.00002, -74 41.00002, -74 41)",
+    }
+
+    ex.write_overview(run + [ring])
+
+    body = json.loads((ex.OUT_DIR / ex.OVERVIEW_ARTIFACT_NAME).read_text())
+    assert [f["properties"]["trail_status"] for f in body["features"]] == ["open"]
+    assert body["features"][0]["properties"]["name"] == "Long Path"
+
+
+def test_a_ring_too_small_to_simplify_leaves_the_rest_of_its_trail_simplified_in_the_sketch(monkeypatch, tmp_path):
+    # Douglas-Peucker hands a closed ring shorter than its tolerance back as
+    # its two equal endpoints, and simplify_records keeps the WHOLE line it
+    # was given when any part comes back like that. One ring per state was
+    # enough to ship 1,244,673 of the CDT's coordinates at their 1 m density.
+    # The 5 km dense line here is straight to within 2 m, so at the sketch's
+    # tolerance it is its two ends.
+    monkeypatch.setattr(ex, "OUT_DIR", tmp_path / "processed")
+
+    lines = _sketch_lines([_dense_line_with_a_ring()])
+
+    assert lines == [[[-106.5, 39.0], [-106.5, 39.045]]]
+
+
+def test_each_part_of_a_multilinestring_keeps_its_own_vertices_only_where_simplifying_would_collapse_it():
+    record = _dense_line_with_a_ring()
+    dense, ring = shapely_wkt.loads(record["wkt"]).geoms
+
+    (out,) = ex._simplified_part_by_part([record], ex.OVERVIEW_SEAM_TOLERANCE_M)
+
+    simplified_dense, kept_ring = shapely_wkt.loads(out["wkt"]).geoms
+    assert len(simplified_dense.coords) == 2 < len(dense.coords)
+    assert list(kept_ring.coords) == list(ring.coords)
+    assert {k: v for k, v in out.items() if k != "wkt"} == {k: v for k, v in record.items() if k != "wkt"}
+
+
+def test_a_multilinestring_with_no_collapsing_part_simplifies_exactly_as_simplify_records_does():
+    record = {
+        **_dense_line_with_a_ring(),
+        "wkt": "MULTILINESTRING ((-106.5 39, -106.50001 39.01, -106.5 39.045), (-106.4 39, -106.43 39.02, -106.4 39.045))",
+    }
+    line = {**record, "id": "line", "wkt": "LINESTRING (-106.3 39, -106.30001 39.01, -106.3 39.045)"}
+
+    for tolerance in (ex.OVERVIEW_SIMPLIFY_TOLERANCE_M, ex.OVERVIEW_SEAM_TOLERANCE_M):
+        assert ex._simplified_part_by_part([record, line], tolerance) == ex.simplify_records([record, line], tolerance)
+
+
 # --- a trail whose name is the layer (#1778) --------------------------------------
 #
 # Some stewards publish one trail as a layer with no name column: PCTA's
@@ -2321,3 +2486,422 @@ def test_every_alias_spelling_belongs_to_a_source_the_network_exports():
             assert spellings, f"{entry['trail']} lists {source} with no spelling"
             for spelling in spellings:
                 assert index[(source, spelling)] == entry["trail"]
+
+
+def _tile_input_rows(lines_sql, most):
+    import duckdb
+
+    con = duckdb.connect()
+    con.execute("LOAD spatial")
+    return con.sql(f"SELECT id, name, ST_AsText(geom) FROM ({ex.tile_input_sql(lines_sql, most)})").fetchall()
+
+
+def test_the_tiler_reads_a_long_line_as_runs_that_share_their_ends_and_nothing_else_changes():
+    """#1796: a line over TILES_CHUNK_VERTICES reaches GDAL as consecutive runs, never altered or reordered.
+
+    A 2,501-vertex line between two short ones, cut at 1,000: three runs whose
+    vertices, joined at their shared ends, are the line's own, each with the
+    line's properties; the short lines pass through as they were; and every
+    row keeps its place, so the draw order inside a tile does not move.
+    """
+    coords = [(i, i % 7) for i in range(2501)]
+    long_wkt = "LINESTRING (" + ", ".join(f"{x} {y}" for x, y in coords) + ")"
+    lines_sql = f"""SELECT * FROM (VALUES
+        (1, 'before', ST_GeomFromText('LINESTRING (0 0, 1 1)')),
+        (2, 'Continental Divide Trail', ST_GeomFromText('{long_wkt}')),
+        (3, 'after', ST_GeomFromText('LINESTRING (9 9, 8 8)'))
+    ) AS t(id, name, geom)"""
+
+    rows = _tile_input_rows(lines_sql, 1000)
+
+    assert [(row[0], row[1]) for row in rows] == [(1, "before"), *[(2, "Continental Divide Trail")] * 3, (3, "after")]
+    assert rows[0][2] == "LINESTRING (0 0, 1 1)" and rows[-1][2] == "LINESTRING (9 9, 8 8)"
+    runs = [[tuple(map(float, point.split())) for point in wkt[len("LINESTRING (") : -1].split(", ")] for _, _, wkt in rows[1:4]]
+    assert [len(run) for run in runs] == [1000, 1000, 503]
+    assert all(previous[-1] == following[0] for previous, following in zip(runs, runs[1:]))
+    joined = runs[0] + [point for run in runs[1:] for point in run[1:]]
+    assert joined == [(float(x), float(y)) for x, y in coords]
+
+
+def test_a_line_at_the_tile_cap_reaches_the_tiler_whole():
+    coords = ", ".join(f"{i} 0" for i in range(1000))
+    rows = _tile_input_rows(f"SELECT 1 AS id, 'x' AS name, ST_GeomFromText('LINESTRING ({coords})') AS geom", 1000)
+    assert len(rows) == 1 and rows[0][2].count(",") == 999
+
+
+def test_a_long_line_still_cuts_a_tile_archive_the_client_can_read(tmp_path, monkeypatch):
+    """The cut runs go through GDAL's PMTiles driver as the whole lines did: one layer, the client's zooms."""
+    monkeypatch.setattr(ex, "OUT_DIR", tmp_path)
+    monkeypatch.setattr(ex, "TILES_CHUNK_VERTICES", 100)
+    coordinates = [[-74.0 + i * 0.0005, 41.2 + (i % 5) * 0.0001] for i in range(2501)]
+    path = tmp_path / "lines.geojson"
+    path.write_text(
+        json.dumps(
+            {
+                "type": "FeatureCollection",
+                "features": [
+                    {
+                        "type": "Feature",
+                        "properties": {
+                            "id": "cdtc:1",
+                            "source": "cdtc_centerline",
+                            "name": "Continental Divide Trail",
+                            "blaze_color": "Unknown",
+                            "trail_status": "open",
+                        },
+                        "geometry": {"type": "LineString", "coordinates": coordinates},
+                    }
+                ],
+            }
+        )
+    )
+
+    tiles = ex.write_tiles(path)
+
+    assert tiles["tile_count"] > 0
+    with Path(tiles["path"]).open("rb") as f:
+        header = Reader(MmapSource(f)).header()
+    assert (header["min_zoom"], header["max_zoom"]) == (ex.TILES_MIN_ZOOM, ex.TILES_MAX_ZOOM)
+
+
+# --- The context zooms carry what the map reads there -------
+#
+# z5-z8 used to be cut with every line's every property, which filled a
+# dense tile past GDAL's MAX_SIZE and had GDAL redraw it on a coarser grid:
+# the staircases and boxes the maintainer saw over Washington. These hold
+# the fix's three promises - fewer properties at z5-z8 and every one of
+# them a line still draws with, every vertex where it was, everything from
+# z9 up byte for byte what the single cut wrote - and the check that fails
+# the cut if GDAL coarsens a tile anyway.
+
+# Two pieces of one trail meeting end to end, a closed trail with the closing
+# organization's words on it, and an unnamed line: all inside one z8 tile.
+_CONTEXT_LINES = [
+    (
+        {
+            "id": "oprhp_trails:1",
+            "source": "oprhp_trails",
+            "name": "Ramapo-Dunderberg Trail",
+            "blaze_color": "Red",
+            "length_miles": 0.6,
+            "trail_status": "open",
+        },
+        [[-74.10, 41.25], [-74.09, 41.255], [-74.08, 41.26]],
+    ),
+    (
+        {
+            "id": "oprhp_trails:2",
+            "source": "oprhp_trails",
+            "name": "Ramapo-Dunderberg Trail",
+            "blaze_color": "Red",
+            "length_miles": 0.7,
+            "trail_status": "open",
+        },
+        [[-74.08, 41.26], [-74.07, 41.262], [-74.06, 41.27]],
+    ),
+    (
+        {
+            "id": "oprhp_trails:3",
+            "source": "oprhp_trails",
+            "name": "Timp-Torne Trail",
+            "blaze_color": "Blue",
+            "length_miles": 0.4,
+            "trail_status": "closed",
+            "closure_kind": "temporary",
+            "closure_reason": "Bridge out at the brook",
+            "closure_source": "oprhp_trail_closures",
+        },
+        [[-74.05, 41.23], [-74.04, 41.24]],
+    ),
+    (
+        {
+            "id": "oprhp_trails:4",
+            "source": "oprhp_trails",
+            "name": None,
+            "blaze_color": "Unknown",
+            "length_miles": 0.3,
+            "trail_status": "open",
+        },
+        [[-74.12, 41.28], [-74.11, 41.285]],
+    ),
+]
+
+
+def _lines_file(directory, lines):
+    path = directory / "lines.geojson"
+    path.write_text(
+        json.dumps(
+            {
+                "type": "FeatureCollection",
+                "features": [
+                    {"type": "Feature", "properties": properties, "geometry": {"type": "LineString", "coordinates": coordinates}}
+                    for properties, coordinates in lines
+                ],
+            }
+        )
+    )
+    return path
+
+
+def _mvt_value(message):
+    # The MVT Value message: one of string, float, double, int, uint, sint, bool.
+    import struct
+
+    for field, value in ex._protobuf_fields(message):
+        if field == 1:
+            return value.decode()
+        if field in (4, 5):
+            return value
+        if field == 6:
+            return (value >> 1) ^ -(value & 1)
+        if field == 7:
+            return bool(value)
+    # Floats and doubles are fixed-width and _protobuf_fields skips their bytes.
+    return struct.unpack("<d", message[-8:])[0] if message and message[0] == 0x19 else None
+
+
+def _features_by_tile(archive):
+    """{(z, x, y): [(properties, [[(tile x, tile y), ...], ...])]} - every line of the archive, decoded."""
+    import gzip
+
+    from pmtiles.reader import all_tiles
+
+    tiles = {}
+    with Path(archive).open("rb") as f:
+        for zxy, data in all_tiles(MmapSource(f)):
+            raw = gzip.decompress(data) if data[:2] == b"\x1f\x8b" else data
+            features = []
+            for field, layer in ex._protobuf_fields(raw):
+                if field != 3:
+                    continue
+                keys, values, encoded = [], [], []
+                for layer_field, value in ex._protobuf_fields(layer):
+                    if layer_field == 3:
+                        keys.append(value.decode())
+                    elif layer_field == 4:
+                        values.append(_mvt_value(value))
+                    elif layer_field == 2:
+                        encoded.append(value)
+                for feature in encoded:
+                    tags, commands = [], []
+                    for feature_field, value in ex._protobuf_fields(feature):
+                        if feature_field in (2, 4):
+                            packed, i = [], 0
+                            while i < len(value):
+                                number = shift = 0
+                                while True:
+                                    byte = value[i]
+                                    i += 1
+                                    number |= (byte & 0x7F) << shift
+                                    shift += 7
+                                    if byte < 0x80:
+                                        break
+                                packed.append(number)
+                            if feature_field == 2:
+                                tags = packed
+                            else:
+                                commands = packed
+                    parts, x, y, i = [], 0, 0, 0
+                    while i < len(commands):
+                        command, count = commands[i] & 7, commands[i] >> 3
+                        i += 1
+                        for _ in range(count if command in (1, 2) else 0):
+                            x += (commands[i] >> 1) ^ -(commands[i] & 1)
+                            y += (commands[i + 1] >> 1) ^ -(commands[i + 1] & 1)
+                            i += 2
+                            if command == 1:
+                                parts.append([(x, y)])
+                            else:
+                                parts[-1].append((x, y))
+                    properties = {keys[tags[j]]: values[tags[j + 1]] for j in range(0, len(tags), 2)}
+                    features.append((properties, parts))
+            tiles[zxy] = features
+    return tiles
+
+
+def _lon_lat(z, x, y, unit_x, unit_y):
+    """A tile unit back to longitude and latitude, on GDAL's 4096-unit grid."""
+    n = 2**z
+    lon = (x + unit_x / ex.TILES_EXTENT) / n * 360 - 180
+    lat = math.degrees(math.atan(math.sinh(math.pi * (1 - 2 * (y + unit_y / ex.TILES_EXTENT) / n))))
+    return lon, lat
+
+
+def test_the_context_zooms_carry_only_what_the_map_reads_there_and_z9_up_carries_everything(tmp_path, monkeypatch):
+    monkeypatch.setattr(ex, "OUT_DIR", tmp_path)
+
+    tiles = _features_by_tile(ex.write_tiles(_lines_file(tmp_path, _CONTEXT_LINES))["path"])
+
+    for z in range(ex.TILES_MIN_ZOOM, ex.TILES_MAX_ZOOM + 1):
+        keys = {key for (zoom, _, _), features in tiles.items() if zoom == z for properties, _ in features for key in properties}
+        if z <= ex.TILES_CONTEXT_MAX_ZOOM:
+            # What the band's paint, filter, legend and badges read - nothing a
+            # tap's sheet alone wants. An unnamed line simply has no `name`.
+            assert keys == set(ex.TILES_CONTEXT_PROPERTIES), z
+        else:
+            # The sheet's own zooms: every property the lines file has.
+            assert {"id", "length_miles", "closure_kind", "closure_reason", "closure_source"} | set(
+                ex.TILES_CONTEXT_PROPERTIES
+            ) == keys, z
+
+
+def test_lines_that_differ_in_nothing_kept_merge_into_one_and_keep_every_vertex(tmp_path, monkeypatch):
+    monkeypatch.setattr(ex, "OUT_DIR", tmp_path)
+
+    tiles = _features_by_tile(ex.write_tiles(_lines_file(tmp_path, _CONTEXT_LINES))["path"])
+
+    # Above the context zooms the pieces stay apart; the byte-for-byte test
+    # below holds that.
+    for (z, x, y), features in tiles.items():
+        names = sorted(str(properties.get("name")) for properties, _ in features)
+        if z <= ex.TILES_CONTEXT_MAX_ZOOM:
+            # The two pieces of the Ramapo-Dunderberg are one line at the
+            # context zooms - joined end to end, not drawn as two.
+            assert names == ["None", "Ramapo-Dunderberg Trail", "Timp-Torne Trail"], (z, x, y)
+            ((_, parts),) = [f for f in features if f[0].get("name") == "Ramapo-Dunderberg Trail"]
+            assert len(parts) == 1 and len(parts[0]) == 5
+            # Every vertex of both pieces is on it, to within GDAL's own grid
+            # (a 4096th of the tile), in the order the trail runs.
+            drawn = [_lon_lat(z, x, y, ux, uy) for ux, uy in parts[0]]
+            given = _CONTEXT_LINES[0][1] + _CONTEXT_LINES[1][1][1:]
+            if drawn[0][0] > drawn[-1][0]:
+                drawn.reverse()
+            unit = 360 / 2**z / ex.TILES_EXTENT
+            assert all(abs(a - c) <= unit and abs(b - d) <= unit for (a, b), (c, d) in zip(drawn, given)), (z, drawn)
+
+
+def test_the_zooms_above_the_context_are_the_bytes_the_single_cut_wrote(tmp_path, monkeypatch):
+    """z9-z14 are cut by the statement write_tiles ran before it split the zooms,
+    with GDAL's own defaults spelled out and the tile budget raised from
+    500,000 to TILES_MAX_BYTES. Every tile that fit the old budget - every
+    tile these lines make - must be identical, byte for byte, to that cut's."""
+    import duckdb
+    from pmtiles.reader import all_tiles
+
+    monkeypatch.setattr(ex, "OUT_DIR", tmp_path)
+    lines = _lines_file(tmp_path, _CONTEXT_LINES)
+    new = ex.write_tiles(lines)["path"]
+    old = tmp_path / "single_cut.pmtiles"
+    con = duckdb.connect()
+    con.execute("LOAD spatial")
+    con.execute(
+        f"""
+        COPY ({ex.tile_input_sql(f"SELECT * FROM ST_Read('{lines.as_posix()}')")})
+        TO '{old.as_posix()}'
+        WITH (
+            FORMAT GDAL, DRIVER 'PMTiles', LAYER_NAME '{ex.TILES_LAYER}',
+            DATASET_CREATION_OPTIONS (
+                'MINZOOM={ex.TILES_MIN_ZOOM}', 'MAXZOOM={ex.TILES_MAX_ZOOM}',
+                'NAME={ex.TILES_ARTIFACT_NAME.removesuffix(".pmtiles")}',
+                'DESCRIPTION=Trail lines other organizations maintain, as vector tiles'
+            )
+        )
+        """
+    )
+
+    def above_context(path):
+        with Path(path).open("rb") as f:
+            return {zxy: data for zxy, data in all_tiles(MmapSource(f)) if zxy[0] > ex.TILES_CONTEXT_MAX_ZOOM}
+
+    before = above_context(old)
+    assert before and above_context(new) == before
+
+
+def test_the_same_lines_cut_the_same_archive(tmp_path, monkeypatch):
+    """A merge whose order followed the scheduler would hand publish.py a new
+    hash every run for the same lines."""
+    import time
+
+    monkeypatch.setattr(ex, "OUT_DIR", tmp_path)
+    lines = _lines_file(tmp_path, _CONTEXT_LINES)
+    # Two different seconds on the clock, so a timestamp written anywhere into
+    # the archive (pmtiles' writer gzips with the time in each header) shows.
+    monkeypatch.setattr(time, "time", lambda: 1_700_000_000.0)
+    first = ex.write_tiles(lines)["sha256"]
+    monkeypatch.setattr(time, "time", lambda: 1_800_000_000.0)
+    assert ex.write_tiles(lines)["sha256"] == first
+
+
+def test_a_tile_gdal_would_redraw_on_a_coarser_grid_fails_the_cut(tmp_path, monkeypatch):
+    # 100 bytes is the smallest MAX_SIZE GDAL accepts, and less than any of
+    # these tiles: GDAL halves the grid until one fits, which is the defect.
+    monkeypatch.setattr(ex, "OUT_DIR", tmp_path)
+    monkeypatch.setattr(ex, "TILES_MAX_BYTES", 100)
+
+    with pytest.raises(SystemExit, match=r"did not write \d+ tile\(s\) whole - z5/\d+/\d+ \(a \d+-unit grid, not 4096\)"):
+        ex.write_tiles(_lines_file(tmp_path, _CONTEXT_LINES))
+
+
+def test_a_tile_at_gdals_line_cap_fails_the_cut(tmp_path, monkeypatch):
+    # At the cap GDAL keeps the grid and drops the shortest lines instead -
+    # a hole with no coarse grid to give it away, so it is counted.
+    monkeypatch.setattr(ex, "OUT_DIR", tmp_path)
+    monkeypatch.setattr(ex, "TILES_MAX_FEATURES", 2)
+
+    with pytest.raises(SystemExit, match=r"\(\d+ lines, GDAL's cap\)"):
+        ex.write_tiles(_lines_file(tmp_path, _CONTEXT_LINES))
+
+
+def test_a_whole_archive_reads_back_as_written_whole(tmp_path, monkeypatch):
+    monkeypatch.setattr(ex, "OUT_DIR", tmp_path)
+    tiles = ex.write_tiles(_lines_file(tmp_path, _CONTEXT_LINES))
+    assert ex.degraded_tiles(Path(tiles["path"])) == []
+
+
+def test_a_network_too_small_for_the_context_zooms_still_declares_every_zoom(tmp_path, monkeypatch):
+    # Ten metres of trail is under one unit of GDAL's grid at z5-z9, so those
+    # zooms hold no tile - and the archive must still say it covers z5-z14,
+    # as the single cut's did, or the map is told the wrong zooms to ask for.
+    from pmtiles.reader import all_tiles
+
+    monkeypatch.setattr(ex, "OUT_DIR", tmp_path)
+    ten_metres = [({**_CONTEXT_LINES[0][0]}, [[-74.10, 41.25], [-74.10012, 41.25]])]
+
+    tiles = ex.write_tiles(_lines_file(tmp_path, ten_metres))
+
+    with Path(tiles["path"]).open("rb") as f:
+        header = Reader(MmapSource(f)).header()
+        zooms_with_tiles = {z for (z, _, _), _ in all_tiles(MmapSource(f))}
+    assert (header["min_zoom"], header["max_zoom"]) == (ex.TILES_MIN_ZOOM, ex.TILES_MAX_ZOOM)
+    assert zooms_with_tiles and min(zooms_with_tiles) > ex.TILES_CONTEXT_MAX_ZOOM
+
+
+def test_the_shared_ground_halves_change_nothing_at_the_context_zooms(tmp_path, monkeypatch):
+    """Nothing draws a shared-ground half below z9: map/style.ts builds those
+    layers from CORRIDOR_MAX_ZOOM, and both of the band's filters refuse a
+    feature carrying `concurrent_with` (map/nearbyTrails.ts's
+    SHARED_GROUND_EXCLUDED). z5-z8 carry no `concurrent_with`, so a half cut
+    into them would pass those filters and draw as a second plain line over
+    its own trail. The pairs file must leave every tile there byte for byte
+    what the lines alone make - and still reach z9 and up, pair fields and all."""
+    from pmtiles.reader import all_tiles
+
+    manifest, _ = _run(
+        tmp_path,
+        monkeypatch,
+        [_oprhp_source()],
+        _two_trails_sharing_ground(),
+        mapping={"oprhp_trails": {"mapped": {"Red": "Red", "Yellow": "Yellow"}}},
+    )
+    lines, pairs = Path(manifest["path"]), Path(manifest["concurrent"]["path"])
+    assert manifest["concurrent"]["feature_count"] == 2
+
+    def cut(*paths):
+        with Path(ex.write_tiles(*paths)["path"]).open("rb") as f:
+            return dict(all_tiles(MmapSource(f)))
+
+    def context(tiles):
+        return {zxy: data for zxy, data in tiles.items() if zxy[0] <= ex.TILES_CONTEXT_MAX_ZOOM}
+
+    alone = cut(lines)
+    with_pairs = cut(lines, pairs)
+
+    assert context(alone) and context(with_pairs) == context(alone)
+    halves = [
+        properties["concurrent_with"]
+        for (z, _, _), features in _features_by_tile(ex.OUT_DIR / ex.TILES_ARTIFACT_NAME).items()
+        if z > ex.TILES_CONTEXT_MAX_ZOOM
+        for properties, _ in features
+        if "concurrent_with" in properties
+    ]
+    assert set(halves) == {"Ramapo-Dunderberg Trail", "Suffern-Bear Mountain Trail"}

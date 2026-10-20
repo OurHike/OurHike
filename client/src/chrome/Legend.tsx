@@ -419,6 +419,13 @@ export interface LegendProps {
   /** Opens the full list (chrome/NoticeList.tsx), rendered by the shell
    *  the same way `onOpenDownloads` is. */
   onOpenNotices?: () => void
+  /** The row's words when the list is the planned-hike panel (#1805), which
+   *  shows the row whatever `noticeCount` is - see MapScreen's own prop. */
+  noticeRowLabel?: string
+  /** The "Read all" door beside that row - see
+   *  MapScreen's own prop. Both set, the row is drawn. */
+  readAllNoticesLabel?: string
+  onReadAllNotices?: () => void
 }
 
 /**
@@ -478,6 +485,9 @@ export function Legend({
   noticeCount = 0,
   newNoticeCount = 0,
   onOpenNotices,
+  noticeRowLabel,
+  readAllNoticesLabel,
+  onReadAllNotices,
 }: LegendProps) {
   // Red light draws every line one red-amber before the blaze switch is
   // consulted (map/style.ts's blazeLineColor), so the Blaze colors switch
@@ -914,12 +924,24 @@ export function Legend({
           and above the downloaded-map block, which answers a different
           question (#687 is explicit that conflating the two is what this
           replaced). */}
-      {noticeCount > 0 && onOpenNotices !== undefined && (
-        <button type="button" className="legend__atc-link" onClick={onOpenNotices}>
-          {noticeCount === 1
-            ? 'Read the 1 trail notice'
-            : `Read all ${noticeCount} trail notices`}
-          {newNoticeCount > 0 && ` · ${newNoticeCount} new`}
+      {(noticeCount > 0 || noticeRowLabel !== undefined) &&
+        onOpenNotices !== undefined && (
+          <button type="button" className="legend__atc-link" onClick={onOpenNotices}>
+            {noticeRowLabel ??
+              (noticeCount === 1
+                ? 'Read the 1 trail notice'
+                : `Read all ${noticeCount} trail notices`)}
+            {newNoticeCount > 0 && ` · ${newNoticeCount} new`}
+          </button>
+        )}
+      {/* BESIDE IT, THE DOOR TO EVERY CLUB'S NOTICES NO MAP DRAWS (the
+          maintainer's poll of 2026-10-15, "Keep a 'Read all' door (Recommended)"):
+          the planned-hike row above shows only what touches a hike planned
+          in the next 7 days, and with none planned a hiker had no screen
+          listing them at all. The old row's own words and class. */}
+      {readAllNoticesLabel !== undefined && onReadAllNotices !== undefined && (
+        <button type="button" className="legend__atc-link" onClick={onReadAllNotices}>
+          {readAllNoticesLabel}
         </button>
       )}
 

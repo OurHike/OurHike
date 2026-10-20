@@ -1,0 +1,892 @@
+"""extract/_notices.py's FeedNotices and PageNotice, and the WordpressPosts options the notices inventory needs.
+
+Every server here is requests_mock under conftest.py's socket guard, and every
+feed, page and post is invented in the shape the inventory read (2026-10-03):
+RSS 2.0 as WordPress, BLM's Drupal and Weebly serve it, Atom as Joomla serves
+it, WordPress's REST page, a PDF. The cases are the ones the notice rules name: a
+304 to a trusted validator is FRESH and never reaches dlt; an unchanged
+upstream is left out of the run with its rows standing (the dlt skill's
+hazard rule 2); an empty feed proves its own zero; a walled page is UNKNOWN
+and its last row stands, never zero; a page with no date lands none; and no
+prose and no person lands from either reader.
+"""
+
+from __future__ import annotations
+
+import json
+
+import duckdb
+import pytest
+
+from extract import _kinds, _notices
+from extract._contract import all_resources, discover
+from extract._kinds import WordpressPosts, feed_notices, page_notice, wordpress_posts
+from extract._notices import (
+    DATE,
+    FEED_COLUMNS,
+    PAGE_COLUMNS,
+    WINDOW,
+    NoticeUnreadable,
+    PdfFacts,
+    page_stated_date,
+    polite,
+)
+from extract._run import make_pipeline, run_pipeline
+from extract._warehouse import load_warehouse
+from lib.freshness_state import Freshness
+from lib.user_agent import USER_AGENT
+
+FEED_URL = "https://club.example.org/category/trail-alerts/feed/"
+BLM_FEED_URL = "https://agency.example.gov/press-release/state/rss"
+ATOM_URL = "https://trail.example.org/index.php/section-updates?format=feed&type=atom"
+PAGE_URL = "https://club.example.org/trail-conditions/"
+WP_PAGE_URL = "https://foothillstrail.org/trail-conditions/"
+PDF_URL = "https://club.example.org/wp-content/uploads/hiker-alert.pdf"
+WP = "https://club.example.org/wp-json/wp/v2"
+
+
+@pytest.fixture(autouse=True)
+def quiet_gates_and_answers(monkeypatch):
+    """No real waiting, and no answer or host gate left over from another test (both live for the process)."""
+    paused: list[float] = []
+    monkeypatch.setattr(_notices, "_pause", paused.append)
+    _notices._ANSWERS.clear()
+    _notices._GATES.clear()
+    yield paused
+    _notices._ANSWERS.clear()
+    _notices._GATES.clear()
+
+
+@pytest.fixture
+def registry(tmp_path, monkeypatch):
+    path = tmp_path / "sources.json"
+    path.write_text(
+        json.dumps(
+            {
+                "sources": [
+                    {"key": "club_alerts_feed", "url": FEED_URL, "kind": "published_notices"},
+                    {"key": "agency_press", "url": BLM_FEED_URL, "kind": "published_notices"},
+                    {"key": "section_updates", "url": ATOM_URL, "kind": "published_notices"},
+                    {"key": "club_conditions", "url": PAGE_URL, "kind": "published_notices", "title": "Trail Conditions"},
+                    {"key": "wpstaq_conditions", "url": WP_PAGE_URL, "kind": "published_notices"},
+                    {"key": "wpstaq_query", "url": WP_PAGE_URL + "?tab=2", "kind": "published_notices"},
+                    {"key": "wpstaq_category", "url": "https://foothillstrail.org/category/alerts/", "kind": "published_notices"},
+                    {"key": "hiker_alert_pdf", "url": PDF_URL, "kind": "published_notices", "title": "Hiker Alert: logging"},
+                    {"key": "club_closures", "url": "https://club.example.org/category/closures/", "kind": "published_notices"},
+                    {"key": "club_alert_type", "url": "https://club.example.org/plan/alerts/", "kind": "published_notices"},
+                ]
+            }
+        )
+    )
+    monkeypatch.setattr(_kinds, "REGISTRY_PATH", path)
+    _kinds._registry.cache_clear()
+    yield path
+    _kinds._registry.cache_clear()
+
+
+@pytest.fixture
+def store(tmp_path):
+    return {"url": (tmp_path / "raw-store").as_uri(), "dir": str(tmp_path / "pipelines")}
+
+
+def leg(store, *resources):
+    """A notices leg, where every club's feed, page and WordPress notices run."""
+    return run_pipeline("notices_ua", store["url"], resources=list(resources), pipelines_dir=store["dir"])
+
+
+def landed(store, table: str) -> list[dict]:
+    with duckdb.connect() as con:
+        load_warehouse(con, make_pipeline("notices_ua", store["url"], store["dir"]))
+        cursor = con.execute(f'select * from raw."{table}"')
+        names = [column[0] for column in cursor.description]
+        return [dict(zip(names, row, strict=True)) for row in cursor.fetchall()]
+
+
+def rss(*items: str) -> bytes:
+    return (
+        '<?xml version="1.0" encoding="UTF-8"?><rss version="2.0" xmlns:dc="http://purl.org/dc/elements/1.1/" '
+        'xmlns:content="http://purl.org/rss/1.0/modules/content/"><channel><title>Alerts - A Trail Club</title>'
+        "<link>https://club.example.org</link><lastBuildDate>Fri, 06 Mar 2026 14:01:24 +0000</lastBuildDate>"
+        "<generator>https://wordpress.org/?v=7.1.2</generator>" + "".join(items) + "</channel></rss>"
+    ).encode()
+
+
+def rss_item(post: int, title: str = "Bridge out at Mile 12", when: str = "Sun, 01 Mar 2026 13:52:08 +0000") -> str:
+    return (
+        f"<item><title>  {title}  </title><link>https://club.example.org/alerts/post-{post}/</link>"
+        f"<dc:creator><![CDATA[A. Volunteer]]></dc:creator><pubDate>{when}</pubDate>"
+        f"<category>Trail Alerts</category><category>Section 4</category>"
+        f'<guid isPermaLink="false">https://club.example.org/?post_type=alerts&amp;p={post}</guid>'
+        "<description><![CDATA[<p>The footbridge washed out; ford with care.</p>]]></description>"
+        "<content:encoded><![CDATA[<p>The footbridge washed out; ford with care.</p>]]></content:encoded></item>"
+    )
+
+
+def closures_feed(**options):
+    return feed_notices("club_alerts_feed", club="testclub", type="closures", **options)
+
+
+# --- FeedNotices -------------------------------------------------------------
+
+
+def test_an_rss_item_lands_its_id_title_link_date_and_categories_and_no_prose_or_person(registry, requests_mock):
+    requests_mock.get(FEED_URL, content=rss(rss_item(1122), rss_item(8019, "Reroute at the gap")))
+    proofs: dict[str, int] = {}
+
+    rows = list(closures_feed().rows(proofs))
+
+    assert proofs == {"raw_testclub__club_alerts_feed": 2}, "the item count in the same response is the proof"
+    assert set(rows[0]) == set(FEED_COLUMNS)
+    assert rows[0]["item_id"] == "https://club.example.org/?post_type=alerts&p=1122"
+    assert rows[0]["item_id_from"] == "guid"
+    assert rows[0]["title"] == "Bridge out at Mile 12", "whitespace around a title is folded, as BLM's carry it"
+    assert rows[0]["published"] == "Sun, 01 Mar 2026 13:52:08 +0000", "the date as the feed states it"
+    assert rows[0]["updated"] is None, "RSS 2.0 states no updated date, and none is made up"
+    assert rows[0]["categories"] == ["Trail Alerts", "Section 4"]
+    assert rows[0]["listing"] == WINDOW
+    assert [row["_row"] for row in rows] == [0, 1]
+    landed_text = json.dumps(rows)
+    assert "A. Volunteer" not in landed_text, "dc:creator names a person and never lands"
+    assert "footbridge" not in landed_text, "description and content:encoded are prose and never land"
+    assert rows[0]["item_sha256"] != rows[1]["item_sha256"]
+    assert all(r.headers["User-Agent"] == USER_AGENT for r in requests_mock.request_history)
+
+
+def test_an_atom_entry_lands_its_published_and_updated_dates_and_never_its_author(registry, requests_mock):
+    atom = b"""<?xml version="1.0" encoding="utf-8"?>
+    <feed xmlns="http://www.w3.org/2005/Atom"><title type="text">Section Updates</title>
+    <updated>2026-10-03T14:37:50Z</updated>
+    <entry><title>Section 1 - Gap to Ridge</title>
+      <link rel="alternate" type="text/html" href="https://trail.example.org/section-updates/1-section-1"/>
+      <published>2012-05-02T22:12:54Z</published><updated>2026-07-01T09:00:00Z</updated>
+      <id>https://trail.example.org/section-updates/1-section-1</id>
+      <author><name>Webmaster</name><email>webmaster@trail.example.org</email></author>
+      <category term="Section Updates"/>
+      <summary type="html">Blazes obscured near the old route.</summary></entry>
+    </feed>"""
+    requests_mock.get(ATOM_URL, content=atom)
+
+    proofs: dict[str, int] = {}
+    (row,) = list(feed_notices("section_updates", club="testclub", type="warnings").rows(proofs))
+
+    assert proofs == {"raw_testclub__section_updates": 1}
+    assert row["feed_format"] == "atom" and row["item_id_from"] == "id"
+    assert row["link"] == "https://trail.example.org/section-updates/1-section-1"
+    assert (row["published"], row["updated"]) == ("2012-05-02T22:12:54Z", "2026-07-01T09:00:00Z")
+    assert row["categories"] == ["Section Updates"]
+    assert "webmaster@" not in json.dumps(row) and "Blazes" not in json.dumps(row)
+
+
+def test_an_empty_feed_proves_its_own_zero_and_a_closures_leg_loads_it(registry, store, requests_mock):
+    requests_mock.get(FEED_URL, content=rss())
+
+    report = leg(store, closures_feed())
+
+    assert report.outcome == "loaded" and not report.isolated
+    assert report.proofs == {"raw_testclub__club_alerts_feed": 0}
+    assert landed(store, "raw_testclub__club_alerts_feed") == []
+
+
+def test_a_page_answered_where_a_feed_was_is_never_read_as_an_empty_feed(registry, requests_mock):
+    requests_mock.get(FEED_URL, text="<!DOCTYPE html><html><body>Page not found</body></html>")
+
+    with pytest.raises(Exception, match="mismatched tag|not RSS 2.0 or Atom|not well-formed"):
+        list(closures_feed().rows({}))
+    assert closures_feed().change_check(None) == (Freshness.UNKNOWN, None)
+
+
+def test_an_item_with_no_guid_id_or_link_cannot_be_keyed_and_refuses_the_read(registry, requests_mock):
+    requests_mock.get(FEED_URL, content=rss("<item><title>Untitled notice</title></item>"))
+
+    with pytest.raises(ValueError, match="no guid, id or link"):
+        list(closures_feed().rows({}))
+
+
+def test_a_304_to_a_trusted_feeds_own_etag_is_fresh_never_reaches_dlt_and_keeps_its_rows(registry, store, requests_mock):
+    def answer(request, context):
+        if request.headers.get("If-None-Match") == '"1790988271"':
+            context.status_code = 304
+            return b""
+        context.headers["ETag"] = '"1790988271"'
+        context.headers["Last-Modified"] = "Sat, 03 Oct 2026 00:44:31 GMT"
+        return rss(rss_item(418421, "Area closed for construction"))
+
+    requests_mock.get(BLM_FEED_URL, content=answer)
+    resource = feed_notices("agency_press", trust_validators=True, club="testclub", type="closures")
+    first = leg(store, resource)
+    before = landed(store, "raw_testclub__agency_press")
+    requests_mock.reset_mock()
+
+    second = leg(store, resource)
+
+    assert first.verdicts["raw_testclub__agency_press"] == "stale"
+    assert second.verdicts["raw_testclub__agency_press"] == "fresh"
+    assert second.load_id is None, "a FRESH resource is left out of the run, so nothing was extracted or loaded"
+    (asked,) = requests_mock.request_history
+    assert asked.headers["If-None-Match"] == '"1790988271"', "one conditional request, and the 304 answered it"
+    assert landed(store, "raw_testclub__agency_press") == before, "the rows and their load id stand"
+
+
+def test_an_untrusted_feed_sends_no_condition_and_is_fresh_only_while_its_items_hash_the_same(registry, requests_mock):
+    """WordPress's feed validators are site-wide (GATC, CFPA, inventory 2026-10-03), so they are never sent or kept."""
+    feed = {"body": rss(rss_item(1), rss_item(2))}
+    requests_mock.get(FEED_URL, content=lambda request, context: feed["body"], headers={"ETag": 'W/"site-wide"'})
+
+    verdict, marker = closures_feed().change_check(None)
+    assert verdict is Freshness.STALE and marker["rows"] == "2" and "etag" not in marker
+    assert closures_feed().change_check(marker) == (Freshness.FRESH, marker)
+    feed["body"] = rss(rss_item(1), rss_item(2, "Bridge out at Mile 12, now reopened"))
+    assert closures_feed().change_check(marker)[0] is Freshness.STALE, "an edited title moves the marker"
+    feed["body"] = rss(rss_item(1))
+    assert closures_feed().change_check(marker)[0] is Freshness.STALE, "an item gone from the window moves it too"
+    assert not any("If-None-Match" in r.headers for r in requests_mock.request_history)
+
+
+def test_the_check_and_the_read_of_one_run_ask_the_feed_once(registry, requests_mock):
+    requests_mock.get(FEED_URL, content=rss(rss_item(1)))
+    resource = closures_feed()
+
+    verdict, _ = resource.change_check(None)
+    rows = list(resource.rows({}))
+
+    assert verdict is Freshness.STALE and len(rows) == 1
+    assert requests_mock.call_count == 1
+
+
+def test_a_walled_feed_is_unknown_its_read_asks_no_second_time_and_its_last_rows_stand(registry, store, requests_mock):
+    requests_mock.get(FEED_URL, content=rss(rss_item(1)))
+    leg(store, closures_feed())
+    requests_mock.get(FEED_URL, status_code=403, text="Your access to this page has been blocked.")
+    requests_mock.reset_mock()
+
+    report = leg(store, closures_feed())
+
+    assert report.verdicts["raw_testclub__club_alerts_feed"] == "unknown"
+    assert "HTTP 403" in report.isolated["raw_testclub__club_alerts_feed"]
+    assert requests_mock.call_count == 1, "the read raised what the check met, without asking the host again"
+    assert [row["item_id"] for row in landed(store, "raw_testclub__club_alerts_feed")] == [
+        "https://club.example.org/?post_type=alerts&p=1"
+    ], "never zero: the last committed rows stand"
+
+
+# --- PageNotice --------------------------------------------------------------
+
+PAGE = """<!DOCTYPE html><html><head><meta charset="utf-8"><title>Trail Conditions - A Trail Club</title>
+<script type="application/ld+json">{"@graph": [{"@type": "WebSite", "dateModified": "2020-01-01T00:00:00Z"},
+{"@type": "WebPage", "dateModified": "2026-08-17T21:09:14+00:00"}]}</script>
+<script>var nonce = "%(nonce)s";</script></head>
+<body class="render-%(nonce)s"><nav>Home | About | Donate</nav>
+<main><h1>Current Trail Conditions</h1><p><strong>Last Updated: %(stated)s</strong></p>
+<p>%(notice)s</p><h2>Segment A</h2><p>Last Updated: 6/24/26</p></main>
+<footer>This page last updated: 2026-09-30 05:44:51</footer></body></html>"""
+
+
+def page(stated="August 27, 2026", notice="The ridge trail is closed for a reroute.", nonce="a1") -> str:
+    return PAGE % {"stated": stated, "notice": notice, "nonce": nonce}
+
+
+def conditions(**options):
+    return page_notice("club_conditions", club="testclub", type="closures", **options)
+
+
+def test_a_page_is_one_notice_with_its_title_its_own_stated_date_and_a_hash_never_its_text(registry, requests_mock):
+    requests_mock.get(PAGE_URL, text=page(), headers={"Content-Type": "text/html; charset=UTF-8"})
+    proofs: dict[str, int] = {}
+
+    (row,) = list(conditions().rows(proofs))
+
+    assert proofs == {"raw_testclub__club_conditions": 1}
+    assert set(row) == set(PAGE_COLUMNS)
+    assert row["url"] == PAGE_URL and row["title"] == "Current Trail Conditions", "the region's <h1>, not <title>"
+    assert (row["date"], row["date_text"], row["date_source"]) == ("2026-08-27", "August 27, 2026", "page_text")
+    assert row["region"] == "main" and row["format"] == "html"
+    assert "ridge trail" not in json.dumps(row), "the page's wording never lands"
+    assert row["region_chars"] > 0 and len(row["region_sha256"]) == 64
+
+
+# PATC's Tuscarora page as read live 2026-10-15, its paragraph cut to the sentences the rule reads.
+DOLL_RIDGE = (
+    "The Tuscarora Trail section just west of Massanutten Mountain is closed due to loss of landowner permission. "
+    "&nbsp;Please respect the landowner's decision. &nbsp;This is the Doll Ridge section from Three Top Mountain to "
+    "Riverview Drive. &nbsp;To detour this section, please follow the following directions."
+)
+
+
+def test_a_page_stating_a_section_closed_lands_that_sentence_verbatim_as_its_title_and_nothing_more(registry, requests_mock):
+    """The maintainer's "Land the closing sentence" (2026-10-15): the sentence whole, the page's naming sentence after it, the
+    sentence between marked as left out, and no other word of the page."""
+    requests_mock.get(PAGE_URL, text=page(notice=DOLL_RIDGE))
+
+    (row,) = list(conditions().rows({}))
+
+    assert row["title"] == (
+        "The Tuscarora Trail section just west of Massanutten Mountain is closed due to loss of landowner permission."
+        " … This is the Doll Ridge section from Three Top Mountain to Riverview Drive."
+    )
+    assert "respect" not in json.dumps(row) and "detour" not in json.dumps(row)
+    assert set(row) == set(PAGE_COLUMNS)
+
+
+def test_the_region_hash_is_the_same_whatever_the_closing_sentence_rule_reads(registry, requests_mock):
+    """The blocks are read off line breaks the region's text folds to spaces, so no page's hash moves with this."""
+    requests_mock.get(PAGE_URL, text=page(notice=DOLL_RIDGE))
+    (row,) = list(conditions().rows({}))
+    reader = _notices._PageReader(_notices.DEFAULT_REGIONS)
+    reader.feed(page(notice=DOLL_RIDGE))
+    reader.close()
+
+    assert row["region_sha256"] == _notices._sha256(" ".join(" ".join(reader.blocks(True)).split()))
+
+
+@pytest.mark.parametrize(
+    ("text", "landed"),
+    [
+        # Closed, but no section: the page's own title stands.
+        ("The ridge trail is closed for a reroute.", None),
+        # A section, but not closed.
+        ("This section reopened on May 1.", None),
+        # A heading never runs into the sentence under it.
+        ("<h2>Doll Ridge section</h2><p>The parking lot is closed.</p>", None),
+        # Closed in one sentence, named in the next.
+        ("The north section is closed. This is the Blue section.", "The north section is closed. This is the Blue section."),
+        # A naming sentence three sentences on is too far to be about it.
+        ("The north section is closed. One. Two. This is the Blue section.", "The north section is closed."),
+        # A closure announced for later is not closed now (Palmetto Trail's, read 2026-10-15).
+        ("Starting October 19th a section of trail will be closed for maintenance.", None),
+        # An abbreviation never ends the sentence (EBRPD's, read 2026-10-15).
+        (
+            "The bridge section is closed beginning Monday, Oct. 13, for repairs. Use the road.",
+            "The bridge section is closed beginning Monday, Oct. 13, for repairs.",
+        ),
+    ],
+)
+def test_a_closing_sentence_is_one_sentence_of_one_block_that_says_a_section_is_closed(registry, requests_mock, text, landed):
+    requests_mock.get(PAGE_URL, text=page(notice=text))
+    (row,) = list(conditions().rows({}))
+    assert row["title"] == (landed or "Current Trail Conditions")
+
+
+def test_a_sentence_over_the_cap_never_lands(registry, requests_mock):
+    """A paragraph with no full stop is not a sentence (CLOSING_SENTENCE_CHARS)."""
+    requests_mock.get(PAGE_URL, text=page(notice="The north section is closed " + "and more words " * 30))
+    (row,) = list(conditions().rows({}))
+    assert row["title"] == "Current Trail Conditions"
+
+
+def test_the_newest_stated_date_wins_and_a_footer_stamp_is_not_the_pages(registry, requests_mock):
+    requests_mock.get(PAGE_URL, text=page(stated="6/1/26"))
+
+    (row,) = list(conditions().rows({}))
+
+    assert row["date"] == "2026-06-24", "the newest the region states"
+
+
+def test_a_footer_stamp_is_the_sites_and_never_dates_a_page_read_whole(registry, requests_mock):
+    """amc-wma.org's 'This page last updated' stamp was identical on two of its pages (inventory, 2026-10-03)."""
+    whole = (
+        "<html><head><title>Parking Areas</title></head><body><h1>Parking Areas</h1><p>Closed in winter.</p>"
+        "<footer>This page last updated: 2026-09-30 05:44:51</footer></body></html>"
+    )
+    requests_mock.get(PAGE_URL, text=whole)
+
+    (row,) = list(conditions().rows({}))
+
+    assert (row["region"], row["date"]) == ("body", None)
+
+
+def test_a_page_with_no_stated_date_takes_its_json_ld_date_and_says_so(registry, requests_mock):
+    requests_mock.get(PAGE_URL, text=page(stated="soon").replace("Last Updated: 6/24/26", ""))
+
+    (row,) = list(conditions().rows({}))
+
+    assert (row["date"], row["date_source"]) == ("2026-08-17", "json_ld"), "the WebPage node's dateModified"
+    assert row["date_text"] == "2026-08-17T21:09:14+00:00"
+
+
+def test_a_page_with_no_date_at_all_lands_none_and_a_request_time_last_modified_does_not_date_it(registry, requests_mock):
+    bare = "<html><head><title>Alerts</title></head><body><main><h1>Alerts</h1><p>Wear orange in season.</p></main></body></html>"
+    requests_mock.get(PAGE_URL, text=bare, headers={"Last-Modified": "Sat, 03 Oct 2026 14:30:21 GMT"})
+
+    (row,) = list(conditions().rows({}))
+    _notices._ANSWERS.clear()
+    (trusted,) = list(conditions(trust_validators=True).rows({}))
+
+    assert (row["date"], row["date_text"], row["date_source"]) == (None, None, None), "absent means unknown"
+    assert (trusted["date"], trusted["date_source"]) == ("2026-10-03", "last_modified"), "only where measured as the page's"
+
+
+def test_a_per_render_token_leaves_the_hash_and_a_changed_notice_moves_it(registry, requests_mock):
+    body = {"text": page(nonce="a1")}
+    requests_mock.get(PAGE_URL, text=lambda request, context: body["text"])
+
+    verdict, marker = conditions().change_check(None)
+    body["text"] = page(nonce="zz9")
+    assert conditions().change_check(marker) == (Freshness.FRESH, marker), "a script nonce and a class token are not the notice"
+    body["text"] = page(notice="The ridge trail has reopened.")
+    assert conditions().change_check(marker)[0] is Freshness.STALE
+    assert verdict is Freshness.STALE
+
+
+def test_a_304_to_a_trusted_pages_own_last_modified_is_fresh_and_never_reaches_dlt(registry, store, requests_mock):
+    def answer(request, context):
+        if request.headers.get("If-Modified-Since") == "Tue, 25 Aug 2026 19:18:38 GMT":
+            context.status_code = 304
+            return ""
+        context.headers["Last-Modified"] = "Tue, 25 Aug 2026 19:18:38 GMT"
+        return page()
+
+    requests_mock.get(PAGE_URL, text=answer)
+    leg(store, conditions(trust_validators=True))
+    requests_mock.reset_mock()
+
+    report = leg(store, conditions(trust_validators=True))
+
+    assert report.verdicts["raw_testclub__club_conditions"] == "fresh" and report.load_id is None
+    (asked,) = requests_mock.request_history
+    assert asked.headers["If-Modified-Since"] == "Tue, 25 Aug 2026 19:18:38 GMT", "one conditional request, answered 304"
+    assert [row["title"] for row in landed(store, "raw_testclub__club_conditions")] == ["Current Trail Conditions"]
+
+
+@pytest.mark.parametrize(
+    "answer",
+    [
+        {"status_code": 403, "headers": {"cf-mitigated": "challenge"}, "text": "<title>Just a moment...</title>"},
+        {"status_code": 429, "headers": {"x-vercel-mitigated": "challenge"}, "text": "<title>Vercel Security Checkpoint</title>"},
+        {"status_code": 202, "headers": {"sg-captcha": "challenge"}, "text": '<meta http-equiv="refresh" content="0">'},
+        {"status_code": 200, "text": "<html><head><title>Just a moment...</title></head><body>Checking</body></html>"},
+        {"status_code": 200, "headers": {"cf-mitigated": "challenge"}, "text": page()},
+    ],
+    ids=["cloudflare-403", "vercel-429", "siteground-202", "challenge-page-200", "challenge-header-200"],
+)
+def test_a_walled_page_is_unknown_and_its_last_row_stands(registry, store, requests_mock, answer):
+    requests_mock.get(PAGE_URL, text=page())
+    leg(store, conditions())
+    requests_mock.get(PAGE_URL, **answer)
+
+    report = leg(store, conditions())
+
+    assert report.verdicts["raw_testclub__club_conditions"] == "unknown"
+    assert "raw_testclub__club_conditions" in report.isolated
+    assert [row["title"] for row in landed(store, "raw_testclub__club_conditions")] == ["Current Trail Conditions"]
+
+
+def test_a_429_is_not_retried_because_the_hourly_lane_is_the_retry(registry, requests_mock):
+    requests_mock.get(PAGE_URL, status_code=429)
+
+    assert conditions().change_check(None) == (Freshness.UNKNOWN, None)
+    assert requests_mock.call_count == 1
+
+
+def test_a_gone_page_refuses_rather_than_reading_its_notice_as_lifted(registry, requests_mock):
+    requests_mock.get(PAGE_URL, status_code=404)
+
+    with pytest.raises(NoticeUnreadable, match="HTTP 404"):
+        list(conditions().rows({}))
+
+
+def test_a_page_that_redirects_to_another_host_is_unknown(registry, requests_mock):
+    requests_mock.get(PAGE_URL, status_code=301, headers={"Location": "https://another-club.example.net/"})
+    requests_mock.get("https://another-club.example.net/", text=page())
+
+    with pytest.raises(NoticeUnreadable, match="another host"):
+        list(conditions().rows({}))
+
+
+def test_a_redirect_to_the_same_site_under_www_is_followed(registry, requests_mock):
+    requests_mock.get(PAGE_URL, status_code=301, headers={"Location": "https://www.club.example.org/trail-conditions/"})
+    requests_mock.get("https://www.club.example.org/trail-conditions/", text=page())
+
+    assert [row["title"] for row in conditions().rows({})] == ["Current Trail Conditions"]
+
+
+def test_a_page_whose_title_no_longer_names_the_notice_refuses(registry, requests_mock):
+    requests_mock.get(PAGE_URL, text="<html><body><main><h1>Trail Maps</h1></main></body></html>")
+
+    with pytest.raises(NoticeUnreadable, match="no longer names"):
+        list(conditions(expect_title="Conditions").rows({}))
+
+
+def test_a_named_region_is_what_is_read_and_a_page_that_lost_it_has_changed_shape(registry, requests_mock):
+    requests_mock.get(
+        PAGE_URL,
+        text='<html><body><h1>Club Name</h1><div id="alert-block"><h1>Park Alerts</h1>Burn ban in effect</div></body></html>',
+    )
+    (row,) = list(conditions(region="#alert-block").rows({}))
+    assert (row["region"], row["title"]) == ("#alert-block", "Park Alerts")
+
+    requests_mock.get(PAGE_URL, text="<html><body><h1>Club Name</h1></body></html>")
+    with pytest.raises(NoticeUnreadable, match="changed shape"):
+        list(conditions(region="#alert-block").rows({}))
+
+
+def test_a_fragment_with_no_title_of_its_own_carries_the_registry_rows_only_when_asked(registry, requests_mock):
+    requests_mock.get(PAGE_URL, text='<ul class="alerts"><li><span>Fest moved to Oct 17</span></li></ul>')
+
+    with pytest.raises(NoticeUnreadable, match="no <h1>, og:title or <title>"):
+        list(conditions().rows({}))
+    (row,) = list(conditions(registry_title=True).rows({}))
+    assert (row["title"], row["region"]) == ("Trail Conditions", "document")
+
+
+def test_a_wordpress_page_is_read_through_its_rest_route_with_no_query_string(registry, requests_mock):
+    """foothillstrail.org's robots.txt disallows `/*?`, and its /wp-json/wp/v2/pages/25 was allowed (inventory)."""
+    post = {
+        "id": 25,
+        "modified_gmt": "2025-04-13T13:22:46",
+        "title": {"rendered": "Trail Conditions &#038; Closures"},
+        "content": {"rendered": "<p>Trail Update 4/13: a tree down near the falls.</p>"},
+        "author": 1,
+    }
+    requests_mock.get("https://foothillstrail.org/wp-json/wp/v2/pages/25", json=post)
+
+    (row,) = list(page_notice("wpstaq_conditions", wp_page=25, club="testclub", type="closures").rows({}))
+
+    (asked,) = requests_mock.request_history
+    assert asked.url == "https://foothillstrail.org/wp-json/wp/v2/pages/25", "no query string on this host"
+    assert row["title"] == "Trail Conditions & Closures" and row["url"] == WP_PAGE_URL
+    assert (row["date"], row["date_source"]) == ("2025-04-13", "wp_modified"), "'4/13' has no year, so it is not read"
+    assert row["format"] == "wp_rest" and "tree down" not in json.dumps(row)
+
+
+def test_a_query_url_is_refused_at_import_on_a_host_whose_robots_txt_disallows_them(registry):
+    with pytest.raises(ValueError, match="disallows every URL with a query string"):
+        page_notice("wpstaq_query")
+    with pytest.raises(ValueError, match="every WordPress list request carries one"):
+        wordpress_posts("wpstaq_category")
+
+
+def test_a_pdf_notice_carries_the_registry_title_its_own_metadata_date_and_the_bytes_hash(registry, requests_mock, monkeypatch):
+    monkeypatch.setattr(
+        _notices,
+        "read_pdf",
+        lambda body: PdfFacts(texts=("Logging at MM 194-195",), created=("D:20260108120000-05'00'", "2026-01-08")),
+    )
+    requests_mock.get(
+        PDF_URL,
+        content=b"%PDF-1.7 hiker alert",
+        headers={"Content-Type": "application/pdf", "ETag": '"6aab-1"', "Last-Modified": "Thu, 17 Sep 2026 01:53:43 GMT"},
+    )
+
+    (row,) = list(page_notice("hiker_alert_pdf", club="testclub", type="warnings").rows({}))
+
+    assert row["title"] == "Hiker Alert: logging" and row["format"] == "pdf"
+    assert (row["date"], row["date_source"]) == ("2026-01-08", "pdf_created"), "the document's date, never the server's"
+    assert row["region_chars"] == len(b"%PDF-1.7 hiker alert")
+
+
+def test_a_pdfs_metadata_dates_are_read_and_a_malformed_one_is_no_date():
+    """Through real pypdf, which requirements-dev.in pins at the extract's version (WF4 of the PR #1805 review)."""
+    from io import BytesIO
+
+    import pypdf
+
+    def pdf(metadata: dict) -> bytes:
+        writer = pypdf.PdfWriter()
+        writer.add_blank_page(width=72, height=72)
+        writer.add_metadata(metadata)
+        buffer = BytesIO()
+        writer.write(buffer)
+        return buffer.getvalue()
+
+    facts = _notices.read_pdf(pdf({"/CreationDate": "D:20260108120000-05'00'", "/ModDate": "D:20260917015343Z"}))
+    assert (facts.modified, facts.created) == (
+        ("D:20260917015343Z", "2026-09-17"),
+        ("D:20260108120000-05'00'", "2026-01-08"),
+    )
+    assert _notices.read_pdf(pdf({"/CreationDate": "not a date"})).created is None
+
+
+# --- The stated date ---------------------------------------------------------
+
+
+@pytest.mark.parametrize(
+    ("text", "expected"),
+    [
+        ("Updated August 17, 2026", ("August 17, 2026", "2026-08-17")),
+        ("Last Updated: August 27, 2026", ("August 27, 2026", "2026-08-27")),
+        ("This page was updated on September 28, 2026.", ("September 28, 2026", "2026-09-28")),
+        ("Knobstone Trail conditions Update: July 21, 2026", ("July 21, 2026", "2026-07-21")),
+        ("Update 7/30/2025", ("7/30/2025", "2025-07-30")),
+        ("Updated 9/4/26 and roads Updated 5/29/26", ("9/4/26", "2026-09-04")),
+        ("Updated Sep. 24, 2026, 12:22 pm", ("Sep. 24, 2026", "2026-09-24")),
+        ("Updated Sept 2, 2026", ("Sept 2, 2026", "2026-09-02")),
+        ("Trail Update 4/13", None),
+        ("Updated 9/31/26", None),
+        ("Page updated", None),
+        ("Updated December 1, 2099", None),
+    ],
+)
+def test_a_page_states_its_own_date_in_the_words_the_inventory_measured(text, expected):
+    assert page_stated_date(text) == expected
+
+
+def test_a_page_with_its_own_wording_states_its_date_through_a_pattern_around_date():
+    import re
+
+    pattern = re.compile(r"New this week \(" + DATE + r"\)", re.IGNORECASE)
+    assert page_stated_date("Backcountry information. New this week (10/1/2026)", pattern) == ("10/1/2026", "2026-10-01")
+
+
+# The forms added on the maintainer's word (2026-10-11: "Fix the dates! the reader should be able to handle different
+# format"), one test each, and each refusal; extract/_notices.py's comment above DATE names the sources that use them.
+
+
+@pytest.mark.parametrize(
+    "text", ["Updated 14 August 2026", "Updated 14 August, 2026", "Last updated: 14 August 2026", "Updated 14 august 2026"]
+)
+def test_a_day_first_date_with_the_months_full_name_is_read(text):
+    assert page_stated_date(text)[1] == "2026-08-14"
+
+
+@pytest.mark.parametrize("text", ["Updated 14 Aug 2026", "Updated 14 Aug. 2026", "Updated 25 Oct 2009", "Updated 2 Sept 2026"])
+def test_a_day_first_date_with_the_months_short_name_with_or_without_a_period_is_read(text):
+    assert page_stated_date(text)[0] == text.removeprefix("Updated ")
+
+
+@pytest.mark.parametrize(
+    ("text", "expected"),
+    [
+        ("Updated August 14 2026", ("August 14 2026", "2026-08-14")),
+        ("Updated Aug. 14 2026", ("Aug. 14 2026", "2026-08-14")),
+        ("Updated August 14,2026", ("August 14,2026", "2026-08-14")),
+    ],
+)
+def test_a_month_first_date_with_no_comma_or_no_space_before_the_year_is_read(text, expected):
+    assert page_stated_date(text) == expected
+
+
+@pytest.mark.parametrize(
+    ("text", "expected"),
+    [
+        ("Updated August 24th, 2026", "2026-08-24"),
+        ("Updated Aug 1st 2026", "2026-08-01"),
+        ("Updated 22nd August 2026", "2026-08-22"),
+        ("Updated 3rd Aug. 2026", "2026-08-03"),
+    ],
+)
+def test_a_day_with_st_nd_rd_or_th_after_it_is_read_month_first_or_day_first(text, expected):
+    assert page_stated_date(text)[1] == expected
+
+
+@pytest.mark.parametrize(
+    ("text", "expected"),
+    [
+        ("Updated Monday, August 24th, 2026", ("Monday, August 24th, 2026", "2026-08-24")),
+        ("Last updated: Fri, 14 Aug 2026", ("Fri, 14 Aug 2026", "2026-08-14")),
+        ("Updated on Friday 14 August 2026", ("Friday 14 August 2026", "2026-08-14")),
+        ("Updated Tues. 8/11/2026", ("Tues. 8/11/2026", "2026-08-11")),
+        ("Updated Thurs, 2026-08-13", ("Thurs, 2026-08-13", "2026-08-13")),
+    ],
+)
+def test_a_date_behind_its_weekday_is_read_with_the_weekday_in_its_text(text, expected):
+    """pa.gov's Tioga advisories write 'Monday, August 24th, 2026' (pasda.closures)."""
+    assert page_stated_date(text) == expected
+
+
+def test_an_iso_date_is_read():
+    assert page_stated_date("Updated 2026-08-14") == ("2026-08-14", "2026-08-14")
+
+
+@pytest.mark.parametrize(("text", "expected"), [("Updated 8/14/2026", "2026-08-14"), ("Updated 8/4/2026", "2026-08-04")])
+def test_a_numeric_date_is_read_month_first(text, expected):
+    assert page_stated_date(text)[1] == expected
+
+
+@pytest.mark.parametrize("text", ["Updated 14/8/2026", "Updated 31/12/26", "Updated 13/1/2026"])
+def test_a_numeric_date_whose_first_part_is_over_12_is_refused_rather_than_read_day_first(text):
+    assert page_stated_date(text) is None
+
+
+@pytest.mark.parametrize("text", ["Updated Monday, August 14, 2026", "Updated Sat 14 Aug 2026", "Updated Mon 9/4/26"])
+def test_a_weekday_the_day_is_not_refuses_the_date(text):
+    """14 August 2026 was a Friday and 4 September 2026 a Friday too: which of the two words slipped would be a guess."""
+    assert page_stated_date(text) is None
+
+
+@pytest.mark.parametrize(
+    "text",
+    [
+        "Updated September 31, 2026",
+        "Updated 31 September 2026",
+        "Updated 29 February 2025",
+        "Updated 2/29/2025",
+        "Updated 2026-02-30",
+        "Updated 2026-13-01",
+        "Updated 0 August 2026",
+    ],
+)
+def test_a_date_that_is_no_real_day_is_refused_in_every_form(text):
+    assert page_stated_date(text) is None
+
+
+def test_the_29th_of_february_is_read_in_a_leap_year():
+    assert page_stated_date("Updated 29 February 2024") == ("29 February 2024", "2024-02-29")
+
+
+@pytest.mark.parametrize("text", ["Updated October 2013", "Updated May 2024", "Updated Sept. 2026"])
+def test_a_month_and_year_with_no_day_is_not_read(text):
+    assert page_stated_date(text) is None
+
+
+@pytest.mark.parametrize("text", ["Updated 14 Augst 2026", "Updated Augustus 14, 2026", "Updated 14 Decimber 2026"])
+def test_a_word_that_is_no_months_name_is_not_read(text):
+    assert page_stated_date(text) is None
+
+
+def rctc_resource(key: str):
+    """The conservancy's own resource, as rctc.closures declares it."""
+    (resource,) = [resource for resource in all_resources(discover()) if resource.key == key]
+    return resource
+
+
+def test_an_rctc_trail_page_is_dated_by_its_newest_alert_and_never_by_a_month_with_no_day(requests_mock):
+    """The Baker Trail's page in its own shape (read 2026-10-11): no "Updated" stamp, each alert ending in its date.
+
+    Through the real resource, rctc.closures's, whose
+    ALERT_DATE is DATE alone in parentheses. Before 2026-10-11 the row landed no date.
+    """
+    url = "https://www.rachelcarsontrails.org/trails/baker-trail"
+    alerts = (
+        "<li>A detour bypasses about 4 miles of trail. (21 September 2024)</li>"
+        "<li>The shelter has been removed and the site is no longer available. (May 2024)</li>"
+        "<li>The southern terminus has moved; refer to the map above (14 August 2026)</li>"
+        "<li>Pay attention to ensure you follow the new blazing. (15 July 2026)</li>"
+        "<li>An open house is planned for a later year (3 October 2099)</li>"
+    )
+    page = (
+        '<html><head><meta property="og:title" content="Baker Trail"><title>Baker Trail - RCTC</title></head>'
+        f"<body><main><h2>Trail Alerts</h2><ul>{alerts}</ul></main></body></html>"
+    )
+    requests_mock.get(url, text=page, headers={"Content-Type": "text/html; charset=UTF-8"})
+
+    (row,) = list(rctc_resource("rctc_baker_trail_alerts").rows({}))
+
+    assert (row["date"], row["date_text"], row["date_source"]) == ("2026-08-14", "14 August 2026", "page_text")
+    assert row["title"] == "Baker Trail"
+
+
+def test_every_rctc_trail_page_reads_its_alerts_dates_through_the_same_pattern():
+    import re
+
+    patterns = {
+        rctc_resource(key).date_pattern
+        for key in ("rctc_rachel_carson_trail_alerts", "rctc_baker_trail_alerts", "rctc_harmony_trail_alerts")
+    }
+
+    (pattern,) = patterns
+    alerts = re.compile(pattern, re.IGNORECASE)
+    assert page_stated_date("Coyotes have been sighted near the trail. (14 February 2024)", alerts) == (
+        "14 February 2024",
+        "2024-02-14",
+    )
+    assert (
+        page_stated_date("The reroute ends at Ridge Road (March 2020). Closed again (14 March 2020)", alerts)[1] == "2020-03-14"
+    )
+    assert page_stated_date("Last updated: August 27, 2026", alerts) is None, "the alerts' own dates, never another stamp"
+
+
+# --- Politeness ----------------------------------------------------------------
+
+
+def test_every_request_to_one_host_waits_out_its_crawl_delay_end_to_start(monkeypatch, requests_mock, quiet_gates_and_answers):
+    clock = {"now": 100.0}
+    monkeypatch.setattr(_notices, "_now", lambda: clock["now"])
+    requests_mock.get("https://club.example.org/a", text="a")
+    requests_mock.get("https://www.club.example.org/b", text="b")
+    requests_mock.get("https://elsewhere.example.net/c", text="c")
+    http = polite(_kinds.session(), 10)
+
+    http.get("https://club.example.org/a")
+    clock["now"] += 3
+    http.get("https://www.club.example.org/b")
+    http.get("https://elsewhere.example.net/c")
+
+    assert quiet_gates_and_answers == [7.0], "the same site under www waits the rest of its 10 s; another host does not"
+
+
+# --- WordpressPosts' options -----------------------------------------------------
+
+
+def test_wordpress_posts_read_several_categories_as_one_table(registry, requests_mock):
+    requests_mock.get(
+        WP + "/categories",
+        json=[{"id": 37, "slug": "closures"}, {"id": 40, "slug": "closures-north"}],
+    )
+    requests_mock.get(
+        WP + "/posts", json=[{"id": 1, "slug": "a", "modified_gmt": "2026-07-28T19:11:50"}], headers={"X-WP-Total": "1"}
+    )
+    resource = wordpress_posts("club_closures", category_slugs=["closures", "closures-north"], club="testclub", type="closures")
+
+    rows = list(resource.rows({}))
+
+    lookup, posts = requests_mock.request_history
+    assert lookup.qs["slug"] == ["closures,closures-north"]
+    assert posts.qs["categories"] == ["37,40"] and [row["id"] for row in rows] == [1]
+
+
+def test_a_category_slug_the_site_does_not_resolve_refuses_rather_than_narrowing(registry, requests_mock):
+    requests_mock.get(WP + "/categories", json=[{"id": 37, "slug": "closures"}])
+    resource = wordpress_posts("club_closures", category_slugs=("closures", "closures-north"), club="testclub", type="closures")
+
+    with pytest.raises(RuntimeError, match="'closures-north' resolves to 0 ids"):
+        list(resource.rows({}))
+
+
+def test_wordpress_posts_read_a_custom_post_type_whole_and_drop_its_author_blocks(registry, requests_mock):
+    alert = {
+        "id": 9,
+        "slug": "fire-towers-closed",
+        "modified_gmt": "2026-10-01T12:00:00",
+        "title": {"rendered": "Fire Towers Closed"},
+        "alert-category": [3],
+        "uagb_author_info": {"display_name": "A. Staffer"},
+        "spectra_custom_meta": {"_edit_lock": ["1790000000:2"]},
+    }
+    requests_mock.get(WP + "/alert", json=[alert], headers={"X-WP-Total": "1"})
+    resource = wordpress_posts("club_alert_type", post_type="alert", club="testclub", type="closures")
+    proofs: dict[str, int] = {}
+
+    (row,) = list(resource.rows(proofs))
+
+    assert "categories" not in requests_mock.request_history[0].qs, "a custom post type sits in no category"
+    assert proofs == {"raw_testclub__club_alert_type": 1} and row["alert-category"] == [3]
+    assert "A. Staffer" not in json.dumps(row) and "spectra_custom_meta" not in row
+    with pytest.raises(ValueError, match="takes no category_slugs"):
+        wordpress_posts("club_alert_type", post_type="alert", category_slugs=("x",))
+
+
+def test_wordpress_posts_keep_the_hosts_crawl_delay_between_their_requests(registry, requests_mock, quiet_gates_and_answers):
+    requests_mock.get(WP + "/categories", json=[{"id": 6, "slug": "closures"}])
+    requests_mock.get(WP + "/posts", json=[], headers={"X-WP-Total": "0"})
+
+    list(wordpress_posts("club_closures", crawl_delay=10, club="testclub", type="closures").rows({}))
+    assert len(quiet_gates_and_answers) == 1 and 9 < quiet_gates_and_answers[0] <= 10
+    assert WordpressPosts(key="club_closures").crawl_delay == 0, "NYNJTC's asks none, and sends as it always has"
+
+
+def test_ratcs_mcafee_page_is_one_notice_and_its_dragons_tooth_water_line_never_lands(requests_mock):
+    """RATC's McAfee Knob page (ratc_mcafee_page, WordPress page 2821) states a water hazard for the Dragons Tooth area
+    among its standing rules (read 2026-10-10). Registered as every page notice is, it lands one row of PAGE_COLUMNS:
+    its title, its own date and its link, and none of its sentences, so a hiker meets the
+    page's title and a link, never the water line itself. The real registry row and resource; the REST answer shaped
+    as the live one, with invented words."""
+    (resource,) = [r for r in all_resources(discover()) if r.key == "ratc_mcafee_page"]
+    water = "There are no natural water sources along the fixture ridge, so bring all your water."
+    page = {
+        "id": 2821,
+        "modified_gmt": "2026-02-25T02:18:48",
+        "title": {"rendered": "Fixture Knob and Virginia&#8217;s Fixture Crown"},
+        "content": {"rendered": f"<h2>Fixture camping</h2><p>{water}</p>"},
+        "author": 1,
+    }
+    requests_mock.get("https://www.ratc.org/wp-json/wp/v2/pages/2821", json=page)
+
+    (row,) = list(resource.rows({}))
+
+    (asked,) = requests_mock.request_history
+    assert asked.headers["User-Agent"] == USER_AGENT
+    assert set(row) == set(PAGE_COLUMNS)
+    assert row["url"] == "https://www.ratc.org/at-hiking/mcafee-knob-and-the-triple-crown/"
+    assert row["title"] == "Fixture Knob and Virginia\u2019s Fixture Crown"
+    assert (row["date"], row["date_source"]) == ("2026-02-25", "wp_modified")
+    assert "water" not in json.dumps(row).lower()

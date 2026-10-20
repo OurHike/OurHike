@@ -272,3 +272,50 @@ describe('where it is', () => {
     expect(onClose).toHaveBeenCalled()
   })
 })
+
+// The maintainer's frame A (2026-10-10): once the notice may no longer apply
+// - by the same notice's row in conditions/notices.json, which the panel
+// hands over - the sheet greys and prints the planned-hike list's line.
+describe('a notice that may no longer apply', () => {
+  it('prints "Last reported July 17, 2026. It may no longer apply." and drops the "— updated" date', () => {
+    render(
+      <OrgNoticeSheet
+        update={UPDATE}
+        reviewedAt={REVIEWED}
+        stewards={STEWARDS}
+        notCurrent={{
+          line: 'Last reported July 17, 2026. It may no longer apply.',
+          saysUpdated: true,
+        }}
+        onClose={vi.fn()}
+      />,
+    )
+    const sheet = screen.getByRole('dialog')
+    expect(sheet.className).toContain('notice--not-current')
+    expect(
+      screen.getByText('Last reported July 17, 2026. It may no longer apply.').className,
+    ).toBe('notice__not-current')
+    expect(screen.getByText('Appalachian Trail Conservancy')).toBeInTheDocument()
+    expect(screen.queryByText(/— updated/)).toBeNull()
+    // Still ATC's notice, its link still there to check it.
+    expect(
+      screen.getByRole('link', { name: /Read Appalachian Trail Conservancy/ }),
+    ).toBeTruthy()
+  })
+
+  it('reads as it always did with no verdict, the state of a phone without notices.json', () => {
+    render(
+      <OrgNoticeSheet
+        update={UPDATE}
+        reviewedAt={REVIEWED}
+        stewards={STEWARDS}
+        onClose={vi.fn()}
+      />,
+    )
+    expect(screen.getByRole('dialog').className).not.toContain('notice--not-current')
+    expect(screen.queryByText(/may no longer apply/)).toBeNull()
+    expect(
+      screen.getByText('Appalachian Trail Conservancy — updated July 17, 2026'),
+    ).toBeInTheDocument()
+  })
+})

@@ -17,12 +17,12 @@
 // HOW THE STATE IS REACHED, deterministically rather than by luck: the drive
 // aborts every request for `latest.json` and reloads, so `usePublishedSizes`
 // resolves to nothing on a build that is otherwise fully wired. Routing
-// before the reload is the same shape trail-notices.mjs uses to park its
+// before the reload is the same shape colorado-network.mjs uses to park its
 // camera - the runner has already loaded the page by the time a drive runs,
 // so anything that must affect the load has to be set and then reloaded into.
 //
-// This one CAN be checked in a sandbox, unlike the notices sheet: first run
-// needs no conditions artifacts and no map data, so
+// This one CAN be checked in a sandbox, unlike a recipe over the map: first
+// run needs no conditions artifacts and no map data, so
 // `node scripts/photograph-preview.mjs preview-shots/first-run-download-offline.mjs --dist`
 // reaches it here. It was, before this was pushed.
 //

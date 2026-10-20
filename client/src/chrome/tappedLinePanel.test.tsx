@@ -109,6 +109,7 @@ const TAP: TappedLine = {
   closureReason: null,
   closureSource: null,
   sharedWith: null,
+  lineKind: null,
   badge: false,
   at: [-77, 39 + 2 * MILE_LAT],
 }

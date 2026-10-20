@@ -12,6 +12,7 @@ from fastapi.responses import JSONResponse
 
 from app.config import settings
 from app.core.body_limit import MAX_REQUEST_BODY_BYTES, BodyLimitMiddleware
+from app.core.logs import RequestIdMiddleware, configure_logging
 from app.db.session import check_database, database_host
 from app.routers import (
     app_failures,
@@ -37,6 +38,8 @@ from app.routers import (
     volunteer_hours,
     work_projects,
 )
+
+configure_logging()
 
 
 @asynccontextmanager
@@ -84,7 +87,18 @@ app.add_middleware(
     allow_credentials=False,
     allow_methods=["*"],
     allow_headers=["*"],
+    expose_headers=["X-Request-Id"],
 )
+
+# Added AFTER CORS so it is the outermost middleware added here: a 5xx that
+# CORS or anything inside it raises is still logged, and the id header is on
+# every response - including the 500 an unhandled exception becomes, which
+# Starlette's own ServerErrorMiddleware (outside this one) would otherwise send
+# without it. A browser only lets the client read X-Request-Id because CORS
+# exposes it above, which it does on every response but that crash's 500: that
+# one has no CORS headers at all. RequestIdMiddleware's docstring in
+# app/core/logs.py is the reasoning (#1759).
+app.add_middleware(RequestIdMiddleware)
 
 
 def _json_safe(value):

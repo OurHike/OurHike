@@ -22,6 +22,15 @@
 -- (app/schemas/closure.py, #257), so this is the second lock. Nothing else is
 -- refused: the closures mart's tests report a mile outside the A.T.'s
 -- 0.5-2197.5 at warn rather than hold OurHike's closures back over one.
+--
+-- AN ENDPOINT OFF THE GLOBE IS PUBLISHED WITH NO LOCATION (#1763 — Every
+-- request schema but DefaultPlace accepts any finite latitude and
+-- longitude): macros/null_off_globe.sql nulls each pair outside latitude
+-- -90..90 or longitude -180..180, or with one half missing, and keeps the
+-- closure, as export_conditions.py's read_closures() does. Here rather than
+-- in pub_conditions_closures, so the closures and warnings marts never
+-- carry the point either. `problems` reads the raw columns, so a NaN still
+-- holds the source.
 with closures as (
     select * from {{ ref('base_ourhike__closures') }}
 ),
@@ -82,10 +91,10 @@ select
     closed_since,
     expected_reopen,
     reroute_url,
-    start_lat,
-    start_lon,
-    end_lat,
-    end_lon,
+    {{ null_off_globe('start_lat', 'start_lat', 'start_lon') }} as start_lat,
+    {{ null_off_globe('start_lon', 'start_lat', 'start_lon') }} as start_lon,
+    {{ null_off_globe('end_lat', 'end_lat', 'end_lon') }} as end_lat,
+    {{ null_off_globe('end_lon', 'end_lat', 'end_lon') }} as end_lon,
     obstructs_trail,
     problems,
     nullif(array_to_string(problems, ' | '), '') as problem,

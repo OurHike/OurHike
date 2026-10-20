@@ -23,6 +23,14 @@
 --
 -- `generated_at` is dbt's run_started_at: one clock for this file and
 -- conditions/closures.json, as export_conditions.py's main() keeps one.
+--
+-- A REPORT OFF THE GLOBE IS WRITTEN WITH NO LOCATION (#1763 — Every request
+-- schema but DefaultPlace accepts any finite latitude and longitude, so a
+-- report at (1000, −5000) is stored, moderated and baked into the artifact
+-- hikers download): macros/null_off_globe.sql, the rule
+-- export_conditions.py's read_reports() applies, so both writers of this
+-- file write the same row. The gate above still reads the raw value, so a
+-- NaN holds the file rather than being nulled.
 with reports as (
     select * from {{ ref('base_ourhike__reports') }}
     where
@@ -43,8 +51,8 @@ published as (
                     'id', report_uuid,
                     'type', report_type,
                     'poi_id', poi_id,
-                    'lat', lat,
-                    'lon', lon,
+                    'lat', {{ null_off_globe('lat', 'lat', 'lon') }},
+                    'lon', {{ null_off_globe('lon', 'lat', 'lon') }},
                     'mile', mile,
                     'reporter_type', reporter_type,
                     'timestamp', {{ python_utc_isoformat('reported_at') }},

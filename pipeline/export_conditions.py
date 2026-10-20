@@ -111,6 +111,7 @@ still stop everything.
 from __future__ import annotations
 
 import json
+import math
 import os
 from datetime import datetime, timezone
 from pathlib import Path
@@ -510,7 +511,53 @@ def _stamp_utc(value: datetime | None) -> str | None:
     return aware.astimezone(timezone.utc).isoformat().replace("+00:00", "Z")
 
 
-def _read_rows(conn, sql: str, timestamp_fields: tuple[str, ...]) -> list[dict]:
+def _on_globe(lat, lon) -> bool:
+    """True when the pair is a point on Earth, by `DefaultPlace`'s bounds (ends included)."""
+    return lat is not None and lon is not None and -90 <= lat <= 90 and -180 <= lon <= 180
+
+
+def _null_off_globe(row: dict, lat_key: str, lon_key: str) -> None:
+    """Null a coordinate pair that is not a point on Earth, and keep the row (#1763).
+
+    The request schemas for reports, field notes and closures accept any finite
+    float, so a row at (1000, -5000) can be verified and baked. #1763 reasons
+    that MapLibre wraps the longitude and clamps the latitude into a confident
+    dot at the wrong place - @unvalidated there, and nobody has tried it on a
+    device - which is the worse failure under CLAUDE.md's "an honest unknown
+    outranks a confident answer". So both halves go together, since one good
+    half of a bad pair places nothing, and a pair with one half missing goes
+    too. Null is a shape the wire already carries (`ReportOut`'s
+    `lat: float | None`). The row, its mile and its text stay.
+
+    A NaN or infinite half is left exactly as it is. It is not a bound this
+    guards: `write_document()`'s allow_nan=False refuses the whole document
+    over it (#658), which keeps the last artifact live and gets the row looked
+    at, and nulling it here first would turn that loud refusal into a quiet
+    gap. The dbt path holds that source's file over the same raw value
+    (int_closures__gate), so neither writer publishes the row.
+
+    dbt/macros/null_off_globe.sql is this rule in SQL, for the dbt writers of
+    conditions/reports.json and conditions/closures.json;
+    tests/test_dbt_conditions_parity.py runs this function over that macro's
+    unit-test rows, so the two cannot drift apart.
+    """
+    lat, lon = row.get(lat_key), row.get(lon_key)
+    if lat is None and lon is None:
+        return
+    if not all(math.isfinite(half) for half in (lat, lon) if half is not None):
+        return
+    if _on_globe(lat, lon):
+        return
+    row[lat_key] = None
+    row[lon_key] = None
+
+
+def _read_rows(
+    conn,
+    sql: str,
+    timestamp_fields: tuple[str, ...],
+    coordinate_pairs: tuple[tuple[str, str], ...] = (),
+) -> list[dict]:
     with conn.cursor() as cur:
         cur.execute(sql)
         columns = [description.name for description in cur.description]
@@ -519,19 +566,26 @@ def _read_rows(conn, sql: str, timestamp_fields: tuple[str, ...]) -> list[dict]:
     for row in rows:
         for field in timestamp_fields:
             row[field] = _stamp_utc(row[field])
+        for lat_key, lon_key in coordinate_pairs:
+            _null_off_globe(row, lat_key, lon_key)
     return rows
 
 
 def read_closures(conn) -> list[dict]:
-    return _read_rows(conn, PUBLIC_CLOSURES_SQL, CLOSURE_TIMESTAMP_FIELDS)
+    return _read_rows(
+        conn,
+        PUBLIC_CLOSURES_SQL,
+        CLOSURE_TIMESTAMP_FIELDS,
+        (("start_lat", "start_lon"), ("end_lat", "end_lon")),
+    )
 
 
 def read_reports(conn) -> list[dict]:
-    return _read_rows(conn, PUBLIC_REPORTS_SQL, REPORT_TIMESTAMP_FIELDS)
+    return _read_rows(conn, PUBLIC_REPORTS_SQL, REPORT_TIMESTAMP_FIELDS, (("lat", "lon"),))
 
 
 def read_notes(conn) -> list[dict]:
-    rows = _read_rows(conn, PUBLIC_NOTES_SQL, NOTE_TIMESTAMP_FIELDS)
+    rows = _read_rows(conn, PUBLIC_NOTES_SQL, NOTE_TIMESTAMP_FIELDS, (("lat", "lon"),))
     # The window function's plumbing must not reach the wire: the client's
     # NoteSummary declares exactly the public nine, and a tenth field would
     # teach it to read what the shape never promised.

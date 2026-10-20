@@ -21,6 +21,11 @@
 --
 -- `generated_at` is dbt's run_started_at: one clock for this file and
 -- conditions/reports.json, as export_conditions.py's main() keeps one.
+--
+-- AN ENDPOINT OFF THE GLOBE ARRIVES WITH NO LOCATION:
+-- int_closures__ourhike_checked applies macros/null_off_globe.sql before
+-- either mart, the rule export_conditions.py's read_closures() applies
+-- (#1763).
 with ourhike_rows as (
     select
         closure_uuid,

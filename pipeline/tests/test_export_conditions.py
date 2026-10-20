@@ -542,6 +542,64 @@ def test_exported_report_timestamps_are_stamped(clean_tables):
     assert row["verified_at"] == "2026-08-02T12:00:00Z"
 
 
+def test_a_report_off_the_globe_exports_with_no_location(clean_tables):
+    """#1763: the schema accepts (1000, -5000); the bake must not draw it."""
+    _insert_report(clean_tables, report_id="r-off")
+    _insert_report(clean_tables, report_id="r-on")
+    clean_tables.execute("UPDATE public.reports SET lat = 1000, lon = -5000 WHERE id = 'r-off'")
+
+    exported = {row["id"]: row for row in read_reports(clean_tables)}
+
+    assert (exported["r-off"]["lat"], exported["r-off"]["lon"]) == (None, None)
+    assert exported["r-off"]["mile"] == 1407.2  # the row stays; only the point goes
+    assert (exported["r-on"]["lat"], exported["r-on"]["lon"]) == (41.2, -74.1)
+
+
+def test_one_bad_half_of_a_coordinate_pair_drops_both(clean_tables):
+    _insert_report(clean_tables, report_id="r1")
+    clean_tables.execute("UPDATE public.reports SET lat = 41.2, lon = 500 WHERE id = 'r1'")
+
+    [row] = read_reports(clean_tables)
+
+    assert (row["lat"], row["lon"]) == (None, None)
+
+
+def test_a_note_off_the_globe_exports_with_no_location(clean_tables):
+    _insert_note(clean_tables, note_id="n1")
+    clean_tables.execute("UPDATE public.field_notes SET lat = -91, lon = 0 WHERE id = 'n1'")
+
+    [row] = read_notes(clean_tables)
+
+    assert (row["lat"], row["lon"]) == (None, None)
+
+
+def test_a_closure_endpoint_off_the_globe_is_dropped_and_the_other_kept(clean_tables):
+    _insert(clean_tables, closure_id="c1", moderation_status="verified")
+    clean_tables.execute(
+        "UPDATE public.closures SET start_lat = 1000, start_lon = 0, end_lat = 41.2, end_lon = -74.1 WHERE id = 'c1'"
+    )
+
+    [row] = read_closures(clean_tables)
+
+    assert (row["start_lat"], row["start_lon"]) == (None, None)
+    assert (row["end_lat"], row["end_lon"]) == (41.2, -74.1)
+
+
+def test_a_nan_coordinate_off_the_globe_is_still_refused_by_the_writer(clean_tables, tmp_path):
+    """The range guard leaves a NaN half alone, so write_document()'s
+    allow_nan=False still refuses the document (#658) rather than the guard
+    quietly publishing the row with no location. int_closures__gate holds the
+    dbt writer's file over the same raw value."""
+    _insert_report(clean_tables, report_id="r1")
+    clean_tables.execute("UPDATE public.reports SET lat = 'NaN', lon = 500 WHERE id = 'r1'")
+
+    rows = read_reports(clean_tables)
+
+    assert rows[0]["lon"] == 500
+    with pytest.raises(ValueError):
+        export_conditions.write_document(tmp_path / "reports.json", "reports", rows, datetime(2026, 10, 20, tzinfo=timezone.utc))
+
+
 def _insert_note(
     conn,
     *,
@@ -960,3 +1018,50 @@ def test_a_finite_row_is_written_as_the_same_document_as_before(tmp_path):
 
     assert json.loads(path.read_text()) == build_document("reports", rows, generated_at)
     assert path.read_text().endswith("}\n")
+
+
+# --- a coordinate off the globe (#1763) -----------------------------------------
+#
+# The database tests above prove read_reports(), read_notes() and
+# read_closures() apply _null_off_globe(); these hold the rule itself, with no
+# database, so it is checked on every run. dbt/macros/null_off_globe.sql is the
+# same rule for the dbt writers, and tests/test_dbt_conditions_parity.py runs
+# this function over that macro's unit-test rows.
+
+
+@pytest.mark.parametrize(
+    ("lat", "lon", "published"),
+    [
+        (41.2, -74.1, (41.2, -74.1)),
+        (90.0, -180.0, (90.0, -180.0)),
+        (-90.0, 180.0, (-90.0, 180.0)),
+        (1000.0, -5000.0, (None, None)),
+        (41.2, 500.0, (None, None)),
+        (-91.0, 0.0, (None, None)),
+        (41.2, -180.5, (None, None)),
+        (41.2, None, (None, None)),
+        (None, -74.1, (None, None)),
+        (None, None, (None, None)),
+    ],
+)
+def test_null_off_globe_keeps_a_point_on_earth_and_nulls_any_other_pair_whole(lat, lon, published):
+    row = {"id": "r1", "lat": lat, "lon": lon, "mile": 1407.2}
+
+    export_conditions._null_off_globe(row, "lat", "lon")
+
+    assert (row["lat"], row["lon"]) == published
+    assert row["mile"] == 1407.2
+
+
+@pytest.mark.parametrize(("lat", "lon"), [(float("nan"), 500.0), (41.2, float("inf")), (float("-inf"), None)])
+def test_null_off_globe_leaves_a_non_finite_half_for_the_writer_to_refuse(lat, lon, tmp_path):
+    """A NaN or infinite half is not a bound: write_document() refuses the
+    whole document over it (#658), the loud answer, and nulling it first
+    would publish the row with a quiet gap instead."""
+    row = {"id": "r1", "lat": lat, "lon": lon}
+
+    export_conditions._null_off_globe(row, "lat", "lon")
+
+    assert row == {"id": "r1", "lat": lat, "lon": lon}
+    with pytest.raises(ValueError):
+        export_conditions.write_document(tmp_path / "reports.json", "reports", [row], datetime(2026, 10, 20, tzinfo=timezone.utc))

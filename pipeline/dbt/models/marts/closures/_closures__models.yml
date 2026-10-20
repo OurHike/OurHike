@@ -448,7 +448,7 @@ models:
         description: A page describing the way around, where there is one.
         data_type: varchar
       - name: start_lat
-        description: Where the closure's start mile physically is (#674), or null for one filed before the columns existed.
+        description: Where the closure's start mile physically is (#674), or null for one filed before the columns existed, or whose pair is off the globe or half missing (macros/null_off_globe.sql, #1763).
         data_type: double
       - name: start_lon
         description: The longitude of the same point.

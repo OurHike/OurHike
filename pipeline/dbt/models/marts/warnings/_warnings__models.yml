@@ -297,7 +297,7 @@ models:
         description: A page describing the way around, where there was one.
         data_type: varchar
       - name: start_lat
-        description: Where an OurHike closure's start mile physically is.
+        description: Where an OurHike closure's start mile physically is, or null where its pair is off the globe or half missing (macros/null_off_globe.sql, #1763).
         data_type: double
       - name: start_lon
         description: The longitude of the same point.
@@ -381,7 +381,7 @@ models:
         description: The published POI a report is about, where it is about one.
         data_type: varchar
       - name: lat
-        description: Where a report was filed.
+        description: Where a report was filed, or null where it has no fix or its pair is off the globe or half missing (macros/null_off_globe.sql, #1763).
         data_type: double
       - name: lon
         description: The longitude of the same point.

@@ -29,6 +29,12 @@ is a refusal:
   int_closures__atc_automatic's unit-test pages, refuse the same updates in
   the same words and write the same rows, and
   propose_atc_updates.py's _actionable() keeps the same refusals;
+- export_conditions.py's _null_off_globe(), over the unit-test rows of every
+  model that calls macros/null_off_globe.sql (#1763 — Every request schema
+  but DefaultPlace accepts any finite latitude and longitude), nulls the
+  same coordinate pairs, so conditions/reports.json and
+  conditions/closures.json carry no location for the same rows from either
+  writer;
 
 except where a DELIBERATE set below names a row the SQL treats otherwise on
 purpose. Each such row must still differ, so emptying a set turns its test red.
@@ -42,11 +48,13 @@ import re
 from datetime import datetime, timezone
 from pathlib import Path
 
+import duckdb
 import numpy as np
 import pytest
 import yaml
 
 import export_atc_updates
+import export_conditions
 import export_weather_alerts
 import fetch_nynjtc_alerts
 import parity
@@ -604,3 +612,63 @@ def test_is_reviewed_reads_the_review_as_the_work_projects_unit_test_expects():
             assert python and not expected[key], f"{key} is no longer a deliberate difference"
             continue
         assert python == expected[key], f"{key}: Python {python}, SQL {expected[key]}"
+
+
+# --- A coordinate off the globe (#1763) ----------------------------------------
+
+PUBLISH = DBT / "models" / "publish" / "_publish__conditions.yml"
+
+# Each unit test of a model that calls macros/null_off_globe.sql: the YAML it
+# is in, the input it gives, the column naming a row, and the pairs the model
+# publishes.
+OFF_THE_GLOBE = {
+    "int_closures__ourhike_checked_exports_no_location_off_the_globe": (
+        CLOSURES,
+        "base_ourhike__closures",
+        "closure_uuid",
+        (("start_lat", "start_lon"), ("end_lat", "end_lon")),
+    ),
+    "int_warnings__serious_reports_exports_no_location_off_the_globe": (
+        WARNINGS,
+        "base_ourhike__reports",
+        "report_uuid",
+        (("lat", "lon"),),
+    ),
+}
+
+
+@pytest.mark.parametrize("name", sorted(OFF_THE_GLOBE))
+def test_null_off_globe_nulls_what_the_off_the_globe_unit_test_expects(name):
+    path, model, key, pairs = OFF_THE_GLOBE[name]
+    test = _unit_tests(path)[name]
+    expected = {row[key]: row for row in test["expect"]["rows"]}
+    given = _given(test, model)["rows"]
+    assert {row[key] for row in given} == set(expected)
+    nulled = 0
+    for row in given:
+        python = dict(row)
+        for lat, lon in pairs:
+            export_conditions._null_off_globe(python, lat, lon)
+        for column in (half for pair in pairs for half in pair):
+            sql = expected[row[key]][column]
+            assert python[column] == sql, f"{row[key]} {column}: Python {python[column]}, SQL {sql}"
+            nulled += row[column] is not None and sql is None
+    assert nulled, f"{name} nulls no coordinate, so it no longer tests the rule"
+
+
+def test_null_off_globe_writes_the_reports_file_the_writer_unit_test_expects():
+    """The phone file itself: pub_conditions_reports' unit test's own rows, read
+    by DuckDB from the test's SQL, put through read_reports()' rule, against the
+    documents the test expects the writer to write."""
+    test = _unit_tests(PUBLISH)["pub_conditions_reports_writes_no_location_off_the_globe"]
+    given = duckdb.sql(_given(test, "base_ourhike__reports")["rows"])
+    rows = [dict(zip(given.columns, values, strict=True)) for values in given.fetchall()]
+    written = {
+        report["id"]: report for report in map(json.loads, re.findall(r"cast\('(\{.*?\})' as json\)", test["expect"]["rows"]))
+    }
+    assert {row["report_uuid"] for row in rows} == set(written)
+    for row in rows:
+        export_conditions._null_off_globe(row, "lat", "lon")
+        report = written[row["report_uuid"]]
+        assert (row["lat"], row["lon"]) == (report["lat"], report["lon"]), row["report_uuid"]
+    assert any(report["lat"] is None for report in written.values())

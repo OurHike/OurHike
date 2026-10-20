@@ -8493,7 +8493,7 @@
 "osm_water:553225926": {"first_seen": "2026-08-19", "history": [], "lat": 35.7840726, "lon": -83.0429295, "name": "Wildcat Spring", "poi_type": "water", "source": "osm_water", "source_feature_id": "553225926"},
 "osm_water:553354783": {"first_seen": "2026-08-19", "history": [], "lat": 36.0642374, "lon": -82.4339147, "name": null, "poi_type": "water", "source": "osm_water", "source_feature_id": "553354783"},
 "osm_water:555462345": {"first_seen": "2026-08-19", "history": [], "lat": 34.945799, "lon": -83.592656, "name": null, "poi_type": "water", "source": "osm_water", "source_feature_id": "555462345"},
-"osm_water:556941292": {"first_seen": "2026-08-19", "history": [], "lat": 34.6791021, "lon": -83.99761450000001, "name": null, "poi_type": "water", "source": "osm_water", "source_feature_id": "556941292"},
+"osm_water:556941292": {"first_seen": "2026-08-19", "history": [], "lat": 34.6791027, "lon": -83.99758410000001, "name": null, "poi_type": "water", "source": "osm_water", "source_feature_id": "556941292"},
 "osm_water:5746074540": {"first_seen": "2026-08-19", "history": [], "lat": 34.7762629, "lon": -83.8250057, "name": null, "poi_type": "water", "source": "osm_water", "source_feature_id": "5746074540"},
 "osm_water:5768660093": {"first_seen": "2026-08-19", "history": [], "lat": 40.605429900000004, "lon": -75.9454743, "name": null, "poi_type": "water", "source": "osm_water", "source_feature_id": "5768660093"},
 "osm_water:6317330898": {"first_seen": "2026-08-19", "history": [], "lat": 34.804895200000004, "lon": -83.67566760000001, "name": null, "poi_type": "water", "source": "osm_water", "source_feature_id": "6317330898"},

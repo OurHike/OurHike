@@ -1,6 +1,70 @@
 version: 2
 
 seeds:
+  - name: dbt_project_evaluator_exceptions
+    description: >
+      The findings dbt_project_evaluator is told to skip, and why. The
+      evaluator is enforced (dbt_project.yml), so a finding either gets
+      fixed or gets a row here. Every row's `comment` says why the finding
+      is a deliberate state rather than a defect, what ends it, and the
+      issue it rests on by number AND title;
+      pipeline/tests/test_dbt_evaluator_exceptions.py refuses a row
+      without them. `id_to_exclude` is a SQL LIKE pattern, so `_` matches
+      any one character and `%` any run: keep a pattern as narrow as the
+      models it means, because a wide one switches a rule off silently.
+
+      Not every rule can be excepted here. valid_test_coverage and
+      documentation coverage compare one project-wide percentage to a
+      target and take no exceptions, so the answer there is a test or a
+      description on the model.
+    config:
+      column_types:
+        fct_name: varchar
+        column_name: varchar
+        id_to_exclude: varchar
+        comment: varchar
+    columns:
+      - name: fct_name
+        description: The evaluator model whose findings the row filters.
+      - name: column_name
+        description: The column of that model the pattern is matched against.
+      - name: id_to_exclude
+        description: A SQL LIKE pattern; findings whose column matches it are skipped.
+      - name: comment
+        description: Why, what ends it, and the issue by number and title.
+  - name: model_key_exceptions
+    description: >
+      The models excepted from the maintainer's rule of 2026-10-15 that every model has one id: a column carrying an
+      unfiltered `unique` test and an unfiltered `not_null` (a test, or a
+      not_null constraint under an enforced contract), both at error. A
+      multi-column key counts only as a dbt_utils.generate_surrogate_key
+      column, never as a dbt_utils.unique_combination_of_columns test. A row
+      names the model (`name.vN` for one version of a versioned model, as
+      the evaluator names it), the key column it does have, the severity
+      that column's tests run at, why, and the day it was decided.
+      pipeline/tests/test_dbt_every_model_keyed.py reads this file and the
+      parsed manifest, and fails a model with no key and no row here, a row
+      naming no model, a row whose model now meets the rule, and a row whose
+      column does not carry both tests at that severity. Two rows, both the
+      maintainer's answer of 2026-10-15: "Keep warn, a recorded exception".
+    config:
+      column_types:
+        model: varchar
+        column_name: varchar
+        severity: varchar
+        reason: varchar
+        decided: date
+    columns:
+      - name: model
+        description: The model, as the evaluator names it (`name.vN` for one version of a versioned model).
+      - name: column_name
+        description: The model's key column, whose tests are below the rule's bar.
+      - name: severity
+        description: The severity that column's unique and not_null tests run at.
+      - name: reason
+        description: Why, in the model's own words and the maintainer's.
+      - name: decided
+        description: The day the maintainer decided it.
   - name: poi_type_mapping
     description: >
       Source-system codes -> the one unified poi_type, transcribed from code
@@ -17,7 +81,7 @@ seeds:
       and those Python constants drift apart (DBT.md's duplication-risk
       note).
 
-      THE `dec` ROWS ARRIVED WITH PHASE D (#100) AND MIRROR A DIFFERENT
+      THE `dec` ROWS ARRIVED WITH #100 AND MIRROR A DIFFERENT
       AUTHORITY: sources.json itself. Six NYS DEC layers declare a
       layer-wide `poi_type` in the registry, and those six declarations are
       transcribed here verbatim; the confidence is not a fresh call either,
@@ -48,14 +112,14 @@ seeds:
         data_tests:
           - not_null
           - accepted_values:
-              # WIDENED BY PHASE D (#100), and worth recording that it needed
-              # widening: a two-value closed domain was the one place the
-              # Phase A slice really had baked in "the A.T." where "a trail"
+              # WIDENED FOR #100, and worth recording that it needed
+              # widening: a two-value closed domain was the one place the first slice really had baked in "the A.T." where "a trail"
               # was meant. It is still a closed list on purpose - a
               # source_system nobody added a row for is a typo, not a new
               # organization - but adding one is now a one-line change here
               # rather than a re-think.
-              values: ["atc", "opentrail", "dec"]
+              arguments:
+                values: ["atc", "opentrail", "dec"]
       - name: code
         description: >
           The raw value as upstream sends it - an opentrail `icon` letter,
@@ -78,18 +142,107 @@ seeds:
           # tests/test_dbt_seed_sync.py holds the seed inside POI_TYPES
           # from the Python side.
           - accepted_values:
-              values:
-                - shelter
-                - campsite
-                - water
-                - resupply
-                - viewpoint
-                - parking
-                - privy
+              arguments:
+                values:
+                  - shelter
+                  - campsite
+                  - water
+                  - resupply
+                  - viewpoint
+                  - parking
+                  - privy
       - name: confidence
         description: >
           lib/poi_schema.py's CONFIDENCE_* tier for POIs minted from this
           code; empty exactly where poi_type is empty.
         data_tests:
           - accepted_values:
-              values: ["high", "low"]
+              arguments:
+                values: ["high", "low"]
+  - name: publishable_licence_bases
+    description: >
+      The licence bases a source may publish on, each with the scope it is
+      admitted for and the rule or decision that admits it (pipeline/ELT.md,
+      "Who may publish"). A basis not listed here never publishes:
+      `unresolved` and `unstated` say nobody has settled it, and an absent
+      licence is not permission. int_sources__publication reads it.
+    config:
+      column_types:
+        licence_basis: varchar
+        applies_to: varchar
+        admitted_by: varchar
+        covers_own_words_named_by: varchar
+    columns:
+      - name: licence_basis
+        description: The value sources.json or trail_orgs.json records.
+        data_tests: [not_null, unique]
+      - name: applies_to
+        description: >
+          `any`, or the one scope it is admitted for: `federal` organizations,
+          the `nys_clearinghouse` (NYS DEC and OPRHP), or `gis` endpoints.
+        data_tests:
+          - accepted_values:
+              arguments:
+                values: [any, federal, nys_clearinghouse, gis]
+      - name: admitted_by
+        description: The rule of "Who may publish", or the decision, that admits it.
+      - name: covers_own_words_named_by
+        description: >
+          Set only where the basis is a maintainer's ruling on the dataset
+          itself rather than on any wording of it (the clearinghouse ruling covers a clearinghouse dataset's own restrictive words). A case-insensitive RE2 expression a row's `licence` must
+          match to name that ruling; where it does, int_sources__publication
+          answers every restriction class in the row's quoted words except
+          `cannot_be_met`. Empty for every other basis.
+  - name: registry_surfaces
+    description: >
+      Where on the phone an organization may grant each of its two kinds of
+      registry block: a `support` block's donation line
+      (export_sources.py's DONATE_SURFACES) and a `store` block's paper-map
+      link (its STORE_SURFACES), one row per pair. Both lists are closed and
+      neither holds the map, so a block naming any other surface is refused
+      by int_sources__stewards, as export_sources.py refuses it.
+      tests/test_dbt_sources_parity.py holds the rows to the two Python
+      lists and the unit test's mocked rows to this file.
+    config:
+      column_types:
+        block_kind: varchar
+        surface: varchar
+    data_tests:
+      - dbt_utils.unique_combination_of_columns:
+          arguments:
+            combination_of_columns: [block_kind, surface]
+    columns:
+      - name: block_kind
+        description: Which block the surface is granted for, `support` or `store`.
+        data_tests:
+          - not_null
+          - accepted_values:
+              arguments:
+                values: [support, store]
+      - name: surface
+        description: >
+          A screen the block may appear on, such as `trail_card`; one surface
+          can be granted for both kinds, as `sources_screen` is.
+        data_tests: [not_null]
+  - name: unregistered_publishing_sources
+    description: >
+      The sources an exporter publishes today with no sources.json row, each
+      with the issue that keeps it unregistered. int_sources__publication
+      lets them publish as they do today rather than drop off phones with
+      nobody having decided that; removing a row is that decision.
+      tests/test_dbt_sources_parity.py refuses a row whose key the registry
+      already holds, so a source cannot be in both.
+    config:
+      column_types:
+        source_key: varchar
+        why: varchar
+        decided_by: varchar
+    columns:
+      - name: source_key
+        description: The key the exporter's rows carry as their source, e.g. `opentrail_at`.
+        data_tests: [not_null, unique]
+      - name: why
+        description: What publishes today, and why there is no registry row.
+      - name: decided_by
+        description: The issue, by number and title, and the position recorded there.
+

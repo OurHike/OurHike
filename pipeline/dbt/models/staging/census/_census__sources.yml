@@ -1,0 +1,53 @@
+version: 2
+
+sources:
+  - name: census
+    description: >
+      The U.S. Census Bureau's TIGER/Line state boundaries, landed by the
+      extract's _shared/census/ folder (pipeline/extract/_shared/census/
+      states.py): a state-wide agency notice is placed by its
+      state. sources.json's census_tiger_states holds the counts, the
+      validators and the terms.
+    schema: raw
+    config:
+      # When the extract last read each table or confirmed it unchanged, from
+      # its run log, never `_loaded_at`: make_dbt_staging.py's
+      # LOADED_AT_QUERY and MONTHLY_FRESHNESS_DAYS say why, and
+      # tests/test_source_freshness.py holds every monthly source to them.
+      loaded_at_query: "{{ last_read_or_confirmed_at(this) }}"
+      meta:
+        cadence: monthly
+      freshness:
+        warn_after: {count: 35, period: day}
+        error_after: {count: 62, period: day}
+    tables:
+      - name: raw_census__census_tiger_states
+        data_tests:
+          # Rows sharing base_census__census_tiger_states's key must be exact copies.
+          - duplicates_are_exact:
+              arguments:
+                key_columns: ["'census_tiger_states'", "stusps"]
+                row_id_columns: ["objectid", "fid", "ogc_fid", "_dlt_id", "_socrata_id", "feature_index", "feature_id"]
+          # Elementary's checks (make_dbt_staging.py's raw_table_checks()), each with its two thresholds.
+          - elementary.volume_anomalies:
+              config:
+                severity: error
+                fail_calc: "{{ var('elementary_anomaly_level') }}"
+                warn_if: ">0"
+                error_if: ">1"
+                tags: [elementary_check]
+                enabled: "{{ env_var('OURHIKE_ELEMENTARY_CHECKS', 'false') == 'true' }}"
+          - elementary.schema_changes:
+              config:
+                severity: error
+                fail_calc: "{{ var('elementary_schema_change_level') }}"
+                warn_if: ">0"
+                error_if: ">1"
+                tags: [elementary_check]
+                enabled: "{{ env_var('OURHIKE_ELEMENTARY_CHECKS', 'false') == 'true' }}"
+        description: >
+          tl_2025_us_state.zip, one row per state or equivalent (56 on
+          2026-10-04: 50 states, DC and 5 territories), its .dbf columns as dlt
+          names them and the shape as GeoJSON text in NAD83 degrees. Each state
+          runs out over its coastal water. Key: `stusps`, the two-letter code,
+          56 of 56.

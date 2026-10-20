@@ -30,6 +30,8 @@ import { Header } from './Header'
 import { TabBar } from './TabBar'
 import type { TabId } from './tabs'
 import { Legend } from './Legend'
+import type { HazardArea } from '../lib/hazardAreas'
+import type { TrailClosure } from '../lib/publishedConditions'
 import { InViewSheet } from './InViewSheet'
 import { useDesktop } from '../lib/useDesktop'
 import type { HikerMode } from '../lib/hikerMode'
@@ -267,6 +269,26 @@ export interface MapScreenProps {
    *  reason `selectedPoi` is: the map draws bands, and the app is what knows
    *  whose notice a band belongs to. */
   atcUpdateSheet?: ReactNode
+  /**
+   * The hunting areas, shooting sites and burned areas a trail on
+   * this phone runs through (#1805, lib/hazardAreas.ts). Drawn under the
+   * trail and never as a closure.
+   */
+  hazardAreas?: readonly HazardArea[]
+  /** A hazard area was tapped, and nothing drawn over it, by notice id. */
+  onSelectHazardArea?: (noticeId: string) => void
+  /** The tapped area's card, or null - the atcUpdateSheet pattern. */
+  hazardAreaSheet?: ReactNode
+  /**
+   * Every club closure that closes the trail today, from
+   * conditions/trail_closures.json (the maintainer's closure-map standard, 2026-10-11),
+   * crossed out on the map (map/clubClosureLayers.ts).
+   */
+  clubClosures?: readonly TrailClosure[]
+  /** A club closure was tapped, by notice id. */
+  onSelectClubClosure?: (noticeId: string) => void
+  /** The tapped club closure's sheet, or null - the atcUpdateSheet pattern. */
+  clubClosureSheet?: ReactNode
   /** The closure tape was tapped, by closure id (#1373, F12), and the sheet
    *  the shell renders for it - the atcUpdateSheet pattern, on the mark
    *  #245 drew and left for a tap. */
@@ -400,6 +422,23 @@ export interface MapScreenProps {
   onOpenNotices?: () => void
   /** The full list of notices, or null when it is closed. */
   noticeList?: ReactNode
+  /**
+   * The Legend row's words when the list is the planned-hike panel (#1805),
+   * or undefined for today's "Read all N trail notices".
+   *
+   * Set, the row shows whatever `noticeCount` says - zero included - because
+   * the panel's honest empty state ("no hike planned in the next 7 days") is
+   * something a hiker has to be able to open and read.
+   */
+  noticeRowLabel?: string
+  /**
+   * The "Read all" door beside the planned-hike row (the
+   * maintainer's poll of 2026-10-15): its words, or undefined for no door, and
+   * what a tap does. Every club's notices that no map draws, planned or not
+   * (chrome/noticesPanel.tsx says which).
+   */
+  readAllNoticesLabel?: string
+  onReadAllNotices?: () => void
   /**
    * How many notices this screen is holding that their publisher touched in
    * the last 72 hours and the hiker has not already silenced (lib/notices.ts,
@@ -918,6 +957,12 @@ export function MapScreen({
   onChangeWorkdayWindow,
   disputes,
   atcUpdateSheet,
+  hazardAreas,
+  onSelectHazardArea,
+  hazardAreaSheet,
+  clubClosures,
+  onSelectClubClosure,
+  clubClosureSheet,
   onSelectClosure,
   closureSheet,
   onSelectWarning,
@@ -944,6 +989,9 @@ export function MapScreen({
   noticeCount = 0,
   onOpenNotices,
   noticeList,
+  noticeRowLabel,
+  readAllNoticesLabel,
+  onReadAllNotices,
   newNoticeCount = 0,
   newNoticeLabel,
   trailDataUpdate,
@@ -1670,6 +1718,10 @@ export function MapScreen({
               atcUpdates={atcUpdates}
               atcUpdatePoints={atcUpdatePoints}
               onSelectAtcUpdate={onSelectAtcUpdate}
+              hazardAreas={hazardAreas}
+              onSelectHazardArea={onSelectHazardArea}
+              clubClosures={clubClosures}
+              onSelectClubClosure={onSelectClubClosure}
               onSelectClosure={onSelectClosure}
               onSelectWarning={onSelectWarning}
               workdays={workdays}
@@ -1795,9 +1847,15 @@ export function MapScreen({
                 this is about a stretch of trail, so it sits where the search
                 sheet does and needs none of that. */}
             {atcUpdateSheet}
+            {/* The hazard area card (#1805), in the same slot: an area
+                anchors to no single point on the canvas either. */}
+            {hazardAreaSheet}
             {/* The two safety sheets (#1373, F12), in the same slot family:
                 a stretch of tape and a pin, neither anchored to a card. */}
             {closureSheet}
+            {/* A club closure's sheet (the maintainer's closure-map standard), beside the
+                tape's: the same mark, from a club's own notice. */}
+            {clubClosureSheet}
             {warningSheet}
             {workdaySheet}
 
@@ -1949,6 +2007,9 @@ export function MapScreen({
             hasDownload={hasDownload}
             downloadActivity={downloadActivity}
             noticeCount={noticeCount}
+            noticeRowLabel={noticeRowLabel}
+            readAllNoticesLabel={readAllNoticesLabel}
+            onReadAllNotices={onReadAllNotices}
             newNoticeCount={newNoticeCount}
             onOpenNotices={onOpenNotices}
           />

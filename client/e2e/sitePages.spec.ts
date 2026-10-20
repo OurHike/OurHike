@@ -6,6 +6,12 @@ import {
   serveMarketingSite,
   openSitePage,
 } from '../preview-shots/fixtures/marketingSite.mjs'
+import { serveDataQuality } from '../preview-shots/fixtures/dataQuality.mjs'
+import {
+  EXAMPLE_NOW,
+  hourlyManyProblems,
+  monthlyManyProblems,
+} from '../../site/src/lib/dataQualityExamples.mjs'
 
 /**
  * Every page of the marketing site, audited in a real browser at phone and
@@ -59,6 +65,48 @@ function sitePages(): string[] {
 const PAGES = sitePages()
 const SCHEMES = ['light', 'dark'] as const
 
+interface Variant {
+  path: string
+  /** The name its tests carry: the path itself, for every page as it is built. */
+  label: string
+  /** Routes set before the page loads. */
+  setup?: (page: Page) => Promise<void>
+  /** Steps once it has loaded, to bring controls into view before the checks. */
+  ready?: (page: Page) => Promise<void>
+}
+
+/**
+ * Every page as it is built, and /data/quality/ a second time drawing an
+ * INVENTED pair of files with something in every section
+ * (site/src/lib/dataQualityExamples.mjs). Unconfigured, that page is only a
+ * notice; drawn, it has folds, a Show menu and a Chart button on forty-one
+ * rows - and those are what a phone has to tap. Every fold is opened and one
+ * Chart button pressed first, so the rows inside the folds, a pressed
+ * button and the "Back to the row" link are checked too.
+ */
+const VARIANTS: Variant[] = [
+  ...PAGES.map((path) => ({ path, label: path })),
+  {
+    path: '/data/quality/',
+    label: '/data/quality/ drawing invented files',
+    setup: async (page) => {
+      await page.clock.setFixedTime(new Date(EXAMPLE_NOW))
+      await serveDataQuality(page, {
+        monthly: monthlyManyProblems(),
+        hourly: hourlyManyProblems(),
+      })
+    },
+    ready: async (page) => {
+      await page.locator('[data-slot="body"][aria-busy="false"]').waitFor()
+      await page.evaluate(() => {
+        for (const fold of document.querySelectorAll('details')) fold.open = true
+      })
+      await page.locator('[data-chart-key]').filter({ visible: true }).nth(3).click()
+      await expect(page.locator('[data-charted]')).toBeVisible()
+    },
+  },
+]
+
 /**
  * WCAG 2.1 AA: 4.5:1 for body text, 3:1 for large text (24px, or 18.66px
  * bold). Not a house number - the standard's, and the one #1663's
@@ -96,11 +144,13 @@ test.beforeAll(() => {
   ).toBe(true)
 })
 
-async function open(page: Page, path: string, scheme: (typeof SCHEMES)[number]) {
+async function open(page: Page, variant: Variant, scheme: (typeof SCHEMES)[number]) {
   await page.emulateMedia({ colorScheme: scheme })
   await serveMarketingSite(page)
+  await variant.setup?.(page)
   await page.goto('/', { waitUntil: 'load' })
-  await openSitePage(page, path)
+  await openSitePage(page, variant.path)
+  await variant.ready?.(page)
   // Fonts decide every line break the geometry checks read.
   await page.evaluate(() => document.fonts.ready)
 }
@@ -406,23 +456,27 @@ async function contrastFailures(page: Page): Promise<string[]> {
   return failures
 }
 
-for (const path of PAGES) {
+for (const variant of VARIANTS) {
   for (const scheme of SCHEMES) {
-    test.describe(`${path} in ${scheme}`, () => {
+    test.describe(`${variant.label} in ${scheme}`, () => {
       test('every run of text reaches WCAG AA contrast on a phone', async ({ page }) => {
-        await open(page, path, scheme)
+        await open(page, variant, scheme)
         expect(await contrastFailures(page), 'text below WCAG AA contrast').toEqual([])
       })
 
       test('every run of text reaches WCAG AA contrast on a desktop @desktop', async ({
         page,
       }) => {
-        await open(page, path, scheme)
+        await open(page, variant, scheme)
         expect(await contrastFailures(page), 'text below WCAG AA contrast').toEqual([])
       })
 
+      // The skip link is checked on each page as it is built. A variant that
+      // pressed a button first has moved focus, so its first Tab would not
+      // start from the top of the page.
       test('shows a readable skip link when it takes focus', async ({ page }) => {
-        await open(page, path, scheme)
+        test.skip(variant.ready !== undefined, 'checked on the page as it is built')
+        await open(page, variant, scheme)
         await page.keyboard.press('Tab')
         const skip = page.locator('.skip')
         await expect(skip).toBeFocused()
@@ -445,12 +499,12 @@ for (const path of PAGES) {
     })
   }
 
-  test.describe(path, () => {
+  test.describe(variant.label, () => {
     test('never scrolls sideways, and keeps text off the edge of a phone', async ({
       page,
     }) => {
-      await open(page, path, 'light')
-      const { scroll, width, crowded } = await page.evaluate((min) => {
+      await open(page, variant, 'light')
+      const { scroll, width, crowded, wide } = await page.evaluate((min) => {
         const vw = document.documentElement.clientWidth
         const scrolls = (el: Element) => {
           for (let a: Element | null = el; a; a = a.parentElement) {
@@ -479,16 +533,59 @@ for (const path of PAGES) {
             )
           }
         }
-        return { scroll: document.documentElement.scrollWidth, width: vw, crowded }
+        // What sticks out, so a failure names it. A failure seen only in
+        // phone-webkit (flow runs 37799207718 and 37801933011) measured the
+        // page 564px wide while no element's own box passed the edge, so
+        // this names three things: the root boxes' widths, the outermost
+        // elements past the edge, and any element whose content runs wider
+        // than its box (text set nowrap, a long word, a pseudo-element).
+        const name = (el: Element) => {
+          const cls =
+            typeof el.className === 'string' && el.className
+              ? `.${el.className.trim().split(/\s+/).join('.')}`
+              : ''
+          return `${el.tagName.toLowerCase()}${cls}`
+        }
+        const root = document.documentElement.getBoundingClientRect()
+        const wide: string[] = [
+          `html ${Math.round(root.width)}, body ${Math.round(document.body.getBoundingClientRect().width)}`,
+        ]
+        for (const el of document.body.querySelectorAll('*')) {
+          const r = el.getBoundingClientRect()
+          if (r.right <= vw + 0.5 || scrolls(el.parentElement ?? el)) continue
+          const parent = el.parentElement
+          if (
+            parent &&
+            parent !== document.body &&
+            parent.getBoundingClientRect().right > vw + 0.5
+          )
+            continue
+          wide.push(`${name(el)} ${Math.round(r.left)}..${Math.round(r.right)}`)
+          if (wide.length === 6) break
+        }
+        for (const el of document.body.querySelectorAll('*')) {
+          if (scrolls(el)) continue
+          const over = el.scrollWidth - el.clientWidth
+          if (over <= 1 || el.clientWidth === 0) continue
+          const r = el.getBoundingClientRect()
+          if (r.left + el.scrollWidth <= vw + 0.5) continue
+          wide.push(
+            `${name(el)} holds ${el.scrollWidth}px in ${el.clientWidth}px at ${Math.round(r.left)}`,
+          )
+          if (wide.length === 12) break
+        }
+        return { scroll: document.documentElement.scrollWidth, width: vw, crowded, wide }
       }, MIN_EDGE_PX)
-      expect(scroll, 'the page scrolls sideways').toBeLessThanOrEqual(width)
+      expect(scroll, `the page scrolls sideways: ${wide.join('; ')}`).toBeLessThanOrEqual(
+        width,
+      )
       expect(crowded, `text closer than ${MIN_EDGE_PX}px to the phone's edge`).toEqual([])
     })
 
     test('gives every control a phone-sized target, a 16px field and the site’s own styling', async ({
       page,
     }) => {
-      await open(page, path, 'light')
+      await open(page, variant, 'light')
       const problems = await page.evaluate(
         ({ minTarget, minInput }) => {
           const out: string[] = []
@@ -559,12 +656,12 @@ for (const path of PAGES) {
     })
 
     test('never covers a photograph’s credit on a phone', async ({ page }) => {
-      await open(page, path, 'light')
+      await open(page, variant, 'light')
       expect(await coveredCredits(page), 'painted over a photo credit').toEqual([])
     })
 
     test('never covers a photograph’s credit on a desktop @desktop', async ({ page }) => {
-      await open(page, path, 'light')
+      await open(page, variant, 'light')
       expect(await coveredCredits(page), 'painted over a photo credit').toEqual([])
     })
   })

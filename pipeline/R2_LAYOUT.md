@@ -52,6 +52,8 @@ put here is published, not stored. Also never: credentials, mirrors of raw upstr
 about generated data), and anything whose licence has not been established
 ([CONTRIBUTING.md](../CONTRIBUTING.md)).
 
+**Raw never lands in this bucket.** An earlier plan (2026-10-01) put raw and the step cache here, with a hold-out list for the rows this project never publishes; the maintainer replaced it the same day. Every raw table and the step cache now go in one private bucket, `our-hike-raw`, under `raw/` and `steps/`, with one key, so nothing here is raw and there is no hold-out list to keep (the maintainer: *"Noooooo don't partition the sources … Can you make the private r2 bucket for me and store the secrets to GitHub?"*). **#1793 — Rebuild the data platform as dlt → dbt: seven contracted marts, a monthly refresh, published docs, and lighter phone downloads** builds it. The earlier design, which reached the same answer for its own reasons:
+
 **There is a design for a raw store, and it is a different bucket** —
 [INCREMENTAL.md](INCREMENTAL.md), designed 2026-09-09, unbuilt. It exists to keep the
 fetchers' outputs between runs, which is exactly the "mirror of raw upstream pulls" the
@@ -84,7 +86,7 @@ data a phone is pinned to.
 
 | prefix | holds | mutable | hiker-facing |
 |---|---|---|---|
-| *(root)* | today's flat keys, plus `latest.json` | frozen; `latest.json` is the one mutable pointer | yes |
+| *(root)* | today's flat keys, plus `latest.json`, `channels.json` and `channels_history.json` | frozen; `latest.json` and `channels.json` are mutable pointers, and `channels_history.json` is appended to by `channels.py` on each move of `channels.json` | yes |
 | `releases/` | one immutable folder per dated release, plus `index.json` and `pinned.json` | written once, never overwritten | yes |
 | `_internal/` | build intermediates, keyed by release | rewritten per build | no |
 | `photos/` | POI photos, one object per image, content-addressed | mutable: objects are added and deleted, never rewritten | yes |
@@ -133,6 +135,21 @@ app-store builds cannot be forced forward (and RELEASING.md §10's planned `DATA
 constant would pin them harder still), so moving the flat keys is a change no phone
 already in the field could survive.
 
+**A versioned file lives only in a release folder** ([ELT.md](ELT.md),
+"Versions and channels"). A v2 phone file is written beside its v1 at
+`releases/<id>/v2/<file>`, and it has no flat key: every root key is v1's, and a build that
+reads v2 resolves its release folder and reads `v2/<file>` there
+(`client/src/lib/config.ts`'s `phoneFileKey`). So `publish.py` uploads a changed v2 file
+straight into the folder it stages, and copies an unchanged one across from the folder
+`latest.json` names. Only the folder's own `manifest.json` lists it. `latest.json`
+describes the flat keys, and `check_deployment.py`, `smoke_published.py` and every build
+that reads the root fetch each key it lists at that flat name. `v2/` is therefore never a
+top-level prefix, and `lib/r2_keys.py` refuses one at the root. Monthly run 29
+(`refresh-reference.yml` 37726904273, 2026-10-08) is why this is written down: it tried to
+upload the eleven v2 files flat, and that refusal stopped the run before anything was
+uploaded. The root-scoped families keep their versions under their own prefix
+(`conditions/v2/<file>`, `podcasts/v2/<file>`).
+
 `_internal/` is still not written by anything. It holds build intermediates keyed by
 release — per-cell mosaics and their state — whose producer is the raster build, and
 creating the prefix without that would be a prefix a prune job knows to spare and nothing
@@ -151,6 +168,30 @@ not live under `releases/`.
 Retention is therefore trivial and needs no prune job: one object per artifact, overwritten
 in place, never accumulating. That is the exemption to DATA_RELEASES.md's rule that a new
 prefix needs a retention clock written for it — there is nothing to retain.
+
+**`conditions/hazard_areas.json` joined the prefix on 2026-10-05**, and like every key here it is permanent from its first upload. It holds
+the rows of `conditions/notices.json` that carry a `hazard` — the hunting areas, shooting
+sites and burned areas the map draws — written by the dbt writer `pub_conditions_hazard_areas`,
+because a phone downloads `notices.json` only once a hike is planned and reads
+this one at launch. Like `notices.json` it is written only on the dbt path, so a bucket the
+exporters still publish answers 404 for it, and the client reads that as no answer rather
+than as no hazard area (`client/src/lib/publishedNotices.ts`).
+
+**`conditions/trail_closures.json` joined the prefix on 2026-10-14** (the maintainer's
+polls of 2026-10-11, building **#1152 — Move OPRHP's temporary
+closures onto the conditions clock, where a safety layer belongs** in its shape C, for
+every club closure). It holds the rows of
+`conditions/notices.json` that obstruct a trail, but ATC's, each with a `shape` of
+`line`, `area`, `shade` or `point`; an area's `place` is the trail stretches inside it, cut
+every hour against the release's own trail lines (the nearby ones and the A.T.'s),
+and a `shade`'s is the area itself, where no mapped trail runs inside.
+The dbt writer
+`pub_conditions_trail_closures` writes it, the phone reads it at launch and draws each
+closure with the crossed-out mark, and like `hazard_areas.json` it is written only on the
+dbt path, so a bucket the exporters still publish answers 404 for it. Nothing new is
+stored anywhere for it in this bucket: the release's lines reach the hourly build through
+the Actions cache (`publish-weather.yml` prepares them once per release), not through a
+key here.
 
 `originals/` is a preservation copy and never a download. `photos/` holds the 640px
 rendering a card actually shows; this holds the full-resolution file it was reduced from,

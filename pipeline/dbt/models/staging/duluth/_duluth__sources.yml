@@ -1,0 +1,47 @@
+version: 2
+
+sources:
+  - name: duluth
+    description: >
+      City of Duluth's registered layers, landed by the extract's duluth/
+      folder (pipeline/extract/duluth/) as raw_duluth__<key>, and staged once
+      each by a base model here. Descriptions transcribed from sources.json's
+      titles.
+    schema: raw
+    config:
+      # When the extract last read each table or confirmed it unchanged, from
+      # its run log, never `_loaded_at`: make_dbt_staging.py's
+      # LOADED_AT_QUERY and MONTHLY_FRESHNESS_DAYS say why, and
+      # tests/test_source_freshness.py holds every monthly source to them.
+      loaded_at_query: "{{ last_read_or_confirmed_at(this) }}"
+      freshness:
+        warn_after: {count: 35, period: day}
+        error_after: {count: 62, period: day}
+    tables:
+      - name: raw_duluth__duluth_superior_hiking_trail
+        data_tests:
+          # Rows sharing base_duluth__superior_hiking_trail's key must be exact copies.
+          - duplicates_are_exact:
+              arguments:
+                key_columns: ["'duluth_superior_hiking_trail'", "globalid"]
+          # Elementary's checks (make_dbt_staging.py's raw_table_checks()), each with its two thresholds.
+          - elementary.volume_anomalies:
+              config:
+                severity: error
+                fail_calc: "{{ var('elementary_anomaly_level') }}"
+                warn_if: ">0"
+                error_if: ">1"
+                tags: [elementary_check]
+                enabled: "{{ env_var('OURHIKE_ELEMENTARY_CHECKS', 'false') == 'true' }}"
+          - elementary.schema_changes:
+              config:
+                severity: error
+                fail_calc: "{{ var('elementary_schema_change_level') }}"
+                warn_if: ">0"
+                error_if: ">1"
+                tags: [elementary_check]
+                enabled: "{{ env_var('OURHIKE_ELEMENTARY_CHECKS', 'false') == 'true' }}"
+        description: >
+          Superior Hiking Trail (Duluth section) (sources.json
+          `duluth_superior_hiking_trail`). Key: GlobalID unique on 67 live
+          rows.

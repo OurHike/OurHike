@@ -92,6 +92,16 @@ After each publish completes, dispatch `verify-release.yml` against the
 environment just written (gate 6) - its `base` input for UA, its default for
 production - and read the battery's summary rather than assuming green.
 
+**Then point production's phones at it.** What a phone reads is its
+environment's `channels.json` in the bucket, and since 2026-10-16 nothing in
+the repository names it (RELEASING.md §10). UA's moves itself after each
+monthly build that passed every check; production's moves only by
+`gh workflow run promote-data.yml -f confirm="promote to production"`, which
+copies the release UA's pointer names (or `-f release=<id>`) into
+production's tree, checks it, and moves the pointer. Hand the maintainer the
+run URL for the `production` approval, as for a publish. No commit moves a
+pointer, and `DATA_RELEASE` changes only with a new schema version.
+
 **The backend needs no step here once it exists, and that is a fact worth
 knowing rather than an omission - but it does not exist yet.**
 [../../../backend/HOSTING.md](../../../backend/HOSTING.md) is the one place

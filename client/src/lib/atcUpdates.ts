@@ -147,6 +147,11 @@ export type AtcCategory =
  * told, in ATC's own words, that ATC has posted something about where they are
  * walking. features/ATC_TRAIL_UPDATES.md leaves "where the suppressed ones go"
  * an open question, and this is that answer for now rather than a new screen.
+ *
+ * No start to wait for: conditions/atc_updates.json carries none
+ * (pipeline/dbt's pub_conditions_atc_updates), so no ATC band is upcoming. A
+ * club's closure that has not started is read through
+ * lib/noticeCurrency.ts's `obstructsOn` instead.
  */
 export function obstructsTheTrail(update: AtcUpdate): boolean {
   return update.obstructs_trail
@@ -299,6 +304,22 @@ function unchecked(update: AtcUpdate): string {
 }
 
 /**
+ * The tail a banner grows when the notice may no longer apply: the
+ * maintainer's poll of 2026-10-11. `stale` is the verdict that greys the
+ * same notice in "Notices for your planned hikes" and on its own sheet, its
+ * row's `current_until` in conditions/notices.json against the phone's day
+ * (lib/noticeCurrency.ts), so the header never reads at full voice what the
+ * list has greyed. App.tsx works it out, since only App holds that file's
+ * rows. Without the file there is no verdict, and the line reads as before.
+ *
+ * Four words at the end, after `unchecked`'s, for the same reason: the
+ * banner is read while walking.
+ */
+function mayNoLongerApply(stale: boolean): string {
+  return stale ? ' · may no longer apply' : ''
+}
+
+/**
  * The header's one line for a notice, or null when there is nothing to say.
  *
  * `org` is the publisher's SHORT name and it is passed in rather than written
@@ -317,6 +338,7 @@ export function atcUpdateBanner(
   direction: HikeDirection | undefined,
   org: string,
   units: UnitSystem = 'imperial',
+  stale = false,
 ): string | null {
   const { start_mile_marker: start, end_mile_marker: end } = update
   const range = start === end ? `mi ${mile(start)}` : `mi ${mile(start)} – ${mile(end)}`
@@ -333,7 +355,7 @@ export function atcUpdateBanner(
       ? `along ${formatDistance(Math.abs(end - start), units, 'whole')} of trail`
       : 'here'
 
-    return `${org} · ${update.category} ${where} · ${update.title} · ${range}${unchecked(update)}`
+    return `${org} · ${update.category} ${where} · ${update.title} · ${range}${unchecked(update)}${mayNoLongerApply(stale)}`
   }
 
   if (direction === undefined) return null
@@ -343,7 +365,7 @@ export function atcUpdateBanner(
     direction === 'NOBO' ? nearEdge - currentMile : currentMile - nearEdge
   if (distanceAhead < 0) return null
 
-  return `${org} · ${update.category} ${formatDistance(distanceAhead, units)} ahead · ${update.title} · ${range}${unchecked(update)}`
+  return `${org} · ${update.category} ${formatDistance(distanceAhead, units)} ahead · ${update.title} · ${range}${unchecked(update)}${mayNoLongerApply(stale)}`
 }
 
 /**

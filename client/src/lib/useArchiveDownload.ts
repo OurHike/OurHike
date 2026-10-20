@@ -178,6 +178,13 @@ export function useArchiveDownloads(requests: readonly ArchiveDownloadRequest[])
 
     void (async () => {
       const landed: Record<string, DownloadStatus> = {}
+      // Marked answered only when `landed` is committed below, never as each
+      // read returns: a run cancelled between its reads returns before
+      // `setStatuses`, and a package marked answered by it would be skipped by
+      // every later run with no status at all - `statusesKnown` false, and the
+      // map never mounted, for the session (the v1.3.5 release review's
+      // safety finding; useArchiveDownloads.test.ts holds it).
+      const decided: string[] = []
       // Every package the reads have not yet decided - all of them until the
       // first transaction answers, then the ones with no finished archive.
       let undecided: readonly string[] = unanswered
@@ -204,7 +211,7 @@ export function useArchiveDownloads(requests: readonly ArchiveDownloadRequest[])
         unanswered.forEach((packageKey) => {
           const bytes = finishedBytes.get(packageKey)
           if (bytes !== null && bytes !== undefined) {
-            answered.current.add(packageKey)
+            decided.push(packageKey)
             landed[packageKey] = {
               state: 'downloaded',
               totalBytes: bytes,
@@ -229,7 +236,7 @@ export function useArchiveDownloads(requests: readonly ArchiveDownloadRequest[])
         if (cancelled) return
         stillUndecided.forEach((packageKey) => {
           const partial = partials.get(packageKey)
-          answered.current.add(packageKey)
+          decided.push(packageKey)
           // No blob, no partial - but if the completion marker says an
           // archive finished here, this is an eviction, and saying "not
           // downloaded" would be the FarOut failure: a map that silently
@@ -267,6 +274,7 @@ export function useArchiveDownloads(requests: readonly ArchiveDownloadRequest[])
             landed[packageKey] = absentStatus(packageKey)
         }
       }
+      for (const packageKey of decided) answered.current.add(packageKey)
       setStatuses((previous) => ({ ...previous, ...landed }))
     })()
 

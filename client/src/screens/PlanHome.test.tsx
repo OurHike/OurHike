@@ -579,3 +579,32 @@ describe('what no home may say', () => {
     }
   })
 })
+
+describe('"Before you go" (#1689)', () => {
+  it.each([
+    ['the day room', { room: 'day' as const }],
+    ['the sections room', { room: 'sections' as const }],
+    ['the hike room', { room: 'sections' as const, activeHike: hike() }],
+  ])('offers Pack the Ten Essentials with its packed count in %s', async (_, room) => {
+    const user = userEvent.setup()
+    const onTenEssentials = vi.fn()
+    render(
+      <PlanHome
+        {...PROPS}
+        {...room}
+        onTenEssentials={onTenEssentials}
+        essentialsPacked={3}
+      />,
+    )
+
+    const row = screen.getByRole('button', { name: /Pack the Ten Essentials/ })
+    expect(row).toHaveTextContent('3 of 10 packed · gear at REI')
+    await user.click(row)
+    expect(onTenEssentials).toHaveBeenCalledOnce()
+  })
+
+  it('draws no row when the shell gives it nowhere to go', () => {
+    render(<PlanHome {...PROPS} room="day" />)
+    expect(screen.queryByText('Before you go')).not.toBeInTheDocument()
+  })
+})

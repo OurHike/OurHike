@@ -408,6 +408,63 @@ describe('when the package set grows after mount (#1301)', () => {
   })
 })
 
+describe('a growth that lands during the partials read', () => {
+  it('still answers a downloaded package whose first read was cancelled', async () => {
+    // The v1.3.5 release review's one safety finding: the sweep marked a
+    // downloaded package answered at the first transaction, then a coverage
+    // index landing during the partials read cancelled the run before its
+    // `setStatuses`. The next run skipped the package as answered, so its
+    // status stayed unknown, `statusesKnown` stayed false, and App.tsx never
+    // mounted the map until a relaunch.
+    const DAYPACK = {
+      packageKey: 'ourhike:daypack',
+      url: 'https://cdn.example.org/daypack.pmtiles',
+      artifactKey: 'daypack.pmtiles',
+    }
+    withStore({
+      [`${SHEET.packageKey}:complete`]: { generation: 0, segments: 1, totalBytes: 8 },
+      [progressKeyFor(TERRAIN.packageKey)]: { bytesDownloaded: 3, totalBytes: 6 },
+    })
+    mockFetch({})
+    const answerFirstPartialsRead: Array<() => void> = []
+    const readStore = vi.mocked(getMany).getMockImplementation()!
+    vi.mocked(getMany).mockImplementation((asked) => {
+      const read = readStore(asked)
+      if (
+        answerFirstPartialsRead.length === 0 &&
+        asked.includes(progressKeyFor(TERRAIN.packageKey))
+      ) {
+        return new Promise((resolve) => {
+          answerFirstPartialsRead.push(() => void read.then(resolve))
+        })
+      }
+      return read
+    })
+
+    const { result, rerender } = renderHook(
+      ({ requests }: { requests: readonly (typeof SHEET)[] }) =>
+        useArchiveDownloads(requests),
+      { initialProps: { requests: BOTH } },
+    )
+    // The first run is held inside its partials read, past the sheet's
+    // finished-archive answer.
+    await waitFor(() => expect(answerFirstPartialsRead).toHaveLength(1))
+
+    // A coverage index lands: the set grows and the first run is cancelled.
+    rerender({ requests: [...BOTH, DAYPACK] })
+    await act(async () => {
+      answerFirstPartialsRead[0]!()
+      await new Promise((resolve) => setTimeout(resolve, 0))
+    })
+
+    await waitFor(() => expect(result.current.statusesKnown).toBe(true))
+    expect(result.current.statusFor(SHEET.packageKey)).toMatchObject({
+      state: 'downloaded',
+      totalBytes: 8,
+    })
+  })
+})
+
 describe('a store that refuses a read (#1301)', () => {
   it('asks again on a later run rather than caching the refusal for the session', async () => {
     // A database that refused this read is not the same as one that answered.

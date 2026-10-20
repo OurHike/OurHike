@@ -327,3 +327,72 @@ def test_a_token_with_no_expiry_is_refused(db_session):
         get_current_user(credentials=_credentials(token), db=db_session)
 
     assert raised.value.status_code == 401
+
+
+# #1754: PyJWKClient answers an unknown `kid` with a forced JWKS refresh, and the
+# `kid` is read from an unverified header, so an unauthenticated caller could buy
+# one outbound fetch per request. These use the real client class with only its
+# network call (`fetch_data`) replaced by a counter.
+
+
+def _throttled_client(monkeypatch, clock):
+    _, public = es256_keypair()
+    jwk = {**jwt.algorithms.ECAlgorithm.to_jwk(public, as_dict=True), "kid": "real-kid", "use": "sig"}
+    client = auth_module._ThrottledJWKClient("https://example.invalid/jwks.json")
+    fetches = []
+
+    def fetch_data():
+        fetches.append(clock())
+        client.jwk_set_cache.put({"keys": [jwk]})
+        return {"keys": [jwk]}
+
+    monkeypatch.setattr(client, "fetch_data", fetch_data)
+    monkeypatch.setattr(auth_module.time, "monotonic", clock)
+    return client, fetches
+
+
+def test_unknown_kids_cause_one_forced_jwks_fetch_per_throttle_window(monkeypatch):
+    now = [1000.0]
+    client, fetches = _throttled_client(monkeypatch, lambda: now[0])
+
+    for i in range(50):
+        with pytest.raises(jwt.PyJWKClientError):
+            client.get_signing_key(f"random-kid-{i}")
+
+    # One for the empty cache, one forced refresh; the other 49 forced
+    # refreshes were answered from the cached set.
+    assert len(fetches) == 2
+
+
+def test_a_forced_refresh_is_allowed_again_once_the_window_has_passed(monkeypatch):
+    now = [1000.0]
+    client, fetches = _throttled_client(monkeypatch, lambda: now[0])
+
+    with pytest.raises(jwt.PyJWKClientError):
+        client.get_signing_key("unknown-1")
+    assert len(fetches) == 2
+
+    now[0] += auth_module.JWKS_FORCED_REFRESH_MIN_SECONDS + 1
+    with pytest.raises(jwt.PyJWKClientError):
+        client.get_signing_key("unknown-2")
+
+    assert len(fetches) == 3
+
+
+def test_the_throttle_does_not_refuse_a_kid_the_cached_set_holds(monkeypatch):
+    client, fetches = _throttled_client(monkeypatch, lambda: 1000.0)
+
+    assert client.get_signing_key("real-kid").key_id == "real-kid"
+    assert client.get_signing_key("real-kid").key_id == "real-kid"
+    assert len(fetches) == 1
+
+
+def test_the_jwks_client_is_built_with_the_short_fetch_timeout():
+    auth_module._jwk_client.cache_clear()
+    try:
+        client = auth_module._jwk_client()
+    finally:
+        auth_module._jwk_client.cache_clear()
+
+    assert isinstance(client, auth_module._ThrottledJWKClient)
+    assert client.timeout == auth_module.JWKS_FETCH_TIMEOUT_SECONDS == 5.0

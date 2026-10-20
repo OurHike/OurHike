@@ -171,6 +171,36 @@ PMTiles orders tile IDs zoom-major, so a national z0–9 archive followed by a
 regional z10–14 one is *already* in write order. Packages can be cut from the
 pair without ever materialising a ~23 GB national file.
 
+### Cutting a package from more than one source, and the seam-tile rule (#248)
+
+The measurement below shows the shards are not tile-disjoint, which means
+`extract_package.py` needs a rule for a tile more than one source wrote — not
+only a way to read more than one source. **Decided (#248): the source whose
+own build polygon contains the tile's centre wins.** Not a real per-feature
+merge across the two vector tiles — that needs decoding and re-encoding,
+which `extract_package.py` avoids on purpose, copying tile bytes verbatim so
+compression and tile type carry over untouched — but cheap, deterministic,
+and it settles the *same* seam tile the *same* way on every rebuild, unlike
+picking whichever source happens to be listed first. A tile no source's
+polygon claims — none given, or a centre that lands in the gap between two
+imperfectly-adjacent shards — falls back to first-source-wins, the same
+convention `compare_shards.py`'s own overlap merge already uses below.
+
+This is still the class of seam drift the "Decided" paragraph after the
+measurement accepts for v1, applied to extraction rather than to the build
+comparison: whichever shard's polygon claims a boundary tile is still only
+that shard's own view of it, truncated at its own edge. What centre-
+containment buys is that the half kept is predictable rather than an
+accident of argument order — it does not make the seam tile *correct*, and
+nothing here claims otherwise.
+
+Not yet measured against a real sharded build, because #250 (the workflow
+that would produce one) does not exist yet — #248 proved the merge and the
+rule against synthetic fixtures. Whoever builds #250 should compare a
+package cut from a real national + regional pair against one cut from a
+whole-region build, same as the "Measured: sharding is not lossless" table
+below did for the build itself, and fold the result in here.
+
 ### Measured: sharding is not lossless
 
 [#225](https://github.com/OurHike/OurHike/issues/225) built

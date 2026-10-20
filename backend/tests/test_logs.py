@@ -12,6 +12,7 @@ from app.core.registry_pr import RegistryPrRefused
 from app.db.session import get_db
 from app.main import app
 from app.models.club import OrgState
+from app.models.profile import Profile, Role
 from tests.factories import make_admin, make_org, make_profile
 from tests.test_account_deletion import _furnish
 from tests.tokens import auth_headers
@@ -158,14 +159,14 @@ def test_the_real_app_exposes_the_id_header_to_a_browser(client):
     assert REQUEST_ID_HEADER in response.headers["access-control-expose-headers"]
 
 
-def test_a_failed_account_deletion_logs_its_cause(client, db_session, monkeypatch, lines):
+def test_a_failed_account_deletion_logs_its_cause_by_class_and_not_its_text(client, db_session, monkeypatch, lines):
     import app.routers.profiles as router_module
 
     profile = make_profile(db_session)
     _furnish(db_session, profile.id)
 
     def explode(self):
-        raise RuntimeError("a constraint the deletion did not expect")
+        raise RuntimeError("free text nobody has read")
 
     monkeypatch.setattr(router_module.Session, "commit", explode, raising=False)
 
@@ -174,7 +175,44 @@ def test_a_failed_account_deletion_logs_its_cause(client, db_session, monkeypatc
     assert response.status_code == 500
     (line,) = [entry for entry in lines if entry["logger"] == "app.routers.profiles"]
     assert line["level"] == "ERROR"
-    assert "a constraint the deletion did not expect" in line["exception"]
+    assert line["message"] == "account deletion failed at commit; rolled back: RuntimeError"
+    assert "free text nobody has read" not in json.dumps(line)
+    assert line["request_id"] == response.headers[REQUEST_ID_HEADER]
+
+
+def test_a_failed_account_deletion_logs_the_constraint_and_not_the_row(client, db_session, monkeypatch, lines):
+    """A real Postgres unique violation at commit, through the real handler.
+
+    str() of the IntegrityError this raises carries `[parameters: ...]` - the
+    colliding row's id and display name - and its psycopg cause carries
+    `DETAIL: Key (id)=(...) already exists`. Neither may reach the line.
+    """
+    import app.routers.profiles as router_module
+
+    profile = make_profile(db_session)
+    _furnish(db_session, profile.id)
+    taken = make_profile(db_session, display_name="Pat Q. Hiker")
+    delete_for_real = router_module.delete_account
+
+    def delete_then_collide(db, current_user, *args, **kwargs):
+        summary = delete_for_real(db, current_user, *args, **kwargs)
+        # Flushed by the handler's db.commit(), so it fails there.
+        db.add(Profile(id=taken.id, role=Role.hiker, display_name="Pat Q. Hiker"))
+        return summary
+
+    monkeypatch.setattr(router_module, "delete_account", delete_then_collide)
+
+    response = client.delete("/profiles/me", headers=auth_headers(profile.id))
+
+    assert response.status_code == 500
+    (line,) = [entry for entry in lines if entry["logger"] == "app.routers.profiles"]
+    assert line["message"] == (
+        "account deletion failed at commit; rolled back: "
+        "IntegrityError UniqueViolation sqlstate=23505 constraint=profiles_pkey table=profiles"
+    )
+    assert "exception" not in line
+    assert taken.id not in json.dumps(line)
+    assert "Pat Q. Hiker" not in json.dumps(line)
     assert line["request_id"] == response.headers[REQUEST_ID_HEADER]
 
 

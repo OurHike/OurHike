@@ -20,7 +20,9 @@ has a reason to correlate with a caller's own id.
 WHAT IT MUST NEVER PUT IN A LINE. A presigned URL, a bearer token, the R2
 endpoint. `core/photos.py` already keeps that rule. This module logs the
 method, the route path and the status - not the query string, which is where
-a presigned URL would sit, and not any header.
+a presigned URL would sit, and not any header. Nor the values a failed database
+statement was bound to: `describe_failure` below is how a caller logs a
+database error by its names alone.
 
 @unvalidated: the 401-and-5xx filter on the request line is picked, not
 measured. It is the two classes the issue names as invisible; whether 403, 429
@@ -84,6 +86,37 @@ def configure_logging() -> None:
     logger.addHandler(handler)
     logger.setLevel(logging.INFO)
     logger.propagate = False
+
+
+def describe_failure(exc: BaseException) -> str:
+    """Name what failed - exception classes, SQLSTATE, constraint, table, column - and no value.
+
+    `str()` of a SQLAlchemy `DBAPIError` ends in `[parameters: ...]`, the
+    values bound to the failed statement, and the psycopg error it wraps (and
+    that `logger.exception` would print as its cause) carries Postgres's DETAIL
+    line, which quotes the row: `Key (id)=(...) already exists`. On account
+    deletion those values are the deleting hiker's own. The names kept here are
+    schema, not data, and they are what an operator needs to find "a constraint
+    the deletion did not expect". tests/test_logs.py raises a real Postgres
+    unique violation through `DELETE /profiles/me` and checks that neither the
+    row's id nor its display name reaches the line.
+
+    Anything that is not a database error is named by its class alone, for the
+    same reason: its message is free text nobody here has read.
+    """
+    parts = [type(exc).__name__]
+    driver_error = getattr(exc, "orig", None)  # set on sqlalchemy.exc.DBAPIError
+    if driver_error is not None:
+        parts.append(type(driver_error).__name__)
+        diag = getattr(driver_error, "diag", None)
+        names = {
+            "sqlstate": getattr(driver_error, "sqlstate", None),
+            "constraint": getattr(diag, "constraint_name", None),
+            "table": getattr(diag, "table_name", None),
+            "column": getattr(diag, "column_name", None),
+        }
+        parts.extend(f"{label}={value}" for label, value in names.items() if value)
+    return " ".join(parts)
 
 
 class RequestIdMiddleware:

@@ -30,6 +30,7 @@ from pydantic import BaseModel, Field, field_validator
 from app.core.time import UtcDatetime
 from app.schemas.assist import WEBSITE_MAX
 from app.schemas.common import EmailAddress
+from app.schemas.org import safe_external_url
 
 # A club's name, a role, a label on a data source. Generous for a long
 # official name ("New York-New Jersey Trail Conference, Ramapo Chapter") and
@@ -45,6 +46,31 @@ MAX_CONTACTS = 12
 
 ShortName = Annotated[str, Field(max_length=NAME_MAX)]
 Detail = Annotated[str, Field(max_length=DETAIL_MAX)]
+
+
+def _stored_web_address(value: str) -> str:
+    """An address that is safe to put in an `href`, or a refusal.
+
+    `app/schemas/org.py`'s `safe_external_url` is the allow-list; this adds
+    only the business-card case `app/core/urlguard.py` already accepts for the
+    reading ("no scheme at all means a hiker typed what is on the business
+    card"), because `NominateReading.website` echoes what the hiker typed and
+    the screen sends it back here. A bare `example.org` is stored as
+    `https://example.org`.
+
+    A string with a colon before its first slash and no `://` is refused
+    rather than prefixed, since `https://javascript:alert(1)` would otherwise
+    pass the allow-list for the wrong reason - the same line urlguard draws.
+    """
+    cleaned = value.strip()
+    if "://" not in cleaned:
+        if cleaned.split("/", 1)[0].count(":"):
+            raise ValueError("a link has to start with https:// or http://")
+        cleaned = f"https://{cleaned}"
+    result = safe_external_url(cleaned)
+    if result is None:
+        raise ValueError("give a web address")
+    return result
 
 
 class ChallengeOut(BaseModel):
@@ -138,6 +164,14 @@ class KeptSource(ProposedSource):
 
     proposed_by: Literal["reading", "hiker"] = "reading"
 
+    # Here and not on `ProposedSource`, which also carries what the reading
+    # found and what is read back out of `nomination_sources`: refusing there
+    # would turn a stored row nobody can fix into a 500 on the club's screen.
+    @field_validator("url")
+    @classmethod
+    def _a_safe_url(cls, value: str) -> str:
+        return _stored_web_address(value)
+
 
 class KeptContact(ProposedContact):
     """A person the hiker kept or typed, on the way to being stored."""
@@ -158,6 +192,11 @@ class NominationSubmit(BaseModel):
     region: ShortName | None = None
     sources: list[KeptSource] = Field(default_factory=list, max_length=MAX_SOURCES)
     contacts: list[KeptContact] = Field(default_factory=list, max_length=MAX_CONTACTS)
+
+    @field_validator("website")
+    @classmethod
+    def _a_safe_website(cls, value: str) -> str:
+        return _stored_web_address(value)
 
     @field_validator("contacts")
     @classmethod

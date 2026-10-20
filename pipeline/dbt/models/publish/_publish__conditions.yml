@@ -1379,6 +1379,60 @@ unit_tests:
             '2026-10-09T12:00:00Z' as generated_at,
             [cast('{"id":"r-public","type":"water","poi_id":null,"lat":41.5,"lon":-74.25,"mile":null,"reporter_type":"hiker","timestamp":"2026-10-08T15:00:00Z","note":"Fixture spring flowing","follow_up":null,"status":"verified","visibility":"public","severity":"info","verified_at":"2026-10-08T16:00:00Z"}' as json)] as reports
 
+  - name: pub_conditions_reports_writes_no_location_off_the_globe
+    model: pub_conditions_reports
+    description: >
+      #1763 — Every request schema but DefaultPlace accepts any finite
+      latitude and longitude, so a report at (1000, −5000) is stored,
+      moderated and baked into the artifact hikers download. The file keeps
+      every such report, with its mile and note, and writes `lat` and `lon`
+      null: at (1000, −5000), with a good latitude and longitude 500, and
+      with a latitude and no longitude (macros/null_off_globe.sql).
+      export_conditions.py's read_reports() writes the same rows
+      (test_a_report_off_the_globe_exports_with_no_location and
+      test_one_bad_half_of_a_coordinate_pair_drops_both).
+    overrides:
+      macros:
+        python_run_stamp: "'2026-10-09T12:00:00Z'"
+    given:
+      - input: ref('base_ourhike__reports')
+        format: sql
+        rows: |
+          select
+              ourhike_report_key, report_uuid, report_type, poi_id,
+              cast(lat as double) as lat,
+              cast(lon as double) as lon,
+              cast(mile as double) as mile,
+              reporter_type,
+              cast(reported_at as timestamptz) as reported_at,
+              note,
+              cast(follow_up as json) as follow_up,
+              report_status, visibility, report_severity,
+              cast(verified_at as timestamptz) as verified_at,
+              cast(_loaded_at as timestamptz) as _loaded_at,
+              _dlt_id
+          from (values
+              ('k1', 'r-on', 'water', null, 41.5, -74.25, 1407.5, 'hiker', '2026-10-08 15:00:00+00', 'On the globe', null, 'verified', 'public', 'info', '2026-10-08 16:00:00+00', '2026-10-09 00:00:00+00', 'd1'),
+              ('k2', 'r-off', 'water', null, 1000.0, -5000.0, 1407.5, 'hiker', '2026-10-08 15:10:00+00', 'Off the globe', null, 'verified', 'public', 'info', '2026-10-08 16:10:00+00', '2026-10-09 00:00:00+00', 'd2'),
+              ('k3', 'r-half', 'water', null, 41.5, 500.0, 1407.5, 'hiker', '2026-10-08 15:20:00+00', 'One bad half', null, 'verified', 'public', 'info', '2026-10-08 16:20:00+00', '2026-10-09 00:00:00+00', 'd3'),
+              ('k4', 'r-lone', 'water', null, 41.5, null, 1407.5, 'hiker', '2026-10-08 15:30:00+00', 'One half missing', null, 'verified', 'public', 'info', '2026-10-08 16:30:00+00', '2026-10-09 00:00:00+00', 'd4')
+          ) as reports (ourhike_report_key, report_uuid, report_type, poi_id, lat, lon, mile, reporter_type, reported_at, note, follow_up, report_status, visibility, report_severity, verified_at, _loaded_at, _dlt_id)
+      - input: ref('int_closures__gate')
+        format: sql
+        rows: |
+          select 'ourhike_reports' as source_key, true as passed, true as may_publish
+    expect:
+      format: sql
+      rows: |
+        select
+            '2026-10-09T12:00:00Z' as generated_at,
+            [
+                cast('{"id":"r-on","type":"water","poi_id":null,"lat":41.5,"lon":-74.25,"mile":1407.5,"reporter_type":"hiker","timestamp":"2026-10-08T15:00:00Z","note":"On the globe","follow_up":null,"status":"verified","visibility":"public","severity":"info","verified_at":"2026-10-08T16:00:00Z"}' as json),
+                cast('{"id":"r-off","type":"water","poi_id":null,"lat":null,"lon":null,"mile":1407.5,"reporter_type":"hiker","timestamp":"2026-10-08T15:10:00Z","note":"Off the globe","follow_up":null,"status":"verified","visibility":"public","severity":"info","verified_at":"2026-10-08T16:10:00Z"}' as json),
+                cast('{"id":"r-half","type":"water","poi_id":null,"lat":null,"lon":null,"mile":1407.5,"reporter_type":"hiker","timestamp":"2026-10-08T15:20:00Z","note":"One bad half","follow_up":null,"status":"verified","visibility":"public","severity":"info","verified_at":"2026-10-08T16:20:00Z"}' as json),
+                cast('{"id":"r-lone","type":"water","poi_id":null,"lat":null,"lon":null,"mile":1407.5,"reporter_type":"hiker","timestamp":"2026-10-08T15:30:00Z","note":"One half missing","follow_up":null,"status":"verified","visibility":"public","severity":"info","verified_at":"2026-10-08T16:30:00Z"}' as json)
+            ] as reports
+
 exposures:
   - name: conditions_atc_updates_json
     label: conditions/atc_updates.json

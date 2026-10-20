@@ -11,6 +11,11 @@
 -- The query's own predicate is applied again, so a report the extract
 -- should never have landed is left out rather than published as
 -- moderator-verified: a display may not outrun its source.
+--
+-- A report off the globe is kept with no location (#1763 — Every request
+-- schema but DefaultPlace accepts any finite latitude and longitude):
+-- macros/null_off_globe.sql, as pub_conditions_reports and
+-- export_conditions.py's read_reports() publish it.
 with reports as (
     select * from {{ ref('base_ourhike__reports') }}
 )
@@ -26,8 +31,8 @@ select
     report_uuid,
     report_type,
     poi_id,
-    lat,
-    lon,
+    {{ null_off_globe('lat', 'lat', 'lon') }} as lat,
+    {{ null_off_globe('lon', 'lat', 'lon') }} as lon,
     mile as report_mile,
     reporter_type,
     reported_at,

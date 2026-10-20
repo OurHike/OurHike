@@ -1,0 +1,23 @@
+version: 2
+
+models:
+  - name: base_ourhike__challenges_publishers
+    data_tests:
+      # Warns if the dedupe drops any row, which for the one row of a
+      # file never happens.
+      - equal_rowcount_to_raw:
+          arguments:
+            compare_model: source('ourhike', 'raw_ourhike__challenges_publishers')
+    description: >
+      reference/challenges/publishers.json whole, as its one row, keyed:
+      where int_challenges__publishers reads which trails each organization
+      may put a challenge on.
+    columns:
+      - name: publishers_document_key
+        description: >
+          The row's key: dbt_utils.generate_surrogate_key over
+          the file's path and its landed path.
+        data_tests: [not_null, unique]
+      - name: file_json
+        description: The file as its reviewer wrote it, `_README` aside, as JSON.
+        data_tests: [not_null]

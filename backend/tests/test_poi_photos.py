@@ -752,3 +752,26 @@ def test_a_previously_taken_down_contributor_sorts_between_the_reports_and_the_t
 
     assert [entry["attribution"] for entry in queue] == ["Reported", "Offender", "Newcomer"]
     assert [entry["dismissal_count"] for entry in queue] == [0, 1, 0]
+
+
+def test_the_bucket_put_for_a_waypoint_photo_runs_off_the_event_loop(client, db_session, r2, monkeypatch):
+    """A 2 MiB R2 put on the loop thread stalls every other request (#1753)."""
+    import asyncio
+
+    on_loop: list[bool] = []
+    real = poi_photos_router.store_photo_object
+
+    def watching(*args, **kwargs):
+        try:
+            asyncio.get_running_loop()
+            on_loop.append(True)
+        except RuntimeError:
+            on_loop.append(False)
+        return real(*args, **kwargs)
+
+    monkeypatch.setattr(poi_photos_router, "store_photo_object", watching)
+    hiker = _hiker(db_session)
+    _share(client, hiker)
+
+    assert _upload(client, hiker).status_code == 200
+    assert on_loop == [False]

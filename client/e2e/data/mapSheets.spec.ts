@@ -204,18 +204,33 @@ async function openLegend(page: Page): Promise<Locator> {
  * trip. The coarse grid below is that measurement turned into a budget — it
  * reaches that point in about fifteen taps — and the fine pass behind it is
  * what catches a release that moves the line between two coarse rows.
+ *
+ * ONLY A SHEET THAT OFFERS "Take this trail" ENDS THE SWEEP. Release
+ * 2026-10-03 draws the National Park Service's trails at this camera, and
+ * the sweep's first hit there was Sugarland Mountain Trail, whose sheet says
+ * "Not the trail you chose" and offers no Take (flow-data, run 37112698327).
+ * Every test below is about a trail a hiker can take, so a sheet for any
+ * other line is closed and the sweep carries on, as it does past a pin.
  */
 async function tapTheTrail(page: Page): Promise<Locator> {
   const box = await frameOf(page)
   const sheet = page.getByRole('dialog', { name: 'Trail line' })
   const card = page.getByRole('dialog', { name: 'Waypoint' })
+  let untakeable = 0
 
   const tap = async (across: number, down: number): Promise<boolean> => {
     await page.mouse.click(
       box.x + (box.width * across) / 20,
       box.y + (box.height * down) / 20,
     )
-    if ((await sheet.count()) > 0) return true
+    if ((await sheet.count()) > 0) {
+      if ((await sheet.getByRole('button', { name: /Take this trail/ }).count()) > 0)
+        return true
+      untakeable += 1
+      await sheet.getByRole('button', { name: 'Close' }).click()
+      await expect(sheet).toHaveCount(0)
+      return false
+    }
     // A tap that lands on a PIN opens a waypoint instead, and the card then
     // covers the canvas, so every remaining tap would hit the card and the
     // sweep would run out having tested nothing. Closing it and carrying on is
@@ -236,8 +251,11 @@ async function tapTheTrail(page: Page): Promise<Locator> {
     }
   }
   throw new Error(
-    'nothing on the map opened a trail line — either the release drew no ' +
-      'trail at the seeded camera, or a tap on one no longer opens its sheet',
+    untakeable > 0
+      ? `${untakeable} tap(s) opened a trail line, and none offered "Take this trail" — ` +
+          'either the chosen trail is not drawn at the seeded camera, or its sheet lost the button'
+      : 'nothing on the map opened a trail line — either the release drew no ' +
+          'trail at the seeded camera, or a tap on one no longer opens its sheet',
   )
 }
 
@@ -357,10 +375,11 @@ test.describe('a trail line’s sheet', () => {
     // pinned here — what is pinned is that the sheet HAS a heading and a
     // source sentence, because a line that says "Trail" and nothing about
     // where the geometry came from is the failure this sheet exists to fix
-    // (#134). The sentence's shape is the app's; the org's name is the
-    // release's.
+    // (#134). The sentence's shape is the app's, `From ${source}.` in
+    // lib/lineDetail.ts; the org's name is the release's, and only some names
+    // begin with "the" ("From National Park Service." does not).
     await expect(sheet.getByRole('heading')).toBeVisible()
-    await expect(sheet).toContainText(/From the .+\./)
+    await expect(sheet).toContainText(/From .+\./)
     await expect(sheet.getByRole('button', { name: /Take this trail/ })).toBeVisible()
   })
 
@@ -501,6 +520,23 @@ test.describe('the plate a long press raises', () => {
 })
 
 test.describe('every trail notice the app holds', () => {
+  // TODAY'S LIST, which a phone shows while conditions/notices.json has not
+  // reached it: production's state until the cutover (#1805). UA has served
+  // that file since soak run 529 (publish-conditions.yml 37232255266,
+  // 2026-10-04), and a phone on a bucket that serves it shows the
+  // planned-hike panel in this list's place, so these two tests went red the
+  // first time they met it. They reach the list by answering the file 404,
+  // its GET and the HEAD a phone with nothing planned sends instead
+  // alike, exactly as a bucket the exporters publish does; the
+  // panel has its own test below.
+  test.beforeEach(async ({ page }) => {
+    await page
+      .context()
+      .route('**/conditions/notices.json', (route) =>
+        route.fulfill({ status: 404, body: '' }),
+      )
+  })
+
   test('entrance and states: the list carries a link out for every notice, and never the notice itself', async ({
     page,
   }) => {
@@ -570,6 +606,47 @@ test.describe('every trail notice the app holds', () => {
     // wrong reason.
     await expect(fresh.getByRole('button', { name: /^Legend/ })).toHaveText('Legend')
     await fresh.close()
+  })
+})
+
+test.describe('the notices for planned hikes', () => {
+  test('entrance: a phone with nothing planned downloads none of notices.json, and still opens the planned-hike panel, saying so', async ({
+    page,
+  }) => {
+    // With conditions/notices.json a phone shows the notices that touch a
+    // hike planned in the next 7 days, never every club's list. The file
+    // is downloaded only once a hike is planned, and this phone plans nothing, so it only asks the bucket
+    // with a HEAD whether the file is served (lib/publishedNotices.ts's
+    // noticesListed). That HEAD is the response waited on here; it used to
+    // be the file's own GET, and the "Gathered by OurHike on" line that
+    // proved the file parsed is gone with it, as nothing was downloaded to
+    // date. What proves the bucket's answer was read is the panel itself:
+    // without it the phone shows the list the tests above hold.
+    const methods: string[] = []
+    page.on('request', (request) => {
+      if (new URL(request.url()).pathname.endsWith('/conditions/notices.json'))
+        methods.push(request.method())
+    })
+    const listed = page.waitForResponse(
+      (response) =>
+        new URL(response.url()).pathname.endsWith('/conditions/notices.json') &&
+        response.request().method() === 'HEAD',
+    )
+    await openMap(page)
+    const response = await listed
+    test.skip(
+      response.status() === 404,
+      'This environment serves no conditions/notices.json, so a phone shows the list the tests above hold.',
+    )
+    expect(response.status()).toBe(200)
+
+    const legend = await openLegend(page)
+    await legend.getByRole('button', { name: /^Notices for your planned hikes/ }).click()
+    const panel = page.getByRole('dialog', { name: 'Notices for your planned hikes' })
+    await expect(panel).toBeVisible()
+    await expect(panel).toContainText('You have no hike planned')
+    await expect(panel).not.toContainText('Gathered by OurHike')
+    expect(methods).not.toContain('GET')
   })
 })
 
@@ -924,6 +1001,30 @@ test.describe('an organization’s own trail notice', () => {
 })
 
 test.describe('who looks after this stretch', () => {
+  // Room for openMapBelowTheSeam's own SKETCHES_BOUND_MS wait plus a full
+  // CLUB_SECTIONS_BOUND_MS sweep inside the same test, with the rest of this
+  // file's usual overhead (camera seed, legend open/close) on top of both.
+  test.describe.configure({ timeout: 240_000 })
+
+  /**
+   * HOW LONG THE CLUB-SECTION LAYER IS ALLOWED TO TAKE, swept for rather than
+   * waited on directly (#1490).
+   *
+   * `club_sections.json` is its own fetch, separate from the corridor
+   * sketches `SKETCHES_BOUND_MS` guards — lib/clubSections.ts's header names
+   * it as a layer with its own clock, and `openMapBelowTheSeam` below only
+   * waits on "Trails in view", which is the sketches landing and says nothing
+   * about club sections. `e2e/data/alertSheets.spec.ts`'s `sweepFor` hit the
+   * identical shape for closure and warning marks and its own comment records
+   * why waiting on that same legend section was the wrong fix there: the
+   * marks were already drawn before the section it was waiting on ever
+   * appeared. This copies that file's answer rather than re-deriving it — the
+   * sweep itself is the wait, repeated until the deadline instead of run once.
+   *
+   * Measured (#1490): a single pass missed the layer about one run in three.
+   */
+  const CLUB_SECTIONS_BOUND_MS = 90_000
+
   /**
    * Below the seam, and sweep for the club sheet rather than the line sheet.
    *
@@ -947,32 +1048,50 @@ test.describe('who looks after this stretch', () => {
     // lower map and takes the sweep's next taps itself.
     const card = page.getByRole('dialog', { name: 'Waypoint' })
 
-    for (let down = HEADER_ROWS; down < 20; down += 1) {
-      for (let across = 1; across < 20; across += 1) {
-        await page.mouse.click(
-          box.x + (box.width * across) / 20,
-          box.y + (box.height * down) / 20,
-        )
-        // Read straight after the click, the way `tapTheTrail` does. The
-        // first version of this waited a beat with `expect.poll`, which was
-        // both pointless — the predicate it polled was always true — and
-        // actively harmful: on a loaded machine two `count()` calls can
-        // outlast the poll's own timeout, so the wait invented a failure the
-        // app had nothing to do with.
-        if ((await club.count()) > 0) return club
-        if ((await line.count()) > 0) {
-          await line.getByRole('button', { name: /^Close/ }).click()
-          await expect(line).toHaveCount(0)
-        }
-        if ((await card.count()) > 0) {
-          await card.getByRole('button', { name: /Close waypoint details/ }).click()
-          await expect(card).toHaveCount(0)
+    const tap = async (across: number, down: number): Promise<boolean> => {
+      await page.mouse.click(
+        box.x + (box.width * across) / 20,
+        box.y + (box.height * down) / 20,
+      )
+      // Read straight after the click, the way `tapTheTrail` does. The
+      // first version of this waited a beat with `expect.poll`, which was
+      // both pointless — the predicate it polled was always true — and
+      // actively harmful: on a loaded machine two `count()` calls can
+      // outlast the poll's own timeout, so the wait invented a failure the
+      // app had nothing to do with. For the same reason, a tap that opened
+      // nothing costs one read here rather than one per dialog.
+      if ((await club.or(line).or(card).count()) === 0) return false
+      if ((await club.count()) > 0) return true
+      if ((await line.count()) > 0) {
+        await line.getByRole('button', { name: /^Close/ }).click()
+        await expect(line).toHaveCount(0)
+      }
+      if ((await card.count()) > 0) {
+        await card.getByRole('button', { name: /Close waypoint details/ }).click()
+        await expect(card).toHaveCount(0)
+      }
+      return false
+    }
+
+    // SWEEP UNTIL THE DEADLINE, NOT ONCE (#1490). A single pass races
+    // club_sections.json: nothing before this waits for it directly, so a
+    // pass that starts before it has landed finds nothing and used to throw
+    // immediately. Re-sweeping is how this waits on the layer itself, the
+    // same shape as alertSheets.spec.ts's sweepFor.
+    const deadline = Date.now() + CLUB_SECTIONS_BOUND_MS
+    let passes = 0
+    do {
+      passes += 1
+      for (let down = HEADER_ROWS; down < 20; down += 1) {
+        for (let across = 1; across < 20; across += 1) {
+          if (await tap(across, down)) return club
         }
       }
-    }
+    } while (Date.now() < deadline)
     throw new Error(
-      'no tap on the whole frame opened the club sheet — either the release moved the ' +
-        'A.T. out of this camera, or the club-section artifact stopped publishing',
+      `swept the whole frame ${passes} time(s) over ${CLUB_SECTIONS_BOUND_MS} ms and never opened ` +
+        'the club sheet — either the release moved the A.T. out of this camera, the club-section ' +
+        'artifact stopped publishing, or it simply had not arrived yet (#1490)',
     )
   }
 

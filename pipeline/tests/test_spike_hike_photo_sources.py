@@ -235,7 +235,11 @@ def test_unparseable_json_raises_rather_than_reporting_no_images(monkeypatch, re
     _no_sleep(monkeypatch)
     requests_mock.get(spike.PANORAMAX_API, text="<html>a proxy error page</html>")
 
-    with pytest.raises(json.JSONDecodeError):
+    # ValueError, not json.JSONDecodeError: with simplejson installed (dlt
+    # brings it into the test environment, requirements-dev.in), requests
+    # raises its own JSONDecodeError on simplejson's base, which is no longer
+    # a json.JSONDecodeError. Both are ValueErrors, in every environment.
+    with pytest.raises(ValueError):
         spike.panoramax_in_box(_session(), (-74.2, 41.15, -73.95, 41.35))
 
 

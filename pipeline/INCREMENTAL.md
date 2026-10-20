@@ -1,12 +1,52 @@
 # Per-source clocks, a private raw store, and deltas at each stage's own unit — design
 
 Companion to [DATA_RELEASES.md](DATA_RELEASES.md), [DBT.md](DBT.md) and
-[R2_LAYOUT.md](R2_LAYOUT.md). **Status: designed 2026-09-09, revised 2026-09-24 to add a
-step cache between the raw store and the public bucket and to settle the storage format
-(#1653). Nothing is built beyond what
-[#1311 — The vector build went from 20 to 108 minutes in twelve days: a corridor union
-over 466k lines paid twice, every external layer re-fetched every run, and a publish that
-pays a round-trip per object](https://github.com/OurHike/OurHike/issues/1311) landed.**
+[R2_LAYOUT.md](R2_LAYOUT.md). **Status: designed 2026-09-09, revised 2026-09-24 under
+[#1653 — Write down where processed pipeline data lives between runs: a private step
+cache keyed by input hash, and which format holds it](https://github.com/OurHike/OurHike/issues/1653).
+Partly built since by PR #1805 — dlt → dbt re-platform as one go/no-go change, which uses
+dlt as the mechanism for this document's tiers and clocks; [ELT.md](ELT.md) describes what
+runs. The sections below are the design as written on 2026-09-24, not a description of
+what runs.** Checked against that pull request's branch on 2026-10-15:
+
+- **Built.** Phase 0, from
+  [#1311 — The vector build went from 20 to 108 minutes in twelve days: a corridor union
+  over 466k lines paid twice, every external layer re-fetched every run, and a publish
+  that pays a round-trip per object](https://github.com/OurHike/OurHike/issues/1311).
+  Tier 1, the private raw store: the R2 bucket `our-hike-raw` (`R2_RAW_BUCKET`), with
+  dlt's loads under `raw/`. The extract job, as dlt resources in `pipeline/extract/`, on
+  a monthly lane (`refresh-reference.yml`, 05:15 UTC on the 3rd) and two hourly jobs
+  (`publish-conditions.yml` every hour, `extract-notices.yml` every 4 hours), on UA's
+  legs only until the cutover in **#1811 — Fast follows after PR #1805's dlt → dbt
+  re-platform: the hiker's own download choice, the cutover, and what the port found in
+  today's code** moves production's. Each resource's three-valued change check
+  (`lib/freshness_state.py`), so an upstream found FRESH is left out of the run. The
+  log, as the append-only table `_extract_runs`. `current/` for OSM's Geofabrik
+  extracts, at most 30 days old (`extract/_geofabrik.py`, for **#1652 — Download OSM's
+  Geofabrik extracts at most once a month, into a private raw bucket that outlives the
+  7-day Actions cache**). The private key validator, `lib/raw_keys.py`. A write-once
+  step cache under the same bucket's `steps/`, holding each monthly build's pinned
+  inputs (`steps/raw_inputs/<raw_run>/`) and its warehouse (`steps/dbt_warehouse/`),
+  which `prune_raw_store.py` prunes after each monthly build.
+- **Changed from this design.** The daily `extract-sources.yml` became the monthly
+  lane. The second private bucket for the step cache, and the separate read and write
+  tokens, became one bucket and one read-and-write key (`R2_RAW_ACCESS_KEY_ID`,
+  `R2_RAW_SECRET_ACCESS_KEY`), so "the build job cannot write raw" no longer holds:
+  `build-reference.yml`'s build job holds that key. "The extract job cannot publish"
+  still holds for `refresh-reference.yml` and `extract-notices.yml`, which hold no
+  public-bucket key, and more weakly for `publish-conditions.yml`, whose extract steps
+  run in the same job as its publish step without that step's keys. Phase 4's exporters
+  reading the marts became the `pub_` writer models in `pipeline/dbt/models/publish/`,
+  with one dbt snapshot per mart for row dates.
+- **Not built.** The as-sent copies of every other source under `current/`, and every
+  `snapshots/<source_key>/`: the monthly lane's as-landed GeoJSON stands in for them for
+  parity, and is not the upstream's bytes. The `change` grade `lib/data_change.classify()`
+  was to add to each log row. The step cache keyed by a hash of each step's inputs, code
+  and versions, and its first unit, the per-edge climb and profile of **#1651 — The two
+  graph-elevation steps resample all 656,621 edges every run, and re-read 9.5M DEM
+  points whenever the Actions cache is cold**; those DEM samples are still kept in the
+  Actions cache. The browse copy, `browse/ourhike.duckdb`. DuckLake.
+
 Written before the code, per this project's usual convention — the same one DBT.md and
 DATA_RELEASES.md follow, and for the same reason: the decisions below are cheaper to
 disagree with here than in a workflow file.
@@ -35,7 +75,7 @@ design the weekly candidate build: that is DATA_RELEASES.md §2, still unbuilt, 
 belongs to that document under the one-home rule. It also does not re-argue the fetch
 framework question — **[#1294 — Evaluated and declined: dlt for the fetch layer, and a
 weekly cadence for non-alert data](https://github.com/OurHike/OurHike/issues/1294)** is
-the evaluation this design rests on.
+the evaluation this design rests on. **On 2026-10-01 the maintainer adopted dlt**, reversing that evaluation: [ELT.md](ELT.md) keeps this document's tiers and clocks and uses dlt as the mechanism for them.
 
 ## What already exists
 
@@ -137,12 +177,17 @@ content-addressed caching at each stage's own unit of work** — which is exactl
 `publish.py` already applies per artifact, pushed down one level.
 
 **The first built instance is #1311's DEM sample cache**, and it is the model for the
-rest. `export_elevation.py` writes `samples.json` beside the tile index, keyed per point
-at six decimal places, and all three elevation exporters read it — the A.T. profile, the
+rest. `export_elevation.py` writes `samples.json` beside the tile index, keyed on each
+point's exact coordinates (six decimal places until 2026-10-09, which let one point's
+answer serve its neighbour across a DEM pixel edge), and
+all three elevation exporters read it — the A.T. profile, the
 per-edge climb, the per-edge profile — so the second one to run pays nothing for a point
-the first already sampled, and a re-run pays nothing for either. Three properties are
+the first already sampled, and a re-run pays nothing for either. Four properties are
 what make it a cache a safety path may use:
 
+- **A key is one point.** A lookup answers only the coordinates that were
+  asked, so no point is ever given its neighbour's pixel; a file written under the old
+  six-decimal keys is discarded whole rather than read.
 - **It is discarded whole when the tile-edition marker moves**, never merged. A merge
   would go on serving one re-flown cell's old elevations from whichever entries happened
   to survive, which is the single failure this cache could cause that a hiker would
@@ -154,9 +199,9 @@ what make it a cache a safety path may use:
 
 Its size is the honest gap, and `export_elevation.py`'s own header carries the arithmetic:
 run #88 sampled 138,695 points for the A.T. profile (measured 2026-09-08), which at a
-~35-byte entry is about 5 MB — and **the junction-graph half is `@unvalidated`, because
-nobody has computed it.** The first real run after #1311 settles it, and the file is there
-to measure.
+~60-byte entry since the keys became exact is about 8 MB — and **the junction-graph half
+is `@unvalidated`, because nobody has computed it.** The first real run after #1311
+settles it, and the file is there to measure.
 
 **The row-level view stays available and stays where it is.** `lib/data_change.classify()`
 already answers "which features were added, removed, moved or edited between these two

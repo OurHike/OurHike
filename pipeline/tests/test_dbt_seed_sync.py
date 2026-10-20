@@ -107,7 +107,7 @@ def test_dec_rows_are_the_registrys_own_poi_type_declarations():
     and no seed row claims a declaration the registry does not make.
 
     Both directions matter. A DEC layer added to sources.json with a
-    poi_type but not to the seed is a layer dim_pois would type without the
+    poi_type but not to the seed is a layer points_of_interest would type without the
     seed's relationships test ever having heard of it; a seed row for a
     layer whose declaration was removed is the seed promising a type nothing
     upstream stands behind.

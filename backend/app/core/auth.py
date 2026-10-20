@@ -35,6 +35,8 @@ endpoint. Neither branch can be steered to the other's key material, and an
 """
 
 import re
+import threading
+import time
 from collections.abc import Iterable
 from functools import lru_cache
 
@@ -64,6 +66,59 @@ ASYMMETRIC_ALGORITHMS = ("ES256", "RS256")
 bearer_scheme = HTTPBearer(auto_error=False)
 
 
+# How long a forced JWKS refresh is refused after the previous one.
+#
+# **@unvalidated: 60 seconds.** Picked, not measured. The argument for the
+# direction is that Supabase rotates signing keys rarely, so a hiker whose token
+# names a freshly rotated `kid` waits at most this long for the next refresh; the
+# argument against going lower is that every forced refresh is an outbound
+# request an unauthenticated caller can trigger (#1754). What would settle the
+# number: how Supabase's JWKS endpoint rate-limits (nobody here has looked), and
+# how long after a real rotation the old `kid` still signs tokens.
+JWKS_FORCED_REFRESH_MIN_SECONDS = 60.0
+
+# Seconds PyJWKClient waits on the JWKS fetch. Its default is 30, and a fetch
+# holds one of anyio's 40 default worker threads (#1754). **@unvalidated:** 5 is
+# picked; what would settle it is Supabase's observed JWKS response time, which
+# nobody has recorded here.
+JWKS_FETCH_TIMEOUT_SECONDS = 5.0
+
+
+class _ThrottledJWKClient(jwt.PyJWKClient):
+    """A PyJWKClient that will not let a token's `kid` force a fetch every time.
+
+    `PyJWKClient.get_signing_key` answers an unknown `kid` by calling
+    `get_signing_keys(refresh=True)`, a fresh HTTPS fetch, before it raises. The
+    `kid` comes from the token's unverified header, so anyone can send one: N
+    tokens carrying random `kid`s were N outbound fetches, each holding a worker
+    thread (#1754). This lets one forced refresh through per
+    `JWKS_FORCED_REFRESH_MIN_SECONDS`, process-wide, and answers the rest from the
+    cached set - an unknown `kid` then fails with `PyJWKClientError`, which
+    `get_current_user` already turns into a 401.
+
+    The attempt is stamped before the fetch, not after, so a fetch that times out
+    counts too: otherwise an unreachable endpoint would be retried by every
+    request. The ordinary five-minute cache expiry is untouched and is not
+    throttled here.
+    """
+
+    def __init__(self, *args: object, **kwargs: object) -> None:
+        super().__init__(*args, **kwargs)
+        self._refresh_lock = threading.Lock()
+        self._last_forced_refresh: float | None = None
+
+    def get_signing_keys(self, refresh: bool = False) -> list:
+        if refresh:
+            with self._refresh_lock:
+                now = time.monotonic()
+                last = self._last_forced_refresh
+                if last is not None and now - last < JWKS_FORCED_REFRESH_MIN_SECONDS:
+                    refresh = False
+                else:
+                    self._last_forced_refresh = now
+        return super().get_signing_keys(refresh=refresh)
+
+
 @lru_cache(maxsize=1)
 def _jwk_client() -> jwt.PyJWKClient:
     """The project's published signing keys.
@@ -71,7 +126,10 @@ def _jwk_client() -> jwt.PyJWKClient:
     Built once and cached, because PyJWKClient does its own key caching and a
     fresh client per request would fetch the key set on every single API call.
     """
-    return jwt.PyJWKClient(f"{settings.supabase_url}/auth/v1/.well-known/jwks.json")
+    return _ThrottledJWKClient(
+        f"{settings.supabase_url}/auth/v1/.well-known/jwks.json",
+        timeout=JWKS_FETCH_TIMEOUT_SECONDS,
+    )
 
 
 def signing_key_for(token: str) -> object:

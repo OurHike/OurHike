@@ -329,3 +329,28 @@ def test_a_report_with_no_words_says_nothing_rather_than_empty(client, db_sessio
 
     assert body["place_words"] is None
     assert body["photo_count"] == 0
+
+
+def test_the_bucket_put_for_a_report_photo_runs_off_the_event_loop(client, db_session, r2, monkeypatch):  # noqa: F811
+    """A 2 MiB R2 put on the loop thread stalls every other request (#1753)."""
+    import asyncio
+
+    from app.routers import reports as reports_router
+
+    on_loop: list[bool] = []
+    real = reports_router.store_photo
+
+    def watching(*args, **kwargs):
+        try:
+            asyncio.get_running_loop()
+            on_loop.append(True)
+        except RuntimeError:
+            on_loop.append(False)
+        return real(*args, **kwargs)
+
+    monkeypatch.setattr(reports_router, "store_photo", watching)
+    reporter = _reporter(db_session)
+    report = _report(db_session, reporter)
+
+    assert _put(client, report.id, 1, reporter.id).status_code == 200
+    assert on_loop == [False]

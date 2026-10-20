@@ -22,7 +22,7 @@
 import type { Map as MapLibreMap, MapMouseEvent, PointLike } from 'maplibre-gl'
 import { POI_DOT_LAYER_ID, POI_ID_PROPERTY } from './poiIds'
 import { warningIdAt } from './warningLayers'
-import { closureIdAt } from './closureLayers'
+import { closureIdAt, clubClosureIdAt } from './closureLayers'
 import { atcBandIdAt } from './atcUpdateLayers'
 import { POI_TAP_SLOP_PX, poiPinAt, poiTapBox } from './poiPinProbe'
 
@@ -155,8 +155,10 @@ export function poiIdAt(
   // notice sheet did, with the order two effects happened to bind deciding
   // which sat on top. That is the defect closureLayers.ts's "ONE TOUCH, ONE
   // INTERPRETER" note records as the first version's, reappearing one rank
-  // down. A dot loses to an ambient mark; that rule now covers both of them.
+  // down. A dot loses to an ambient mark; that rule now covers both of them,
+  // and a club's closure (the maintainer's closure-map standard, 2026-10-11), the same tape.
   if (yieldToMarks && closureIdAt(map, point) !== null) return null
+  if (yieldToMarks && clubClosureIdAt(map, point) !== null) return null
   if (yieldToMarks && atcBandIdAt(map, point) !== null) return null
 
   // Guarded for the same reason the probe is: before the style has parsed,

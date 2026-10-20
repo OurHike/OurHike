@@ -17,13 +17,14 @@ import enum
 from datetime import timedelta
 
 from fastapi import APIRouter, Depends, HTTPException, Request, Response, status
+from fastapi.concurrency import run_in_threadpool
 from sqlalchemy import func
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from app.core.assignments import stood_behind
 from app.core.auth import get_current_user, get_current_user_optional, require_role
-from app.core.disputes import DisputeInput, dispute_state
+from app.core.disputes import DISPUTE_DECAY_DAYS, DisputeInput, dispute_state
 from app.core.orm import commit_and_refresh, get_or_404
 from app.core.photos import (
     ALLOWED_CONTENT_TYPE,
@@ -291,8 +292,16 @@ def list_disputes(db: Session = Depends(get_db)) -> list[DisputeOut]:
     corroboration mean anything and is exactly what FieldNoteOut withholds
     (§6, #252) - so the rule runs here and a verdict goes out.
     """
+    now = utc_now()
+    # The window is applied here as well as in `dispute_state` (#1757): a note
+    # older than DISPUTE_DECAY_DAYS can neither dispute (decay) nor clear (a
+    # confirmation only clears a dispute older than itself, and every dispute
+    # that still counts is inside the window), so dropping it changes no
+    # verdict - `test_core_disputes.py` pins the rule - and keeps the scan from
+    # growing with every note ever written.
+    window_start = now - timedelta(days=DISPUTE_DECAY_DAYS)
     hidden_excluded = db.query(FieldNote).filter(FieldNote.hidden_at.is_(None), FieldNote.poi_id.isnot(None))
-    notes = hidden_excluded.filter(FieldNote.observation.isnot(None)).all()
+    notes = hidden_excluded.filter(FieldNote.observation.isnot(None), FieldNote.observed_at >= window_start).all()
 
     # Every current assignment, once, rather than a query per note: a
     # maintainer's word outweighs the count and the covering test is a range
@@ -340,7 +349,6 @@ def list_disputes(db: Session = Depends(get_db)) -> list[DisputeOut]:
             )
         )
 
-    now = utc_now()
     out: list[DisputeOut] = []
     for poi_id, inputs in sorted(by_poi.items()):
         state = dispute_state(inputs, now)
@@ -381,19 +389,7 @@ async def upload_note_photo(
     the body is capped as it streams, and JPEG is decided by the bytes' own
     magic rather than by a header the client writes.
     """
-    note = get_or_404(db, FieldNote, note_id, detail="Note not found")
-
-    if note.reporter_id != current_user.id:
-        raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN,
-            detail="A note's photo can only be added by whoever wrote the note.",
-        )
-
-    if not photo_uploads_enabled():
-        raise HTTPException(
-            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
-            detail="Photo storage is not configured on this server.",
-        )
+    note = await run_in_threadpool(_note_this_caller_may_upload_to, db, note_id, current_user)
 
     if request.headers.get("content-type", "").split(";")[0].strip() != ALLOWED_CONTENT_TYPE:
         raise HTTPException(
@@ -410,6 +406,29 @@ async def upload_note_photo(
             detail=f"Note photos must be {ALLOWED_CONTENT_TYPE}.",
         )
 
+    # The R2 put and the commit are blocking, so they run off the event loop;
+    # `read_capped_body` is the only awaited part (#1753).
+    return await run_in_threadpool(_store_and_record_note_photo, db, note, body, current_user)
+
+
+def _note_this_caller_may_upload_to(db: Session, note_id: str, current_user: Profile) -> FieldNote:
+    note = get_or_404(db, FieldNote, note_id, detail="Note not found")
+
+    if note.reporter_id != current_user.id:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="A note's photo can only be added by whoever wrote the note.",
+        )
+
+    if not photo_uploads_enabled():
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="Photo storage is not configured on this server.",
+        )
+    return note
+
+
+def _store_and_record_note_photo(db: Session, note: FieldNote, body: bytes, current_user: Profile) -> FieldNoteOut:
     try:
         store_photo_object(note_photo_key(note.id), body)
     except PhotoStorageUnavailable as error:

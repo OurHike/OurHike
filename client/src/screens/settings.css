@@ -614,6 +614,14 @@
   text-decoration: none;
 }
 
+.sources__data {
+  margin: 12px 0 16px;
+}
+
+.sources__data .settings__note {
+  margin-bottom: 0;
+}
+
 .sources__link:hover {
   text-decoration: underline;
 }

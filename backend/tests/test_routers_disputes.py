@@ -176,3 +176,47 @@ def test_browsing_disputes_needs_no_account(client, db_session):
     # No Authorization header at all - the state a hiker with no signal and
     # no account is in, which is when this matters most.
     assert client.get("/disputes").status_code == 200
+
+
+def test_two_disputes_older_than_the_window_are_not_served(client, db_session):
+    first = make_profile(db_session, Role.hiker)
+    second = make_profile(db_session, Role.hiker)
+    _note(db_session, first.id, days_ago=200)
+    _note(db_session, second.id, days_ago=190)
+
+    assert client.get("/disputes").json() == []
+
+
+def test_a_live_dispute_still_stands_over_a_confirmation_older_than_the_window(client, db_session):
+    """The 180-day bound in the query drops the 400-day-old confirmation, which
+    could not have cleared a dispute made after it anyway (#1757)."""
+    first = make_profile(db_session, Role.hiker)
+    second = make_profile(db_session, Role.hiker)
+    old_confirmer = make_profile(db_session, Role.hiker)
+    _note(db_session, old_confirmer.id, days_ago=400, observation="found")
+    _note(db_session, first.id, days_ago=10)
+    _note(db_session, second.id, days_ago=2)
+
+    assert [row["poi_id"] for row in client.get("/disputes").json()] == [_POI]
+
+
+def test_the_disputes_query_bounds_observed_at_in_sql(client, db_session):
+    """The window is in the WHERE clause, not only applied afterwards in Python
+    (#1757), so the scan does not grow with every note ever written."""
+    from sqlalchemy import event
+
+    statements = []
+
+    def capture(conn, cursor, statement, parameters, context, executemany):
+        statements.append(statement)
+
+    engine = db_session.get_bind()
+    event.listen(engine, "before_cursor_execute", capture)
+    try:
+        client.get("/disputes")
+    finally:
+        event.remove(engine, "before_cursor_execute", capture)
+
+    notes_query = [s for s in statements if "field_notes" in s and "observation IS NOT NULL" in s]
+    assert notes_query, statements
+    assert "observed_at >=" in notes_query[0]

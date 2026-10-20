@@ -1,0 +1,54 @@
+version: 2
+
+# OurHike's curated highlights, in their own file beside _ourhike__sources.yml,
+# which declares OurHike's other reviewed files under the same source name
+# (dbt merges one source's tables across files, as _nynjtc_alerts__sources.yml
+# found on dbt 2.0.6). Read by the suggested_hikes family.
+sources:
+  - name: ourhike
+    description: >
+      OurHike's own data. This file holds reference/highlights.json, landed by
+      the extract's _shared/ourhike/highlights.py.
+    schema: raw
+    config:
+      # When the extract last read each table or confirmed it unchanged, from
+      # its run log, never `_loaded_at`: make_dbt_staging.py's
+      # LOADED_AT_QUERY and MONTHLY_FRESHNESS_DAYS say why, and
+      # tests/test_source_freshness.py holds every monthly source to them.
+      loaded_at_query: "{{ last_read_or_confirmed_at(this) }}"
+      meta:
+        cadence: monthly
+      freshness:
+        warn_after: {count: 35, period: day}
+        error_after: {count: 62, period: day}
+    tables:
+      - name: raw_ourhike__highlights
+        data_tests:
+          # Rows sharing base_ourhike__highlights's key must be exact copies.
+          - duplicates_are_exact:
+              arguments:
+                key_columns: ["'reference/highlights.json'", "_row"]
+          # Elementary's checks (make_dbt_staging.py's raw_table_checks()), each with its two thresholds.
+          - elementary.volume_anomalies:
+              config:
+                severity: error
+                fail_calc: "{{ var('elementary_anomaly_level') }}"
+                warn_if: ">0"
+                error_if: ">1"
+                tags: [elementary_check]
+                enabled: "{{ env_var('OURHIKE_ELEMENTARY_CHECKS', 'false') == 'true' }}"
+          - elementary.schema_changes:
+              config:
+                severity: error
+                fail_calc: "{{ var('elementary_schema_change_level') }}"
+                warn_if: ">0"
+                error_if: ">1"
+                tags: [elementary_check]
+                enabled: "{{ env_var('OURHIKE_ELEMENTARY_CHECKS', 'false') == 'true' }}"
+        description: >
+          reference/highlights.json, the curated list of stretches somebody
+          says are worth going to (features/CORRIDOR_VIEW.md; #595 — The
+          corridor view has nothing to explore, because "popular" has no
+          source behind it yet): 10 rows on 2026-10-02, each the JSON its
+          reviewer wrote, in `row_json`. A row names its legs by two
+          published POI ids each and holds no mile.

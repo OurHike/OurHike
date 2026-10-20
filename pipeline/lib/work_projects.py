@@ -64,6 +64,23 @@ SIGNUP_MODES = ("contact", "in_app")
 
 REQUIRED_FIELDS = ("id", "club_name", "title", "starts_on", "ends_on", "signup_mode")
 
+# CI's stand-in for the reviewed file, relative to the fixtures' raw directory.
+# make_dbt_fixtures.py writes invented rows in this module's shape there, each
+# marked a fixture, and two readers take it in place of
+# reference/work_projects.json when it is there: fixture mode
+# (extract/_fixtures.py), which lands it for the dbt writer, and parity.py's
+# old side, which runs export_work_projects.py over it. Without it, CI's
+# fixture family compared both writers of conditions/work_projects.json on no
+# row ("no differences across 0 work_projects", pipeline-tests.yml run
+# 38610267739, 2026-10-14), and the gate counts that key as covered only
+# because that family compares rows (the maintainer, 2026-10-15). Nothing that publishes reads this path, and the
+# reviewed file's own `rows` stay empty (the module docstring). An hour's
+# comparison (hourly_parity.py) reads no stand-in, so on real data both sides
+# read git's file; run by hand over a fixture build, it would find the
+# stand-in's rows in the writer's file and none on today's side, and read
+# work_projects as differing (Reasoned, not run).
+FIXTURE_STAND_IN = "reviewed/work_projects.json"
+
 # What `signup_contact` may be: an address, a number, or a page. The client
 # renders it as a link a hiker taps (chrome/CrewContactLink.tsx), and until
 # #1578 this module promised this list in its error message and checked only

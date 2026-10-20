@@ -1064,6 +1064,10 @@ test.describe('who looks after this stretch', () => {
         await line.getByRole('button', { name: /^Close/ }).click()
         await expect(line).toHaveCount(0)
       }
+      if ((await card.count()) > 0) {
+        await card.getByRole('button', { name: /Close waypoint details/ }).click()
+        await expect(card).toHaveCount(0)
+      }
       return false
     }
 
@@ -1079,10 +1083,6 @@ test.describe('who looks after this stretch', () => {
       for (let down = HEADER_ROWS; down < 20; down += 1) {
         for (let across = 1; across < 20; across += 1) {
           if (await tap(across, down)) return club
-        }
-        if ((await card.count()) > 0) {
-          await card.getByRole('button', { name: /Close waypoint details/ }).click()
-          await expect(card).toHaveCount(0)
         }
       }
     } while (Date.now() < deadline)

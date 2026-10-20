@@ -1711,6 +1711,229 @@ export const RELEASE_SHAPES: readonly ReleaseShapes[] = deepFreeze<
     indexedDb: {},
     localStorage: {},
   },
+  {
+    tag: 'v1.3.5',
+    // The cut point: main's head (5424195b, #1411 - Bump
+    // actions/upload-artifact from 4 to 7) on 2026-10-20. The entry was read
+    // off the writers at d446febd; `git diff d446febd..5424195b -- client/src`
+    // touches only useArchiveDownload.ts's launch sweep (#1866) and a comment
+    // in map/style.ts, and neither writes a stored key.
+    commit: '5424195b',
+    // PLACEHOLDER: the day this entry was written, while v1.3.5 was being
+    // cut. Replace with the GitHub release's published date once it is
+    // published; the tests check only the YYYY-MM-DD shape.
+    published: '2026-10-20',
+    // Read off the writers with `git diff v1.3.4..d446febd -- client/src`:
+    // every `ourhike:` literal that appears between the two, and every
+    // writer of an older key whose diff touches what it stores. Nothing
+    // captured from a device.
+    //
+    // Left out on the rule at the top of this list, not missed:
+    //   - lib/trailGraphStore.ts's cell records. #1829 - Refuse to merge
+    //     trail-graph cells from two releases (mergeGraphShard, #1828) added
+    //     `alsoPublishedIn` to every `ourhike:trail-graph-cell:*` record, and
+    //     #1836 - Keep a stored route graph at one bar of signal, after an
+    //     identical or changed release, and when the release folder is gone
+    //     added a second record per half under `<key>:older`. Both are still
+    //     hash-checked copies of published bytes; `asStoredCopy` reads a
+    //     record with no `alsoPublishedIn` as an empty list, and a record it
+    //     cannot read is refetched. That costs signal, not a hiker's work.
+    //   - lib/conditionsCache.ts's `rememberPublished` gained three callers
+    //     (challenges.json, podcasts/episodes.json, the weather cells). Each
+    //     stores a published document behind the same shape-checked record
+    //     it always has.
+    //   - `ourhike:podcast-app-changed` is a window event name
+    //     (lib/podcastApp.ts). Nothing stores it.
+    indexedDb: {
+      // Three new outbox cargoes, from #1798 - Challenges: a club's list of
+      // places on its own trails, joined and tagged at camp, starting with
+      // the ATC's Summer Bucket List (lib/outbox.ts's enqueueChallengeTag,
+      // enqueueChallengeEntry and enqueueChallengeUntag; the drafts are
+      // lib/challengeDrafts.ts's). One of each, behind v1.3.2's queue.
+      'ourhike:outbox': [
+        ...OUTBOX_V1_1_1,
+        {
+          id: '4b5c6d7e-9f00-4112-b3c4-d5e6f708192a',
+          authoredAt: '2026-08-28T14:00:00.000Z',
+          payload: {
+            type: 'blowdown',
+            reporter_type: 'day',
+            note: 'Across the trail at the switchback.',
+            mile: 1406.4,
+          },
+          holdUntil: '2026-08-28T14:00:08.000Z',
+        },
+        REPORT_V1_3_1,
+        REPORT_V1_3_2,
+        {
+          id: '7e8f9001-2233-4445-b6f7-08192a3b4c5d',
+          authoredAt: '2026-10-18T22:10:00.000Z',
+          challengeTag: {
+            challenge_id: 'atc-summer-bucket-list-2027',
+            item_id: 'shelter-logbook',
+            how: 'gps',
+          },
+        },
+        {
+          id: '8f900112-3344-4556-87f8-192a3b4c5d6e',
+          authoredAt: '2026-10-18T22:12:00.000Z',
+          challengeUntag: {
+            challenge_id: 'atc-summer-bucket-list-2027',
+            item_id: 'white-blaze-photo',
+          },
+        },
+        {
+          id: '90011223-4455-4667-98a9-2a3b4c5d6e7f',
+          authoredAt: '2026-10-19T08:30:00.000Z',
+          challengeEntry: {
+            challenge_id: 'atc-summer-bucket-list-2027',
+            org_domain: 'appalachiantrail.org',
+            name: 'Pat Example',
+            email: 'pat@example.org',
+            item_ids: ['shelter-logbook', 'springer-mountain', 'trivia-quiz'],
+            consented: true,
+          },
+        },
+      ],
+      // Three optional POI fields, each absent on any older download:
+      // `waterDistanceSource` and the water part's `source` in `nearby` from
+      // #1788 - Publish where each water distance came from, and mark an
+      // estimate (#1728); `trailsClosedWithinM`, on trailheads only, from
+      // #1705 - Cross out a trailhead whose trails within 100 m are all
+      // closed; and `waterCaution`, on water only, from #1805 - dlt → dbt
+      // re-platform as one go/no-go change. lib/trailData.ts's readPois
+      // writes them; the list is rewritten whole by a download, so it is
+      // v1.2.1's waypoints as this build would store them.
+      'ourhike:pois': [
+        ...(STORED_SHAPES['ourhike:pois'] as readonly unknown[]),
+        {
+          ...SHELTER_V1_1_1,
+          waterDistanceFt: 250,
+          waterDistanceSource: 'OSA_Field_Estimate',
+          nearby: [
+            { phrase: 'privy', distance_ft: 140 },
+            { phrase: 'water', distance_ft: 250, source: 'OSA_Field_Estimate' },
+          ],
+        },
+        PRIVY_V1_1_1,
+        {
+          id: 'oprhp_facilities:8812',
+          type: 'trailhead',
+          name: 'Reeves Meadow Trailhead',
+          lat: 41.2352,
+          lon: -74.1583,
+          confidence: 'high',
+          source: 'oprhp_facilities',
+          trailsClosedWithinM: 100,
+        },
+        {
+          id: 'oprhp_facilities:9020',
+          type: 'water',
+          name: 'Lake Welch Beach tap',
+          lat: 41.2238,
+          lon: -74.0563,
+          confidence: 'low',
+          source: 'oprhp_facilities',
+          waterCaution: 'no_shutoff_season',
+        },
+      ],
+      // The download record now names the release folder its bytes came
+      // from and whether the pointer chose it (#1805; lib/dataRefresh.ts's
+      // rememberRelease spreads SESSION_RELEASE and SESSION_FOLLOWS_POINTER
+      // under the caller's record).
+      'ourhike:trail-data-release': {
+        release: '2026-10-10-2',
+        fromPointer: true,
+        version: '2026-10-10',
+        hashes: {
+          'trails.geojson': SOME_SHA256,
+          'poi_shelter.geojson':
+            '3f2a1c0d1e2f39b74c9897bac770ffc029102a200c5de9e5b0c6aa6b3a2c5b8f',
+        },
+        at: 1791633600000,
+      },
+      // The pointer entry this phone last verified (#1805; lib/dataChannel.ts's
+      // readDataChannel and firstRunRelease write a ChannelRecord from
+      // lib/dataRelease.ts). `production` is what BASE_ENVIRONMENT reads for
+      // a base with no `environments/<name>/` in it, which is what the tests
+      // build with.
+      'ourhike:data-channel': {
+        release: '2026-10-10-2',
+        schema: 'v1',
+        environment: 'production',
+        at: 1791633500000,
+      },
+    },
+    localStorage: {
+      // The pointer record's mirror, the same record as JSON
+      // (lib/dataChannel.ts's writeMirror), read synchronously on the next
+      // launch to fix the session's release before the first URL is built.
+      'ourhike:data-channel':
+        '{"release":"2026-10-10-2","schema":"v1","environment":"production","at":1791633500000}',
+      // Everything a hiker did about the challenges they joined (#1798), as
+      // JSON.stringify of lib/challengeProgress.ts's ChallengeState
+      // (writeChallengeState). A `places_all` tag carries its `poi`, every
+      // other tag none; `sectionWalked` is keyed `challengeId/itemId`;
+      // `hiddenSuggestions` is keyed by App.tsx's challengeHikeKey, a trip id
+      // or `plan`; `sent[].outboxId` is the queued entry above.
+      'ourhike:challenge-state': JSON.stringify({
+        joined: [
+          { challengeId: 'atc-summer-bucket-list-2027', at: '2026-10-12T15:00:00.000Z' },
+        ],
+        tags: [
+          {
+            challengeId: 'atc-summer-bucket-list-2027',
+            itemId: 'shelter-logbook',
+            at: '2026-10-18T22:10:00.000Z',
+            how: 'gps',
+            note: 'Signed it for the whole crew.',
+          },
+          {
+            challengeId: 'atc-summer-bucket-list-2027',
+            itemId: 'virginia-triple-crown',
+            poi: 'atc_viewpoints:95a18f95-b78f-43bb-843a-4b9b82fecb76',
+            at: '2026-10-14T17:45:00.000Z',
+            how: 'hand',
+          },
+        ],
+        sectionWalked: {
+          'atc-summer-bucket-list-2027/walk-harriman': [
+            { startMile: 1385.2, endMile: 1391.7 },
+          ],
+        },
+        hiddenSuggestions: { 'trip-0001': ['atc-summer-bucket-list-2027'] },
+        answeredDay: '2026-10-18',
+        layerShown: true,
+        sent: [
+          {
+            challengeId: 'atc-summer-bucket-list-2027',
+            at: '2026-10-19T08:30:00.000Z',
+            kind: 'entry',
+            outboxId: '90011223-4455-4667-98a9-2a3b4c5d6e7f',
+          },
+        ],
+      }),
+      // A dismissal of a club notice that gave no date of its own, under
+      // its own `:seen` watermark (#1805; lib/noticeSelection.ts's
+      // SEEN_WATERMARK, written by lib/notices.ts's silenceNewNotices).
+      'ourhike:notices-silenced-through:gmc_trail_conditions:seen':
+        '2026-10-17T12:00:00.000Z',
+      // The hiker's podcast app (lib/podcastApp.ts, from #1686 - Offer
+      // podcast episodes picked for a hike or tagged to a place, in the
+      // hiker's own podcast app, with Spotify's player and a one-tap save).
+      // A bare PODCAST_APPS value, not JSON.
+      'ourhike:podcast-app': 'pocket_casts',
+      // Spotify's PKCE tokens, a round trip left mid-way, and the episodes
+      // saved from this phone (lib/spotify.ts, #1686), each as JSON. The
+      // tokens are not real ones. `expiresAt` is an hour after the 2026-10-19
+      // 18:00 UTC sign-in.
+      'ourhike:spotify:tokens':
+        '{"accessToken":"BQ-fixture-access","refreshToken":"AQ-fixture-refresh","expiresAt":1792436400000}',
+      'ourhike:spotify:pending':
+        '{"state":"st4teSt4teSt4teSt4teSt4teSt4teSt","verifier":"v3rifierv3rifierv3rifierv3rifierv3rifierv3rifierv3rifierv3rifier","episode":{"spotifyId":"4rOoJ6Egrf8K2IrywzwOMk","title":"Walking the Highlands"}}',
+      'ourhike:spotify:saved': '["4rOoJ6Egrf8K2IrywzwOMk"]',
+    },
+  },
 ])
 
 /**

@@ -1713,11 +1713,12 @@ export const RELEASE_SHAPES: readonly ReleaseShapes[] = deepFreeze<
   },
   {
     tag: 'v1.3.5',
-    // The cut point at time of writing: main's head (d446febd, #1859 - Make
-    // the deployed-app check read its optional-artifact keys again) on
-    // 2026-10-20. If main moves before the release pull request merges,
-    // re-read the writers over the new commits and update this.
-    commit: 'd446febd',
+    // The cut point: main's head (5424195b, #1411 - Bump
+    // actions/upload-artifact from 4 to 7) on 2026-10-20. The entry was read
+    // off the writers at d446febd; `git diff d446febd..5424195b -- client/src`
+    // touches only useArchiveDownload.ts's launch sweep (#1866) and a comment
+    // in map/style.ts, and neither writes a stored key.
+    commit: '5424195b',
     // PLACEHOLDER: the day this entry was written, while v1.3.5 was being
     // cut. Replace with the GitHub release's published date once it is
     // published; the tests check only the YYYY-MM-DD shape.

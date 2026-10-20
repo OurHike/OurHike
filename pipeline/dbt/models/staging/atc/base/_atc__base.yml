@@ -106,7 +106,7 @@ models:
       - name: water_distance_key
         description: >
           The row's key: dbt_utils.generate_surrogate_key over
-          the file's path and atc_global_id.
+          the file's path and poi_id.
         data_tests: [not_null, unique]
       - name: layer
         description: The sources.json layer the site is on, `shelters` or `campsites`.
@@ -115,8 +115,14 @@ models:
           - accepted_values:
               arguments:
                 values: [shelters, campsites]
-      - name: atc_global_id
-        description: ATC's GlobalID for the site.
+      - name: poi_id
+        description: >
+          The id the site publishes under: the POI identity ledger's live id
+          for (`atc_shelters` or `atc_campsites`, the feature's GlobalID),
+          else `<source>:<GlobalID>` for a feature the ledger does not carry,
+          as build_water_distance.py's poi_id_for() resolves it (#1729).
+          int_points_of_interest__water joins on it, so it survives an ATC
+          re-key the ledger has carried, where a bare GlobalID would not.
         data_tests: [not_null, unique]
       - name: distance_ft
         description: >

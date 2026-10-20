@@ -145,6 +145,42 @@ def test_every_feature_is_listed_and_blanks_carry_reasons():
     assert missing["unresolved"] == bwd.NO_ROW_NEARBY
 
 
+def test_resolve_layer_keys_a_re_keyed_feature_by_the_ledger_id_it_carried():
+    """#1729: ATC re-keys a shelter, reconcile_poi_identity.py carries
+    `atc_shelters:g-old` onto the new GlobalID, and the export keeps publishing
+    the old id. A rebuild has to write that id, or the distance names a POI
+    nothing publishes. A feature the ledger does not carry gets
+    `{source}:{GlobalID}`, the id the ledger would mint for it."""
+    re_keyed = atc_feature("Wise Shelter", global_id="g-new")
+    fresh = atc_feature("Pierce Pond Lean-to Shelter", lat=45.0, global_id="g-fresh")
+    ledger_ids = {("atc_shelters", "g-new"): "atc_shelters:g-old", ("atc_campsites", "g-fresh"): "atc_campsites:elsewhere"}
+
+    records = bwd.resolve_layer("shelters", [re_keyed, fresh], [], ledger_ids)
+
+    assert [record["poi_id"] for record in records] == ["atc_shelters:g-old", "atc_shelters:g-fresh"]
+
+
+def test_poi_id_for_reads_the_ledger_as_export_poi_publishes_under_it(tmp_path):
+    """The ledger read through export_poi.live_ledger_ids(), which main()
+    uses: a live row's id wins, and a retired row is ignored exactly as
+    apply_ledger_ids ignores it, so the feature keeps its composed id."""
+    ledger = tmp_path / "poi_identity.json"
+    ledger.write_text(
+        __import__("json").dumps(
+            {
+                "pois": {
+                    "atc_campsites:carried": {"source": "atc_campsites", "source_feature_id": "c-now"},
+                    "atc_shelters:gone": {"source": "atc_shelters", "source_feature_id": "s-1", "retired": "2026-08-19"},
+                }
+            }
+        )
+    )
+    ledger_ids = bwd.live_ledger_ids(ledger)
+
+    assert bwd.poi_id_for("campsites", "c-now", ledger_ids) == "atc_campsites:carried"
+    assert bwd.poi_id_for("shelters", "s-1", ledger_ids) == "atc_shelters:s-1"
+
+
 def test_a_zero_distance_publishes_nothing_with_the_reason_stated():
     """35 of the 1,013 official rows say 0 ft. Zero reads as at-the-source or
     as unmeasured, and the row does not say which - so the record refuses,

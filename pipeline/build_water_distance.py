@@ -112,7 +112,10 @@ runs unsupervised inside a data build is a join nobody ever reads. Checked in,
 every decision is a reviewable line in a diff, and a release build needs
 neither the network nor ATC's org continuing to answer.
 
-Re-run this script when the CSI layer changes; review the diff it makes.
+Re-run this script when the CSI layer changes; review the diff it makes. Run
+it after reference/poi_identity.json is reconciled, never before: each record
+is keyed by the ledger's id for its feature (poi_id_for, #1729), and a ledger
+that has not yet seen an ATC re-key hands back a key nothing publishes.
 
 Usage:
     python build_water_distance.py [--check]
@@ -129,9 +132,10 @@ from pathlib import Path
 
 import requests
 
-# The one home of the layer -> source-name map (#1729): the ledger id each
-# record is keyed by is `{source}:{GlobalID}`, spelled once, in the export.
-from export_poi import WATER_DISTANCE_SOURCES
+# The layer -> ledger-source map and the ledger reader both live in the export
+# (#1729), so this file's `poi_id` and the id export_poi.py publishes come from
+# one lookup rather than two copies of it.
+from export_poi import LEDGER_PATH, WATER_DISTANCE_SOURCES, live_ledger_ids
 from lib.spurs import distance_m
 from lib.user_agent import USER_AGENT
 
@@ -382,23 +386,50 @@ def match_csi_row(feature: dict, csi_rows: list[dict]) -> tuple[dict | None, str
     return None, None, None
 
 
-def resolve_layer(layer: str, features: list[dict], csi_rows: list[dict]) -> list[dict]:
+def poi_id_for(layer: str, global_id: str, ledger_ids: dict[tuple[str, str], str]) -> str:
+    """The id export_poi.py publishes this feature under: the live ledger row
+    for `(source, GlobalID)` where there is one, else `{source}:{GlobalID}` -
+    the id reconcile_poi_identity.py mints for a feature the ledger has not
+    seen, and the id apply_ledger_ids leaves on it. One rule, read from
+    export_poi.live_ledger_ids, so this file and the export agree by
+    construction.
+
+    Why the ledger and not the composed id (#1729): when ATC re-keys a
+    shelter, reconcile_poi_identity.py carries its old ledger id onto the new
+    GlobalID, and the export keeps publishing the old id. A rebuild that
+    composed `{source}:{new GlobalID}` would name an id nothing publishes,
+    and the distance would drop without a log line. Through the ledger, the
+    rebuild names the carried id.
+
+    The ORDER this needs: the ledger must already carry the re-key when this
+    script runs. Run before the ledger is reconciled, a re-keyed feature
+    looks new and gets the composed id; main() prints how many features got
+    one, and the diff shows that feature's `poi_id` changing, which is the
+    line a reviewer should stop at."""
+    source = WATER_DISTANCE_SOURCES[layer]
+    return ledger_ids.get((source, global_id), f"{source}:{global_id}")
+
+
+def resolve_layer(
+    layer: str, features: list[dict], csi_rows: list[dict], ledger_ids: dict[tuple[str, str], str] | None = None
+) -> list[dict]:
     """One output record per ATC feature, every feature present.
 
     Exactly one of `distance_ft` and `unresolved` is meaningful: a record
     either states a distance or states why it will not, so a blank in the
     output is always a refusal with a reason rather than a hole.
+
+    `ledger_ids` is export_poi.live_ledger_ids()'s map; without one every
+    record gets the composed `{source}:{GlobalID}` (poi_id_for).
     """
+    ledger_ids = ledger_ids or {}
     records = []
     for feature in features:
         record = {
             "layer": layer,
-            # Keyed by the LEDGER id, not the bare GlobalID (#1729), as
-            # build_shelter_capacity.py has been since #671. The spelling
-            # matches at seeding (a ledger id is minted as `{source}:{GlobalID}`
-            # and kept as a birthmark), so the re-key is a no-op on published
-            # bytes - measured below in the pull request, not assumed.
-            "poi_id": f"{WATER_DISTANCE_SOURCES[layer]}:{feature['global_id']}",
+            # Keyed by the id the export publishes, not the bare GlobalID
+            # (#1729): poi_id_for says why and what order it needs.
+            "poi_id": poi_id_for(layer, feature["global_id"], ledger_ids),
             "atc_name": feature["name"],
             "distance_ft": None,
             "listed_distance_ft": None,
@@ -455,9 +486,12 @@ def resolve_layer(layer: str, features: list[dict], csi_rows: list[dict]) -> lis
 
 README = [
     "How far the nearest water source is from each A.T. shelter and campsite,",
-    "in feet, keyed by the POI identity ledger's id (reference/poi_identity.json,",
-    "#1729) - the id export_poi.py publishes, durable across upstream refreshes",
-    "where a bare GlobalID is not.",
+    "in feet, keyed by `poi_id`: the POI identity ledger's live id for the",
+    "feature (reference/poi_identity.json, #1729), which is the id",
+    "export_poi.py publishes and which survives an ATC re-key where a bare",
+    "GlobalID does not. A feature the ledger does not carry is keyed",
+    "`{source}:{GlobalID}`, the id the ledger would mint for it - so re-run",
+    "this after the ledger is reconciled.",
     "",
     "GENERATED by build_water_distance.py - re-run that script rather than",
     "editing rows here, and review the diff it produces. export_poi.py reads",
@@ -486,10 +520,12 @@ README = [
 ]
 
 
-def build(csi_rows: list[dict], features_by_layer: dict[str, list[dict]]) -> dict:
+def build(
+    csi_rows: list[dict], features_by_layer: dict[str, list[dict]], ledger_ids: dict[tuple[str, str], str] | None = None
+) -> dict:
     records = []
     for layer in ATC_LAYERS:
-        records.extend(resolve_layer(layer, features_by_layer[layer], csi_rows))
+        records.extend(resolve_layer(layer, features_by_layer[layer], csi_rows, ledger_ids))
     resolved = [record for record in records if record["distance_ft"] is not None]
     counts = {
         "features": len(records),
@@ -544,10 +580,25 @@ def main(argv: list[str] | None = None) -> int:
         print(f"Fetching the ATC {layer} layer ...")
         features_by_layer[layer] = fetch_atc_features(layer)
 
-    document = build(csi_rows, features_by_layer)
+    ledger_ids = live_ledger_ids()
+    document = build(csi_rows, features_by_layer, ledger_ids)
     counts = document["counts"]
     for layer in ATC_LAYERS:
         print(f"  {counts[f'{layer}_with_distance']}/{counts[layer]} {layer} resolved to a water distance.")
+    unledgered = [
+        feature["global_id"]
+        for layer in ATC_LAYERS
+        for feature in features_by_layer[layer]
+        if (WATER_DISTANCE_SOURCES[layer], feature["global_id"]) not in ledger_ids
+    ]
+    if unledgered:
+        # Either new to ATC, or re-keyed by ATC before the ledger caught up -
+        # this script cannot tell which (poi_id_for). The second kind loses its
+        # distance on the phone until the ledger is reconciled and this re-run.
+        print(
+            f"  {len(unledgered)} feature(s) have no live row in {LEDGER_PATH.name} and are keyed "
+            f"`{{source}}:{{GlobalID}}`; if any is a re-key, reconcile the ledger first and re-run."
+        )
 
     rendered = render(document)
     if args.check:

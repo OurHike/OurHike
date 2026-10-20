@@ -4,8 +4,11 @@
 -- build_water_distance.py builds the file and its `--check` re-derives it;
 -- a person reviews it as a diff, and that review is the gate.
 --
--- Key: atc_global_id, unique on all 512 rows (pipeline/ELT.md, "One key per
--- table").
+-- Key: poi_id, unique on all 512 rows (pipeline/ELT.md, "One key per
+-- table"): the POI identity ledger's id for the site, which
+-- build_water_distance.py resolves and int_points_of_interest__water joins on
+-- (#1729 - The water-distance join is keyed by bare ATC GlobalID, nothing
+-- runs its --check, and the CSI figure carries no as-of date).
 with source as (
     select * from {{ source('atc', 'raw_atc__water_distance') }}
 ),
@@ -14,10 +17,10 @@ renamed as (
     select
         {{ dbt_utils.generate_surrogate_key([
             "'reference/water_distance.json'",
-            'atc_global_id',
+            'poi_id',
         ]) }} as water_distance_key,
         layer,
-        atc_global_id,
+        poi_id,
         atc_name,
         distance_ft,
         listed_distance_ft,

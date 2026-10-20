@@ -2485,3 +2485,19 @@ def test_load_water_distances_keys_by_the_records_poi_id_not_a_rebuilt_globalid(
     _write_water_distance_file(path, [{"layer": "shelters", "poi_id": "atc_shelters:carried-id", "distance_ft": 90}])
 
     assert export_poi.load_water_distances(path) == {"atc_shelters:carried-id": export_poi.WaterDistance(90, None)}
+
+
+def test_load_water_distances_reads_only_the_shelters_and_campsites_layers(tmp_path):
+    """A record on any other layer is not read, even when its poi_id names a
+    shelter - int_points_of_interest__water filters on the same two layers, so
+    the two paths agree on a file that carries one."""
+    path = tmp_path / "water_distance.json"
+    _write_water_distance_file(
+        path,
+        [
+            {"layer": "shelters", "poi_id": "atc_shelters:s-1", "distance_ft": 120},
+            {"layer": "viewpoints", "poi_id": "atc_shelters:s-1", "distance_ft": 10},
+        ],
+    )
+
+    assert export_poi.load_water_distances(path) == {"atc_shelters:s-1": export_poi.WaterDistance(120, None)}

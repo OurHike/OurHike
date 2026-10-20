@@ -1,6 +1,8 @@
 """FastAPI application entrypoint."""
 
 import math
+from collections.abc import AsyncIterator
+from contextlib import asynccontextmanager
 
 from fastapi import FastAPI, Request, status
 from fastapi.encoders import jsonable_encoder
@@ -8,7 +10,10 @@ from fastapi.exceptions import RequestValidationError
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 
+from app.config import settings
 from app.core.body_limit import MAX_REQUEST_BODY_BYTES, BodyLimitMiddleware
+from app.core.logs import RequestIdMiddleware, configure_logging
+from app.db.session import check_database, database_host
 from app.routers import (
     app_failures,
     assist,
@@ -29,11 +34,38 @@ from app.routers import (
     ridge_runner,
     synced_day_hikes,
     synced_trips,
+    trail_challenges,
     volunteer_hours,
     work_projects,
 )
 
-app = FastAPI(title="OurHike backend")
+configure_logging()
+
+
+@asynccontextmanager
+async def _lifespan(_app: FastAPI) -> AsyncIterator[None]:
+    """Refuse to start when the database cannot be reached (#1756).
+
+    `/health` touches nothing, so a container with DATABASE_URL missing or
+    pointed at the wrong pooler string would otherwise pass the host's health
+    check and answer 500 on every route that reaches the database. Exiting
+    here fails the deploy instead. The message names the host and port and
+    never the credentials.
+
+    Not run by `TestClient(app)` used without a `with` block, which is how
+    tests/conftest.py builds its client, so the suite does not depend on it.
+    """
+    try:
+        check_database()
+    except Exception as exc:
+        raise RuntimeError(
+            f"Cannot reach the database at {database_host(settings.database_url)} "
+            f"({type(exc).__name__}). Check DATABASE_URL, including the pooler host and port."
+        ) from None
+    yield
+
+
+app = FastAPI(title="OurHike backend", lifespan=_lifespan)
 
 # Added BEFORE the CORS middleware below, which matters: `add_middleware`
 # puts each new middleware outermost, so this one ends up inside CORS and a
@@ -55,7 +87,18 @@ app.add_middleware(
     allow_credentials=False,
     allow_methods=["*"],
     allow_headers=["*"],
+    expose_headers=["X-Request-Id"],
 )
+
+# Added AFTER CORS so it is the outermost middleware added here: a 5xx that
+# CORS or anything inside it raises is still logged, and the id header is on
+# every response - including the 500 an unhandled exception becomes, which
+# Starlette's own ServerErrorMiddleware (outside this one) would otherwise send
+# without it. A browser only lets the client read X-Request-Id because CORS
+# exposes it above, which it does on every response but that crash's 500: that
+# one has no CORS headers at all. RequestIdMiddleware's docstring in
+# app/core/logs.py is the reasoning (#1759).
+app.add_middleware(RequestIdMiddleware)
 
 
 def _json_safe(value):
@@ -89,6 +132,20 @@ def health() -> dict[str, str]:
     return {"status": "ok"}
 
 
+@app.get("/ready")
+def ready() -> JSONResponse:
+    """200 when a database query succeeds, 503 when it does not.
+
+    Separate from `/health` on purpose: a health check that needs the database
+    makes a database outage restart-loop the container, which cannot fix it.
+    """
+    try:
+        check_database()
+    except Exception:
+        return JSONResponse(status_code=status.HTTP_503_SERVICE_UNAVAILABLE, content={"status": "database unavailable"})
+    return JSONResponse(content={"status": "ok"})
+
+
 app.include_router(profiles.router)
 app.include_router(hikes.router)
 app.include_router(preferences.router)
@@ -118,3 +175,8 @@ app.include_router(ridge_runner.router)
 app.include_router(console.router)
 app.include_router(assist.router)
 app.include_router(nominations.router)
+# Challenges (#1780, features/CHALLENGES.md). One router for both halves - a
+# hiker's `/challenges/...` and a club's `/clubs/{slug}/challenges...` -
+# because the club's counts and CSV are read off the hiker's rows, and two
+# routers would be two places deciding what a count may reveal.
+app.include_router(trail_challenges.router)

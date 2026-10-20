@@ -1,0 +1,2 @@
+source_key,read_in,value,reads_as,why
+ctsst_public_hazards_closures,status,C,closes_trail,"H_C is a one-letter code, 'C' a closure and 'H' a hazard (the row's notes; 2 of each in the live read of 2026-10-14, the source held by the registry): no shared word reads a single letter, which means closed only in this layer's own legend. Its notice_status_values row"

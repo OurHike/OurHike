@@ -58,6 +58,30 @@ describe('parsing the three routes', () => {
     })
   })
 
+  it.each(['challenges', 'finishers'] as const)(
+    'reads the %s page of a console (#1780)',
+    (page) => {
+      expect(parseOrgRoute(`https://ourhike.org/org/x/setup?page=${page}`, ROOT)).toEqual(
+        { kind: 'setup', slug: 'x', page },
+      )
+    },
+  )
+
+  it('carries which challenge a Finishers bookmark is about', () => {
+    expect(
+      parseOrgRoute('https://ourhike.org/org/x/setup?page=finishers&challenge=c-1', ROOT),
+    ).toEqual({ kind: 'setup', slug: 'x', page: 'finishers', challenge: 'c-1' })
+  })
+
+  it('drops a challenge on a console page that has nothing to do with one', () => {
+    // A parameter nothing reads would make two addresses for one screen, and
+    // `sameOrgRoute` would then push a history entry for a move that changed
+    // nothing a person can see.
+    expect(
+      parseOrgRoute('https://ourhike.org/org/x/setup?page=registry&challenge=c-1', ROOT),
+    ).toEqual({ kind: 'setup', slug: 'x', page: 'registry' })
+  })
+
   it('reads one volunteer profile inside the volunteer surface', () => {
     expect(
       parseOrgRoute('https://ourhike.org/org/x/volunteers?page=person&person=p1', ROOT),
@@ -118,6 +142,13 @@ describe('writing a route back out', () => {
       { kind: 'tread' as const, org: 'ramapo-trail-conference' },
       { kind: 'setup' as const, slug: 'x', page: 'home' as const },
       { kind: 'setup' as const, slug: 'x', page: 'signoff' as const },
+      { kind: 'setup' as const, slug: 'x', page: 'challenges' as const },
+      {
+        kind: 'setup' as const,
+        slug: 'x',
+        page: 'finishers' as const,
+        challenge: 'a b/c',
+      },
       { kind: 'volunteers' as const, slug: 'x', page: 'coverage' as const },
       { kind: 'volunteers' as const, slug: 'x', page: 'person' as const, person: 'p1' },
     ]

@@ -7,6 +7,7 @@ import {
   fetchReports,
   fetchClosures,
   permanentFailureReason,
+  refusalSentence,
   ApiError,
   ApiNotConfiguredError,
   NotSignedInError,
@@ -475,6 +476,25 @@ describe('permanentFailureReason', () => {
     expect(permanentFailureReason('a string, somehow')).toBeNull()
     expect(permanentFailureReason(undefined)).toBeNull()
   })
+
+  it('shows a challenge entry’s refusal in the server’s own sentence, not as an id collision', () => {
+    // backend/app/routers/trail_challenges.py's NOT_TAKING_ENTRIES, held by
+    // test_routers_trail_challenges.py.
+    const refusal = "This challenge's club is not taking entries through OurHike yet."
+    expect(permanentFailureReason(apiError(409, { detail: refusal }))).toBe(refusal)
+    const closed = 'Entries for this challenge closed on September 1, 2027.'
+    expect(permanentFailureReason(apiError(409, { detail: closed }))).toBe(closed)
+    // The per-hiker tag cap's sentence, a tag's own refusal.
+    const capped =
+      'This account has more challenge tags than any list could need, so this one was not kept.'
+    expect(permanentFailureReason(apiError(409, { detail: capped }))).toBe(capped)
+    // Any other 409 keeps the generic reason.
+    expect(
+      permanentFailureReason(
+        apiError(409, { detail: 'That tag id belongs to someone else.' }),
+      ),
+    ).toMatch(/different report filed under this one’s id/)
+  })
 })
 
 describe('sendReport idempotency', () => {
@@ -912,5 +932,26 @@ describe('the moderation calls', () => {
     } as Response)
 
     await expect(api.fetchReportPhotoLink('r-1')).rejects.toBeInstanceOf(api.ApiError)
+  })
+})
+
+describe('refusalSentence', () => {
+  const apiError = (status: number, detail?: unknown) =>
+    new ApiError(
+      status,
+      `POST /clubs/demo/challenges/demo-list failed: ${status}`,
+      detail,
+    )
+
+  it("gives an admin the server's own sentence rather than the request line", () => {
+    const held =
+      "This organization's entries are held until somebody at it is confirmed again."
+    expect(refusalSentence(apiError(403, { detail: held }), 'fallback')).toBe(held)
+  })
+
+  it('falls back to the message for a validation list, and to the fallback for a non-error', () => {
+    const invalid = apiError(422, { detail: [{ loc: ['body', 'items'], msg: 'bad' }] })
+    expect(refusalSentence(invalid, 'fallback')).toBe(invalid.message)
+    expect(refusalSentence('a string, somehow', 'fallback')).toBe('fallback')
   })
 })

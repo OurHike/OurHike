@@ -1,0 +1,24 @@
+source_key,value,poi_type
+dec_backcountry_features,PIT PRIVY,privy
+dec_backcountry_features,PORT-A-JOHN,privy
+dec_backcountry_features,RESTROOM,privy
+dec_backcountry_features,BATHROOM,privy
+oprhp_facilities,Lean-to,shelter
+oprhp_facilities,Campground,campsite
+oprhp_facilities,Group Camp,campsite
+oprhp_facilities,Public Restroom,privy
+oprhp_facilities,Pit Toilet,privy
+oprhp_facilities,Portable Toilet,privy
+oprhp_facilities,Scenic View,viewpoint
+oprhp_facilities,Fire Tower,viewpoint
+oprhp_facilities,Wildlife Viewpoint,viewpoint
+oprhp_facilities,Parking Area,parking
+oprhp_facilities,Pull Off,parking
+oprhp_facilities,Accessible Parking Area,parking
+oprhp_facilities,Trailhead,trailhead
+oprhp_facilities,Water Spigot,water
+oprhp_facilities,Drinking Fountain,water
+usfs_rec_sites,TRAILHEAD,trailhead
+usfs_rec_sites,CAMPGROUND,campsite
+usfs_rec_sites,GROUP CAMPGROUND,campsite
+usfs_rec_sites,OBSERVATION SITE,viewpoint

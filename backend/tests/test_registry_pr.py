@@ -22,7 +22,7 @@ this repository that holds a token which could.
 import httpx
 import pytest
 
-from app.core.registry_pr import RegistryPrRefused, open_registry_pr
+from app.core.registry_pr import RegistryPrRefused, open_challenge_pr, open_registry_pr
 from app.models.club import OrgState
 from tests.factories import make_org, make_section
 
@@ -168,3 +168,94 @@ class TestWhatItNeverDoes:
             open_registry_pr(db_session, club, client=httpx.Client(transport=httpx.MockTransport(handler)))
 
         assert len(calls) == 1
+
+
+class TestAChallenge:
+    """The second thing that goes up this way (#1780): one club challenge, as
+    one file under `pipeline/reference/challenges/<slug>/`, and nothing else."""
+
+    DEFINITION = {"id": "harriman-shelters", "org": "ramapo-trail-conference", "name": "Harriman shelters"}
+
+    def test_it_writes_exactly_one_file_inside_the_challenges_directory(self, client, db_session, enabled):
+        club = make_org(db_session, state=OrgState.claimed)
+        recorder = Recorder()
+
+        opened = open_challenge_pr(
+            club, "harriman-shelters", self.DEFINITION, client=httpx.Client(transport=recorder.transport())
+        )
+
+        assert recorder.paths_written() == ["pipeline/reference/challenges/ramapo-trail-conference/harriman-shelters.json"]
+        assert opened.number == 42
+
+    def test_it_records_the_proved_domain_in_the_file_and_the_body(self, client, db_session, enabled):
+        """The pipeline refuses a file saved by a domain publishers.json does
+        not name for its org, so the domain has to travel in the file."""
+        club = make_org(db_session, state=OrgState.claimed)
+        recorder = Recorder()
+
+        open_challenge_pr(club, "harriman-shelters", self.DEFINITION, client=httpx.Client(transport=recorder.transport()))
+
+        blob = next(body for method, path, body in recorder.calls if method == "POST" and path.endswith("/git/blobs"))
+        import base64
+
+        assert '"published_by_domain": "ramapotrails.org"' in base64.b64decode(blob["content"]).decode("utf-8")
+        pull = next(body for method, path, body in recorder.calls if method == "POST" and path.endswith("/pulls"))
+        assert "`ramapotrails.org`" in pull["body"]
+        assert "#1780" not in pull["body"]
+
+    def test_a_club_that_proved_a_publishers_domain_writes_under_that_publisher(self, client, db_session, enabled):
+        """The real ATC registered under any slug still publishes `atc-…`
+        into `atc/`, the directory the pipeline reads as the ATC's."""
+        club = make_org(db_session, slug="appalachian-trail-conservancy", domain="appalachiantrail.org", state=OrgState.claimed)
+        recorder = Recorder()
+
+        open_challenge_pr(
+            club,
+            "atc-summer-bucket-list-2027",
+            {"id": "atc-summer-bucket-list-2027", "org": "atc", "name": "A.T. Summer Bucket List"},
+            client=httpx.Client(transport=recorder.transport()),
+        )
+
+        assert recorder.paths_written() == ["pipeline/reference/challenges/atc/atc-summer-bucket-list-2027.json"]
+
+    def test_it_never_merges(self, client, db_session, enabled):
+        club = make_org(db_session, state=OrgState.claimed)
+        recorder = Recorder()
+
+        open_challenge_pr(club, "harriman-shelters", self.DEFINITION, client=httpx.Client(transport=recorder.transport()))
+
+        assert not any(path.endswith("/merge") for _, path, _ in recorder.calls)
+
+    @pytest.mark.parametrize("challenge_id", ["../../.github/workflows/x", "a/b", "", "UPPER"])
+    def test_an_id_that_is_not_one_path_segment_opens_nothing(self, client, db_session, enabled, challenge_id):
+        """The opener refuses to build a path from anything it has not
+        checked itself, even though the route validated the id first."""
+        club = make_org(db_session, state=OrgState.claimed)
+        recorder = Recorder()
+
+        with pytest.raises(RegistryPrRefused):
+            open_challenge_pr(club, challenge_id, self.DEFINITION, client=httpx.Client(transport=recorder.transport()))
+
+        assert recorder.calls == []
+
+    def test_a_held_registration_publishes_no_challenge(self, client, db_session, enabled):
+        club = make_org(db_session, state=OrgState.pending)
+        recorder = Recorder()
+
+        with pytest.raises(RegistryPrRefused):
+            open_challenge_pr(club, "harriman-shelters", self.DEFINITION, client=httpx.Client(transport=recorder.transport()))
+
+        assert recorder.calls == []
+
+
+def test_a_club_name_reaches_a_commit_and_a_pull_request_as_inert_text():
+    """ "Closes #1" in a merged commit message closes issue 1; "@x" pings x."""
+    from app.core.registry_pr import _plain
+
+    assert _plain("Closes #1 @maintainer [x](y)") == "Closes 1 maintainer xy"
+    assert _plain("@#") == "An organization"
+    # A URL loses what makes it one; a GH- reference is broken apart.
+    assert _plain("Fixes https://github.com/o/r/issues/1") == "Fixes httpsgithub.comorissues1"
+    assert _plain("Fixes GH-2") == "Fixes GH 2"
+    assert len(_plain("x" * 100_000)) == 120
+    assert _plain("Ramapo Trail Conference") == "Ramapo Trail Conference"

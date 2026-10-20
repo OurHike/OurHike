@@ -61,6 +61,10 @@ SECTION_FOR_TABLE = {
     "roster_sync_runs": "roster_loads_you_ran",
     "console_keys": "embed_keys_you_made",
     "org_nominations": "organizations_you_nominated",
+    # --- Challenges (#1780). ---
+    "challenge_tags": "places_you_tagged_on_challenges",
+    "challenge_entries": "challenge_entries_you_sent",
+    "club_challenges": "challenges_you_saved_for_an_organization",
 }
 
 

@@ -34,6 +34,15 @@
   "enabledPlugins": {
     "frontend-design@claude-plugins-official": true,
     "code-simplifier@claude-plugins-official": true,
-    "code-review@claude-plugins-official": true
+    "code-review@claude-plugins-official": true,
+    "dbt@dbt-agent-marketplace": true
+  },
+  "extraKnownMarketplaces": {
+    "dbt-agent-marketplace": {
+      "source": {
+        "source": "github",
+        "repo": "dbt-labs/dbt-agent-skills"
+      }
+    }
   }
 }

@@ -89,9 +89,15 @@ function optionalArtifactKeys() {
   // pattern also matches `async function fetchOptionalArtifact(artifactKey`
   // and captures the parameter name, which resolves to no key and trips the
   // guard below. Found by running it rather than by reading it.
-  const names = [...trailData.matchAll(/await fetchOptionalArtifact\(\s*(\w+)/g)].map(
-    (m) => m[1],
-  )
+  //
+  // Most call sites wrap the constant as `phoneFileKey(TRAIL_MILES_KEY)`, so the
+  // optional `phoneFileKey(` is skipped to reach the constant. Without it the
+  // capture is the word `phoneFileKey`, which resolves to no key (#1808). The
+  // v2 spelling `v2/<key>` still ends with `/<key>`, which is what the 404
+  // match below tests.
+  const names = [
+    ...trailData.matchAll(/await fetchOptionalArtifact\(\s*(?:phoneFileKey\(\s*)?(\w+)/g),
+  ].map((m) => m[1])
   const keys = names
     .map((name) => config.match(new RegExp(`${name}\\s*=\\s*'([^']+)'`))?.[1])
     .filter(Boolean)

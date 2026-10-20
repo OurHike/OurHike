@@ -913,14 +913,36 @@ export interface SlimPinSpec {
   pixelRatio: number
   glyph: Glyph
   inks: SlimPinInks
-  /** A site's other categories, as badges on the rim (#524, #1682). */
+  /** A site's other categories, as badges on the rim (#524, #1682). Placed
+   *  for a disc; no diamond carries any. */
   members?: readonly string[]
+  /**
+   * The pin's outline: a `disc` for every waypoint and the workday, a
+   * `diamond` for a challenge place (map/challengePin.ts, #1780).
+   *
+   * A different BODY rather than a different glyph in the same disc, because
+   * a diamond glyph in a disc is already taken: it is the pin for a POI type
+   * this build has never heard of ({@link UNKNOWN_POI_TYPE}). Every width
+   * below - the hairline, the ring, the shadow - is measured the same way on
+   * both: `inkPx / 2` is the disc's radius and the diamond's apothem (centre
+   * to the middle of an edge), so a diamond circumscribes the disc of the
+   * same `inkPx` exactly and its rings are the disc's rings, straightened.
+   */
+  body?: 'disc' | 'diamond'
+}
+
+/** Distance from the centre in the diamond's own measure: the perpendicular
+ *  distance to the edge through that point, so the level set at `r` is a
+ *  diamond whose apothem is `r` - what `Math.hypot` is to the disc. */
+function diamondNorm(dx: number, dy: number): number {
+  return (Math.abs(dx) + Math.abs(dy)) / Math.SQRT2
 }
 
 /**
  * One slim pin, as raw RGBA pixels: every waypoint, and since #1682 the
  * workday pin (map/workdayPin.ts) - one rasteriser for both, for the reason
- * {@link buildPinImage} is shared with the warning pin.
+ * {@link buildPinImage} is shared with the warning pin. The challenge-place
+ * diamond (#1780) is the third caller, through `body`.
  */
 export function buildSlimPinImage({
   sizePx,
@@ -929,7 +951,9 @@ export function buildSlimPinImage({
   glyph,
   inks,
   members = [],
+  body = 'disc',
 }: SlimPinSpec): PoiIconImage {
+  const norm = body === 'diamond' ? diamondNorm : Math.hypot
   const pad = sitePinPadding(members.length, sizePx, inkPx) * pixelRatio
   const pixels = sizePx * pixelRatio + pad * 2
   const geometry = waypointPinGeometry(pixels, inkPx * pixelRatio)
@@ -966,7 +990,7 @@ export function buildSlimPinImage({
       const gy = (by + badge.glyphBox / 2) / badge.glyphBox
       return insideGlyph(spot.glyph, gx, gy) ? paper : spot.ink
     }
-    const distance = Math.hypot(dx, dy)
+    const distance = norm(dx, dy)
     if (distance <= rInk) {
       if (distance > rDisc) return paper
       const gx = (dx + glyphBox / 2) / glyphBox
@@ -975,7 +999,7 @@ export function buildSlimPinImage({
       if (ring !== null && distance > rDisc - ringWidth) return ring
       return fill
     }
-    if (Math.hypot(dx, dy - geometry.shadowOffset) <= rInk) return shadow
+    if (norm(dx, dy - geometry.shadowOffset) <= rInk) return shadow
     return null
   })
 

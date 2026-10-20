@@ -642,14 +642,61 @@ export async function sendClosure(item: OutboxItem): Promise<void> {
 }
 
 /**
+ * Sends one completed challenge item (#1780). `authored_at` travels for the
+ * reason `sendClosure`'s `reported_at` does: the server stores when the tag
+ * was made, not when the phone found signal, so a tag queued on the last
+ * evening of the window and flushed in town a week later still reads as
+ * made inside it. The server judges nothing by it - it once answered with a
+ * `late` flag, which told any caller whether an id had an owner and a date,
+ * and was taken out.
+ */
+export async function sendChallengeTag(item: OutboxItem): Promise<void> {
+  await authedFetch('/challenges/tags', {
+    method: 'POST',
+    body: JSON.stringify({
+      ...item.challengeTag,
+      id: item.id,
+      authored_at: item.authoredAt,
+    }),
+  })
+}
+
+/** Takes back a challenge tag, or every tag on a challenge (#1780). The
+ *  server answers 204 whether or not there was one, so a resend after a lost
+ *  response is harmless. */
+export async function sendChallengeUntag(item: OutboxItem): Promise<void> {
+  const untag = item.challengeUntag
+  if (untag === undefined) return
+  const challenge = encodeURIComponent(untag.challenge_id)
+  await authedFetch(
+    untag.item_id === null
+      ? `/challenges/${challenge}/tags`
+      : `/challenges/${challenge}/items/${encodeURIComponent(untag.item_id)}/tag`,
+    { method: 'DELETE' },
+  )
+}
+
+/** Sends one challenge entry (#1780) - the only thing about a hiker a club
+ *  ever receives, and only because they pressed send. */
+export async function sendChallengeEntry(item: OutboxItem): Promise<void> {
+  const entry = item.challengeEntry
+  if (entry === undefined) return
+  const { challenge_id: challengeId, ...body } = entry
+  await authedFetch(`/challenges/${encodeURIComponent(challengeId)}/entries`, {
+    method: 'POST',
+    body: JSON.stringify({ ...body, id: item.id }),
+  })
+}
+
+/**
  * Sends one queued outbox item, whatever it carries.
  *
- * The outbox holds six families now: condition reports (the original
+ * The outbox holds nine kinds of item now: condition reports (the original
  * cargo), photo actions (#577/#579 - share, withdraw, report), app-failure
  * reports (#848), field notes (features/FIELD_NOTES.md), volunteer hours
- * (#761), and closures (#832). One dispatcher, so `flushOutbox` keeps its
- * single `send`
- * seam and the queue stays one queue - a hiker's unsent work is one list.
+ * (#761), closures (#832), and challenge tags, their removals and entries
+ * (features/CHALLENGES.md). One dispatcher, so `flushOutbox` keeps its single `send` seam and
+ * the queue stays one queue - a hiker's unsent work is one list.
  */
 export async function sendOutboxItem(item: OutboxItem): Promise<void> {
   if (item.action !== undefined) return sendPhotoAction(item.action, item.photo)
@@ -657,6 +704,9 @@ export async function sendOutboxItem(item: OutboxItem): Promise<void> {
   if (item.fieldNote !== undefined) return sendFieldNote(item)
   if (item.volunteerHours !== undefined) return sendVolunteerHours(item)
   if (item.closure !== undefined) return sendClosure(item)
+  if (item.challengeTag !== undefined) return sendChallengeTag(item)
+  if (item.challengeEntry !== undefined) return sendChallengeEntry(item)
+  if (item.challengeUntag !== undefined) return sendChallengeUntag(item)
   return sendReport(item)
 }
 
@@ -776,6 +826,47 @@ const PERMANENT_REASONS: Record<number, string> = {
   409: 'The server already has a different report filed under this one’s id.',
 }
 
+/**
+ * A challenge entry's or tag's refusals are sentences the server wrote for
+ * the hiker (backend/app/routers/trail_challenges.py's NOT_TAKING_ENTRIES,
+ * ALREADY_SENT and the per-hiker tag cap, and app/core/trail_challenge.py's
+ * closed_sentence, whose docstring says the phone shows it verbatim). They
+ * arrive as 409s, and PERMANENT_REASONS' 409 - "a different report filed
+ * under this one's id" - would tell somebody whose club is not taking
+ * entries, or whose tag hit the cap, that their report collided. Matched by
+ * opening words because they are the contract the backend's tests hold
+ * (test_routers_trail_challenges.py); a sentence this list does not know
+ * falls through to the generic reason, never to silence.
+ */
+const HIKER_SENTENCE =
+  /^(This challenge['’]s club is not taking entries|You have already sent an entry|Entries for this challenge closed|This account has more challenge tags)/
+
+/**
+ * The sentence a refused request's server wrote, or `fallback`.
+ *
+ * For screens whose reader is an admin (the org console): FastAPI puts a
+ * route's own refusal in `detail` as a string, and that sentence - "Ask
+ * OurHike to remove one you no longer need before saving another", "This
+ * organization's entries are held until somebody at it is confirmed
+ * again" - is what the admin needs. `ApiError.message` is
+ * "POST /clubs/… failed: 409", which the console showed instead (second
+ * Challenges review, 2026-10-01). A validation failure's `detail` is a list,
+ * not a sentence, and gets the fallback.
+ */
+export function refusalSentence(error: unknown, fallback: string): string {
+  if (error instanceof ApiError) {
+    const detail = (error.detail as { detail?: unknown } | null)?.detail
+    if (typeof detail === 'string' && detail.trim() !== '') return detail
+  }
+  return error instanceof Error ? error.message : fallback
+}
+
+function hikerSentence(error: ApiError): string | null {
+  if (error.status !== 409) return null
+  const detail = (error.detail as { detail?: unknown } | null)?.detail
+  return typeof detail === 'string' && HIKER_SENTENCE.test(detail) ? detail : null
+}
+
 // The backend returns 422 for two unrelated reasons, and the entry above is
 // written for only one of them (#412).
 //
@@ -826,6 +917,9 @@ function namesAuthoredAt(detail: unknown): boolean {
  */
 export function permanentFailureReason(error: unknown): string | null {
   if (!(error instanceof ApiError)) return null
+
+  const written = hikerSentence(error)
+  if (written !== null) return written
 
   // A 422 that does not name `authored_at` is validation failing on some
   // other field, which this build cannot fix by trying again - but a newer

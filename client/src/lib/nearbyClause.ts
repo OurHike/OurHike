@@ -24,6 +24,7 @@
 // different answers about one site.
 
 import { formatShortDistance, type UnitSystem } from './units'
+import { estimateMark } from './waterProvenance'
 
 /**
  * One part of a site as the artifact publishes it (export_poi.py's `nearby`).
@@ -38,6 +39,15 @@ import { formatShortDistance, type UnitSystem } from './units'
 export interface NearbyPart {
   phrase: string
   distance_ft: number
+  /**
+   * Where a STATED figure came from, on the one part that is a published
+   * number rather than a measured position - ATC's distance-to-water - as
+   * CSI's own provenance value, verbatim (#1728). Absent on every measured
+   * part, and on a download from before the field travelled. It decides the
+   * mark in front of the figure: `water ~150 ft` for a steward's estimate,
+   * `water 339 ft` for a measurement - lib/waterProvenance.ts.
+   */
+  source?: string
 }
 
 /** The word the parts are introduced with. One label rather than "away" after
@@ -63,7 +73,7 @@ export function describeNearby(
 
   const named = parts.map(
     (part, index) =>
-      `${part.phrase} ${formatShortDistance(part.distance_ft, units)}${index === 0 ? AWAY : ''}`,
+      `${part.phrase} ${estimateMark(part.source)}${formatShortDistance(part.distance_ft, units)}${index === 0 ? AWAY : ''}`,
   )
   return `${LEAD}: ${joinParts(named)}.`
 }

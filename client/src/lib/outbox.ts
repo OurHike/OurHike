@@ -38,6 +38,11 @@
 import { get, update } from 'idb-keyval'
 
 import { BUILD_INFO } from './buildInfo'
+import type {
+  ChallengeEntryDraft,
+  ChallengeTagDraft,
+  ChallengeUntagDraft,
+} from './challengeDrafts'
 import type { ClosureDraft } from './closureDraft'
 import type { FieldNoteDraft } from './fieldNotes'
 import type { VolunteerHoursDraft } from './volunteerHours'
@@ -342,6 +347,28 @@ export interface OutboxItem {
    * trust it more.
    */
   closure?: ClosureDraft
+  /**
+   * One completed challenge item (#1780, features/CHALLENGES.md) - the
+   * seventh cargo. Tagged at camp, which is where there is no signal, so it
+   * queues like everything else here; `authoredAt` is the moment of the tag
+   * and travels as `authored_at`, because a tag queued on the last evening of
+   * the window and flushed in town a week later still happened in time.
+   */
+  challengeTag?: ChallengeTagDraft
+  /**
+   * The one entry a hiker chooses to send a club at a challenge's finish
+   * (#1780) - the eighth cargo. Queued rather than sent inline so "Enter the
+   * drawing" on a ridge works the same as in town.
+   */
+  challengeEntry?: ChallengeEntryDraft
+  /**
+   * A challenge tag taken back (#1780) - the ninth cargo. Queued behind the
+   * tag it undoes, and `flushOutbox` keeps one challenge's tags, removals and
+   * entry in queue order (`challengeOf`), so a tag made and removed with no
+   * signal goes out as a tag and then its removal, and the server ends where
+   * the phone did.
+   */
+  challengeUntag?: ChallengeUntagDraft
   /**
    * The photo, as bytes, already downscaled and re-encoded (lib/reportPhoto.ts).
    *
@@ -756,6 +783,58 @@ export async function enqueueClosure(
   return item
 }
 
+/**
+ * Queue a completed challenge item (#1780). Same queue, same four
+ * properties - `POST /challenges/tags` takes the id as its idempotency key.
+ */
+export async function enqueueChallengeTag(
+  challengeTag: ChallengeTagDraft,
+  authoredAt: Date = new Date(),
+): Promise<OutboxItem> {
+  const item: OutboxItem = {
+    id: crypto.randomUUID(),
+    authoredAt: authoredAt.toISOString(),
+    challengeTag,
+  }
+
+  await mutateQueue((queue) => [...queue, item])
+  return item
+}
+
+/**
+ * Queue a challenge entry (#1780). The id is the server's idempotency key,
+ * so a flush that commits and loses its response cannot send a club the
+ * same hiker twice.
+ */
+export async function enqueueChallengeEntry(
+  challengeEntry: ChallengeEntryDraft,
+  authoredAt: Date = new Date(),
+): Promise<OutboxItem> {
+  const item: OutboxItem = {
+    id: crypto.randomUUID(),
+    authoredAt: authoredAt.toISOString(),
+    challengeEntry,
+  }
+
+  await mutateQueue((queue) => [...queue, item])
+  return item
+}
+
+/** Queue a challenge tag's removal (#1780) - see `challengeUntag`. */
+export async function enqueueChallengeUntag(
+  challengeUntag: ChallengeUntagDraft,
+  authoredAt: Date = new Date(),
+): Promise<OutboxItem> {
+  const item: OutboxItem = {
+    id: crypto.randomUUID(),
+    authoredAt: authoredAt.toISOString(),
+    challengeUntag,
+  }
+
+  await mutateQueue((queue) => [...queue, item])
+  return item
+}
+
 export async function removeQueued(id: string): Promise<void> {
   await mutateQueue((queue) => queue.filter((item) => item.id !== id))
 }
@@ -801,7 +880,23 @@ export async function flushOutbox(
   // become sendable partway down a list because the loop got to it late.
   const now = Date.now()
 
+  // Challenges whose earlier item did not go this pass. The loop otherwise
+  // skips past an item that failed for want of signal and carries on, which
+  // is right for reports and wrong here: a removal that overtook the tag it
+  // undoes would land first, and the tag after it would leave the server
+  // holding a tag the phone took back. An entry likewise waits behind its
+  // challenge's tags, because the server reads them as the entry arrives
+  // (`untagged_item_ids`). Per challenge, so one stuck list holds back
+  // nothing else.
+  const waiting = new Set<string>()
+
   for (const item of queue) {
+    const challenge = challengeOf(item)
+    if (challenge !== null && waiting.has(challenge)) {
+      failed += 1
+      continue
+    }
+
     // Inside a live undo window (#1133). Skipped without touching it: the
     // hiker has not retracted it and nothing is wrong with it, it is simply
     // not eligible yet. The next flush - and there is always a next flush,
@@ -858,6 +953,7 @@ export async function flushOutbox(
       const reason = classify(error)
       if (reason === null) {
         // The usual cause is simply no signal. Left exactly as it was.
+        if (challenge !== null) waiting.add(challenge)
         continue
       }
       await markFailed(item.id, reason)
@@ -868,6 +964,19 @@ export async function flushOutbox(
   }
 
   return { sent, failed, stuck, held }
+}
+
+/** The challenge a tag, a removal or an entry belongs to, or null for every
+ *  other cargo - the key `flushOutbox` keeps in order. A refused item (a
+ *  4xx, `stuck`) does not hold the rest back: the server never took it, so
+ *  nothing behind it can land out of order against it. */
+function challengeOf(item: OutboxItem): string | null {
+  return (
+    item.challengeTag?.challenge_id ??
+    item.challengeUntag?.challenge_id ??
+    item.challengeEntry?.challenge_id ??
+    null
+  )
 }
 
 async function markFailed(id: string, reason: string): Promise<void> {

@@ -92,8 +92,28 @@ export interface NoticeListProps {
   extent: MileExtent | null
   /** The shell's clock, so "posted today" moves with it. */
   now: Date
+  /**
+   * Whether a hike is planned and this phone holds no copy of
+   * conditions/notices.json, where that hike's notices come from
+   * (chrome/noticesPanel.tsx says when). Set, the list opens with the
+   * maintainer's warning and is headed as what this phone has (option A of
+   * the poll of 2026-10-09), because a club's closure on the hike cannot be
+   * in it. The rows, the note and the age lines are the same either way.
+   */
+  plannedNoticesMissing?: boolean
+  /**
+   * The sentence in place of the rows while the notices this list was
+   * opened for are not on the phone yet - the "Read all" door's, before
+   * conditions/notices.json has arrived (chrome/noticesPanel.tsx) - because
+   * "OurHike is holding no trail notices" would then be false.
+   */
+  waiting?: string
   onClose: () => void
 }
+
+/** The heading, and the dialog's name, while a planned hike's notices are
+ *  not on this phone: the maintainer's words (option A, 2026-10-09). */
+const MISSING_HEADING = 'Trail notices this phone has'
 
 /** The extent of a notice that has one, or null. Only `at_miles` carries a
  *  mile, which is why this narrows rather than taking two numbers. */
@@ -137,7 +157,13 @@ function Notice({
       {/* The reviewer's answer to the one question a category cannot be read
           for (lib/atcUpdates.ts, `obstructs_trail`). Both branches are stated:
           "the trail is passable" is a thing a hiker wants to have been told,
-          not the absence of a warning. */}
+          not the absence of a warning.
+
+          The bare field, not lib/noticeCurrency.ts's `obstructsOn`: these rows
+          are ATC's and NYNJTC's own files, which carry no start, so none is
+          upcoming (the maintainer's frame B). A row with a start would need a third
+          sentence, since "didn't report the trail blocked" is false of a
+          closure that begins next week. */}
       <p className="atc-notices__passability">
         {notice.review_state === 'unreviewed'
           ? `OurHike hasn’t checked this one yet — read ${possessive(org)} page.`
@@ -157,7 +183,7 @@ function Notice({
         <p className="atc-notices__offmap">Not drawn on the map &mdash; read it here.</p>
       )}
 
-      {isSafeLink(notice.source_url) && (
+      {notice.source_url !== null && isSafeLink(notice.source_url) && (
         <a
           className="closure-sheet__link"
           href={notice.source_url}
@@ -178,6 +204,8 @@ export function NoticeList({
   stewards,
   extent,
   now,
+  plannedNoticesMissing = false,
+  waiting,
   onClose,
 }: NoticeListProps) {
   const [showEverything, setShowEverything] = useState(false)
@@ -210,10 +238,24 @@ export function NoticeList({
     <div
       className="atc-notices"
       role="dialog"
-      aria-label="Every trail notice OurHike holds"
+      aria-label={
+        plannedNoticesMissing ? MISSING_HEADING : 'Every trail notice OurHike holds'
+      }
     >
+      {/* FIRST, ABOVE THE HEADING: the list below holds ATC's and NYNJTC's
+          notices only, and a hiker reading it for their planned hike has to
+          know before the first row that a club's closure on that hike is not
+          in it. The maintainer's three sentences, word for word. */}
+      {plannedNoticesMissing && (
+        <p className="atc-notices__missing">
+          This phone has no notices for your planned hikes yet. Connect once to get them.
+          Until then, a closure on your hike will not show here.
+        </p>
+      )}
       <div className="legend__head">
-        <h2 className="legend__title">{heading}</h2>
+        <h2 className="legend__title">
+          {plannedNoticesMissing ? MISSING_HEADING : heading}
+        </h2>
         <button type="button" className="legend__close" onClick={onClose}>
           <span className="visually-hidden">Close</span>
           <span aria-hidden="true">×</span>
@@ -234,9 +276,11 @@ export function NoticeList({
         // this component can only honestly make the first. The shell does not
         // mount it at all when the fetch failed.
         <p className="atc-notices__empty">
-          {notices.length === 0
-            ? 'OurHike is holding no trail notices.'
-            : 'No trail notices on the stretch you are looking at.'}
+          {waiting !== undefined
+            ? waiting
+            : notices.length === 0
+              ? 'OurHike is holding no trail notices.'
+              : 'No trail notices on the stretch you are looking at.'}
         </p>
       ) : (
         <ul className="atc-notices__list">

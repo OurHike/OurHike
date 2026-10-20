@@ -130,7 +130,13 @@ how far ATC's Campsite Sustainability Index puts the nearest water source,
 from reference/water_distance.json - the same checked-in-and-reviewed shape
 as capacity, built by build_water_distance.py, whose docstring holds the
 join, the provenance rule and the licence position. Feet because ATC's
-figure is (CONTRIBUTING.md, "store canonical"). Where the site has no actual
+figure is (CONTRIBUTING.md, "store canonical"). Beside the figure travels
+`water_distance_source`, CSI's own provenance value verbatim (#1728): 42 of
+the 305 published distances are a steward's round-number estimate rather
+than a measurement against a mapped point (measured 2026-09-30 against
+reference/water_distance.json), the phone prints an estimate in a different
+voice, and a provenance that stops at this file is provenance no hiker has.
+Where the site has no actual
 water point folded in, a close-enough distance is also named among the nearby
 parts - see attach_nearby - so the answer to "is there water" stops depending
 on the 9 opentrail points that happen to fold. 305 of 512 features publish one
@@ -139,8 +145,9 @@ authorisation, sources.json's atc_licence block / #688); the rest have no
 CSI neighbour (most of Maine) or an unreadable value, and publish nothing
 rather than a neighbour's number. Wherever that entry fires, the site also
 gains a water POI riding its pin - synthesize_csi_water (#694), a member at
-inherited coordinates whose description says whose measurement it is and
-that the spot is unmapped, yielding to any real mapped point that folds in.
+inherited coordinates whose description says how ATC arrived at the figure
+(measured, or a steward's estimate) and that the spot is unmapped, yielding
+to any real mapped point that folds in.
 
 Description: every ATC facility layer carries `description`, one sentence
 about the place -
@@ -229,6 +236,7 @@ import json
 import sys
 import time
 from pathlib import Path
+from typing import NamedTuple
 
 import duckdb
 import numpy as np
@@ -247,6 +255,7 @@ from lib.photo_screen import gate_photos
 from lib.photo_screen import load_decisions as load_screen_decisions
 from lib.photo_store import photo_key
 from lib.poi_description import (
+    NearbyMember,
     describe_campsite,
     describe_parking,
     describe_privy,
@@ -380,6 +389,18 @@ POI_COLUMNS = (
     # NULL wherever reference/water_distance.json states a refusal instead of
     # a number (#668, build_water_distance.py).
     ("water_distance_ft", "INTEGER"),
+    # How ATC arrived at that figure: CSI's own `Nearest_Water_Source` value,
+    # verbatim from the same reference file (#1728). `FarOut`,
+    # `NHDP_HR_Stream` and `NHDP_HR_Pond` are measured against a mapped point;
+    # `OSA_Field_Estimate` is a steward's round number. NULL wherever the
+    # distance is, and beside a distance from a reference file written before
+    # the field travelled. Published because a display may not outrun its
+    # source: the phone prints an estimate with a tilde and a measurement
+    # without one, and it can only do that if the difference reaches it as a
+    # column. Measured 2026-09-30 against reference/water_distance.json: 42 of
+    # the 305 published distances are estimates, 33 of those within
+    # NEARBY_WATER_MAX_FT and so on a card's nearby line.
+    ("water_distance_source", "VARCHAR"),
     # One sentence about the place, composed from ATC's own inventory by
     # lib/poi_description.py - every ATC facility layer, which is DESCRIBERS
     # below; NULL on water and resupply, which have no inventory to compose
@@ -468,6 +489,24 @@ WATER_DISTANCE_SOURCES = {"shelters": SHELTER_SOURCE, "campsites": CAMPSITE_SOUR
 # real members, synthesis yields to a real member, and
 # client/src/chrome/poiSources.ts turns it into words on the card.
 CSI_WATER_SOURCE = "atc_csi"
+
+# The first clause of a synthesized member's sentence, by how ATC arrived at
+# the figure - CSI's `Nearest_Water_Source` value as build_water_distance.py
+# copies it (#1728). The verb is the claim's real size: a distance taken
+# against a mapped point is measured, a steward's round number is estimated.
+# "ATC measured" was the one wording for every row until #1728, and on the 42
+# `OSA_Field_Estimate` rows it was not true. The unknown-provenance line below
+# asserts only what holds of every row - that ATC's index holds the figure -
+# and covers both a reference file written before the provenance travelled
+# and a value build_water_distance.py's allowlist admits before this table
+# learns it. The maintainer chose the wording family by poll, 2026-09-30.
+WATER_PROVENANCE_CLAIMS = {
+    "FarOut": "ATC measured how far the nearest water waypoint in FarOut is from {placed_on}",
+    "NHDP_HR_Stream": "ATC measured how far the nearest USGS-mapped stream is from {placed_on}",
+    "NHDP_HR_Pond": "ATC measured how far the nearest USGS-mapped pond is from {placed_on}",
+    "OSA_Field_Estimate": "An ATC steward estimated how far water is from {placed_on}",
+}
+UNKNOWN_WATER_PROVENANCE_CLAIM = "ATC's index gives how far water is from {placed_on}"
 
 # (raw filename stem, poi_type, source name used in unified ids, field_map)
 # - the ATC sources that map ~1:1 onto one poi_type each.
@@ -598,9 +637,22 @@ def attach_capacity(records: list[dict], capacities: dict[str, int]) -> int:
     return attached
 
 
-def load_water_distances(path: Path) -> dict[str, int]:
-    """water_distance.json's known distances, keyed by the same unified POI
-    id this export writes.
+class WaterDistance(NamedTuple):
+    """One published water distance and how ATC arrived at it (#1728).
+
+    `provenance` is CSI's `Nearest_Water_Source` value as build_water_distance.py
+    copied it - `FarOut`, `NHDP_HR_Stream`, `NHDP_HR_Pond` or
+    `OSA_Field_Estimate` - or None from a reference file written before the
+    field travelled, which publishes as NULL rather than as a guess at which
+    of the four it was."""
+
+    distance_ft: int
+    provenance: str | None
+
+
+def load_water_distances(path: Path) -> dict[str, WaterDistance]:
+    """water_distance.json's known distances, with their provenance, keyed by
+    the same unified POI id this export writes.
 
     Only records that state a distance are returned - the file lists every
     shelter and campsite, the blanks carrying the reason there is no number
@@ -619,21 +671,26 @@ def load_water_distances(path: Path) -> dict[str, int]:
         source = WATER_DISTANCE_SOURCES.get(record.get("layer"))
         if source is None or record.get("distance_ft") is None:
             continue
-        distances[f"{source}:{record['atc_global_id']}"] = record["distance_ft"]
+        distances[f"{source}:{record['atc_global_id']}"] = WaterDistance(record["distance_ft"], record.get("provenance") or None)
     return distances
 
 
-def attach_water_distance(records: list[dict], distances: dict[str, int]) -> int:
-    """Copy each matched feature's water distance onto its unified POI
-    record, returning how many matched - same contract as attach_capacity,
-    and NULL means the same thing: nobody has said, which is not the same as
-    a dry site."""
+def attach_water_distance(records: list[dict], distances: dict[str, WaterDistance]) -> int:
+    """Copy each matched feature's water distance, and where it came from,
+    onto its unified POI record, returning how many matched - same contract
+    as attach_capacity, and NULL means the same thing: nobody has said, which
+    is not the same as a dry site."""
     attached = 0
     for record in records:
         distance = distances.get(record["id"])
         if distance is None:
             continue
-        record["water_distance_ft"] = distance
+        record["water_distance_ft"] = distance.distance_ft
+        # Beside the figure, never in place of it. A file that did not say
+        # leaves the key off, and write_poi_type's .get publishes NULL - the
+        # phone then prints the figure in the voice it always has (#1728).
+        if distance.provenance is not None:
+            record["water_distance_source"] = distance.provenance
         attached += 1
     return attached
 
@@ -705,6 +762,8 @@ def synthesize_csi_water(records: list[dict]) -> int:
 
         anchor_name = record.get("name")
         placed_on = f"the {record['poi_type']}" if not anchor_name else anchor_name
+        provenance = record.get("water_distance_source")
+        claim = WATER_PROVENANCE_CLAIMS.get(provenance, UNKNOWN_WATER_PROVENANCE_CLAIM)
         synthesized.append(
             {
                 "id": f"{CSI_WATER_SOURCE}:{record['source_feature_id']}",
@@ -717,6 +776,10 @@ def synthesize_csi_water(records: list[dict]) -> int:
                 "lon": record["lon"],
                 "confidence": CONFIDENCE_LOW,
                 "water_distance_ft": distance_ft,
+                # The same provenance the anchor carries, so the chip that
+                # prints this member's figure can print it as an estimate
+                # where it is one (#1728) - and absent where the anchor's is.
+                **({"water_distance_source": provenance} if provenance is not None else {}),
                 # THE DISTANCE IS NOT IN THE SENTENCE, and that is #625 applied
                 # to #694 rather than a change of mind about either. This read
                 # "About 37 m from Chairback Gap Lean-to." until the merge, and
@@ -728,10 +791,11 @@ def synthesize_csi_water(records: list[dict]) -> int:
                 # this member as its own column, so the chip directly above this
                 # sentence prints the same figure in the hiker's own units, and
                 # so does the anchor's nearby line. What stays here is what only
-                # this sentence can say - whose measurement it is, and that the
-                # spot itself is unmapped.
+                # this sentence can say - how ATC arrived at the figure, which
+                # WATER_PROVENANCE_CLAIMS words by provenance (#1728), and that
+                # the spot itself is unmapped.
                 "description": (
-                    f"ATC measured how far water is from {placed_on}; the spot itself is not mapped, "
+                    f"{claim.format(placed_on=placed_on)}; the spot itself is not mapped, "
                     f"so this point sits on the {record['poi_type']}."
                 ),
                 "site_id": record["site_id"],
@@ -871,7 +935,7 @@ def attach_nearby(records: list[dict]) -> int:
                 # no coordinate worth measuring - it SITS on the anchor
                 # (#694), and reading its position as a distance would print
                 # "water 3 ft" on a card whose truth is the entry below.
-                (
+                NearbyMember(
                     member["poi_type"],
                     distance_m(record["lat"], record["lon"], member["lat"], member["lon"]) / M_PER_FT,
                     member.get(RAW_PROPERTIES_KEY) or {},
@@ -891,14 +955,26 @@ def attach_nearby(records: list[dict]) -> int:
             record["poi_type"] in ANCHOR_TYPES
             and record.get("site_role") != ROLE_MEMBER
             and record.get("water_distance_ft") is not None
-            and not any(poi_type == "water" for poi_type, _, _ in parts)
+            and not any(part.poi_type == "water" for part in parts)
         ):
             # Straight through in ATC's own feet. Beyond the widest radius a
             # site can reach, "Nearby" would be a word meaning something
             # different on this one card; the column still publishes, the
             # sentence stays honest.
             if record["water_distance_ft"] <= NEARBY_WATER_MAX_FT:
-                parts.append(("water", float(record["water_distance_ft"]), {}))
+                parts.append(
+                    NearbyMember(
+                        "water",
+                        float(record["water_distance_ft"]),
+                        {},
+                        # Where the figure came from rides beside it, so the
+                        # sentence can print an estimate as one (#1728). The
+                        # measured members above carry none: their distance
+                        # is their position, and a position has no provenance
+                        # beyond its coordinates.
+                        record.get("water_distance_source"),
+                    )
+                )
         if not parts:
             continue
         # JSON on the record, for the reason attach_photos writes a string:
@@ -1351,6 +1427,7 @@ def write_poi_type(con: duckdb.DuckDBPyConnection, poi_type: str, records: list[
                     # when a caller never ran the attach step.
                     r.get("capacity"),
                     r.get("water_distance_ft"),
+                    r.get("water_distance_source"),
                     r.get("description"),
                     # The parts as JSON - see attach_nearby, and note the same
                     # scalar-only reason the photo list below is a string.
@@ -1537,7 +1614,7 @@ def apply_ledger_ids(records: list[dict], ledger_path: Path | None = None) -> in
 # on a code change would be the sharper version of the bug this exists to
 # avoid. Scoped to one job's runner is the safe lifetime; within it, the
 # inputs are fetched once early and do not change again before the job ends.
-CACHE_SCHEMA_VERSION = 1
+CACHE_SCHEMA_VERSION = 2  # 2: records carry water_distance_source (#1728)
 
 
 def _cache_path() -> Path:

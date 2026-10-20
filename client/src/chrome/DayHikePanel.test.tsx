@@ -284,6 +284,19 @@ describe('the route order', () => {
     expect(screen.getByText(/water 3 ft/)).toBeInTheDocument()
   })
 
+  it('marks a steward’s estimate of the water distance with a tilde (#1728)', () => {
+    // lib/waterProvenance.ts, the same mark the card prints for the same
+    // published column: a row printing a bare "water 350 ft" over an
+    // estimate would be the confident answer the card just stopped giving.
+    panel({
+      stops: [
+        { ...SHELTER, waterDistanceFt: 350, waterDistanceSource: 'OSA_Field_Estimate' },
+      ],
+    })
+
+    expect(screen.getByText(/water ~350 ft/)).toBeInTheDocument()
+  })
+
   it('says how far off the walk a stop is without pricing the detour', () => {
     panel({ stops: [{ ...FAR_SHELTER, capacity: 6 }] })
 

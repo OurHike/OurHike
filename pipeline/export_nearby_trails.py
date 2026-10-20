@@ -205,19 +205,29 @@ question, not this artifact's. The manifest records each source's steward and
 attribution so that screen has one place to read them from when it does.
 """
 
+import gzip
 import json
 import math
+import resource
+import shutil
+import tempfile
+import time
 from pathlib import Path
 
 import duckdb
 import numpy as np
+import pmtiles.tile as pmtiles_tile
+import pmtiles.writer as pmtiles_writer
 import shapely
-from pmtiles.reader import MmapSource, Reader
+from pmtiles.reader import MmapSource, Reader, all_tiles
+from pmtiles.tile import zxy_to_tileid
+from pmtiles.writer import write as write_pmtiles
 from shapely import wkt as shapely_wkt
 from shapely.geometry import MultiLineString, shape
 from shapely.ops import transform as shapely_transform
 from shapely.ops import unary_union
 
+from build_trail_graph import _geodesic_lengths
 from export_trails import (
     _TO_METRIC,
     OVERVIEW_SIMPLIFY_TOLERANCE_M,
@@ -329,6 +339,114 @@ TILES_ARTIFACT_NAME = "nearby_trails.pmtiles"
 TILES_LAYER = "trails"
 TILES_MIN_ZOOM = 5
 TILES_MAX_ZOOM = 14
+
+# The tiler reads each line cut into runs of at most this many vertices,
+# consecutive runs sharing their end vertex, each run carrying its line's
+# properties (#1796). GDAL clips every feature against every tile it touches,
+# so one long feature costs its vertex count times its tile count: the
+# Continental Divide Trail arrives as a handful of features, one of them
+# 704,095 vertices. Measured 2026-10-02 on the network's 7 lines over 50,000
+# vertices (1,648,401 of its 17,292,860), z5-z14: whole, they had not tiled
+# after 25 minutes; cut at 1,000, they tiled in 47.3 s. The step that runs
+# this took 5m24s on run 153's 104,990 records and 38m12s on run 163's
+# 329,849, before the cut. With it, run 166 (37073452481, 2026-10-02) tiled
+# the whole network's 329,690 records in 461 s, and the step took 12m55s; its
+# peak RSS rose from 7,801 MB to 11,072 MB during the tiling, on a
+# 15,990 MB runner. A tile draws the same line either way, since a tile only
+# ever holds a line's clipped pieces; what changes is the archive's bytes and
+# its per-tile feature counts. @unvalidated as a size: any value of 2 or more
+# draws the same, and the whole network's cost at sizes other than 1,000 was
+# not measured.
+TILES_CHUNK_VERTICES = 1_000
+
+# THE CONTEXT ZOOMS CARRY WHAT THE MAP READS THERE, AND EVERY LINE AT FULL
+# PRECISION. GDAL's vector-tile writer has a per-tile budget,
+# MAX_SIZE, 500,000 bytes unless told otherwise, and it does not refuse a tile
+# over it. GDAL 3.8.5 - the version inside DuckDB 1.5.5's spatial extension -
+# re-encodes such a tile on a coarser grid, 4096 units across halving down to
+# 128 (EncodeTile in ogr/ogrsf_frmts/mvt/ogrmvtdataset.cpp), truncates every
+# vertex onto it and deletes each line that falls inside one cell
+# (GetReducedPrecisionGeometry). Measured 2026-10-15 on UA release
+# 2026-10-10-2's context archive: 19 of its 907 tiles were written that way,
+# Washington's z5/5/11 on a 256-unit grid - 3.3 km a cell, drawn by the map as
+# staircases and little boxes with the short lines gone. ad932107's
+# write_tiles - one COPY for z5-z14, TILES_CHUNK_VERTICES' chunking included -
+# run over that release's own lines file coarsens 24 of the 939 tiles it
+# writes at z5-z8 (the first row of the table below).
+#
+# What fills a dense low-zoom tile is per-line text, not geometry: split by
+# protobuf field and gzipped apart, Washington/Oregon's full-precision
+# z5/5/11 was 576,232 bytes of values and 150,040 of tag indexes against
+# 249,548 of geometry - mostly each line's own `id` and `name`. So z5-z8 carry
+# TILES_CONTEXT_PROPERTIES and nothing else, which is what the phone reads at
+# those zooms (client/src at ad932107):
+#
+#   - the band's own paint and filter - map/style.ts's TILED_SKETCH_BAND and
+#     buildNetworkOverviewLayer, map/nearbyTrails.ts's filters and ghosting:
+#     `source` and `blaze_color`;
+#   - map/trailsInView.ts's one pass over TAPPABLE_BLAZE_LAYER_IDS, which
+#     lists the band (map/styleIds.ts): `name`, for "Trails in view" and the
+#     long-trail badges - which is why `name` stays and every row keeps it;
+#   - `trail_status`, the safety column write_overview keeps in the sketch for
+#     the same reason: a closed line must never fold into an open one.
+#
+# Everything else - `id`, `length_miles`, the closure fields, `line_kind`,
+# `duplicate_of` - is read only by a tap's sheet (map/lineTaps.ts's
+# asTappedLine). At z5-z8 a tap now gets what a tap on the sketch below z5
+# already gets, and from CORRIDOR_MAX_ZOOM (9), where the sheet's own layers,
+# the names, the closure tape and the shared ground start, the tiles carry
+# every property exactly as before.
+#
+# The shared-ground halves (#1384, concurrent_trails.geojson) are left out of
+# z5-z8 altogether rather than merged in without their pair fields. Nothing
+# draws one below z9: map/style.ts builds the shared-ground layers from
+# CORRIDOR_MAX_ZOOM, and both of the band's filters refuse a feature that
+# carries `concurrent_with` (map/nearbyTrails.ts's SHARED_GROUND_EXCLUDED).
+# Stripped of that property, a half would pass those filters and draw as a
+# second plain line over its own trail.
+#
+# The lines whose kept properties are identical are then merged, per z8 tile
+# of each line's centre, with ST_LineMerge over ST_Collect - which joins lines
+# at shared ends and moves no vertex. A merged feature stays inside one z8
+# cell's reach, so GDAL clips it against a handful of tiles and
+# TILES_CHUNK_VERTICES' cost does not come back. Measured nationwide, z5-z8,
+# 2026-10-15, on UA 2026-10-10-2's lines file alone - the old cut also
+# carried that release's shared-ground pairs at these zooms, so its row is
+# if anything low:
+#
+#                                        archive      largest tile   coarsened
+#   the old single cut                42,698,639        498,413          24
+#   every property, never coarsened   57,331,102      3,021,898           0
+#   the four properties               30,053,217      1,551,165           0
+#   the four, merged (this cut)       24,240,145      1,131,929           0
+#
+# The last row is write_tiles itself, in 111 s; the middle two are the same
+# lines cut with MAX_SIZE out of reach. Merging takes z5's 265,032 features
+# to 89,898.
+TILES_CONTEXT_MAX_ZOOM = 8  # the context archive's top: publish-vector-data.yml's --context-zoom 8
+TILES_CONTEXT_PROPERTIES = ("source", "name", "blaze_color", "trail_status")
+
+# A BACKSTOP, NOT THE FIX. The largest tile the cut writes nationwide is
+# 1,131,929 bytes (z5/6/12, Colorado and Utah), and the largest above the
+# context zooms about 684,290 (z9/150/192, New York and north Jersey, cut from
+# the lines around it: the old 500,000 coarsened it to 1,024 units and
+# deleted 4,396 of its 17,899 lines) - measured 2026-10-15 on UA
+# 2026-10-10-2's lines. At this size GDAL redraws nothing; a tile that
+# outgrows it fails the cut (degraded_tiles) instead of publishing a grid.
+# @unvalidated against growth: the headroom over the largest tile is 33%.
+#
+# So the zooms above the context zooms are cut as before except for any tile
+# the old 500,000 coarsened, which is now written whole. Read back by
+# degraded_tiles, that release's published nearby_trails.pmtiles
+# (313,725,638 bytes) holds 20 coarsened tiles: the 19 at z5-z8 and
+# z9/150/192 on a 2,048-unit grid. The read-back took 20.7 s, and
+# merge_bands copied the same archive in 11.3 s at a peak of 484 MB -
+# measured 2026-10-15 on the shared worker machine, not a runner.
+TILES_MAX_BYTES = 1_500_000
+# GDAL's own defaults for the grid and the per-tile line cap, written out so
+# the check after the cut reads the same numbers the writer was handed.
+TILES_EXTENT = 4096
+TILES_MAX_FEATURES = 200_000
 
 
 def _metres_per_pixel(zoom: float, latitude: float = 40.0) -> float:
@@ -478,6 +596,39 @@ def _miles_all(geoms: np.ndarray) -> list[float]:
     call (#1661): the same GEOS length of the same reprojected coordinates,
     divided the same way, so the same floats."""
     return (shapely.length(reproject(geoms, _TO_METRIC)) / METERS_PER_MILE).tolist()
+
+
+def _geodesic_miles_all(geoms: np.ndarray) -> list[float]:
+    """Each parsed lon/lat geometry's length in miles on the WGS84 ellipsoid:
+    the `length_miles` a published line carries (the
+    maintainer, 2026-10-06, as the graph's edges are measured).
+
+    Not `_miles_all`, whose EPSG:5070 is equal-area for the lower 48 only and
+    whose metre is not the ground's: five miles due north read 4.44 miles at
+    Anchorage and 5.04 at Harriman (measured 2026-10-06 with pyproj). The
+    through-route threshold and the merges above still read `_miles_all`, so
+    which lines are named does not move with this.
+
+    build_trail_graph._geodesic_lengths sums pyproj's segment geodesics, one
+    array call for every part at once; a MultiLineString's parts are summed
+    and the jump between two parts is no part of the trail. A part of fewer
+    than two vertices has no length, and is left out before that call, which
+    reads each part's vertex count less one as its segments.
+    int_trail_lines__network_published measures the same length with
+    macros/geodesic_length_m.sql; tests/test_dbt_trail_lines_network_parity.py
+    holds the two, and pyproj's own Geod.geometry_length, to a micrometre.
+
+    What it costs over `_miles_all`, measured 2026-10-07 on UA's published
+    nearby_trails.geojson (329,446 lines, 17,228,035 vertices), one process
+    each in a shared 4-core sandbox: 10.9 s and a peak 1,149 MiB above its
+    input, against 6.7 s and 871 MiB."""
+    parts, owner = shapely.get_parts(geoms, return_index=True)
+    counts = shapely.get_num_coordinates(parts)
+    measured = counts >= 2
+    parts, owner, counts = parts[measured], owner[measured], counts[measured]
+    coordinates = shapely.get_coordinates(parts)
+    lengths = _geodesic_lengths(coordinates[:, 0], coordinates[:, 1], counts.tolist())
+    return (np.bincount(owner, weights=lengths, minlength=len(geoms)) / METERS_PER_MILE).tolist()
 
 
 # How close two rows must come to count as the same tread, in EPSG:5070
@@ -680,10 +831,12 @@ def _above_the_seam_floor(records: list[dict]) -> list[dict]:
     answer this - `_through_routes` decides it and leaves the answer on each
     record under `_THROUGH_ROUTE_KEY`.
 
-    In EPSG:5070 metres, like every other distance this export takes, which is
-    equal-area rather than conformal - so a "pixel" here is a few percent off
-    a screen pixel across CONUS. Consistency with `simplify_records`' own
-    tolerance is worth more than that, since the two are compared.
+    In EPSG:5070 metres, like every other distance this export decides on
+    (only the published `length_miles` is measured on the WGS84 ellipsoid),
+    which is equal-area rather than conformal - so a "pixel"
+    here is a few percent off a screen pixel across CONUS. Consistency with
+    `simplify_records`' own tolerance is worth more than that, since the two
+    are compared.
     """
     if not records:
         return []
@@ -1239,6 +1392,14 @@ def load_closure_areas(sources: list[dict]) -> list[dict]:
     return areas
 
 
+#: The maintainer, 2026-10-15, "Only inside closes": a piece of a trail inside a
+#: closed area closes only if some part of it lies more than this many metres in from the area's outline, measured in
+#: EPSG:5070 (`_TO_METRIC`); one lying wholly within that band, along the edge, stays open. The same number is
+#: dbt_project.yml's `area_closure_edge_m`, which both of dbt's area cuts read and the network parity test holds to
+#: this. @unvalidated: the maintainer's number, not a measurement; dbt_project.yml says what would settle it.
+AREA_EDGE_M = 2.0
+
+
 def _line_parts(geometry) -> list:
     """A geometry's drawable LineStrings, and nothing else.
 
@@ -1285,7 +1446,9 @@ def apply_area_closures(records: list[dict], areas: list[dict]) -> tuple[list[di
     than an accident: a line is closed where it is INSIDE the polygon, by
     `intersection`. Geometry the polygon merely touches is not inside it, so a
     grazing trail stays open. The opposite reading - closing anything that
-    intersects at all - is what produces the Suffern-Bear Mountain case.
+    intersects at all - is what produces the Suffern-Bear Mountain case. And
+    a piece inside that lies wholly within AREA_EDGE_M of the outline runs
+    along the edge rather than inside, so it stays open too.
 
     WHAT IT DOES NOT DO: invent a date. OPRHP publishes none per feature
     ("Closed Until 2027" is prose inside the reason, not a field), so a closed
@@ -1295,6 +1458,7 @@ def apply_area_closures(records: list[dict], areas: list[dict]) -> tuple[list[di
         return records, {"areas": 0, "closed": 0, "split": 0, "wholly_closed": 0}
 
     closed_union = unary_union([a["geometry"] for a in areas])
+    edge_band = shapely_transform(_TO_METRIC, closed_union.boundary).buffer(AREA_EDGE_M)
 
     out: list[dict] = []
     stats = {"areas": len(areas), "closed": 0, "split": 0, "wholly_closed": 0}
@@ -1305,11 +1469,17 @@ def apply_area_closures(records: list[dict], areas: list[dict]) -> tuple[list[di
             out.append(record)
             continue
 
-        inside = _line_parts(geometry.intersection(closed_union))
-        outside = _line_parts(geometry.difference(closed_union))
+        # A piece lying wholly within AREA_EDGE_M of the outline runs along the edge, not inside: it
+        # stays open, after the pieces outside.
+        pieces = _line_parts(geometry.intersection(closed_union))
+        on_edge = [edge_band.covers(shapely_transform(_TO_METRIC, piece)) for piece in pieces]
+        inside = [piece for piece, along in zip(pieces, on_edge, strict=True) if not along]
+        outside = _line_parts(geometry.difference(closed_union)) + [
+            piece for piece, along in zip(pieces, on_edge, strict=True) if along
+        ]
 
         if not inside:
-            # Touching the boundary and no more. Not inside anything.
+            # Touching the boundary, or running along it, and no more. Not inside anything.
             out.append(record)
             continue
 
@@ -1441,7 +1611,7 @@ def records_to_geojson(records: list[dict]) -> dict:
     at the precision NEARBY_COORDINATE_DECIMALS caps."""
     geoms = from_wkt_all([record["wkt"] for record in records])
     features = []
-    for record, length_miles, geometry in zip(records, _miles_all(geoms), _rounded_geometries(geoms)):
+    for record, length_miles, geometry in zip(records, _geodesic_miles_all(geoms), _rounded_geometries(geoms)):
         features.append(
             {
                 "type": "Feature",
@@ -1471,11 +1641,21 @@ def records_to_geojson(records: list[dict]) -> dict:
                     # NOT the steward's claim, so nothing downstream may
                     # present it as one.
                     #
-                    # `_miles` is export_trails.py's EPSG:5070 transform, the
-                    # one this file already names a trail and merges a
-                    # duplicate on either side of - one way of measuring
-                    # distance, not a second. `_miles_all` is it for every
-                    # record at once.
+                    # MEASURED ON THE WGS84 ELLIPSOID (_geodesic_miles_all;
+                    # the maintainer, 2026-10-06), as the graph's edges are,
+                    # so the edges
+                    # lineClimb sums and the line they are held against are
+                    # one measure. It was export_trails.py's EPSG:5070 length
+                    # (`_miles`) until then, which read five miles due north
+                    # as 4.44 at Anchorage (measured 2026-10-06 with pyproj)
+                    # where the edges read 5.00. Against lineClimb's 8%
+                    # COVERAGE_TOLERANCE, a phone there holding nine tenths of
+                    # a north-south trail would print its climb as the whole
+                    # trail's, and one holding all of an east-west trail,
+                    # whose kilometre EPSG:5070 reads as 1,126.4 m there
+                    # (the graph's measured scale), would be told it holds
+                    # part (Reasoned from those figures). A trail is still
+                    # named and merged on `_miles`.
                     "length_miles": round(length_miles, 2),
                     # Every record this export builds carries a status. A
                     # shared-ground pair's A.T. half (#1384) carries none,
@@ -1548,6 +1728,101 @@ def exported_bbox(records: list[dict]) -> list[float] | None:
         max(b[2] for b in bounds),
         max(b[3] for b in bounds),
     ]
+
+
+def _simplified_part_by_part(records: list[dict], tolerance_m: float) -> list[dict]:
+    """simplify_records, with its never-drop rule asked of each part of a
+    MultiLineString rather than of the whole line: a part that would come
+    back with fewer than two distinct vertices keeps its own, and every other
+    part is simplified. A LineString, or anything else, is simplify_records'
+    own answer, and so is a MultiLineString none of whose parts collapse:
+    Douglas-Peucker simplifies each part of one on its own (Reasoned, and
+    Measured below).
+
+    WHY THE SKETCH NEEDS IT: simplify_records keeps the WHOLE line it was
+    given when any part collapses. Douglas-Peucker hands a closed ring shorter
+    than its tolerance back as its two equal endpoints, and CDTC publishes the
+    Continental Divide as eight lines, one a state, five of them
+    MultiLineStrings carrying such rings: 27 of them, 0.2 to 21.3 m long, in
+    cdtc_centerline:2, 3, 5, 7 and 8 (Measured 2026-10-05 on the records UA's
+    release 2026-10-03-2 published in nearby_trails.geojson, 704,095
+    vertices in :3 alone). So write_overview's 100 m and 937 m passes both
+    kept those five states at the 1 m line's density, and the sketch drew
+    the CDT from 1,244,673 coordinates. Part by part, a ring keeps its few
+    vertices (which _drawn_at_the_cut then leaves out, as one grid point),
+    and the rest of the state is simplified like every other trail.
+
+    The ring keeps its own vertices rather than being dropped here, for
+    simplify_records' own reason (this pipeline has lost trail geometry
+    silently before): whether a part draws anything is decided once, at the
+    grid the sketch is cut to, by _drawn_at_the_cut.
+
+    WHAT IT MOVES, Measured 2026-10-05 by re-running write_overview over all
+    329,446 of those records. It answers differently from simplify_records
+    for 431 records at 100 m and 636 at 937 m, and every one is a
+    MultiLineString simplify_records kept whole. The sketch goes from
+    4,851,338 bytes and 270,158 coordinates to 2,597,165 and 139,566, the
+    CDT's share from 52,430 coordinates to 1,736. And two through routes stop
+    qualifying, because _through_routes now measures them on the 100 m line
+    its own comment says it reads rather than on a 1 m line kept whole:
+    pasda_dcnr_trails' Panther Snowmobile Trails (50.1 miles to 49.1) and
+    Rock Run ATV Trails (54.0 to 41.2), each one MultiLineString record."""
+    if tolerance_m == 0:
+        return simplify_records(records, tolerance_m)
+    geoms = from_wkt_all([record["wkt"] for record in records])
+    is_multi = (shapely.get_type_id(geoms) == 5) & ~shapely.is_empty(geoms)
+    multi = np.flatnonzero(is_multi).tolist()
+    single = np.flatnonzero(~is_multi).tolist()
+    out: list = [None] * len(records)
+    for index, record in zip(single, simplify_records([records[i] for i in single], tolerance_m)):
+        out[index] = record
+    if multi:
+        parts, owner = shapely.get_parts(geoms[multi], return_index=True)
+        simplified = simplify_records(
+            [{"wkt": wkt} for wkt in shapely.to_wkt(parts, rounding_precision=-1).tolist()], tolerance_m
+        )
+        rebuilt = shapely.multilinestrings(from_wkt_all([part["wkt"] for part in simplified]), indices=owner)
+        for index, wkt in zip(multi, shapely.to_wkt(rebuilt, rounding_precision=-1).tolist()):
+            out[index] = {**records[index], "wkt": wkt}
+    return out
+
+
+def _drawn_at_the_cut(lines: list[list[list[float]]]) -> list[list[list[float]]]:
+    """`lines`, already cut to OVERVIEW_SEAM_DECIMALS, without what the cut
+    made of them that draws nothing: a vertex equal to the one before it is
+    dropped, and then a line left with fewer than two vertices - every vertex
+    on one grid point - is dropped whole.
+
+    WHY: the cut lands neighbouring vertices on the same grid point wherever a
+    line is denser than the 0.001-degree grid, which is any part
+    write_overview's two simplifications hand back at its own density
+    (_simplified_part_by_part keeps a part's own vertices wherever
+    simplifying would leave it with fewer than two distinct ones), and
+    nothing removed the copies. Measured 2026-10-05 on UA's release
+    2026-10-03-2, built without this rule or that function: its
+    network_overview.geojson was 41,216,145 bytes and 2,351,742 coordinates,
+    over the client's 33,554,432-byte launch budget
+    (client/src/lib/artifactBudget.ts), and `cdtc_centerline` alone was
+    1,244,673 coordinates of which 49,277 were distinct. This rule applied to
+    that file gives 4,851,329 bytes and 270,144 coordinates, every one of its
+    211 features still there.
+
+    WHAT A PHONE DRAWS IS UNCHANGED, Reasoned from maplibre-gl 6.7.0's
+    LineBucket.addLine() (src/data/bucket/line_bucket.ts): it skips a vertex
+    equal to the next one and ignores a line left with fewer than two
+    vertices, so both were drawing nothing already. A group none of whose
+    lines survive writes no feature rather than an empty MultiLineString:
+    write_overview skips a record with no line left, so it never opens that
+    record's group."""
+    drawn = []
+    for line in lines:
+        kept = line[:1]
+        for vertex in line[1:]:
+            if vertex != kept[-1]:
+                kept.append(vertex)
+        if len(kept) >= 2:
+            drawn.append(kept)
+    return drawn
 
 
 def write_overview(records: list[dict]) -> dict:
@@ -1635,7 +1910,7 @@ def write_overview(records: list[dict]) -> dict:
     source the registry gains, and that they move LESS than linearly now is the
     whole point of the floor.
     """
-    coarse = simplify_records(records, OVERVIEW_SIMPLIFY_TOLERANCE_M)
+    coarse = _simplified_part_by_part(records, OVERVIEW_SIMPLIFY_TOLERANCE_M)
 
     qualifying = _through_routes(coarse)
     for index, record in enumerate(coarse):
@@ -1655,7 +1930,7 @@ def write_overview(records: list[dict]) -> dict:
     # 100 + 937 m from where it started, which is under a pixel and a half at
     # the seam and a fourteenth of one at the opening camera.
     kept = _above_the_seam_floor(coarse)
-    seam = simplify_records(kept, OVERVIEW_SEAM_TOLERANCE_M)
+    seam = _simplified_part_by_part(kept, OVERVIEW_SEAM_TOLERANCE_M)
 
     # The group key is always this four-tuple, name "" standing for "not a
     # qualifying named trail" - never None, which would make sorted() below
@@ -1664,7 +1939,10 @@ def write_overview(records: list[dict]) -> dict:
     # this export's existing convention for closure_kind above.
     groups: dict[tuple[str, str, str, str], list[list[list[float]]]] = {}
     coarse_lines = _overview_coordinates_all(from_wkt_all([record["wkt"] for record in seam]), OVERVIEW_SEAM_DECIMALS)
-    for record, lines in zip(seam, coarse_lines):
+    for record, cut in zip(seam, coarse_lines):
+        lines = _drawn_at_the_cut(cut)
+        if not lines:
+            continue
         # THE NAME WRITTEN IS THE TRAIL'S, not the spelling the steward
         # published: USFS's "PCT: MT HOOD" and "PCNST" are both the Pacific
         # Crest Trail, and a map labelling one of them "PCNST" has told a
@@ -1726,6 +2004,214 @@ def write_overview(records: list[dict]) -> dict:
     }
 
 
+def tile_input_sql(lines_sql: str, most: int = TILES_CHUNK_VERTICES) -> str:
+    """`lines_sql`'s rows, in its order, with every line of more than `most`
+    vertices cut into its parts and each part into runs of at most `most`
+    vertices that share their end vertex (TILES_CHUNK_VERTICES). Every other
+    column rides each run unchanged; a line at or under the cap passes through
+    as it is."""
+    return f"""
+        WITH src AS (SELECT *, row_number() OVER () AS _tile_row FROM ({lines_sql})),
+        parts AS (
+            SELECT * EXCLUDE (geom, part), part.geom AS geom, part.path AS _tile_part
+            FROM (SELECT *, unnest(ST_Dump(geom)) AS part FROM src WHERE ST_NPoints(geom) > {most})
+        ),
+        vertices AS (
+            SELECT *, list_transform(ST_Dump(ST_Points(geom)), point -> point.geom) AS _tile_vertices FROM parts
+        ),
+        runs AS (
+            SELECT * EXCLUDE (geom, _tile_vertices),
+                ST_MakeLine(list_slice(_tile_vertices, _tile_start, _tile_start + {most - 1})) AS geom
+            FROM vertices, generate_series(1, len(_tile_vertices) - 1, {most - 1}) AS starts(_tile_start)
+        )
+        SELECT * EXCLUDE (_tile_row, _tile_part, _tile_start) FROM (
+            SELECT *, NULL::INTEGER[] AS _tile_part, 0 AS _tile_start FROM src WHERE ST_NPoints(geom) <= {most}
+            UNION ALL BY NAME
+            SELECT * FROM runs
+        )
+        ORDER BY _tile_row, _tile_part, _tile_start
+    """
+
+
+def context_lines_sql(lines_sql: str) -> str:
+    """`lines_sql`'s lines as the context zooms carry them: TILES_CONTEXT_PROPERTIES
+    only, and the lines sharing all of them merged, per z8 tile of each line's
+    centre, into one feature (the TILES_CONTEXT_PROPERTIES block says why).
+
+    Ordered by each group's first line and merged in the input's own order, so
+    the same lines make the same bytes on every run: GROUP BY alone promises no
+    order, and an archive whose hash moved with the scheduler would read to
+    publish.py as a change."""
+    keys = ", ".join(TILES_CONTEXT_PROPERTIES)
+    n = 2**TILES_CONTEXT_MAX_ZOOM
+    return f"""
+        WITH src AS (
+            SELECT {keys}, geom, ST_Centroid(geom) AS _centre, row_number() OVER () AS _row
+            FROM ({lines_sql})
+        ),
+        cells AS (
+            SELECT {keys}, geom, _row,
+                floor((ST_X(_centre) + 180) / 360 * {n}) AS _cell_x,
+                floor((1 - ln(tan(radians(ST_Y(_centre))) + 1 / cos(radians(ST_Y(_centre)))) / pi()) / 2 * {n}) AS _cell_y
+            FROM src
+        )
+        SELECT {keys}, ST_LineMerge(ST_Collect(list(geom ORDER BY _row))) AS geom
+        FROM cells
+        GROUP BY {keys}, _cell_x, _cell_y
+        ORDER BY min(_row)
+    """
+
+
+class _GzipWithoutTime:
+    """gzip for the pmtiles writer, with the header's timestamp at zero.
+
+    pmtiles 3.7's writer gzips the metadata and every directory with
+    gzip.compress, which stamps the current second into each gzip header - so
+    the same tiles made a different archive, and a different sha256, on every
+    run. publish.py takes a changed hash as a changed artifact, and gzips its
+    own uploads with mtime=0 for that reason; this is the same choice, made
+    for the one writer that does not offer it."""
+
+    decompress = staticmethod(gzip.decompress)
+
+    @staticmethod
+    def compress(data: bytes, compresslevel: int = 9) -> bytes:
+        return gzip.compress(data, compresslevel, mtime=0)
+
+
+def merge_bands(bands: list[Path], path: Path, min_zoom: int, max_zoom: int) -> None:
+    """Write archives that hold disjoint zoom bands, lowest first, as one
+    archive declaring `min_zoom` to `max_zoom`.
+
+    Bands read in zoom order hand the writer tile ids in ascending order, the
+    order it writes a clustered archive in; it streams each tile's bytes to a
+    temporary file and holds only a directory entry per tile. Each tile's bytes
+    are copied as GDAL wrote them. The format facts and the metadata come from
+    the top band - its `vector_layers` lists every field - with the layer's
+    minzoom set to `min_zoom`, and the bounds are the union.
+
+    THE ZOOMS DECLARED ARE THE ZOOMS CUT, as GDAL's single cut declared them:
+    it writes MINZOOM-MAXZOOM into the header whether or not every zoom holds a
+    tile, down to a network so small that no zoom does (a 349-byte archive with
+    no tiles at all). The pmtiles writer instead reads the range off the tiles
+    it was handed and cannot finalize none, so the header is put back to the
+    range cut, and with no tile anywhere the bottom band's empty archive is
+    the answer."""
+    if all(_tile_count(band) == 0 for band in bands):
+        shutil.copyfile(bands[0], path)
+        _declare_zooms(path, min_zoom, max_zoom)
+        return
+    files = [band.open("rb") for band in bands]
+    try:
+        readers = [Reader(MmapSource(f)) for f in files]
+        headers = [reader.header() for reader in readers]
+        metadata = readers[-1].metadata()
+        for layer in metadata.get("vector_layers", []):
+            layer["minzoom"] = min_zoom
+        top = headers[-1]
+        header = {
+            "tile_type": top["tile_type"],
+            "tile_compression": top["tile_compression"],
+            "min_lon_e7": min(h["min_lon_e7"] for h in headers),
+            "min_lat_e7": min(h["min_lat_e7"] for h in headers),
+            "max_lon_e7": max(h["max_lon_e7"] for h in headers),
+            "max_lat_e7": max(h["max_lat_e7"] for h in headers),
+            "center_lon_e7": top["center_lon_e7"],
+            "center_lat_e7": top["center_lat_e7"],
+            "center_zoom": top["center_zoom"],
+        }
+        saved = pmtiles_tile.gzip, pmtiles_writer.gzip
+        pmtiles_tile.gzip = pmtiles_writer.gzip = _GzipWithoutTime
+        try:
+            with write_pmtiles(str(path)) as writer:
+                for f in files:
+                    for (z, x, y), data in all_tiles(MmapSource(f)):
+                        writer.write_tile(zxy_to_tileid(z, x, y), data)
+                writer.finalize(header, metadata)
+        finally:
+            pmtiles_tile.gzip, pmtiles_writer.gzip = saved
+    finally:
+        for f in files:
+            f.close()
+    _declare_zooms(path, min_zoom, max_zoom)
+
+
+def _tile_count(path: Path) -> int:
+    with path.open("rb") as f:
+        return Reader(MmapSource(f)).header()["addressed_tiles_count"]
+
+
+def _declare_zooms(path: Path, min_zoom: int, max_zoom: int) -> None:
+    """Rewrite an archive's fixed 127-byte header to declare `min_zoom`-`max_zoom`."""
+    with path.open("r+b") as f:
+        header = pmtiles_tile.deserialize_header(f.read(127))
+        header["min_zoom"], header["max_zoom"] = min_zoom, max_zoom
+        f.seek(0)
+        f.write(pmtiles_tile.serialize_header(header))
+
+
+def _protobuf_fields(buffer: bytes):
+    """(field number, value) for each field of one protobuf message: an int for
+    a varint, the bytes for a length-delimited field, None for a fixed-width
+    one. Enough of the wire format to read an MVT tile's layers back."""
+    i, end = 0, len(buffer)
+
+    def varint(i: int) -> tuple[int, int]:
+        value = shift = 0
+        while True:
+            byte = buffer[i]
+            i += 1
+            value |= (byte & 0x7F) << shift
+            shift += 7
+            if byte < 0x80:
+                return value, i
+
+    while i < end:
+        key, i = varint(i)
+        wire = key & 7
+        if wire == 0:
+            value, i = varint(i)
+        elif wire == 2:
+            length, i = varint(i)
+            value, i = buffer[i : i + length], i + length
+        elif wire in (1, 5):
+            value, i = None, i + (8 if wire == 1 else 4)
+        else:
+            raise ValueError(f"protobuf wire type {wire} at byte {i}")
+        yield key >> 3, value
+
+
+def degraded_tiles(path: Path) -> list[tuple[int, int, int, str]]:
+    """(z, x, y, what happened) for every tile GDAL did not write whole.
+
+    Each tile is read back: a layer whose `extent` (MVT Layer field 5, 4096 when
+    absent) is not TILES_EXTENT was re-quantized onto a coarser grid, and one
+    holding TILES_MAX_FEATURES lines or more was cut to its longest ones. Those
+    are the only two ways GDAL 3.8.5's EncodeTile writes fewer lines than it
+    was handed: its longest-first discard runs only after the grid has
+    already been coarsened to 128, or at the line cap. So no tile can lose
+    more lines than it keeps without one of the two showing here - apart
+    from a line shorter than one unit at its zoom, which no grid can draw."""
+    found = []
+    with path.open("rb") as f:
+        for (z, x, y), data in all_tiles(MmapSource(f)):
+            raw = gzip.decompress(data) if data[:2] == b"\x1f\x8b" else data
+            for field, layer in _protobuf_fields(raw):
+                if field != 3:  # Tile.layers
+                    continue
+                extent, lines = 4096, 0
+                for layer_field, value in _protobuf_fields(layer):
+                    if layer_field == 5:  # Layer.extent
+                        extent = value
+                    elif layer_field == 2:  # Layer.features
+                        lines += 1
+                if extent != TILES_EXTENT:
+                    found.append((z, x, y, f"a {extent}-unit grid, not {TILES_EXTENT}"))
+                elif lines >= TILES_MAX_FEATURES:
+                    found.append((z, x, y, f"{lines:,} lines, GDAL's cap"))
+    return found
+
+
 def write_tiles(geojson_path: Path, concurrent_path: Path | None = None) -> dict:
     """Tile the artifact just written into TILES_ARTIFACT_NAME and return its
     manifest entry (#1257).
@@ -1742,7 +2228,9 @@ def write_tiles(geojson_path: Path, concurrent_path: Path | None = None) -> dict
     for it, which is what the client's `has` filters read. Passed only when
     the file holds a feature: ST_Read of an empty collection is a table with
     no columns (lib/corridor.py's count_features has the failure), and there
-    is nothing to union in.
+    is nothing to union in. Unioned into the zooms above
+    TILES_CONTEXT_MAX_ZOOM only: the context zooms are cut from the lines file
+    alone (the TILES_CONTEXT_PROPERTIES block says why).
 
     GDAL's PMTiles driver builds an MBTiles beside the output and converts it,
     so the run needs roughly the archive's own size again in scratch space
@@ -1752,6 +2240,16 @@ def write_tiles(geojson_path: Path, concurrent_path: Path | None = None) -> dict
     built for: a creation option GDAL silently ignored would publish a
     tileset the map never asks the right zooms of, and the failure on the
     phone is an empty map with no error anywhere.
+
+    TWO CUTS, ONE ARCHIVE. z5 to TILES_CONTEXT_MAX_ZOOM are cut
+    from the lines file alone through context_lines_sql - TILES_CONTEXT_PROPERTIES
+    only, lines sharing them merged - and the zooms above from tile_input_sql
+    over the lines and the shared-ground pairs exactly as before; the
+    two are joined by merge_bands under the one layer name the client already
+    reads, so no style changes. Both cuts run with MAX_SIZE at
+    TILES_MAX_BYTES, and the archive is then read back tile by tile: any tile
+    GDAL coarsened or cut to its line cap (degraded_tiles) fails the run, so
+    a grid of staircases can never reach the bucket again.
     """
     path = OUT_DIR / TILES_ARTIFACT_NAME
     # COPY TO refuses to overwrite for these drivers - export_trails.py's own
@@ -1760,23 +2258,48 @@ def write_tiles(geojson_path: Path, concurrent_path: Path | None = None) -> dict
 
     con = duckdb.connect()
     con.execute("INSTALL spatial; LOAD spatial;")
-    lines = f"SELECT * FROM ST_Read('{geojson_path.as_posix()}')"
+    plain = f"SELECT * FROM ST_Read('{geojson_path.as_posix()}')"
+    lines = plain
     if concurrent_path is not None:
-        lines = f"{lines} UNION ALL BY NAME SELECT * FROM ST_Read('{concurrent_path.as_posix()}')"
-    con.execute(
-        f"""
-        COPY ({lines})
-        TO '{path.as_posix()}'
-        WITH (
-            FORMAT GDAL, DRIVER 'PMTiles', LAYER_NAME '{TILES_LAYER}',
-            DATASET_CREATION_OPTIONS (
-                'MINZOOM={TILES_MIN_ZOOM}', 'MAXZOOM={TILES_MAX_ZOOM}',
-                'NAME={TILES_ARTIFACT_NAME.removesuffix(".pmtiles")}',
-                'DESCRIPTION=Trail lines other organizations maintain, as vector tiles'
+        lines = f"{plain} UNION ALL BY NAME SELECT * FROM ST_Read('{concurrent_path.as_posix()}')"
+
+    top_context = min(TILES_CONTEXT_MAX_ZOOM, TILES_MAX_ZOOM)
+    bands = []
+    if TILES_MIN_ZOOM <= top_context:
+        bands.append((TILES_MIN_ZOOM, top_context, context_lines_sql(plain)))
+    if TILES_MAX_ZOOM > top_context:
+        bands.append((max(TILES_MIN_ZOOM, top_context + 1), TILES_MAX_ZOOM, tile_input_sql(lines)))
+
+    # The bands are written into a directory of their own that goes away with
+    # them, so a run that dies between the two cuts leaves nothing in
+    # OUT_DIR for publish.py to mistake for an artifact.
+    with tempfile.TemporaryDirectory(prefix=".tile-bands-", dir=path.parent) as scratch:
+        parts = []
+        for low, high, select in bands:
+            part = Path(scratch) / f"z{low}-{high}.pmtiles"
+            # SRS spelled out: a merged line is a new geometry whose type
+            # carries no CRS, and GDAL handed one reads degrees as Web
+            # Mercator metres - every line lands within a metre of 0,0 and
+            # nothing complains. EXTENT and MAX_FEATURES are GDAL's own
+            # defaults, named so degraded_tiles checks what the writer was told.
+            con.execute(
+                f"""
+                COPY ({select})
+                TO '{part.as_posix()}'
+                WITH (
+                    FORMAT GDAL, DRIVER 'PMTiles', LAYER_NAME '{TILES_LAYER}', SRS 'EPSG:4326',
+                    DATASET_CREATION_OPTIONS (
+                        'MINZOOM={low}', 'MAXZOOM={high}',
+                        'EXTENT={TILES_EXTENT}', 'MAX_SIZE={TILES_MAX_BYTES}',
+                        'MAX_FEATURES={TILES_MAX_FEATURES}',
+                        'NAME={TILES_ARTIFACT_NAME.removesuffix(".pmtiles")}',
+                        'DESCRIPTION=Trail lines other organizations maintain, as vector tiles'
+                    )
+                )
+                """
             )
-        )
-        """
-    )
+            parts.append(part)
+        merge_bands(parts, path, TILES_MIN_ZOOM, TILES_MAX_ZOOM)
 
     with path.open("rb") as f:
         header = Reader(MmapSource(f)).header()
@@ -1786,6 +2309,18 @@ def write_tiles(geojson_path: Path, concurrent_path: Path | None = None) -> dict
             f"{path} declares zooms {zooms}, not the z{TILES_MIN_ZOOM}-z{TILES_MAX_ZOOM} the client is "
             "built for (client/src/lib/config.ts). GDAL did not honour the creation options, and a "
             "tileset the map asks the wrong zooms of draws nothing."
+        )
+
+    degraded = degraded_tiles(path)
+    if degraded:
+        shown = ", ".join(f"z{z}/{x}/{y} ({what})" for z, x, y, what in degraded[:10])
+        raise SystemExit(
+            f"{path}: GDAL did not write {len(degraded)} tile(s) whole - {shown}"
+            f"{', ...' if len(degraded) > 10 else ''}. A tile over MAX_SIZE ({TILES_MAX_BYTES:,} bytes) is "
+            "redrawn on a coarser grid with every line shorter than a cell deleted, and one at "
+            f"MAX_FEATURES ({TILES_MAX_FEATURES:,}) keeps only its longest lines: either draws on a phone "
+            "as staircases with gaps. Raise TILES_MAX_BYTES or carry less at the context zooms "
+            "(TILES_CONTEXT_PROPERTIES), and say which in the commit."
         )
 
     return {
@@ -1853,6 +2388,33 @@ def write_artifact(records: list[dict], per_source: dict) -> dict:
         "bbox": exported_bbox(records),
         "sources": per_source,
     }
+
+
+def _rss_mb() -> float | None:
+    """This process's resident memory now, in MB, from /proc; None where there is no /proc."""
+    try:
+        for line in Path("/proc/self/status").read_text().splitlines():
+            if line.startswith("VmRSS:"):
+                return int(line.split()[1]) / 1024
+    except OSError:
+        return None
+    return None
+
+
+def _progress(started: float, step: str) -> None:
+    """One line before each pass after the closures step, which used to run silent (#1796).
+
+    Seven passes ran between "closed area(s)" and the first write message with
+    no output at all, and on runs 157, 158 and 160 the hosted runner was lost
+    inside that span, so the log could not say which pass it was. Each line
+    carries the elapsed time, this process's resident memory now and its peak
+    so far (ru_maxrss is KiB on Linux), which is what tells a pass that is
+    merely slow from one that is exhausting the machine.
+    """
+    now = _rss_mb()
+    peak = resource.getrusage(resource.RUSAGE_SELF).ru_maxrss / 1024
+    rss = "unknown" if now is None else f"{now:,.0f} MB"
+    print(f"  [{time.monotonic() - started:7.1f}s] {step} (rss {rss}, peak {peak:,.0f} MB)", flush=True)
 
 
 def main() -> dict:
@@ -1958,25 +2520,39 @@ def main() -> dict:
     # (Douglas-Peucker, endpoints preserved, and a degenerate result falls back
     # to the original geometry rather than being dropped) that a second copy
     # would be one edit away from losing.
+    passes_started = time.monotonic()
+    try:
+        total = next(line for line in Path("/proc/meminfo").read_text().splitlines() if line.startswith("MemTotal:"))
+        print(f"  machine memory: {int(total.split()[1]) / 1024:,.0f} MB", flush=True)
+    except (OSError, StopIteration):
+        pass
+    _progress(passes_started, f"simplifying {len(all_records):,} records")
     simplified = simplify_records(all_records)
+    _progress(passes_started, "writing the network lines")
     manifest = write_artifact(simplified, per_source)
     manifest["closures"] = closure_stats
     manifest["duplicates"] = duplicate_stats
     # The shared-ground pairs (#1384), from the records just written plus the
     # A.T.'s centerline, into their own file - never into the one above, for
     # the eleven readers the module docstring counts.
+    _progress(passes_started, "loading the A.T. centerline")
     at_records = load_at_centerline()
-    pairs, shared = find_shared_ground(simplified + at_records)
+    _progress(passes_started, f"finding shared ground among {len(simplified) + len(at_records):,} lines")
+    pairs, shared = find_shared_ground(simplified + at_records, progress=lambda step: _progress(passes_started, step))
+    _progress(passes_started, f"writing the shared ground ({len(pairs):,} pairs)")
     manifest["concurrent"] = write_concurrent(pairs, shared, at_paired=bool(at_records))
     # The corridor-view sketch, from the same simplified records the artifact
     # was just written from - export_trails.py's ordering, for its reason: the
     # overview simplifies the same geometry a second time at its own coarser
     # tolerance.
+    _progress(passes_started, "writing the overview")
     manifest["overview"] = write_overview(simplified)
     # The same lines as vector tiles (#1257), cut from the file just written
     # so the two cannot disagree - see write_tiles for what a phone gains.
     # The pairs ride in the tiles, and only when there are any to ride.
+    _progress(passes_started, "cutting the vector tiles")
     manifest["tiles"] = write_tiles(Path(manifest["path"]), Path(manifest["concurrent"]["path"]) if pairs else None)
+    _progress(passes_started, "every pass done")
 
     size = Path(manifest["path"]).stat().st_size
     print(f"\n  {manifest['feature_count']:,} features -> {manifest['path']} ({size:,} bytes)")
@@ -1992,7 +2568,9 @@ def main() -> dict:
         f"{'' if concurrent['at_paired'] else ' (network only)'} "
         f"(within {concurrent['tolerance_m']:g} m for {concurrent['min_length_m']:g} m or more; "
         f"{concurrent['dropped_short']} shorter pieces dropped, {concurrent['dropped_unpainted']} with no blaze to paint, "
-        f"{concurrent['dropped_same_blaze']} in one paint, {concurrent['nameless_skipped']} nameless lines skipped) "
+        f"{concurrent['dropped_same_blaze']} in one paint, {concurrent['nameless_skipped']} nameless lines skipped; "
+        f"{concurrent['skipped_unpainted_pairs']} pairs with no paint on one side and "
+        f"{concurrent['skipped_same_blaze_pairs']} in one paint never built) "
         f"-> {concurrent['path']}"
     )
 

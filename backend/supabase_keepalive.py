@@ -83,9 +83,16 @@ KEEPALIVE_TABLES: tuple[str, ...] = (
     # anon key that could DELETE a row here would make every solved
     # challenge replayable, which is the whole of what that mechanism buys.
     "challenge_spends",
+    # A club's challenge (#1780): the places a hiker tagged, and the entries
+    # they sent at the finish. `challenge_entries` is names, emails and home
+    # addresses sent to one club, and a readable one would send them to
+    # everybody else. `club_challenges` is a club's unpublished draft.
+    "challenge_entries",
+    "challenge_tags",
     "closure_approvals",
     "closures",
     "club_admins",
+    "club_challenges",
     "clubs",
     # The management-console embed's key store and its grant log
     # (features/ORG_ONBOARDING.md, #1542). `console_keys` holds the origin

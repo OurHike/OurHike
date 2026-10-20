@@ -30,6 +30,8 @@ import { Header } from './Header'
 import { TabBar } from './TabBar'
 import type { TabId } from './tabs'
 import { Legend } from './Legend'
+import type { HazardArea } from '../lib/hazardAreas'
+import type { TrailClosure } from '../lib/publishedConditions'
 import { InViewSheet } from './InViewSheet'
 import { useDesktop } from '../lib/useDesktop'
 import type { HikerMode } from '../lib/hikerMode'
@@ -57,6 +59,7 @@ import type { DroughtBand } from '../map/droughtLayers'
 import type { ClosureBand } from '../map/closureLayers'
 import type { CorridorFeatureCollection } from '../map/corridorLayers'
 import type { WorkdayPoint } from '../map/workdayLayers'
+import type { ChallengePinFeatureCollection } from '../map/challengePinData'
 import type { WorkdayRow, WorkdayWindowId } from '../lib/workProjects'
 import type { DisputePoint } from '../map/disputeLayers'
 import type { AtcUpdatePoint } from '../map/atcUpdateLayers'
@@ -98,6 +101,7 @@ import {
 import type { SearchablePoi } from '../lib/searchPoi'
 import type { Place } from '../lib/places'
 import { TrailDataUpdate, type TrailDataUpdateProps } from './TrailDataUpdate'
+import { PoiChallenges, type PoiChallengesProps } from './PoiChallenges'
 import './chrome.css'
 
 export interface MapScreenProps {
@@ -265,6 +269,26 @@ export interface MapScreenProps {
    *  reason `selectedPoi` is: the map draws bands, and the app is what knows
    *  whose notice a band belongs to. */
   atcUpdateSheet?: ReactNode
+  /**
+   * The hunting areas, shooting sites and burned areas a trail on
+   * this phone runs through (#1805, lib/hazardAreas.ts). Drawn under the
+   * trail and never as a closure.
+   */
+  hazardAreas?: readonly HazardArea[]
+  /** A hazard area was tapped, and nothing drawn over it, by notice id. */
+  onSelectHazardArea?: (noticeId: string) => void
+  /** The tapped area's card, or null - the atcUpdateSheet pattern. */
+  hazardAreaSheet?: ReactNode
+  /**
+   * Every club closure that closes the trail today, from
+   * conditions/trail_closures.json (the maintainer's closure-map standard, 2026-10-11),
+   * crossed out on the map (map/clubClosureLayers.ts).
+   */
+  clubClosures?: readonly TrailClosure[]
+  /** A club closure was tapped, by notice id. */
+  onSelectClubClosure?: (noticeId: string) => void
+  /** The tapped club closure's sheet, or null - the atcUpdateSheet pattern. */
+  clubClosureSheet?: ReactNode
   /** The closure tape was tapped, by closure id (#1373, F12), and the sheet
    *  the shell renders for it - the atcUpdateSheet pattern, on the mark
    *  #245 drew and left for a tap. */
@@ -398,6 +422,23 @@ export interface MapScreenProps {
   onOpenNotices?: () => void
   /** The full list of notices, or null when it is closed. */
   noticeList?: ReactNode
+  /**
+   * The Legend row's words when the list is the planned-hike panel (#1805),
+   * or undefined for today's "Read all N trail notices".
+   *
+   * Set, the row shows whatever `noticeCount` says - zero included - because
+   * the panel's honest empty state ("no hike planned in the next 7 days") is
+   * something a hiker has to be able to open and read.
+   */
+  noticeRowLabel?: string
+  /**
+   * The "Read all" door beside the planned-hike row (the
+   * maintainer's poll of 2026-10-15): its words, or undefined for no door, and
+   * what a tap does. Every club's notices that no map draws, planned or not
+   * (chrome/noticesPanel.tsx says which).
+   */
+  readAllNoticesLabel?: string
+  onReadAllNotices?: () => void
   /**
    * How many notices this screen is holding that their publisher touched in
    * the last 72 hours and the hiker has not already silenced (lib/notices.ts,
@@ -687,6 +728,38 @@ export interface MapScreenProps {
    *  that goes nowhere is worse than none, the legend's rule for every
    *  control it offers. */
   onToggleBlazeColors?: () => void
+  /**
+   * The challenge places (#1780 — Let a club publish a challenge — places on
+   * its own trails that hikers opt into and tag at camp — starting with the
+   * ATC's A.T. Summer Bucket List), all four from chrome/challengePanel.ts
+   * and passed straight through: the pins and whether they are drawn to the
+   * canvas, the switch's state and handler to the legend.
+   *
+   * NOTHING ELSE ON THIS SCREEN READS THEM, and that is the design's
+   * principle 2 rather than an omission: no banner, no count, no live
+   * region and no plate change near a challenge place.
+   * chrome/MapScreen.test.tsx renders with and without them and compares.
+   */
+  /** The challenge places this hiker joined (features/CHALLENGES.md, frame 1), drawn by
+   *  map/challengeLayers.ts. These four come from chrome/challengePanel.ts as
+   *  one spread; that file says when each is set. */
+  challengePins?: ChallengePinFeatureCollection
+  /** Whether the layer is drawn: the hiker's switch is on AND the row is
+   *  offered (a joined challenge on the chosen trail with a place to pin). */
+  showChallengePins?: boolean
+  /** The switch's own position, for the Legend row - true even while the
+   *  layer is not offered, so the row comes back as the hiker left it. */
+  challengePlacesShown?: boolean
+  /** Flips the switch; absent whenever the row is not offered. */
+  onToggleChallengePlaces?: () => void
+  /**
+   * What the place card's "On your challenges" section needs (#1780, frames
+   * #2 and #2c): every challenge on the phone, the hiker's record, and the
+   * three things a row can do. Data rather than a rendered node, so the
+   * section's component loads with this deferred screen instead of in front
+   * of the first frame. Absent, the card has no challenge section.
+   */
+  challengeCard?: Omit<PoiChallengesProps, 'poiIds'>
 
   /** Opening camera only; later moves are the hiker's. */
   center?: [number, number]
@@ -884,6 +957,12 @@ export function MapScreen({
   onChangeWorkdayWindow,
   disputes,
   atcUpdateSheet,
+  hazardAreas,
+  onSelectHazardArea,
+  hazardAreaSheet,
+  clubClosures,
+  onSelectClubClosure,
+  clubClosureSheet,
   onSelectClosure,
   closureSheet,
   onSelectWarning,
@@ -910,6 +989,9 @@ export function MapScreen({
   noticeCount = 0,
   onOpenNotices,
   noticeList,
+  noticeRowLabel,
+  readAllNoticesLabel,
+  onReadAllNotices,
   newNoticeCount = 0,
   newNoticeLabel,
   trailDataUpdate,
@@ -976,6 +1058,11 @@ export function MapScreen({
   redLight = false,
   blazeColorsShown = true,
   onToggleBlazeColors,
+  challengePins,
+  showChallengePins = false,
+  challengePlacesShown = false,
+  onToggleChallengePlaces,
+  challengeCard,
   detail = 'standard',
   center,
   zoom,
@@ -1631,10 +1718,16 @@ export function MapScreen({
               atcUpdates={atcUpdates}
               atcUpdatePoints={atcUpdatePoints}
               onSelectAtcUpdate={onSelectAtcUpdate}
+              hazardAreas={hazardAreas}
+              onSelectHazardArea={onSelectHazardArea}
+              clubClosures={clubClosures}
+              onSelectClubClosure={onSelectClubClosure}
               onSelectClosure={onSelectClosure}
               onSelectWarning={onSelectWarning}
               workdays={workdays}
               onSelectWorkday={onSelectWorkday}
+              challengePins={challengePins}
+              showChallengePins={showChallengePins}
               disputes={disputes}
               warnings={warnings}
               routeDrawing={routeDrawing}
@@ -1728,6 +1821,17 @@ export function MapScreen({
                 {...(direction === undefined ? {} : { direction })}
                 onClose={onClosePoi}
                 sheetContainer={screenRoot}
+                challengeSection={
+                  challengeCard === undefined ? undefined : (
+                    <PoiChallenges
+                      poiIds={[
+                        selectedPoi.id,
+                        ...(selectedSite ?? []).map((part) => part.id),
+                      ]}
+                      {...challengeCard}
+                    />
+                  )
+                }
               />
             )}
 
@@ -1743,9 +1847,15 @@ export function MapScreen({
                 this is about a stretch of trail, so it sits where the search
                 sheet does and needs none of that. */}
             {atcUpdateSheet}
+            {/* The hazard area card (#1805), in the same slot: an area
+                anchors to no single point on the canvas either. */}
+            {hazardAreaSheet}
             {/* The two safety sheets (#1373, F12), in the same slot family:
                 a stretch of tape and a pin, neither anchored to a card. */}
             {closureSheet}
+            {/* A club closure's sheet (the maintainer's closure-map standard), beside the
+                tape's: the same mark, from a club's own notice. */}
+            {clubClosureSheet}
             {warningSheet}
             {workdaySheet}
 
@@ -1866,6 +1976,8 @@ export function MapScreen({
             onToggleDrought={onToggleDrought}
             blazeColorsShown={blazeColorsShown}
             onToggleBlazeColors={onToggleBlazeColors}
+            challengePlacesShown={challengePlacesShown}
+            onToggleChallengePlaces={onToggleChallengePlaces}
             units={units}
             maintainerLine={maintainerLine}
             droughtSummary={
@@ -1895,6 +2007,9 @@ export function MapScreen({
             hasDownload={hasDownload}
             downloadActivity={downloadActivity}
             noticeCount={noticeCount}
+            noticeRowLabel={noticeRowLabel}
+            readAllNoticesLabel={readAllNoticesLabel}
+            onReadAllNotices={onReadAllNotices}
             newNoticeCount={newNoticeCount}
             onOpenNotices={onOpenNotices}
           />

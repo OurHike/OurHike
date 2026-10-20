@@ -108,6 +108,7 @@ import { poiColor, poiGlyphPath } from '../map/poiIcons'
 import { MapIcon } from '../map/MapIcon'
 import { siteDistanceFeet } from '../map/poiSites'
 import { describeNearby, type NearbyPart } from '../lib/nearbyClause'
+import { formatWaterDistance } from '../lib/waterProvenance'
 import { waypointDistance } from '../lib/waypointDistance'
 import { isSafeLink } from '../lib/safeLink'
 import type { HikeDirection } from './Header'
@@ -115,7 +116,6 @@ import {
   feetFromMetres,
   formatRoundShortDistance,
   formatShortDistance,
-  MIN_STATED_FEET,
   type UnitSystem,
 } from '../lib/units'
 import { PhotoUnusable, preparePhoto } from '../lib/reportPhoto'
@@ -143,6 +143,14 @@ export interface PoiDetail {
    *  (#1695) - lib/trailData.ts's StoredPoi.trailsClosedWithinM, the radius
    *  the release was computed with. The card says so above everything else. */
   trailsClosedWithinM?: number
+  /**
+   * A tap or fountain whose publisher does not say when it is shut off for the
+   * season - lib/trailData.ts's StoredPoi.waterCaution. The
+   * card says so in its own line, apart from the unverified one: the pin
+   * already says "unconfirmed", and this says why a plumbed tap in particular
+   * may be dry when the hiker gets there.
+   */
+  waterCaution?: 'no_shutoff_season'
   /**
    * Which published source listed it - see poiSources.ts.
    *
@@ -185,6 +193,15 @@ export interface PoiDetail {
    * published one, never "no water" - the capacity rule.
    */
   waterDistanceFt?: number
+  /**
+   * How ATC arrived at that figure - `StoredPoi.waterDistanceSource`, CSI's
+   * own provenance value (#1728). partDistance hands it to
+   * lib/waterProvenance.ts, which puts a tilde in front of a steward's
+   * estimate and nothing in front of a measurement. Absent where the figure
+   * is, and on a download from before the column, when the figure prints as
+   * it always has.
+   */
+  waterDistanceSource?: string
   /**
    * One sentence about the place - what it is built of, what it has, when it
    * went up - for shelters and campsites.
@@ -320,6 +337,9 @@ export interface PoiCardProps {
    *  (PoiShareSheet.tsx's header has the whole argument). Optional for the
    *  same bare-render reason every optional field above states. */
   sheetContainer?: HTMLElement | null
+  /** "On your challenges" (#1780), rendered by MapScreen and placed here
+   *  above "About this place". Absent for a card with nothing on a list. */
+  challengeSection?: ReactNode
 }
 
 function mile(value: number): string {
@@ -470,19 +490,6 @@ function coordinates(lat: number, lon: number): string {
 }
 
 /**
- * One metre, in feet - lib/units.ts's `MIN_STATED_FEET`, aliased here so the
- * call site below reads as it always has.
- *
- * It lived in this file as a private constant until #1198, which gave the
- * figure a second reader: a day hike's stop rows print the same published
- * `water_distance_ft` and must floor it the same way. The reasoning moved
- * with it - see the constant's own note, and pipeline/lib/poi_description.py,
- * which floors what it publishes for the same reason. #694 floored it at a
- * metre back when this line printed only metres.
- */
-const MIN_PART_FT = MIN_STATED_FEET
-
-/**
  * How far a part of the site is from the pin, for its chip.
  *
  * FROM THE PIN, NOT FROM THE PART CURRENTLY OPEN. The pin is the one point on
@@ -523,13 +530,21 @@ const MIN_PART_FT = MIN_STATED_FEET
  * hands #694: ATC states it in feet, the artifact publishes it in feet, and
  * feet is what lib/units.ts formats from. It reached this line as metres only
  * because this line printed metres.
+ *
+ * AND IT PRINTS IN THE VOICE ITS PROVENANCE EARNS (#1728). A stated figure
+ * goes through lib/waterProvenance.ts, the one home every surface printing
+ * the column reads - the nearby sentence, a day hike's stop rows - which
+ * floors it at the metre this file used to floor it at (its private
+ * `MIN_PART_FT` moved there with the mark) and puts "~" in front of a
+ * steward's estimate: "Water ~250 ft" on the chip, "~250 ft away" on the
+ * meta line. A measured member's offset is a position, not a stated figure,
+ * and prints exactly as before.
  */
 function partDistance(pin: PoiDetail, part: PoiDetail, units: UnitSystem): string {
-  const feet =
-    part.type === 'water' && part.waterDistanceFt !== undefined
-      ? Math.max(MIN_PART_FT, part.waterDistanceFt)
-      : siteDistanceFeet(pin, part)
-  return formatShortDistance(feet, units)
+  if (part.type === 'water' && part.waterDistanceFt !== undefined) {
+    return formatWaterDistance(part.waterDistanceFt, part.waterDistanceSource, units)
+  }
+  return formatShortDistance(siteDistanceFeet(pin, part), units)
 }
 
 /**
@@ -649,6 +664,7 @@ export function PoiCard({
   listenHere,
   onClose,
   sheetContainer,
+  challengeSection,
 }: PoiCardProps) {
   const cardRef = useRef<HTMLDivElement | null>(null)
 
@@ -1159,6 +1175,32 @@ export function PoiCard({
     shown.confidence === 'low' ? (
       <p className="poi-card__unverified" role="note">
         Unverified — nobody has confirmed this one is really there.
+      </p>
+    ) : null
+
+  /* The season caution (the maintainer's poll of 2026-10-04, from the
+     drawn card in the mock's section 2): a plumbed tap
+     whose publisher records no shutoff season. Its own line, under the
+     unverified one and never folded into it: that line says nobody vouched
+     for the pin, and this one says why a tap in particular can be dry even
+     where it is real. Placed by the same rule, as high as the card goes at
+     both heights, for the same reason - a hiker deciding how much water to
+     carry must not have to pull the card open to learn the tap may be off.
+
+     "Out of season" rather than the mock's "in winter": a fixed season is a
+     guess that flips wrong in the South, which is the alternative the poll
+     turned down. "Its listing" rather than "the agency", because two of
+     the layers are clubs' (NCTA's and FLTC's), not agencies'; and rather
+     than "its publisher", which did not say who, or "its source", which on
+     a tap reads as the water's own supply. "The next water" for the same
+     reason: "the next source" meant a water point in one sentence and a
+     publisher in the line before it (the word-choice review of #1805,
+     2026-10-09). */
+  const seasonCautionLine =
+    shown.type === 'water' && shown.waterCaution === 'no_shutoff_season' ? (
+      <p className="poi-card__season-caution" role="note">
+        Tap water. Its listing doesn’t say when it’s turned off for the season, and taps
+        like this are often off out of season. Carry enough to reach the next water.
       </p>
     ) : null
 
@@ -1851,11 +1893,15 @@ export function PoiCard({
                   gets the band with no heading, because "Conditions" is a
                   promise about water, shelter, campsites and resupply and
                   this file must not make it about anything else. */}
-              {(notesShown || unverifiedLine !== null || closedLine !== null) && (
+              {(notesShown ||
+                unverifiedLine !== null ||
+                seasonCautionLine !== null ||
+                closedLine !== null) && (
                 <section className="poi-card__section">
                   {notesShown && <h3 className="poi-card__section-title">Conditions</h3>}
                   {closedLine}
                   {unverifiedLine}
+                  {seasonCautionLine}
                   {conditions('open')}
                 </section>
               )}
@@ -1878,6 +1924,12 @@ export function PoiCard({
                   was that they outranked the answer the hiker tapped the pin
                   for - so they are last, under a heading that says what they
                   are, rather than gone. */}
+              {/* A place's challenges (#1780) - above "About this place",
+                  which #941 moved to the foot of the card; the handoff drew
+                  this section under the description when the description
+                  still sat near the top. */}
+              {challengeSection}
+
               <section className="poi-card__section">
                 <h3 className="poi-card__section-title">About this place</h3>
                 {shown.description !== undefined && (
@@ -1974,6 +2026,7 @@ export function PoiCard({
           )}
 
           {unverifiedLine}
+          {seasonCautionLine}
           {conditions('peek')}
 
           {/* One deliberate pull, named for what is behind it. "Notes &

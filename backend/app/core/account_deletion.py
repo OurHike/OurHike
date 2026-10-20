@@ -81,6 +81,7 @@ from app.models.ridge_runner import RidgeRunnerCommitment
 from app.models.synced_day_hike import SyncedDayHike
 from app.models.synced_hike import SyncedActiveHike, SyncedHike
 from app.models.synced_trip import SyncedPlannedHike, SyncedTrip
+from app.models.trail_challenge import ChallengeEntry, ChallengeTag, ClubChallenge
 from app.models.volunteer_hours import HoursState, VolunteerHoursRecord
 from app.models.work_project import WorkProject, WorkProjectSignup
 
@@ -128,6 +129,9 @@ class DeletionSummary:
     commitments_deleted: int = 0
     org_rows_unlinked: int = 0
     app_failures_unlinked: int = 0
+    #: Challenges (#1780) - see the reasoning at each query in `delete_account`.
+    challenge_tags_deleted: int = 0
+    challenge_entries_deleted: int = 0
     contributions_kept: dict[str, int] = field(default_factory=dict)
 
 
@@ -239,6 +243,24 @@ def delete_account(db: Session, profile: Profile, now=None) -> DeletionSummary:
         db.query(RidgeRunnerCommitment).filter(RidgeRunnerCommitment.person_id == profile_id).delete(synchronize_session=False)
     )
 
+    # A challenge tag is the hiker's own record of where they have been -
+    # "the hiker's record is theirs" is the design's sixth principle
+    # (features/CHALLENGES.md) - and all anybody else ever derives from it is
+    # a count a club sees, withheld below 25 hikers. Nobody relies on the row.
+    challenge_tags = db.query(ChallengeTag).filter(ChallengeTag.user_id == profile_id).delete(synchronize_session=False)
+
+    # AN ENTRY GOES TOO, and this is the one that could have gone the other
+    # way. A club may be relying on it - it is somebody's drawing entry - so
+    # the rule above ("stays if somebody else is relying on it") pulls toward
+    # keeping it. But what an entry IS is a name, an email and a home address,
+    # and keeping those after the account is gone is the retention gap
+    # features/IDENTITY_AND_PRIVACY.md names; scrubbing them, `reports`'
+    # answer, would leave a row that says only that somebody entered. So it
+    # goes, and the club's "finished" count drops by one. What this cannot
+    # reach is the copy a club already downloaded as CSV: that file is the
+    # club's, and nothing here pretends otherwise.
+    challenge_entries = db.query(ChallengeEntry).filter(ChallengeEntry.user_id == profile_id).delete(synchronize_session=False)
+
     # --- Organization rows that NAME them and belong to the organization.
     # Every one of these columns is nullable, so the link can be forgotten
     # while the row goes on being the organization's - the same thing
@@ -261,6 +283,8 @@ def delete_account(db: Session, profile: Profile, now=None) -> DeletionSummary:
         (ConsoleKey, ConsoleKey.created_by),
         (RosterSyncRun, RosterSyncRun.run_by),
         (RoleInvite, RoleInvite.invited_by),
+        # A challenge definition is the club's, whichever admin saved it last.
+        (ClubChallenge, ClubChallenge.updated_by),
     ):
         for row in db.query(model).filter(column == profile_id).all():
             setattr(row, column.key, None)
@@ -327,6 +351,8 @@ def delete_account(db: Session, profile: Profile, now=None) -> DeletionSummary:
         workday_signups_released=signups,
         commitments_deleted=commitments,
         org_rows_unlinked=unlinked,
+        challenge_tags_deleted=challenge_tags,
+        challenge_entries_deleted=challenge_entries,
         contributions_kept={name: count for name, count in kept.items() if count},
     )
 

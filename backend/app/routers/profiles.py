@@ -1,5 +1,6 @@
 """`/profiles` endpoints - who you are, everything we hold, and the way out."""
 
+import logging
 from typing import Any
 
 from fastapi import APIRouter, Depends, HTTPException, status
@@ -8,9 +9,12 @@ from sqlalchemy.orm import Session
 from app.core.account_deletion import delete_account
 from app.core.account_export import build_export
 from app.core.auth import get_current_github_login, get_current_user
+from app.core.logs import describe_failure
 from app.db.session import get_db
 from app.models.profile import Profile
 from app.schemas.profile import DeletionReceipt, ProfileOut
+
+logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/profiles", tags=["profiles"])
 
@@ -79,8 +83,15 @@ def delete_my_account(
     summary = delete_account(db, current_user)
     try:
         db.commit()
-    except Exception:
+    except Exception as failure:
         db.rollback()
+        # The cause - a constraint the deletion did not expect - used to reach
+        # no log at all (#1759). The response stays the bare 500 below; the
+        # request id in the line is what ties the hiker's report to it.
+        # Logged by its names only, never with exc_info: the exception's own
+        # text carries the values the statement was bound to, which here are
+        # this hiker's (app/core/logs.py's describe_failure says which).
+        logger.error("account deletion failed at commit; rolled back: %s", describe_failure(failure))
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail="The account was not deleted. Nothing was changed.",
@@ -96,6 +107,8 @@ def delete_my_account(
         assignments_released=summary.assignments_deleted,
         hours_deleted=summary.hours_deleted,
         app_failure_reports_unlinked=summary.app_failures_unlinked,
+        challenge_tags_deleted=summary.challenge_tags_deleted,
+        challenge_entries_deleted=summary.challenge_entries_deleted,
         kept=summary.contributions_kept,
     )
 

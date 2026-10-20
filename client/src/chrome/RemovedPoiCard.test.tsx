@@ -38,9 +38,7 @@ describe('what happened to this place', () => {
   it('names the source the row actually carries', () => {
     render(<RemovedPoiCard tombstone={stone()} onClose={vi.fn()} />)
 
-    expect(
-      screen.getByText(/distance-to-water measurements/i, { exact: false }),
-    ).toBeTruthy()
+    expect(screen.getByText(/distance-to-water index/i, { exact: false })).toBeTruthy()
   })
 
   it('does not say ATC about a place that was never ATC’s', () => {

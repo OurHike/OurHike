@@ -32,6 +32,7 @@ import type {
   AssistConsent,
   Coverage,
   Org,
+  OrgChallengeRow,
   OrgPark,
   OrgRole,
   RosterEntry,
@@ -650,6 +651,205 @@ export const DEMO_COVERAGE: Coverage = {
     }),
   ),
 }
+
+/** The demo trail a challenge sits on, by the section it was built from. */
+function demoTrail(sectionId: string): string {
+  return `demo-trail-${sectionId}`
+}
+
+/**
+ * The demo organization's challenges (#1780), for frame #2a.
+ *
+ * **INVENTED, LIKE EVERYTHING HERE BUT THE GROUND.** Every count - hikers in,
+ * finished - is @unvalidated and made up to make a table dense enough to
+ * judge. The places are real parts of Central Park (Bow Bridge, the Ramble's
+ * arches, the Harlem Meer), and the POI ids naming them are not: the demo
+ * organization publishes no waypoints, so `demo_pois:*` resolves against
+ * nothing and would be dropped by `pipeline/lib/challenges.py` if it ever
+ * reached a pipeline run, which it cannot - this file is not a reviewed
+ * challenge file and nothing reads it but the console and its tests.
+ *
+ * **NOT THE HANDOFF'S EXAMPLES.** The mock's rows - a Long Path end to end,
+ * Harriman shelters, Highlands workdays - are illustrative, and a fixture
+ * naming a real club's challenges would put words in its mouth on every
+ * preview photograph. These are Central Park's and nobody else's.
+ *
+ * **ONE TRAIL EACH**, because a challenge is scoped to one trail its
+ * organization publishes (design principle 5) and the demo registry models
+ * each route as its own trail - so there is no "every path in the park"
+ * challenge here, which would be a challenge across six trails.
+ */
+export const DEMO_CHALLENGES: OrgChallengeRow[] = [
+  {
+    challenge_id: 'demo-drive-loop-end-to-end',
+    name: 'Park Drive loop, end to end',
+    status: 'published',
+    window: { opens: null, closes: null },
+    hikers_in: 64,
+    hikers_in_floor: 25,
+    finished: 9,
+    live: true,
+    definition: {
+      id: 'demo-drive-loop-end-to-end',
+      org: DEMO_SLUG,
+      trail: demoTrail('demo-sec-drive'),
+      name: 'Park Drive loop, end to end',
+      status: 'published',
+      window: { opens: null, closes: null },
+      finish: { count: 4, label: null },
+      reward: { kind: 'patch', rules_url: null },
+      sections: [{ id: 'drive', title: 'The drive', short: 'Drive' }],
+      what_counts: ['section_walked'],
+      items: [
+        {
+          id: 'engineers-gate-to-harlem-meer',
+          section: 'drive',
+          title: 'Engineers Gate to the Harlem Meer',
+          match: {
+            kind: 'section_walked',
+            from_poi: 'demo_pois:engineers-gate',
+            to_poi: 'demo_pois:harlem-meer',
+          },
+        },
+        {
+          id: 'harlem-meer-to-west-100th',
+          section: 'drive',
+          title: 'The Harlem Meer to the West 100th Street gate',
+          match: {
+            kind: 'section_walked',
+            from_poi: 'demo_pois:harlem-meer',
+            to_poi: 'demo_pois:west-100th-gate',
+          },
+        },
+        {
+          id: 'west-100th-to-merchants-gate',
+          section: 'drive',
+          title: "West 100th Street to Merchants' Gate",
+          match: {
+            kind: 'section_walked',
+            from_poi: 'demo_pois:west-100th-gate',
+            to_poi: 'demo_pois:merchants-gate',
+          },
+        },
+        {
+          id: 'merchants-gate-to-engineers-gate',
+          section: 'drive',
+          title: "Merchants' Gate back round to Engineers Gate",
+          match: {
+            kind: 'section_walked',
+            from_poi: 'demo_pois:merchants-gate',
+            to_poi: 'demo_pois:engineers-gate',
+          },
+        },
+      ],
+      reviewed: '2026-09-30',
+    },
+  },
+  {
+    challenge_id: 'demo-ramble-bridges-and-arches',
+    name: "The Ramble's bridges and arches",
+    status: 'published',
+    window: { opens: '2027-05-01', closes: '2027-10-31' },
+    // Below the floor, so the server sends no number - which is the row this
+    // fixture exists to show.
+    hikers_in: null,
+    hikers_in_floor: 25,
+    finished: 3,
+    live: true,
+    definition: {
+      id: 'demo-ramble-bridges-and-arches',
+      org: DEMO_SLUG,
+      trail: demoTrail('demo-sec-ramble'),
+      name: "The Ramble's bridges and arches",
+      status: 'published',
+      window: { opens: '2027-05-01', closes: '2027-10-31' },
+      finish: { count: 4, label: null },
+      reward: null,
+      sections: [{ id: 'crossings', title: 'Bridges and arches', short: 'Crossings' }],
+      what_counts: ['place'],
+      items: [
+        {
+          id: 'bow-bridge',
+          section: 'crossings',
+          title: 'Bow Bridge',
+          note: 'Stop in the middle and look back at the Ramble. That view is the reason this list starts here.',
+          note_by: 'Central Park Throughikers',
+          match: { kind: 'place', poi: 'demo_pois:bow-bridge' },
+        },
+        {
+          id: 'balcony-bridge',
+          section: 'crossings',
+          title: 'Balcony Bridge',
+          match: { kind: 'place', poi: 'demo_pois:balcony-bridge' },
+        },
+        {
+          id: 'oak-bridge',
+          section: 'crossings',
+          title: 'Oak Bridge',
+          match: { kind: 'place', poi: 'demo_pois:oak-bridge' },
+        },
+        {
+          id: 'riftstone-arch',
+          section: 'crossings',
+          title: 'Riftstone Arch',
+          match: { kind: 'place', poi: 'demo_pois:riftstone-arch' },
+        },
+        {
+          id: 'ramble-arch',
+          section: 'crossings',
+          title: 'Ramble Arch',
+          match: { kind: 'place', poi: 'demo_pois:ramble-arch' },
+        },
+      ],
+      reviewed: '2026-09-30',
+    },
+  },
+  {
+    challenge_id: 'demo-north-woods-workdays',
+    name: 'Give a day to the North Woods',
+    status: 'draft',
+    window: { opens: null, closes: null },
+    hikers_in: null,
+    hikers_in_floor: 25,
+    finished: 0,
+    // Saved and never sent for publishing: no phone has it, so nobody can be
+    // in it, and "fewer than 25" would describe a challenge that exists.
+    live: false,
+    definition: {
+      id: 'demo-north-woods-workdays',
+      org: DEMO_SLUG,
+      trail: demoTrail('demo-sec-northwoods'),
+      name: 'Give a day to the North Woods',
+      status: 'draft',
+      window: { opens: null, closes: null },
+      finish: { count: 1, label: null },
+      reward: null,
+      sections: [{ id: 'workdays', title: 'Workdays', short: 'Workdays' }],
+      what_counts: ['workday'],
+      items: [
+        {
+          id: 'ravine-storm-sweep',
+          section: 'workdays',
+          title: 'A storm sweep in the Ravine',
+          match: { kind: 'workday', org: null },
+        },
+        {
+          id: 'loch-path-edging',
+          section: 'workdays',
+          title: 'Edging the path along the Loch',
+          match: { kind: 'workday', org: null },
+        },
+        {
+          id: 'great-hill-clean-up',
+          section: 'workdays',
+          title: 'A clean-up on the Great Hill',
+          match: { kind: 'workday', org: null },
+        },
+      ],
+      reviewed: null,
+    },
+  },
+]
 
 export function isDemoOrg(slug: string): boolean {
   return slug === DEMO_SLUG

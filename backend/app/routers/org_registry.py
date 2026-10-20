@@ -19,6 +19,7 @@ merges, and the screen says so in as many words.
 from __future__ import annotations
 
 import hashlib
+import logging
 
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.orm import Session
@@ -43,6 +44,8 @@ from app.schemas.org_registry import (
     RegistryDiffOut,
     RegistryDiffRow,
 )
+
+logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/clubs", tags=["org-registry"])
 
@@ -396,11 +399,16 @@ def sign_off_registry(
     if complete:
         try:
             opened = open_registry_pr(db, access.club)
-        except RegistryPrRefused:
+        except RegistryPrRefused as refusal:
             # Deliberately not surfaced verbatim: the message can name the
             # repository or the reason a token was refused, and this answer
-            # goes to an organization admin.
-            pass
+            # goes to an organization admin. It goes to the operator's log
+            # instead (#1759), where "switched on", "GitHub refused ... (401)"
+            # and "GitHub did not answer" are three different lines. The text
+            # is registry_pr.py's own, which keeps tokens and response bodies
+            # out of it; no traceback, because the chained httpx error is not
+            # needed to tell those three apart.
+            logger.warning("registry pull request not opened for club %s: %s", access.club.id, refusal)
         else:
             access.club.registry_pr_number = opened.number
             access.club.registry_pr_url = opened.url

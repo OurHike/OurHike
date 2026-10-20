@@ -195,6 +195,43 @@ describe('PoiCard', () => {
     ).toBeInTheDocument()
   })
 
+  // The maintainer's poll of 2026-10-04: a plumbed tap whose
+  // publisher records no shutoff season is shown as unconfirmed water with a
+  // season caution, in a line of its own beside the unverified one.
+  const TAP: PoiDetail = {
+    ...SHELTER,
+    id: 'nps_points_of_interest:fixture-tap',
+    name: 'Spigot at the visitor center',
+    type: 'water',
+    confidence: 'low',
+    waterCaution: 'no_shutoff_season',
+  }
+  const SEASON_CAUTION =
+    'Tap water. Its listing doesn’t say when it’s turned off for the season, and taps like this are often off out of season. Carry enough to reach the next water.'
+
+  it('says on the peek that a plumbed tap may be shut off, apart from the unverified line', () => {
+    renderPeek(TAP)
+
+    const notes = screen.getAllByRole('note').map((note) => note.textContent)
+    expect(notes).toContain(SEASON_CAUTION)
+    expect(notes).toContain('Unverified — nobody has confirmed this one is really there.')
+  })
+
+  it('says it in the opened card too', () => {
+    renderCard(TAP)
+
+    expect(screen.getByText(SEASON_CAUTION)).toBeInTheDocument()
+  })
+
+  it('never cautions about a season on water nobody marked plumbed, or on a waypoint that is not water', () => {
+    renderCard({ ...TAP, waterCaution: undefined })
+    expect(screen.queryByText(/turned off for the season/)).not.toBeInTheDocument()
+    cleanup()
+
+    renderCard({ ...TAP, type: 'shelter' })
+    expect(screen.queryByText(/turned off for the season/)).not.toBeInTheDocument()
+  })
+
   it('never says it of a waypoint that is not a trailhead, whatever it carries', () => {
     renderCard({ ...SHELTER, trailsClosedWithinM: 100 })
 
@@ -1025,6 +1062,54 @@ describe('the parts of one site', () => {
     open()
 
     expect(screen.getByRole('button', { name: 'Water 37 m' })).toBeInTheDocument()
+  })
+
+  it('prints a steward’s estimate as "~" and a measurement bare, on the chip and the meta line (#1728)', () => {
+    // 42 of the 305 water distances ATC publishes are a steward's round
+    // number rather than a measurement, and until #1728 this chip printed
+    // both as "Water 120 ft". The provenance rides the member from the
+    // artifact (lib/trailData.ts), and lib/waterProvenance.ts turns it into
+    // the one mark the maintainer chose by poll, 2026-09-30.
+    const water = (waterDistanceSource: string): PoiDetail => ({
+      id: 'atc_csi:xyz',
+      name: 'Water near Chairback Gap Lean-to',
+      type: 'water',
+      lat: SHELTER.lat,
+      lon: SHELTER.lon,
+      confidence: 'low',
+      source: 'atc_csi',
+      waterDistanceFt: 120,
+      waterDistanceSource,
+    })
+    const { container } = renderSite([SHELTER, PRIVY, water('OSA_Field_Estimate')])
+    const meta = () => container.querySelector('.poi-card__meta')
+
+    fireEvent.click(screen.getByRole('button', { name: 'Water ~120 ft' }))
+
+    // The meta line prints the same figure through the same function, so the
+    // mark moves down with the distance when the chip's own words are hidden.
+    expect(meta()).toHaveTextContent('~120 ft away')
+
+    // A measurement against a mapped point earns no mark.
+    cleanup()
+    renderSite([SHELTER, PRIVY, water('FarOut')])
+
+    expect(screen.getByRole('button', { name: 'Water 120 ft' })).toBeInTheDocument()
+
+    // And in metres the mark stays in front of the converted figure.
+    cleanup()
+    render(
+      <PoiCard
+        poi={SHELTER}
+        site={[SHELTER, water('OSA_Field_Estimate')]}
+        map={null}
+        units="metric"
+        onClose={vi.fn()}
+      />,
+    )
+    open()
+
+    expect(screen.getByRole('button', { name: 'Water ~37 m' })).toBeInTheDocument()
   })
 
   it('carries the same icon the map draws for each part', () => {

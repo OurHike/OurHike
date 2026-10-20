@@ -286,6 +286,22 @@ sounded like symbology and is a use class. **Two of the seventeen do publish pai
 `ct_deep_blue_blazed` through a `Map_Color` column the first pass never saw, and `nc_mst_trail`
 through `Blaze` — and they now read it, with reviewed rows in `reference/blaze_mapping.json`.
 
+### And two of the seventeen had never fetched ([#1790](https://github.com/OurHike/OurHike/issues/1790))
+
+**The green publish above hid a sixth act.** Its fetch step runs `continue-on-error`, and its log
+already said `FAILED: Expecting value` for `pasda_dcnr_trails` and `cdtc_centerline` — nothing read
+those files, so nothing missed them. #1787's fix made `export_nearby_trails.py` read the seventeen,
+and the next three publishes (runs 154, 155 and 156, 2026-10-01) died on the first missing file
+instead. The cause is a cap the layer metadata does not state: both are on-prem ArcGIS Server 10.91,
+both advertise pagination and geoJSON, both answer `returnCountOnly` — which is all the #1778 probe
+asked — and both answer the fetcher's 1,000-feature page with a 7 KB HTML error page under HTTP 200,
+because the page's *bytes* (PASDA's 684 trails are 51.7 MB; CDTC's 8 centerline pieces are 86.5 MB)
+exceed a limit of their own. `lib/arcgis.py` now halves a refused page and keeps going (measured
+2026-10-01: PASDA fetches in two pages of 500, CDTC in pages of 3 after eight halvings). So the
+probe a registration owes is one more line than §"The probe" lists: **a page of geometry at the
+fetcher's own size, not only a count** — `returnCountOnly` proves the layer exists, not that it can
+be read.
+
 ### This is existing practice, not a new lane
 
 Worth stating plainly, because the batching sounds like a shortcut and is not. **GATC and all four

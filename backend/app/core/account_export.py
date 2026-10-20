@@ -72,6 +72,7 @@ from app.models.ridge_runner import RidgeRunnerCommitment
 from app.models.synced_day_hike import SyncedDayHike
 from app.models.synced_hike import SyncedActiveHike, SyncedHike
 from app.models.synced_trip import SyncedPlannedHike, SyncedTrip
+from app.models.trail_challenge import ChallengeEntry, ChallengeTag, ClubChallenge
 from app.models.volunteer_hours import VolunteerHoursRecord
 from app.models.work_project import WorkProject, WorkProjectSignup
 
@@ -186,6 +187,12 @@ def build_export(db: Session, profile: Profile) -> dict[str, Any]:
         "volunteer_hours": _rows(db, VolunteerHoursRecord, VolunteerHoursRecord.user_id == profile_id),
         "trail_sections_you_maintain": _rows(db, MaintainerAssignment, MaintainerAssignment.maintainer_id == profile_id),
         "app_problems_you_reported": _rows(db, AppFailure, AppFailure.reporter_id == profile_id),
+        # Challenges (#1780). The tags are what the phone sent - item, time,
+        # `gps` or `hand` - and never a position, because none was sent
+        # (features/CHALLENGES.md principle 6). The entries are the one thing
+        # a club received about them, in their own words.
+        "places_you_tagged_on_challenges": _rows(db, ChallengeTag, ChallengeTag.user_id == profile_id),
+        "challenge_entries_you_sent": _rows(db, ChallengeEntry, ChallengeEntry.user_id == profile_id),
         # --- The organization surface (features/ORG_ONBOARDING.md). Every
         # table here names a profile, so every one of them owes this file a
         # section - `test_every_profile_linked_table_reaches_the_file` reads
@@ -216,4 +223,8 @@ def build_export(db: Session, profile: Profile) -> dict[str, Any]:
         "people_you_invited": _rows(db, RoleInvite, RoleInvite.invited_by == profile_id),
         "roster_loads_you_ran": _rows(db, RosterSyncRun, RosterSyncRun.run_by == profile_id),
         "embed_keys_you_made": _rows(db, ConsoleKey, ConsoleKey.created_by == profile_id),
+        # A challenge definition they last saved for an organization - the
+        # organization's, like the four above, and here because their name is
+        # on it.
+        "challenges_you_saved_for_an_organization": _rows(db, ClubChallenge, ClubChallenge.updated_by == profile_id),
     }

@@ -1,8 +1,8 @@
 import { describe, it, expect, vi, afterEach } from 'vitest'
 import { render, screen, cleanup } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
-import { LineSheet } from './LineSheet'
 import type { LineDetail } from '../lib/lineDetail'
+import { CLUB_LINE_SENTENCE, LineSheet } from './LineSheet'
 
 // The sentences are lib/lineDetail.ts's and are tested there; this is about
 // the component's own two duties - render every line the detail carries, and
@@ -24,6 +24,7 @@ const FULL: LineDetail = {
   switchNote: null,
   trailMark: null,
   sharedLine: null,
+  isClubLine: false,
   paperMaps: [],
 }
 
@@ -44,6 +45,7 @@ const NEARBY: LineDetail = {
   switchNote: 'Not the trail you chose. Switching happens in the picker.',
   trailMark: null,
   sharedLine: null,
+  isClubLine: false,
   paperMaps: [],
 }
 
@@ -80,6 +82,7 @@ describe('the line-detail sheet', () => {
           switchNote: null,
           trailMark: null,
           sharedLine: null,
+          isClubLine: false,
           paperMaps: [],
         }}
         onClose={vi.fn()}
@@ -144,6 +147,50 @@ describe('the line-detail sheet', () => {
   })
 })
 
+// A hazard area's advisory on a tapped stretch, and the maintainer's frame A
+// (2026-10-10): an area whose own notice may no longer apply greys its
+// advisory, which then carries the area card's line. Both areas invented.
+describe('a stretch’s hazard advisories', () => {
+  const HUNTING = {
+    id: 'fixture_hunting:1',
+    heading: 'Hunting allowed',
+    body: 'This stretch crosses land where hunting is allowed. Wear blaze orange in season. The trail stays open.',
+  }
+
+  it('prints a current area’s advisory as it always did', () => {
+    render(
+      <LineSheet
+        detail={NEARBY}
+        advisories={[{ ...HUNTING, notCurrent: null }]}
+        onClose={vi.fn()}
+      />,
+    )
+    const advisory = screen.getByText(/This stretch crosses land where hunting/)
+    expect(advisory.closest('.notice--not-current')).toBeNull()
+    expect(screen.queryByText(/may no longer apply/)).toBeNull()
+  })
+
+  it('greys an advisory whose area may no longer apply, and prints its line under it', () => {
+    render(
+      <LineSheet
+        detail={NEARBY}
+        advisories={[
+          {
+            ...HUNTING,
+            notCurrent: 'Its source gives no date. It may no longer apply.',
+          },
+        ]}
+        onClose={vi.fn()}
+      />,
+    )
+    const advisory = screen.getByText(/This stretch crosses land where hunting/)
+    expect(advisory.closest('.notice--not-current')).not.toBeNull()
+    expect(
+      screen.getByText('Its source gives no date. It may no longer apply.').className,
+    ).toBe('notice__not-current')
+  })
+})
+
 describe('adding a point to a day hike (#979)', () => {
   it('offers nothing when the shell did not pass a handler', () => {
     // This sheet's own rule, and the one five other modules cite by name: a
@@ -151,6 +198,24 @@ describe('adding a point to a day hike (#979)', () => {
     // use the tap; the sheet does not guess.
     render(<LineSheet detail={FULL} onClose={vi.fn()} />)
 
+    expect(screen.queryByRole('button', { name: /day hike/i })).not.toBeInTheDocument()
+  })
+
+  it('says a club line is drawn and not routed, and offers no point on it', () => {
+    // The day-hike builder routes on the junction graph, which no club line
+    // is in, so a button here would promise a walk the builder then refuses.
+    const club: LineDetail = {
+      ...NEARBY,
+      heading: 'Blaze not recorded · trail',
+      name: 'Laurel Ridge Trail',
+      isClubLine: true,
+    }
+    render(<LineSheet detail={club} onClose={vi.fn()} onAddToDayHike={vi.fn()} />)
+
+    expect(screen.getByRole('note')).toHaveTextContent(`Club line ${CLUB_LINE_SENTENCE}`)
+    expect(CLUB_LINE_SENTENCE).toBe(
+      'Shown, but not yet used for routes or distances: it may repeat a trail already on the map.',
+    )
     expect(screen.queryByRole('button', { name: /day hike/i })).not.toBeInTheDocument()
   })
 

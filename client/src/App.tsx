@@ -52,7 +52,7 @@ import { PodcastCard } from './chrome/PodcastCard'
 import { TabBar } from './chrome/TabBar'
 import { ErrorBoundary, ScreenFailed } from './chrome/ErrorBoundary'
 import { useNavigator, topOf } from './lib/navigator'
-import type { TabId } from './chrome/tabs'
+import { TABS, type TabId } from './chrome/tabs'
 import { BailSheet } from './chrome/BailSheet'
 import { formatBytes } from './lib/formatBytes'
 import { nightsBehind } from './lib/nightsBehind'
@@ -72,6 +72,11 @@ import type { MorePage, StuckReport } from './screens/More'
 // frame is up - whichever comes first - and never in front of Today.
 import {
   AppFailureReport,
+  ChallengeBrowse,
+  ChallengeCampCard,
+  PlanChallenges,
+  ChallengeDetail,
+  Challenges,
   ClosureForm,
   Downloads,
   DownloadsDialog,
@@ -174,6 +179,18 @@ import type { TrailInView } from './map/trailsInView'
 import { useAvailableBytes } from './lib/useAvailableBytes'
 import { usePublishedSizes } from './lib/usePublishedSizes'
 import { useSuggestedHikes } from './lib/useSuggestedHikes'
+import { useChallenges } from './lib/useChallenges'
+import { useChallengePanel } from './chrome/challengePanel'
+import {
+  campCardShows,
+  dayHasEnded,
+  matchDay,
+  planDayRanges,
+  planRows,
+  profileMaxFt,
+  suggestion as challengeSuggestion,
+} from './lib/challengeProgress'
+import { projectFor } from './lib/volunteerHours'
 import { usePodcastEpisodes } from './lib/usePodcastEpisodes'
 import {
   NO_PODCAST_EPISODES,
@@ -295,6 +312,7 @@ import { formatDistance, formatElevation, type UnitSystem } from './lib/units'
 import { useRouteBuilderPanel, type ViaStopLike } from './chrome/routeBuilderPanel'
 import {
   currentDayIndex,
+  planDayViews,
   insertZeroAfter,
   removeDay,
   togglePinned,
@@ -405,6 +423,7 @@ import { useTrailGraph } from './lib/useTrailGraph'
 import { orgLabelFrom, orgProviderFrom, trailSourceTableFrom } from './lib/stewards'
 import {
   EMPTY_DAY_HIKES,
+  anyHikePlanned,
   loadDayHikes,
   logWalk,
   saveDayHikeOpenId,
@@ -492,7 +511,13 @@ import type { FieldNoteContext, ReportAnchor } from './chrome/FieldNoteSection'
 import { PressPlate } from './chrome/PressPlate'
 import { closureBanner, closureLanes, type RankedClosure } from './lib/closureBanner'
 import { projectClosures } from './lib/closureProjection'
-import { atcUpdateBanner, atcUpdateLanes, type RankedAtcUpdate } from './lib/atcUpdates'
+import {
+  atcBandId,
+  atcUpdateBanner,
+  atcUpdateLanes,
+  type RankedAtcUpdate,
+} from './lib/atcUpdates'
+import { isCurrentOn } from './lib/noticeCurrency'
 import { ATC_SOURCE_KEY } from './lib/notices'
 import { useNoticesPanel } from './chrome/noticesPanel'
 import { useAlertSheets } from './chrome/alertSheetsPanel'
@@ -500,7 +525,7 @@ import {
   useWaypointFiltersPanel,
   type UpdatePreferences,
 } from './chrome/waypointFiltersPanel'
-import { LOCATE_MIN_ZOOM, POI_PIN_MIN_ZOOM } from './map/poiLayers'
+import { LOCATE_MIN_ZOOM, POI_PIN_MIN_ZOOM } from './map/poiIds'
 import { useTappedLinePanel } from './chrome/tappedLinePanel'
 import {
   paceEstimate,
@@ -526,7 +551,7 @@ import {
   type PlannedHike,
 } from './lib/plannedHike'
 import { closureBands } from './map/closureLayers'
-import { corridorWithHighlights, EMPTY_CORRIDOR } from './map/corridorLayers'
+import { corridorWithHighlights, EMPTY_CORRIDOR } from './map/corridorFeatures'
 import {
   isSeriousWarning,
   placeAll,
@@ -805,6 +830,10 @@ const NO_NEARBY_PLACES: NearbyPlace[] = []
 /** One hour, for the roll-up clock above `noteRollups` - the coarsest
  *  tick the pins' staleness rings can ever move on. */
 const HOUR_MS = 60 * 60 * 1000
+
+/** One empty identity for "no walk today", so the challenge memos below do
+ *  not re-run on a fresh `[]` every render. */
+const NO_CHALLENGE_RANGES: readonly MileRange[] = []
 
 function App() {
   // THE ORGANIZATION CONSOLE (#1539-#1542), and the whole of its footprint in
@@ -1498,6 +1527,15 @@ function App() {
   // What the trail is like right now - closures, reports, the ATC's own
   // notices - and when something last reached the server. See
   // lib/useConditions.ts for the two tiers behind the first two.
+  /**
+   * Whether the hiker has opened the legend's "Read all" door (the
+   * maintainer's poll of 2026-10-15): conditions/notices.json is then
+   * downloaded with no hike planned too, for the list behind it. Session-lived
+   * on purpose: a later launch asks again only if the hiker does.
+   */
+  const [allNoticesAsked, setAllNoticesAsked] = useState(false)
+  const askAllNotices = useCallback(() => setAllNoticesAsked(true), [])
+
   const {
     closures,
     reports,
@@ -1508,13 +1546,25 @@ function App() {
     atcUpdates,
     atcReviewedAt,
     orgNotices,
+    clubNotices,
+    clubNoticesGeneratedAt,
+    clubNoticesListed,
+    clubNoticesMissing,
+    hazardFile,
+    closureFile,
     drought,
     droughtWeek,
     workProjects,
     workProjectsGeneratedAt,
     lastSyncedAt,
     markSynced,
-  } = useConditions(online, afterFirstFrame)
+  } = useConditions(
+    online,
+    afterFirstFrame,
+    // conditions/notices.json only once a hike is planned, or once the hiker
+    // opens the legend's "Read all" door for it (`allNoticesAsked` below).
+    anyHikePlanned(tripStore.trips, dayHikeStore.hikes) || allNoticesAsked,
+  )
 
   /**
    * This phone's own just-written notes, echoed locally (FIELD_NOTES.md).
@@ -1961,9 +2011,15 @@ function App() {
   // Two facts, not one number. A report waiting for signal resolves itself;
   // a report the server refused never will, and showing them as one count is
   // what let a phone with a wrong clock say "waiting to send" forever (#243).
+  // When the queue was last read, for readers that must tell "not in the
+  // queue" from "not read since it was queued" - the challenge finish screen
+  // (openChallengeEntryState below) says "Sent" only on the first.
+  const [queueReadAt, setQueueReadAt] = useState(0)
   const refreshOutbox = useCallback(async () => {
+    const readAt = Date.now()
     const queue = await listQueued()
     setQueuedItems(queue)
+    setQueueReadAt(readAt)
   }, [])
 
   // Re-read after either thing that can add to the queue closes. `reporting`
@@ -3217,6 +3273,11 @@ function App() {
    *  change, same shape as `noticeOrg` above. */
   const trailSources = useMemo(() => trailSourceTableFrom(stewards), [stewards])
 
+  /** The phone's calendar day, which a notice's `current_until` is read
+   *  against (lib/noticeCurrency.ts): a string, so the banner memo below
+   *  runs again once a day for it, not on every tick of the clock. */
+  const noticeDay = localDay(now)
+
   const { closureAhead, advisoryAhead } = useMemo(() => {
     if (fixMile === null) return { closureAhead: null, advisoryAhead: null }
 
@@ -3262,12 +3323,21 @@ function App() {
         // short form - "ATC", "NYNJTC" - which is what a line read while
         // walking needs, and it is theirs rather than an abbreviation this app
         // invented.
+        // The header ends "may no longer apply" whenever the
+        // notice's row in conditions/notices.json has gone grey on this
+        // phone's day, so it never reads at full voice what the planned-hike
+        // list greys. Without that file (nothing planned) there
+        // is no verdict, and the line reads as before.
+        const row = clubNotices?.find(
+          (notice) => notice.notice_id === atcBandId(atc.update),
+        )
         return atcUpdateBanner(
           atc.update,
           fixMile,
           heading,
           noticeOrg(ATC_SOURCE_KEY),
           units,
+          row !== undefined && !isCurrentOn(row, noticeDay),
         )
       }
       return null
@@ -3287,7 +3357,16 @@ function App() {
     // walking, because `fixMile` and `heading` change with every fix; stuck
     // for a hiker standing still or without a fix, which is when somebody is
     // most likely to be reading it.
-  }, [noticeOrg, placedClosures, atcUpdates, fixMile, heading, units])
+  }, [
+    noticeOrg,
+    placedClosures,
+    atcUpdates,
+    fixMile,
+    heading,
+    units,
+    clubNotices,
+    noticeDay,
+  ])
 
   /**
    * Every published report placed on the mile axis.
@@ -3421,6 +3500,29 @@ function App() {
     trailIndex,
     bbox,
     now,
+    // The planned-hike panel and the hazard areas (#1805), from
+    // conditions/notices.json when it has reached this phone: the hikes it
+    // picks notices for, and the trails it checks an area against. The graph
+    // with its vertices where the builder has pulled them, else the topology
+    // alone, which routes nothing - the panel then says so.
+    clubNotices,
+    clubNoticesGeneratedAt,
+    clubNoticesListed,
+    // Option A of the maintainer's poll of 2026-10-09: a planned hike whose
+    // notices.json this phone does not hold says so on the legend row and
+    // at the top of the list.
+    clubNoticesMissing,
+    // The hazard areas from their own file, read whatever is
+    // planned, so a phone with no hike planned still draws them.
+    hazardFile,
+    // The closure-map standard (2026-10-11): every club closure, crossed out on
+    // the map from its own file, whatever is planned.
+    closureFile,
+    trips: tripStore.trips,
+    dayHikes: dayHikeStore.hikes,
+    graph: dayHikeIndex ?? graphIndex,
+    clubSections,
+    onAskAllNotices: askAllNotices,
   })
   /** The closure tape's and the warning pin's sheets (#1373, F12) - the two
    *  the map drew marks for and never opened. */
@@ -3666,6 +3768,9 @@ function App() {
   }, [])
 
   const line = useTappedLinePanel({
+    // The drawn hazard areas (#1805), whose advisory the card prints on
+    // the stretch inside one.
+    hazardAdvisoriesAt: atc.hazardAdvisoriesAt,
     spurs,
     pois,
     units,
@@ -6518,6 +6623,8 @@ function App() {
     selectedPoiId !== null ||
     line.mapScreen.lineSheet != null ||
     atc.mapScreen.atcUpdateSheet != null ||
+    atc.mapScreen.hazardAreaSheet != null ||
+    atc.mapScreen.clubClosureSheet != null ||
     atc.mapScreen.noticeList != null ||
     workday.mapScreen.workdaySheet != null ||
     alertSheets.sheetOpen
@@ -8687,6 +8794,278 @@ function App() {
     ].sort((a, b) => b.worked_on.localeCompare(a.worked_on) || a.id.localeCompare(b.id))
   }, [myHours, localHours])
 
+  // ---- Challenges (#1780, features/CHALLENGES.md) ----
+  //
+  // The published list, the hiker's record of it, and today's walk for the
+  // items that tag themselves. Today's walk is `passedToday` - the merged
+  // mile intervals the Volunteer tab already keeps - and never a track: the
+  // challenge record adds nothing finer about where somebody went.
+  const challengeToday = localDay(now)
+  const challengeHours = useMemo(
+    () =>
+      (hoursRecords ?? []).map((record) => {
+        const project = projectFor(record, workProjects)
+        return {
+          workedOn: record.worked_on,
+          mile: record.mile ?? project?.mile ?? null,
+          clubName: project?.club_name ?? null,
+          disputed: record.state === 'disputed',
+        }
+      }),
+    [hoursRecords, workProjects],
+  )
+  // Today's walk only if it IS today's: passedToday resets on the day's
+  // first fix, so on a zero day or in town it still holds yesterday's miles,
+  // and the camp card would ask about yesterday's places (review,
+  // 2026-09-30).
+  const challengeTodayRanges =
+    passedToday.day === challengeToday ? passedToday.ranges : NO_CHALLENGE_RANGES
+  // What the other doors do after queueing (handleLogHours's shape): read the
+  // queue now, flush, and read it again - so the finish screen's "waiting",
+  // "refused" and "sent" come from the outbox rather than from the moment
+  // Send was pressed.
+  const onChallengeQueued = useCallback(() => {
+    void refreshOutbox()
+    void syncOutbox()
+      .then((result) => {
+        if (result !== null) handleSynced(result)
+      })
+      .finally(() => void refreshOutbox())
+  }, [refreshOutbox, handleSynced])
+  const challenges = useChallenges(online, afterFirstFrame, onChallengeQueued, {
+    todayRanges: challengeTodayRanges,
+    trail: DEFAULT_TRAIL_ID,
+    today: challengeToday,
+    maxElevationFt: (ranges) => profileMaxFt(elevation, ranges),
+    hours: challengeHours,
+  })
+  const challengePlanDays = useMemo(
+    () => (plan === null ? [] : planDayRanges(planDayViews(plan))),
+    [plan],
+  )
+  const challengesOnOffer = useMemo(
+    () =>
+      challenges.all.filter(
+        (challenge) =>
+          !challenges.state.joined.some((entry) => entry.challengeId === challenge.id) &&
+          (chosenTrailId === null || challenge.trail === chosenTrailId),
+      ).length,
+    [challenges.all, challenges.state, chosenTrailId],
+  )
+  // Pushed rather than replaced, so Back returns to wherever it was opened
+  // from - Plan, a place card, Browse - and not always to the list.
+  const openChallenge = useCallback(
+    (challengeId: string) => {
+      pushScreen({ kind: 'more', page: 'challenge', challengeId })
+    },
+    [pushScreen],
+  )
+  const moreStack = nav.state.stacks.more
+  // The challenge the top of More shows, read off the screen itself.
+  const openChallengeId =
+    moreTop?.kind === 'more' && moreTop.page === 'challenge'
+      ? (moreTop.challengeId ?? null)
+      : null
+  const challengesUp = useMemo(() => {
+    const top = moreStack[moreStack.length - 1]
+    const below = moreStack[moreStack.length - 2]
+    const label =
+      top?.from !== undefined
+        ? (TABS.find((tab) => tab.id === top.from)?.label ?? 'Back')
+        : below?.kind === 'more' && below.page === 'challenge-browse'
+          ? 'Browse'
+          : below?.kind === 'more' && below.page === 'challenges'
+            ? 'Challenges'
+            : 'More'
+    return { label, onPress: goBack }
+  }, [moreStack, goBack])
+  const openChallengeRecord =
+    openChallengeId === null
+      ? null
+      : (challenges.all.find((entry) => entry.id === openChallengeId) ?? null)
+  // What became of the open challenge's entry, from the outbox itself rather
+  // than from the moment Send was pressed: still queued, refused with the
+  // server's sentence, or gone (sent). Until the queued id is known the
+  // entry is plainly still waiting.
+  const openChallengeEntryState = useMemo(() => {
+    if (openChallengeRecord === null) return undefined
+    const sent = challenges.state.sent.find(
+      (entry) => entry.challengeId === openChallengeRecord.id,
+    )
+    if (sent === undefined) return undefined
+    if (sent.outboxId === undefined) return { kind: 'waiting' as const }
+    const queued = queuedItems.find((item) => item.id === sent.outboxId)
+    // Absent from a queue read before it was queued says nothing yet.
+    if (queued === undefined)
+      return queueReadAt < Date.parse(sent.at) ? { kind: 'waiting' as const } : undefined
+    return queued.failure !== undefined
+      ? { kind: 'refused' as const, reason: queued.failure.reason }
+      : { kind: 'waiting' as const }
+  }, [openChallengeRecord, challenges.state.sent, queuedItems, queueReadAt])
+  // Joined, and no longer in the published list: the list says so rather
+  // than silently shrinking.
+  const missingChallenges = challenges.state.joined.filter(
+    (entry) => !challenges.all.some((challenge) => challenge.id === entry.challengeId),
+  ).length
+  const challengesScreenNode =
+    morePage === 'challenge' && openChallengeRecord !== null ? (
+      <ChallengeDetail
+        challenge={openChallengeRecord}
+        state={challenges.state}
+        today={challengeToday}
+        walked={walked}
+        signedIn={account !== null}
+        defaultName={preferences.trail_name ?? undefined}
+        onJoin={() => challenges.join(openChallengeRecord.id)}
+        onLeave={() => challenges.leave(openChallengeRecord.id)}
+        onTag={(item, poi) => challenges.tagItem(openChallengeRecord, item, 'hand', poi)}
+        onUntag={(item, poi) => challenges.untagItem(openChallengeRecord, item, poi)}
+        onRemoveTag={(item, poi) => challenges.removeTag(openChallengeRecord, item, poi)}
+        entryState={openChallengeEntryState}
+        onForgetEntry={() => challenges.forgetEntry(openChallengeRecord.id)}
+        onSetNote={(item, note) => challenges.setNote(openChallengeRecord, item, note)}
+        onSendEntry={challenges.sendEntry}
+        // An arrow, because openSignIn is declared further down the shell.
+        onSignIn={() => openSignIn()}
+        onOpenWorkdays={() => setMorePage('volunteer')}
+      />
+    ) : morePage === 'challenge-browse' ? (
+      <ChallengeBrowse
+        challenges={challenges.all}
+        state={challenges.state}
+        chosenTrail={chosenTrailId}
+        days={challengePlanDays}
+        planTrail={DEFAULT_TRAIL_ID}
+        planName={currentTrip?.name ?? null}
+        today={challengeToday}
+        units={units}
+        onOpen={openChallenge}
+        onJoin={challenges.join}
+      />
+    ) : (
+      <Challenges
+        joined={challenges.joined}
+        state={challenges.state}
+        today={challengeToday}
+        // Only once a list has been read: before the kept copy is read, every
+        // joined id would count as missing. Not `all.length > 0`, which hid
+        // the note for a release that publishes no challenges at all - the
+        // one case where every joined challenge really was withdrawn.
+        missing={challenges.loaded ? missingChallenges : 0}
+        onOffer={challengesOnOffer}
+        onOpen={openChallenge}
+        onBrowse={() => pushScreen({ kind: 'more', page: 'challenge-browse' })}
+      />
+    )
+  // The map layer (frame 1): its Legend row and pins, owned by
+  // chrome/challengePanel.ts and spread into <MapScreen> as one line.
+  const { setLayerShown: setChallengeLayerShown } = challenges
+  const challengeLayerShown = challenges.state.layerShown
+  const toggleChallengePlaces = useCallback(
+    () => setChallengeLayerShown(!challengeLayerShown),
+    [setChallengeLayerShown, challengeLayerShown],
+  )
+  const challengeLayer = useChallengePanel({
+    joined: challenges.joined,
+    state: challenges.state,
+    today: challengeToday,
+    chosenTrail: chosenTrailId,
+    onToggle: toggleChallengePlaces,
+  })
+  // Today's camp card (frame 3): asked once, after the day is over, and only
+  // about what the day's walked miles passed.
+  const challengeDayEnded = dayHasEnded({
+    now,
+    calledToday:
+      plan !== null &&
+      planDayViews(plan).some((day) => day.walked && day.date === challengeToday),
+    walkLoggedToday: dayHikeStore.hikes.some((hike) =>
+      walkedDates(hike).includes(challengeToday),
+    ),
+  })
+  const campCandidates = useMemo(
+    () =>
+      matchDay({
+        joined: challenges.joined,
+        state: challenges.state,
+        todayRanges: challengeTodayRanges,
+        trail: DEFAULT_TRAIL_ID,
+        pois,
+        today: challengeToday,
+      }),
+    [challenges.joined, challenges.state, challengeTodayRanges, pois, challengeToday],
+  )
+  const challengeCampNode = campCardShows({
+    dayEnded: challengeDayEnded,
+    answeredDay: challenges.state.answeredDay,
+    today: challengeToday,
+    candidates: campCandidates,
+  }) ? (
+    <ChallengeCampCard
+      candidates={campCandidates}
+      today={challengeToday}
+      onTagAll={() => challenges.tagAll(campCandidates, challengeToday)}
+      onNotTonight={() => challenges.notTonight(challengeToday)}
+    />
+  ) : null
+
+  // Plan's card (frames 6 and 6b): the joined challenges' places on this
+  // route by day, or - when none touches it - the one best suggestion. The
+  // hike key scopes "Hide" to this trip.
+  const challengeHikeKey = currentTrip?.id ?? 'plan'
+  const planChallengeRows = useMemo(
+    () =>
+      challenges.joined.flatMap((challenge) =>
+        planRows(challenge, challengePlanDays, challengeToday, DEFAULT_TRAIL_ID),
+      ),
+    [challenges.joined, challengePlanDays, challengeToday],
+  )
+  const planSuggestion = useMemo(
+    () =>
+      planChallengeRows.length > 0
+        ? null
+        : challengeSuggestion({
+            challenges: challenges.all,
+            state: challenges.state,
+            days: challengePlanDays,
+            hikeKey: challengeHikeKey,
+            today: challengeToday,
+            // A long hike's plan is on the A.T., the trail passedToday and
+            // every plan day measure.
+            planTrail: DEFAULT_TRAIL_ID,
+            // The handoff's tie-break is the org that maintains the most of
+            // the route; the phone holds no org-to-miles map for challenge
+            // publishers yet, so every tie falls through to the name. Said
+            // rather than faked.
+            maintainedMiles: () => 0,
+          }),
+    [
+      planChallengeRows,
+      challenges.all,
+      challenges.state,
+      challengePlanDays,
+      challengeHikeKey,
+      challengeToday,
+    ],
+  )
+  const planChallengeNode =
+    planChallengeRows.length > 0 || planSuggestion !== null ? (
+      <PlanChallenges
+        rows={planChallengeRows}
+        state={challenges.state}
+        suggestion={planSuggestion}
+        today={challengeToday}
+        onJoin={challenges.join}
+        onHide={(challengeId) => challenges.hideSuggestion(challengeHikeKey, challengeId)}
+        onOpen={openChallenge}
+      />
+    ) : null
+
+  const challengesSummary =
+    challenges.joined.length > 0
+      ? challenges.joined.map((entry) => entry.name).join(' · ')
+      : undefined
+
   /** Queue a day's hours - saved first, echoed at once, sign-in asked after
    *  (contributionFlow.ts's ordering, the same walk every write takes). */
   const handleLogHours = useCallback(
@@ -9968,6 +10347,7 @@ function App() {
   // copies, so the forty-odd props feeding it cannot drift between layouts.
   const todayScreen = (
     <Today
+      challengeCamp={challengeCampNode}
       account={account}
       onOpenAccount={openSignIn}
       now={now}
@@ -10437,6 +10817,9 @@ function App() {
                   yourWork={yourWorkNode}
                   onRetryReport={handleRetryReport}
                   onDiscardReport={handleDiscardReport}
+                  challengesScreen={challengesScreenNode}
+                  challengesUp={challengesUp}
+                  challengesSummary={challengesSummary}
                   volunteerScreen={
                     <Volunteer
                       contributeConditions={preferences.contribute_conditions}
@@ -10494,6 +10877,7 @@ function App() {
                 planStartNode
               ) : (
                 <PlanScreen
+                  challengeCard={planChallengeNode}
                   plan={plan}
                   elevation={elevation}
                   // The hike the app is on, and the way to a different one
@@ -11067,6 +11451,18 @@ function App() {
               {...line.mapScreen}
               onSelectLine={handleSelectLine}
               {...workday.mapScreen}
+              {...challengeLayer.mapScreen}
+              challengeCard={{
+                challenges: challenges.all,
+                state: challenges.state,
+                today: challengeToday,
+                onTag: (challenge, item, poi) =>
+                  challenges.tagItem(challenge, item, 'hand', poi),
+                onUntag: challenges.untagItem,
+                onJoin: challenges.join,
+                onOpen: openChallenge,
+                signedIn: account !== null,
+              }}
               // The route builder's three, from the same kind of hook (#991).
               {...routeBuilder.mapScreen}
               dayHikeDrawing={dayHikeDrawing ?? followDrawing}

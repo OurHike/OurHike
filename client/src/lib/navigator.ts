@@ -73,6 +73,11 @@ export type MorePageAway =
    *  phone has reported, and its own photos and notes. */
   | 'reports'
   | 'work'
+  /** Under their own row (#1780): the challenges joined, one challenge (its
+   *  id on the screen, `challengeId`), and Browse. */
+  | 'challenges'
+  | 'challenge'
+  | 'challenge-browse'
 
 /**
  * Every screen a stack can hold. Grows with the phases that add one (the
@@ -86,8 +91,16 @@ export type Screen =
     | { readonly kind: 'find'; readonly facets?: Partial<HikeFacets> }
     /** One published route's detail (#1290), from a card on Today or the finder. */
     | { readonly kind: 'hike'; readonly id: string }
-    /** One of More's pages (features/MORE_TAB.md). */
-    | { readonly kind: 'more'; readonly page: MorePageAway }
+    /** One of More's pages (features/MORE_TAB.md). `challengeId` is which
+     *  challenge a 'challenge' page shows - on the screen, like 'hike''s
+     *  `id`, so two stacked challenge pages are two challenges. Held beside
+     *  the stack by the shell, a second page made Back show the second
+     *  challenge again (second Challenges review, 2026-10-01). */
+    | {
+        readonly kind: 'more'
+        readonly page: MorePageAway
+        readonly challengeId?: string
+      }
     /** A step of the planning spine (#1373, F3-F5), under Plan. Not kept
      *  across a tab selection: leaving the spine by the tab bar IS the exit
      *  the guard asks about. */

@@ -456,6 +456,35 @@ def test_approving_an_invited_admins_seat_also_revokes_the_squatters(client, db_
     assert remaining.approved_at is not None
 
 
+def test_a_second_address_named_at_registration_does_not_outlive_the_honest_claim(client, db_session):
+    """The squatter's accomplice: a second address the registrant typed beside
+    the real employee's. Revoking only the founder's seat left that
+    invitation standing, so after the secretary's honest claim the
+    accomplice could accept it and sit as an admin of an org that has proved
+    ramapotrails.org - which is what a challenge's entries, names and home
+    addresses are given to (features/CHALLENGES.md, "On the server")."""
+    squatter = str(uuid.uuid4())
+    _register(
+        client,
+        squatter,
+        email="squatter@gmail.com",
+        admins=[{"email": "secretary@ramapotrails.org"}, {"email": "accomplice@gmail.com"}],
+    )
+    secretary = make_profile(db_session)
+    headers = auth_headers(secretary.id, email="secretary@ramapotrails.org")
+    client.get("/clubs/ramapo-trail-conference/access", headers=headers)
+    seat = db_session.query(OrgAdmin).filter(OrgAdmin.person_id == secretary.id).one()
+    assert client.post(f"/clubs/ramapo-trail-conference/admins/{seat.id}/approve", headers=headers).status_code == 200
+
+    accomplice = make_profile(db_session)
+    accomplice_headers = auth_headers(accomplice.id, email="accomplice@gmail.com")
+    client.get("/clubs/ramapo-trail-conference/access", headers=accomplice_headers)
+
+    db_session.expire_all()
+    assert db_session.query(OrgAdmin).filter(OrgAdmin.person_id == accomplice.id).one_or_none() is None
+    assert db_session.query(OrgAdmin).filter(OrgAdmin.person_id == secretary.id).one().approved_at is not None
+
+
 def test_a_registrant_who_really_does_hold_the_domain_keeps_their_own_seat(client, db_session):
     """The guard that stops the fix from punishing the ordinary case: an org
     whose own founder signs up, invites a colleague, and later proves the
@@ -783,3 +812,13 @@ def test_the_export_does_not_carry_a_volunteers_own_hours(client, db_session):
 
     assert "hours" not in body
     assert "reports" not in body
+
+
+def test_a_challenge_publishers_org_id_is_not_a_slug_a_stranger_may_register(client, db_session):
+    """`atc` is the directory the ATC's reviewed list lives in; registering it
+    with another domain would hold the ATC's challenge ids
+    (app/core/trail_challenge.py's PUBLISHER_DOMAINS)."""
+    response = _register(client, str(uuid.uuid4()), email="maria@evil.example", slug="atc", domain="evil.example")
+
+    assert response.status_code == 409
+    assert db_session.query(Club).filter(Club.slug == "atc").one_or_none() is None

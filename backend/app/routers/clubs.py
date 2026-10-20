@@ -31,12 +31,14 @@ from app.core.auth import get_current_email, get_current_user
 from app.core.org_access import OrgAccess, club_by_slug, org_access, require_org_admin, resolve_access
 from app.core.orm import commit_and_refresh
 from app.core.time import utc_now
+from app.core.trail_challenge import PUBLISHER_DOMAINS
 from app.db.session import get_db
 from app.models.club import Club, OrgAdmin, OrgState, VerifiedBy
 from app.models.maintainer_assignment import MaintainerAssignment
 from app.models.org_registry import OrgPark, OrgSection, OrgTrail
 from app.models.org_role import RoleInvite
 from app.models.profile import Profile
+from app.models.trail_challenge import ChallengeEntry, ClubChallenge
 from app.models.volunteer_hours import HoursState, VolunteerHoursRecord
 from app.schemas.org import (
     OrgAdminInvite,
@@ -101,9 +103,26 @@ def _revoke_the_registrants_unverified_seat(db: Session, club: Club, *, verified
     """
     if club.created_by is None or club.created_by == verified_by:
         return
-    founder_seat = db.query(OrgAdmin).filter(OrgAdmin.club_id == club.id, OrgAdmin.person_id == club.created_by).one_or_none()
-    if founder_seat is not None:
-        db.delete(founder_seat)
+    # NOT ONLY THE FOUNDER'S OWN SEAT: everything that rested on the
+    # registration's authority goes with it. The form takes a second address
+    # beside the real employee's; that person's invitation outlived the
+    # founder's seat, and after the honest claim they could accept it and
+    # sit as an admin of an org that has proved the real domain - which is
+    # what a challenge's entries are given to (#1780 — Let a club publish a
+    # challenge — places on its own trails that hikers opt into and tag at
+    # camp — starting with the ATC's A.T. Summer Bucket List; its second
+    # security review, 2026-10-01). At the moment of the claim nobody but the
+    # person proving the domain has proved anything, so every other admin
+    # seat and every open admin invitation is revoked; the new admin invites
+    # whoever really works there.
+    for seat in db.query(OrgAdmin).filter(OrgAdmin.club_id == club.id, OrgAdmin.person_id != verified_by).all():
+        db.delete(seat)
+    for invite in db.query(RoleInvite).filter(
+        RoleInvite.club_id == club.id,
+        RoleInvite.grants_admin_seat.is_(True),
+        RoleInvite.claimed_by.is_distinct_from(verified_by),
+    ):
+        db.delete(invite)
 
 
 def _somebody_holds_the_domain(domain: str, addresses: list[str | None]) -> bool:
@@ -279,6 +298,16 @@ def register_org(
     OurHike cannot create a user (#1169's problem 3) - their seat appears the
     moment they first sign in.
     """
+    # A challenge publisher's org id is held for its own domain: `atc` is the
+    # directory the ATC's reviewed list lives in, and a stranger registering
+    # it would hold the ATC's challenge ids (app/core/trail_challenge.py's
+    # PUBLISHER_DOMAINS).
+    reserved_for = PUBLISHER_DOMAINS.get(payload.slug)
+    if reserved_for is not None and reserved_for != payload.domain.strip().lower():
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail=f"That address is kept for the organization at {reserved_for}. Pick another.",
+        )
     invited = [admin.email for admin in payload.admins]
     # TWO DIFFERENT QUESTIONS, and running them together was the hole.
     # The caller's address came from the provider, which verified it; every
@@ -643,6 +672,14 @@ def delete_org(
     a row that says it is gone.
     """
     access.club.state = OrgState.deleted
+    # **Except the challenge entries it collected**, which are the opposite
+    # case: a hiker's name and address, sent to THIS organization for its
+    # drawing, which nobody can download once it is gone and nobody should
+    # keep. They go with it, and its challenge ids are released so the
+    # names stop being held by an org that no longer exists. The hikers'
+    # own tags stay: those are theirs, like their hours.
+    db.query(ChallengeEntry).filter(ChallengeEntry.club_id == access.club.id).delete(synchronize_session=False)
+    db.query(ClubChallenge).filter(ClubChallenge.club_id == access.club.id).delete(synchronize_session=False)
     db.commit()
     response.status_code = status.HTTP_204_NO_CONTENT
     return response
@@ -688,6 +725,7 @@ def export_org(
     """
     from app.models.org_registry import OrgPark, OrgSection, OrgTrail
     from app.models.org_role import OrgRole
+    from app.models.trail_challenge import ClubChallenge
     from app.models.work_project import WorkProject
     from app.routers.org_roles import read_roster
 
@@ -715,6 +753,14 @@ def export_org(
         "workdays": [
             row(w, ("id", "title", "starts_on", "ends_on", "meet_point", "status", "cap", "source"))
             for w in db.query(WorkProject).filter(WorkProject.club_id == club.id).all()
+        ],
+        # The challenges it has saved (#1780) - its own definitions, which it
+        # wrote. Not the entries hikers sent it: those are people's names and
+        # addresses, already the club's to download as the finishers' CSV, and
+        # an export is not a second route to them.
+        "challenges": [
+            row(c, ("challenge_id", "definition", "window_closes", "takes_entries", "pr_url", "updated_at"))
+            for c in db.query(ClubChallenge).filter(ClubChallenge.club_id == club.id).order_by(ClubChallenge.challenge_id).all()
         ],
         "admins": [
             row(a, ("id", "person_id", "title", "is_codeowner", "approved_at", "declined_at"))

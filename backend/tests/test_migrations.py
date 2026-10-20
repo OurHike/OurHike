@@ -289,3 +289,83 @@ def test_the_slug_backfill_suffixes_two_names_that_share_one_slug(migration_engi
         "bbbbbbbb-2": "ramapo-trail-conf-bbbbbbbb",
         "cccccccc-3": "solo-club",
     }
+
+
+def test_the_challenge_entry_backfill_names_the_owner_and_freezes_the_tags(migration_engine):
+    """d922b35687d9 adds `club_id`, `hand_item_ids` and `untagged_item_ids` to
+    entries 8944239ee32a had already been taking on UA, and backfills them:
+    the club owning the id now, and the tags as the old live CSV would have
+    read them at this moment. An entry whose id no club owns keeps a NULL
+    club - downloadable by nobody, as before - and still gets its tag lists.
+
+    Staged as a deploy meets it: upgrade to the revision before, plant the
+    rows, upgrade the rest of the way. Then down again, because
+    test_migration_expand_contract.py pairs columns but not the foreign key
+    or the index.
+    """
+    config = _alembic_config()
+    command.upgrade(config, "8944239ee32a")
+    with migration_engine.begin() as connection:
+        connection.execute(
+            sqlalchemy.text(
+                "insert into profiles (id, role, created_at) values ('hiker', 'hiker', now()), ('other', 'hiker', now())"
+            )
+        )
+        connection.execute(sqlalchemy.text("insert into clubs (id, name, slug) values ('club-1', 'Club One', 'club-one')"))
+        connection.execute(
+            sqlalchemy.text(
+                "insert into club_challenges (challenge_id, club_id, definition, takes_entries, updated_at) "
+                "values ('club-one-list', 'club-1', '{}', true, now())"
+            )
+        )
+        connection.execute(
+            sqlalchemy.text(
+                "insert into challenge_tags (id, user_id, challenge_id, item_id, how, authored_at, received_at) values "
+                "('t1', 'hiker', 'club-one-list', 'walked', 'gps', now(), now()), "
+                "('t2', 'hiker', 'club-one-list', 'pressed', 'hand', now(), now()), "
+                "('t3', 'other', 'club-one-list', 'never', 'hand', now(), now())"
+            )
+        )
+        connection.execute(
+            sqlalchemy.text(
+                "insert into challenge_entries "
+                "(id, user_id, challenge_id, name, item_ids, finished_only, consented_at, sent_at) values "
+                "('owned', 'hiker', 'club-one-list', 'Jo', '[\"walked\", \"pressed\", \"never\"]', false, now(), now()), "
+                "('orphan', 'other', 'nobody-list', 'Al', '[\"x\"]', false, now(), now())"
+            )
+        )
+
+    command.upgrade(config, "d922b35687d9")
+
+    with migration_engine.connect() as connection:
+        rows = {
+            row.id: row
+            for row in connection.execute(
+                sqlalchemy.text("select id, club_id, hand_item_ids, untagged_item_ids from challenge_entries")
+            ).all()
+        }
+    assert rows["owned"].club_id == "club-1"
+    assert rows["owned"].hand_item_ids == ["pressed"]
+    # 'never' is another hiker's tag, so this hiker sent none for it.
+    assert rows["owned"].untagged_item_ids == ["never"]
+    assert rows["orphan"].club_id is None
+    assert rows["orphan"].untagged_item_ids == ["x"]
+
+    command.downgrade(config, "8944239ee32a")
+
+    with migration_engine.connect() as connection:
+        columns = {
+            name
+            for (name,) in connection.execute(
+                sqlalchemy.text("select column_name from information_schema.columns where table_name = 'challenge_entries'")
+            ).all()
+        }
+        foreign_keys = (
+            connection.execute(
+                sqlalchemy.text("select conname from pg_constraint where conname = 'fk_challenge_entries_club_id_clubs'")
+            )
+            .scalars()
+            .all()
+        )
+    assert {"club_id", "hand_item_ids", "untagged_item_ids"}.isdisjoint(columns)
+    assert foreign_keys == []

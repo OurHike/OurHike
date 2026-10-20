@@ -477,6 +477,41 @@ export const FLOW_COVERAGE: Readonly<Record<string, FlowSurface>> = {
     step: 'F12 the map',
     flow: { status: 'covered', spec: 'e2e/data/mapSheets.spec.ts' },
   },
+  // The planned-hike panel and the hazard area card (#1805). PLANNED, and
+  // the reason is the data rather than the drive: both render only when
+  // conditions/notices.json is on the phone, which only the dbt path
+  // publishes, so the release e2e/data/ reads has none until the cutover.
+  // Their spec is mapSheets.spec.ts's notices case with the file routed in,
+  // as preview-shots/planned-hike-notices.mjs routes it for the camera; the
+  // rule underneath is held by lib/plannedNotices.test.ts and
+  // lib/hazardAreas.test.ts in the meantime.
+  'chrome/PlannedNoticeList.tsx': {
+    step: 'F12 the map',
+    flow: { status: 'planned' },
+  },
+  'chrome/HazardAreaSheet.tsx': {
+    step: 'F12 the map',
+    flow: { status: 'planned' },
+  },
+  // A club closure's sheet (the maintainer's closure-map standard, 2026-10-11). PLANNED, for
+  // the two above's reason: it opens only from a mark drawn out of
+  // conditions/trail_closures.json, which only the dbt path publishes.
+  // preview-shots/club-closures-on-the-map.mjs routes the file in for the
+  // camera; noticesPanel.clubClosures.test.tsx and ClubClosureSheet.test.tsx
+  // hold the rule and the sheet in the meantime.
+  'chrome/ClubClosureSheet.tsx': {
+    step: 'F12 the map',
+    flow: { status: 'planned' },
+  },
+  // A CLUB LINE'S SHEET is a state of this module
+  // the flow suite does not reach yet: the data suite reads the release
+  // lib/dataRelease.ts pins, and no pinned release carries a `line_kind`
+  // 'club' line until one is published from the change that writes it.
+  // Until then LineSheet.test.tsx ('says a club line is drawn and not
+  // routed') and lineDetail.test.ts hold the tag, the sentence and the
+  // missing day-hike point; mapSheets.spec.ts is where a club-line tap
+  // belongs once the pin moves. preview-shots/club-line-sketch.mjs
+  // photographs the line drawn in the sketch, from a fixture, not the sheet.
   'chrome/LineSheet.tsx': {
     step: 'F12 the map',
     flow: { status: 'covered', spec: 'e2e/data/mapSheets.spec.ts' },
@@ -485,6 +520,12 @@ export const FLOW_COVERAGE: Readonly<Record<string, FlowSurface>> = {
     step: 'F12 the map',
     flow: { status: 'covered', spec: 'e2e/data/mapSheets.spec.ts' },
   },
+  // A PLUMBED TAP'S SEASON CAUTION is a state of
+  // this card the flow suite does not reach yet, for the club line's reason
+  // above: no pinned release carries `water_caution` until one is published
+  // from the change that writes it. PoiCard.test.tsx ('says on the peek that a plumbed tap may
+  // be shut off') and trailData.test.ts hold it, and
+  // preview-shots/seasonal-tap-card.mjs photographs it from a fixture.
   'chrome/PoiCard.tsx': {
     step: 'F12 the map',
     flow: { status: 'covered', spec: 'e2e/data/mapSheets.spec.ts' },
@@ -607,6 +648,32 @@ export const FLOW_COVERAGE: Readonly<Record<string, FlowSurface>> = {
     flow: { status: 'covered', spec: 'e2e/more.spec.ts' },
   },
   'screens/Registry.tsx': { step: 'F13 More', flow: { status: 'planned' } },
+  // Challenges (#1780): joined, one, Browse - and the pieces every challenge
+  // surface shares. e2e/challenges.spec.ts walks join, tag and the list.
+  'screens/Challenges.tsx': {
+    step: 'F13 More',
+    flow: { status: 'covered', spec: 'e2e/challenges.spec.ts' },
+  },
+  'screens/ChallengeDetail.tsx': {
+    step: 'F13 More',
+    flow: { status: 'covered', spec: 'e2e/challenges.spec.ts' },
+  },
+  'screens/ChallengeBrowse.tsx': {
+    step: 'F13 More',
+    flow: { status: 'covered', spec: 'e2e/challenges.spec.ts' },
+  },
+  'chrome/ChallengeParts.tsx': {
+    step: 'F13 More',
+    flow: { status: 'covered', spec: 'e2e/challenges.spec.ts' },
+  },
+  // The camp card is Today's (F2); the place-card section and Plan's card
+  // are driven by unit tests and recipes, not yet by a flow.
+  'chrome/ChallengeCampCard.tsx': {
+    step: 'F2 Today',
+    flow: { status: 'covered', spec: 'e2e/challenges.spec.ts' },
+  },
+  'chrome/PoiChallenges.tsx': { step: 'F12 the map', flow: { status: 'planned' } },
+  'chrome/PlanChallenges.tsx': { step: 'F8 Plan', flow: { status: 'planned' } },
   'screens/GpsTrace.tsx': {
     step: 'F13 More',
     flow: { status: 'covered', spec: 'e2e/more.spec.ts' },
@@ -871,6 +938,16 @@ export const FLOW_COVERAGE: Readonly<Record<string, FlowSurface>> = {
     flow: { status: 'covered', spec: 'e2e/orgConsole.spec.ts' },
   },
   'org/screens/Workdays.tsx': {
+    step: 'F14 org console',
+    flow: { status: 'covered', spec: 'e2e/orgConsole.spec.ts' },
+  },
+  // A club's challenges and who sent an entry (#1780); each address is in
+  // that spec's "every console address lands on its own screen" list.
+  'org/screens/Challenges.tsx': {
+    step: 'F14 org console',
+    flow: { status: 'covered', spec: 'e2e/orgConsole.spec.ts' },
+  },
+  'org/screens/ChallengeFinishers.tsx': {
     step: 'F14 org console',
     flow: { status: 'covered', spec: 'e2e/orgConsole.spec.ts' },
   },

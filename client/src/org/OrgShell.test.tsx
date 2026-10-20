@@ -59,6 +59,7 @@ const OUTSIDER = access({})
 function draw(
   seat: OrgAccess | null,
   route: ConsoleRoute = { kind: 'setup', slug: SLUG, page: 'home' },
+  onboarded = false,
 ) {
   render(
     <OrgShell
@@ -69,7 +70,7 @@ function draw(
       go={vi.fn()}
       onLeave={vi.fn()}
       email={null}
-      onboarded={false}
+      onboarded={onboarded}
     >
       <p>the screen</p>
     </OrgShell>,
@@ -171,7 +172,65 @@ describe('the rail offers each person what the server would let them do', () => 
   })
 })
 
+describe('the Challenges row (#1780)', () => {
+  // Frame #2a puts Challenges in Org home beside the registry, and the rail
+  // gates that whole group on `can_touch_registry` - a challenge is built
+  // from places on trails the org publishes, and publishing is an admin's act.
+  it('offers an admin the Challenges page', () => {
+    draw(ADMIN)
+
+    expect(railLabels()).toContain('Challenges')
+  })
+
+  it.each([
+    ['somebody with no seat here', OUTSIDER],
+    ['a supervisor', SUPERVISOR],
+    ['a maintainer', MAINTAINER],
+    ['nobody yet, while the server has not answered', null],
+  ])('does not offer it to %s', (_who, seat) => {
+    draw(seat)
+
+    expect(railLabels()).not.toContain('Challenges')
+  })
+
+  it('draws no count beside it, because a number of challenges awaits nothing', () => {
+    // The shell's own rule: a count only on something awaiting action. The
+    // frame draws a "3" here; OrgConsole.tsx says why it is left off.
+    draw(ADMIN)
+
+    const row = screen.getByRole('button', { name: 'Challenges' })
+    expect(row.querySelector('.org-nav__count')).toBeNull()
+  })
+
+  it("marks Challenges as where you are while one challenge's Finishers is open", () => {
+    // Finishers has no rail row of its own - it is a sub-page of one
+    // challenge - so without this the rail would mark nothing at all.
+    draw(ADMIN, { kind: 'setup', slug: SLUG, page: 'finishers', challenge: 'c1' })
+
+    expect(screen.getByRole('button', { name: 'Challenges' })).toHaveAttribute(
+      'aria-current',
+      'page',
+    )
+  })
+})
+
 describe('the crumbs say where you are', () => {
+  it('reads Org home › Challenges on the Challenges page', () => {
+    draw(ADMIN, { kind: 'setup', slug: SLUG, page: 'challenges' }, true)
+
+    const crumbs = document.querySelector('.org-crumbs')
+    expect(crumbs).toHaveTextContent('Ramapo Trail Conference›Org home›Challenges')
+    expect(document.querySelector('.org-crumbs__aside')).toHaveTextContent(
+      'places, dates, what counts',
+    )
+  })
+
+  it('names the Finishers sub-page in the crumb rather than repeating Challenges', () => {
+    draw(ADMIN, { kind: 'setup', slug: SLUG, page: 'finishers' }, true)
+
+    expect(document.querySelector('.org-crumbs__here')).toHaveTextContent('Finishers')
+  })
+
   it('names the volunteer screen a volunteer is on', () => {
     draw(MAINTAINER, { kind: 'tread', org: SLUG, page: 'handback' })
 

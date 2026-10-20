@@ -3,7 +3,7 @@
 # GitHub Pages is what makes this installable at all: a PWA needs HTTPS before
 # any browser will offer "Install app", and Pages provides it for free.
 #
-# Three things land, at the paths the site is written to expect:
+# Five things land, at the paths the site is written to expect:
 #
 #   /         site/dist/              - the site, built by Astro from
 #                                       site/src (#116; WEBSITE.md is the plan)
@@ -12,6 +12,23 @@
 #                                       visitor's browser (#467); passed
 #                                       through Astro's public/ untouched, so
 #                                       the substitution below still finds it
+#   /data/    pipeline/dbt/           - the data platform's dbt docs, built
+#                                       against an empty warehouse
+#                                       (.github/actions/dbt-docs-site;
+#                                       pipeline/ELT.md). Never
+#                                       under /app/, the app's PWA scope
+#   /data/quality/                    - the data-quality page, built by Astro
+#             site/src/pages/data/      from site/src like the rest of the
+#                                       site and pointed at the bucket below;
+#                                       the one path under
+#                                       /data/ that is the site's, not the docs'
+#
+# /data/ IS ON ITS WAY TO A HOST OF ITS OWN.
+# The same /data/ is uploaded to docs.ourhike.org by the docs-host job, and
+# once that host serves it, ourhike.org/data/ holds a page at each old address
+# sending a visitor to the same address there, and the site's data links
+# point there too. Until then ourhike.org keeps serving the docs itself.
+# .github/scripts/docs_host.py has the why and the when.
 #
 # Those are apex paths because `site/CNAME` moves this site onto `ourhike.org`
 # (#733). It used to be a project site under `/OurHike/`, and the prefix was
@@ -98,8 +115,68 @@ concurrency:
   group: pages-${{ inputs.draft_only && 'draft' || 'deploy' }}
   cancel-in-progress: true
 
+# The data docs' own host and the Cloudflare Pages project that serves it
+# (the maintainer, 2026-10-10), named
+# here once for every job below and for .github/scripts/docs_host.py, which
+# reads both from the environment. The maintainer creates the project and
+# attaches the domain in Cloudflare's dashboard (LAUNCH_CHECKLIST.md 3c).
+# .github/expected-origins.yml declares the same origin for the bucket's CORS
+# policy, and .github/tests/test_pages_publish.py holds the two together.
+env:
+  DOCS_PAGES_PROJECT: ourhike-docs
+  DOCS_ORIGIN: https://docs.ourhike.org
+
 jobs:
+  # The dbt docs page at /data/ (pipeline/ELT.md, "Docs and charts at
+  # https://ourhike.org/data/"), served from docs.ourhike.org once the
+  # docs-host job below has put it there; the action says why
+  # an empty warehouse, and it reads no secret. A job of its own, holding a
+  # token that can read and not push: it
+  # installs dbt, fetches dbt's packages by tag and may download a native
+  # driver, none of them hash-pinned, and a step's process can reach its
+  # job's token whether or not the checkout persisted it. The build job
+  # below, which pushes gh-pages, downloads the directory and runs nothing
+  # of dbt's.
+  #
+  # Built for every run, a refused dispatch included, so that the refusal
+  # still shows as the build job's red step rather than as a skipped job.
+  #
+  # The page changes only at a tag, so a monthly data refresh moves UA's
+  # data and not these docs (Reasoned, ELT.md). Republishing a tag commits
+  # about 1.2 MB to gh-pages: measured 2026-10-03 across two builds of one
+  # commit, the 315 assets were byte-identical; index.html (its
+  # `generated_at`) and 16 of the 38 Parquet files (1,154,363 bytes)
+  # differed.
+  docs:
+    name: Build the data docs
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+
+      - name: Build the data docs
+        id: docs
+        uses: ./.github/actions/dbt-docs-site
+
+      # The files as dbt wrote them: an artifact keeps each file's bytes and
+      # relative path, and drops hidden files (include-hidden-files defaults
+      # to false) and empty directories. The output holds neither, nor a
+      # symlink or an executable file (checked 2026-10-06 on a build of this
+      # commit: 355 files, every one mode 644).
+      - name: Hand the docs to the deploy
+        uses: actions/upload-artifact@v4
+        with:
+          name: data-docs
+          path: ${{ steps.docs.outputs.dir }}
+          retention-days: 1
+          if-no-files-found: error
+
   build:
+    needs: docs
     runs-on: ubuntu-latest
     # Room for a build plus a publish waiting its turn behind several previews,
     # without letting a wedged job bill all day.
@@ -108,6 +185,10 @@ jobs:
       # Resolved once here rather than re-derived per job. On a tag it is the
       # ref; on a draft_only dispatch there is no tag yet, so it is the input.
       version: ${{ steps.version.outputs.value }}
+      # docs.ourhike.org when it served the data docs before this job built
+      # the site, else empty: whether ourhike.org/data/ now sends visitors
+      # there, which the docs-host job says in its summary.
+      docs_origin: ${{ steps.docs_host.outputs.origin }}
     steps:
       # Production deploys from a tag, and both sanctioned dispatch uses -
       # republishing after a variable change, rolling back (RELEASING.md §11b)
@@ -160,7 +241,13 @@ jobs:
           echo "value=$value" >> "$GITHUB_OUTPUT"
           echo "Releasing: $value"
 
+      # No token left in .git/config. This job holds `contents: write` and
+      # runs two npm installs, and nothing here needs the persisted token: the
+      # publish step pushes from a fresh `git init` with the token it is
+      # handed (.github/actions/publish-to-pages).
       - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
 
       # Gate 12 (RELEASING.md §8): a tag with no notes committed beside it is a
       # release nobody wrote down, and the notes file is canonical rather than
@@ -229,8 +316,26 @@ jobs:
         working-directory: site
         run: npm ci
 
+      # The data docs move to docs.ourhike.org
+      # once that host serves them. Asked here, before the site is built,
+      # because one answer decides two things this job makes: the site's two
+      # data links (PUBLIC_DOCS_ORIGIN, which site/src/layouts/Base.astro
+      # reads) and what ourhike.org/data/ holds ("Assemble the site": the
+      # docs, or pages sending a visitor to them there). Both follow the same
+      # answer, so no link and no page sends a visitor to a host with nothing
+      # on it. It asks the host rather than this run's upload, because the
+      # upload is the docs-host job, which waits for this job's release gates;
+      # docs_host.py says what that costs, once. Never fails: a host that
+      # cannot be asked is a host not known to serve the docs, and the answer
+      # is then the layout this site had before.
+      - name: Ask whether docs.ourhike.org serves the data docs
+        id: docs_host
+        run: python3 .github/scripts/docs_host.py live "$DOCS_ORIGIN"
+
       - name: Build the site
         working-directory: site
+        env:
+          PUBLIC_DOCS_ORIGIN: ${{ steps.docs_host.outputs.origin }}
         run: npm run build
 
       # The data URL is not secret - Vite inlines it into a public JS bundle, so
@@ -341,11 +446,13 @@ jobs:
           fi
 
       # The pinned release must actually be there, checked against THIS
-      # build's own base (#1333). dataRelease.ts names one folder and nothing
-      # else selects a dataset, so a pin naming a folder the bucket does not
-      # have is a build that deploys and then 404s every artifact - no map,
-      # not a stale one, and the client has no fallback path for it
-      # (trailData.ts throws; App.tsx stops before the archive).
+      # build's own base (#1333). The pin is the compiled
+      # floor (lib/dataRelease.ts): what a phone reads when it has no
+      # verified channels.json entry and cannot read one on its first launch
+      # (offline, or the pointer missing or slow). A floor naming a folder
+      # the bucket lacks is such a first run 404ing every artifact - no map,
+      # not a stale one, and nothing behind it (trailData.ts throws; App.tsx
+      # stops before the archive).
       #
       # AGAINST THIS BUILD'S BASE is the load-bearing half, and it is the
       # reason one committed constant is safe across two data environments.
@@ -354,6 +461,13 @@ jobs:
       # 2026-09-09, production held 14 releases and UA 31, with 10 in common.
       # Each build checking its own base turns "the pin must exist in both"
       # from something a person has to remember into a red deploy.
+      #
+      # AND WHAT IT HOLDS MUST FIT A LAUNCH: check 22 on the manifest just
+      # fetched (.github/scripts/check_launch_budget.py). A release over the
+      # launch budget resolves and still fails a phone: it declines the file
+      # and draws without it, as every UA phone did with 2026-10-03-2's
+      # network sketch (review 5528343443 on PR #1805). The step below weighs
+      # the release the uploaded pointer names the same way.
       - name: Confirm the pinned data release exists
         working-directory: client
         env:
@@ -369,12 +483,68 @@ jobs:
             exit 1
           fi
           manifest="${DATA_URL%/}/releases/${release}/manifest.json"
-          if curl -fsS --retry 3 --max-time 30 -o /dev/null "$manifest"; then
+          pinned="${RUNNER_TEMP:-/tmp}/pinned-manifest.json"
+          if curl -fsS --retry 3 --max-time 30 -o "$pinned" "$manifest"; then
             echo "Pinned release ${release} resolves at ${DATA_URL%/}."
           else
             echo "::error::DATA_RELEASE is pinned to ${release}, but ${manifest} does not resolve. A build deployed against this base would 404 every artifact."
             exit 1
           fi
+          python3 ../.github/scripts/check_launch_budget.py "$pinned" --release "$release"
+
+      # THE POINTER, if one is uploaded at this build's base: the release a
+      # phone of this build takes on its first launch, when it can read it,
+      # and on every launch after (lib/dataRelease.ts, lib/dataChannel.ts).
+      # It must resolve here and fit a launch, as the floor must above. The
+      # bucket copy is the only copy (pipeline/channels.py moves it), so this
+      # reads it at the base, never a file in this commit. A 404 passes with
+      # a notice: phones then read the compiled DATA_RELEASE, checked above.
+      # The environment comes off the base as the client reads it:
+      # `.../environments/<name>`, else production.
+      - name: Confirm the uploaded pointer's release exists
+        working-directory: client
+        env:
+          DATA_URL: ${{ steps.data.outputs.url }}
+        run: |
+          if [ -z "$DATA_URL" ]; then
+            echo "No data source configured - skipping the check."
+            exit 0
+          fi
+          schema=$(sed -n "s/^export const DATA_SCHEMA_VERSION = '\\(.*\\)'$/\\1/p" src/lib/dataRelease.ts)
+          if [ -z "$schema" ]; then
+            echo "::error::Could not read DATA_SCHEMA_VERSION out of client/src/lib/dataRelease.ts. It has been restructured, and this guard must be updated rather than left checking nothing."
+            exit 1
+          fi
+          base="${DATA_URL%/}"
+          environment=production
+          case "$base" in */environments/*) environment="${base##*/environments/}" ;; esac
+          uploaded="${RUNNER_TEMP:-/tmp}/uploaded-channels.json"
+          code=$(curl -sS --retry 3 --max-time 30 -o "$uploaded" -w '%{http_code}' "${base}/channels.json") || code="no answer"
+          case "$code" in
+            200) ;;
+            404)
+              echo "::notice::No channels.json is uploaded at ${base}, so every phone of this build reads the compiled DATA_RELEASE, checked one step earlier, until ${environment}'s pointer is first moved (pipeline/channels.py)."
+              exit 0 ;;
+            *)
+              echo "::error::${base}/channels.json answered ${code}, so this deploy cannot tell which release phones follow."
+              exit 1 ;;
+          esac
+          # The entry is remote text, so it is printed only once it has a
+          # release id's shape: this line is a workflow command.
+          release=$(python3 -c 'import json, re, sys; entry = json.load(open(sys.argv[1]))[sys.argv[2]][sys.argv[3]]; assert re.fullmatch(r"\d{4}-\d{2}-\d{2}(-\d+)?", entry); print(entry)' "$uploaded" "$environment" "$schema" 2>/dev/null) || release=""
+          if [ -z "$release" ]; then
+            echo "::error::${base}/channels.json names no ${schema} release id for ${environment}, so phones of this build would ignore it. Move ${environment}'s pointer with pipeline/channels.py (RELEASING.md §10)."
+            exit 1
+          fi
+          manifest="${base}/releases/${release}/manifest.json"
+          pointed="${RUNNER_TEMP:-/tmp}/pointed-manifest.json"
+          if curl -fsS --retry 3 --max-time 30 -o "$pointed" "$manifest"; then
+            echo "The uploaded channels.json at ${base} points ${environment}'s ${schema} at ${release}, which resolves."
+          else
+            echo "::error::${base}/channels.json points ${environment}'s ${schema} at ${release}, but ${manifest} does not resolve. Phones would refuse it and stay on the release they hold."
+            exit 1
+          fi
+          python3 ../.github/scripts/check_launch_budget.py "$pointed" --release "$release"
 
       # Same proof for the same reason, one step later. Setting a variable and
       # having it reach the bundle are different claims, and the gap between
@@ -401,9 +571,39 @@ jobs:
             exit 1
           fi
 
+      # The dbt docs the docs job built. In this workflow, not one of its
+      # own, because the publish step below replaces the whole gh-pages
+      # branch with _site, so another workflow's /data/ would be deleted by
+      # the next deploy.
+      - name: Fetch the data docs
+        uses: actions/download-artifact@v8
+        with:
+          name: data-docs
+          path: ${{ runner.temp }}/data-docs
+
+      # check_docs_site.py, below, reads the docs' Parquet files with duckdb.
+      # The docs are built in their own read-only job,
+      # so nothing in this job installs dbt or duckdb any more: it needs
+      # duckdb alone, at the pipeline's own pin, on the Python the docs action
+      # builds with. Without it the check failed on its import (PR Preview run
+      # 37489695928, 2026-10-06: "No module named 'duckdb'").
+      - uses: actions/setup-python@v7
+        with:
+          python-version: "3.12"
+
+      - name: Install the docs check's duckdb
+        run: python -m pip install --quiet "$(grep -m1 '^duckdb==' pipeline/requirements.txt)"
+
       - name: Assemble the site
         env:
           DATA_URL: ${{ steps.data.outputs.url }}
+          # The commit /data/quality/'s link to pipeline/ELT.md names, so the
+          # link reaches the notes as this build had them
+          # (.github/scripts/configure_quality_page.py says why not main).
+          SOURCE_COMMIT: ${{ github.sha }}
+          DOCS_DIR: ${{ runner.temp }}/data-docs
+          DOCS_LIVE_ORIGIN: ${{ steps.docs_host.outputs.origin }}
+          DOCS_HOST_DIR: ${{ runner.temp }}/docs-host
         run: |
           mkdir -p _site/app
           # The BUILT site, not the source tree - site/src would be shipped
@@ -418,6 +618,41 @@ jobs:
           cp site/CNAME _site/CNAME
           cp -r client/dist/. _site/app/
           cp client/public/favicon.svg _site/favicon.svg
+          # The dbt docs at /data/, beside the app and never under it: /app/
+          # is the PWA's scope, and an installed app would claim the docs.
+          # TWO PATHS UNDER IT ARE THE SITE'S: data/quality/, the data-quality
+          # page, and data/how/, the plain "How
+          # the data is built" page in front of the docs, which
+          # site/dist brings. So the site may hold those and nothing else
+          # under data/, and the docs may not bring a quality/ or how/ of
+          # their own; either is refused, so the two can never be silently
+          # merged. Then checked as copied, because this
+          # copy is what ships: check_docs_site.py fails a missing index.html,
+          # assets/ or Parquet, a recorded --vars, and coordinate-shaped text
+          # (it says what it searches for, and the one place it allows it),
+          # and with --served a script, worker or WASM file from another
+          # origin (the page runs on the app's origin). It reads
+          # data/quality/ too, which holds none of those.
+          if [ -e _site/data ]; then
+            strays=$(find _site/data -mindepth 1 -maxdepth 1 ! -name quality ! -name how -printf '%f ')
+            if [ -n "$strays" ]; then
+              echo "::error::site/dist holds data/${strays% } beside data/quality/ and data/how/, and data/ is the dbt docs' path. Move one of them."
+              exit 1
+            fi
+          fi
+          mkdir -p _site/data
+          # Never empty: `cp -r "/." _site/data/` would copy the runner's root.
+          : "${DOCS_DIR:?the docs step named no directory}"
+          if [ -e "$DOCS_DIR/quality" ]; then
+            echo "::error::The dbt docs hold a quality/ of their own, which is the data-quality page's path. Move one of them."
+            exit 1
+          fi
+          if [ -e "$DOCS_DIR/how" ]; then
+            echo "::error::The dbt docs hold a how/ of their own, which is the How the data is built page's path. Move one of them."
+            exit 1
+          fi
+          cp -r "$DOCS_DIR"/. _site/data/
+          python pipeline/check_docs_site.py _site/data --served
           # Pages runs Jekyll by default, which skips files beginning with an
           # underscore - Vite does not emit any today, but a build tool changing
           # its naming should not silently break the deploy.
@@ -444,6 +679,48 @@ jobs:
           else
             echo "::warning::No DATA_BASE_URL, so /status/ will say it is unconfigured rather than checking anything."
           fi
+
+          # The data-quality page reads the same bucket from the visitor's
+          # browser, for the same reason, and the monthly file from the
+          # release this build's app pins: the script takes DATA_URL from the
+          # environment and DATA_RELEASE from client/src/lib/dataRelease.ts,
+          # and fails when the page no longer holds its placeholders.
+          python .github/scripts/configure_quality_page.py _site/data/quality/index.html
+
+          # THE DOCS HOST'S FILES: data/ exactly
+          # as assembled, configured and checked above, what its pages ask for
+          # beside it, and a front page naming this commit, for the docs-host
+          # job to upload to docs.ourhike.org. Then, only when that host
+          # already serves the docs ("Ask whether docs.ourhike.org serves the
+          # data docs"), ourhike.org/data/ becomes a page at each old HTML
+          # address that sends a visitor to the same address there, with a
+          # plain link for a browser running no script; the site was built to
+          # link there on the same answer. Assembling the docs host's files
+          # only copies them, and if even that fails, ourhike.org keeps the
+          # docs and the docs-host job goes red rather than this one.
+          if python3 .github/scripts/docs_host.py bundle _site "$DOCS_HOST_DIR" --build "$GITHUB_SHA"; then
+            if [ -n "$DOCS_LIVE_ORIGIN" ]; then
+              rm -rf _site/data
+              python3 .github/scripts/docs_host.py redirects "$DOCS_HOST_DIR/data" _site/data "$DOCS_LIVE_ORIGIN"
+            fi
+          else
+            echo "::warning::The docs host's files could not be assembled, so ourhike.org/data/ keeps serving the docs itself and the docs-host job has nothing to upload."
+          fi
+
+      # The files the docs-host job uploads, handed over rather than rebuilt
+      # there: that job holds the Cloudflare token, so it builds nothing.
+      # continue-on-error because the app is the deploy and this is not: a
+      # failure here leaves the docs-host job no files, and it goes red at
+      # its download, where the failure is the docs' and says so.
+      - name: Hand the docs host's files to their deploy
+        if: ${{ !inputs.draft_only }}
+        continue-on-error: true
+        uses: actions/upload-artifact@v4
+        with:
+          name: docs-host
+          path: ${{ runner.temp }}/docs-host
+          retention-days: 1
+          if-no-files-found: error
 
       # Through the local action rather than peaceiris/actions-gh-pages, which
       # pushes exactly once and fails the whole deploy on a rejected push. See
@@ -483,6 +760,87 @@ jobs:
           name: app-dist
           path: _site/app
           retention-days: 7
+
+  # The data docs on a
+  # host of their own, docs.ourhike.org, so that nothing on the app's origin
+  # runs dbt's page or DuckDB-WASM. The Cloudflare Pages project and its
+  # custom domain are the maintainer's to create (LAUNCH_CHECKLIST.md 3c), and
+  # until both exist this job fails saying which one is missing.
+  #
+  # RED WHEN IT FAILS, AND NOTHING WAITS FOR IT. It needs the build job, so a
+  # tag the release gates refuse uploads nothing here either; nothing needs
+  # it, so the app is on gh-pages before this starts and the release draft
+  # and the alert do not wait on it. A failure leaves ourhike.org as the build
+  # job published it, which sends no visitor here unless this host already
+  # served the docs, and it is a failed job rather than a skipped one, because
+  # a skip reads as green.
+  #
+  # THE CLOUDFLARE TOKEN'S JOB AND NOTHING ELSE'S. The token is the one
+  # pr-preview.yml and ua.yml use, "Cloudflare Pages: Edit" and nothing else,
+  # which Cloudflare grants account-wide (LAUNCH_CHECKLIST.md 3a), so it
+  # reaches this project too: Reasoned, and the first upload is what proves
+  # it. So this installs and builds nothing: it downloads what the build job
+  # assembled, runs one script of ours, and uploads through the SHA-pinned
+  # wrangler-action those two workflows use.
+  docs-host:
+    name: Deploy the data docs to docs.ourhike.org
+    needs: build
+    if: ${{ !inputs.draft_only }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+
+      - name: Fetch the docs host's files
+        uses: actions/download-artifact@v8
+        with:
+          name: docs-host
+          path: ${{ runner.temp }}/docs-host
+
+      # Before the token is in reach: every page and stylesheet finds what it
+      # asks for on this host. A site link left bare on a data page (Base.astro
+      # writes them as full ourhike.org addresses) or a file the bundle forgot
+      # fails here, not in a visitor's browser.
+      - name: Check every page finds what it asks for
+        run: python3 .github/scripts/docs_host.py check "$RUNNER_TEMP/docs-host"
+
+      # Fails, naming the dashboard step, when the token or the project is
+      # missing; reads the project's production branch for the upload below,
+      # and the custom domain's status for the step after it.
+      - name: Find the docs project and its domain
+        id: target
+        env:
+          API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+        run: python3 .github/scripts/docs_host.py target
+
+      - name: Upload the data docs
+        uses: cloudflare/wrangler-action@953926a2e2182532811c01a25e53647d93bf07c0 # v4.0.0 - SHA-pinned: this step holds the Cloudflare token (#660)
+        with:
+          apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          # The project's production branch, as Cloudflare named it to the
+          # step above, so this is the deployment the custom domain serves and
+          # not a preview beside it.
+          command: >-
+            pages deploy ${{ runner.temp }}/docs-host
+            --project-name=${{ env.DOCS_PAGES_PROJECT }}
+            --branch=${{ steps.target.outputs.branch }}
+            --commit-dirty=true
+
+      # Asks the address a visitor is sent to, not the upload's own: uploaded
+      # and served are different events (LAUNCH_CHECKLIST.md 3a, the 522s).
+      # Fails, naming the dashboard step, when the domain is not attached or
+      # not active, and says whether ourhike.org/data/ sends visitors here yet.
+      - name: Wait for docs.ourhike.org to serve this build
+        env:
+          DOMAIN: ${{ steps.target.outputs.domain }}
+          SITE_SENDS: ${{ needs.build.outputs.docs_origin }}
+        run: python3 .github/scripts/docs_host.py confirm "$DOCS_ORIGIN" --build "$GITHUB_SHA" --domain "$DOMAIN" --site-sends "$SITE_SENDS"
 
   # The record of the release, drafted and left for a human. RELEASING.md §12:
   # an agent - or a workflow, which is the same thing wearing a hat - may
@@ -698,6 +1056,7 @@ jobs:
               'The step log names the gate that refused it. The usual remedies, in RELEASING.md\'s terms:',
               '- **No release notes** → dispatch **Draft release notes** for this version (§7a), merge the notes, then re-dispatch **Deploy Pages** against the tag.',
               '- **Tag disagrees with `client/package.json`** → the version bump was never merged; see §4.',
+              '- **The uploaded `channels.json` names a release that does not resolve** → move production\'s pointer to one that does with **Promote a data release** (§10), then re-dispatch **Deploy Pages** against the tag.',
               '- Anything else → the run log, then RELEASING.md §11.',
               '',
               `Until a re-run succeeds, production is still the previous release - everything merged since is on UA and nowhere else. Close this issue when \`${version}\` actually ships (or the tag is abandoned).`,

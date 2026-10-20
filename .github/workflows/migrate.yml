@@ -51,8 +51,10 @@
 #
 # check_schema_drift.py --url-only runs before every upgrade and refuses the
 # two wrong ones by name, because both fail far from their cause: port 6543
-# fails intermittently once an endpoint is warm, and a URL without `+psycopg`
-# fails as an import error about a driver nobody chose.
+# fails intermittently once an endpoint is warm, and a URL naming a driver
+# other than psycopg (`+psycopg2`, say) fails as an import error about a
+# driver nobody chose. The dashboard's bare `postgresql://` is fine as given:
+# backend/requirements.in pins sqlalchemy>=2.1.4, which loads psycopg for it.
 #
 # REPOSITORY SECRETS, HELD BY A JOB IN A PROTECTED ENVIRONMENT - not
 # environment secrets. Environment protection rules gate the job either way,

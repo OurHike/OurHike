@@ -17,10 +17,10 @@ than in anybody's habits.
 
 import ast
 import sys
+import tomllib
 from pathlib import Path
 
 import pytest
-import tomllib
 
 BACKEND = Path(__file__).resolve().parent.parent
 APP = BACKEND / "app"

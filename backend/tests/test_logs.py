@@ -28,7 +28,19 @@ class _Collector(logging.Handler):
 
 
 @pytest.fixture()
-def lines():
+def lines(monkeypatch):
+    # tests/test_migrations.py runs Alembic in this process, and
+    # alembic/env.py's `fileConfig` sets `disabled` on every logger that
+    # exists by then and that alembic.ini does not name - `app` and its
+    # children included - so no record from them reaches any handler.
+    # Measured 2026-10-20: with test_migrations.py first in the same process,
+    # 4 of the 10 tests this file then held failed on an empty `lines`.
+    # tests/test_report_photos.py meets the same trap by replacing the
+    # logger's method, which would skip the JsonFormatter this file tests;
+    # here the flag is cleared instead, and monkeypatch restores it.
+    for name, existing in logging.root.manager.loggerDict.items():
+        if isinstance(existing, logging.Logger) and (name == "app" or name.startswith("app.")):
+            monkeypatch.setattr(existing, "disabled", False)
     collector = _Collector()
     logging.getLogger("app").addHandler(collector)
     yield collector.lines

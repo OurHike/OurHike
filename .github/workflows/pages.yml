@@ -168,7 +168,7 @@ jobs:
       # symlink or an executable file (checked 2026-10-06 on a build of this
       # commit: 355 files, every one mode 644).
       - name: Hand the docs to the deploy
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: data-docs
           path: ${{ steps.docs.outputs.dir }}
@@ -715,7 +715,7 @@ jobs:
       - name: Hand the docs host's files to their deploy
         if: ${{ !inputs.draft_only }}
         continue-on-error: true
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: docs-host
           path: ${{ runner.temp }}/docs-host
@@ -755,7 +755,7 @@ jobs:
       # until some day it does not.
       - name: Keep the built app for the release
         if: startsWith(github.ref, 'refs/tags/') || inputs.draft_only
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: app-dist
           path: _site/app

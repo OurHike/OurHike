@@ -845,7 +845,7 @@ jobs:
       # artifact at all.
       - name: Upload the reconciled ledger for review
         if: ${{ always() && inputs.regenerate_identity_ledger && steps.reconcile.outcome != 'skipped' }}
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: poi-identity-ledger
           path: |
@@ -1243,7 +1243,7 @@ jobs:
       # Kept short-lived: these are inspectable evidence for a dry run, not a
       # distribution channel. R2 is the distribution channel.
       - name: Upload built artifacts for inspection
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: vector-data
           path: |
@@ -1278,7 +1278,7 @@ jobs:
       # reconstructs - it is another `pipeline/data/raw/` entry, so the least
       # common ancestor stays `pipeline/data` (#1347).
       - name: Upload data for the publish job
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: vector-data-build-output
           path: |
@@ -1383,7 +1383,7 @@ jobs:
         run: pip install -r requirements.txt
 
       # `pipeline/data/`, NOT `pipeline/` - and the difference is the whole
-      # of #1347. upload-artifact@v4 roots the archive at the LEAST COMMON
+      # of #1347. upload-artifact (v4, and v7 alike) roots the archive at the LEAST COMMON
       # ANCESTOR of its search paths, and the upload above names both
       # `pipeline/data/processed/` and six `pipeline/data/raw/` entries, so
       # that ancestor is `pipeline/data`. The archive therefore contains

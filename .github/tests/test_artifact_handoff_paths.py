@@ -1,6 +1,6 @@
 """An artifact handed between jobs comes back where the next job looks for it.
 
-`actions/upload-artifact@v4` does not store the paths you give it. It roots
+`actions/upload-artifact` (v4, and v7 alike) does not store the paths you give it. It roots
 the archive at the LEAST COMMON ANCESTOR of its search paths and stores
 everything relative to that, so the archive's shape depends on the whole path
 list rather than on any one entry. The matching `download-artifact` must

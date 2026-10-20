@@ -1014,7 +1014,7 @@ jobs:
       # sent.
       - name: Upload the parity results
         if: always() && steps.scope.outputs.run == 'true'
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: parity-results
           path: pipeline/data/processed/parity/

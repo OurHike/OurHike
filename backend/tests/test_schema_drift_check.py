@@ -60,16 +60,18 @@ def migration_engine():
 # --- the connection string is one a migration can use ----------------------
 
 
-def test_a_dashboard_url_without_the_driver_is_refused():
-    """What you get by pasting Supabase's string unedited.
+def test_a_dashboard_url_without_the_driver_is_accepted_because_sqlalchemy_loads_psycopg():
+    """What you get by pasting Supabase's string unedited - refused until the
+    sqlalchemy>=2.1.4 floor in requirements.in.
 
-    SQLAlchemy resolves a bare `postgresql://` to psycopg2, which this backend
-    does not install, so without this the failure is an import error naming a
-    driver nobody chose.
+    SQLAlchemy 2.0 resolved a bare `postgresql://` to psycopg2, which this
+    backend does not install; 2.1 resolves it to psycopg. The first assertion
+    pins that, so an install that slips back below 2.1 fails here, naming the
+    driver, rather than at the first migration.
     """
-    reason = check_schema_drift.unsuitable_reason("postgresql://postgres:pw@db.abc.supabase.co:5432/postgres")
-    assert reason is not None
-    assert "postgresql+psycopg://" in reason
+    url = "postgresql://postgres:pw@db.abc.supabase.co:5432/postgres"
+    assert sqlalchemy.engine.make_url(url).get_driver_name() == "psycopg"
+    assert check_schema_drift.unsuitable_reason(url) is None
 
 
 def test_the_transaction_pooler_is_refused():
@@ -133,11 +135,11 @@ def test_an_unusable_url_stops_the_run_before_it_connects(monkeypatch, capsys):
     monkeypatch.setattr(
         check_schema_drift,
         "load_settings",
-        lambda: SimpleNamespace(database_url="postgresql://postgres:pw@localhost:5432/x"),
+        lambda: SimpleNamespace(database_url="postgresql+psycopg2://postgres:pw@localhost:5432/x"),
     )
 
     assert check_schema_drift.main(["--label", "test"]) == 2
-    assert "postgresql+psycopg://" in capsys.readouterr().out
+    assert "resolves to the 'psycopg2' driver" in capsys.readouterr().out
 
 
 # --- the environment a migration job actually has --------------------------

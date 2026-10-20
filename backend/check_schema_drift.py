@@ -138,12 +138,21 @@ def unsuitable_reason(url: str) -> str | None:
     Both failures below are quiet and arrive far from their cause, which is
     the only reason a string is inspected here rather than simply used.
 
-    **No `+psycopg`.** Supabase's dashboard hands out `postgresql://...`, and
-    `app/config.py` uses DATABASE_URL exactly as given - deliberately, since
-    silently rewriting a credential is worse than refusing one. SQLAlchemy
-    resolves a bare `postgresql://` to psycopg2, which this backend does not
-    install (requirements.in pins `psycopg[binary]`, v3), so the failure is an
-    import error about a driver nobody chose.
+    **A driver other than psycopg.** `app/config.py` uses DATABASE_URL exactly
+    as given - deliberately, since silently rewriting a credential is worse
+    than refusing one - and this backend installs psycopg v3 only
+    (requirements.in pins `psycopg[binary]`). A URL that names another driver,
+    `postgresql+psycopg2://` or `postgresql+asyncpg://`, fails as an import
+    error about a driver nobody chose.
+
+    Supabase's dashboard string, a bare `postgresql://...`, is NOT refused, and
+    used to be. requirements.in's floor is `sqlalchemy>=2.1.4`, and SQLAlchemy
+    2.1 resolves a bare `postgresql://` to psycopg, where 2.0 resolved it to
+    psycopg2. Measured 2026-10-20: `make_url("postgresql://x@h/d")
+    .get_driver_name()` is `psycopg2` on 2.0.52 and `psycopg` on 2.1.4. The
+    check asks SQLAlchemy which driver it will load rather than reading the
+    URL's text, so under an older SQLAlchemy the bare string is refused again,
+    and the message names the driver it would have loaded.
 
     **Port 6543.** Supavisor's transaction mode, and the pooled string
     `LAUNCH_CHECKLIST.md` 6.2 correctly tells you to give the running *app*.
@@ -160,11 +169,12 @@ def unsuitable_reason(url: str) -> str | None:
     times out from CI. A warning belongs there; a refusal does not.
     """
     parsed = make_url(url)
-    if parsed.get_driver_name() != "psycopg":
+    driver = parsed.get_driver_name()
+    if driver != "psycopg":
         return (
-            f"DATABASE_URL names the '{parsed.drivername}' driver. This backend installs psycopg v3 only, so the URL "
-            f"has to say so: postgresql+psycopg://... Supabase's dashboard gives you postgresql://..., and the "
-            f"'+psycopg' is the edit to make when you paste it."
+            f"DATABASE_URL resolves to the '{driver}' driver, and this backend installs psycopg v3 only. Use "
+            f"postgresql://... as Supabase's dashboard gives it (SQLAlchemy 2.1 and later load psycopg for it) or "
+            f"postgresql+psycopg://..."
         )
     if parsed.port == TRANSACTION_POOLER_PORT:
         return (

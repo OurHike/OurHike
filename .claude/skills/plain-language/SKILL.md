@@ -190,6 +190,19 @@ the sentence *contains*, not how it sounds.
   who has just arrived at an unfamiliar file. A comment longer than a dozen
   lines that never names a symbol from its own file is describing something the
   reader cannot locate.
+- **Shape of a long comment: fact, then graded evidence, then one line of
+  history.** Sentence one is the fact (what this is, returns, or the rule, with
+  the symbol named). Block two is the evidence, graded and never cut:
+  `measured <date>: N`, `reasoned from X`, or `@unvalidated` plus what would
+  settle it. History moves to the issue and leaves one line ("was X until #N —
+  title"). A comment that grows by appending a new paragraph beside the old one
+  is how `map/style.ts` came to say, 40 lines apart, that `liveTopo.test.ts`
+  both had and had not asserted the pins were the last symbol layers (#1751 —
+  The 49-line comment over buildPoiLabelLayer says the pins are and are not the
+  last symbol layers). When a rule changes, replace the paragraph.
+- **At most one ALL-CAPS heading per comment**, and when the word is on
+  GLOSSARY.md's list of words with several meanings (seam, bucket, camera,
+  anchor, cell), say which meaning.
 
 ### Test names
 

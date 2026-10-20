@@ -2704,17 +2704,16 @@ export function buildMapStyle({
       // zee the POI." So this whole block moved from the end of the style -
       // where it drew over everything - to here, ahead of every line layer.
       //
-      // WHAT MOVING IT DOES NOT COST, and this is the part worth checking
-      // before anyone moves it back: the pins are immune to draw-order
-      // effects on PLACEMENT, because poiLayers.ts sets both
-      // `icon-allow-overlap` and `icon-ignore-placement` to true. A symbol
-      // layer earlier in the style normally loses collisions to later ones;
-      // a layer that allows overlap and ignores placement takes no part in
-      // that contest at all. liveTopo.test.ts used to assert these were the
-      // LAST symbol layers "so they win collisions against our labels", and
-      // that reason retired with the collision pass itself.
+      // WHAT MOVING IT COST THE PINS: they are no longer the last symbol
+      // layers, so a trail label or badge placed above them claims its spot
+      // first and a pin it lands on falls back to its dot (#1676 put the
+      // collision engine back on the pins). The maintainer chose that over
+      // moving the pins back up (poll, 2026-09-26). liveTopo.test.ts's 'lets a
+      // pin lose its place only to the layers above it' lists every layer that
+      // can take a pin's place, and fails when a new one is added without
+      // somebody deciding it.
       //
-      // WHAT IT DOES COST: the waypoint NAMES move with their marks, so a
+      // WHAT IT COST THE NAMES: the waypoint NAMES move with their marks, so a
       // name now loses a collision to a trail label or a trail badge where
       // it used to win. They move together deliberately - a pin under the
       // line with its name over it is one place drawn in two planes - and
@@ -2737,13 +2736,13 @@ export function buildMapStyle({
       // undo that argument.
       // Waypoint NAMES and the walk's mile marks, BEFORE the pins (#1194).
       //
-      // BEFORE IS THE LOAD-BEARING WORD. MapLibre ranks symbol layers for
-      // placement by their order in the style, later winning, which is why
-      // liveTopo.test.ts asserts that our own pins are the LAST symbol layers
-      // of all: "so they win collisions against our labels". These two are
-      // labels. Putting them after the pins - which is where they first went
-      // - would have let a shelter's NAME suppress a shelter's PIN, the exact
-      // inversion that test exists to catch, and it caught it.
+      // BEFORE IS THE LOAD-BEARING WORD. MapLibre places symbols top-down, so
+      // a layer later in the style wins a collision. The names and mile marks
+      // are labels and go ahead of the pins, so a shelter's NAME can never
+      // suppress a shelter's PIN. liveTopo.test.ts pins the order
+      // (POI_LABEL_LAYER_ID, POI_DOT_LAYER_ID, POI_LAYER_ID) in its
+      // offline-style layer list. Putting the names after the pins, where
+      // they first went, was the inversion (#1194).
       //
       // Within the pair, the ticks come second and so outrank the names: on
       // the builder's screen the hiker's own route is tier 2 of

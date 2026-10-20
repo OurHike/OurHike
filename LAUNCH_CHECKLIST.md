@@ -26,15 +26,15 @@ This is ordered so that each step unblocks the next. Steps 1–3 get a working m
 
 Everything downstream needs this. Without it the app has no data to fetch.
 
-**1.1 Create the bucket.** ✅ **Done** — bucket `your-hike` created 2026-07-31. (Cloudflare dashboard → R2 → Create bucket, for reference.)
+**1.1 Create the bucket.** ✅ **Done** — bucket `our-hike` created 2026-10-02. It replaced `your-hike` (created 2026-07-31), whose contents were not copied: `our-hike` is filled by fresh publishes, and `your-hike` is deleted on 2026-10-05. (Cloudflare dashboard → R2 → Create bucket, for reference.)
 
-**1.2 Create an API token.** Still manual — dashboard-only, since minting credentials isn't something to automate. R2 → Manage API Tokens → Create → **Object Read & Write**, scoped to `your-hike`. You get an Access Key ID and a Secret Access Key. The secret is shown **once**.
+**1.2 Create an API token.** Still manual — dashboard-only, since minting credentials isn't something to automate. R2 → Manage API Tokens → Create → **Object Read & Write**, scoped to `our-hike`. You get an Access Key ID and a Secret Access Key. The secret is shown **once**.
 
 **1.3 Set four repository secrets in GitHub** (not just local env vars — publishing now runs in CI, see 1.6): Settings → Secrets and variables → Actions → **Secrets** tab → New repository secret, one each for:
 
 ```
 R2_ENDPOINT_URL=https://<accountid>.r2.cloudflarestorage.com
-R2_BUCKET=your-hike
+R2_BUCKET=our-hike
 R2_ACCESS_KEY_ID=<from 1.2>
 R2_SECRET_ACCESS_KEY=<from 1.2>
 ```
@@ -49,7 +49,7 @@ Whether they're still *there* is checked continuously after that: `.github/expec
 
 **1.4 Configure CORS — this one is easy to miss and fails confusingly.** The client reads PMTiles via HTTP **range requests**. Without CORS exposing the right headers, the map fails in a way that looks like a corrupt archive rather than a permissions problem.
 
-R2 → `your-hike` → Settings → CORS policy. The app is hosted on GitHub Pages (see step 3 — that's settled now, unlike when this list was first written), and its previews on Cloudflare Pages (3a), so there are **two** origins to allow plus local dev.
+R2 → `our-hike` → Settings → CORS policy. The app is hosted on GitHub Pages (see step 3 — that's settled now, unlike when this list was first written), and its previews on Cloudflare Pages (3a), so there are **two** origins to allow plus local dev.
 
 **Do not copy a policy out of this document.** The origins and the headers are declared once, in [`.github/expected-origins.yml`](.github/expected-origins.yml), and the policy to paste is generated from that declaration:
 
@@ -89,13 +89,13 @@ Roughly 1.6 GB on the first run (all three background tiers plus trails, POIs an
 
 Everything in 1.1–1.6 is *published* data, and 1.5 turns public read on for exactly that reason. A report photo is not published data. `bad_hikers` reports are routed `internal_only` because they concern a person, `thanks` is `club_only`, and every type is photographed at submit time — before a moderator has looked, which [#229](https://github.com/OurHike/OurHike/issues/229) established is not publicly visible. Putting those objects in a world-readable bucket publishes the image while the report it belongs to stays private.
 
-1. **Create the bucket.** R2 → Create bucket, e.g. `your-hike-photos`. **Leave public access off** — do not do 1.5 for this one. **No CORS entry either, and that is still true now that the moderation queue renders these photos** ([#385](https://github.com/OurHike/OurHike/issues/385)): what reaches the bucket is an `<img src>` holding a signed URL the backend authorised, and images are exempt from CORS. The alternative — a cross-origin `fetch` of the bytes — would have needed a policy here, which is why it is not what got built.
-2. **Create a second API token**, Object Read & Write, **scoped to this bucket alone.** Same reason 1.2's is scoped to `your-hike`: a token that can reach both buckets is one bug away from writing a photo of a person into the public one.
+1. **Create the bucket.** R2 → Create bucket, e.g. `our-hike-photos`. **Leave public access off** — do not do 1.5 for this one. **No CORS entry either, and that is still true now that the moderation queue renders these photos** ([#385](https://github.com/OurHike/OurHike/issues/385)): what reaches the bucket is an `<img src>` holding a signed URL the backend authorised, and images are exempt from CORS. The alternative — a cross-origin `fetch` of the bytes — would have needed a policy here, which is why it is not what got built.
+2. **Create a second API token**, Object Read & Write, **scoped to this bucket alone.** Same reason 1.2's is scoped to `our-hike`: a token that can reach both buckets is one bug away from writing a photo of a person into the public one.
 3. **Set five variables on the backend's host, not in GitHub Actions** (see `backend/README.md`'s Deployment section for which host, and 6 below):
 
 ```
 R2_PHOTO_ENDPOINT_URL=https://<accountid>.r2.cloudflarestorage.com
-R2_PHOTO_BUCKET=your-hike-photos
+R2_PHOTO_BUCKET=our-hike-photos
 R2_PHOTO_ACCESS_KEY_ID=<from 1.7.2>
 R2_PHOTO_SECRET_ACCESS_KEY=<from 1.7.2>
 R2_PHOTO_WRITE_ENABLED=true
@@ -211,6 +211,33 @@ Two things to check after that redeploy:
 - The download window actually fetches data instead of saying "data source not configured" (that message means `DATA_BASE_URL` didn't make it into the build). It opens from the "Choose what to download" link at the foot of the legend, or at the foot of Settings under the More tab.
 
 **After step 3 you have a working offline map.** Steps 4–6 are only needed for contributions — reporting, closures, accounts.
+
+### 3c. The data docs' own host: `docs.ourhike.org`
+
+**Why.** The dbt docs and the data-quality page were served at `ourhike.org/data/`, the same origin as the app at `/app/`, where a signed-in hiker's session lives in browser storage — so any script on `/data/` (dbt's own page, DuckDB-WASM) could read it. Those scripts are hash-pinned, and the maintainer's poll of 2026-10-10 moves them to **`docs.ourhike.org`**, served by a Cloudflare Pages project named **`ourhike-docs`**. `pages.yml` already deploys there on every tag, in its **Deploy the data docs to docs.ourhike.org** job; what no workflow can do is create the project or attach the domain.
+
+**Status, 2026-10-10: steps 1 and 2 are done.** The maintainer created `ourhike-docs`, deployed a one-file placeholder to it and attached `docs.ourhike.org`; at 21:07 UTC both `https://docs.ourhike.org/` and `https://ourhike-docs.pages.dev/` answered 200 with valid TLS, and at 21:15 UTC the deploy's own probe read the placeholder as not yet the docs, as it should. Steps 3 and 6 remain.
+
+**Until both exist, visitors find the docs where they always were.** That job fails, red, naming which of the two is missing; the app still deploys; and `ourhike.org/data/` keeps serving the docs itself. (The quality page's address line already reads `docs.ourhike.org/data/quality`, and its nav and footer name the site's pages in full; both lead to the same pages as before.)
+
+1. **Create the project.** Cloudflare dashboard → Workers & Pages → Create → Pages → **Upload assets** (Direct Upload, no Git connection). Name it exactly `ourhike-docs`: `pages.yml`'s `env:` holds that name, and the job looks the project up by it. If the dashboard will not create the project without files, upload any single file (an empty `index.html` will do); the first deploy replaces it. `@unvalidated`: whether the dashboard insists on an upload was not seen from here.
+2. **Attach the custom domain.** `ourhike-docs` → Custom domains → **Set up a custom domain** → `docs.ourhike.org`. The `ourhike.org` zone is on Cloudflare (3b), so Cloudflare should offer to add the DNS record itself; if it asks you to add it, the record is a `CNAME` from `docs` to `ourhike-docs.pages.dev`. Wait for the domain to read **Active**: until it does, the job fails saying so, with the status Cloudflare reports.
+3. **Re-paste the R2 CORS policy** (1.4). `python pipeline/check_deployment.py --print-cors-policy` now names `https://docs.ourhike.org`, because the quality page reads two `data_quality.json` files from the bucket in the visitor's browser. Until it is pasted, the daily **Check deployment** run reports that origin's three checks as failing, none of them blocking: nobody downloads a map from there.
+4. **Nothing in Supabase, on purpose.** `docs.ourhike.org` belongs on neither project's redirect list: the docs sign nobody in, and `pipeline/check_auth_redirects.py` asks both projects to refuse a sign-in redirect to it.
+5. **Nothing new in GitHub.** The job reads 3a's `CLOUDFLARE_API_TOKEN` and `CLOUDFLARE_ACCOUNT_ID`. "Cloudflare Pages: Edit" is granted for the whole account, so the token reaches the new project too. Reasoned, not yet proven: the first deploy proves it, and a refusal there prints Cloudflare's own message.
+6. **Then deploy, twice.** Only a tag that carries this change can do it, because a dispatch runs the tag's own `pages.yml`, and a tag from before this change has no docs job. The first such tag fills `docs.ourhike.org` when it deploys, if steps 1 and 2 are done by then. Once its **Deploy the data docs to docs.ourhike.org** job is green, dispatch **Deploy Pages** against the same tag (RELEASING.md §11b): that run's build job finds the docs there, so it turns `ourhike.org/data/` into pages that send a visitor on and points the site's two data links at the new host. If steps 1 and 2 came after that tag, dispatch it twice: once to fill the host, once to move. Why two runs: the build job publishes `ourhike.org` before the docs job uploads, so that a tag the release gates refuse deploys nothing anywhere; `.github/scripts/docs_host.py` has the reasoning in full.
+
+**What a visitor sees.** Until step 6's second run, `ourhike.org/data/` and `ourhike.org/data/quality/` serve the docs as they always have, and the footer's "How the data is built" and "Data quality" lead there. After it, each of those two addresses is a page that sends the browser on to the same address on `docs.ourhike.org`: at once with JavaScript, carrying a `#/…` deep link into the docs with it; by a refresh without JavaScript; and with a plain link for a browser that follows neither. The footer links point at `https://docs.ourhike.org/data/` and `https://docs.ourhike.org/data/quality/` directly, `docs.ourhike.org/` itself sends a visitor to `/data/`, and the quality page's own nav and footer lead back to `ourhike.org`.
+
+**Verify:**
+
+```
+curl -sS https://docs.ourhike.org/ | grep ourhike-docs-build         # the front page names the commit it was built from
+curl -sS https://ourhike.org/data/ | grep 'docs.ourhike.org/data/'    # after the second run: the old address sends visitors on
+python pipeline/check_deployment.py --base https://data.ourhike.org  # after step 3: the docs origin may read the bucket
+```
+
+To a non-browser agent such as `curl`, the custom domain can answer with a hidden `<a href="https://docs.ourhike.org/cdn-cgi/content?id=…">` added right after `<body>`: a bot setting on the zone (AI Labyrinth by its look), seen on the placeholder on 2026-10-10 and absent on `ourhike-docs.pages.dev`. It is Cloudflare's, not the bundle's, and the deploy's checks ignore it (`.github/scripts/docs_host.py`, `EDGE_PATHS`).
 
 ---
 
@@ -434,7 +461,7 @@ What is left is account work, in this order:
    curl -sS https://<service>/openapi.json    # the release gate reads this
    curl -sS https://<service>/closures        # [] - it can reach the database
    ```
-   `/health` answers without touching Postgres, so a healthy `/health` beside a 500 on `/closures` is precisely step 3 not having been run — the error reads `UndefinedTable: relation "closures" does not exist`. Allow the cold start on the first of these: 30-60 seconds, once.
+   `/health` answers without touching Postgres (and a database that cannot be reached at all now stops the container from starting, #1756, with `/ready` as the endpoint that pings it), so a healthy `/health` beside a 500 on `/closures` is precisely step 3 not having been run — the error reads `UndefinedTable: relation "closures" does not exist`. Allow the cold start on the first of these: 30-60 seconds, once.
 
    Setting `API_BASE_URL` also arms the daily check — `check-deployment.yml` asks `/health` on every run and reports it on **#738 — Deployed app reachability**, where it currently reads `skipped` because there is nothing to ask (#1359). That is the difference between finding out the free tier was withdrawn on the day it happens and finding out when somebody's report fails to send.
 

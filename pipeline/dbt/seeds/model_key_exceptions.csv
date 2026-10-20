@@ -1,0 +1,3 @@
+model,column_name,severity,reason,decided
+int_closures__area_trail_cuts,notice_id,warn,"Its tests warn because it builds in what step_closure_trail_lines' table unblocks, where a failure would stop every conditions file of the hour while an area it cannot cut is only left out (its YAML's description); the maintainer, in the keys poll of 2026-10-15: ""Keep warn, a recorded exception"".",2026-10-15
+int_closures__trail_closure_areas,notice_id,warn,"Its tests warn because it builds in stage A, where a failure would stop every conditions file of the hour, and the marts' own keys already hold each id to one row (its YAML's description); the maintainer, in the keys poll of 2026-10-15: ""Keep warn, a recorded exception"".",2026-10-15

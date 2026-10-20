@@ -24,6 +24,7 @@ const update = (overrides: Partial<AvailableRefresh> = {}): AvailableRefresh => 
   keys: ['poi_water.geojson'],
   severity: ROUTINE,
   described: true,
+  older: false,
   added: 0,
   removed: 0,
   moved: 0,
@@ -92,6 +93,24 @@ describe('what it says changed', () => {
 
   it('still says something true when every count is zero', () => {
     expect(describeChange(update())).toBe('Waypoints and trail lines updated.')
+  })
+})
+
+// lib/dataRefresh.ts sets `older` when the pointer moved back past the release
+// this phone holds. Offering that as "newer" would offer older water and
+// closures as the fresher answer.
+describe('what it calls the release on offer', () => {
+  it('calls a later release newer trail data', () => {
+    show({ older: false })
+    expect(screen.getByText('Newer trail data')).toBeInTheDocument()
+  })
+
+  it('calls a release minted before the one held changed trail data, never newer', () => {
+    show({ older: true, described: false, severity: CONSEQUENTIAL })
+    expect(screen.getByText('Changed trail data')).toBeInTheDocument()
+    expect(screen.queryByText(/Newer/)).not.toBeInTheDocument()
+    // Still an offer: the pointer is the reviewed answer to which release.
+    expect(screen.getByRole('button', { name: 'Update' })).toBeInTheDocument()
   })
 })
 

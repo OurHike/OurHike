@@ -166,6 +166,29 @@ The line worth holding: **UA is disposable and production is not.** Anything tha
 makes UA precious — real hiker accounts, data anyone would miss — has quietly turned
 it into a second production, and then there is no free place to break things.
 
+### 3e. The data docs' own host
+
+Production's data docs, the dbt docs and the data-quality page, are served from
+**`docs.ourhike.org`**, a Cloudflare Pages project named `ourhike-docs`, and not from
+the app's origin, where any script of theirs could read a signed-in hiker's session.
+The tag deploys them: `pages.yml`'s
+**Deploy the data docs to docs.ourhike.org** job runs after the build job has
+published `ourhike.org`, and uploads the same `/data/` that job assembled. For a
+release that means three things.
+
+- **Its failure does not fail the release.** It is a red job that nothing else waits
+  for: the app is already live, the draft release is unaffected, and `ourhike.org`
+  keeps sending visitors to whatever `docs.ourhike.org` last served. Re-dispatching
+  the tag (§11b) retries it.
+- **`ourhike.org/data/` follows the host, one deploy behind.** The build job asks
+  `docs.ourhike.org` before it builds the site. When the host already serves the docs,
+  `ourhike.org/data/` becomes pages that send a visitor there and the site's data links
+  point there; when it does not, `ourhike.org/data/` serves the docs itself, as it did
+  before. So the deploy that first fills the host still serves them in place, and the
+  next one moves them (LAUNCH_CHECKLIST.md 3c).
+- **UA and previews do not use it.** UA has no docs; a preview serves its own at
+  `/data/`, beside its app and on the same origin.
+
 ## 4. Versions
 
 `vMAJOR.MINOR.PATCH`, tagged, with the meanings chosen for what they cost a hiker
@@ -316,7 +339,9 @@ A generator walks `v(previous)..v(next)` and emits:
    No PR numbers in this half.
 2. **What changed in the repository** — every merged pull request, its issue, grouped
    by the `client` / `backend` / `pipeline` / `data` / `ops` / `docs` labels.
-3. **Which data release this build pins**, and whether that moved.
+3. **Which data release this build pins**, and whether that moved. Since §10's
+   amendments that is two answers: the release production's `channels.json` names
+   in the bucket, and the build's compiled floor, `DATA_RELEASE`.
 4. **What is knowingly not validated** — §8d. This section is never empty, and a
    release whose author believes it is has not looked.
 5. **Compatibility** — anything a hiker must do, or the sentence saying nothing.
@@ -582,6 +607,63 @@ The change is an improvement rather than a delay: it gives a data release the on
 thing its own verification battery cannot provide, which is a real client fetching it
 through a real browser before anyone depends on it.
 
+**Amended 2026-10-02** ([pipeline/ELT.md](pipeline/ELT.md), "Versions
+and channels"; built under **#1793 — Rebuild the data platform as dlt → dbt: seven
+contracted marts, a monthly refresh, published docs, and lighter phone downloads**).
+The constant above was built (#1333), and the trains now meet at a committed file
+instead: `channels.json`, at the repository root, names per data environment and
+schema version the release folder phones read. Promoting data is a reviewed commit to
+it plus a dispatch of `publish.py --channels`, which uploads it beside `latest.json`;
+no tag and no app release are needed, so a monthly refresh reaches installed phones.
+Rolling it back is reverting that commit and dispatching again. `DATA_RELEASE` stays,
+as the compiled fallback a first run reads before it has reached the pointer, and
+`pages.yml` and `ua.yml` assert that both resolve against their own base. A
+phone also goes back to it when
+the release it recorded answers 404 for its own manifest: the phone forgets that
+release, and its next launch reads `DATA_RELEASE` and then the pointer.
+[pipeline/DATA_RELEASES.md](pipeline/DATA_RELEASES.md) §4 has the rest.
+
+**Amended 2026-10-16** (the maintainer's decision: a code pin moves only when the
+data format does). The pointer left the repository. Each environment's
+`channels.json` lives only in the bucket, at that environment's root, and
+`pipeline/channels.py` is its only writer, appending every move to
+`channels_history.json` beside it:
+
+- **UA** moves itself: `build-reference.yml`'s last job, `pointer`, points UA at the
+  release the monthly build staged once every check in that run has passed.
+- **Production** moves by promotion: dispatch **Promote a data release**
+  (`promote-data.yml`) with `confirm: promote to production`, and approve it at the
+  `production` environment's gate (§12). It copies the release UA's pointer names
+  (or the `release` given) into production's tree, checks every object, and moves
+  production's pointer. No tag and no app release are involved.
+- **Rollback** is the same workflow with an older `release`; one production
+  already holds is checked rather than copied. `target: ua` rolls UA back.
+
+`DATA_RELEASE` is now the known-good floor: a first run reads the pointer before it
+renders and takes its release, and reads the floor only when it cannot (offline, or a
+pointer missing, malformed, slow or naming a release that does not resolve). So the
+constant moves with a new schema version, or when the folder it names stops being
+usable, and in no other commit. `pages.yml` and `ua.yml` check, against their own
+base, that the floor resolves and fits a launch, and the same of the release the
+uploaded pointer names where one is uploaded (the step "Confirm the uploaded
+pointer's release exists"). **When that step fails, move the pointer to a release
+that resolves there with Promote a data release, then redeploy.** The two are not
+compared: differing is the design. Pull request previews run neither pointer check.
+
+**Since 2026-10-15 a deploy also weighs the release it pins.** In the step "Confirm
+the pinned data release exists", `pages.yml` and `ua.yml` run
+`.github/scripts/check_launch_budget.py` on the manifest they fetched: check 22
+(`pipeline/lib/client_contract.py`), which fails a release listing a file a phone
+fetches whole over `client/src/lib/artifactBudget.ts`'s launch budget. UA's release
+2026-10-03-2 resolved, and still drew no network sketch on any UA phone: its
+41,216,145-byte `network_overview.geojson` was over the 33,554,432-byte budget, so
+each phone declined it (review 5528343443 on PR #1805). **When it fails on the
+floor, pin a release whose files fit; when it fails on the pointer's release, point
+at one that fits.** `publish.py`
+refuses to stage a release that does not fit, so only a folder staged before then
+can be one. A pull request preview runs the same weigh as a warning that leads its
+comment.
+
 ## 11. What never waits for a release
 
 **Closures, hazard warnings and condition reports are not in a release.** They live in
@@ -593,6 +675,19 @@ and it is worth stating plainly because the opposite assumption would justify
 weakening every rule above. **Urgent safety information was never on the release
 path.** What the gate delays is software, and software that is a week late is not the
 hazard that software that is wrong is.
+
+**Their offline copy is outside every release too, and only `main` writes production's.**
+`publish-conditions.yml` bakes `conditions/` hourly, straight to production's prefix, with
+no tag and no promotion (pipeline/DATA_RELEASES.md: "a closure that has reopened must stop
+being served, which an immutable folder cannot express"). So the code that bakes it reaches
+hikers when it merges, not when it is released, and the workflow runs its production leg
+only for a run from `refs/heads/main`: a dispatch from any other ref, or one from `main`
+asking for `data_environment: ua`, publishes UA alone
+(`.github/tests/test_conditions_production_leg_needs_main.py`). Which pipeline writes those
+files, today's bake or **#1793 — Rebuild the data platform as dlt → dbt: seven contracted
+marts, a monthly refresh, published docs, and lighter phone downloads**'s dbt lane, is the
+workflow's one `PHONE_FILES` line, and moving it on `main` is the maintainer's decision for
+the reason §12 gives (features/CONDITIONS_DELIVERY.md, "Two paths, one switch").
 
 ### 11a. Hotfixes
 
@@ -621,10 +716,20 @@ than a hope:
 - **The data release must be rollable too.** It is: folders under `releases/` are
   written once and never overwritten, and retention keeps a superseded release 90 days
   past being superseded with a floor of three (DATA_RELEASES.md, Retention). Rolling
-  back the tag rolls back the pinned constant with it.
+  back the tag rolls back the pinned constant with it. Since §10's
+  amendments the constant is only a first run's floor, and the data a phone reads
+  rolls back on its own: dispatch **Promote a data release** with the older
+  `release`, with no tag involved. A phone follows it from its next launch after
+  reading it, and a phone holding data is asked first.
 - **A migration must not have burned the bridge.** §8c's expand-and-contract rule is
   what keeps the previous release able to run against the current schema. It is a
   rollback rule as much as a compatibility one.
+
+Re-deploying a tag re-deploys its data docs to `docs.ourhike.org` too (§3e). A tag from
+before the docs moved host, one whose `pages.yml` has no docs-host job, serves the docs
+at `ourhike.org/data/` again and leaves `docs.ourhike.org` serving the newer ones until
+the next tag; nothing then links to a host with nothing on it, but dbt's page is back
+on the app's origin for as long as that tag is production.
 
 ## 12. Who may cut a release
 

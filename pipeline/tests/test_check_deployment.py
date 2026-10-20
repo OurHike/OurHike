@@ -146,6 +146,19 @@ def test_the_cors_policy_is_generated_from_the_declaration():
     assert policy["MaxAgeSeconds"] == 3600
 
 
+def test_the_real_policy_lets_the_data_docs_host_read_the_bucket_without_making_it_blocking():
+    """The data-quality page moved to docs.ourhike.org, and the page reads two
+    data_quality.json files from the bucket in the visitor's browser, so the pasted policy has to name that
+    origin. Its failing costs a visitor the page's figures and nobody their map, so it never makes the daily
+    check report a hiker who cannot download."""
+    manifest = load_manifest()
+    [policy] = cors_policy(manifest)
+
+    assert "https://docs.ourhike.org" in policy["AllowedOrigins"]
+    refused = {"check": "origin", "origin": "https://docs.ourhike.org", "state": FAILED, "detail": "refused"}
+    assert hiker_facing_failures([refused], manifest) == []
+
+
 # ------------------------------------------------------------ the origin check
 
 

@@ -727,19 +727,32 @@ the keys `client/src/lib/config.ts` declares plus every cell shard by its shape,
 whole files by name with the reason. The client half is `client/src/lib/useTrailGraph.ts`
 (`features/HIKE_PLANNING.md`, *The graph a phone keeps is the cells it planned in*).
 
-## The dbt transform layer (#100, Phase A)
+## The dbt transform layer
 
-[DBT.md](DBT.md) is the design; Phase A of it is built. After a fetch:
+[ELT.md](ELT.md) is the design: dlt reads every source into a private raw store, dbt 2.0.6
+builds eleven contracted marts, and `pub_` writer models write the phone files, built under
+**#1793 — Rebuild the data platform as dlt → dbt: seven contracted marts, a monthly refresh,
+published docs, and lighter phone downloads**. [DBT.md](DBT.md) is the history of the dbt
+layer's first phases. The skills `.claude/skills/dlt/SKILL.md` and
+`.claude/skills/dbt/SKILL.md` say how to work on each half. To build on fixtures, from
+`pipeline/`:
 
 ```
-python load_raw.py          # raw/*.geojson -> data/warehouse.duckdb's `raw` schema
-cd dbt
-dbt deps --profiles-dir .   # once, from the committed package pins
-dbt seed --profiles-dir .
-dbt build --profiles-dir .  # models + all tests; add --exclude package:dbt_project_evaluator to skip the convention lint
+python generate_dbt.py                                        # the generated staging and notice models
+python make_dbt_fixtures.py                                   # or real files under data/raw/
+python -m extract._fixtures --raw-dir data/raw --warehouse data/warehouse.duckdb   # the extract, in fixture mode
+(cd dbt && dbt deps --profiles-dir .)                         # once, from the committed package pins
+python build_marts.py --fixtures                              # seeds, the build in stages around the Python steps, the pub_ writers last
 ```
 
-What loads is decided by `sources.json`'s registry plus `load_raw.py`'s one hand entry (opentrail), never a glob; a registered-but-unfetched layer is reported and skipped. The first slice lands `dim_pois` in the `marts` schema - shelters + campsites + opentrail waypoints on one unified shape. The mart is warehouse-internal: `export_poi.py` still owns the published artifacts. CI runs the same sequence against synthetic fixtures (`make_dbt_fixtures.py`) in the `dbt` job of `pipeline-tests.yml`; lint with `OURHIKE_WAREHOUSE=data/warehouse.duckdb sqlfluff lint dbt/models dbt/tests` from `pipeline/`.
+`build_marts.py` owns the build order, because one `dbt build` cannot reach a model downstream
+of a Python step's `derived` table before the step has run. What loads is decided by
+`sources.json`'s registry, never a glob. The build lands the eleven marts in the `marts` schema
+and the writers' files under `data/processed/dbt/`. The release build
+(`publish-vector-data.yml`) still publishes the exporters' files. CI runs the same sequence in
+the `dbt` job of `pipeline-tests.yml`, and `scripts/test.sh` runs it locally; lint with
+`sqlfluff lint dbt/models dbt/tests` from `pipeline/`, which needs `dbt deps` to have run and no
+warehouse (`.sqlfluff`'s header).
 
 ## Next steps
 

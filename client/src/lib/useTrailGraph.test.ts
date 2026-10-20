@@ -21,10 +21,11 @@ vi.mock('./trailGraphData', async (importOriginal) => ({
 vi.mock('./trailGraphStore', async (importOriginal) => ({
   ...(await importOriginal<typeof import('./trailGraphStore')>()),
   forgetWholeGraph: vi.fn(async () => undefined),
+  releaseToBuildFromStore: vi.fn(async () => null),
 }))
 
 const { loadGraphShard } = await import('./trailGraphData')
-const { forgetWholeGraph } = await import('./trailGraphStore')
+const { forgetWholeGraph, releaseToBuildFromStore } = await import('./trailGraphStore')
 const { parseCellIndex } = await import('./coverageCells')
 const { useTrailGraph } = await import('./useTrailGraph')
 
@@ -95,12 +96,17 @@ const SHARDS: Record<string, Shard> = {
   },
 }
 
+/** The release every shard below is served from, unless a test says otherwise
+ *  (#1828: a session's graph takes cells from one release). */
+const RELEASE_9 = { version: 'release-9' }
+const RELEASE_10 = { version: 'release-10' }
+
 /** The bucket: every cell's shard, except those named absent. */
 function serving(absent: Record<string, Absence> = {}) {
   vi.mocked(loadGraphShard).mockImplementation(async (cell) => {
     const because = absent[cell.name]
     return because === undefined
-      ? { kind: 'shard', shard: SHARDS[cell.name] }
+      ? { kind: 'shard', shard: SHARDS[cell.name], release: RELEASE_9 }
       : { kind: 'absent', because }
   })
 }
@@ -135,6 +141,8 @@ const askedFor = () => vi.mocked(loadGraphShard).mock.calls.map(([cell]) => cell
 beforeEach(() => {
   vi.mocked(loadGraphShard).mockReset()
   vi.mocked(forgetWholeGraph).mockClear()
+  vi.mocked(releaseToBuildFromStore).mockReset()
+  vi.mocked(releaseToBuildFromStore).mockResolvedValue(null)
   serving()
 })
 
@@ -194,7 +202,7 @@ describe('loading the wanted cells', () => {
     // Nothing more is asked for while the first is still arriving.
     expect(askedFor()).toEqual(['n41w075'])
 
-    first.settle({ kind: 'shard', shard: SHARDS.n41w075 })
+    first.settle({ kind: 'shard', shard: SHARDS.n41w075, release: RELEASE_9 })
 
     await waitFor(() => expect(askedFor()).toEqual(['n41w075', 'n41w074']))
     await waitFor(() => expect(result.current.graphIndex?.graph.edges).toHaveLength(2))
@@ -269,6 +277,186 @@ describe('loading the wanted cells', () => {
   })
 })
 
+// #1828 - A phone merges trail-graph cells from two releases by node number,
+// and a new release renumbers them. lib/trailGraphData.test.ts shows what a
+// merge across releases builds; these pin how the hook keeps one release.
+describe('one release per session’s graph (#1828)', () => {
+  it('passes the first merged cell’s release to loadGraphShard for every later cell', async () => {
+    const { result } = mount({ wanted: [A, B] })
+    await waitFor(() => expect(result.current.graphIndex?.graph.edges).toHaveLength(2))
+
+    const releasesAskedFor = vi.mocked(loadGraphShard).mock.calls.map((call) => call[3])
+    expect(releasesAskedFor).toEqual([undefined, RELEASE_9])
+    expect(result.current.graphMerged?.release).toEqual(RELEASE_9)
+  })
+
+  it('asks the first cells for the release releaseToBuildFromStore answers for them, before anything has merged', async () => {
+    // The newest release this phone holds every one of the run's cells from
+    // (#1837), read across those cells and not the whole store -
+    // lib/trailGraphStore.ts's releaseToBuildFromStore says why.
+    vi.mocked(releaseToBuildFromStore).mockResolvedValue(RELEASE_10)
+    vi.mocked(loadGraphShard).mockImplementation(async (cell) => ({
+      kind: 'shard',
+      shard: SHARDS[cell.name],
+      release: RELEASE_10,
+    }))
+
+    mount({ wanted: [A, B], online: false })
+
+    await waitFor(() => expect(askedFor()).toEqual(['n41w075', 'n41w074']))
+    expect(releaseToBuildFromStore).toHaveBeenCalledWith(['n41w075', 'n41w074'])
+    expect(vi.mocked(loadGraphShard).mock.calls[0][3]).toEqual(RELEASE_10)
+  })
+
+  it('leaves a release-10 cell out of a release-9 graph and never re-asks it, retry included', async () => {
+    // Signal came back with a newer release than the graph this session
+    // built. Joining would put the new cell's trails on whatever junctions
+    // release 9 gave those numbers; rebuilding would move a live draft's
+    // taps. So it waits for the next launch, and the console says why.
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => undefined)
+    vi.mocked(loadGraphShard).mockImplementation(async (cell) => ({
+      kind: 'shard',
+      shard: SHARDS[cell.name],
+      release: cell.name === 'n41w074' ? RELEASE_10 : RELEASE_9,
+    }))
+
+    const { result, rerender } = mount({ wanted: [A, B] })
+    await waitFor(() => expect(warn).toHaveBeenCalledTimes(1))
+    expect(String(warn.mock.calls[0][0])).toContain('n41w074')
+    expect(String(warn.mock.calls[0][0])).toContain('release-10')
+    await waitFor(() =>
+      expect(result.current.graphMerged?.cells.map((cell) => cell.name)).toEqual([
+        'n41w075',
+      ]),
+    )
+    expect(result.current.graphMerged?.release).toEqual(RELEASE_9)
+
+    rerender({ ...DEFAULTS, wanted: [A, B, C], attempt: 1 })
+    await waitFor(() => expect(askedFor()).toEqual(['n41w075', 'n41w074', 'n42w075']))
+    await waitFor(() => expect(result.current.graphMerged?.cells).toHaveLength(2))
+    expect(askedFor().filter((name) => name === 'n41w074')).toHaveLength(1)
+  })
+
+  it('names a cell held only from another release in the console once, however often it is re-asked', async () => {
+    // No signal, and the copy on the phone is from another release than the
+    // graph: the loader answers `unreachable` - the absence a connection
+    // cures - so the cell is asked again on every run, and the console line
+    // must not repeat with it.
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => undefined)
+    vi.mocked(loadGraphShard).mockImplementation(async (cell) =>
+      cell.name === 'n41w074'
+        ? { kind: 'absent', because: 'unreachable', heldRelease: RELEASE_10 }
+        : { kind: 'shard', shard: SHARDS[cell.name], release: RELEASE_9 },
+    )
+
+    const { rerender } = mount({ wanted: [A, B], online: false })
+    await waitFor(() => expect(warn).toHaveBeenCalledTimes(1))
+    expect(String(warn.mock.calls[0][0])).toContain('n41w074')
+
+    rerender({ ...DEFAULTS, online: false, wanted: [A, B, C] })
+    await waitFor(() =>
+      expect(askedFor()).toEqual(['n41w075', 'n41w074', 'n41w074', 'n42w075']),
+    )
+    expect(warn).toHaveBeenCalledTimes(1)
+  })
+})
+
+// #1828 review - one bar of signal reads the manifest and fails the multi-MB
+// cells. lib/trailGraphData.ts leaves a stored copy it could not place to
+// the hook (`heldRelease`), and the hook asks the store for it again, as a
+// phone with no signal would, once the run knows its release.
+describe('one bar of signal (#1828 review)', () => {
+  type Load = Awaited<ReturnType<typeof loadGraphShard>>
+  const held = (release: { version: string }): Load => ({
+    kind: 'absent',
+    because: 'unreachable',
+    heldRelease: release,
+  })
+  const shard = (name: string, release: { version: string }): Load => ({
+    kind: 'shard',
+    shard: SHARDS[name],
+    release,
+  })
+  /** Each call as [cell, online, release asked for]. */
+  const calls = () =>
+    vi
+      .mocked(loadGraphShard)
+      .mock.calls.map(([cell, , online, release]) => [cell.name, online, release])
+
+  it('asks the store, with no signal and the release releaseToBuildFromStore answers, for every held cell once the run fetched none', async () => {
+    vi.mocked(releaseToBuildFromStore).mockResolvedValue(RELEASE_9)
+    vi.mocked(loadGraphShard).mockImplementation(async (cell, _signal, online) =>
+      online ? held(RELEASE_9) : shard(cell.name, RELEASE_9),
+    )
+
+    const { result } = mount({ wanted: [A, B] })
+
+    await waitFor(() => expect(result.current.graphMerged?.cells).toHaveLength(2))
+    expect(calls()).toEqual([
+      ['n41w075', true, RELEASE_9],
+      ['n41w074', true, RELEASE_9],
+      ['n41w075', false, RELEASE_9],
+      ['n41w074', false, RELEASE_9],
+    ])
+    expect(result.current.graphMerged?.release).toEqual(RELEASE_9)
+  })
+
+  it('asks the store for a held cell at once when the session’s graph already has a release', async () => {
+    vi.mocked(loadGraphShard).mockImplementation(async (cell, _signal, online) =>
+      cell.name === 'n41w074' && online ? held(RELEASE_9) : shard(cell.name, RELEASE_9),
+    )
+
+    const { result } = mount({ wanted: [A, B, C] })
+
+    await waitFor(() => expect(result.current.graphMerged?.cells).toHaveLength(3))
+    expect(calls()).toEqual([
+      ['n41w075', true, undefined],
+      ['n41w074', true, RELEASE_9],
+      ['n41w074', false, RELEASE_9],
+      ['n42w075', true, RELEASE_9],
+    ])
+  })
+
+  it('asks the store for a held cell for the release a later cell’s fetch settled, not the one releaseToBuildFromStore answers', async () => {
+    // A fetch got through, so this run's graph is the manifest's release; a
+    // stored copy joins it only as a copy of that release.
+    vi.mocked(releaseToBuildFromStore).mockResolvedValue(RELEASE_9)
+    vi.mocked(loadGraphShard).mockImplementation(
+      async (cell, _signal, online, release) => {
+        if (cell.name === 'n41w074') return shard(cell.name, RELEASE_10)
+        if (online) return held(RELEASE_9)
+        return release?.version === RELEASE_10.version
+          ? shard(cell.name, RELEASE_10)
+          : held(RELEASE_9)
+      },
+    )
+
+    const { result } = mount({ wanted: [A, B] })
+
+    await waitFor(() => expect(result.current.graphMerged?.cells).toHaveLength(2))
+    expect(calls().at(-1)).toEqual(['n41w075', false, RELEASE_10])
+    expect(result.current.graphMerged?.release).toEqual(RELEASE_10)
+  })
+
+  it('names a held cell in the console only when the store will not take it either', async () => {
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => undefined)
+    vi.mocked(releaseToBuildFromStore).mockResolvedValue(RELEASE_9)
+    vi.mocked(loadGraphShard).mockImplementation(async (cell, _signal, online) => {
+      if (cell.name === 'n41w074') return held(RELEASE_10)
+      return online ? held(RELEASE_9) : shard(cell.name, RELEASE_9)
+    })
+
+    const { result } = mount({ wanted: [A, B] })
+
+    await waitFor(() => expect(warn).toHaveBeenCalledTimes(1))
+    expect(String(warn.mock.calls[0][0])).toContain('n41w074')
+    expect(String(warn.mock.calls[0][0])).toContain('release-10')
+    expect(result.current.graphMerged?.cells.map((cell) => cell.name)).toEqual([
+      'n41w075',
+    ])
+  })
+})
+
 describe('the gate (#1117)', () => {
   it('waits for the trail line’s launch fetch with signal', async () => {
     const { rerender } = mount({ wanted: [A], gate: false })
@@ -278,7 +466,7 @@ describe('the gate (#1117)', () => {
 
     rerender({ ...DEFAULTS, wanted: [A], gate: true })
     await waitFor(() => expect(askedFor()).toEqual(['n41w075']))
-    expect(loadGraphShard).toHaveBeenCalledWith(A, expect.anything(), true)
+    expect(loadGraphShard).toHaveBeenCalledWith(A, expect.anything(), true, undefined)
   })
 
   it('reads the store without signal, gated on nothing', async () => {
@@ -286,7 +474,7 @@ describe('the gate (#1117)', () => {
     // waits is a refetch, never a store read.
     mount({ wanted: [A], gate: false, online: false })
     await waitFor(() =>
-      expect(loadGraphShard).toHaveBeenCalledWith(A, expect.anything(), false),
+      expect(loadGraphShard).toHaveBeenCalledWith(A, expect.anything(), false, undefined),
     )
   })
 })

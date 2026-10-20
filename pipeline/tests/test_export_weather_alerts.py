@@ -170,6 +170,16 @@ def test_an_answer_that_is_not_a_feature_collection_is_refused_rather_than_read_
         alerts_mod.bake(SQUARES, body, ASKED, BAKED)
 
 
+def test_a_first_page_of_several_is_refused_rather_than_read_as_every_alert():
+    # /alerts/active is one body today; a paged answer would leave page two's alerts out as though they had ended.
+    paged = {
+        **response(alert(1, "Wind Advisory", ["forecast/NHZ002"])),
+        "pagination": {"next": "https://api.weather.gov/alerts?cursor=x"},
+    }
+    with pytest.raises(RuntimeError, match="one page of several"):
+        alerts_mod.bake(SQUARES, paged, ASKED, BAKED)
+
+
 def test_a_failed_request_writes_nothing_so_the_last_good_copy_is_carried(tmp_path, monkeypatch):
     squares = tmp_path / "squares.json"
     squares.write_text(json.dumps(SQUARES))

@@ -52,6 +52,18 @@ import { listSentReports } from './sentReports'
 import { readLaunchMirror } from './launchMirror'
 import { readArchive, readComplete } from './archiveStore'
 import { CORRIDOR_ARCHIVE_KEY } from '../map/pmtilesSource'
+import { readChallengeState } from './challengeProgress'
+import { recallChannel } from './dataChannel'
+import { readMirror } from './dataRelease'
+import { SEEN_WATERMARK } from './noticeSelection'
+import { readPodcastApp } from './podcastApp'
+import {
+  completeSpotifyConnect,
+  isSpotifyConnected,
+  saveEpisodeToSpotify,
+  savedFromHere,
+} from './spotify'
+import { waterDistanceIsEstimate } from './waterProvenance'
 import {
   RELEASE_SHAPES,
   phoneOn,
@@ -114,6 +126,7 @@ describe('the release ledger itself', () => {
       'v1.3.2',
       'v1.3.3',
       'v1.3.4',
+      'v1.3.5',
     ])
     for (const release of RELEASE_SHAPES) {
       expect(release.commit).toMatch(/^[0-9a-f]{8}$/)
@@ -649,6 +662,141 @@ describe('a phone that stopped on v1.3.4', () => {
   })
 })
 
+describe('a phone that stopped on v1.3.5', () => {
+  beforeEach(() => installPhone('v1.3.5'))
+
+  it('still holds a challenge tag, its removal and an entry in the outbox, behind v1.3.2’s queue', async () => {
+    const queued = await listQueued()
+
+    expect(queued).toHaveLength(17)
+    expect(queued[14].challengeTag).toEqual({
+      challenge_id: 'atc-summer-bucket-list-2027',
+      item_id: 'shelter-logbook',
+      how: 'gps',
+    })
+    expect(queued[15].challengeUntag?.item_id).toBe('white-blaze-photo')
+    expect(queued[16].challengeEntry?.org_domain).toBe('appalachiantrail.org')
+    expect(queued[16].challengeEntry?.item_ids).toHaveLength(3)
+    expect(queued[16].challengeEntry?.consented).toBe(true)
+    // The signed report v1.3.2 queued is still in its place.
+    expect(queued[13].payload?.signed_name).toBe('Pat Example')
+  })
+
+  it('reads ourhike:challenge-state back through readChallengeState, every field kept', () => {
+    const state = readChallengeState()
+
+    expect(state.joined.map((entry) => entry.challengeId)).toEqual([
+      'atc-summer-bucket-list-2027',
+    ])
+    expect(state.tags).toHaveLength(2)
+    expect(state.tags[0].note).toBe('Signed it for the whole crew.')
+    expect(state.tags[0].poi).toBeUndefined()
+    expect(state.tags[1].how).toBe('hand')
+    expect(state.tags[1].poi).toBe('atc_viewpoints:95a18f95-b78f-43bb-843a-4b9b82fecb76')
+    expect(state.sectionWalked['atc-summer-bucket-list-2027/walk-harriman']).toEqual([
+      { startMile: 1385.2, endMile: 1391.7 },
+    ])
+    expect(state.hiddenSuggestions['trip-0001']).toEqual(['atc-summer-bucket-list-2027'])
+    expect(state.answeredDay).toBe('2026-10-18')
+    expect(state.layerShown).toBe(true)
+    expect(state.sent[0].outboxId).toBe('90011223-4455-4667-98a9-2a3b4c5d6e7f')
+  })
+
+  it('reads a water figure’s provenance, a closed trailhead’s radius and a tap’s caution', async () => {
+    const data = await loadTrailData()
+    const shelter = data?.pois.find((poi) => poi.id === 'atc_shelter_0512')
+    const trailhead = data?.pois.find((poi) => poi.id === 'oprhp_facilities:8812')
+    const tap = data?.pois.find((poi) => poi.id === 'oprhp_facilities:9020')
+
+    expect(shelter?.waterDistanceFt).toBe(250)
+    expect(shelter?.waterDistanceSource).toBe('OSA_Field_Estimate')
+    expect(waterDistanceIsEstimate(shelter?.waterDistanceSource)).toBe(true)
+    expect(shelter?.nearby?.[1]).toEqual({
+      phrase: 'water',
+      distance_ft: 250,
+      source: 'OSA_Field_Estimate',
+    })
+    expect(trailhead?.trailsClosedWithinM).toBe(100)
+    expect(tap?.waterCaution).toBe('no_shutoff_season')
+  })
+
+  it('reads the download record’s release folder and pointer flag through recallRelease', async () => {
+    const release = await recallRelease()
+
+    expect(release?.release).toBe('2026-10-10-2')
+    expect(release?.fromPointer).toBe(true)
+    expect(release?.version).toBe('2026-10-10')
+    expect(release?.at).toBe(1791633600000)
+  })
+
+  it('reads ourhike:data-channel from IndexedDB through recallChannel and from localStorage through readMirror', async () => {
+    const expected = {
+      release: '2026-10-10-2',
+      schema: 'v1',
+      environment: 'production',
+      at: 1791633500000,
+    }
+
+    expect(await recallChannel()).toEqual(expected)
+    expect(readMirror()).toEqual(expected)
+  })
+
+  it('reads the :seen watermark of a club notice that gave no date', () => {
+    expect(
+      readNoticeSilence(`gmc_trail_conditions${SEEN_WATERMARK}`)?.toISOString(),
+    ).toBe('2026-10-17T12:00:00.000Z')
+    // The club's own watermark is a different fact, and nothing set it here.
+    expect(readNoticeSilence('gmc_trail_conditions')).toBeNull()
+  })
+
+  it('reads the podcast app the hiker picked', () => {
+    expect(readPodcastApp()).toBe('pocket_casts')
+  })
+
+  it('reads the Spotify connection and the episodes saved from this phone', async () => {
+    expect(isSpotifyConnected()).toBe(true)
+    expect([...savedFromHere()]).toEqual(['4rOoJ6Egrf8K2IrywzwOMk'])
+
+    // A save inside the token's hour sends the stored access token as is.
+    vi.useFakeTimers({ toFake: ['Date'] })
+    vi.setSystemTime(new Date('2026-10-19T18:30:00.000Z'))
+    const fetchSpy = vi.fn(async () => new Response(null, { status: 200 }))
+    vi.stubGlobal('fetch', fetchSpy)
+    try {
+      expect(await saveEpisodeToSpotify('4rOoJ6Egrf8K2IrywzwOMk')).toBe('saved')
+      const [, init] = fetchSpy.mock.calls[0] as unknown as [string, RequestInit]
+      expect((init.headers as Record<string, string>).Authorization).toBe(
+        'Bearer BQ-fixture-access',
+      )
+    } finally {
+      vi.unstubAllGlobals()
+    }
+  })
+
+  it('finishes a Spotify round trip left mid-way, matching its stored state', async () => {
+    // A refusal on Spotify's page needs no network, and `declined` rather
+    // than `lost` is only reachable when the stored state matched.
+    expect(
+      await completeSpotifyConnect(
+        '?state=st4teSt4teSt4teSt4teSt4teSt4teSt&error=access_denied',
+      ),
+    ).toEqual({ kind: 'declined' })
+  })
+
+  it('still reads everything v1.3.4 held', async () => {
+    const preferences = await loadPreferences()
+
+    expect(preferences.real_name).toBe('Pat Example')
+    expect(preferences.blaze_colors_shown).toBe(true)
+    expect((await loadTrips()).activeHikeId).toBe('hike-0001')
+    expect((await loadDayHikes()).openId).toBe('day-hike-0005')
+    expect((await loadTrailData())?.stewards).toHaveLength(3)
+    expect(await readStoredCellIndex(DEM_CELLS)).not.toBeNull()
+    expect(readLaunchMirror()?.takenTrail).toBe('LP')
+    expect(await loadHikerMode()).toBe('long')
+  })
+})
+
 describe('a download that died between the lines and the waypoints', () => {
   it('reads as no trail data, so the launch fetch finishes the job', async () => {
     installPhone('v1.2.1', storedInterruptedRelease())
@@ -694,6 +842,7 @@ describe('the release ledger', () => {
     const { OPEN_WALK_KEY } = await import('./openWalk')
     const { TAKEN_TRAIL_KEY } = await import('./takenTrail')
     const { SENT_REPORTS_KEY } = await import('./sentReports')
+    const { CHANNEL_RECORD_KEY } = await import('./dataRelease')
 
     const cell = cellPackageKey('n41w074', BASEMAP_CELLS)
     const required = [
@@ -731,6 +880,7 @@ describe('the release ledger', () => {
       OPEN_WALK_KEY,
       TAKEN_TRAIL_KEY,
       SENT_REPORTS_KEY,
+      CHANNEL_RECORD_KEY,
     ]
 
     const covered = new Set([
@@ -748,6 +898,9 @@ describe('the release ledger', () => {
     const { LEGACY_ATC_SILENCE_KEY } = await import('./notices')
     const { TRAILS_MERGED_STORAGE_KEY } = await import('./trailShape')
     const { LAUNCH_MIRROR_KEY } = await import('./launchMirror')
+    const { CHANNEL_RECORD_KEY } = await import('./dataRelease')
+    const { CHALLENGE_STATE_KEY } = await import('./challengeProgress')
+    const { noticeSilenceKey } = await import('./notices')
 
     const required = [
       WALKED_STORAGE_KEY,
@@ -761,6 +914,15 @@ describe('the release ledger', () => {
       completedMarkerKeyFor(cellPackageKey('n41w074', NETWORK_CELLS)),
       completedMarkerKeyFor(cellPackageKey('n41w074', DEM_CELLS)),
       LAUNCH_MIRROR_KEY,
+      CHANNEL_RECORD_KEY,
+      CHALLENGE_STATE_KEY,
+      noticeSilenceKey(`gmc_trail_conditions${SEEN_WATERMARK}`),
+      // lib/podcastApp.ts and lib/spotify.ts keep their keys private, so
+      // these are the literals a phone holds, as for gpsTrace.ts above.
+      'ourhike:podcast-app',
+      'ourhike:spotify:tokens',
+      'ourhike:spotify:pending',
+      'ourhike:spotify:saved',
     ]
 
     const covered = new Set(

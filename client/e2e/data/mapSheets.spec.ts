@@ -1058,7 +1058,9 @@ test.describe('who looks after this stretch', () => {
       // both pointless — the predicate it polled was always true — and
       // actively harmful: on a loaded machine two `count()` calls can
       // outlast the poll's own timeout, so the wait invented a failure the
-      // app had nothing to do with.
+      // app had nothing to do with. For the same reason, a tap that opened
+      // nothing costs one read here rather than one per dialog.
+      if ((await club.or(line).or(card).count()) === 0) return false
       if ((await club.count()) > 0) return true
       if ((await line.count()) > 0) {
         await line.getByRole('button', { name: /^Close/ }).click()

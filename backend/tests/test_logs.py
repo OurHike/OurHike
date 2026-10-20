@@ -9,6 +9,8 @@ from fastapi.testclient import TestClient
 
 from app.core.logs import REQUEST_ID_HEADER, JsonFormatter, RequestIdMiddleware, configure_logging, current_request_id
 from app.core.registry_pr import RegistryPrRefused
+from app.db.session import get_db
+from app.main import app
 from app.models.club import OrgState
 from tests.factories import make_admin, make_org, make_profile
 from tests.test_account_deletion import _furnish
@@ -111,6 +113,35 @@ def test_an_unhandled_error_is_logged_as_a_500(small_app, lines):
     small_app.get("/boom")
 
     assert [entry["message"] for entry in lines if entry["logger"] == "app.request"] == ["GET /boom -> 500"]
+
+
+def test_an_unhandled_error_s_500_carries_the_x_request_id_that_was_logged(small_app, lines):
+    # Starlette's ServerErrorMiddleware writes this 500 from outside every
+    # added middleware; before RequestIdMiddleware answered it itself, the
+    # response had no X-Request-Id at all.
+    response = small_app.get("/boom")
+
+    assert response.status_code == 500
+    assert response.text == "Internal Server Error"
+    (line,) = [entry for entry in lines if entry["logger"] == "app.request"]
+    assert response.headers[REQUEST_ID_HEADER] == line["request_id"]
+
+
+def test_the_real_app_s_crash_500_carries_x_request_id(monkeypatch, lines):
+    # The real stack - CORS and the body limit inside RequestIdMiddleware,
+    # ServerErrorMiddleware outside it - rather than small_app's one layer.
+    def database_that_crashes():
+        raise RuntimeError("an exception no handler expects")
+
+    monkeypatch.setitem(app.dependency_overrides, get_db, database_that_crashes)
+    crashing = TestClient(app, raise_server_exceptions=False)
+
+    response = crashing.get("/closures")
+
+    assert response.status_code == 500
+    (line,) = [entry for entry in lines if entry["logger"] == "app.request"]
+    assert line["message"] == "GET /closures -> 500"
+    assert response.headers[REQUEST_ID_HEADER] == line["request_id"]
 
 
 def test_a_403_and_a_200_are_not_logged(small_app, lines):

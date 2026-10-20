@@ -1,4 +1,4 @@
-"""One logger for the backend, JSON on stdout, and a request id on every line (#1759).
+"""One logger for the backend, JSON on stderr, and a request id on every line (#1759).
 
 THE GAP. Before this, `grep getLogger app/` found one file, `core/photos.py`.
 Account deletion's catch-all and the registry sign-off's refused pull request
@@ -9,7 +9,9 @@ at 3 pm" could not be tied to a line.
 WHAT THIS IS. The `app` logger (every module's `logging.getLogger(__name__)`
 is a child of it), one handler writing one JSON object per line to stderr, and
 a middleware that mints a request id, returns it as `X-Request-Id`, and logs
-one line for each 401 and each 5xx.
+one line for each 401 and each 5xx - including the 500 an unhandled exception
+becomes, which `RequestIdMiddleware` answers itself so that it carries the id
+too (the reason is on the class).
 
 Minted here, never read from the request: an id a caller chooses is a string
 a caller can use to forge or split log lines, and nothing in this repository
@@ -34,6 +36,7 @@ import sys
 import uuid
 from datetime import UTC, datetime
 
+from starlette.responses import PlainTextResponse
 from starlette.types import ASGIApp, Message, Receive, Scope, Send
 
 REQUEST_ID_HEADER = "X-Request-Id"
@@ -84,7 +87,25 @@ def configure_logging() -> None:
 
 
 class RequestIdMiddleware:
-    """Mint a request id, answer it in `X-Request-Id`, log the failures."""
+    """Mint a request id, answer it in `X-Request-Id`, log the failures.
+
+    A CRASH'S 500 IS ANSWERED HERE. Starlette's `ServerErrorMiddleware`, which
+    turns an unhandled exception into a 500, wraps every middleware
+    `add_middleware` installs - this one included - so its response goes out
+    through a `send` this class never sees, with no `X-Request-Id`: the one
+    response whose id a hiker most needs to quote. So when the app raises
+    before it has started a response, this class sends the same bare
+    `Internal Server Error` 500 through `send_with_id`, then re-raises.
+    `ServerErrorMiddleware` sees a response already started, sends nothing of
+    its own, and still hands the exception to the server, so the traceback is
+    logged exactly where it was before.
+
+    That 500 still carries no CORS headers, as it did not before: the exception
+    passed up through `CORSMiddleware`, which only adds them to a response sent
+    inside it. A browser on another origin reads it as a network error, so the
+    id reaches the operator's log and a non-browser caller, not the client's
+    JavaScript.
+    """
 
     def __init__(self, app: ASGIApp) -> None:
         self.app = app
@@ -97,10 +118,12 @@ class RequestIdMiddleware:
         request_id = uuid.uuid4().hex
         token = _request_id.set(request_id)
         status_code = 500  # what a handler that raises before responding becomes
+        response_started = False
 
         async def send_with_id(message: Message) -> None:
-            nonlocal status_code
+            nonlocal status_code, response_started
             if message["type"] == "http.response.start":
+                response_started = True
                 status_code = message["status"]
                 headers = list(message.get("headers", []))
                 headers.append((REQUEST_ID_HEADER.lower().encode(), request_id.encode()))
@@ -109,6 +132,10 @@ class RequestIdMiddleware:
 
         try:
             await self.app(scope, receive, send_with_id)
+        except Exception:
+            if not response_started:
+                await PlainTextResponse("Internal Server Error", status_code=500)(scope, receive, send_with_id)
+            raise
         finally:
             if status_code == 401 or status_code >= 500:
                 _request_logger.warning("%s %s -> %s", scope.get("method"), scope.get("path"), status_code)

@@ -671,7 +671,7 @@ jobs:
       # `overwrite`, so a re-run's attempt replaces the result it re-ran.
       - name: Upload this hour's comparison, keys and changed fields only
         if: ${{ !cancelled() && steps.wanted.outputs.run == 'true' && (steps.compare.outcome == 'success' || steps.compare.outcome == 'failure') }}
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: hourly-parity-${{ matrix.data_environment }}
           path: pipeline/data/hourly_parity/result/

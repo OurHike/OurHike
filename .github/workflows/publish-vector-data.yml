@@ -1383,7 +1383,7 @@ jobs:
         run: pip install -r requirements.txt
 
       # `pipeline/data/`, NOT `pipeline/` - and the difference is the whole
-      # of #1347. upload-artifact@v4 roots the archive at the LEAST COMMON
+      # of #1347. upload-artifact (v4, and v7 alike) roots the archive at the LEAST COMMON
       # ANCESTOR of its search paths, and the upload above names both
       # `pipeline/data/processed/` and six `pipeline/data/raw/` entries, so
       # that ancestor is `pipeline/data`. The archive therefore contains

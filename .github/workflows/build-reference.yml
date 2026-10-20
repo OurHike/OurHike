@@ -478,7 +478,7 @@ jobs:
       # sit in a public repository's artifacts. parity-report reads it.
       - name: Hand the new-data counts on
         if: steps.new-data-facts.outcome == 'success'
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: monthly-new-data-facts
           path: ${{ runner.temp }}/new_data/new_data_facts.json
@@ -530,7 +530,7 @@ jobs:
       # ancestor of these paths is pipeline/, which is where the downloads
       # extract them (.github/tests/test_artifact_handoff_paths.py).
       - name: Hand the phone files on
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: monthly-phone-files
           path: |
@@ -890,7 +890,7 @@ jobs:
 
       - name: Keep this group's parity answers for the gate
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: monthly-parity-${{ matrix.group }}
           path: ${{ runner.temp }}/parity/
@@ -997,7 +997,7 @@ jobs:
 
       - name: Keep the new-data review report
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: monthly-new-data-report
           path: ${{ runner.temp }}/new_data/report/
@@ -1006,7 +1006,7 @@ jobs:
 
       - name: Keep the parity answers for the gate
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: monthly-parity
           path: ${{ runner.temp }}/parity/

@@ -221,16 +221,18 @@ environments:
     prevent_self_review: false
     why: >-
       What makes RELEASING.md §12 - only the maintainer ships - checked by
-      GitHub rather than by discipline. Five jobs run under this environment,
-      each only for a genuine `data_environment: production` dispatch or the
-      production migration (#1330): the `publish` job in
+      GitHub rather than by discipline. Six jobs run under this environment,
+      each only for a genuine `data_environment: production` dispatch, the
+      production migration (#1330) or a promotion: the `publish` job in
       publish-vector-data.yml, build-basemap.yml, build-dem.yml and
-      build-raster.yml, which overwrite the map data hikers download, and
+      build-raster.yml, which overwrite the map data hikers download,
       migrate.yml's production job, which applies schema changes to the
-      database a club's moderation queue lives in. A `data_environment: ua`
+      database a club's moderation queue lives in, and promote-data.yml's
+      `promote` job for `target: production`, which moves the channels.json
+      that says which release production's phones read. A `data_environment: ua`
       dispatch of those same four workflows runs ungated - UA is disposable
       (RELEASING.md §3b) and the routine case, so gating it bought no safety
-      and was most of the approval traffic a solo maintainer saw. All five
+      and was most of the approval traffic a solo maintainer saw. All six
       are dispatch-only, so the environment is the only thing that could ask
       a second time before a real write.
 

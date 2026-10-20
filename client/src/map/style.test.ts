@@ -1,4 +1,5 @@
 import { describe, it, expect, vi } from 'vitest'
+import { CLUB_CLOSURE_FAR_LAYER_ID } from './styleIds'
 import {
   ATC_UPDATE_BAND_LAYER_IDS,
   ATC_UPDATE_LAYER_ID,
@@ -45,6 +46,7 @@ import {
   NETWORK_OVERVIEW_SOURCE_ID,
   NETWORK_OVERVIEW_LAYER_ID,
   NETWORK_OVERVIEW_CLOSURE_LAYER_ID,
+  CLUB_CLOSURE_LAYER_ID,
   BACKDROP_LAYER_ID,
   MAP_BACKGROUND_COLOR,
   CENTERLINE_SOURCE,
@@ -122,6 +124,8 @@ import { POI_LAYER_ID, POI_PIN_MIN_ZOOM, POI_SOURCE_ID } from './poiLayers'
 // and the trails stayed at the zoom their archive is cut from.
 import { CORRIDOR_MAX_ZOOM } from './corridorLayers'
 import { CLOSURE_SOURCE_ID } from './closureLayers'
+import { CLUB_CLOSURE_SHADE_LAYER_ID } from './clubClosureLayers'
+import { HAZARD_EDGE_LAYER_ID, HAZARD_POINT_LAYER_ID } from './hazardAreaLayers'
 // The real opening camera, not a copy of it: the case below is only a guard
 // if it fails when somebody reframes the app.
 import { UNITED_STATES_BOUNDS } from '../App'
@@ -132,12 +136,17 @@ import {
   closureCrossesId,
   closureLayerIds,
   closureMarkId,
+  closurePointId,
   closureTraceId,
   CLOSURE_LAYER_ID,
   LONG_TERM_CLOSED_FILTER,
   LONG_TERM_CLOSURE_LAYER_ID,
 } from '../lib/closureStyle'
 import { CAMERA_ZOOM_TILE_OFFSET } from '../lib/archiveCoverage'
+
+/** The one point cross in the style: the clubs' feed alone carries points
+ *  (the maintainer's closure-map standard, map/clubClosureLayers.ts). */
+const CLUB_CLOSURE_POINT_LAYER_ID = closurePointId(CLUB_CLOSURE_LAYER_ID)
 import {
   NEARBY_TRAIL_LABEL_LAYER_ID,
   TRAIL_LABEL_LAYER_ID,
@@ -507,7 +516,10 @@ describe('buildMapStyle', () => {
       expect(ids.slice(at, at + expected.length), bandId).toEqual(expected)
     }
     // And nothing else in the style places the cross along a line, so the
-    // sweep above is over the whole set rather than the four it knows.
+    // sweep above is over the whole set rather than the four it knows. The
+    // clubs' feed adds one cross per point closure, right after its mark
+    // (the maintainer's closure-map standard), and one small ✕ per closure at z5 and z6 right
+    // after that.
     const chains = style()
       .layers.filter(
         (l) =>
@@ -520,8 +532,53 @@ describe('buildMapStyle', () => {
       [...CLOSURE_BAND_IDS, ATC_UPDATE_LAYER_ID]
         .flatMap((id) => [closureCrossesId(id), closureMarkId(id)])
         .filter((id) => id !== closureCrossesId(NETWORK_OVERVIEW_CLOSURE_LAYER_ID))
+        .concat(CLUB_CLOSURE_POINT_LAYER_ID, CLUB_CLOSURE_FAR_LAYER_ID)
         .sort(),
     )
+    expect(ids[ids.indexOf(closureMarkId(CLUB_CLOSURE_LAYER_ID)) + 1]).toBe(
+      CLUB_CLOSURE_POINT_LAYER_ID,
+    )
+    expect(ids[ids.indexOf(CLUB_CLOSURE_POINT_LAYER_ID) + 1]).toBe(
+      CLUB_CLOSURE_FAR_LAYER_ID,
+    )
+  })
+
+  it('crosses a club\u2019s closure out over the A.T.\u2019s own line, which a club\u2019s area now closes like any trail', () => {
+    // The pipeline cuts the A.T.'s stretch inside a club's area with the
+    // rest (prepare_closure_trail_lines.py), and the mark has to be drawn
+    // over the line it closes, or the A.T. would read open through it.
+    const ids = style().layers.map((l) => l.id)
+    const trails = [...trailLayerIds(), ...TAPPABLE_BLAZE_LAYER_IDS].filter((id) =>
+      ids.includes(id),
+    )
+    expect(trails).toContain(BLAZE_LAYER_ID)
+    for (const id of [
+      ...closureLayerIds(CLUB_CLOSURE_LAYER_ID),
+      CLUB_CLOSURE_POINT_LAYER_ID,
+    ]) {
+      for (const trail of trails) {
+        expect(ids.indexOf(id), `${id} over ${trail}`).toBeGreaterThan(ids.indexOf(trail))
+      }
+    }
+  })
+
+  it('shades a club\u2019s area with no trail inside under every trail line, mark and pin, over the hazard areas', () => {
+    // "Shade them, no edge": a trail along or just inside the area is drawn
+    // over the hatch whole, and nothing that says closed or warns is ever
+    // under it. Over the hazard areas' three layers, the weaker claim.
+    const ids = style().layers.map((l) => l.id)
+    const shade = ids.indexOf(CLUB_CLOSURE_SHADE_LAYER_ID)
+    expect(shade).toBeGreaterThan(-1)
+    expect(shade).toBeGreaterThan(ids.indexOf(HAZARD_EDGE_LAYER_ID))
+    expect(shade).toBeGreaterThan(ids.indexOf(HAZARD_POINT_LAYER_ID))
+    const above = [
+      ...trailLayerIds(),
+      ...TAPPABLE_BLAZE_LAYER_IDS,
+      ...CLOSURE_BAND_IDS.flatMap(closureLayerIds),
+      POI_LAYER_ID,
+      WARNING_LAYER_ID,
+    ].filter((id) => ids.includes(id))
+    for (const id of above) expect(shade, id).toBeLessThan(ids.indexOf(id))
   })
 
   it('lets nothing but the ATC\u2019s notices draw over a closure or a warning', () => {
@@ -537,7 +594,12 @@ describe('buildMapStyle', () => {
     // src/test/atcAlertProminence.test.ts, which asserts the last two layers
     // by name.
     const ids = style().layers.map((l) => l.id)
-    const safety = [...CLOSURE_BAND_IDS.flatMap(closureLayerIds), WARNING_LAYER_ID]
+    const safety = [
+      ...CLOSURE_BAND_IDS.flatMap(closureLayerIds),
+      CLUB_CLOSURE_POINT_LAYER_ID,
+      CLUB_CLOSURE_FAR_LAYER_ID,
+      WARNING_LAYER_ID,
+    ]
     // The one exception inside the safety group: the hiker's own mark, over
     // the warning pins since the v1.3.2 release review, because a 44 px
     // filled warning pin over the 36 px hollow mark hid the hiker entirely.
@@ -3279,6 +3341,9 @@ describe("the hiker's mark, over everything (#1581)", () => {
       ...bandLayers(NEARBY_LONG_TERM_CLOSURE_LAYER_ID),
       ...bandLayers(CLOSURE_LAYER_ID),
       ...bandLayers(LONG_TERM_CLOSURE_LAYER_ID),
+      ...bandLayers(CLUB_CLOSURE_LAYER_ID),
+      CLUB_CLOSURE_POINT_LAYER_ID,
+      CLUB_CLOSURE_FAR_LAYER_ID,
       WARNING_LAYER_ID,
       ...bandLayers(ATC_UPDATE_LAYER_ID),
       ATC_UPDATE_POINT_LAYER_ID,

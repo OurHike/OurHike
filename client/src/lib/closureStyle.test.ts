@@ -116,6 +116,7 @@ describe('closure vs blaze, as structural difference', () => {
         'long-term-closure-band',
         'nearby-long-term-closure-band',
         'network-overview-closure-band',
+        'club-closure-band',
         'atc-update-band',
       ].flatMap(closureLayerIds),
     )

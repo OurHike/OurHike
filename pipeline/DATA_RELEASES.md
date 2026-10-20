@@ -34,7 +34,7 @@ Four separate things, deliberately not collapsed into one:
 | **Verification battery** | after each build | no | no |
 | **Release** | a merged PR, then a tag | no | **yes — this is the only one** (see §4's amendment) |
 
-The separation is the design. A scheduled job cannot change a hiker's data even if it wanted to, because the only thing that selects a dataset is a constant in the client source.
+The separation is the design. A scheduled job cannot change a hiker's data even if it wanted to, because the only thing that selects a dataset is a constant in the client source. (Since 2026-10-16 that is each environment's `channels.json` in the bucket, moved for UA by a monthly build that passed every check and for production only by a reviewed promotion, with the constant kept as a known-good floor: §4's last amendment.)
 
 ### R2 layout
 
@@ -277,6 +277,18 @@ The weekly build's last job opens a **draft PR** on `data-release/<version>` cha
 
 **One committed constant has to name a folder that exists in both data environments.** This section predates [../features/DATA_ENVIRONMENTS.md](../features/DATA_ENVIRONMENTS.md). UA is a prefix in the same bucket with its own `releases/` tree, written by its own publishes, so the id sets drift — measured 2026-09-09, production held 14 releases and UA 31, with only 10 in common. The guard is what makes this safe rather than a thing to remember: `pages.yml` **and `ua.yml`** each assert the pin against *their own* base, so a pin one environment lacks costs that environment a red deploy instead of costing a hiker their map.
 
+**Amended 2026-10-02** ([ELT.md](ELT.md), "Versions and channels"), built under **#1793 — Rebuild the data platform as dlt → dbt: seven contracted marts, a monthly refresh, published docs, and lighter phone downloads**. The pin is now two committed things, and the constant is the smaller of them:
+
+**Amended again 2026-10-16** (the maintainer's decision: a code pin changes only when the data format does). The pointer left the repository:
+
+- **Each environment's `channels.json`, in the bucket, is the release.** It sits at that environment's root beside `latest.json` and names, per schema version, the folder its phones read: `{"ua": {"v1": "<id>"}}`, one environment per file. The bucket copy is the only copy; there is no committed one. Every move is appended to `channels_history.json` beside it (release, previous release, UTC time, workflow run, commit, actor). `pipeline/channels.py` is the only writer, and it refuses a release whose manifest is not in that environment's own tree.
+- **UA moves automatically.** `build-reference.yml`'s last job moves UA's pointer to the release its publish staged, once build, publish, confirm, every parity group and the parity report have passed and the build held nothing back. Any of those failing leaves the pointer where it was.
+- **Production moves by promotion.** `promote-data.yml`, dispatch only and behind the `production` environment's reviewer, copies a release UA was tested on into production's tree server side, checks every copied object's size (and ETag where it is a plain MD5), and only then moves production's pointer. **Rollback** is the same workflow with an older `release`: one production already holds is checked, not copied. `target: ua` rolls UA back to a release in its own tree.
+- **`DATA_RELEASE` is the known-good floor.** A first run reads its environment's pointer before the app renders and takes the release it names once that release's manifest resolves; offline, or with a pointer that is missing, malformed, slower than 4 seconds or naming a release that does not resolve, it reads `DATA_RELEASE`. Later launches read the pointer and follow it from the *next* launch, never mid-session, as before; a phone that holds data is asked before anything is replaced. The 2026-10-15 forgetting of a release whose own manifest answers 404 stands. The constant moves when the data format does, or when the folder it names stops being usable, not to ship data.
+- **The deploy guards check both, at their own base**: the floor's manifest resolves and fits a launch, and so does the release the uploaded pointer names, where one is uploaded (a 404 passes: phones then read the floor). Nothing checks that the two are equal any more; differing is the design.
+
+What a hiker is asked is unchanged: #919's row (`TrailDataUpdate.tsx`) offers the pointer's release when it differs from what the phone holds, under the 2026-08-21 decision that nothing is replaced unasked.
+
 ## Retention
 
 **Decided 2026-07-31: 90 days, with the clock starting when a release is superseded, and a floor of the 3 most recent released folders.**
@@ -303,6 +315,8 @@ Plus two hard exemptions the prune job refuses to cross, regardless of age:
 
 1. **The currently-released folder** — the one `latest.json` names — is never eligible. Ever.
 2. **Any release listed in `releases/pinned.json`** — a small committed-and-published list of releases that shipped app-store builds still point at. The release PR adds an entry; an entry is removed by hand when that app build is genuinely out of support. This is the escape hatch that makes a 90-day policy safe for a 7-month thru-hike.
+
+**Since §4's last amendment both exemptions read differently, and the prune job is not built, so this is for whoever builds it.** The release a phone reads is the one `channels.json` names, so exemption 1 becomes every release `channels.json` names, in every environment and schema version, beside the one `latest.json` names. An installed build no longer reads its compiled `DATA_RELEASE` once it has reached the pointer, but a first run that cannot reach it does, so exemption 2 still lists each shipped build's compiled release, for that first run.
 
 The prune job runs on a schedule, computes the eligible set, and **prints what it would delete and why on every run**. Deletion happens only for objects that clear all three tiers plus both exemptions. A dry-run mode is the default for `workflow_dispatch`; the scheduled invocation passes the flag explicitly.
 

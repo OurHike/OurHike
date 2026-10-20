@@ -1,8 +1,8 @@
 """The trail-organization catalogue says what it means (#1543).
 
-`pipeline/reference/trail_orgs.json` is 173 organizations and the verdict on
-each: ship it, hold it, take it through another row, refuse it, or record that
-there is nothing to take. features/ORG_BULK_LOAD.md is the argument; this file
+`pipeline/reference/trail_orgs.json` is 198 organizations (2026-10-11) and the
+verdict on each: ship it, hold it, take it through another row, refuse it, or
+record that there is nothing to take. features/ORG_BULK_LOAD.md is the argument; this file
 is what stops the argument drifting away from the data.
 
 WHY THESE CHECKS AND NOT A SCHEMA. Every assertion here is one a reviewer would
@@ -25,7 +25,32 @@ LOAD_VERDICTS = {"ship", "hold", "via", "refuse", "none", "retired"}
 #: `retired` joined on 2026-09-30 for `nh-granit`. Pinned here as well as in the
 #: catalogue deliberately: the assertion below compares the two, so a verdict
 #: cannot be introduced by editing the data alone.
-LICENCE_BASES = {"public_domain", "stated_by_org", "maintainer_authorisation", "unstated"}
+LICENCE_BASES = {
+    "public_domain",
+    "stated_by_org",
+    "maintainer_authorisation",
+    "maintainer_clearinghouse",
+    "public_gis",
+    "unstated",
+}
+#: The catalogue's `type`s. `county_agency` joined on 2026-10-11 for maricopa-parks, Maricopa County Parks and
+#: Recreation (the maintainer's choice). Pinned here so that a type cannot be introduced by
+#: editing the data alone: each is either a club (generate_notice_models.py's CLUB_TYPES), not a managing
+#: organisation at all (extract/_contract.py's NOT_CLUB_TYPES), or an agency, which is every other type here.
+ORG_TYPES = {
+    "federal",
+    "state_clearinghouse",
+    "state_agency",
+    "county_agency",
+    "national_umbrella",
+    "nst_org",
+    "nht_org",
+    "at_club",
+    "regional_nonprofit",
+    "land_trust",
+    "aggregator",
+    "route_only",
+}
 
 
 @pytest.fixture(scope="module")
@@ -103,17 +128,48 @@ def test_a_row_with_no_geometry_to_fetch_claims_no_endpoint(orgs):
     assert contradictory == [], f"rows with nothing to load but an endpoint anyway: {contradictory}"
 
 
-def test_every_licence_basis_is_one_of_the_four_sources_json_already_uses(orgs):
-    """The catalogue must not invent a fifth way of saying where a licence came from.
+def test_every_licence_basis_is_one_this_repository_defines(orgs):
+    """The catalogue must not invent a way of saying where a licence came from.
 
     sources.json uses maintainer_authorisation, stated_by_org and unresolved
     today; public_domain is the fourth this catalogue adds, and 'unstated'
     replaces 'unresolved' because it says which of the two it is - nobody asked,
-    rather than somebody asked and got no answer.
+    rather than somebody asked and got no answer. pipeline/ELT.md's "Who may
+    publish" adds two more, each a maintainer's decision of 2026-10-01:
+    maintainer_clearinghouse (NYS DEC and OPRHP) and
+    public_gis.
     """
     used = {o["licence_basis"] for o in orgs if o["licence_basis"] is not None}
     unknown = sorted(used - LICENCE_BASES)
     assert unknown == [], f"licence bases nothing defines: {unknown}"
+
+
+def test_every_org_type_is_one_this_repository_defines(orgs):
+    """A type outside ORG_TYPES is a type no reader knows, and both type sets the pipeline reads must name real ones.
+
+    generate_notice_models.py's CLUB_TYPES makes a notice's `steward_kind` a club's and every other type an
+    agency's, and extract/_contract.py's NOT_CLUB_TYPES leaves a row out of the managing clubs that
+    answer every type. A misspelt type in either set would silently turn a club into an agency, or a
+    managing organisation into one that answers nothing.
+    """
+    from extract._contract import NOT_CLUB_TYPES
+    from generate_notice_models import CLUB_TYPES
+
+    unknown = sorted({o["type"] for o in orgs} - ORG_TYPES)
+    assert unknown == [], f"types nothing defines: {unknown}"
+    assert set(CLUB_TYPES) <= ORG_TYPES and set(NOT_CLUB_TYPES) <= ORG_TYPES
+    assert not set(CLUB_TYPES) & set(NOT_CLUB_TYPES)
+
+
+def test_a_county_agency_is_an_agency_that_manages_trails(orgs):
+    """Maricopa County Parks publishes its own trails and notices, so it answers every type as a managing organisation,
+    and its notices reach a planned hike as an agency's do, only where they are placed on or near the route,
+    not as a club's."""
+    from extract._contract import NOT_CLUB_TYPES
+    from generate_notice_models import CLUB_TYPES
+
+    assert "county_agency" not in CLUB_TYPES and "county_agency" not in NOT_CLUB_TYPES
+    assert sorted(o["slug"] for o in orgs if o["type"] == "county_agency") == ["maricopa-parks"]
 
 
 def test_a_refused_row_says_which_terms_refused_it(orgs):
@@ -190,3 +246,14 @@ def test_every_accepted_arcgis_owner_says_why_it_is_an_institution(catalogue):
     """An allowlist entry with no reason is an allowlist nobody can review."""
     thin = sorted(k for k, v in catalogue["_agol_accepted_owners"].items() if not k.startswith("_") and len(str(v).strip()) < 25)
     assert thin == [], f"accepted owners with no stated reason: {thin}"
+
+
+def test_maintainer_clearinghouse_is_new_yorks_alone(orgs):
+    """The clearinghouse basis covers NYS DEC's and OPRHP's datasets, nobody else's.
+
+    No state work is public domain by default, so pipeline/ELT.md's "Who may
+    publish" moved both rows off `public_domain` on 2026-10-01. A third row with
+    this basis would be a ruling nobody made.
+    """
+    ruled = sorted(o["slug"] for o in orgs if o["licence_basis"] == "maintainer_clearinghouse")
+    assert ruled == ["nysdec", "nysparks"]

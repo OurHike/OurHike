@@ -138,6 +138,7 @@ import {
   buildClosureLayers,
   closureCrossesId,
   closureMarkId,
+  closurePointId,
   closureTraceId,
   LONG_TERM_CLOSED_FILTER,
   LONG_TERM_CLOSURE_LAYER_ID,
@@ -145,6 +146,19 @@ import {
 import { buildDroughtLayer } from '../lib/droughtStyle'
 import { buildAtcUpdateSource, ATC_UPDATE_SOURCE_ID } from './atcUpdateLayers'
 import { buildClosureSource, CLOSURE_SOURCE_ID } from './closureLayers'
+import {
+  buildClubClosureFarLayer,
+  buildClubClosureFarSource,
+  buildClubClosureLayers,
+  buildClubClosureShadeLayer,
+  buildClubClosureSource,
+  CLUB_CLOSURE_FAR_LAYER_ID,
+  CLUB_CLOSURE_FAR_SOURCE_ID,
+  CLUB_CLOSURE_SHADE_LAYER_ID,
+  CLUB_CLOSURE_SOURCE_ID,
+  clubClosureShadeImageId,
+  shadeInkFor,
+} from './clubClosureLayers'
 import {
   buildCorridorLayers,
   buildCorridorSource,
@@ -174,6 +188,11 @@ import {
 } from './dayHikeLayers'
 import { buildRouteLayers, buildRouteSource, ROUTE_SOURCE_ID } from './routeLayers'
 import { buildDroughtSource, DROUGHT_SOURCE_ID } from './droughtLayers'
+import {
+  buildHazardLayers,
+  buildHazardSource,
+  HAZARD_SOURCE_ID,
+} from './hazardAreaLayers'
 import {
   buildCoverageSeamLayers,
   buildCoverageSeamSource,
@@ -664,11 +683,35 @@ export function attachMapAppearance(
         if (map.getLayer(bandId) === undefined) continue
         map.setPaintProperty(bandId, 'line-color', tapeGround as never)
         map.setPaintProperty(closureTraceId(bandId), 'line-color', ink as never)
-        for (const symbolId of [closureCrossesId(bandId), closureMarkId(bandId)]) {
+        // The point cross too, on the one feed that has points (the clubs').
+        for (const symbolId of [
+          closureCrossesId(bandId),
+          closureMarkId(bandId),
+          closurePointId(bandId),
+        ]) {
           if (map.getLayer(symbolId) === undefined) continue
           map.setPaintProperty(symbolId, 'icon-color', ink as never)
           map.setPaintProperty(symbolId, 'icon-halo-color', tapeGround as never)
         }
+      }
+      // The z5-z6 small ✕, the same ink on the same paper.
+      if (map.getLayer(CLUB_CLOSURE_FAR_LAYER_ID) !== undefined) {
+        map.setPaintProperty(CLUB_CLOSURE_FAR_LAYER_ID, 'icon-color', ink as never)
+        map.setPaintProperty(
+          CLUB_CLOSURE_FAR_LAYER_ID,
+          'icon-halo-color',
+          tapeGround as never,
+        )
+      }
+      // The shade's hatch is a coloured pattern, one image
+      // per ink family (map/closureShade.ts), so a sheet change names the
+      // sheet's image rather than repainting a colour.
+      if (map.getLayer(CLUB_CLOSURE_SHADE_LAYER_ID) !== undefined) {
+        map.setPaintProperty(
+          CLUB_CLOSURE_SHADE_LAYER_ID,
+          'fill-pattern',
+          clubClosureShadeImageId(shadeInkFor(appearance)) as never,
+        )
       }
 
       // The through-route badge (#1283): its plate is an image per sheet
@@ -2391,6 +2434,20 @@ export function buildMapStyle({
       // credit somebody asked for in particular wording is worse than putting
       // it where it fits.
       [DROUGHT_SOURCE_ID]: buildDroughtSource(),
+      // The hunting areas, shooting sites and burned areas (#1805),
+      // empty until the shell fills it with the ones a downloaded trail runs
+      // through. No `attribution`, for the ATC notices' reason below: what a
+      // hiker needs is the organization's name on the specific area, which
+      // chrome/HazardAreaSheet.tsx renders from the registry.
+      [HAZARD_SOURCE_ID]: buildHazardSource(),
+      // Every club's closures (the maintainer's closure-map standard, 2026-10-11), empty until
+      // conditions/trail_closures.json lands. No `attribution`, for the
+      // hazard areas' reason above: the closing organization is named on
+      // the closure's own sheet (map/clubClosureLayers.ts).
+      [CLUB_CLOSURE_SOURCE_ID]: buildClubClosureSource(),
+      // And one point per closure for its small ✕ at z5 and z6, from
+      // the same file, with no attribution for the same reason.
+      [CLUB_CLOSURE_FAR_SOURCE_ID]: buildClubClosureFarSource(),
       // Where the downloaded map ends (#557), empty until the shell knows
       // which cells are on the phone and empty on every phone that holds the
       // whole sheet or nothing. No attribution: the line is a fact about
@@ -2481,6 +2538,19 @@ export function buildMapStyle({
       // sit in the style unconditionally - see lib/droughtStyle.ts for why the
       // switch is a visibility flip rather than an add and remove.
       buildDroughtLayer(DROUGHT_SOURCE_ID, sheetIsDark(appearance), showDrought),
+      // The hazard areas (#1805), in the drought wash's register and for its
+      // reason: OVER the ground, UNDER every trail line, closure and pin, so
+      // the trail inside a hunting area is drawn over it whole and open
+      // (map/hazardAreaLayers.ts). Always in the style; empty is no area.
+      ...buildHazardLayers(HAZARD_SOURCE_ID, sheetIsDark(appearance)),
+      // A club's area closure with no mapped trail inside (the
+      // maintainer's "Shade them, no edge"), hatched, in the hazard areas' place and for
+      // their reason: OVER the ground, UNDER every trail line, closure and
+      // pin, so a trail along its edge, or the few metres of one the 10 m
+      // simplification can put inside it, is drawn over it whole and open
+      // (map/clubClosureLayers.ts). Over the hazard wash, which is the
+      // weaker claim. Empty until a shade lands.
+      buildClubClosureShadeLayer(appearance),
       // The edge of what is downloaded (#557), and its place in the stack is
       // features/OFFLINE_COVERAGE.md §8 in paint: OVER the ground it is an
       // edge of, UNDER every trail line, closure and pin. A seam takes away
@@ -2992,6 +3062,15 @@ export function buildMapStyle({
         bandId: LONG_TERM_CLOSURE_LAYER_ID,
         filter: LONG_TERM_CLOSED_FILTER,
       }),
+      // THE FIFTH FEED, EVERY CLUB'S CLOSURES (the maintainer's closure-map standard,
+      // 2026-10-11): the same four layers over their own source, then one
+      // cross per point closure. In the group, at its height, for the reason
+      // the four above are.
+      ...buildClubClosureLayers(tapeGround, closureInkColor),
+      // Farther out, z5 and z6 only, one small ✕ per club closure, thinned by
+      // collision (the maintainer's variant A of 2026-10-15). It stops
+      // at the zoom the layers above start at, so the two never draw together.
+      buildClubClosureFarLayer(tapeGround, closureInkColor),
       // The warning pins over the bands: a pin is a point and a band is
       // hundreds of pixels long, so a band drawn over a pin hides the whole
       // mark where a pin over a band hides a stripe of it. The same argument

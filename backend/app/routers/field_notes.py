@@ -17,6 +17,7 @@ import enum
 from datetime import timedelta
 
 from fastapi import APIRouter, Depends, HTTPException, Request, Response, status
+from fastapi.concurrency import run_in_threadpool
 from sqlalchemy import func
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
@@ -388,19 +389,7 @@ async def upload_note_photo(
     the body is capped as it streams, and JPEG is decided by the bytes' own
     magic rather than by a header the client writes.
     """
-    note = get_or_404(db, FieldNote, note_id, detail="Note not found")
-
-    if note.reporter_id != current_user.id:
-        raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN,
-            detail="A note's photo can only be added by whoever wrote the note.",
-        )
-
-    if not photo_uploads_enabled():
-        raise HTTPException(
-            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
-            detail="Photo storage is not configured on this server.",
-        )
+    note = await run_in_threadpool(_note_this_caller_may_upload_to, db, note_id, current_user)
 
     if request.headers.get("content-type", "").split(";")[0].strip() != ALLOWED_CONTENT_TYPE:
         raise HTTPException(
@@ -417,6 +406,29 @@ async def upload_note_photo(
             detail=f"Note photos must be {ALLOWED_CONTENT_TYPE}.",
         )
 
+    # The R2 put and the commit are blocking, so they run off the event loop;
+    # `read_capped_body` is the only awaited part (#1753).
+    return await run_in_threadpool(_store_and_record_note_photo, db, note, body, current_user)
+
+
+def _note_this_caller_may_upload_to(db: Session, note_id: str, current_user: Profile) -> FieldNote:
+    note = get_or_404(db, FieldNote, note_id, detail="Note not found")
+
+    if note.reporter_id != current_user.id:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="A note's photo can only be added by whoever wrote the note.",
+        )
+
+    if not photo_uploads_enabled():
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="Photo storage is not configured on this server.",
+        )
+    return note
+
+
+def _store_and_record_note_photo(db: Session, note: FieldNote, body: bytes, current_user: Profile) -> FieldNoteOut:
     try:
         store_photo_object(note_photo_key(note.id), body)
     except PhotoStorageUnavailable as error:

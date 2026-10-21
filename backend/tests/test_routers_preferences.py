@@ -434,3 +434,41 @@ def test_get_before_any_put_is_a_404_naming_the_state(client):
 
     assert response.status_code == 404
     assert "No synced preferences yet" in response.json()["detail"]
+
+
+def _store_row_with_a_retired_key(db_session, user_id):
+    from datetime import UTC, datetime
+
+    from app.models.profile import Profile, Role
+
+    stored = _valid_preferences(removed_in_a_later_release=True)
+    db_session.add(Profile(id=user_id, role=Role.hiker))
+    db_session.commit()
+    db_session.add(UserPreferences(profile_id=user_id, data=stored, updated_at=datetime.now(UTC)))
+    db_session.commit()
+
+
+def test_get_ignores_a_stored_key_the_schema_no_longer_declares(client, db_session):
+    """#1868: PreferencesOut forbids extra keys, so a row written before a
+    release dropped a field used to 500 on GET."""
+    user_id = "dddddddd-dddd-dddd-dddd-dddddddddddd"
+    _store_row_with_a_retired_key(db_session, user_id)
+
+    response = client.get("/preferences/me", headers=auth_headers(user_id))
+
+    assert response.status_code == 200
+    assert "removed_in_a_later_release" not in response.json()
+
+
+def test_put_sheds_a_stored_key_the_schema_no_longer_declares(client, db_session):
+    """#1868: the merge carried the retired key forward forever, and the
+    response built from the committed row then 500ed after the commit."""
+    user_id = "eeeeeeee-eeee-eeee-eeee-eeeeeeeeeeee"
+    _store_row_with_a_retired_key(db_session, user_id)
+
+    response = client.put("/preferences/me", json=_valid_preferences(), headers=auth_headers(user_id))
+
+    assert response.status_code == 200
+    db_session.expire_all()
+    stored = db_session.get(UserPreferences, user_id).data
+    assert "removed_in_a_later_release" not in stored

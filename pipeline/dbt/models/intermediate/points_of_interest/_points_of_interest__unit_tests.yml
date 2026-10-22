@@ -1754,16 +1754,21 @@ unit_tests:
   - name: int_points_of_interest__water_attaches_and_synthesizes_like_export_poi
     description: >
       ATC's distance and its provenance attach to the
-      shelter or campsite the file names, together or not at all (an empty
-      provenance is none, a row with no distance attaches nothing, a layer
-      other than shelters and campsites is not read). Then the synthesized
+      shelter or campsite the file names by its `poi_id`, together or not at
+      all (an empty provenance is none, a row with no distance attaches
+      nothing, a row on a layer other than shelters and campsites is not read
+      even when its poi_id names a shelter: W1 keeps 120 ft, not the
+      viewpoints row's 10). Then the synthesized
       atc_csi water point: made for a lone shelter (which becomes a two-part
       site), for a site's anchor, and at 492 ft, the last whole foot inside
       150 m; not at 493 ft, not for a member, not where the site has a real
       water point; named after its anchor or "Water", its sentence the
       poi_water_claims seed's claim for the provenance (the fallback for one
       no claim names, and for none), and its id the ledger's where an atc_csi
-      row is live. tests/test_dbt_points_of_interest_parity.py runs
+      row is live. A shelter ATC re-keyed, published under the ledger id it
+      carried (atc_shelters:W11-was, GlobalID W11), takes the distance the
+      file names under that id (#1729); at 600 ft it synthesizes nothing.
+      tests/test_dbt_points_of_interest_parity.py runs
       attach_water_distance(), synthesize_csi_water() and apply_ledger_ids()
       over these rows.
     model: int_points_of_interest__water
@@ -1783,20 +1788,22 @@ unit_tests:
           - {poi_id: 'atc_shelters:W8', poi_key: 'key-atc_shelters:W8', source_key: 'atc_shelters', file_order: 1, source_row: 6, source: 'atc_shelters', phone_files: 'poi_by_type', trail_id: 'AT', source_feature_id: 'W8', name: 'Fixture Shelter Eight', poi_type: 'shelter', confidence: 'high', lon: -74.5, lat: 41.8, properties: '{}', site_id: null, site_role: null, site_name: null}
           - {poi_id: 'atc_shelters:W9', poi_key: 'key-atc_shelters:W9', source_key: 'atc_shelters', file_order: 1, source_row: 7, source: 'atc_shelters', phone_files: 'poi_by_type', trail_id: 'AT', source_feature_id: 'W9', name: null, poi_type: 'shelter', confidence: 'high', lon: -74.5, lat: 41.9, properties: '{}', site_id: null, site_role: null, site_name: null}
           - {poi_id: 'atc_shelters:W10', poi_key: 'key-atc_shelters:W10', source_key: 'atc_shelters', file_order: 1, source_row: 8, source: 'atc_shelters', phone_files: 'poi_by_type', trail_id: 'AT', source_feature_id: 'W10', name: 'Fixture Shelter Ten', poi_type: 'shelter', confidence: 'high', lon: -74.5, lat: 42.0, properties: '{}', site_id: null, site_role: null, site_name: null}
+          - {poi_id: 'atc_shelters:W11-was', poi_key: 'key-atc_shelters:W11-was', source_key: 'atc_shelters', file_order: 1, source_row: 9, source: 'atc_shelters', phone_files: 'poi_by_type', trail_id: 'AT', source_feature_id: 'W11', name: 'Fixture Shelter Eleven', poi_type: 'shelter', confidence: 'high', lon: -74.5, lat: 42.05, properties: '{}', site_id: null, site_role: null, site_name: null}
           - {poi_id: 'dec_lean_tos:11', poi_key: 'key-dec_lean_tos:11', source_key: 'dec_lean_tos', file_order: 9, source_row: 0, source: 'dec_lean_tos', phone_files: 'nearby_poi', trail_id: 'NYSDEC', source_feature_id: '11', name: 'Fixture Lean-to', poi_type: 'shelter', confidence: 'high', lon: -74.5, lat: 42.1, properties: '{}', site_id: null, site_role: null, site_name: null}
       - input: ref('base_atc__water_distance')
         rows:
-          - {layer: 'shelters', atc_global_id: 'W1', distance_ft: 120, provenance: 'FarOut'}
-          - {layer: 'shelters', atc_global_id: 'W2', distance_ft: 300, provenance: 'OSA_Field_Estimate'}
-          - {layer: 'shelters', atc_global_id: 'W3', distance_ft: 200, provenance: 'NHDP_HR_Pond'}
-          - {layer: 'campsites', atc_global_id: 'W4', distance_ft: 492, provenance: 'FarOut'}
-          - {layer: 'campsites', atc_global_id: 'W5', distance_ft: 493, provenance: 'FarOut'}
-          - {layer: 'shelters', atc_global_id: 'W6', distance_ft: 100, provenance: 'FarOut'}
-          - {layer: 'shelters', atc_global_id: 'W7', distance_ft: 250, provenance: ''}
-          - {layer: 'shelters', atc_global_id: 'W8', distance_ft: null, provenance: null}
-          - {layer: 'shelters', atc_global_id: 'W9', distance_ft: 50, provenance: 'NHDP_HR_Stream'}
-          - {layer: 'shelters', atc_global_id: 'W10', distance_ft: 80, provenance: 'Unheard_Of_Method'}
-          - {layer: 'viewpoints', atc_global_id: 'W1', distance_ft: 10, provenance: 'FarOut'}
+          - {layer: 'shelters', poi_id: 'atc_shelters:W1', distance_ft: 120, provenance: 'FarOut'}
+          - {layer: 'shelters', poi_id: 'atc_shelters:W2', distance_ft: 300, provenance: 'OSA_Field_Estimate'}
+          - {layer: 'shelters', poi_id: 'atc_shelters:W3', distance_ft: 200, provenance: 'NHDP_HR_Pond'}
+          - {layer: 'campsites', poi_id: 'atc_campsites:W4', distance_ft: 492, provenance: 'FarOut'}
+          - {layer: 'campsites', poi_id: 'atc_campsites:W5', distance_ft: 493, provenance: 'FarOut'}
+          - {layer: 'shelters', poi_id: 'atc_shelters:W6', distance_ft: 100, provenance: 'FarOut'}
+          - {layer: 'shelters', poi_id: 'atc_shelters:W7', distance_ft: 250, provenance: ''}
+          - {layer: 'shelters', poi_id: 'atc_shelters:W8', distance_ft: null, provenance: null}
+          - {layer: 'shelters', poi_id: 'atc_shelters:W9', distance_ft: 50, provenance: 'NHDP_HR_Stream'}
+          - {layer: 'shelters', poi_id: 'atc_shelters:W10', distance_ft: 80, provenance: 'Unheard_Of_Method'}
+          - {layer: 'shelters', poi_id: 'atc_shelters:W11-was', distance_ft: 600, provenance: 'FarOut'}
+          - {layer: 'viewpoints', poi_id: 'atc_shelters:W1', distance_ft: 10, provenance: 'FarOut'}
       - input: ref('poi_water_claims')
         rows:
           - {provenance: 'FarOut', claim: 'ATC measured how far the nearest water waypoint in FarOut is from {placed_on}'}
@@ -1818,6 +1825,7 @@ unit_tests:
         - {poi_id: 'atc_shelters:W8', poi_type: 'shelter', source: 'atc_shelters', name: 'Fixture Shelter Eight', confidence: 'high', site_id: null, site_role: null, site_name: null, water_distance_ft: null, water_distance_source: null, synthesized_description: null}
         - {poi_id: 'atc_shelters:W9', poi_type: 'shelter', source: 'atc_shelters', name: null, confidence: 'high', site_id: 'atc_shelters:W9', site_role: 'anchor', site_name: null, water_distance_ft: 50, water_distance_source: 'NHDP_HR_Stream', synthesized_description: null}
         - {poi_id: 'atc_shelters:W10', poi_type: 'shelter', source: 'atc_shelters', name: 'Fixture Shelter Ten', confidence: 'high', site_id: 'atc_shelters:W10', site_role: 'anchor', site_name: 'Fixture Shelter Ten', water_distance_ft: 80, water_distance_source: 'Unheard_Of_Method', synthesized_description: null}
+        - {poi_id: 'atc_shelters:W11-was', poi_type: 'shelter', source: 'atc_shelters', name: 'Fixture Shelter Eleven', confidence: 'high', site_id: null, site_role: null, site_name: null, water_distance_ft: 600, water_distance_source: 'FarOut', synthesized_description: null}
         - {poi_id: 'atc_campsites:W4', poi_type: 'campsite', source: 'atc_campsites', name: 'Fixture Campsite Four', confidence: 'high', site_id: 'atc_campsites:W4', site_role: 'anchor', site_name: 'Fixture Campsite Four', water_distance_ft: 492, water_distance_source: 'FarOut', synthesized_description: null}
         - {poi_id: 'atc_campsites:W5', poi_type: 'campsite', source: 'atc_campsites', name: 'Fixture Campsite Five', confidence: 'high', site_id: null, site_role: null, site_name: null, water_distance_ft: 493, water_distance_source: 'FarOut', synthesized_description: null}
         - {poi_id: 'atc_privies:W2P', poi_type: 'privy', source: 'atc_privies', name: 'Fixture Shelter Two Privy', confidence: 'high', site_id: 'atc_shelters:W2', site_role: 'member', site_name: 'Fixture Shelter Two', water_distance_ft: null, water_distance_source: null, synthesized_description: null}
@@ -1857,12 +1865,12 @@ unit_tests:
           - {poi_id: 'atc_shelters:H6', poi_key: 'key-atc_shelters:H6', source_key: 'atc_shelters', file_order: 1, source_row: 4, source: 'atc_shelters', phone_files: 'poi_by_type', trail_id: 'AT', source_feature_id: 'H6', name: 'Fixture Shelter Six', poi_type: 'shelter', confidence: 'high', lon: -74.5, lat: 41.6, properties: '{}', site_id: null, site_role: null, site_name: null}
       - input: ref('base_atc__water_distance')
         rows:
-          - {layer: 'shelters', atc_global_id: 'H1', distance_ft: 120, provenance: 'FarOut'}
-          - {layer: 'campsites', atc_global_id: 'H2', distance_ft: 300, provenance: 'OSA_Field_Estimate'}
-          - {layer: 'shelters', atc_global_id: 'H3', distance_ft: 200, provenance: 'FarOut'}
-          - {layer: 'shelters', atc_global_id: 'H4', distance_ft: 210, provenance: 'NHDP_HR_Stream'}
-          - {layer: 'shelters', atc_global_id: 'H5', distance_ft: 220, provenance: 'FarOut'}
-          - {layer: 'shelters', atc_global_id: 'H6', distance_ft: 230, provenance: 'FarOut'}
+          - {layer: 'shelters', poi_id: 'atc_shelters:H1', distance_ft: 120, provenance: 'FarOut'}
+          - {layer: 'campsites', poi_id: 'atc_campsites:H2', distance_ft: 300, provenance: 'OSA_Field_Estimate'}
+          - {layer: 'shelters', poi_id: 'atc_shelters:H3', distance_ft: 200, provenance: 'FarOut'}
+          - {layer: 'shelters', poi_id: 'atc_shelters:H4', distance_ft: 210, provenance: 'NHDP_HR_Stream'}
+          - {layer: 'shelters', poi_id: 'atc_shelters:H5', distance_ft: 220, provenance: 'FarOut'}
+          - {layer: 'shelters', poi_id: 'atc_shelters:H6', distance_ft: 230, provenance: 'FarOut'}
       - input: ref('poi_water_claims')
         rows:
           - {provenance: 'FarOut', claim: 'ATC measured how far the nearest water waypoint in FarOut is from {placed_on}'}

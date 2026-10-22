@@ -1531,8 +1531,9 @@ def _with_key_fields(collection: dict, fields: dict) -> dict:
 # - ATC'S REAL SHELTERS AND CAMPSITES, by GlobalID and name. Their water
 #   distances (reference/water_distance.json) and capacities
 #   (reference/shelter_capacity.json) are reviewed files in git that fixture
-#   mode loads whole, and both join on ATC's GlobalID, so a fixture with real
-#   ids is what lets parity hold the real figures, the 42 steward estimates
+#   mode loads whole, and both join on the ledger id ATC's GlobalID publishes
+#   under (#671, #1729), so a fixture with real ids is what lets parity hold
+#   the real figures, the 42 steward estimates
 #   among them, through both pipelines. Their PLACES are invented: a grid
 #   (_poi_site_point) inside the fixture centerline's 30-mile corridor, every
 #   site at least 300 m from the next, so no two group into a site. 21 sites
@@ -1706,7 +1707,7 @@ def _site_water_fixtures(sites: list[dict]) -> dict[str, str]:
         elevations[f"{lat:.6f},{lon:.6f}"] = site_feet
         for position, (source, stream_id, name, flow, osm_from_nhd, east_m) in enumerate(reaches):
             x = round(lon + east_m / metres_per_degree_east, 6)
-            candidates.setdefault(site["atc_global_id"], []).append(
+            candidates.setdefault(site["global_id"], []).append(
                 {
                     "source": source,
                     "stream_id": stream_id,
@@ -1847,7 +1848,7 @@ def _poi_photo_fixtures(kept: list[dict]) -> dict[str, str]:
 
     def poi_id(layer: str, nth: int) -> str:
         sites = [site for site in kept if site["layer"] == layer]
-        return f"atc_{layer}:{sites[nth]['atc_global_id']}"
+        return sites[nth]["poi_id"]
 
     def digest(label: str) -> str:
         return hashlib.sha256(f"fixture-photo-{label}".encode()).hexdigest()
@@ -2112,9 +2113,16 @@ def _points_of_interest_fixtures(files: dict) -> dict:
     sites = json.loads((POI_REFERENCE_DIR / "water_distance.json").read_text(encoding="utf-8"))["sites"]
     pois = json.loads((POI_REFERENCE_DIR / "poi_identity.json").read_text(encoding="utf-8"))["pois"]
     retired_water = {row["source_feature_id"] for row in pois.values() if row["source"] == "atc_csi" and "retired" in row}
+    # The file keys a site by its ledger id (#1729), and a fixture feature needs the GlobalID that id stands for:
+    # the live ledger row's source_feature_id, else the GlobalID after `<source>:` - build_water_distance.py's
+    # poi_id_for() read backwards, so a carried id gives back the feature's current GlobalID.
+    for site in sites:
+        row = pois.get(site["poi_id"])
+        live = row is not None and "retired" not in row
+        site["global_id"] = row["source_feature_id"] if live else site["poi_id"].split(":", 1)[1]
     kept = sorted(
-        (site for site in sites if site["atc_global_id"] not in retired_water),
-        key=lambda site: (site["layer"], site["atc_global_id"]),
+        (site for site in sites if site["global_id"] not in retired_water),
+        key=lambda site: (site["layer"], site["global_id"]),
     )
     for name, layer in (("shelters.geojson", "shelters"), ("campsites.geojson", "campsites")):
         collection = files[name]
@@ -2126,7 +2134,7 @@ def _points_of_interest_fixtures(files: dict) -> dict:
                     {
                         "type": "Feature",
                         "properties": {
-                            "GlobalID": site["atc_global_id"],
+                            "GlobalID": site["global_id"],
                             "Name": site["atc_name"],
                             **inventory[appended % len(inventory)],
                         },

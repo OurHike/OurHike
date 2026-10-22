@@ -2815,7 +2815,7 @@ def test_the_same_lines_cut_the_same_archive(tmp_path, monkeypatch):
     monkeypatch.setattr(ex, "OUT_DIR", tmp_path)
     lines = _lines_file(tmp_path, _CONTEXT_LINES)
     # Two different seconds on the clock, so a timestamp written anywhere into
-    # the archive (pmtiles' writer gzips with the time in each header) shows.
+    # the archive (pmtiles before 3.8 gzipped with the time in each header) shows.
     monkeypatch.setattr(time, "time", lambda: 1_700_000_000.0)
     first = ex.write_tiles(lines)["sha256"]
     monkeypatch.setattr(time, "time", lambda: 1_800_000_000.0)

@@ -196,9 +196,12 @@ def _production_phone_files_line(text: str) -> list[str]:
     return re.findall(r"^  PRODUCTION_PHONE_FILES: .*$", text, re.M)
 
 
-def _notices_steps_that_run(tmp_path: Path, leg: str, production_line: str | None) -> tuple[list[str], str]:
-    """The names of the notices job's steps that run for `leg` on a schedule from main, with publish-conditions.yml's
-    PRODUCTION_PHONE_FILES line made `production_line` (None leaves the line out), and what the steps printed.
+def _notices_steps_that_run(
+    tmp_path: Path, leg: str, production_line: str | None, asked: str | None = None
+) -> tuple[list[str], str]:
+    """The names of the notices job's steps that run for `leg` from main, with publish-conditions.yml's
+    PRODUCTION_PHONE_FILES line made `production_line` (None leaves the line out), and what the steps printed. On a
+    schedule when `asked` is None, else on a dispatch whose `data_environment` is `asked`.
 
     The steps' `if:`s are evaluated in order with the evaluator test_conditions_production_leg_needs_main.py holds to
     GitHub's rules. Every step with an `id` that reads no secret has its own script run under bash, in a copy of the
@@ -214,8 +217,8 @@ def _notices_steps_that_run(tmp_path: Path, leg: str, production_line: str | Non
     line = "" if production_line is None else f"  PRODUCTION_PHONE_FILES: {production_line}"
     (workflows / CONDITIONS.name).write_text(re.sub(r"^  PRODUCTION_PHONE_FILES: .*$\n?", line and line + "\n", text, flags=re.M))
     context = {
-        "github": {"event_name": "schedule", "ref": "refs/heads/main"},
-        "inputs": {},
+        "github": {"event_name": "schedule" if asked is None else "workflow_dispatch", "ref": "refs/heads/main"},
+        "inputs": {} if asked is None else {"data_environment": asked},
         "matrix": {"data_environment": leg},
         "steps": {},
     }
@@ -228,7 +231,11 @@ def _notices_steps_that_run(tmp_path: Path, leg: str, production_line: str | Non
         env = {key: str(value) for key, value in (step.get("env") or {}).items()}
         if "id" not in step or "run" not in step or any("secrets." in value for value in env.values()):
             continue
-        env = {key: _evaluate(_expression(value), context) if "${{" in value else value for key, value in env.items()}
+        # GitHub writes an expression that comes to null, a schedule's absent input, into env as "".
+        env = {
+            key: ("" if (found := _evaluate(_expression(value), context)) is None else found) if "${{" in value else value
+            for key, value in env.items()
+        }
         output = tmp_path / leg / f"output_{step['id']}"
         finished = subprocess.run(
             ["bash", "-e", "-c", step["run"]],
@@ -262,6 +269,36 @@ def test_the_production_notices_leg_runs_once_production_is_on_the_dbt_path(tmp_
     ran, printed = _notices_steps_that_run(tmp_path, "production", "dbt")
     assert EXTRACT_STEP in ran and SERVE_STEP in ran, printed
     assert "skipped" not in printed
+
+
+@pytest.mark.parametrize("asked", ["both", "ua"])
+def test_a_dispatch_that_does_not_ask_for_production_skips_its_leg_on_the_exporters_as_the_schedule_does(tmp_path, asked):
+    ran, printed = _notices_steps_that_run(tmp_path, "production", "exporters", asked)
+    assert EXTRACT_STEP not in ran and SERVE_STEP not in ran, f"the production leg ran {ran}"
+    assert "::notice title=Production notices leg skipped::" in printed
+
+
+def test_a_dispatch_asking_for_production_warms_its_store_while_production_is_on_the_exporters(tmp_path):
+    """The maintainer's polls of 2026-10-06 and 2026-10-23: fill production's store before the cutover, so its hourly
+    leg's first dbt run publishes every club's notices rather than the 150 tables a cold store takes on in one run."""
+    ran, printed = _notices_steps_that_run(tmp_path, "production", "exporters", "production")
+    assert EXTRACT_STEP in ran and SERVE_STEP in ran, printed
+    assert "::notice title=Production notices store warming::" in printed and "skipped" not in printed
+
+
+def test_a_dispatch_asking_for_production_runs_its_leg_after_the_cutover_too(tmp_path):
+    ran, printed = _notices_steps_that_run(tmp_path, "production", "dbt", "production")
+    assert EXTRACT_STEP in ran and SERVE_STEP in ran, printed
+    assert "warming" not in printed
+
+
+@pytest.mark.parametrize("production_line", [None, "DBT"])
+def test_a_warm_up_still_stops_red_on_a_production_line_it_cannot_read(tmp_path, production_line):
+    """The warm-up bypasses `exporters` only. A line in no shape this step reads still means nobody knows which path
+    production's hourly leg is on, and that is not settled by having asked for production."""
+    ran, printed = _notices_steps_that_run(tmp_path, "production", production_line, "production")
+    assert EXTRACT_STEP not in ran and SERVE_STEP not in ran
+    assert "::error title=" in printed and printed.rstrip().endswith("(exit 1)"), printed
 
 
 @pytest.mark.parametrize("production", ["exporters", "dbt"])

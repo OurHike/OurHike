@@ -58,10 +58,31 @@
 # notices runs 1 to 10 (Measured from the Actions API), and at least 197
 # upstream requests a run (Reasoned: each resource's change check is at
 # least one request a run, extract/_run.py). Its
-# step "Run the production leg only while production's hourly leg reads it"
-# reads publish-conditions.yml's PRODUCTION_PHONE_FILES line, so the cutover,
+# step "Run the production leg only while production's hourly leg reads it,
+# or when a dispatch warms it" reads publish-conditions.yml's
+# PRODUCTION_PHONE_FILES line, so the cutover,
 # which changes that line to `dbt`, switches this leg on with it. The UA leg
 # always runs: UA's hourly leg is on the dbt path.
+#
+# EXCEPT TO WARM PRODUCTION'S STORE BEFORE THE CUTOVER: a dispatch from main
+# with `data_environment: production` runs the production leg alone, whatever
+# that line says. Switched on cold, the store would take on 150 new tables a
+# run (extract/_run.py's NEW_TABLES_PER_LEG_RUN) of the 319 the leg reads
+# (leg_tables("notices_production", ...) at 072fc298, 2026-10-23), so
+# production's hourly leg would publish some clubs' notices and not others
+# until the third notices run, at least 8 hours on the 4-hourly schedule
+# (Reasoned). The maintainer chose to fill it first (polls of 2026-10-06 and
+# 2026-10-23, #1811 - Fast follows after PR #1805's dlt → dbt re-platform).
+# Expect three runs: the store has most likely never been written, because
+# every run from main before this change (notices runs 51 to 68, 2026-10-18 to
+# 23, all scheduled) skipped this leg on `exporters`, and a run from any other
+# ref has no production leg (Reasoned from the Actions run list and the two
+# locks below; the private store itself was not read). Each run's summary has
+# a **Waiting** line counting the never-loaded tables it did not take on
+# (extract/_run.py's RunReport.waiting), and a run with no such line is the
+# signal to cut over.
+# The warm-up writes only the private store and its served copy, so a
+# production phone reads nothing new until the line changes.
 
 name: Extract notices
 
@@ -97,10 +118,13 @@ on:
       # `ua` runs the UA leg alone: the soak's dispatch from the pull
       # request's branch (a change to these jobs restarts the soak). `both`
       # is the schedule's behaviour, and means both legs only from main.
+      # `production` runs the production leg alone, from main only, even
+      # while production's hourly leg is on the exporters: the warm-up above.
+      # From any other ref it runs UA alone, as `both` does.
       data_environment:
-        description: "Which legs to run: both (production and UA; from main only) or ua alone"
+        description: "Which legs to run: both (production and UA; from main only), ua alone, or production alone (from main only; fills its store before the cutover)"
         type: choice
-        options: [both, ua]
+        options: [both, ua, production]
         default: both
 
 permissions:
@@ -126,7 +150,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        data_environment: ${{ fromJSON((github.ref == 'refs/heads/main' && inputs.data_environment != 'ua') && '["production", "ua"]' || '["ua"]') }}
+        data_environment: ${{ fromJSON((github.ref == 'refs/heads/main' && inputs.data_environment == 'production') && '["production"]' || (github.ref == 'refs/heads/main' && inputs.data_environment != 'ua') && '["production", "ua"]' || '["ua"]') }}
     defaults:
       run:
         working-directory: pipeline
@@ -183,14 +207,17 @@ jobs:
       # `dbt` runs it. Anything else, the line missing or written in another
       # shape, stops the leg red rather than guessing either way: a guess of
       # "skip" would leave production's store cold after a cutover, and one
-      # of "run" would spend the hour for nothing. Held by
-      # .github/tests/test_notices_job.py, which runs this script against
-      # each value of that line.
-      - name: Run the production leg only while production's hourly leg reads it
+      # of "run" would spend the hour for nothing. A dispatch asking for
+      # `production` runs the leg on `exporters` too: the warm-up in this
+      # file's header. Held by .github/tests/test_notices_job.py, which runs
+      # this script against each value of that line, with and without that
+      # dispatch.
+      - name: Run the production leg only while production's hourly leg reads it, or when a dispatch warms it
         id: wanted
         working-directory: .
         env:
           LEG: ${{ matrix.data_environment }}
+          ASKED: ${{ inputs.data_environment }}
         run: |
           if [ "$LEG" != "production" ]; then
             echo "run=true" >> "$GITHUB_OUTPUT"
@@ -203,6 +230,11 @@ jobs:
               echo "run=true" >> "$GITHUB_OUTPUT"
               ;;
             exporters)
+              if [ "$ASKED" = "production" ]; then
+                echo "::notice title=Production notices store warming::$read_from's PRODUCTION_PHONE_FILES is still exporters, and this dispatch asked for production, so this leg fills production's store before the cutover. No production phone reads it until that line is dbt. The extract step's summary has a Waiting line while any table has still to be taken on."
+                echo "run=true" >> "$GITHUB_OUTPUT"
+                exit 0
+              fi
               echo "::notice title=Production notices leg skipped::$read_from's PRODUCTION_PHONE_FILES is exporters, and production's hourly leg reads no notices store on that path, so nothing was extracted or copied for production. Changing that line to dbt, the cutover, runs this leg from then on."
               echo "run=false" >> "$GITHUB_OUTPUT"
               ;;

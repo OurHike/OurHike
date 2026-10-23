@@ -252,30 +252,25 @@ def _notices_steps_that_run(
     return ran, printed
 
 
-def test_the_production_notices_leg_extracts_nothing_while_production_is_on_the_exporters(tmp_path):
+@pytest.mark.parametrize("asked", [None, "both"])
+def test_the_production_notices_leg_extracts_nothing_while_production_is_on_the_exporters(tmp_path, asked):
     """Production's conditions leg stays on the exporters until the
     cutover, and the exporters read no notices store. So the production notices leg asked every club's host and filled
     a store and a served copy every 4 hours for no reader: about 9 runner-minutes and at least 197 upstream requests
     a run. It is skipped by its own
-    condition, read off publish-conditions.yml's line, and says so."""
-    ran, printed = _notices_steps_that_run(tmp_path, "production", "exporters")
-    assert EXTRACT_STEP not in ran and SERVE_STEP not in ran, f"the production leg ran {ran}"
-    assert "::notice title=Production notices leg skipped::" in printed
-
-
-def test_the_production_notices_leg_runs_once_production_is_on_the_dbt_path(tmp_path):
-    """The cutover is changing that one line, and this leg switches on with it: its first run after the cutover
-    starts filling the store production's hourly leg reads from then on."""
-    ran, printed = _notices_steps_that_run(tmp_path, "production", "dbt")
-    assert EXTRACT_STEP in ran and SERVE_STEP in ran, printed
-    assert "skipped" not in printed
-
-
-@pytest.mark.parametrize("asked", ["both", "ua"])
-def test_a_dispatch_that_does_not_ask_for_production_skips_its_leg_on_the_exporters_as_the_schedule_does(tmp_path, asked):
+    condition, read off publish-conditions.yml's line, and says so - on a schedule and on a `both` dispatch alike."""
     ran, printed = _notices_steps_that_run(tmp_path, "production", "exporters", asked)
     assert EXTRACT_STEP not in ran and SERVE_STEP not in ran, f"the production leg ran {ran}"
     assert "::notice title=Production notices leg skipped::" in printed
+
+
+@pytest.mark.parametrize("asked", [None, "production"])
+def test_the_production_notices_leg_runs_once_production_is_on_the_dbt_path(tmp_path, asked):
+    """The cutover is changing that one line, and this leg switches on with it: its first run after the cutover
+    starts filling the store production's hourly leg reads from then on."""
+    ran, printed = _notices_steps_that_run(tmp_path, "production", "dbt", asked)
+    assert EXTRACT_STEP in ran and SERVE_STEP in ran, printed
+    assert "skipped" not in printed and "warming" not in printed
 
 
 def test_a_dispatch_asking_for_production_warms_its_store_while_production_is_on_the_exporters(tmp_path):
@@ -286,32 +281,19 @@ def test_a_dispatch_asking_for_production_warms_its_store_while_production_is_on
     assert "::notice title=Production notices store warming::" in printed and "skipped" not in printed
 
 
-def test_a_dispatch_asking_for_production_runs_its_leg_after_the_cutover_too(tmp_path):
-    ran, printed = _notices_steps_that_run(tmp_path, "production", "dbt", "production")
-    assert EXTRACT_STEP in ran and SERVE_STEP in ran, printed
-    assert "warming" not in printed
-
-
-@pytest.mark.parametrize("production_line", [None, "DBT"])
-def test_a_warm_up_still_stops_red_on_a_production_line_it_cannot_read(tmp_path, production_line):
-    """The warm-up bypasses `exporters` only. A line in no shape this step reads still means nobody knows which path
-    production's hourly leg is on, and that is not settled by having asked for production."""
-    ran, printed = _notices_steps_that_run(tmp_path, "production", production_line, "production")
-    assert EXTRACT_STEP not in ran and SERVE_STEP not in ran
-    assert "::error title=" in printed and printed.rstrip().endswith("(exit 1)"), printed
-
-
 @pytest.mark.parametrize("production", ["exporters", "dbt"])
 def test_the_ua_notices_leg_runs_whatever_production_is_on(tmp_path, production):
     ran, printed = _notices_steps_that_run(tmp_path, "ua", production)
     assert EXTRACT_STEP in ran and SERVE_STEP in ran, printed
 
 
+@pytest.mark.parametrize("asked", [None, "production"])
 @pytest.mark.parametrize("production_line", [None, '"dbt"', "dbt # the cutover", "DBT"])
-def test_a_production_line_the_notices_job_cannot_read_stops_its_production_leg_red(tmp_path, production_line):
+def test_a_production_line_the_notices_job_cannot_read_stops_its_production_leg_red(tmp_path, production_line, asked):
     """Neither skipped nor run on a guess: a line that is missing, or written in a shape this step does not read, fails
-    the leg by name, so a cutover commit that wrote it differently is seen on its first run."""
-    ran, printed = _notices_steps_that_run(tmp_path, "production", production_line)
+    the leg by name, so a cutover commit that wrote it differently is seen on its first run. A warm-up bypasses
+    `exporters` only, not this."""
+    ran, printed = _notices_steps_that_run(tmp_path, "production", production_line, asked)
     assert EXTRACT_STEP not in ran and SERVE_STEP not in ran
     assert "::error title=" in printed and printed.rstrip().endswith("(exit 1)"), printed
 

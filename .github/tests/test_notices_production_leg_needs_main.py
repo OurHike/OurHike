@@ -72,9 +72,10 @@ def test_only_a_schedule_and_a_dispatch_start_this_workflow():
 @pytest.mark.parametrize(("ref", "asked"), list(product(OTHER_REFS, INPUTS)))
 def test_a_run_from_any_ref_but_main_never_reaches_the_production_leg(ref, asked):
     legs = _legs(ref, asked, "workflow_dispatch")
-    # One exception: a ref GitHub's `==` reads as main, asking for production alone, reaches only the production
-    # leg, which the first step refuses below.
-    if not (asked == "production" and ref.casefold() == MAIN):
+    if asked == "production" and ref.casefold() == MAIN:
+        # GitHub's `==` reads this ref as main, so it gets the production leg alone, which the first step refuses.
+        assert legs == ["production"]
+    else:
         assert "ua" in legs, f"{ref} with data_environment={asked!r} gave {legs}: the UA leg must still run"
     if "production" in legs:
         refused = _guard("production", ref, asked)
@@ -87,19 +88,19 @@ def test_a_branch_that_github_reads_as_main_is_stopped_by_the_first_step():
     assert _guard("production", "refs/heads/Main", "both").returncode != 0
 
 
-def test_the_schedule_and_a_main_dispatch_run_both_legs():
-    assert _legs(MAIN, None, "schedule") == ["production", "ua"]
-    assert _legs(MAIN, "both", "workflow_dispatch") == ["production", "ua"]
-    assert _legs(MAIN, "ua", "workflow_dispatch") == ["ua"]
-    assert _guard("production", MAIN, None).returncode == 0
-    assert _guard("ua", MAIN, None).returncode == 0
-
-
-def test_a_main_dispatch_asking_for_production_runs_the_production_leg_alone():
-    """The warm-up before the cutover asks every club's host once, for production's store only: running UA's leg
-    beside it would double the requests for a store the schedule already keeps."""
-    assert _legs(MAIN, "production", "workflow_dispatch") == ["production"]
-    assert _guard("production", MAIN, "production").returncode == 0
+@pytest.mark.parametrize(
+    ("asked", "event", "legs"),
+    [
+        (None, "schedule", ["production", "ua"]),
+        ("both", "workflow_dispatch", ["production", "ua"]),
+        ("ua", "workflow_dispatch", ["ua"]),
+        # The warm-up asks each club's host once, for production's store alone.
+        ("production", "workflow_dispatch", ["production"]),
+    ],
+)
+def test_runs_from_main_get_the_legs_they_ask_for_and_pass_the_first_step(asked, event, legs):
+    assert _legs(MAIN, asked, event) == legs
+    assert all(_guard(leg, MAIN, asked).returncode == 0 for leg in legs)
 
 
 def test_every_data_environment_choice_is_one_this_file_evaluates():

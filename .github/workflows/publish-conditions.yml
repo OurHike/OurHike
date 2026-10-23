@@ -294,7 +294,8 @@ env:
   # The cutover is changing PRODUCTION_PHONE_FILES to `dbt`, and the
   # rollback is the reverse. That line is also extract-notices.yml's switch:
   # its production leg reads this line, by its text, and runs only while it
-  # says `dbt`, since nothing else reads production's notices store (held
+  # says `dbt` (or on a `production` dispatch, the warm-up before the
+  # cutover), since nothing else reads production's notices store (held
   # by .github/tests/test_notices_job.py). The dispatched-dbt lock below is
   # not part of the cutover: it keeps a dispatch's `phone_files: dbt` on UA
   # whatever these lines say.

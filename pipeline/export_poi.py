@@ -314,9 +314,9 @@ OSM_WATER_REACH_FILENAME = "osm_water_reach.json"
 # absent on any run whose network export was skipped or held back, in which case
 # the corridor is the A.T.'s thirty miles exactly as it always was.
 #
-# NOT a filename-resolved-at-call-time like the constants above: nothing in this
-# module's tests redirects the processed directory, and build_corridor takes a
-# path rather than a name.
+# NOT a filename-resolved-at-call-time like the constants above: build_corridor
+# takes a path rather than a name, and patching OUT_DIR does not move this one.
+# tests/test_export_poi.py's no_real_network_lines redirects it (#1669).
 NETWORK_LINES_PATH = OUT_DIR.parent / "nearby_trails.geojson"
 
 # Metres per foot, for the places the two units meet: a site member's

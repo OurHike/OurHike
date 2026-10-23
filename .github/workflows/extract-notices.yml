@@ -57,11 +57,20 @@
 # served copy every 4 hours for no reader: 521 s a leg run on average over
 # notices runs 1 to 10 (Measured from the Actions API), and at least 197
 # upstream requests a run (Reasoned: each resource's change check is at
-# least one request a run, extract/_run.py). Its
-# step "Run the production leg only while production's hourly leg reads it"
-# reads publish-conditions.yml's PRODUCTION_PHONE_FILES line, so the cutover,
+# least one request a run, extract/_run.py). Its step `wanted` reads
+# publish-conditions.yml's PRODUCTION_PHONE_FILES line, so the cutover,
 # which changes that line to `dbt`, switches this leg on with it. The UA leg
 # always runs: UA's hourly leg is on the dbt path.
+#
+# THE CATCH-UP after a cutover: a dispatch from main with `data_environment:
+# production` runs the production leg alone, so an empty store fills without
+# asking every club's host twice. A run takes on at most 150 new tables
+# (extract/_run.py's NEW_TABLES_PER_LEG_RUN) of the 319 this leg reads
+# (Measured at 072fc298), so it takes three runs (Reasoned), each dispatched
+# after the last finishes (a pending run can be replaced, below), until a
+# green one's extract summary has no **Waiting** line. Until then
+# production's hourly leg publishes the clubs taken on so far, and is red
+# while no copy exists (publish-conditions.yml, "No notices copy").
 
 name: Extract notices
 
@@ -97,10 +106,12 @@ on:
       # `ua` runs the UA leg alone: the soak's dispatch from the pull
       # request's branch (a change to these jobs restarts the soak). `both`
       # is the schedule's behaviour, and means both legs only from main.
+      # `production` is the catch-up above; from any other ref it runs UA
+      # alone, as `both` does.
       data_environment:
-        description: "Which legs to run: both (production and UA; from main only) or ua alone"
+        description: "Which legs to run: both (production and UA; from main only), ua alone, or production alone (from main only)"
         type: choice
-        options: [both, ua]
+        options: [both, ua, production]
         default: both
 
 permissions:
@@ -126,7 +137,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        data_environment: ${{ fromJSON((github.ref == 'refs/heads/main' && inputs.data_environment != 'ua') && '["production", "ua"]' || '["ua"]') }}
+        data_environment: ${{ fromJSON(github.ref == 'refs/heads/main' && (inputs.data_environment == 'production' && '["production"]' || inputs.data_environment != 'ua' && '["production", "ua"]') || '["ua"]') }}
     defaults:
       run:
         working-directory: pipeline

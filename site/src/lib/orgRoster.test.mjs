@@ -1,13 +1,11 @@
-import { readFileSync } from "node:fs";
-import { join } from "node:path";
 import { describe, expect, it } from "vitest";
-import { byFirstLetter, orgsReachingHikers } from "./orgRoster.mjs";
+import { byFirstLetter, readRegistry, registeredOrgs, shipping } from "./orgRoster.mjs";
 
 const registry = (orgs, sources) => ({ organizations: { orgs }, sources });
 
-describe("orgsReachingHikers", () => {
+describe("registeredOrgs", () => {
   it("names an organization once, counting each of its shipping sources", () => {
-    const roster = orgsReachingHikers(
+    const roster = registeredOrgs(
       registry({ "org:atc": { provider: "ATC", name: "Appalachian Trail Conservancy" } }, [
         { key: "centerline", provider: "ATC", reaches_hikers: true },
         { key: "shelters", provider: "ATC", reaches_hikers: true },
@@ -16,8 +14,8 @@ describe("orgsReachingHikers", () => {
     expect(roster).toEqual([{ name: "Appalachian Trail Conservancy", datasets: 2 }]);
   });
 
-  it("leaves out an organization whose sources are all reaches_hikers: false", () => {
-    const roster = orgsReachingHikers(
+  it("lists an organization whose sources are all reaches_hikers: false, with no datasets", () => {
+    const roster = registeredOrgs(
       registry(
         {
           "org:atc": { provider: "ATC", name: "Appalachian Trail Conservancy" },
@@ -29,11 +27,15 @@ describe("orgsReachingHikers", () => {
         ],
       ),
     );
-    expect(roster.map((org) => org.name)).toEqual(["Appalachian Trail Conservancy"]);
+    expect(roster).toEqual([
+      { name: "Appalachian Trail Conservancy", datasets: 1 },
+      { name: "Georgia Appalachian Trail Club", datasets: 0 },
+    ]);
+    expect(shipping(roster).map((org) => org.name)).toEqual(["Appalachian Trail Conservancy"]);
   });
 
   it("counts only the shipping sources of an organization that also has some that do not ship", () => {
-    const roster = orgsReachingHikers(
+    const roster = registeredOrgs(
       registry({ "org:dec": { provider: "NYS DEC", name: "New York State Department of Environmental Conservation" } }, [
         { key: "dec_review", provider: "NYS DEC", reaches_hikers: false },
         { key: "dec_hiking_trails", provider: "NYS DEC", reaches_hikers: true },
@@ -43,12 +45,12 @@ describe("orgsReachingHikers", () => {
   });
 
   it("names a shipping source with no organization record by its provider, rather than dropping it", () => {
-    const roster = orgsReachingHikers(registry({}, [{ key: "x", provider: "Unrecorded Trail Club", reaches_hikers: true }]));
+    const roster = registeredOrgs(registry({}, [{ key: "x", provider: "Unrecorded Trail Club", reaches_hikers: true }]));
     expect(roster).toEqual([{ name: "Unrecorded Trail Club", datasets: 1 }]);
   });
 
   it("sorts A-Z without letting an acronym's capitals jump the queue", () => {
-    const roster = orgsReachingHikers(
+    const roster = registeredOrgs(
       registry(
         {
           "org:b": { provider: "b", name: "Bay Area Ridge Trail Council" },
@@ -66,8 +68,8 @@ describe("orgsReachingHikers", () => {
   });
 
   it("returns nothing for a registry it cannot read", () => {
-    expect(orgsReachingHikers(undefined)).toEqual([]);
-    expect(orgsReachingHikers({})).toEqual([]);
+    expect(registeredOrgs(undefined)).toEqual([]);
+    expect(registeredOrgs({})).toEqual([]);
   });
 });
 
@@ -91,16 +93,20 @@ describe("byFirstLetter", () => {
 });
 
 describe("pipeline/sources.json as committed", () => {
-  const sources = JSON.parse(readFileSync(join(import.meta.dirname, "../../../pipeline/sources.json"), "utf8"));
-  const roster = orgsReachingHikers(sources);
-  const shipping = sources.sources.filter((s) => s.reaches_hikers === true);
+  const sources = readRegistry();
+  const roster = registeredOrgs(sources);
+  const shipped = sources.sources.filter((s) => s.reaches_hikers === true);
 
-  it("names every provider with a reaches_hikers: true source, and no other", () => {
-    expect(roster.length).toBe(new Set(shipping.map((s) => s.provider)).size);
+  it("lists every registered organization", () => {
+    expect(roster.length).toBe(Object.keys(sources.organizations.orgs).length);
+  });
+
+  it("counts as shipping exactly the providers with a reaches_hikers: true source", () => {
+    expect(shipping(roster).length).toBe(new Set(shipped.map((s) => s.provider)).size);
   });
 
   it("counts every shipping source exactly once across the roster", () => {
-    expect(roster.reduce((sum, org) => sum + org.datasets, 0)).toBe(shipping.length);
+    expect(roster.reduce((sum, org) => sum + org.datasets, 0)).toBe(shipped.length);
   });
 
   it("names each organization by its registered name rather than its provider key", () => {

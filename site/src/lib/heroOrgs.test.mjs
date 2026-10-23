@@ -1,8 +1,6 @@
-import { readFileSync } from "node:fs";
-import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 import { ORGS, allSlides, orgCountLine, rotationOrgs } from "./heroOrgs.mjs";
-import { orgsReachingHikers } from "./orgRoster.mjs";
+import { readRegistry, registeredOrgs } from "./orgRoster.mjs";
 
 // A stand-in roster: the count line reads only its length, and rotationOrgs
 // only its names. orgRoster.test.mjs holds the real registry.
@@ -12,6 +10,11 @@ const everyOrg = ORGS.map((org) => ({ name: org.name, datasets: 1 }));
 describe("the count line", () => {
   it("counts the roster it is given, not the hand-written ORGS", () => {
     expect(orgCountLine(roster(111))).toBe("Trail data from 111 organizations, offline.");
+  });
+
+  it("counts only the organizations with data that ships", () => {
+    const registeredOnly = [...roster(111), { name: "Registered, nothing shipping", datasets: 0 }];
+    expect(orgCountLine(registeredOnly)).toBe("Trail data from 111 organizations, offline.");
   });
 
   it("says organization, singular, for a roster of one", () => {
@@ -42,6 +45,13 @@ describe("the rotation", () => {
     expect(slides).toContain("The Tahoe Rim Trail, all the way around the lake.");
   });
 
+  it("drops the lines of an organization that is registered but ships nothing", () => {
+    const atcShipsNothing = everyOrg.map((org) =>
+      org.name === "Appalachian Trail Conservancy" ? { ...org, datasets: 0 } : org,
+    );
+    expect(allSlides(atcShipsNothing)).not.toContain("The whole Appalachian Trail, offline.");
+  });
+
   it("has no line repeated across organizations", () => {
     const lines = ORGS.flatMap((org) => org.lines);
     expect(new Set(lines).size).toBe(lines.length);
@@ -69,11 +79,10 @@ describe("the rotation", () => {
 });
 
 describe("pipeline/sources.json as committed", () => {
-  const sources = JSON.parse(readFileSync(join(import.meta.dirname, "../../../pipeline/sources.json"), "utf8"));
-  const real = orgsReachingHikers(sources);
+  const real = registeredOrgs(readRegistry());
 
   it("has data that ships for every organization the rotation names, so no line is dropped", () => {
-    const shipping = new Set(real.map((org) => org.name));
+    const shipping = new Set(real.filter((org) => org.datasets > 0).map((org) => org.name));
     expect(ORGS.map((org) => org.name).filter((name) => !shipping.has(name))).toEqual([]);
     expect(rotationOrgs(real)).toEqual(ORGS);
   });

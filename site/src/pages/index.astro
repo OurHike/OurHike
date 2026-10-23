@@ -16,22 +16,15 @@
 // product. This still does not answer WEBSITE.md §10.4's open question -
 // "whose site is this, in the copy" - it is a smaller, additive step in the
 // inclusive direction that question already leans.
-import { readFileSync } from 'node:fs'
-import { resolve } from 'node:path'
 import Base from '../layouts/Base.astro'
 import Contours from '../components/Contours.astro'
 import { orgCountLine, rotationOrgs } from '../lib/heroOrgs.mjs'
-import { orgsReachingHikers } from '../lib/orgRoster.mjs'
+import { readRegistry, registeredOrgs, shipping } from '../lib/orgRoster.mjs'
 
-// THE ROSTER (#1877): every organization with data that ships, read from
-// pipeline/sources.json when the site is built - the site builds from a
-// checkout of the whole repository, as data/quality/index.astro relies on
-// too. The homepage prints its count; /organizations/ lists it. Unlike that page this one does not fall back when the file is
-// missing: the count line would read "0 organizations", and a front door
-// that says that is worse than a build that stops and says why.
-const ROSTER = orgsReachingHikers(
-  JSON.parse(readFileSync(resolve(process.cwd(), '../pipeline/sources.json'), 'utf8')),
-)
+// THE ROSTER (#1877): every registered organization, read from
+// pipeline/sources.json when the site is built. The headline counts those
+// with data that ships; the link under it, and /organizations/, all of them.
+const ROSTER = registeredOrgs(readRegistry())
 
 // Base.astro's `docs`, for the data pages' line under "What works today":
 // a home page is never a /data/ page, so it is PUBLIC_DOCS_ORIGIN or nothing.
@@ -56,14 +49,14 @@ const docs = import.meta.env.PUBLIC_DOCS_ORIGIN ?? ''
 // roster now spans the country (#1877), so no region was ever the right
 // claim.
 const title = 'OurHike — The Appalachian Trail and nearby trails, offline'
-// The count is the roster's, so it moves with the registry; it was "five"
-// typed in until #1877.
-const description = `A free, open-source offline map inspired by the Appalachian Trail and drawn from ${ROSTER.length} organizations' own published trail data: topo, water, shelters and elevation, working with no bars and no data plan.`
+// The count is the shipping roster's, so it moves with the registry; it was
+// "five" typed in until #1877.
+const description = `A free, open-source offline map inspired by the Appalachian Trail and drawn from ${shipping(ROSTER).length} organizations' own published trail data: topo, water, shelters and elevation, working with no bars and no data plan.`
 
 // The rotation's hand-written copy lives in lib/heroOrgs.mjs and the roster
 // in lib/orgRoster.mjs, imported rather than inlined here, so their tests can
 // hold the count line and the rotation without needing to render this page.
-// rotationOrgs() keeps only the lines whose organization is on the roster.
+// rotationOrgs() keeps only the lines whose organization has data that ships.
 const ORG_COUNT_LINE = orgCountLine(ROSTER)
 const ROTATION = rotationOrgs(ROSTER)
 ---
@@ -167,7 +160,7 @@ const ROTATION = rotationOrgs(ROSTER)
              stood here from 2026-08-25 so three A.T. figures did not read as
              an A.T.-only product. #1877 took it out by the maintainer's
              choice (poll, 2026-10-23): it was measured for the first five
-             organizations, the headline above now counts 111, and nobody has
+             organizations, the headline above now counts the registry, and nobody has
              counted the lines again. The headline's count and the link under
              it now do the job the stat was added for. -->
       </div>

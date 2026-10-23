@@ -25,7 +25,7 @@
 // (CLAUDE.md), and a slogan is the wrong voice for it. Mileages are the trails' own published figures or absent.
 //
 // `name` is the organization's name in sources.json's `organizations` block,
-// exactly. rotationOrgs() drops any entry whose name is not in the roster, so
+// exactly. rotationOrgs() drops any entry whose organization ships nothing, so
 // an organization whose data stops shipping loses its line at the next build
 // rather than keeping a claim nobody stands behind; heroOrgs.test.mjs fails
 // on the same mismatch in the committed registry, so a typo cannot hide.
@@ -39,6 +39,8 @@
 // sort by estimated distance from the visitor, so the lines a visitor sees
 // first are about trails near them. Precision here would be spurious - the
 // point is "which club is roughly closest", not a real distance.
+import { shipping } from "./orgRoster.mjs";
+
 export const ORGS = [
   {
     name: "Appalachian Trail Conservancy",
@@ -336,20 +338,20 @@ export const ORGS = [
   },
 ];
 
-/** "Trail data from N organizations, offline." - N is the length of the
- *  roster passed in (orgRoster.mjs's list, on the page), never a hand-typed
- *  number, so it cannot go stale the way the credits strings did before
- *  #1059 and this file's own ORGS did before #1877. */
+/** "Trail data from N organizations, offline." - N counts the organizations
+ *  in `roster` (orgRoster.mjs's list) with data that ships, never a
+ *  hand-typed number, so it cannot go stale the way the credits strings did
+ *  before #1059 and this file's own ORGS did before #1877. */
 export function orgCountLine(roster) {
-  const noun = roster.length === 1 ? "organization" : "organizations";
-  return `Trail data from ${roster.length} ${noun}, offline.`;
+  const count = shipping(roster).length;
+  return `Trail data from ${count} ${count === 1 ? "organization" : "organizations"}, offline.`;
 }
 
-/** The entries of `orgs` whose organization is on the roster - what the
- *  page hands its rotation. An entry naming an organization with no shipping
- *  data is dropped here, at build time, rather than kept as a claim. */
+/** The entries of `orgs` whose organization has data that ships - what the
+ *  page hands its rotation. An entry naming an organization with none is
+ *  dropped here, at build time, rather than kept as a claim. */
 export function rotationOrgs(roster, orgs = ORGS) {
-  const names = new Set(roster.map((org) => org.name));
+  const names = new Set(shipping(roster).map((org) => org.name));
   return orgs.filter((org) => names.has(org.name));
 }
 

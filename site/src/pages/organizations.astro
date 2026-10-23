@@ -1,6 +1,8 @@
 ---
-// Whose data is on the map (#1877): every organization with data that
-// ships, A to Z, read from pipeline/sources.json when the site is built.
+// Whose data is on the map (#1877): every registered organization, A to Z,
+// read from pipeline/sources.json when the site is built, with how many of
+// its datasets reach the app - "not yet" for one with none (orgRoster.mjs
+// says why those are listed at all).
 //
 // WHY A PAGE OF ITS OWN. The roster went onto the homepage first, as a list
 // under the hero, and the maintainer rejected it on sight: 4,195 px of names
@@ -24,23 +26,18 @@
 // (sources.json's org_marks.orgs), and the trail markers that do ship are
 // for "the map badge and the line sheet", explicitly "not marketing"
 // (org_marks.trail_marks). Names only.
-import { readFileSync } from 'node:fs'
-import { resolve } from 'node:path'
 import Base from '../layouts/Base.astro'
-import { byFirstLetter, orgsReachingHikers } from '../lib/orgRoster.mjs'
+import { byFirstLetter, readRegistry, registeredOrgs, shipping } from '../lib/orgRoster.mjs'
 
-// No fallback when the file is missing, for the homepage's reason: an index
-// of nobody is worse than a build that stops and says why.
-const ROSTER = orgsReachingHikers(
-  JSON.parse(readFileSync(resolve(process.cwd(), '../pipeline/sources.json'), 'utf8')),
-)
+const ROSTER = registeredOrgs(readRegistry())
+const SHIPPING = shipping(ROSTER).length
 const GROUPS = byFirstLetter(ROSTER)
 const LETTERS = [...'ABCDEFGHIJKLMNOPQRSTUVWXYZ', ...(GROUPS.some((g) => g.letter === '#') ? ['#'] : [])]
 const FILED = new Set(GROUPS.map((group) => group.letter))
 const anchor = (letter: string) => `letter-${letter === '#' ? 'other' : letter}`
 
 const title = 'Whose data is on the map — OurHike'
-const description = `The ${ROSTER.length} organizations whose own published trail lines, places, closures and alerts OurHike's map is drawn from, A to Z.`
+const description = `All ${ROSTER.length} organizations registered with OurHike, A to Z, and which ${SHIPPING} publish the trail lines, places, closures and alerts its map is drawn from.`
 ---
 
 <Base title={title} description={description}>
@@ -48,10 +45,10 @@ const description = `The ${ROSTER.length} organizations whose own published trai
     <header class="orgs__head">
       <h1>Whose data is on the map</h1>
       <p class="lede">
-        The map is drawn from data {ROSTER.length} organizations publish
-        themselves: trail lines, shelters and water, closures and alerts. If
-        you look after a trail and you are not here yet,
-        <a href="/for-orgs/">add your trail data</a>.
+        {ROSTER.length} organizations are registered with OurHike, and the map
+        is drawn from data {SHIPPING} of them publish themselves: trail lines,
+        shelters and water, closures and alerts. If you look after a trail and
+        you are not here yet, <a href="/for-orgs/">add your trail data</a>.
       </p>
     </header>
 
@@ -79,7 +76,10 @@ const description = `The ${ROSTER.length} organizations whose own published trai
       </nav>
     </div>
 
-    <p class="orgs__key">The number after each name is how many of its datasets reach the app.</p>
+    <p class="orgs__key">
+      The number after each name is how many of its datasets reach the app.
+      “Not yet” means registered, with nothing on the map so far.
+    </p>
     <p class="orgs__status" role="status" data-status></p>
     <p class="orgs__empty" data-empty hidden>
       If you look after that trail, <a href="/for-orgs/">add your trail data</a>.
@@ -95,11 +95,19 @@ const description = `The ${ROSTER.length} organizations whose own published trai
                 <li data-name={org.name.toLowerCase()}>
                   <span class="orgs__name">{org.name}</span>
                   <span class="orgs__leader" aria-hidden="true" />
-                  <span class="orgs__count">
-                    <span class="orgs__vh">, </span>
-                    {org.datasets}
-                    <span class="orgs__vh"> {org.datasets === 1 ? 'dataset' : 'datasets'}</span>
-                  </span>
+                  {org.datasets > 0 ? (
+                    <span class="orgs__count">
+                      <span class="orgs__vh">, </span>
+                      {org.datasets}
+                      <span class="orgs__vh"> {org.datasets === 1 ? 'dataset' : 'datasets'}</span>
+                    </span>
+                  ) : (
+                    <span class="orgs__count orgs__count--none">
+                      <span class="orgs__vh">, </span>
+                      not yet
+                      <span class="orgs__vh"> on the map</span>
+                    </span>
+                  )}
                 </li>
               ))}
             </ul>
@@ -138,9 +146,16 @@ const description = `The ${ROSTER.length} organizations whose own published trai
         letters.forEach(function (a) {
           var group = document.getElementById(a.getAttribute('href').slice(1))
           var off = !group || group.hidden
+          // Out of reach for a pointer (the CSS) and for Tab alike: a jump to
+          // a letter the search has emptied lands on nothing.
           a.classList.toggle('is-off', off)
-          if (off) a.setAttribute('aria-disabled', 'true')
-          else a.removeAttribute('aria-disabled')
+          if (off) {
+            a.setAttribute('aria-disabled', 'true')
+            a.setAttribute('tabindex', '-1')
+          } else {
+            a.removeAttribute('aria-disabled')
+            a.removeAttribute('tabindex')
+          }
         })
         // The count, or what was not found, goes in the live region so a
         // screen reader hears it; the link to add a trail sits under it.
@@ -356,6 +371,10 @@ const description = `The ${ROSTER.length} organizations whose own published trai
      in a 1px box: a 1px box lets the words run on past the box to the right,
      and next to a count at the edge of a phone that is past the edge of the
      page, where client/e2e/sitePages.spec.ts measures text it cannot see. */
+  .orgs__count--none {
+    font-style: italic;
+  }
+
   .orgs__vh {
     position: absolute;
     top: 0;

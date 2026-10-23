@@ -13,8 +13,7 @@ evaluator of GitHub's expression language:
 1. The matrix leaves the production leg out unless `github.ref` is
    `refs/heads/main` and the dispatch did not ask for `ua` alone, evaluated
    for every trigger, ref and input below. A dispatch from main asking for
-   `production` runs that leg alone: the warm-up before the cutover, which
-   test_notices_job.py follows past the skip step.
+   `production` runs that leg alone: the catch-up after a cutover.
 2. The job's first step refuses a production leg from any other ref, with
    bash's case-sensitive `=`, because GitHub's `==` ignores case and a
    branch named `Main` passes lock 1. The step's own script runs here.
@@ -94,7 +93,7 @@ def test_a_branch_that_github_reads_as_main_is_stopped_by_the_first_step():
         (None, "schedule", ["production", "ua"]),
         ("both", "workflow_dispatch", ["production", "ua"]),
         ("ua", "workflow_dispatch", ["ua"]),
-        # The warm-up asks each club's host once, for production's store alone.
+        # The catch-up asks each club's host once, for production's store alone.
         ("production", "workflow_dispatch", ["production"]),
     ],
 )

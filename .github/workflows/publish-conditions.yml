@@ -286,25 +286,22 @@ env:
   PYTHONUNBUFFERED: "1"
   # THE CUTOVER SWITCH, ONE LINE PER DATA ENVIRONMENT: which pipeline
   # writes that leg's phone files on every scheduled run, and on a dispatch
-  # left at `phone_files: scheduled`. The maintainer, 2026-10-06: "UA on
-  # dbt, prod on exporters". So UA's leg keeps the dbt path its soak ran, now on
-  # main's code, a further probation; production's keeps today's bake until
-  # the cutover.
-  #
-  # The cutover is changing PRODUCTION_PHONE_FILES to `dbt`, and the
-  # rollback is the reverse. That line is also extract-notices.yml's switch:
-  # its production leg reads this line, by its text, and runs only while it
-  # says `dbt` (or on a `production` dispatch, the warm-up before the
-  # cutover), since nothing else reads production's notices store (held
-  # by .github/tests/test_notices_job.py). The dispatched-dbt lock below is
-  # not part of the cutover: it keeps a dispatch's `phone_files: dbt` on UA
-  # whatever these lines say.
+  # left at `phone_files: scheduled`. UA has been on `dbt` since 2026-10-06;
+  # production cut over on the maintainer's poll of 2026-10-23 (#1880 -
+  # Production still builds its notices, closures and hazard areas with the
+  # exporters), so every organization's notices reach it. The rollback is
+  # changing PRODUCTION_PHONE_FILES back to `exporters`. That line is also
+  # extract-notices.yml's switch: its production leg reads this line, by its
+  # text, and runs only while it says `dbt`, since nothing else reads
+  # production's notices store (held by .github/tests/test_notices_job.py).
+  # The dispatched-dbt lock below keeps a dispatch's `phone_files: dbt` on UA
+  # whatever these lines say; `scheduled` runs production on its own line.
   #
   # The job's "Choose which pipeline writes this leg's phone files" step
   # turns its leg's line, or the dispatch's own choice, into PHONE_FILES for
   # every later step, and refuses a value that is neither path; publish.py
   # reads PHONE_FILES as OURHIKE_PHONE_FILES and refuses one too.
-  PRODUCTION_PHONE_FILES: exporters
+  PRODUCTION_PHONE_FILES: dbt
   UA_PHONE_FILES: dbt
   # Both off, in every step: dlt's telemetry is on by default and sends to
   # telemetry.scalevector.ai from a job holding R2 keys (the dlt skill), and
@@ -363,10 +360,10 @@ jobs:
     # with bash's case-sensitive comparison if it is ever there anyway. Both
     # are held by .github/tests/test_conditions_production_leg_needs_main.py.
     #
-    # NOR FOR A DISPATCH THAT PICKS THE dbt PATH. It has soaked on UA only,
-    # and production stays on the exporters until the cutover. So `phone_files: dbt` runs the UA leg alone, by the same
-    # two locks. The schedule passes no input, so each of its legs takes its
-    # own line above.
+    # NOR FOR A DISPATCH THAT PICKS THE dbt PATH: `phone_files: dbt` runs the
+    # UA leg alone, by the same two locks, a test of the dbt path that never
+    # touches production. The schedule and `scheduled` pass none, so each leg
+    # takes its own line above.
     strategy:
       fail-fast: false
       matrix:
@@ -404,7 +401,7 @@ jobs:
           ASKED_PHONE_FILES: ${{ inputs.phone_files }}
         run: |
           if [ "$LEG" = "production" ] && [ "${ASKED_PHONE_FILES,,}" = "dbt" ]; then
-            echo "::error title=Production leg refused::phone_files=dbt was dispatched, and the dbt path has soaked on UA only. Nothing was read or published for production."
+            echo "::error title=Production leg refused::phone_files=dbt runs the UA leg alone. To run production on its own line, dispatch phone_files=scheduled. Nothing was read or published for production."
             exit 1
           fi
           if [ "$LEG" = "ua" ] && [ "${ASKED_PHONE_FILES,,}" = "dbt" ] && [ "$ASKED" != "ua" ]; then
@@ -1399,9 +1396,8 @@ jobs:
       # and saved back only after the writers succeed. There is one prefix
       # per leg because each leg is its own pipeline. Both go through the
       # extract's venv, which has s3fs. The key is the raw store's own, as
-      # the extract step above has it. Only the UA leg reaches this step
-      # until the cutover: PRODUCTION_PHONE_FILES is `exporters`, and a
-      # dispatched dbt path refuses a production leg (above).
+      # the extract step above has it. A production leg reaches it only on
+      # its own line (a dispatched dbt path refuses one, above).
       #
       # A FAILED RESTORE DOES NOT STOP THE PUBLISH (the maintainer, by poll,
       # 2026-10-03). This includes an empty prefix once row_history_stores.toml
@@ -1794,8 +1790,8 @@ jobs:
       # copy's would with its last good ones, and the row history was not
       # saved (`--no-history-save` above). Only a leg on the dbt path gets
       # here: on the exporters the read above is skipped and writes no
-      # output, which is why production's leg, whose notices leg
-      # extract-notices.yml skips until the cutover, is never red for it.
+      # output, so a leg rolled back to the exporters, whose notices leg
+      # extract-notices.yml skips, is never red for it.
       - name: Fail the run if the notices leg has written no copy for over 8 hours (dbt path)
         if: steps.notices.outputs.overdue == 'true'
         env:

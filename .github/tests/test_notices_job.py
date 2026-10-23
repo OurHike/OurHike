@@ -231,11 +231,7 @@ def _notices_steps_that_run(
         env = {key: str(value) for key, value in (step.get("env") or {}).items()}
         if "id" not in step or "run" not in step or any("secrets." in value for value in env.values()):
             continue
-        # GitHub writes an expression that comes to null, a schedule's absent input, into env as "".
-        env = {
-            key: ("" if (found := _evaluate(_expression(value), context)) is None else found) if "${{" in value else value
-            for key, value in env.items()
-        }
+        env = {key: _evaluate(_expression(value), context) if "${{" in value else value for key, value in env.items()}
         output = tmp_path / leg / f"output_{step['id']}"
         finished = subprocess.run(
             ["bash", "-e", "-c", step["run"]],
@@ -252,13 +248,12 @@ def _notices_steps_that_run(
     return ran, printed
 
 
-@pytest.mark.parametrize("asked", [None, "both"])
+@pytest.mark.parametrize("asked", [None, "both", "production"])
 def test_the_production_notices_leg_extracts_nothing_while_production_is_on_the_exporters(tmp_path, asked):
-    """Production's conditions leg stays on the exporters until the
-    cutover, and the exporters read no notices store. So the production notices leg asked every club's host and filled
-    a store and a served copy every 4 hours for no reader: about 9 runner-minutes and at least 197 upstream requests
-    a run. It is skipped by its own
-    condition, read off publish-conditions.yml's line, and says so - on a schedule and on a `both` dispatch alike."""
+    """Production's conditions leg ran the exporters until the cutover, and would again on a rollback, and the
+    exporters read no notices store. So the production notices leg asked every club's host and filled a store and a
+    served copy every 4 hours for no reader: about 9 runner-minutes and at least 197 upstream requests a run. It is
+    skipped by its own condition, read off publish-conditions.yml's line, and says so, however it was started."""
     ran, printed = _notices_steps_that_run(tmp_path, "production", "exporters", asked)
     assert EXTRACT_STEP not in ran and SERVE_STEP not in ran, f"the production leg ran {ran}"
     assert "::notice title=Production notices leg skipped::" in printed
@@ -270,15 +265,7 @@ def test_the_production_notices_leg_runs_once_production_is_on_the_dbt_path(tmp_
     starts filling the store production's hourly leg reads from then on."""
     ran, printed = _notices_steps_that_run(tmp_path, "production", "dbt", asked)
     assert EXTRACT_STEP in ran and SERVE_STEP in ran, printed
-    assert "skipped" not in printed and "warming" not in printed
-
-
-def test_a_dispatch_asking_for_production_warms_its_store_while_production_is_on_the_exporters(tmp_path):
-    """The maintainer's polls of 2026-10-06 and 2026-10-23: fill production's store before the cutover, so its hourly
-    leg's first dbt run publishes every club's notices rather than the 150 tables a cold store takes on in one run."""
-    ran, printed = _notices_steps_that_run(tmp_path, "production", "exporters", "production")
-    assert EXTRACT_STEP in ran and SERVE_STEP in ran, printed
-    assert "::notice title=Production notices store warming::" in printed and "skipped" not in printed
+    assert "skipped" not in printed
 
 
 @pytest.mark.parametrize("production", ["exporters", "dbt"])
@@ -291,8 +278,7 @@ def test_the_ua_notices_leg_runs_whatever_production_is_on(tmp_path, production)
 @pytest.mark.parametrize("production_line", [None, '"dbt"', "dbt # the cutover", "DBT"])
 def test_a_production_line_the_notices_job_cannot_read_stops_its_production_leg_red(tmp_path, production_line, asked):
     """Neither skipped nor run on a guess: a line that is missing, or written in a shape this step does not read, fails
-    the leg by name, so a cutover commit that wrote it differently is seen on its first run. A warm-up bypasses
-    `exporters` only, not this."""
+    the leg by name, so a commit that wrote it differently is seen on its first run."""
     ran, printed = _notices_steps_that_run(tmp_path, "production", production_line, asked)
     assert EXTRACT_STEP not in ran and SERVE_STEP not in ran
     assert "::error title=" in printed and printed.rstrip().endswith("(exit 1)"), printed

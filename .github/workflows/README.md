@@ -128,7 +128,7 @@ group, `extract-notices`, and never `publish-data`:
 
 | | |
 |---|---|
-| `extract-notices.yml` | every club's and agency's closures and warnings notices into the private raw store, every 4 hours with up to an hour to read, then a write-once copy of what a build reads, which `publish-conditions.yml`'s hourly dbt path adds to its warehouse → `extract`, one leg per environment, production from `main` only, and only once `publish-conditions.yml`'s `PRODUCTION_PHONE_FILES` is `dbt` or a dispatch asks for `production` to fill its store before that cutover. Writes no phone file |
+| `extract-notices.yml` | every club's and agency's closures and warnings notices into the private raw store, every 4 hours with up to an hour to read, then a write-once copy of what a build reads, which `publish-conditions.yml`'s hourly dbt path adds to its warehouse → `extract`, one leg per environment, production from `main` only and only while `publish-conditions.yml`'s `PRODUCTION_PHONE_FILES` is `dbt`; a `production` dispatch runs that leg alone. Writes no phone file |
 
 And one only ever removes from the raw store, holding the monthly lane's
 group, `raw-lake-monthly`, so it never runs beside `refresh-reference.yml` or

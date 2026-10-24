@@ -69,6 +69,7 @@ from app.models.preferences import UserPreferences
 from app.models.profile import Profile
 from app.models.report import Report
 from app.models.ridge_runner import RidgeRunnerCommitment
+from app.models.support import SupportChoice
 from app.models.synced_day_hike import SyncedDayHike
 from app.models.synced_hike import SyncedActiveHike, SyncedHike
 from app.models.synced_trip import SyncedPlannedHike, SyncedTrip
@@ -185,6 +186,10 @@ def build_export(db: Session, profile: Profile) -> dict[str, Any]:
             db, PoiPhotoDismissal, PoiPhotoDismissal.contributor_id == profile_id
         ),
         "volunteer_hours": _rows(db, VolunteerHoursRecord, VolunteerHoursRecord.user_id == profile_id),
+        # What they chose to give OurHike (#1876): amounts, dates, the email
+        # Buy Me a Coffee knows them by, and the provider's ids - theirs to
+        # see, and what they would need to chase a charge themselves.
+        "what_you_give_ourhike": _rows(db, SupportChoice, SupportChoice.profile_id == profile_id),
         "trail_sections_you_maintain": _rows(db, MaintainerAssignment, MaintainerAssignment.maintainer_id == profile_id),
         "app_problems_you_reported": _rows(db, AppFailure, AppFailure.reporter_id == profile_id),
         # Challenges (#1780). The tags are what the phone sent - item, time,

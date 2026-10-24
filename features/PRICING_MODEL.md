@@ -6,6 +6,21 @@ Companion to [FEATURES.md](../FEATURES.md) (extends its existing "Business model
 
 ---
 
+> ## Superseded in part again, 2026-10-23 — OurHike now asks hikers to cover its own costs
+>
+> The banner below says money never passes through OurHike. **For OurHike's
+> own costs, it now does**: every hiker is asked once a year to choose $0,
+> $1, $10 or $100 a year, $0 included, paid on the website through Buy Me a
+> Coffee and never inside the app. Running costs first, then growth, none of
+> it the founder's income, and the long-term intent is money flowing from
+> OurHike to the clubs once a nonprofit can make those grants. Decided by
+> the maintainer by poll; [SUPPORTING_OURHIKE.md](SUPPORTING_OURHIKE.md) is
+> the one home (#1876).
+>
+> **What still holds from the banner below:** nothing a hiker gives a trail
+> organization passes through OurHike — the direct links are unchanged — and
+> pricing values #1–#5 are untouched. Value #6 is amended in place.
+
 > ## Superseded in part, 2026-08-27 — read this before the rest
 >
 > **Every part of this document that routes a hiker's money *through* OurHike to
@@ -49,7 +64,7 @@ Two of OurHike's own values are now in direct tension for the first time in this
 3. **Contribution stays free.** Reporting a problem, confirming conditions, marking a closure - gating any of these would shrink the data that makes every tier, including the free one, valuable. A two-sided resource doesn't get better by charging the side that supplies it.
 4. **Volunteers don't owe us money.** Confirmed trail work earns complementary access, offered with appreciation - never withheld as leverage, never assumed without being asked.
 5. **Pay for convenience and connection, not facts.** The underlying data and code stay open (values #3, #6) - what's actually sold is a maintained, polished experience on top of open data, the same relationship GitLab or Mattermost have to their own open cores. If someone would rather build their own tool from the open data, that was always the deal.
-6. **Money never passes through OurHike.** A hiker who wants to support the trail gives to that organization **directly, on the organization's own site** - OurHike links out, takes no cut and holds no money. The registry carries, for the three stewards of seven that have one, that organization's own donate URL and their own button text verbatim - plus `donate_recipient` where the destination is somebody else, as it is for NYS OPRHP, a state agency whose link resolves to the Natural Heritage Trust. It carries no words of OurHike's about what the money does: `donate_blurb` is a field for the *organization's* own sentence and no organization has sent one, which `test_no_organization_has_sent_words_about_what_the_money_does` holds against the real registry. **Settled by the maintainer 2026-08-27**, replacing *"Money follows the trail it came from. A thru-hike pass funds the ATC; a regional pass funds that region's own club - not a shared, undifferentiated pool."* That sentence was a routing rule for money OurHike would have held; there is no such money and there is not going to be. See the superseded banner above.
+6. **Money never passes through OurHike on its way to a trail organization.** *(Narrowed 2026-10-23: this read "Money never passes through OurHike." until OurHike began asking hikers to cover its own costs - [SUPPORTING_OURHIKE.md](SUPPORTING_OURHIKE.md). What is still true is the half about the organizations, and this paragraph was always about them.)* A hiker who wants to support the trail gives to that organization **directly, on the organization's own site** - OurHike links out, takes no cut and holds no money. The registry carries, for the three stewards of seven that have one, that organization's own donate URL and their own button text verbatim - plus `donate_recipient` where the destination is somebody else, as it is for NYS OPRHP, a state agency whose link resolves to the Natural Heritage Trust. It carries no words of OurHike's about what the money does: `donate_blurb` is a field for the *organization's* own sentence and no organization has sent one, which `test_no_organization_has_sent_words_about_what_the_money_does` holds against the real registry. **Settled by the maintainer 2026-08-27**, replacing *"Money follows the trail it came from. A thru-hike pass funds the ATC; a regional pass funds that region's own club - not a shared, undifferentiated pool."* That sentence was a routing rule for money OurHike would have held; there is no such money and there is not going to be. See the superseded banner above.
 
 ## The one rule that resolves almost everything else: reuse the MVP/Post-MVP line, don't invent a new one
 

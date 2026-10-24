@@ -264,6 +264,22 @@ class Settings(BaseSettings):
     # vendor library rather than two.
     ses_region: str = "us-east-1"
 
+    # SUPPORTING OURHIKE (#1876). Each empty value switches its half off, and
+    # says so rather than half-working:
+    #   - no checkout URL: a website-app choice is refused (503), because a
+    #     hiker sent nowhere is worse than one told it is not ready;
+    #   - no webhook secret: every webhook delivery is refused (503), because
+    #     without the secret this cannot tell Buy Me a Coffee from anybody
+    #     else posting "membership.started" for an address of their choosing;
+    #   - no notify address: a Stop is still recorded and the hiker still
+    #     told, but nobody is emailed to cancel it, and the response says so.
+    # The checkout URL is the creator's own membership page, e.g.
+    # https://buymeacoffee.com/<page>/membership; the secret is the one Buy Me
+    # a Coffee shows on the webhook's own page (its webhook spec, 2026-10-23).
+    buymeacoffee_checkout_url: str = ""
+    buymeacoffee_webhook_secret: str = ""
+    support_notify_address: str = ""
+
     @property
     def mail_allowed(self) -> tuple[str, ...]:
         """The suffix list as `app/core/mail.py` wants it."""

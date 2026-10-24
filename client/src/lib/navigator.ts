@@ -78,6 +78,8 @@ export type MorePageAway =
   | 'challenges'
   | 'challenge'
   | 'challenge-browse'
+  /** Your support (#1876): what this hiker gives OurHike, and Stop. */
+  | 'support'
 
 /**
  * Every screen a stack can hold. Grows with the phases that add one (the

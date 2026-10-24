@@ -160,7 +160,7 @@ import { forgetDayHikeSync } from './lib/dayHikesSync'
 import { RemovedPoiCard } from './chrome/RemovedPoiCard'
 import { resolvePoiId, tombstoneFor } from './lib/poiIdentity'
 import { buildAccountArchive, downloadArchive } from './lib/accountArchive'
-import { deleteAccount, type DeletionReceipt } from './lib/api'
+import { API_CONFIGURED, deleteAccount, type DeletionReceipt } from './lib/api'
 import {
   DEFAULT_PREFERENCES,
   type BackgroundSource,
@@ -456,6 +456,12 @@ import type { AuthProvider } from './screens/SignInPrompt'
 import { ENABLED_PROVIDERS } from './lib/supabase'
 import { TRAILS } from './lib/trails'
 import { useAccount } from './lib/useAuth'
+import { useSupport } from './lib/useSupport'
+import { activeDaysThisYear, recordActiveDay } from './lib/activeDays'
+import { shouldAsk } from './lib/support'
+import { holdPendingSupportTier, takePendingSupportTier } from './lib/supportPending'
+import { SupportAsk, type AskView } from './screens/SupportAsk'
+import { YourSupport, supportSummaryLine } from './screens/YourSupport'
 import { sendEmailCode, signInWithProvider, signOut, verifyEmailCode } from './lib/auth'
 import { clearRefusalFromUrl, refusalIn } from './lib/authRefusal'
 import {
@@ -2493,6 +2499,68 @@ function App() {
       (activeTab === 'plan' && !planStepBeside) ||
       (activeTab === 'today' && !isDesktop))
   const mapShownNow = mapMounted && !flowOpen && !tabOverMap
+
+  // ---- Supporting OurHike (#1876) ----
+  //
+  // The day count, the account's answer, and the day-5 ask. Up here beside
+  // `flowOpen` because the ask waits for every flow to close: it opens over
+  // the map a hiker is looking at, never over a report they are typing.
+  const support = useSupport(account !== null)
+  const [activeDays, setActiveDays] = useState(() => activeDaysThisYear(new Date()))
+  const [supportAsk, setSupportAsk] = useState<AskView | null>(null)
+
+  // EVENTING.md §2's "active": a foreground session with at least one hiker
+  // interaction. The first pointer or key event of this page load counts
+  // today; `recordActiveDay` is idempotent, so a later load the same day
+  // adds nothing.
+  useEffect(() => {
+    const count = () => setActiveDays(recordActiveDay(new Date()))
+    window.addEventListener('pointerdown', count, { once: true, capture: true })
+    window.addEventListener('keydown', count, { once: true, capture: true })
+    return () => {
+      window.removeEventListener('pointerdown', count, { capture: true })
+      window.removeEventListener('keydown', count, { capture: true })
+    }
+  }, [])
+
+  useEffect(() => {
+    if (supportAsk !== null || entering || flowOpen || authFlow !== null) return
+    // Back from signing in with a paid tier already picked: pick up at the
+    // confirmation rather than at the top. In this effect rather than one
+    // of its own, because two effects setting the same state in one commit
+    // let the later one win, and that was the ask reopening at the top.
+    if (account !== null) {
+      const tier = takePendingSupportTier()
+      if (tier !== null) {
+        setSupportAsk({ kind: 'confirm', tier })
+        return
+      }
+    }
+    if (!support.settled) return
+    if (
+      shouldAsk({
+        now: new Date(),
+        apiConfigured: API_CONFIGURED,
+        online,
+        server: support.server,
+        days: activeDays,
+        local: support.local,
+      })
+    ) {
+      setSupportAsk({ kind: 'choose' })
+    }
+  }, [
+    supportAsk,
+    entering,
+    flowOpen,
+    authFlow,
+    account,
+    online,
+    support.settled,
+    support.server,
+    support.local,
+    activeDays,
+  ])
   /**
    * Bring the map on screen for something a tap asked to see on it - and
    * leave the tabs alone where the map is already beside the screen the tap
@@ -10820,6 +10888,26 @@ function App() {
                   challengesScreen={challengesScreenNode}
                   challengesUp={challengesUp}
                   challengesSummary={challengesSummary}
+                  supportSummary={supportSummaryLine(
+                    support.server,
+                    support.local,
+                    new Date(),
+                  )}
+                  supportScreen={
+                    <YourSupport
+                      apiConfigured={API_CONFIGURED}
+                      signedIn={account !== null}
+                      server={support.server}
+                      local={support.local}
+                      error={support.error}
+                      now={new Date()}
+                      onSignIn={() =>
+                        setAuthFlow({ screen: 'choose', afterReport: false })
+                      }
+                      onChoose={() => setSupportAsk({ kind: 'choose' })}
+                      onStopped={support.replace}
+                    />
+                  }
                   volunteerScreen={
                     <Volunteer
                       contributeConditions={preferences.contribute_conditions}
@@ -12121,6 +12209,23 @@ function App() {
           window both are raised from, since a report is saved first and this
           asks how to send it. Its own z-index says the same thing; the order
           here is what makes that true even if a later layer forgets to. */}
+      {/* THE DAY-5 ASK (#1876), under the sign-in window it can hand off to,
+          and closed while that window is up so the two never stack. */}
+      {supportAsk !== null && authFlow === null && (
+        <SupportAsk
+          days={activeDays}
+          accountEmail={account?.email ?? null}
+          initial={supportAsk}
+          onSignIn={(tier) => {
+            holdPendingSupportTier(tier)
+            setSupportAsk(null)
+            setAuthFlow({ screen: 'choose', afterReport: false })
+          }}
+          onChosen={support.replace}
+          onClose={() => setSupportAsk(null)}
+        />
+      )}
+
       {authWindowNode}
     </>
   )

@@ -12,7 +12,7 @@ from app.core.time import utc_now
 from app.db.session import get_db
 from app.models.preferences import UserPreferences
 from app.models.profile import Profile
-from app.schemas.preferences import PreferencesIn, PreferencesOut, repair_stored_background
+from app.schemas.preferences import PreferencesIn, PreferencesOut, repair_stored_background, without_retired_keys
 
 router = APIRouter(prefix="/preferences", tags=["preferences"])
 
@@ -33,7 +33,7 @@ def get_my_preferences(
     # Repaired, not trusted: the row may predate a schema tightening (see
     # repair_stored_background), and a GET is the one place the affected
     # client cannot fix it first.
-    return PreferencesOut(**repair_stored_background(row.data), updated_at=row.updated_at)
+    return PreferencesOut(**repair_stored_background(without_retired_keys(row.data)), updated_at=row.updated_at)
 
 
 @router.put("/me", response_model=PreferencesOut)
@@ -75,7 +75,7 @@ def put_my_preferences(
         row.data = _merged(existing=row.data, incoming=preferences)
         row.updated_at = now
         row = commit_and_refresh(db, row)
-    return PreferencesOut(**row.data, updated_at=row.updated_at)
+    return PreferencesOut(**without_retired_keys(row.data), updated_at=row.updated_at)
 
 
 def _merged(*, existing: dict | None, incoming: PreferencesIn) -> dict:
@@ -103,4 +103,4 @@ def _merged(*, existing: dict | None, incoming: PreferencesIn) -> dict:
     """
     if existing is None:
         return incoming.model_dump(mode="json")
-    return {**existing, **incoming.model_dump(mode="json", exclude_unset=True)}
+    return {**without_retired_keys(existing), **incoming.model_dump(mode="json", exclude_unset=True)}

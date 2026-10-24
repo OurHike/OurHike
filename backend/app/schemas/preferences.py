@@ -324,3 +324,17 @@ class PreferencesOut(PreferencesIn):
     """`PreferencesIn` plus the server-assigned sync timestamp."""
 
     updated_at: UtcDatetime
+
+
+def without_retired_keys(data: dict) -> dict:
+    """A stored preferences blob with every key `PreferencesIn` no longer
+    declares dropped (#1868).
+
+    The router merges an incoming sync over the stored blob, so a key stored
+    under an older release survives forever, and `PreferencesOut` is
+    `extra="forbid"`: the release that drops or renames a field would answer
+    every GET and PUT for a row still holding the old key with a
+    ValidationError, a 500. Dropping what the schema no longer names is the
+    same repair `repair_stored_background` makes for a value, applied to a key.
+    """
+    return {key: value for key, value in data.items() if key in PreferencesIn.model_fields}

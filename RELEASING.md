@@ -118,16 +118,21 @@ request's preview — removed when the pull request closes — and next in produ
 The maintainer chose the move by poll, 2026-10-24, knowing what it cost and what it
 asks of a dashboard:
 
-- **A tester's UA install or bookmark at `/` opens the site now.** The app is at
-  `/app/`. The worker the old root app registered is retired by the `/sw.js` UA
-  serves (`.github/scripts/retire_root_service_worker.js`), which leaves the
-  downloaded map in IndexedDB where it was.
+- **The app's address on UA is `/app/` now.** A tester's existing install keeps
+  working: the worker the old root app registered is replaced by the `/sw.js` UA
+  serves (`.github/scripts/retire_root_service_worker.js`), a door that sends the
+  old icon to `/app/` — installing the new app on its next launch with signal,
+  and opening it offline after that. The downloaded map stays in IndexedDB where
+  it was. Proven in Chromium, not yet on a tester's phone or in WebKit.
 - **Spotify** needs `https://ua.ourhike-preview.pages.dev/app/spotify-callback.html`
   registered beside production's (`client/src/lib/spotify.ts`, `redirectUri()`).
 - **UA's own Supabase project**, where it exists, needs its Site URL at
   `https://ua.ourhike-preview.pages.dev/app/` — what `.github/expected-origins.yml`
   now declares and `pipeline/check_auth_redirects.py` reads back. Its `/**`
-  redirect entry already accepts the app's URLs.
+  redirect entry already accepts the app's URLs. Change it **right after the
+  merge's UA deploy**: the daily auth check reads the live value against the
+  declared one, so it is red from the merge until the dashboard matches, and red
+  the other way if the dashboard moves first.
 
 What UA is *for*, specifically — the things no amount of CI can answer:
 

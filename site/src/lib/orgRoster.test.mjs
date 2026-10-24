@@ -1,3 +1,5 @@
+import { readdirSync, readFileSync, statSync } from "node:fs";
+import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 import { byFirstLetter, readRegistry, registeredOrgs, shipping } from "./orgRoster.mjs";
 
@@ -116,5 +118,34 @@ describe("pipeline/sources.json as committed", () => {
 
   it("files every organization under a letter, none under #", () => {
     expect(byFirstLetter(roster).map((group) => group.letter)).not.toContain("#");
+  });
+});
+
+describe("the site's pages", () => {
+  // #1059 and #1877 were both a count typed into a page once - "one
+  // organization", then "five organizations" on the homepage and on /about/ -
+  // that stayed put while the registry grew. A page states a count through
+  // registeredOrgs() and shipping(), never as a number in its copy. Comments
+  // are stripped first, because several record what the copy used to say.
+  const PAGES = join(import.meta.dirname, "../pages");
+  const astro = (dir) =>
+    readdirSync(dir).flatMap((name) => {
+      const path = join(dir, name);
+      if (statSync(path).isDirectory()) return astro(path);
+      return path.endsWith(".astro") ? [path] : [];
+    });
+  const copy = (source) =>
+    source
+      .replace(/<!--[\s\S]*?-->/g, "")
+      .replace(/\/\*[\s\S]*?\*\//g, "")
+      .replace(/^\s*\/\/.*$/gm, "");
+  const typedCount =
+    /\b(?:one|two|three|four|five|six|seven|eight|nine|ten|\d[\d,]*)\s+(?:trail\s+)?(?:organi[sz]ations|stewards)\b/gi;
+
+  it("type no organization count by hand", () => {
+    const typed = astro(PAGES).flatMap((path) =>
+      [...copy(readFileSync(path, "utf8")).matchAll(typedCount)].map((m) => `${path.slice(PAGES.length + 1)}: "${m[0]}"`),
+    );
+    expect(typed).toEqual([]);
   });
 });

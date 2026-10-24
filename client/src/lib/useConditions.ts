@@ -498,7 +498,7 @@ export function useConditions(
     // Aborted by the cleanup, so a download this run was superseded on stops
     // instead of running on beside the next run's (#1870).
     const controller = new AbortController()
-    const read = { online, cancel: controller.signal }
+    const read = { online, signal: controller.signal }
     const reader = import('./publishedNotices')
     void reader
       .then(({ readPublishedNotices }) => readPublishedNotices(hikePlanned, read))

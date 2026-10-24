@@ -104,7 +104,7 @@ export interface PublishedReadOptions {
    * three readers in lib/publishedNotices.ts, which fold it into their own
    * deadline; the other readers here take their signal as an argument.
    */
-  cancel?: AbortSignal
+  signal?: AbortSignal
 }
 
 /**

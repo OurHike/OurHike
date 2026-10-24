@@ -431,7 +431,7 @@ async function readNotices(
 export async function fetchPublishedHazardAreas(
   options?: PublishedReadOptions,
 ): Promise<PublishedConditions<OrgNotice> | null> {
-  const { signal, clear } = deadline(MANIFEST_READ_TIMEOUT_MS, options?.cancel)
+  const { signal, clear } = deadline(MANIFEST_READ_TIMEOUT_MS, options?.signal)
   const published = await fetchPublished<unknown>(
     PUBLISHED_HAZARD_AREAS_KEY,
     'notices',
@@ -619,7 +619,7 @@ export function keepUncutAreas(
 export async function fetchPublishedTrailClosures(
   options?: PublishedReadOptions,
 ): Promise<PublishedConditions<TrailClosure> | null> {
-  const { signal, clear } = deadline(MANIFEST_READ_TIMEOUT_MS, options?.cancel)
+  const { signal, clear } = deadline(MANIFEST_READ_TIMEOUT_MS, options?.signal)
   const { published } = await readPublished<unknown>(
     PUBLISHED_TRAIL_CLOSURES_KEY,
     'closures',
@@ -701,7 +701,7 @@ export async function readPublishedNotices(
   missing: boolean
 }> {
   if (hikePlanned) {
-    const { signal, clear } = deadline(NOTICES_DOWNLOAD_TIMEOUT_MS, options.cancel)
+    const { signal, clear } = deadline(NOTICES_DOWNLOAD_TIMEOUT_MS, options.signal)
     const { published, notServed } = await readNotices(signal, options).finally(clear)
     return {
       published,

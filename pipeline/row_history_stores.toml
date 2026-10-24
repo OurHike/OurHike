@@ -13,6 +13,7 @@
 [started]
 monthly = "2026-10-07, refresh-reference.yml run 37614075245 (monthly run 25), which saved 9 snapshot tables, 26,016,290 rows"
 conditions_ua = "2026-10-03, publish-conditions.yml run 37151246098 (soak run 505), which saved 2 snapshot tables, 457 rows"
+conditions_production = "2026-10-24, publish-conditions.yml run 40045479505 (run 808, the first after the cutover), which saved 2 snapshot tables, 9,353 rows, as save 20261024T004215819299Z-72c205"
 
 # The same stores, by the same names, once Elementary's history
 # has been saved there: each names the run whose save first wrote its
@@ -26,6 +27,7 @@ conditions_ua = "2026-10-03, publish-conditions.yml run 37151246098 (soak run 50
 [elementary_started]
 monthly = "2026-10-10, build-reference.yml run 38014567450 (monthly run 31), which saved Elementary's history: 5 tables, 859,804 bytes"
 conditions_ua = "by 2026-10-08 22:52 UTC: publish-conditions.yml run 596 (37930228326) restored Elementary's history from save 20261008T225246144583Z-cc6552, which an earlier hourly run wrote, and check-conditions.yml has saved it every hour since its run 1 (37931185273); run 15 (38041409377) saved 5 tables, 1,688,145 bytes"
+conditions_production = "2026-10-24, publish-conditions.yml run 40045479505 (run 808), whose build saved Elementary's history: 5 tables, 204,701 bytes"
 
 # How many saves each store keeps, its current one included, of saves/ and of
 # elementary/ alike: row_history.py's keep_saves(), which its own save prunes

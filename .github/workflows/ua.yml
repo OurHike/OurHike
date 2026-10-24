@@ -35,15 +35,23 @@
 # answered with the app's shell, measured 2026-10-24 on /organizations/ -
 # and the one serving the app at a path production does not. The maintainer
 # chose this layout by poll, 2026-10-24, over a second alias that would have
-# left UA's app at `/`, knowing what the move costs: a tester's UA install at
-# `/` opens the site now (retire_root_service_worker.js, below, removes the
-# old app's worker), and Spotify's and UA Supabase's registered addresses
-# move to `/app/` (RELEASING.md §3b).
+# left UA's app at `/`, knowing what the move costs: the app's address is
+# `/app/` now (retire_root_service_worker.js, below, keeps an old install's
+# icon opening it, offline too), and Spotify's and UA Supabase's registered
+# addresses move to `/app/` (RELEASING.md §3b).
 #
-# The assembly is the preview's, step for step, with two differences: the
+# The assembly is the preview's, step for step, with three differences: the
 # status page is pointed at UA's data as pages.yml points production's, since
-# UA is meant to be checked; and `sw.js` at the root, which only UA needs,
-# because only UA ever served the app there.
+# UA is meant to be checked; the CSP in `_headers` names UA's backend, which a
+# preview has none of; and `sw.js` at the root, which only UA needs, because
+# only UA ever served the app there.
+#
+# THE DOCS JOB RUNS ONLY WHERE UA CAN DEPLOY: a job-level `if:` cannot read
+# secrets, so it reads the one setting it can, CLOUDFLARE_PAGES_PROJECT. With
+# that unset the docs are skipped and the deploy job still runs, to say why it
+# is skipping (below) - the promise this header makes, kept. A docs build that
+# fails where UA can deploy stops the deploy, as it stops production's and a
+# preview's: a broken /data/ is a defect to see, not to ship around.
 #
 # SETUP: the same Pages project and token as pr-preview.yml (LAUNCH_CHECKLIST.md
 # 3a), plus the optional UA_* settings below. Until the Cloudflare settings
@@ -72,6 +80,7 @@ jobs:
   # secret, handed to the deploy as an artifact.
   docs:
     name: Build the data docs
+    if: vars.CLOUDFLARE_PAGES_PROJECT != ''
     runs-on: ubuntu-latest
     timeout-minutes: 15
     permissions:
@@ -95,6 +104,8 @@ jobs:
 
   ua:
     needs: docs
+    # Skipped docs - no Pages project - still reach the step that says so.
+    if: ${{ !cancelled() && needs.docs.result != 'failure' }}
     runs-on: ubuntu-latest
     timeout-minutes: 20
     steps:
@@ -441,8 +452,9 @@ jobs:
           cp _site/app/index.html _site/404.html
           # UA's own, and the one file here no other build has: the script
           # the worker UA's root app registered before #1887 finds as its
-          # update, so it removes itself rather than serving that app on.
-          # The file says why and what it leaves alone.
+          # update. It replaces that worker with a door to /app/, so an old
+          # install's icon still opens the map, offline too. The file says
+          # how, and what it leaves alone.
           cp .github/scripts/retire_root_service_worker.js _site/sw.js
           # /status/ pointed at UA's data, as pages.yml points production's:
           # UA is meant to be checked, where a preview's status page is left

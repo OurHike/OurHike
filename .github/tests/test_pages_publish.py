@@ -941,24 +941,50 @@ class TestTheDataDocs:
         assert "pages deploy client/dist" not in deploy["with"]["command"]
         assert names.index("Assemble UA") < names.index("Publish UA")
 
-    def test_ua_retires_the_worker_its_root_app_registered(self):
+    def test_ua_keeps_a_door_where_its_root_app_registered_a_worker(self):
         """Only UA ever served the app at its root, so only UA ships this `/sw.js`.
 
         The root app registered `/sw.js` with scope `/`. With the site at the
         root that script would 404, a registration whose update fails is kept,
-        and it would go on serving the old app at `/` and `/app/`. The file
-        UA serves there instead removes the registration, and only its own
-        precache - never the `/app/` app's, never IndexedDB.
+        and it would go on serving the old app at `/` and `/app/`. The file UA
+        serves there replaces that worker with a door: an old app address goes
+        to the same address under `/app/` until the new app is installed, and
+        to `/app/` when offline after that, so an old install's icon still
+        opens the map. It reloads no window, never unregisters (the old icon
+        has nothing else to open it offline), drops only the root scope's
+        precache, and never touches IndexedDB. Measured in Chromium against
+        real builds, online and offline (#1887's pull request).
         """
         run = next(step for step in self._steps("ua.yml") if step.get("name") == "Assemble UA")["run"]
         assert "cp .github/scripts/retire_root_service_worker.js _site/sw.js" in run
         worker = (REPO_ROOT / ".github" / "scripts" / "retire_root_service_worker.js").read_text(encoding="utf-8")
-        assert "self.registration.unregister()" in worker
-        assert "name.endsWith(`-${scope}`)" in worker, "only the root scope's precache, never /app/'s"
-        assert "indexedDB" not in worker
-        assert "register(" not in worker.replace("unregister(", "")
+        code = "\n".join(line for line in worker.splitlines() if not line.strip().startswith("//"))
+        assert "self.skipWaiting()" in code, "it must take over from the old worker on the update"
+        assert "Response.redirect(underApp(url)" in code
+        assert "const ROOT_PRECACHE = `-${scope}`" in code and "name.endsWith(ROOT_PRECACHE)" in code
+        assert "unregister(" not in code, "the old icon has nothing else to open it offline"
+        assert ".navigate(" not in code, "no window is reloaded under anyone (#311)"
+        assert "indexedDB" not in code
+        assert "register(" not in code
         for workflow in ("pages.yml", "pr-preview.yml"):
             assert "retire_root_service_worker" not in (WORKFLOW_DIR / workflow).read_text(encoding="utf-8")
+
+    def test_ua_builds_its_docs_in_a_job_holding_no_secret_and_only_where_it_can_deploy(self):
+        """The preview's split, for UA (#1887): the docs job only reads, holds no
+        secret, and hands the directory over; and it runs only where a Pages
+        project is set, so an unconfigured UA still skips rather than failing a merge."""
+        jobs = yaml.safe_load((WORKFLOW_DIR / "ua.yml").read_text(encoding="utf-8"))["jobs"]
+        docs = jobs["docs"]
+        assert docs.get("permissions") == {"contents": "read"}
+        assert "secrets." not in yaml.safe_dump(docs)
+        assert "vars." not in yaml.safe_dump(docs["steps"]), "nothing reaches dbt but the code"
+        assert docs["if"] == "vars.CLOUDFLARE_PAGES_PROJECT != ''"
+        checkout = next(s for s in docs["steps"] if str(s.get("uses", "")).startswith("actions/checkout@"))
+        assert checkout.get("with", {}).get("persist-credentials") is False
+        ua = jobs["ua"]
+        assert ua["needs"] == "docs"
+        assert ua["if"] == "${{ !cancelled() && needs.docs.result != 'failure' }}"
+        assert not any(step.get("uses") == "./.github/actions/dbt-docs-site" for step in ua["steps"])
 
     def test_the_docs_build_reads_no_secret_and_passes_no_vars(self):
         """`dbt_rt.invocations` publishes `args` and `vars_override` with the page.

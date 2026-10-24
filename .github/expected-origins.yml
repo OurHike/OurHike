@@ -237,7 +237,14 @@ origins:
 
   - pattern: https://ua.ourhike-preview.pages.dev
     probe: https://ua.ourhike-preview.pages.dev
-    app_path: /
+    # `/app/` since #1887, when ua.yml started serving the site at the root
+    # and the app under it, as production and every preview do. It was `/`
+    # while UA was the app alone. Unlike the preview entry above, this moves
+    # something in a dashboard: UA's Supabase project names this host
+    # exactly, so its Site URL becomes this origin plus `/app/`
+    # (check_auth_redirects.py's site_url check). Its redirect entry, `/**`,
+    # already accepts the app's URLs.
+    app_path: /app/
     supabase: [ua]
     # Deliberately absent from the bucket policy: the preview wildcard above
     # already covers this hostname, and `ua.yml` says so as the reason UA needs

@@ -25,6 +25,26 @@
 # happen twice. A new project would need both updated before UA could sign
 # anyone in or download anything.
 #
+# UA IS LAID OUT LIKE PRODUCTION: THE SITE AT `/`, THE APP AT `/app/`
+#
+# pages.yml and pr-preview.yml both assemble `_site/` with the Astro site at
+# the root, the app under `app/` built with `VITE_BASE_PATH: /app/`, and the
+# dbt docs at `data/`. Until #1887 this uploaded `client/dist` alone, built
+# for `/`, so UA was the one environment between a pull request and a tag
+# that could not show a change to ourhike.org at all - its site paths
+# answered with the app's shell, measured 2026-10-24 on /organizations/ -
+# and the one serving the app at a path production does not. The maintainer
+# chose this layout by poll, 2026-10-24, over a second alias that would have
+# left UA's app at `/`, knowing what the move costs: a tester's UA install at
+# `/` opens the site now (retire_root_service_worker.js, below, removes the
+# old app's worker), and Spotify's and UA Supabase's registered addresses
+# move to `/app/` (RELEASING.md §3b).
+#
+# The assembly is the preview's, step for step, with two differences: the
+# status page is pointed at UA's data as pages.yml points production's, since
+# UA is meant to be checked; and `sw.js` at the root, which only UA needs,
+# because only UA ever served the app there.
+#
 # SETUP: the same Pages project and token as pr-preview.yml (LAUNCH_CHECKLIST.md
 # 3a), plus the optional UA_* settings below. Until the Cloudflare settings
 # exist this workflow says so and skips rather than failing every merge.
@@ -47,7 +67,34 @@ permissions:
   contents: read
 
 jobs:
+  # The dbt docs for /data/, built exactly as pr-preview.yml and pages.yml
+  # build theirs: by .github/actions/dbt-docs-site, in a job that holds no
+  # secret, handed to the deploy as an artifact.
+  docs:
+    name: Build the data docs
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+
+      - name: Build the data docs
+        id: docs
+        uses: ./.github/actions/dbt-docs-site
+
+      - name: Hand the docs to UA
+        uses: actions/upload-artifact@v7
+        with:
+          name: data-docs
+          path: ${{ steps.docs.outputs.dir }}
+          retention-days: 1
+          if-no-files-found: error
+
   ua:
+    needs: docs
     runs-on: ubuntu-latest
     timeout-minutes: 20
     steps:
@@ -73,12 +120,27 @@ jobs:
         with:
           node-version: '24'
           cache: npm
-          cache-dependency-path: client/package-lock.json
+          cache-dependency-path: |
+            client/package-lock.json
+            site/package-lock.json
 
       - name: Install
         if: steps.can.outputs.deploy == 'true'
         working-directory: client
         run: npm ci
+
+      # The site's own toolchain and build, exactly as pr-preview.yml has
+      # them: no UA-specific configuration, because the site is static HTML
+      # whose `/app/...` links are root-relative.
+      - name: Install the site's toolchain
+        if: steps.can.outputs.deploy == 'true'
+        working-directory: site
+        run: npm ci
+
+      - name: Build the site
+        if: steps.can.outputs.deploy == 'true'
+        working-directory: site
+        run: npm run build
 
       # UA points at its own published data: DATA_BASE_URL plus
       # `/environments/ua`, the prefix a UA publish writes to
@@ -188,9 +250,11 @@ jobs:
         if: steps.can.outputs.deploy == 'true'
         working-directory: client
         env:
-          # The root: UA has a hostname to itself, so the installed PWA's scope
-          # is the whole origin, which is also how production is served.
-          VITE_BASE_PATH: /
+          # `/app/`, the path production serves the app at (pages.yml) and
+          # every preview builds it for. It was `/` until #1887, with a
+          # comment saying that was "also how production is served", which
+          # stopped being true when #733 moved the app to ourhike.org/app/.
+          VITE_BASE_PATH: /app/
           VITE_DATA_BASE_URL: ${{ steps.data.outputs.url }}
           VITE_SUPABASE_URL: ${{ steps.supabase.outputs.url }}
           VITE_SUPABASE_ANON_KEY: ${{ steps.supabase.outputs.key }}
@@ -316,6 +380,83 @@ jobs:
           fi
           python3 ../.github/scripts/check_launch_budget.py "$pointed" --release "$release"
 
+      - name: Fetch the data docs
+        if: steps.can.outputs.deploy == 'true'
+        uses: actions/download-artifact@v8
+        with:
+          name: data-docs
+          path: ${{ runner.temp }}/data-docs
+
+      # check_docs_site.py, in the assembly, reads the docs' Parquet files
+      # with duckdb, at the pipeline's own pin - pr-preview.yml has the run
+      # that failed without it.
+      - uses: actions/setup-python@v7
+        if: steps.can.outputs.deploy == 'true'
+        with:
+          python-version: "3.12"
+
+      - name: Install the docs check's duckdb
+        if: steps.can.outputs.deploy == 'true'
+        run: python -m pip install --quiet "$(grep -m1 '^duckdb==' pipeline/requirements.txt)"
+
+      # pr-preview.yml's "Assemble the preview" is the reference for every
+      # line below that is not commented here, and its comments carry the
+      # measurements: why 404.html and `_redirects` both, why `_headers` sits
+      # at the root, why the docs are checked on the copy.
+      - name: Assemble UA
+        if: steps.can.outputs.deploy == 'true'
+        env:
+          VITE_DATA_BASE_URL: ${{ steps.data.outputs.url }}
+          VITE_SUPABASE_URL: ${{ steps.supabase.outputs.url }}
+          VITE_API_BASE_URL: ${{ steps.api.outputs.url }}
+          DOCS_DIR: ${{ runner.temp }}/data-docs
+          DATA_URL: ${{ steps.data.outputs.url }}
+          SOURCE_COMMIT: ${{ github.sha }}
+        run: |
+          mkdir -p _site/app
+          cp -r site/dist/. _site/
+          cp -r client/dist/. _site/app/
+          cp client/public/favicon.svg _site/favicon.svg
+          if [ -e _site/data ]; then
+            strays=$(find _site/data -mindepth 1 -maxdepth 1 ! -name quality ! -name how -printf '%f ')
+            if [ -n "$strays" ]; then
+              echo "::error::site/dist holds data/${strays% } beside data/quality/ and data/how/, and data/ is the dbt docs' path. Move one of them."
+              exit 1
+            fi
+          fi
+          mkdir -p _site/data
+          # Never empty: `cp -r "/." _site/data/` would copy the runner's root.
+          : "${DOCS_DIR:?the docs step named no directory}"
+          if [ -e "$DOCS_DIR/quality" ]; then
+            echo "::error::The dbt docs hold a quality/ of their own, which is the data-quality page's path. Move one of them."
+            exit 1
+          fi
+          if [ -e "$DOCS_DIR/how" ]; then
+            echo "::error::The dbt docs hold a how/ of their own, which is the How the data is built page's path. Move one of them."
+            exit 1
+          fi
+          cp -r "$DOCS_DIR"/. _site/data/
+          python pipeline/check_docs_site.py _site/data --served
+          printf '/app/*  /app/index.html  200\n' > _site/_redirects
+          cp _site/app/index.html _site/404.html
+          # UA's own, and the one file here no other build has: the script
+          # the worker UA's root app registered before #1887 finds as its
+          # update, so it removes itself rather than serving that app on.
+          # The file says why and what it leaves alone.
+          cp .github/scripts/retire_root_service_worker.js _site/sw.js
+          # /status/ pointed at UA's data, as pages.yml points production's:
+          # UA is meant to be checked, where a preview's status page is left
+          # saying it is unconfigured on purpose.
+          if [ -n "$DATA_URL" ]; then
+            python3 -c 'import os, pathlib; p = pathlib.Path("_site/status/index.html"); p.write_text(p.read_text().replace("__DATA_BASE_URL__", os.environ["DATA_URL"]))'
+            echo "Status page points at $DATA_URL"
+          else
+            echo "::warning::No data source, so /status/ will say it is unconfigured rather than checking anything."
+          fi
+          python .github/scripts/configure_quality_page.py _site/data/quality/index.html
+          node client/scripts/csp.mjs --headers > _site/_headers
+          echo "Uploading $(find _site -type f | wc -l) files: $(find _site/app -type f | wc -l) of them the app, $(find _site/data -type f | wc -l) the dbt docs."
+
       - name: Publish UA
         id: deploy
         if: steps.can.outputs.deploy == 'true'
@@ -329,7 +470,7 @@ jobs:
           # `pr-<n>`, and the cleanup action that removes them on close matches
           # that shape rather than every alias in the project.
           command: >-
-            pages deploy client/dist
+            pages deploy _site
             --project-name=${{ vars.CLOUDFLARE_PAGES_PROJECT }}
             --branch=ua
             --commit-dirty=true
@@ -353,6 +494,10 @@ jobs:
             code="$(curl -sS -o /dev/null -w '%{http_code}' --max-time 10 "$URL" || echo 000)"
             if [ "$code" = "200" ]; then
               echo "UA answered 200 on attempt $attempt: $URL"
+              app="$(curl -sS -o /dev/null -w '%{http_code}' --max-time 10 "${URL%/}/app/" || echo 000)"
+              if [ "$app" != "200" ]; then
+                echo "::warning::The site answers, but ${URL%/}/app/ answered $app."
+              fi
               exit 0
             fi
             echo "Attempt $attempt: $code. Waiting for the alias to route."
@@ -369,7 +514,10 @@ jobs:
           {
             echo "### UA"
             echo
-            echo "**${URL:-$IMMUTABLE}**"
+            echo "**${URL:-$IMMUTABLE}** - the site, as ourhike.org serves it"
+            echo
+            BASE="${URL:-$IMMUTABLE}"
+            echo "**${BASE%/}/app/** - the app, as ourhike.org/app/ serves it"
             echo
             echo "Built from \`$GITHUB_SHA\`. This is what a release candidate looks like;"
             echo "production is whatever tag was last deployed (RELEASING.md §2)."

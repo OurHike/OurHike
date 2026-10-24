@@ -10,8 +10,11 @@ from app.core.account_deletion import delete_account
 from app.core.account_export import build_export
 from app.core.auth import get_current_github_login, get_current_user
 from app.core.logs import describe_failure
+from app.core.mail import ses_client
+from app.core.support import notify_stop
 from app.db.session import get_db
 from app.models.profile import Profile
+from app.models.support import SupportChoice
 from app.schemas.profile import DeletionReceipt, ProfileOut
 
 logger = logging.getLogger(__name__)
@@ -96,6 +99,17 @@ def delete_my_account(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail="The account was not deleted. Nothing was changed.",
         ) from None
+
+    # Support the deletion asked to stop (#1876): the founder cancels it by
+    # hand, so they are told now, after the commit, in a transaction of its
+    # own - a mail refusal must not undo a deletion that already happened.
+    if summary.support_stops_requested:
+        provider = ses_client()
+        for choice_id in summary.support_stops_requested:
+            choice = db.get(SupportChoice, choice_id)
+            if choice is not None and not notify_stop(db, choice, provider):
+                logger.warning("support: stop %s from a deletion recorded but nobody was emailed", choice_id)
+        db.commit()
 
     return DeletionReceipt(
         trips_deleted=summary.trips_deleted,

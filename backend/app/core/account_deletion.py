@@ -78,6 +78,7 @@ from app.models.preferences import UserPreferences
 from app.models.profile import Profile, Role
 from app.models.report import Report
 from app.models.ridge_runner import RidgeRunnerCommitment
+from app.models.support import SupportChoice, SupportStatus
 from app.models.synced_day_hike import SyncedDayHike
 from app.models.synced_hike import SyncedActiveHike, SyncedHike
 from app.models.synced_trip import SyncedPlannedHike, SyncedTrip
@@ -132,6 +133,9 @@ class DeletionSummary:
     #: Challenges (#1780) - see the reasoning at each query in `delete_account`.
     challenge_tags_deleted: int = 0
     challenge_entries_deleted: int = 0
+    #: Support choices this deletion asked to stop (#1876) - their ids, so the
+    #: router can email the founder to cancel each one after the commit.
+    support_stops_requested: list[str] = field(default_factory=list)
     contributions_kept: dict[str, int] = field(default_factory=dict)
 
 
@@ -320,10 +324,30 @@ def delete_account(db: Session, profile: Profile, now=None) -> DeletionSummary:
         report.signed_name_kind = None
         report.contact_ok = False
 
+    # WHAT A HIKER GIVES OURHIKE (#1876) STAYS, AND STOPS. The rows stay:
+    # they are the money record the published accounting and any later refund
+    # question rely on, which is this module's rule for keeping a row. But a
+    # deleted account can no longer reach More -> Your support to press Stop,
+    # so anything still running is asked to stop here, exactly as Stop would -
+    # nobody deleting their account means "keep charging me". The founder is
+    # emailed by the router once the deletion has committed.
+    stopping = (
+        db.query(SupportChoice)
+        .filter(
+            SupportChoice.profile_id == profile_id,
+            SupportChoice.status.in_((SupportStatus.pending, SupportStatus.active)),
+        )
+        .all()
+    )
+    for choice in stopping:
+        choice.status = SupportStatus.stop_requested
+        choice.stop_requested_at = now
+
     # --- The rows other people are relying on. Untouched, and counted so the
     # hiker is told rather than left to assume. ---
 
     kept = _contributions_kept(db, profile_id)
+    kept["records of what you gave OurHike"] = db.query(SupportChoice).filter(SupportChoice.profile_id == profile_id).count()
     kept["volunteer hours a club confirmed"] = (
         db.query(VolunteerHoursRecord)
         .filter(
@@ -353,6 +377,7 @@ def delete_account(db: Session, profile: Profile, now=None) -> DeletionSummary:
         org_rows_unlinked=unlinked,
         challenge_tags_deleted=challenge_tags,
         challenge_entries_deleted=challenge_entries,
+        support_stops_requested=[choice.id for choice in stopping],
         contributions_kept={name: count for name, count in kept.items() if count},
     )
 

@@ -118,6 +118,14 @@ export interface MoreProps extends SettingsProps {
   /** The Challenges row's second line, e.g. the joined challenges' names. */
   challengesSummary?: string
   /**
+   * Your support (#1876), rendered by the shell for `volunteerScreen`'s
+   * reason - it holds the account and the backend's answer. Absent means the
+   * row leads to an empty page, never a crash.
+   */
+  supportScreen?: ReactNode
+  /** The Your support row's second line, e.g. "$10 a year". */
+  supportSummary?: string
+  /**
    * Opens the moderation queue, and present ONLY for a moderator (#235).
    *
    * An optional callback rather than an `isModerator` flag, deliberately:
@@ -341,6 +349,8 @@ export function More({
   challengesScreen,
   challengesUp,
   challengesSummary = 'Places clubs invite you to walk',
+  supportScreen,
+  supportSummary = 'Pay what you want, $0 included',
   onOpenModeration,
   onOpenRegistry,
   hikeSummary = null,
@@ -698,6 +708,8 @@ export function More({
               with the same gate - see there. */}
         </>
       )
+    } else if (page === 'support') {
+      panel = supportScreen ?? null
     } else if (page === 'reports') {
       panel = yourReports ?? null
     } else if (page === 'work') {
@@ -796,7 +808,7 @@ export function More({
     )
   }
 
-  // ---- Home: the storage card, six rows, and the thank-you line. ----
+  // ---- Home: the storage card, seven rows, and the thank-you line. ----
 
   const face = storageFace(
     hikingStatus,
@@ -847,7 +859,7 @@ export function More({
           'Report problems, or lend a hand'
 
   /**
-   * THE SIX ROWS, AND THEY TAKE NO MODE INPUT (D23, #1437).
+   * THE SEVEN ROWS, AND THEY TAKE NO MODE INPUT (D23, #1437).
    *
    * Today, Map and Plan change with the mode switch. More does not, and the
    * reason is what the screen is for: More is where somebody goes looking
@@ -885,6 +897,10 @@ export function More({
     // After "Volunteer & report", the handoff's place for it (#1780). Present
     // in every mode, for the reason the block above gives.
     { page: 'challenges', title: 'Challenges', sub: challengesSummary },
+    // Before the sources row, which closes the list on how this map got here
+    // (#1876). In every mode, for the reason the block above gives: the way
+    // to Stop must never depend on a switch on another screen.
+    { page: 'support', title: 'Your support', sub: supportSummary },
     {
       page: 'sources',
       title: 'Where this map comes from',

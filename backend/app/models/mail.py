@@ -39,12 +39,19 @@ class MailPurpose(str, enum.Enum):
 
     There is no `marketing` and there is not going to be: every value here is
     a message somebody at an organization needs in order to answer a question
-    that was asked about them.
+    that was asked about them, or one a person needs to finish something they
+    asked for themselves (the two `support_*` values, #1876).
     """
 
     nomination_proposal = "nomination_proposal"
     nomination_reminder = "nomination_reminder"
     nomination_outcome = "nomination_outcome"
+    # Supporting OurHike (#1876). Neither is cold: the first goes to a hiker
+    # who pressed "Email me how to set it up" in a store app, the second to
+    # the founder when a hiker presses Stop. Both fit the rule above - a
+    # message somebody needs to finish something they asked for.
+    support_setup_link = "support_setup_link"
+    support_stop_request = "support_stop_request"
 
 
 class MailState(str, enum.Enum):

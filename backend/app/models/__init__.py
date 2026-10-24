@@ -69,6 +69,7 @@ from app.models.ridge_runner import (
     MAX_COMMITMENT_DAYS,
     RidgeRunnerCommitment,
 )
+from app.models.support import SupportCadence, SupportChoice, SupportStatus
 from app.models.synced_day_hike import SyncedDayHike
 from app.models.synced_hike import SyncedActiveHike, SyncedHike
 from app.models.synced_trip import SyncedPlannedHike, SyncedTrip
@@ -161,4 +162,7 @@ __all__ = [
     "ChallengeTag",
     "ClubChallenge",
     "TagHow",
+    "SupportCadence",
+    "SupportChoice",
+    "SupportStatus",
 ]

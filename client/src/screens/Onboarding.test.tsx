@@ -121,7 +121,7 @@ describe('Onboarding', () => {
   it('sends a hiker to the organizations instead of claiming OurHike funds them', () => {
     render(<Onboarding {...PROPS} />)
 
-    const money = screen.getByText(/takes no cut and holds no money/i)
+    const money = screen.getByText(/takes no cut of what you give them/i)
     expect(money).toHaveTextContent(/ATC/i)
     expect(money).toHaveTextContent(/other organizations/i)
     expect(money).toHaveTextContent(/directly/i)

@@ -79,6 +79,7 @@ two targets is a smaller change than the workflow's own header comment.
 | **What it is** | a laptop, and a preview per pull request | one persistent deployment of `main` | what hikers install |
 | **Deployed by** | `npm run dev`; `pr-preview.yml` | push to `main` | an annotated tag `v*` |
 | **Client origin** | `localhost:5173` / `:4173`; `pr-<n>.ourhike-preview.pages.dev` | `ua.ourhike-preview.pages.dev` | `ourhike.org` |
+| **Layout** | a preview: the site at `/`, the app at `/app/` | the site at `/`, the app at `/app/` (since #1887) | the site at `/`, the app at `/app/` |
 | **Backend** | local uvicorn | a UA service on the backend host | a production service on the backend host |
 | **Database** | local Postgres (`backend/scripts/local-postgres.sh`) | UA Supabase project | production Supabase project |
 | **Map data** | local artifacts, or `environments/dev/` | `environments/ua/`; the **candidate** `releases/<id>/` within it | the bucket root; the **released** `releases/<id>/` within it |
@@ -108,6 +109,25 @@ CORS policy and Supabase's redirect list both carry for previews —
 That matters because LAUNCH_CHECKLIST.md already names those two lists as "the same
 mistake waiting to happen twice", and a third environment is exactly the occasion for
 a third instance of it.
+
+**Laid out like production since #1887**: the marketing site at
+`ua.ourhike-preview.pages.dev/`, the app at `/app/`, the dbt docs at `/data/`,
+assembled by `ua.yml` the way `pr-preview.yml` assembles a preview. Until then UA
+was the app alone at `/`, so a change to ourhike.org could be seen in its pull
+request's preview — removed when the pull request closes — and next in production.
+The maintainer chose the move by poll, 2026-10-24, knowing what it cost and what it
+asks of a dashboard:
+
+- **A tester's UA install or bookmark at `/` opens the site now.** The app is at
+  `/app/`. The worker the old root app registered is retired by the `/sw.js` UA
+  serves (`.github/scripts/retire_root_service_worker.js`), which leaves the
+  downloaded map in IndexedDB where it was.
+- **Spotify** needs `https://ua.ourhike-preview.pages.dev/app/spotify-callback.html`
+  registered beside production's (`client/src/lib/spotify.ts`, `redirectUri()`).
+- **UA's own Supabase project**, where it exists, needs its Site URL at
+  `https://ua.ourhike-preview.pages.dev/app/` — what `.github/expected-origins.yml`
+  now declares and `pipeline/check_auth_redirects.py` reads back. Its `/**`
+  redirect entry already accepts the app's URLs.
 
 What UA is *for*, specifically — the things no amount of CI can answer:
 

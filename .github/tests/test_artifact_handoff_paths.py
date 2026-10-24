@@ -58,6 +58,9 @@ RELOCATIONS = {
     # pr-preview.yml's docs job does the same for the preview job, whose
     # "Assemble the preview" step reads the folder it extracts to.
     ("pr-preview.yml", "data-docs"),
+    # ua.yml's docs job the same again since #1887, for the same reason: the
+    # UA job's "Assemble UA" reads $DOCS_DIR from where it is downloaded.
+    ("ua.yml", "data-docs"),
 }
 
 

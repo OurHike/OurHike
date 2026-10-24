@@ -34,15 +34,16 @@ PAGE_SOURCES = [
     REPO_ROOT / "site" / "src" / "scripts" / "dataQuality.js",
 ]
 COMMAND = "python .github/scripts/configure_quality_page.py _site/data/quality/index.html"
-SITE_BUILDS = [("pages.yml", "Assemble the site"), ("pr-preview.yml", "Assemble the preview")]
+SITE_BUILDS = [("pages.yml", "Assemble the site"), ("pr-preview.yml", "Assemble the preview"), ("ua.yml", "Assemble UA")]
 DOCS_COPY = 'cp -r "$DOCS_DIR"/. _site/data/'
 ELT = REPO_ROOT / "pipeline" / "ELT.md"
 #: The notes link as the page ships it, up to its anchor.
 NOTES_LINK = "https://github.com/OurHike/OurHike/blob/__SOURCE_COMMIT__/pipeline/ELT.md#"
-#: The commit each site build names: pages.yml builds the commit it runs on, a preview the pull request's head.
+#: The commit each site build names: pages.yml and ua.yml build the commit they run on, a preview the pull request's head.
 SOURCE_COMMITS = {
     "pages.yml": "${{ github.sha }}",
     "pr-preview.yml": "${{ github.event.pull_request.head.sha || github.sha }}",
+    "ua.yml": "${{ github.sha }}",
 }
 COMMIT = "0123456789abcdef0123456789abcdef01234567"
 

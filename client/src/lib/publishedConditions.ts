@@ -98,6 +98,13 @@ export interface PublishedConditions<T> {
  */
 export interface PublishedReadOptions {
   online?: boolean
+  /**
+   * Aborts a download still in flight (#1870 — useConditions does not abort a
+   * superseded notices, hazard-area or closures download). Read only by the
+   * three readers in lib/publishedNotices.ts, which fold it into their own
+   * deadline; the other readers here take their signal as an argument.
+   */
+  cancel?: AbortSignal
 }
 
 /**

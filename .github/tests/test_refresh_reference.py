@@ -263,6 +263,27 @@ def test_the_pin_job_scans_osm_water_from_the_raw_stores_extracts_before_the_pin
         assert f"--extra {pinned}=data/raw/{local}" in steps[pin]["run"], pinned
 
 
+def test_the_pin_carries_uas_published_photo_outcomes_where_the_build_and_parity_both_read_them(workflow):
+    """#1878 - Production's places show no photos since the 2026-10-20 promotion: no pin carried the two files
+    step_poi_photos.py lands, so every monthly build attached none. They are UA's published copies (only
+    publish-vector-data.yml's fetchers write them), pinned at export_poi.py's own names under data/raw/, where the
+    build's photo step and parity's old side both read them by default."""
+    steps = workflow["jobs"]["pin"]["steps"]
+    pin = _first_step(steps, "extract._warehouse pin ")
+    fetch = next(index for index, step in enumerate(steps) if "/environments/ua/$name" in step.get("run", ""))
+    export_poi = (WORKFLOWS.parents[1] / "pipeline" / "export_poi.py").read_text(encoding="utf-8")
+    names = [
+        re.search(rf'^{constant} = "([^"]+)"$', export_poi, re.M).group(1)
+        for constant in ("ATC_IMAGES_FILENAME", "IMAGES_FILENAME")
+    ]
+
+    assert fetch < pin and names == ["poi_images_atc.json", "poi_images.json"]
+    assert '"${DATA_BASE_URL%/}/environments/ua/$name"' in steps[fetch]["run"] and '-o "data/raw/$name"' in steps[fetch]["run"]
+    assert "::warning" in steps[fetch]["run"] and not _secrets(steps[fetch]), "a public read that never stops the pin"
+    assert 'extras+=(--extra "$name=data/raw/$name")' in steps[pin]["run"]
+    assert "for name in poi_images_atc.json poi_images.json; do" in steps[pin]["run"]
+
+
 def test_the_water_scans_run_only_on_a_complete_set_never_fail_the_pin_and_free_the_disk(workflow):
     """A missing or unreadable copy lands the last landed scans rather than a scan of part of the corridor, and a scan
     that refuses or crashes leaves them standing: neither may stop the pin, or the build after it."""

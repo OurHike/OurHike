@@ -61,6 +61,14 @@ def photo_key(digest: str) -> str:
     return f"{PHOTO_PREFIX}/{digest}.{PHOTO_EXTENSION}"
 
 
+def is_photo_key(key: str) -> bool:
+    """Whether `key` has the one shape photo_key() builds, `photos/<sha256>.jpg`."""
+    digest, dot, extension = key.removeprefix(f"{PHOTO_PREFIX}/").rpartition(".")
+    return (
+        key.startswith(f"{PHOTO_PREFIX}/") and dot == "." and extension == PHOTO_EXTENSION and bool(_DIGEST_PATTERN.match(digest))
+    )
+
+
 def local_photo_path(raw_dir: Path, digest: str) -> Path:
     """Where this image is cached on disk. Flat rather than sharded into
     `ab/cd/` subdirectories: a corridor holds thousands of photos, not

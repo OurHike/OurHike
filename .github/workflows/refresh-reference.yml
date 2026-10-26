@@ -442,10 +442,33 @@ jobs:
           rm -f data/raw/osm/*-latest.osm.pbf
           "$RUNNER_TEMP/extract/bin/python" -m extract._geofabrik landed --raw-dir data/raw --summary "$GITHUB_STEP_SUMMARY"
 
-      # The tables, their as-landed files, the DEM index and the water scans,
-      # at the paths extract/_geofabrik.py's SCANS names: not the scanners'
-      # own, because parity.py's old side would find osm_water.geojson there
-      # without the reach file export_poi.py refuses to run without.
+      # THE PHOTO OUTCOMES (#1878 - Production's places show no photos since
+      # the 2026-10-20 promotion): step_poi_photos.py lands the two files
+      # export_poi.py reads, and only publish-vector-data.yml's fetchers write
+      # them, publishing each to UA's root, beside the photos/ they name. So
+      # the pin carries UA's published copies at the fetchers' own paths,
+      # where the build's photo step and parity's old side both read them.
+      # Absent, a file warns and the build attaches none of its photos.
+      - name: UA's published photo outcomes, for the build's photo step
+        if: steps.pinned.outputs.pinned != 'true'
+        env:
+          DATA_BASE_URL: ${{ vars.DATA_BASE_URL }}
+        run: |
+          mkdir -p data/raw
+          for name in poi_images_atc.json poi_images.json; do
+            if [ -n "$DATA_BASE_URL" ] && curl -fsS --retry 3 -o "data/raw/$name" "${DATA_BASE_URL%/}/environments/ua/$name"; then
+              echo "Pinning UA's $name."
+            else
+              rm -f "data/raw/$name"
+              echo "::warning title=No $name::UA's published copy could not be read, so this build attaches none of its photos."
+            fi
+          done
+
+      # The tables, their as-landed files, the DEM index, the water scans and
+      # the photo outcomes. The scans go at the paths extract/_geofabrik.py's
+      # SCANS names: not the scanners' own, because parity.py's old side
+      # would find osm_water.geojson there without the reach file
+      # export_poi.py refuses to run without.
       - name: Pin this run's raw inputs
         if: steps.pinned.outputs.pinned != 'true'
         env:
@@ -464,6 +487,11 @@ jobs:
           if [ -f data/raw/trail_water.json ]; then
             extras+=(--extra derived/trail_water.json=data/raw/trail_water.json)
           fi
+          for name in poi_images_atc.json poi_images.json; do
+            if [ -f "data/raw/$name" ]; then
+              extras+=(--extra "$name=data/raw/$name")
+            fi
+          done
           "$RUNNER_TEMP/extract/bin/python" -m extract._warehouse pin "${store[@]}" "${pinned[@]}" "${extras[@]}"
 
       # What the scans were answered, for the build this run dispatches,

@@ -1067,6 +1067,34 @@ def upload_photos(
     return list(pending)
 
 
+def carries_photo_keys(name: str) -> bool:
+    """Whether the artifact `name` can reference `photos/<digest>.jpg` keys: a poi_*.geojson, or the suggested hikes."""
+    return name == SUGGESTED_HIKES_KEY or (name.startswith("poi_") and name.endswith(".geojson"))
+
+
+def photo_keys_in(name: str, document: dict) -> set[str]:
+    """Every `photos/<digest>.jpg` key one parsed artifact references. The one
+    reading of the two shapes, for this publish's promise check and for
+    channels.py's promotion, which carries the same keys into its target."""
+    # The suggested hikes' photographs ride the same store (#1290):
+    # each record's `photo.url` is a `photos/<digest>.jpg` key, and the
+    # detail screen resolves it against the bucket exactly as a card
+    # resolves a POI's photo_key - so the same promise is settled here.
+    if name == SUGGESTED_HIKES_KEY:
+        urls = ((hike.get("photo") or {}).get("url") for hike in document.get("hikes", []))
+        return {url for url in urls if isinstance(url, str) and url.startswith(f"{PHOTO_PREFIX}/")}
+    keys: set[str] = set()
+    for feature in document.get("features", []):
+        properties = feature.get("properties") or {}
+        if properties.get("photo_key"):
+            keys.add(properties["photo_key"])
+        gallery = properties.get("photos")
+        if gallery:
+            items = json.loads(gallery) if isinstance(gallery, str) else gallery
+            keys.update(item["key"] for item in items if item.get("key"))
+    return keys
+
+
 def referenced_photo_keys(artifacts: dict[str, dict]) -> set[str]:
     """Every `photos/<digest>.jpg` key the exported poi_*.geojson artifacts
     reference - the promises this publish is about to make (#465). Read
@@ -1074,28 +1102,8 @@ def referenced_photo_keys(artifacts: dict[str, dict]) -> set[str]:
     the artifact is what a hiker's card resolves against."""
     keys: set[str] = set()
     for name, entry in artifacts.items():
-        # The suggested hikes' photographs ride the same store (#1290):
-        # each record's `photo.url` is a `photos/<digest>.jpg` key, and the
-        # detail screen resolves it against the bucket exactly as a card
-        # resolves a POI's photo_key - so the same promise is settled here.
-        if name == SUGGESTED_HIKES_KEY:
-            document = json.loads(from_manifest_path(entry["path"]).read_text(encoding="utf-8"))
-            for hike in document.get("hikes", []):
-                url = (hike.get("photo") or {}).get("url")
-                if isinstance(url, str) and url.startswith(f"{PHOTO_PREFIX}/"):
-                    keys.add(url)
-            continue
-        if not (name.startswith("poi_") and name.endswith(".geojson")):
-            continue
-        document = json.loads(from_manifest_path(entry["path"]).read_text(encoding="utf-8"))
-        for feature in document.get("features", []):
-            properties = feature.get("properties") or {}
-            if properties.get("photo_key"):
-                keys.add(properties["photo_key"])
-            gallery = properties.get("photos")
-            if gallery:
-                items = json.loads(gallery) if isinstance(gallery, str) else gallery
-                keys.update(item["key"] for item in items if item.get("key"))
+        if carries_photo_keys(name):
+            keys |= photo_keys_in(name, json.loads(from_manifest_path(entry["path"]).read_text(encoding="utf-8")))
     return keys
 
 

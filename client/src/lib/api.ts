@@ -25,7 +25,6 @@ import type { NoteSummary } from './fieldNotes'
 import type { VolunteerHoursSummary } from './volunteerHours'
 import { PHOTO_CONTENT_TYPE } from './reportPhoto'
 import { PREFERENCE_KEYS, type UserPreferences } from './userPreferences'
-import type { PaidTier } from './support'
 
 const RAW_BASE: string = import.meta.env.VITE_API_BASE_URL ?? ''
 
@@ -142,7 +141,10 @@ async function errorBody(response: Response): Promise<unknown> {
 }
 
 /** Like `apiFetch`, but refuses before spending a request when signed out. */
-async function authedFetch(path: string, init: RequestInit = {}): Promise<Response> {
+export async function authedFetch(
+  path: string,
+  init: RequestInit = {},
+): Promise<Response> {
   const token = await accessToken()
   // Checked here rather than left to the server's 401, because the round trip
   // is the expensive part on a metered connection with one bar - and the
@@ -1585,10 +1587,11 @@ export async function deleteAccount(): Promise<DeletionReceipt> {
 
 // ---- Supporting OurHike (#1876) ----
 //
-// All three are `authedFetch`, and none is queued through the outbox: a
-// support choice is a decision made with the hiker looking at the screen, so
-// a failure comes straight back to it rather than retrying behind their
-// back - deleteAccount's argument, for the same kind of act.
+// The shape the server answers with lives here, beside the other response
+// types, so backend/tests/test_client_response_contract.py can hold it to
+// `GET /support/me`. The three calls that use it live in lib/supportApi.ts,
+// which only deferred screens import: this file is in the launch closure,
+// and LAUNCH_BUDGET.md §3 has no room for code a launch never runs.
 
 /**
  * `GET /support/me`'s `status` (#1876).
@@ -1614,49 +1617,4 @@ export interface SupportSummary {
   started_at: string | null
   stop_requested_at: string | null
   ended_at: string | null
-}
-
-/** The signed-in account's support. `status: 'none'` when there is none. */
-export async function fetchSupport(signal?: AbortSignal): Promise<SupportSummary> {
-  const response = await authedFetch('/support/me', { method: 'GET', signal })
-  return (await response.json()) as SupportSummary
-}
-
-/** What `PUT /me/support` answers. Exactly one of `checkout_url` and
- *  `emailed` carries the next step, chosen by `delivery`. */
-export interface SupportChoiceReceipt {
-  support: SupportSummary
-  /** Where a website-app hiker goes to pay. Null for `delivery: 'email'`. */
-  checkout_url: string | null
-  /** Whether the setup link went out by email (the store apps' path). */
-  emailed: boolean
-}
-
-export interface SupportChoiceRequest {
-  amount_cents: PaidTier
-  /** The hiker opted in to the yearly "where the money went" email. */
-  accounting_email: boolean
-  /**
-   * `redirect` in the website app; `email` in the iOS and Android apps,
-   * which may not link to a payment outside the store's own (see
-   * lib/support.ts).
-   */
-  delivery: 'redirect' | 'email'
-}
-
-/** Record a paid choice as `pending` and get the way to complete it. */
-export async function chooseSupport(
-  request: SupportChoiceRequest,
-): Promise<SupportChoiceReceipt> {
-  const response = await authedFetch('/support/me', {
-    method: 'PUT',
-    body: JSON.stringify(request),
-  })
-  return (await response.json()) as SupportChoiceReceipt
-}
-
-/** Ask for the recurring payment to stop. One call, no reason asked. */
-export async function stopSupport(): Promise<SupportSummary> {
-  const response = await authedFetch('/support/me/stop', { method: 'POST' })
-  return (await response.json()) as SupportSummary
 }

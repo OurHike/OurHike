@@ -26,10 +26,10 @@
 import { useState } from 'react'
 import { Capacitor } from '@capacitor/core'
 import { SignInWindow } from '../chrome/SignInWindow'
-import { chooseSupport, type SupportChoiceReceipt } from '../lib/api'
+import { chooseSupport, type SupportChoiceReceipt } from '../lib/supportApi'
+import { nudgeFor } from '../lib/supportNudges'
 import {
   dollars,
-  nudgeFor,
   TIERS,
   writeZeroChoice,
   type PaidTier,

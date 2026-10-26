@@ -1,7 +1,8 @@
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { cleanup, render, screen } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
-import { YourSupport, supportSummaryLine } from './YourSupport'
+import { YourSupport } from './YourSupport'
+import { supportSummaryLine } from '../lib/support'
 import type { SupportSummary } from '../lib/support'
 
 // More → Your support (#1876): Stop is one tap and one confirm, asks no

@@ -13,7 +13,8 @@
 
 import { useState } from 'react'
 import { Capacitor } from '@capacitor/core'
-import { stopSupport } from '../lib/api'
+import { stopSupport } from '../lib/supportApi'
+import { useSupport } from '../lib/useSupport'
 import { dollars, type LocalChoice, type SupportSummary } from '../lib/support'
 import './support.css'
 
@@ -42,23 +43,6 @@ function day(iso: string | null): string {
     day: 'numeric',
     year: 'numeric',
   })
-}
-
-/** The More row's second line. */
-export function supportSummaryLine(
-  server: SupportSummary | null,
-  local: LocalChoice | null,
-  now: Date,
-): string {
-  if (server !== null && server.amount_cents !== null) {
-    const amount = `${dollars(server.amount_cents)} a year`
-    if (server.status === 'active') return amount
-    if (server.status === 'pending') return `${amount}, waiting to be confirmed`
-    if (server.status === 'stop_requested') return 'Stopping'
-    if (server.status === 'stopped') return 'Stopped'
-  }
-  if (local !== null && local.year === now.getFullYear()) return '$0 this year'
-  return 'Pay what you want, $0 included'
 }
 
 export function YourSupport({
@@ -225,5 +209,39 @@ export function YourSupport({
         </a>
       )}
     </section>
+  )
+}
+
+export interface YourSupportPageProps {
+  apiConfigured: boolean
+  signedIn: boolean
+  onSignIn: () => void
+  onChoose: () => void
+}
+
+/**
+ * The page as More renders it: `YourSupport` with the account's answer
+ * fetched here, so the shell holds none of it (screens/SupportGate.tsx says
+ * why the shell is kept out of this).
+ */
+export function YourSupportPage({
+  apiConfigured,
+  signedIn,
+  onSignIn,
+  onChoose,
+}: YourSupportPageProps) {
+  const support = useSupport(signedIn)
+  return (
+    <YourSupport
+      apiConfigured={apiConfigured}
+      signedIn={signedIn}
+      server={support.server}
+      local={support.local}
+      error={support.error}
+      now={new Date()}
+      onSignIn={onSignIn}
+      onChoose={onChoose}
+      onStopped={support.replace}
+    />
   )
 }

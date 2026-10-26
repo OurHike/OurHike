@@ -9,7 +9,8 @@
 // account answer" and a guessed `none` would ask somebody who already pays.
 
 import { useCallback, useEffect, useState } from 'react'
-import { API_CONFIGURED, fetchSupport } from './api'
+import { API_CONFIGURED } from './api'
+import { fetchSupport } from './supportApi'
 import {
   onLocalChoiceChanged,
   readLocalChoice,

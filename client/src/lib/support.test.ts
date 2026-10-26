@@ -1,15 +1,14 @@
 import { beforeEach, describe, expect, it } from 'vitest'
 import {
   ASK_ON_DAY,
-  NUDGES,
   PENDING_GRACE_DAYS,
   dollars,
-  nudgeFor,
   readLocalChoice,
   shouldAsk,
   writeZeroChoice,
   type SupportSummary,
 } from './support'
+import { NUDGES, nudgeFor } from './supportNudges'
 
 // When the support ask opens, and what the $0 nudge says (#1876, the
 // maintainer's poll of 2026-10-23).

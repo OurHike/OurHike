@@ -193,7 +193,7 @@ scope_for_suite_workflows() {
 # every PR" is "run it whenever anything changed", and the suite is cheap
 # enough to carry that.
 
-suite_names=(client backend pipeline dbt settings)
+suite_names=(client backend pipeline dbt steward settings)
 
 scope_for_suite() {
   scope_for_suite_workflows "$1"
@@ -441,6 +441,10 @@ if selected_has backend; then
   step "backend ruff check"    "$PY" -m ruff check backend
   step "backend ruff format"   "$PY" -m ruff format --check backend
 fi
+if selected_has steward; then
+  step "steward ruff check"    "$PY" -m ruff check apps/steward/pipeline
+  step "steward ruff format"   "$PY" -m ruff format --check apps/steward/pipeline
+fi
 if selected_has settings; then
   step "settings ruff check"   "$PY" -m ruff check .github/tests
   step "settings ruff format"  "$PY" -m ruff format --check .github/tests
@@ -461,6 +465,10 @@ if selected_has pipeline; then
 fi
 if selected_has backend; then
   step "backend tests"  env -C backend "$PY" -m pytest -q "${PYTEST_PARALLEL[@]}" "${PYTEST_COVERAGE[@]}"
+fi
+if selected_has steward; then
+  # About a second of tests, so no xdist workers and no coverage report.
+  step "steward tests"  env -C apps/steward/pipeline "$PY" -m pytest -q
 fi
 
 # pipeline-tests.yml's `dbt` job, in its order, with four differences and

@@ -1,0 +1,10 @@
+# The analysis job's runtime. duckdb runs the summary's SQL and needs no
+# extension: the spatial work is numpy and shapely (steward_analysis/spatial.py
+# says why). Compiled with `-c ../../../pipeline/requirements-dev.txt` (the
+# command is in requirements.txt's header), so every package the two share
+# resolves to the pipeline's version and one interpreter can hold both suites.
+duckdb==1.5.5
+numpy==2.5.2
+pandas
+requests==2.34.2
+shapely==2.1.2

@@ -79,6 +79,7 @@ whether it holds credentials, and whether a failure reaches anyone.
 | `settings-manifest.yml` | required check `Manifest agrees with the workflows` |
 | `pr-preview.yml` | builds the pull request and deploys it to `pr-<n>.ourhike-preview.pages.dev` |
 | `build-shells.yml` | jobs `android` and `ios` — compiles the two native shells, which nothing did before #1193. Not a required check |
+| `steward-tests.yml` | job `steward` — Campsite Steward's analysis suite (`apps/steward/pipeline/`, #1901), a separate app kept in this repository. Not a required check, and not named `pytest`, which is `pipeline-tests.yml`'s required check name |
 
 `shard-seam-spike.yml` also triggers on `pull_request`, filtered to its own
 paths — it is a spike, and lives in the last family.

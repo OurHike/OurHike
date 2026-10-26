@@ -1,0 +1,72 @@
+# Campsite Steward's analysis suite: apps/steward/pipeline/, the job that
+# scores ATC's Campsite Sustainability Index sites (#1901, apps/steward/PLAN.md
+# §2). Campsite Steward is a separate app kept in this repository, so this is a
+# fourth test workflow beside the three OurHike ones, shaped like them:
+# triggered on every pull request and scoped inside the job through
+# .github/actions/changed-paths, so it always reports.
+#
+# Not a required check, and its job is not called `pytest`: branch protection
+# matches checks by name, and `pytest` is pipeline-tests.yml's required check.
+#
+# The tests never touch the network (tests/conftest.py), and nothing here reads
+# a secret or publishes anything. Where the scored files will live is the
+# maintainer's to set up and is not decided yet (#1901).
+
+name: Campsite Steward tests
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+  merge_group:
+
+permissions:
+  contents: read
+  pull-requests: read
+
+jobs:
+  steward:
+    name: Campsite Steward analysis tests
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: apps/steward/pipeline
+    steps:
+      - uses: actions/checkout@v7
+
+      - id: scope
+        uses: ./.github/actions/changed-paths
+        with:
+          # The suite imports nothing from outside apps/steward/pipeline/.
+          # pipeline/requirements-dev.txt is listed because this suite's
+          # requirements are compiled against it (requirements.in says why),
+          # so a bump there can change what this one installs.
+          paths: >-
+            apps/steward/pipeline/
+            pipeline/requirements-dev.txt
+            .github/workflows/steward-tests.yml
+            .github/actions/changed-paths/
+
+      - uses: actions/setup-python@v7
+        if: steps.scope.outputs.run == 'true'
+        with:
+          python-version: "3.14"
+          cache: pip
+          cache-dependency-path: apps/steward/pipeline/requirements-dev.txt
+
+      - name: Install dependencies
+        if: steps.scope.outputs.run == 'true'
+        run: pip install -r requirements-dev.txt
+
+      - name: Lint
+        if: steps.scope.outputs.run == 'true'
+        run: python -m ruff check .
+
+      - name: Check formatting
+        if: steps.scope.outputs.run == 'true'
+        run: python -m ruff format --check .
+
+      - name: Run tests
+        if: steps.scope.outputs.run == 'true'
+        run: python -m pytest -v

@@ -158,8 +158,9 @@ Guidance ("at least 200 feet from water sources"; side-hill benches "where the s
 
 ## 2. The analysis (first pass)
 
-A spike in Python (pandas, numpy, and shapely for the land-manager join) read three
-inputs on 2026-10-24:
+The job in `apps/steward/pipeline/` (phase 0, **#1901 — Campsite Steward phase 0: score
+ATC's CSI sites in a tested job that writes a public summary and private per-club site
+files**) reads three inputs:
 
 - the CSI layer above, attributes only;
 - USGS PAD-US, `services.arcgis.com/v01gqwM5QqNysAAi/ArcGIS/rest/services/Manager_Name_PADUS/FeatureServer/0`,
@@ -167,11 +168,12 @@ inputs on 2026-10-24:
 - ATC parking points, `services1.arcgis.com/fBc8EJBxQRMcHlei/arcgis/rest/services/ANST_Facilities/FeatureServer/2`
   (483 points), which give a straight-line distance from each site to the nearest parking.
 
-**The spike is not in this repository.** It ran in the planning session's scratchpad, as
-planning-only work, and phase 0 (§9) rebuilds it as a tested job. Every number in this
-section is Measured, in that it was produced from the live layers on that date. Every
-rule that produced it is written out here, so the numbers can be re-derived. Every
-threshold is `@unvalidated`, and each one says what would settle it.
+`python -m steward_analysis.build --fetch`, run from that folder, reproduces every number
+in this section. They are **Measured 2026-10-26** by the job against the live layers.
+They match the planning session's spike of 2026-10-24 exactly, except where §2c says
+otherwise. Every threshold is `@unvalidated`, and each one says what would settle it.
+`steward_analysis/rules.py` is the one home for the thresholds and repeats what this
+section says about each.
 
 ### 2a. Complexes
 
@@ -219,7 +221,7 @@ need = 60 × (30 − CSI) / 27            the sustainability deficit
      + 12 if within 100 ft of water     (+6 if within 200 ft)
      +  6 if within 50 ft of the A.T.
      +  8 if in a complex of 4+         (+4 if 2–3)
-     + 10 if user-created where camping is restricted (2e)
+     + 10 if user-created where a reviewed rule restricts camping (2e)
 capped at 100.  Tiers, for actionable sites only: P1 ≥ 60 · P2 50–59 · P3 below 50.
 ```
 
@@ -233,26 +235,43 @@ a club ranking twenty of its own sites by hand and comparing that order with thi
 | | Sites |
 |---|---|
 | Actionable (close or harden) | 879 |
-| P1 | 382, in 223 complexes |
-| P2 | 301 |
-| P3 | 196 |
+| P1 | 348, in 199 complexes |
+| P2 | 310 |
+| P3 | 221 |
+
+**Changed 2026-10-26, the session's call.** The planning spike gave the restricted-camping
+points to sites whose regime was only guessed from the land manager's type (§2e). The job
+gives them only where a reviewed rule says camping is restricted. Until that table
+exists the weight adds nothing, so a guess never moves a rank, which is CLAUDE.md's
+"never let a display outrun its source". Fed the same guesses, the job reproduces the
+spike's tiers exactly, so this is the only difference:
+
+| | Spike, guesses scored | Job, guesses not scored |
+|---|---|---|
+| P1 | 382 | 348 |
+| P2 | 301 | 310 |
+| P3 | 196 | 221 |
+
+The sites that moved sit on state parks and state game lands, where the placeholder
+guessed "designated only?" or "restricted?". NY-NJ Trail Conference moves most: 19 P1
+sites become 11.
 
 ### 2d. One person, a team or a crew
 
 | Crew size | Rule | P1 | P2 | P3 |
 |---|---|---|---|---|
-| **Crew, 4+** | hardening an official site, or over 1,500 ft², or a complex of 4 or more | 274 | 144 | 61 |
-| **Team, 2–3** | 500–1,500 ft², or a complex of 2–3, or footprint slope 15% or more | 91 | 96 | 86 |
-| **One person** (a buddy recommended) | up to 500 ft², alone, slope under 15% | 17 | 61 | 49 |
+| **Crew, 4+** | hardening an official site, or over 1,500 ft², or a complex of 4 or more | 261 | 153 | 65 |
+| **Team, 2–3** | 500–1,500 ft², or a complex of 2–3, or footprint slope 15% or more | 77 | 97 | 99 |
+| **One person** (a buddy recommended) | up to 500 ft², alone, slope under 15% | 10 | 60 | 57 |
 
 How much the 500 ft² threshold matters, on the 647 close-and-restore sites (median size
 504 ft²):
 
 | One person if the site is at most | One-person sites | P1 | P2 | P3 |
 |---|---|---|---|---|
-| 300 ft² | 83 | 8 | 46 | 29 |
-| **500 ft² (chosen)** | 127 | 17 | 61 | 49 |
-| 750 ft² | 162 | 27 | 73 | 62 |
+| 300 ft² | 83 | 3 | 49 | 31 |
+| **500 ft² (chosen)** | 127 | 10 | 60 | 57 |
+| 750 ft² | 162 | 18 | 71 | 73 |
 
 **Under every one of these thresholds, top-priority work is crew work.** A single
 maintainer's useful queue is P2 and P3, and the app should say so rather than offer a P1
@@ -320,33 +339,42 @@ The 12 clubs with the most P1 sites:
 | Club | P1 | P2 | P3 | One person | Team | Crew |
 |---|---|---|---|---|---|---|
 | Roanoke ATC | 59 | 45 | 27 | 20 | 54 | 57 |
-| Potomac ATC | 48 | 38 | 29 | 20 | 27 | 68 |
-| Mount Rogers ATC | 39 | 32 | 28 | 6 | 32 | 61 |
-| Blue Mountain Eagle CC | 27 | 13 | 6 | 3 | 18 | 25 |
-| Georgia ATC | 24 | 14 | 10 | 5 | 1 | 42 |
+| Potomac ATC | 46 | 39 | 30 | 20 | 27 | 68 |
+| Mount Rogers ATC | 39 | 31 | 29 | 6 | 32 | 61 |
+| Georgia ATC | 24 | 13 | 11 | 5 | 1 | 42 |
+| Blue Mountain Eagle CC | 22 | 13 | 11 | 3 | 18 | 25 |
 | Green Mountain Club | 22 | 12 | 3 | 5 | 10 | 22 |
-| Carolina Mountain Club | 21 | 10 | 12 | 6 | 18 | 19 |
-| NY-NJ Trail Conference | 19 | 33 | 18 | 23 | 26 | 21 |
 | Natural Bridge ATC | 18 | 33 | 11 | 8 | 19 | 35 |
+| Carolina Mountain Club | 16 | 13 | 14 | 6 | 18 | 19 |
 | Nantahala HC | 15 | 7 | 1 | 2 | 1 | 20 |
-| Mountain Club of Maryland | 13 | 3 | 2 | 0 | 11 | 7 |
 | Tidewater ATC | 12 | 6 | 11 | 1 | 9 | 19 |
+| NY-NJ Trail Conference | 11 | 30 | 29 | 23 | 26 | 21 |
+| Maine ATC | 9 | 16 | 5 | 7 | 5 | 18 |
 
 These numbers move when the rules above move, which is why the app shows the method
 beside them.
 
 ### 2g. How the analysis reaches the app
 
-A scheduled job under `apps/steward/pipeline/`, in the style of OurHike's `pipeline/`
-(Python, with DuckDB for the SQL steps, on GitHub Actions), writes two outputs:
+The job under `apps/steward/pipeline/` is Python in the style of OurHike's `pipeline/`. The
+spatial work uses numpy and shapely, and DuckDB runs the summary's SQL. It writes two
+outputs under its gitignored `data/out/`:
 
 - **A per-club site file with locations.** It is served through the API to signed-in
   users only, from a private bucket, never OurHike's public one.
 - **A public summary:** counts by club, tier, action and crew size, plus the method
   text. It contains no locations, and the Analysis screen draws from it.
 
-Nothing the job produces is committed: CONTRIBUTING.md's "Data does not go in commits",
-held by `.github/tests/test_no_committed_data.py`, applies to this folder too.
+Nothing the job produces is committed: CONTRIBUTING.md's "Data does not go in commits"
+applies to this folder too. `.github/tests/test_no_committed_data.py` holds it with its own
+rule: nothing under `apps/steward/` that is JSON or sits in a `data/` folder.
+`steward_analysis/build.py`'s tests check that the summary carries no coordinate, mile or
+site id, and that neither output carries ATC's assessment-photo links. The job never
+requests those links.
+
+**Not built yet:** the schedule and the publishing step. Both wait on a private bucket,
+which §11 lists. Until then the job runs by hand, and its output stays on the machine that
+ran it.
 
 ---
 
@@ -558,7 +586,7 @@ returns excerpts; their quotes are near-verbatim.
 
 | # | Phase | Ships | Rough size |
 |---|---|---|---|
-| 0 | Analysis job | The scoring job as a tested, scheduled pipeline; the public summary; per-club site files | 1–2 weeks |
+| 0 | Analysis job | **Built, #1901:** the scoring job, its tests and CI, the public summary and per-club site files. Not yet: the schedule and the publishing step, which wait on a private bucket | 1–2 weeks |
 | 1 | Read-only app | The Analysis screen, the dashboard with club and section filters, and the guide | 2–3 weeks |
 | 2 | Sign-in and lists | Supabase sign-in, locations for signed-in users, lists and share links, club weights with history | 2 weeks |
 | 3 | Claims | Claims, the 14-day clock and reminders, before you go, invites, photo points and extras, review, hours | 3–4 weeks |
@@ -602,6 +630,8 @@ below are where the evidence is thinnest.
 
 ## 11. Still open
 
+- Where the private per-club files live: a private bucket and its credentials, which
+  only the maintainer can create. Phase 0's schedule and publishing step wait on it.
 - Who transcribes the camping rules (decided: the session, reviewed by the maintainer)
   and when. It blocks the "+10 restricted" weight, not phase 0.
 - Whether the steward API shares OurHike's Supabase project or only trusts its tokens.

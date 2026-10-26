@@ -175,6 +175,15 @@ REFERENCE_DIR = "pipeline/reference/"
 MAX_REFERENCE_LINES = 12_000
 
 
+# Campsite Steward's analysis job (apps/steward/pipeline/, #1901) writes JSON:
+# a public summary, and one file per club holding the location of every
+# user-created campsite in ATC's inventory - SOURCE_SURVEY.md §3b's case above,
+# whole. Its data/ directory is gitignored (apps/steward/pipeline/.gitignore);
+# this is the check that nothing it wrote was committed anyway. No JSON under
+# apps/steward/ is source today, so the rule needs no allowlist yet.
+STEWARD_DIR = "apps/steward/"
+
+
 def tracked_files() -> list[str]:
     """Every path git actually tracks - not what is on disk.
 
@@ -200,6 +209,10 @@ def is_pipeline_json_outside_the_allowlist(path: str) -> bool:
         and Path(path).suffix.lower() == ".json"
         and not any(path == allowed or path.startswith(allowed) for allowed in PIPELINE_JSON_ALLOWED)
     )
+
+
+def is_steward_output(path: str) -> bool:
+    return path.startswith(STEWARD_DIR) and (Path(path).suffix.lower() == ".json" or "/data/" in path)
 
 
 @pytest.fixture(scope="module")
@@ -269,6 +282,19 @@ def test_no_exported_json_is_tracked_under_pipeline(tracked):
     )
 
 
+def test_nothing_campsite_steward_scored_is_tracked(tracked):
+    """apps/steward/pipeline/data/ holds fetched layers and scored sites, including
+    every user-created campsite's location. A commit would publish them from every
+    fork, permanently, before anybody decided they could be."""
+    committed = [path for path in tracked if is_steward_output(path)]
+
+    assert committed == [], (
+        "Campsite Steward's fetched and scored data must never be tracked: it carries the "
+        "location of every user-created campsite in ATC's inventory (apps/steward/PLAN.md, "
+        f"opening section). Tracked: {committed[:5]}"
+    )
+
+
 @pytest.mark.parametrize(
     ("path", "flagged_by"),
     [
@@ -285,6 +311,9 @@ def test_no_exported_json_is_tracked_under_pipeline(tracked):
         ("ci.duckdb", "suffix"),
         ("pipeline/trail_miles.json", "json"),
         ("pipeline/dbt/manifest.json", "json"),
+        ("apps/steward/pipeline/data/out/sites/example-trail-club.json", "steward"),
+        ("apps/steward/pipeline/data/raw/csi.json", "steward"),
+        ("apps/steward/pipeline/data/raw/padus.geojson", "steward"),
         # What they must leave alone: the reviewed seeds and joins, the
         # registry, fixtures, and JSON that is source outside pipeline/.
         ("pipeline/dbt/seeds/dbt_project_evaluator_exceptions.csv", None),
@@ -296,6 +325,9 @@ def test_no_exported_json_is_tracked_under_pipeline(tracked):
         ("pipeline/tests/fixtures/example.json", None),
         ("client/package.json", None),
         ("backend/openapi_baselines/v1.json", None),
+        ("apps/steward/PLAN.md", None),
+        ("apps/steward/pipeline/steward_analysis/build.py", None),
+        ("apps/steward/pipeline/requirements.txt", None),
     ],
 )
 def test_each_rule_catches_what_it_names_and_leaves_the_rest(path, flagged_by):
@@ -306,6 +338,7 @@ def test_each_rule_catches_what_it_names_and_leaves_the_rest(path, flagged_by):
         "dbt": is_dbt_generated(path),
         "suffix": is_data_shaped_outside_the_allowlist(path),
         "json": is_pipeline_json_outside_the_allowlist(path),
+        "steward": is_steward_output(path),
     }
 
     if flagged_by is None:

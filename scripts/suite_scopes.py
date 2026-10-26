@@ -42,6 +42,8 @@ WORKFLOWS = {
     "pipeline": (".github/workflows/pipeline-tests.yml", "pytest"),
     "dbt": (".github/workflows/pipeline-tests.yml", "dbt"),
     "backend": (".github/workflows/backend-tests.yml", "pytest-postgres"),
+    # Campsite Steward's analysis job (#1901), a separate app kept in this repository.
+    "steward": (".github/workflows/steward-tests.yml", "steward"),
 }
 
 

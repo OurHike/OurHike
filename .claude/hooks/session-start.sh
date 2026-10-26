@@ -123,6 +123,12 @@ echo "[session-start] repository-settings test deps"
 # pipeline install already shadowed it, and that is not a thing to depend on.
 pip_install_pinned .github/tests/requirements-dev.txt
 
+echo "[session-start] campsite steward deps"
+# apps/steward/pipeline/ (#1901). Its requirements are compiled against
+# pipeline/requirements-dev.txt, so this adds pandas and changes nothing the
+# pipeline suite already pinned.
+pip_install_pinned apps/steward/pipeline/requirements-dev.txt
+
 echo "[session-start] seeding the duckdb spatial extension"
 # ONE HOME, shared with pipeline-tests.yml (#321). This was an inline heredoc
 # here until CI needed the same thing; the script says why three copies of it

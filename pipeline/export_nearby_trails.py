@@ -217,7 +217,6 @@ from pathlib import Path
 import duckdb
 import numpy as np
 import pmtiles.tile as pmtiles_tile
-import pmtiles.writer as pmtiles_writer
 import shapely
 from pmtiles.reader import MmapSource, Reader, all_tiles
 from pmtiles.tile import zxy_to_tileid
@@ -2062,23 +2061,6 @@ def context_lines_sql(lines_sql: str) -> str:
     """
 
 
-class _GzipWithoutTime:
-    """gzip for the pmtiles writer, with the header's timestamp at zero.
-
-    pmtiles 3.7's writer gzips the metadata and every directory with
-    gzip.compress, which stamps the current second into each gzip header - so
-    the same tiles made a different archive, and a different sha256, on every
-    run. publish.py takes a changed hash as a changed artifact, and gzips its
-    own uploads with mtime=0 for that reason; this is the same choice, made
-    for the one writer that does not offer it."""
-
-    decompress = staticmethod(gzip.decompress)
-
-    @staticmethod
-    def compress(data: bytes, compresslevel: int = 9) -> bytes:
-        return gzip.compress(data, compresslevel, mtime=0)
-
-
 def merge_bands(bands: list[Path], path: Path, min_zoom: int, max_zoom: int) -> None:
     """Write archives that hold disjoint zoom bands, lowest first, as one
     archive declaring `min_zoom` to `max_zoom`.
@@ -2120,16 +2102,19 @@ def merge_bands(bands: list[Path], path: Path, min_zoom: int, max_zoom: int) -> 
             "center_lat_e7": top["center_lat_e7"],
             "center_zoom": top["center_zoom"],
         }
-        saved = pmtiles_tile.gzip, pmtiles_writer.gzip
-        pmtiles_tile.gzip = pmtiles_writer.gzip = _GzipWithoutTime
-        try:
-            with write_pmtiles(str(path)) as writer:
-                for f in files:
-                    for (z, x, y), data in all_tiles(MmapSource(f)):
-                        writer.write_tile(zxy_to_tileid(z, x, y), data)
-                writer.finalize(header, metadata)
-        finally:
-            pmtiles_tile.gzip, pmtiles_writer.gzip = saved
+        # The same tiles make the same bytes: pmtiles 3.8's writer gzips the
+        # metadata and every directory with mtime=0 (tile.py's
+        # serialize_directory and writer.py, read 2026-10-20 in 3.8.1), so no
+        # gzip header carries the clock. 3.7 left mtime to gzip.compress, which
+        # before Python 3.14 stamps the current second, and this function
+        # swapped in its own gzip to zero it; 3.8 passing mtime=0 itself broke
+        # that swap. test_the_same_lines_cut_the_same_archive holds it: on
+        # Python 3.12 it fails with pmtiles 3.7.0 and no swap (2026-10-20).
+        with write_pmtiles(str(path)) as writer:
+            for f in files:
+                for (z, x, y), data in all_tiles(MmapSource(f)):
+                    writer.write_tile(zxy_to_tileid(z, x, y), data)
+            writer.finalize(header, metadata)
     finally:
         for f in files:
             f.close()

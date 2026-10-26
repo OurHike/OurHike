@@ -27,7 +27,7 @@ ruff
 # json.JSONDecodeError around `response.json()` passes in production and fails
 # here. One test expected that error and now expects ValueError
 # (test_spike_hike_photo_sources.py).
-dlt[parquet]==1.30.0
+dlt[parquet]==1.31.0
 
 # pypdf, so the pipeline suite runs the tests that read a real PDF: the
 # extract's read of a club PDF's own title and creation date
@@ -37,7 +37,7 @@ dlt[parquet]==1.30.0
 # skipped in CI (WF4 of the PR #1805 review). The same pin as
 # requirements-extract.txt's, which test_extract_layout.py holds equal. Pure
 # Python, about 2 MB, with no dependencies of its own on Python 3.12.
-pypdf==6.19.0
+pypdf==6.20.1
 
 # xlrd and openpyxl, so the pipeline suite runs tests/test_extract_sheet_content.py,
 # which opens a workbook: the same pins as requirements-extract.txt's, which

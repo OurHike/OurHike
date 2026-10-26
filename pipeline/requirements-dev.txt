@@ -8,12 +8,12 @@ attrs==26.1.0
     # via
     #   -c pipeline/requirements.txt
     #   rasterio
-boto3==1.43.88
+boto3==1.43.114
     # via
     #   -c pipeline/requirements.txt
     #   -r pipeline/requirements.in
     #   moto
-botocore==1.43.89
+botocore==1.43.114
     # via
     #   -c pipeline/requirements.txt
     #   boto3
@@ -42,11 +42,13 @@ colorama==0.4.6 ; sys_platform == 'win32'
     #   pytest
 coverage==7.15.4
     # via pytest-cov
+croniter==6.2.4
+    # via dlt
 cryptography==50.0.0
     # via moto
 defusedxml==0.7.1
     # via -r pipeline/requirements-dev.in
-dlt==1.30.0
+dlt==1.31.0
     # via -r pipeline/requirements-dev.in
 duckdb==1.5.5
     # via
@@ -85,9 +87,9 @@ markupsafe==3.0.3
     # via werkzeug
 mdurl==0.1.2
     # via markdown-it-py
-moto==5.2.3
+moto==5.2.4
     # via -r pipeline/requirements-dev.in
-numpy==2.5.2
+numpy==2.5.4
     # via
     #   -c pipeline/requirements.txt
     #   -r pipeline/requirements.in
@@ -100,7 +102,7 @@ opencv-python-headless==4.14.0.94
     #   -r pipeline/requirements.in
 openpyxl==3.1.5
     # via -r pipeline/requirements-dev.in
-orjson==3.12.0 ; (python_full_version >= '3.14' and platform_python_implementation == 'PyPy') or (python_full_version >= '3.14' and sys_platform == 'emscripten') or (platform_python_implementation != 'PyPy' and sys_platform != 'emscripten')
+orjson==3.12.0 ; platform_python_implementation != 'PyPy' and sys_platform != 'emscripten'
     # via dlt
 packaging==26.3
     # via
@@ -120,15 +122,15 @@ pluggy==1.6.0
     #   dlt
     #   pytest
     #   pytest-cov
-pmtiles==3.7.0
+pmtiles==3.8.1
     # via
     #   -c pipeline/requirements.txt
     #   -r pipeline/requirements.in
-psycopg==3.3.5
+psycopg==3.3.6
     # via
     #   -c pipeline/requirements.txt
     #   -r pipeline/requirements.in
-psycopg-binary==3.3.5 ; implementation_name != 'pypy'
+psycopg-binary==3.3.6 ; implementation_name != 'pypy'
     # via
     #   -c pipeline/requirements.txt
     #   psycopg
@@ -146,9 +148,9 @@ pyparsing==3.3.2
     # via
     #   -c pipeline/requirements.txt
     #   rasterio
-pypdf==6.19.0
+pypdf==6.20.1
     # via -r pipeline/requirements-dev.in
-pyproj==3.7.2
+pyproj==3.8.0
     # via
     #   -c pipeline/requirements.txt
     #   -r pipeline/requirements.in
@@ -165,6 +167,7 @@ python-dateutil==2.9.0.post0
     # via
     #   -c pipeline/requirements.txt
     #   botocore
+    #   croniter
     #   pendulum
 pytz==2026.4
     # via dlt
@@ -177,7 +180,7 @@ pyyaml==6.0.3
     #   dlt
     #   moto
     #   responses
-rasterio==1.5.1
+rasterio==1.5.2
     # via
     #   -c pipeline/requirements.txt
     #   -r pipeline/requirements.in
@@ -199,7 +202,7 @@ rich==15.0.0
     # via rich-argparse
 rich-argparse==1.8.0
     # via dlt
-ruff==0.16.6
+ruff==0.17.1
     # via -r pipeline/requirements-dev.in
 s3transfer==0.19.2
     # via
@@ -209,7 +212,7 @@ semver==3.1.0
     # via dlt
 setuptools==84.0.0
     # via dlt
-shapely==2.1.2
+shapely==2.2.0
     # via
     #   -c pipeline/requirements.txt
     #   -r pipeline/requirements.in

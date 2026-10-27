@@ -197,18 +197,41 @@ def test_a_missing_setting_never_prints_the_connection_string():
 
 def test_the_environment_the_workflows_pass_is_enough():
     """The fix, asserted as the workflows configure it: DATABASE_URL plus the
-    two Supabase settings the app needs and a migration does not."""
+    two Supabase settings the app needs and a migration does not.
+    SUPABASE_URL is migrate.yml's own placeholder, which names no Supabase
+    project, so app/config.py's same-project guard has nothing to compare."""
     result = _run_in(
         {
             "PATH": os.environ["PATH"],
             "DATABASE_URL": SESSION_POOLER_URL,
-            "SUPABASE_URL": "https://example.supabase.co",
+            "SUPABASE_URL": "https://migrations-never-call-this.invalid",
             "SUPABASE_ANON_KEY": "sb_publishable_example",
         }
     )
 
     assert result.returncode == 0, result.stdout + result.stderr
     assert "usable for a migration" in result.stdout
+
+
+def test_settings_from_two_projects_are_reported_as_refused_not_as_missing():
+    """app/config.py's same-project guard refuses the settings as a whole, so
+    its error names no field. load_settings() read the first field name of
+    every error, and on this one it would have raised IndexError mid-handler:
+    a traceback, with pydantic's rendering of the input chained under it."""
+    result = _run_in(
+        {
+            "PATH": os.environ["PATH"],
+            "DATABASE_URL": SESSION_POOLER_URL,
+            "SUPABASE_URL": "https://someotherproject.supabase.co",
+        }
+    )
+
+    combined = result.stdout + result.stderr
+    assert result.returncode == 2, combined
+    assert "refused these settings" in result.stdout
+    assert "project abc, but SUPABASE_URL is project someotherproject" in result.stdout
+    assert "hunter2" not in combined, "the password leaked"
+    assert "Traceback" not in combined
 
 
 # --- classify, as a pure function -----------------------------------------

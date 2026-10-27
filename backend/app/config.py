@@ -12,14 +12,48 @@ an empty string standing in for a real credential.
 
 import os
 from pathlib import Path
+from urllib.parse import urlsplit
 
 from dotenv import dotenv_values
-from pydantic import model_validator
+from pydantic import field_validator, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
+
+# Where plain http is what a developer actually has: a Supabase on this machine.
+_LOCAL_HOSTS = frozenset({"localhost", "127.0.0.1", "::1"})
+
+
+def _supabase_ref_from_api_url(url: str) -> str | None:
+    """`abcd1234` out of `https://abcd1234.supabase.co`, or None for any other host."""
+    host = (urlsplit(url.strip()).hostname or "").lower()
+    ref = host.removesuffix(".supabase.co") if host.endswith(".supabase.co") else ""
+    return ref if ref and "." not in ref else None
+
+
+def _supabase_ref_from_database_url(url: str) -> str | None:
+    """The project a Supabase connection string names, or None for any other host.
+
+    The pooler carries it in the user name (`postgres.abcd1234` at
+    `*.pooler.supabase.com`), a direct connection in the host
+    (`db.abcd1234.supabase.co`).
+    """
+    parts = urlsplit(url.strip())
+    host = (parts.hostname or "").lower()
+    if host.endswith(".pooler.supabase.com"):
+        _, _, ref = (parts.username or "").lower().partition(".")
+        return ref or None
+    if host.startswith("db.") and host.endswith(".supabase.co"):
+        return host.removeprefix("db.").removesuffix(".supabase.co") or None
+    return None
 
 
 class Settings(BaseSettings):
-    model_config = SettingsConfigDict(env_file=".env", env_file_encoding="utf-8", extra="ignore")
+    # `hide_input_in_errors`: a refusal from any validator below would otherwise
+    # print pydantic's `input_value=`, which for this model is every setting it
+    # was given, DATABASE_URL and its password included, cut down to its two
+    # ends. A refusal at startup lands in the host's log. check_schema_drift.py's
+    # load_settings() says how the cut-down form leaked a connection string's
+    # fragments from a migration job once already.
+    model_config = SettingsConfigDict(env_file=".env", env_file_encoding="utf-8", extra="ignore", hide_input_in_errors=True)
 
     # Local dev default only, and deliberately a real Postgres rather than an
     # embedded stand-in: everything this backend writes ends up in Supabase's
@@ -268,6 +302,51 @@ class Settings(BaseSettings):
     def mail_allowed(self) -> tuple[str, ...]:
         """The suffix list as `app/core/mail.py` wants it."""
         return tuple(part.strip().lower() for part in self.mail_allowed_suffixes.split(",") if part.strip())
+
+    @field_validator("supabase_url")
+    @classmethod
+    def _signing_keys_come_over_https(cls, value: str) -> str:
+        """Refuse a `SUPABASE_URL` the signing keys would travel over in the clear.
+
+        app/core/auth.py fetches the project's signing keys (its JWKS) from this
+        URL and checks every token against whatever comes back. Over plain http,
+        anyone on the network path could answer with keys of their own and sign
+        in as anybody, moderators included. The one place plain http is what a
+        developer actually has is a Supabase on this machine.
+        """
+        parts = urlsplit(value.strip())
+        if parts.scheme == "https" or (parts.scheme == "http" and (parts.hostname or "") in _LOCAL_HOSTS):
+            return value
+        raise ValueError(
+            "SUPABASE_URL has to be https://. The backend fetches the project's signing keys from it, "
+            "and over plain http anyone on the way could hand it their own and sign in as anybody. "
+            "Plain http is accepted only for a Supabase on this machine (localhost)."
+        )
+
+    @model_validator(mode="after")
+    def _one_supabase_project(self) -> "Settings":
+        """Refuse to start when the database and the sign-in are two different projects.
+
+        LAUNCH_CHECKLIST.md §6 has `DATABASE_URL` pasted by hand from a
+        dashboard that lists production and UA side by side. Pasted from the
+        wrong one, this process boots cleanly, `SELECT 1` passes, and hikers
+        with signal are served the other project's closures as live, while a
+        moderator's verifications land where the published baseline never
+        reads them. Every online spot-check looks fine. Both strings name their
+        project, so the mismatch is checkable here; a host that is not
+        Supabase's (local Postgres, a self-hosted Supabase) names none and is
+        not checked. The message names the two projects and nothing else -
+        never the credentials.
+        """
+        database = _supabase_ref_from_database_url(self.database_url)
+        api = _supabase_ref_from_api_url(self.supabase_url)
+        if database and api and database != api:
+            raise ValueError(
+                f"DATABASE_URL is Supabase project {database}, but SUPABASE_URL is project {api}. "
+                "They have to be the same project: one is where hikers sign in, the other is where "
+                "their reports and every moderator's verifications are kept."
+            )
+        return self
 
     @model_validator(mode="after")
     def _photos_do_not_go_in_the_published_bucket(self) -> "Settings":

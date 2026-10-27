@@ -69,6 +69,14 @@ from app.models.analytics import AnalyticsAnomaly, AnalyticsMonth, AnalyticsMont
 Z = 4.0
 RELATIVE = 0.5
 MIN_EXPECTED = 10.0
+# Nothing at all is judged on its own terms, because it is far stronger
+# evidence than a dip: with 7 expected, a Poisson count is zero about 0.09% of
+# the time (e^-7), and an outage is exactly a metric falling to nothing. So a
+# zero is called below MIN_EXPECTED - but never where the same weekday has
+# been zero before, which is what a metric that is simply rare looks like.
+# Reasoned from the Poisson tail, not measured; the staged sign-in outage in
+# the demo seed (two days at ~8 expected) is what it was checked against.
+ZERO_MIN_EXPECTED = 7.0
 HISTORY_WEEKS = 8
 MIN_HISTORY = 4
 EVALUATE_DAYS = 7
@@ -182,10 +190,10 @@ def judge(observed: float, history: list[float], *, scale: float = 1.0) -> tuple
     deviation = max(math.sqrt(max(expected, 1.0)), spread)
     low = max(0.0, min(expected - Z * deviation, expected * (1 - RELATIVE)))
     high = max(expected + Z * deviation, expected * (1 + RELATIVE))
+    if observed == 0 and expected >= ZERO_MIN_EXPECTED and min(history) > 0:
+        return "zero", expected, low, high
     if expected < MIN_EXPECTED:
         return "quiet", expected, low, high
-    if observed == 0:
-        return "zero", expected, low, high
     if observed < low:
         return "low", expected, low, high
     if observed > high:

@@ -86,6 +86,19 @@ def test_nothing_where_something_is_always_seen_is_zero():
     assert quality.judge(0, [40, 38, 45, 41, 39])[0] == "zero"
 
 
+def test_an_outage_is_zero_even_where_a_dip_would_be_too_few_to_judge():
+    """The demo seed's staged sign-in outage: about 8 expected, none seen.
+    A dip from 8 to 5 is noise; a fall to nothing is not."""
+    history = [8, 7, 13, 4, 14, 8, 14, 8]
+
+    assert quality.judge(0, history)[0] == "zero"
+    assert quality.judge(5, history)[0] == "quiet"
+
+
+def test_a_zero_is_ordinary_where_the_same_weekday_has_been_zero_before():
+    assert quality.judge(0, [8, 0, 9, 7, 10])[0] == "quiet"
+
+
 def test_a_three_percent_wobble_at_thousands_a_day_is_not_an_anomaly():
     """Statistically far out - and not worth anybody's morning."""
     assert quality.judge(9700, [10_000, 10_010, 9_990, 10_005, 9_995])[0] == "ok"

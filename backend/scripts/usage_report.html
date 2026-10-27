@@ -95,7 +95,8 @@ footer.foot .wrap{display:flex;flex-wrap:wrap;gap:6px 20px;justify-content:space
 .qgrid{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:10px}
 @media (max-width:900px){.qgrid{grid-template-columns:repeat(2,minmax(0,1fr))}}
 .qcell{border:1px solid var(--border-1);border-radius:10px;padding:8px 9px 6px;min-width:0}
-.qcell .qhead{display:flex;justify-content:space-between;align-items:center;gap:6px;font-size:12.5px;font-weight:600;color:var(--fg-1)}
+.qcell .qhead{display:flex;flex-wrap:wrap;justify-content:space-between;align-items:center;gap:4px 6px;font-size:12.5px;font-weight:600;color:var(--fg-1)}
+.qslice{display:block;font-size:11.5px;color:var(--fg-3);font-weight:400}
 .chip{font-size:11px;font-weight:600;border-radius:999px;padding:1px 8px;white-space:nowrap}
 .chip.ok{background:var(--sage-100);color:var(--pine-700)}
 .chip.low,.chip.zero,.chip.broken,.chip.warn{background:#f6e3d3;color:var(--blaze-orange-dark)}
@@ -515,8 +516,8 @@ footer.foot .wrap{display:flex;flex-wrap:wrap;gap:6px 20px;justify-content:space
       return '<div class="qcell"><div class="qhead"><span>' + esc(QUALITY_NAMES[metric] || metric) + '</span><span class="chip ' + last.status + '">' + esc(STATUS_WORDS[last.status] || last.status) + '</span></div>' + sparkSvg(points) + '</div>';
     }).join('');
     var findings = q.findings.length
-      ? '<div class="scroll"><table><tr><th>Day</th><th>Check</th><th>Slice</th><th>Which way</th><th>First seen</th></tr>' + q.findings.map(function (f) {
-          return '<tr><td>' + dayName(f.day) + '</td><td>' + esc(checkName(f.check)) + '</td><td>' + esc(scopeName(f.scope)) + '</td><td><span class="chip ' + esc(f.status) + '">' + esc(STATUS_WORDS[f.status] || f.status) + '</span></td><td>' + dayName(f.first_seen) + '</td></tr>';
+      ? '<div class="scroll"><table><tr><th>Day</th><th>Check</th><th>Which way</th><th>First seen</th></tr>' + q.findings.map(function (f) {
+          return '<tr><td>' + dayName(f.day) + '</td><td>' + esc(checkName(f.check)) + '<span class="qslice">' + esc(scopeName(f.scope)) + '</span></td><td><span class="chip ' + esc(f.status) + '">' + esc(STATUS_WORDS[f.status] || f.status) + '</span></td><td>' + dayName(f.first_seen) + '</td></tr>';
         }).join('') + '</table></div>'
       : '<p class="note">Nothing out of the ordinary in the last sixty days.</p>';
     return '<div class="qgrid">' + cells + '</div><h2 style="margin-top:14px">Findings</h2><div class="sub">Every check that has come out wrong in the last sixty days, newest first. The nightly job opens one issue while any is open; it names checks, never figures.</div>' + findings;

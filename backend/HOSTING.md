@@ -90,6 +90,67 @@ nobody can see in a pull request is a setting that drifts. `render.yaml` is the 
 that becomes a problem; it is deliberately not being added pre-emptively, because a config
 file nobody needs yet is the thing this change is removing.
 
+**What the free tier does at its limits, read from Render's own docs on 2026-10-23**
+(`render.com/docs/free`, `/outbound-bandwidth`, `/deploys`), because each one bears on
+something below:
+
+- **750 free instance hours a month, shared by the whole workspace.** A sleeping service
+  uses none, and one that never sleeps uses about 730. A UA backend on the free tier as
+  well would share the same 750, so the day production stays awake all month is the day
+  it moves to Starter and UA stays free.
+- **5 GB of outbound bandwidth a month on the Hobby workspace, then $0.15/GB.** With no
+  card on file, going past it suspends every free service for the rest of the month
+  rather than billing. That is the behaviour
+  [#395 — Put a ceiling on the bill before the app is public](https://github.com/OurHike/OurHike/issues/395)
+  wants, and it is why the next section exists: as wired before it, the hikers' own reads
+  would reach this limit.
+- **The pre-deploy command is for paid instances only.** That settles one of the two
+  remedies the migration-skew section below weighs: on the free tier there is no deploy
+  hook, so the ordering discipline is the remedy for as long as the service is free.
+- **A free service may be restarted at any time**, and it spins up in about a minute.
+
+## In front of it: Cloudflare, with three reads cached at the edge
+
+**Decided by the maintainer, by poll, on 2026-10-23, while planning #600 — Nothing owns standing up the production backend, and the image has never run against a real Docker daemon.** The API is served at
+`api.ourhike.org`, a proxied CNAME in the `ourhike.org` zone, which is already on
+Cloudflare. Three anonymous reads are cached there for five minutes: `GET /closures`,
+`GET /reports` and `GET /disputes`. Everything else passes straight through to Render.
+[app/core/edge_cache.py](app/core/edge_cache.py) is the code and its header is the reasoning
+for each rule; this section is what the cache costs and why it is here.
+
+**Why it is here: every hiker's app reads this service, account or not.**
+`client/src/lib/useConditions.ts` asks for `GET /closures`, `/reports`, `/field-notes` and
+`/disputes` when the app opens with signal, again every hour while it stays open, and again
+on return after five minutes away. So the live tier's traffic grows with every hiker, not
+only with those who sign in. "Nothing a hiker reads on the trail depends on this service"
+(above) is true of the safety read and was never true of the bill. The cost model behind
+the decision put the point where those reads use up Render's and Supabase's free 5 GB a
+month at about 2,750 hikers. That figure is reasoned from usage inputs nobody has measured
+(how often the app opens with signal, how many bytes each open reads); the two 5 GB limits
+are the vendors' own. With the cache, this service sees at most one request per URL per
+edge location every five minutes, however many hikers ask.
+
+**What it costs: $0,** on Cloudflare's free plan, in a zone that already exists: one CNAME
+and one cache rule, both in [LAUNCH_CHECKLIST.md](../LAUNCH_CHECKLIST.md) §6. Gzip is on in
+`app/main.py` for the same bill, since it cuts the bytes Render counts.
+
+**What it leaves uncached, and what that costs.** `GET /field-notes` and
+`GET /waypoints/{poi_id}/photos` embed presigned photo URLs that expire five minutes after
+signing, and `app/core/photos.py` rules out a shared copy of either. So the field-note read
+still reaches this service once per hiker per open. The same model puts Supabase Free's
+5 GB of egress at about 9,500 hikers a month with field notes uncached, against about
+130,000 with all four reads cached. Both figures are @unvalidated: they assume field notes
+are a quarter of the bytes a hiker's app reads, and nothing has measured that. The
+maintainer chose this over caching field notes for 60 s (poll, 2026-10-27), on condition of
+the follow-up that removes the trade: a stable photo route like reports already have, so the
+list carries no signature, which is
+[#1905 — GET /field-notes embeds 5-minute signed photo links, so the edge cache cannot keep it and every hiker's app open still reaches the API](https://github.com/OurHike/OurHike/issues/1905).
+
+**What would undo it.** Narrowing CORS from `*` (a shared copy can carry only one answer),
+or a cache rule that stops honouring the origin's `Cache-Control`. The second is the one to
+watch: `cf-cache-status: HIT` on a repeated anonymous `GET /closures` is the check, and §6
+step 6 runs it.
+
 ## Which build is serving, and why the release order depends on it
 
 **Render is to track `main`, so that the backend redeploys on every merge** — the
@@ -163,7 +224,10 @@ nothing here has picked one:
   Costs one dashboard setting, made at the same account-work moment as #600, rather than
   discipline on every PR thereafter — but nobody here has a Render account to confirm
   the feature works as documented, or what happens to in-flight requests against the
-  *previous* release while the command runs.
+  *previous* release while the command runs. **And it is not available on the free
+  tier**: Render's docs say "the pre-deploy command is available for paid web services,
+  private services, and background workers" (read 2026-10-23). So this remedy waits for
+  Starter, and the ordering discipline above is the one that applies until then.
 
 What would settle it: #600 actually creating the service, at which point this becomes a
 real setting to test rather than a documented risk. Until then, a PR that adds both a
@@ -219,8 +283,10 @@ vendor costs least to keep up with.
 
 ## Revisit if
 
-The free tier is withdrawn or starts suspending the service; or the cold start turns out
-to bite something that is not a photo; or the backend shrinks far enough that
+The free tier is withdrawn or starts suspending the service; or the edge cache stops
+answering `HIT`, which puts the free quotas back within reach of a few thousand hikers; or
+the cold start turns out to bite something that is not a photo; or the backend shrinks far
+enough that
 PostgREST-with-policies plus a function for presigning genuinely covers it — noting that
 [#393](https://github.com/OurHike/OurHike/issues/393) rejected that once already, because
 `_visible_to` has drifted before when it lived in two places.

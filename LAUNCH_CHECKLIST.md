@@ -441,34 +441,74 @@ It mattered because email/password was a real sign-in path here — `VITE_AUTH_P
 
 ## 6. Host the backend
 
-The host type is picked and there is no config file to write: `backend/Dockerfile` is the whole of it, and it reads `PORT` from the environment so any Dockerfile host runs it unchanged. [backend/HOSTING.md](backend/HOSTING.md) is the reasoning — **a free scale-to-zero tier, revised 2026-08-09**, after [features/CONDITIONS_DELIVERY.md](features/CONDITIONS_DELIVERY.md) moved the safety read off this service and the always-on requirement that had ruled out every free tier went with it. Fly was the previous answer, nothing was ever deployed to it, and `fly.toml` is gone.
+The host type is picked and there is no config file to write: `backend/Dockerfile` is the whole of it, and it reads `PORT` from the environment so any Dockerfile host runs it unchanged. [backend/HOSTING.md](backend/HOSTING.md) is the reasoning: **Render's free tier, revised 2026-08-09**, after [features/CONDITIONS_DELIVERY.md](features/CONDITIONS_DELIVERY.md) moved the safety read off this service, and **since 2026-10-23, Cloudflare in front of it** at `api.ourhike.org`, caching three anonymous reads for five minutes. Fly was the previous answer, nothing was ever deployed to it, and `fly.toml` is gone.
 
-What is left is account work, in this order:
+**Where this stood on 2026-10-27, checked read-only from a session for #600 — Nothing owns standing up the production backend, and the image has never run against a real Docker daemon:** the production database is already migrated (`alembic_version` reads `b4d8e1f7a263`, which is `alembic heads` on `main`), all 44 tables in `public` have row-level security on with no policies, `api.ourhike.org` does not resolve yet, and the R2 account holds `our-hike` and `our-hike-raw` but no private photo bucket (1.7). So step 3 needs nothing today, and the service starts with photos off.
 
-1. **Create the service** on the chosen host, pointed at `backend/`'s Dockerfile. Deploys happen on push from the connected repository; there is no CLI to install.
-2. **Set the runtime environment** in the host's own secret store. Never committed, never baked into the image:
+What is left is account work, in this order. Secrets never pass through a session, which is why these steps are yours:
+
+1. **Create the service.** Render → **New → Web Service** → connect the `OurHike/OurHike` repository, then:
+
+   | Setting | Value | Why |
+   | --- | --- | --- |
+   | Name | `ourhike-api` | It becomes `ourhike-api.onrender.com`, the CNAME target in step 4. Any free name works; step 4 uses whatever you pick. |
+   | Region | Virginia (US East) | The Supabase project is in AWS `us-east-1`, so every query stays in one region. |
+   | Branch | `main` | backend/HOSTING.md: the backend is always ahead of the app. |
+   | Root Directory | `backend` | `backend/Dockerfile` copies `app/`, `alembic/` and `requirements.txt` from there. |
+   | Language (or Runtime) | Docker | Render builds `backend/Dockerfile`; there is no build or start command to set. |
+   | Instance type | Free | |
+   | Health Check Path | `/health` | Not `/ready`: a check that needs the database turns a database outage into a restart loop (`backend/app/main.py`). |
+   | Auto-Deploy | on every commit to `main` | |
+
+   Do not add a card yet. With no card, going past the free 5 GB of outbound bandwidth suspends the service for the rest of the month instead of billing for it (backend/HOSTING.md; #395 — Put a ceiling on the bill before the app is public).
+
+2. **Set the environment** in the service's **Environment** tab. Never committed, never baked into the image:
    ```
-   DATABASE_URL=postgresql://...   # the POOLED string, port 6543
-   SUPABASE_URL=...  SUPABASE_ANON_KEY=...
+   DATABASE_URL=postgresql://...   # Supabase → OurHike → Connect → Transaction pooler, port 6543
+   SUPABASE_URL=...                # the same value as the SUPABASE_URL repository variable
+   SUPABASE_ANON_KEY=...           # the same value as the SUPABASE_ANON_KEY repository variable
    ```
-   `SUPABASE_JWT_SECRET` is **not** in that list for a hosted project — see 4.4. Set it only against a self-hosted Supabase.
+   Supabase's bare `postgresql://` string works as given: SQLAlchemy 2.1 loads psycopg for it (`backend/check_schema_drift.py`, measured 2026-10-20). `SUPABASE_JWT_SECRET` is **not** in that list for a hosted project — see 4.4. Set it only against a self-hosted Supabase.
 
    **The pooled string is deliberate here, and the app is built for it.** A transaction pooler hands each transaction whatever backend is free, which breaks anything a driver leaves on a connection — psycopg's automatic prepared statements above all, and that failure appears only in production and only once an endpoint is warm. `backend/app/db/session.py` turns them off, and `backend/tests/test_pooler.py` proves it against a real transaction pooler rather than asserting it. If you use the direct string instead, nothing breaks; you can set `DATABASE_PREPARED_STATEMENTS=true` to get the plan caching back.
-3. **Apply the migration** — dispatch **Migrate** (step 5), then **confirm RLS is on** (step 5a — the migration does it, but check rather than assume). Deliberately separate from deploying, and it stays that way now that a workflow does it: a migration is a reviewed action, not something that fires on every container start. Note that the secret this job holds is the **session** pooler (port 5432), while the `DATABASE_URL` above is the **transaction** pooler (6543) — two different values on the same host, both correct for their own job.
-4. **Point the client at it** by setting the `API_BASE_URL` repository variable, and add its origin to Supabase's allowed redirect URLs (4.3b). The variable is read by `pages.yml`, which bakes it into the next build, so the app reaches the backend from that deploy onward rather than immediately.
-5. **Confirm it, in this order**, because each step tells you something the previous one cannot:
-   ```
-   curl -sS https://<service>/health          # {"status":"ok"} - the app is up
-   curl -sS https://<service>/openapi.json    # the release gate reads this
-   curl -sS https://<service>/closures        # [] - it can reach the database
-   ```
-   `/health` answers without touching Postgres (and a database that cannot be reached at all now stops the container from starting, #1756, with `/ready` as the endpoint that pings it), so a healthy `/health` beside a 500 on `/closures` is precisely step 3 not having been run — the error reads `UndefinedTable: relation "closures" does not exist`. Allow the cold start on the first of these: 30-60 seconds, once.
+
+   **Photos start switched off**, which the backend supports: with the five `R2_PHOTO_*` variables unset, the photo routes answer 503 and everything else works. Switch them on before the release that ships `API_BASE_URL` (step 6), not later: the app reads a 503 on a photo as "no bucket yet, worth waiting out" (`client/src/lib/api.ts`), so every report with a photo would sit as *waiting to send* on the hiker's phone, though the report itself has already reached the moderators. That is 1.7, then the five variables here.
+
+3. **The migration is already applied.** Production reads `b4d8e1f7a263`, the head on `main` (checked 2026-10-27). Dispatch **Migrate** with `target: production` only when a newer revision under `backend/alembic/versions/` reaches `main`, and before the deploy that needs it: the free tier has no pre-deploy hook to do it for you (backend/HOSTING.md). Then **confirm RLS is on** (step 5a). Note that the secret that job holds is the **session** pooler (port 5432), while the `DATABASE_URL` above is the **transaction** pooler (6543) — two different values on the same host, both correct for their own job.
+
+4. **Give it its domain.** Render's own Cloudflare instructions (render.com/docs/configure-cloudflare-dns, read 2026-10-23):
+   1. Render → the service → **Settings → Custom Domains** → add `api.ourhike.org`.
+   2. Cloudflare → `ourhike.org` → **DNS** → add a `CNAME` named `api`, target `ourhike-api.onrender.com`, **Proxy status: DNS only** (grey cloud). Render has to reach the record itself to issue the certificate, and a proxied record blocks that. Add no `AAAA` record: Render does not serve IPv6.
+   3. Once Render shows the certificate as issued, switch the record to **Proxied** (orange cloud). Cloudflare must then reach Render over HTTPS, which needs SSL/TLS mode **Full** or **Full (strict)**. If the zone is on Flexible, leave the zone alone (the apex points at GitHub Pages, 3b) and add a **Configuration Rule** for hostname `api.ourhike.org` that sets SSL to Full.
+
+5. **Turn on the edge cache.** Cloudflare → `ourhike.org` → **Caching → Cache Rules → Create rule**:
+   - **When** the hostname equals `api.ourhike.org`
+   - **Then** *Eligible for cache*; Edge TTL *Use cache-control header if present, bypass cache if not*; Browser TTL *Respect origin*.
+
+   The rule hands the decision to the API. Three routes answer `public, max-age=0, s-maxage=300`, a signed-in caller gets `private, no-store`, and every other response says `no-store` (`backend/app/core/edge_cache.py`), so a rule set more loosely than this still cannot keep a signed photo URL or anybody's own data. If Cloudflare's labels have moved, the intent is: honour the origin's `Cache-Control`, and cache nothing that sends none.
+
+6. **Point the client at it**: set the `API_BASE_URL` repository variable to `https://api.ourhike.org`. `pages.yml` bakes it into the next build, and production builds from a tag (RELEASING.md §12), so hikers reach the backend from the next release onward. The app's Content-Security-Policy picks the origin up from the same variable (`client/scripts/csp.mjs`), so there is nothing to add there. Nothing goes on Supabase's redirect allow-list either: sign-in returns to the app's origin, never to the API's. `UA_API_BASE_URL` stays unset, and UA keeps queueing reports in its outbox, which `.github/expected-settings.yml` describes as a normal state.
 
    Setting `API_BASE_URL` also arms the daily check — `check-deployment.yml` asks `/health` on every run and reports it on **#738 — Deployed app reachability**, where it currently reads `skipped` because there is nothing to ask (#1359). That is the difference between finding out the free tier was withdrawn on the day it happens and finding out when somebody's report fails to send.
 
-**Expect a cold start.** The service sleeps when idle and the first request after that takes 30-60 seconds. Every remaining caller tolerates it — reports wait in the outbox, moderation is a person at a desk, and closures do not come from here at all any more — with one visible exception: opening a report photo after a quiet period will wait.
+7. **Confirm it, in this order**, because each line tells you something the one before cannot. None of these needs a credential, so a session can run them for you once the domain resolves:
+   ```
+   curl -sS https://api.ourhike.org/health     # {"status":"ok"} - the app is up
+   curl -sS https://api.ourhike.org/ready      # {"status":"ok"} - the pooled DATABASE_URL works
+   curl -sS https://api.ourhike.org/closures   # [] - the tables are there
+   curl -sS -o /dev/null -D - https://api.ourhike.org/closures | grep -iE 'cache-control|cf-cache-status|access-control-allow-origin'
+   ```
+   Run the last line twice. The second answer should carry `cf-cache-status: HIT`, `cache-control: public, max-age=0, s-maxage=300` and `access-control-allow-origin: *`. Then once with a token-shaped header, which must never be served from the cache:
+   ```
+   curl -sS -o /dev/null -D - -H 'Authorization: Bearer x' https://api.ourhike.org/closures | grep -iE 'cache-control|cf-cache-status'
+   ```
+   That should say `private, no-store`, with a `cf-cache-status` other than `HIT`. A healthy `/health` beside a 500 on `/closures` reading `UndefinedTable: relation "closures" does not exist` means the database behind `DATABASE_URL` is not the migrated one.
 
-**Do not skip step 3 on the grounds that nothing is filed yet.** `POST /closures/{id}/verify` is the only thing that moves a closure to `verified`, and the published artifact carries verified closures and nothing else — so until this service is running and a moderator can act, `conditions/closures.json` is empty by construction rather than because the trail is clear.
+8. **Keep the bill bounded**, which is #395 — Put a ceiling on the bill before the app is public: no card on Render until you choose Starter, and Supabase's spend cap on.
+
+**Expect a cold start.** The service sleeps after 15 minutes idle, and Render says the first request after that takes about a minute. Cloudflare waits up to 100 seconds for an origin, so a cold start fits; a request that takes longer is answered 524, and a report caught by it goes back in the outbox. Every remaining caller tolerates the wait — reports wait in the outbox, moderation is a person at a desk, and closures do not come from here at all any more — with one visible exception: opening a report photo after a quiet period will wait.
+
+**Do not leave the service uncreated on the grounds that nothing is filed yet.** `POST /closures/{id}/verify` is the only thing that moves a closure to `verified`, and the published artifact carries verified closures and nothing else — so until this service is running and a moderator can act, `conditions/closures.json` is empty by construction rather than because the trail is clear.
 
 **The image builds and runs — measured 2026-09-09 (#600), and this paragraph said it never had.** `backend/Dockerfile` unmodified, built against Docker 29.3.1 and run against a real Postgres 16 and an empty database. What that establishes, each of which was previously "should work": the image builds (12 layers, 406 MB on disk); a missing `SUPABASE_URL` raises a pydantic error naming the field at startup rather than booting on an empty credential; `PORT` is honoured — probed at 10000, and the `ENV PORT=8000` fallback when it is unset, which is the one line [backend/HOSTING.md](backend/HOSTING.md) rests portability on; `/health` answers 200 and `/openapi.json` serves; booting creates **no** tables, so the Dockerfile's promise that a migration never fires unattended holds; and after `alembic upgrade head` inside the container, every table the migration creates has row-level security on — step 5a's check, answered against the migration rather than assumed (18 of 18, re-measured 2026-09-09 against the hardened image; it was 16 of 16 hours earlier, which is the count moving with the migrations rather than the answer changing).
 

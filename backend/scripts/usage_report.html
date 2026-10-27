@@ -432,12 +432,11 @@ footer.foot .wrap{display:flex;flex-wrap:wrap;gap:6px 20px;justify-content:space
     var W = 600, H = 240, L = 44, R = 8, T = 16, B = 30;
     var parts = [['devices_new', '#284029', 'New'], ['devices_returning', '#47784b', 'Returning'], ['devices_back', '#96b98c', 'Back again']];
     var rows = ms.map(function (m) {
-      var prev = MONTHS[MONTHS.indexOf(m) - 1];
       var vals = parts.map(function (p) { return figure(m, p[0]).value; });
       var masked = vals.some(function (v) { return v === null; });
-      var before = prev ? figure(prev, 'devices_active').value : null;
-      var returning = vals[1];
-      var lost = (!masked && before !== null && returning !== null) ? Math.max(0, before - returning) : null;
+      // Worked out and masked by the server (analytics_report.py `LOST`),
+      // never subtracted here: the subtraction is the small number.
+      var lost = masked ? null : figure(m, 'devices_lost').value;
       return { m: m, vals: vals, masked: masked, lost: lost };
     });
     var maxUp = Math.max.apply(null, rows.map(function (r) { return r.masked ? 0 : r.vals.reduce(function (a, b) { return a + (b || 0); }, 0); }).concat([FLOOR]));
@@ -471,37 +470,73 @@ footer.foot .wrap{display:flex;flex-wrap:wrap;gap:6px 20px;justify-content:space
 
   // ---- data quality ----------------------------------------------------------
   // Each metric's days as a share of what the same weekday in the weeks before
-  // would expect (app/core/analytics_quality.py): the band is where a day is
-  // still ordinary. Shares, never counts - see `_quality` in analytics_report.py.
+  // would expect (app/core/analytics_quality.py), and a fixed band a day must
+  // leave to be called an anomaly. Shares, never counts, and only where the
+  // count was big enough - see `_quality` in analytics_report.py.
   var QUALITY_NAMES = { installs: 'First opens', logins: 'Sign-ins', plans_made: 'Plans made', plans_completed: 'Plans completed', map_views: 'Map views', sessions: 'Visits', pageviews: 'Screens', phones_this_week: 'Phones, first this week' };
+  // Every check that is not a metric's name (analytics_quality.py `NAMED_CHECKS`;
+  // tests/test_analytics_report.py fails when one has no label here).
+  var CHECK_NAMES = {
+    rows_refused: 'Rows refused',
+    rows_resent: 'Rows sent twice',
+    rows_over_budget: 'Batches turned away: the day’s budget',
+    rows_paused: 'Batches turned away: rollup not running',
+    rows_unsealed_no_key: 'Fixes thrown away for want of a key',
+    rollup_failed: 'The nightly rollup failed',
+    month_not_closed: 'Month not closed on time',
+    platforms_add_up: 'Platforms add up to the whole app',
+    growth_split_adds_up: 'New, returning and back again add up to active',
+    session_lengths_add_up: 'Session lengths add up to visits',
+    no_club_above_the_whole_app: 'No club above the whole app',
+    club_plans_within_total: 'Clubs’ plans within the app’s',
+    returning_within_last_month: 'Returning phones within last month’s',
+    hikers_within_phones: 'Hikers within phones',
+    late_rows_after_close: 'Rows after the month closed'
+  };
+  // What follows a check's colon: a metric, or a platform.
+  var PART_NAMES = { events: 'events', devices_active: 'active phones', devices_new: 'new phones', devices_returning: 'returning phones', devices_back: 'phones back again', devices_signed_in: 'signed-in phones', ios: 'iOS', android: 'Android', web: 'Web' };
   var STATUS_WORDS = { ok: 'normal', low: 'far below', high: 'far above', zero: 'none at all', quiet: 'too few to judge', learning: 'learning', broken: 'does not add up', warn: 'needs a look' };
+  function partName(part) { return PART_NAMES[part] || (QUALITY_NAMES[part] ? QUALITY_NAMES[part].toLowerCase() : part.replace(/_/g, ' ')); }
   function checkName(name) {
     var parts = name.split(':'), base = parts[0];
+    var detail = parts[1] ? ' (' + partName(parts[1]) + ')' : '';
+    if (CHECK_NAMES[base]) return CHECK_NAMES[base] + detail;
     var metric = base.replace(/_per_session$/, '');
     var label = QUALITY_NAMES[metric] ? QUALITY_NAMES[metric] + (base !== metric ? ' per visit' : '') : base.replace(/_/g, ' ');
-    return label + (parts[1] ? ' (' + parts[1].replace(/_/g, ' ') + ')' : '');
+    return label + detail;
   }
-  function scopeName(scope) { return scope === ALL ? 'whole app' : scope.replace(':', ' '); }
+  function scopeName(scope) {
+    if (scope === ALL) return 'whole app';
+    var parts = scope.split(':');
+    if (parts[0] === 'platform') return partName(parts[1]) + ' only';
+    if (scope === 'version:(none)') return 'rows with no version';
+    return scope.replace(':', ' ');
+  }
 
-  function sparkSvg(points) {
+  function sparkSvg(points, band) {
     var W = 260, H = 70, P = 4;
     var shares = points.map(function (p) { return p.share; }).filter(function (v) { return v !== null; });
-    var highs = points.map(function (p) { return p.high; }).filter(function (v) { return v !== null; });
-    var top = Math.max.apply(null, [1.6].concat(shares, highs));
+    var top = Math.max.apply(null, [1.6, band[1] + 0.1].concat(shares));
     var x = function (i) { return P + (W - 2 * P) * i / Math.max(1, points.length - 1); };
     var y = function (v) { return H - P - (H - 2 * P) * Math.min(v, top) / top; };
     var out = ['<svg viewBox="0 0 ' + W + ' ' + H + '" role="img" aria-label="Each day as a share of what was expected">'];
-    var upper = [], lower = [];
-    points.forEach(function (p, i) { if (p.low !== null && p.high !== null) { upper.push(x(i) + ',' + y(p.high)); lower.unshift(x(i) + ',' + y(p.low)); } });
-    if (upper.length) out.push('<polygon points="' + upper.concat(lower).join(' ') + '" fill="#e3ecda"/>');
+    // The half of the test that depends on no count: a day inside this band
+    // is never an anomaly. The other half is worked out from each day's own
+    // count, so it is not in this file.
+    out.push('<rect x="' + P + '" y="' + y(band[1]) + '" width="' + (W - 2 * P) + '" height="' + (y(band[0]) - y(band[1])) + '" fill="#e3ecda"/>');
     out.push('<line x1="' + P + '" x2="' + (W - P) + '" y1="' + y(1) + '" y2="' + y(1) + '" stroke="#96b98c" stroke-dasharray="3 3"/>');
     var path = [];
     points.forEach(function (p, i) { if (p.share !== null) path.push((path.length ? 'L' : 'M') + x(i) + ',' + y(p.share)); else if (path.length) path.push(''); });
     out.push('<path d="' + path.join(' ').replace(/ (?=M)/g, ' ') + '" fill="none" stroke="#355c3a" stroke-width="1.5"/>');
     points.forEach(function (p, i) {
-      if (p.share === null || p.status === 'ok') return;
+      if (p.status !== 'low' && p.status !== 'high' && p.status !== 'zero') return;
       var colour = p.status === 'high' ? '#1c6ea4' : '#c1611a';
-      out.push('<circle cx="' + x(i) + '" cy="' + y(p.share) + '" r="3" fill="' + colour + '"><title>' + esc(dayName(p.day) + ': ' + Math.round(p.share * 100) + '% of expected, ' + STATUS_WORDS[p.status]) + '</title></circle>');
+      // A day too small to show as a share still shows its verdict: on the
+      // floor for a fall, at the top for a rise, hollow because it has no place.
+      var shared = p.share !== null;
+      var cy = shared ? y(p.share) : (p.status === 'high' ? y(top) : y(0));
+      var said = shared ? Math.round(p.share * 100) + '% of expected, ' + STATUS_WORDS[p.status] : STATUS_WORDS[p.status] + ', too few to show as a share';
+      out.push('<circle cx="' + x(i) + '" cy="' + cy + '" r="3" ' + (shared ? 'fill="' + colour + '"' : 'fill="#fff" stroke="' + colour + '" stroke-width="1.5"') + '><title>' + esc(dayName(p.day) + ': ' + said) + '</title></circle>');
     });
     out.push('</svg>');
     return out.join('');
@@ -513,7 +548,7 @@ footer.foot .wrap{display:flex;flex-wrap:wrap;gap:6px 20px;justify-content:space
     var cells = q.metrics.map(function (metric) {
       var points = q.series[metric] || [];
       var last = points.length ? points[points.length - 1] : { status: 'learning' };
-      return '<div class="qcell"><div class="qhead"><span>' + esc(QUALITY_NAMES[metric] || metric) + '</span><span class="chip ' + last.status + '">' + esc(STATUS_WORDS[last.status] || last.status) + '</span></div>' + sparkSvg(points) + '</div>';
+      return '<div class="qcell"><div class="qhead"><span>' + esc(QUALITY_NAMES[metric] || metric) + '</span><span class="chip ' + last.status + '">' + esc(STATUS_WORDS[last.status] || last.status) + '</span></div>' + sparkSvg(points, q.band) + '</div>';
     }).join('');
     var findings = q.findings.length
       ? '<div class="scroll"><table><tr><th>Day</th><th>Check</th><th>Which way</th><th>First seen</th></tr>' + q.findings.map(function (f) {
@@ -601,7 +636,7 @@ footer.foot .wrap{display:flex;flex-wrap:wrap;gap:6px 20px;justify-content:space
         '<section class="panel"><h2>Retention by first month</h2><div class="sub">All clubs: the User table holds no place · hikers who said yes, by the month first seen · share active N months later · read from the User table, which outlives the six-month raw rows</div>' + cohortsHtml() +
           '<p class="note">User table today: ' + fmt(DATA.users.hikers) + ' hikers who said yes · ' + fmt(DATA.users.ever_planned) + ' ever made a plan · ' + fmt(DATA.users.ever_completed) + ' ever completed one.</p></section>' +
         '<section class="panel"><h2>Data health</h2><div class="sub">All clubs · whether the numbers above can be trusted, month by month</div>' + healthHtml() + '</section>' +
-        '<section class="panel wide"><h2>Data quality · each metric, day by day</h2><div class="sub">Each day as a share of what the same weekday in the weeks before would expect, counted at the same age so late uploads do not read as a drop · shaded = still ordinary · dots = an anomaly</div>' + qualityHtml() + '</section>' +
+        '<section class="panel wide"><h2>Data quality · each metric, day by day</h2><div class="sub">Each day as a share of what the same weekday in the weeks before would expect, counted at the same age so late uploads do not read as a drop · shaded = within half of expected either way, which is never an anomaly · dots = an anomaly, hollow where the day was too small to show as a share</div>' + qualityHtml() + '</section>' +
       '</div>';
     root.innerHTML = html;
 

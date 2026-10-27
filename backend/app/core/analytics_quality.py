@@ -571,6 +571,20 @@ def is_month_check(check_name: str) -> bool:
     return check_name.split(":")[0] in MONTH_CHECKS
 
 
+# Every check not named after a metric. The usage report gives each a label
+# of its own (scripts/usage_report.html `CHECK_NAMES`), and
+# tests/test_analytics_report.py fails when one here has none.
+NAMED_CHECKS = (
+    "rows_refused",
+    "rows_resent",
+    "rows_over_budget",
+    "rows_paused",
+    "rows_unsealed_no_key",
+    "rollup_failed",
+    *MONTH_CHECKS,
+)
+
+
 # When two findings share a key - a check name cut to its column's width, or
 # a scope two slices both reach - the one kept is the one worth reading first.
 _SEVERITY = {"broken": 4, "zero": 3, "low": 2, "high": 2, "warn": 1}

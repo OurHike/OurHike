@@ -4,9 +4,12 @@
 
 The dashboard the maintainer chose on 2026-10-27: a Python script that writes
 a single HTML file, in OurHike's style, filterable by date and by club. It
-reads `analytics_months`, `analytics_monthly`, `analytics_users` and the
-newest `analytics_seal_keys` month - never `analytics_events`, and never a
-sealed column - so the rollup's read-only role is enough to run it.
+reads `analytics_months`, `analytics_monthly`, `analytics_users`,
+`analytics_anomalies`, the newest `analytics_seal_keys` month, and - for the
+data-quality panel's daily series - plain columns of `analytics_events`
+(app/core/analytics_quality.py `load_arrivals`). Never `sealed`, so the
+rollup's role, which can read every usage column but that one, is enough to
+run it.
 
 Every figure is masked before it is written into the file
 (app/core/analytics_report.py): a count of fewer than 25 people is absent

@@ -7,13 +7,17 @@ masked figure is not merely hidden by the page, it is not in the file at all.
 """
 
 import importlib.util
-from datetime import date
+import re
+import uuid
+from datetime import date, timedelta
 from pathlib import Path
 
 import pytest
+from sqlalchemy.dialects.postgresql import insert
 
+from app.core import analytics_quality as quality
 from app.core.analytics_report import K_FLOOR, build_report_data, mask_cells
-from app.models.analytics import AnalyticsMonth, AnalyticsMonthly, AnalyticsUser, MonthStatus
+from app.models.analytics import AnalyticsEvent, AnalyticsMonth, AnalyticsMonthly, AnalyticsUser, MonthStatus
 
 SCRIPT = Path(__file__).resolve().parents[1] / "scripts" / "usage_report.py"
 OCTOBER = date(2026, 10, 1)
@@ -125,6 +129,112 @@ def test_one_hidden_platform_takes_the_next_smallest_with_it():
     assert whole == {"2026-10|*|web", "2026-10|*|android"}
 
 
+def test_a_platform_of_no_devices_is_shown_as_its_zeros_and_hides_nothing_beside_it():
+    """An app with no web users used to lose its Android figures too: the
+    empty web cell was masked, and rule 3 hid the next-smallest with it."""
+    cells = {
+        "2026-10|*|*": {"devices_active": 300, "sessions": 900},
+        "2026-10|*|ios": {"devices_active": 200, "sessions": 600},
+        "2026-10|*|android": {"devices_active": 100, "sessions": 300},
+        "2026-10|*|web": {"devices_active": 0, "sessions": 0},
+    }
+
+    masked, whole = mask_cells(cells)
+
+    assert whole == set()
+    assert masked["2026-10|*|web"] == {"devices_active": 0, "sessions": 0}
+    assert masked["2026-10|*|android"]["sessions"] == 300
+
+
+def test_a_cell_of_no_devices_masks_anything_in_it_that_is_not_zero():
+    """Plans with no phone counted are phones nobody counted - a first row of
+    the month still on a ridge - and a zero beside them cannot cover them."""
+    masked, _ = mask_cells({"2026-10|GMC|*": {"devices_active": 0, "plans_made": 2.0, "map_views": 0}})
+
+    assert masked["2026-10|GMC|*"] == {"devices_active": 0, "plans_made": None, "map_views": 0}
+
+
+@pytest.mark.parametrize(
+    "people, events",
+    [
+        ("devices_new", ["installs"]),
+        ("devices_plan_made", ["plans_made", "plan_miles"]),
+        ("devices_plan_completed", ["plans_completed", "completed_miles"]),
+        ("devices_login", ["logins"]),
+        ("devices_map_view", ["map_views"]),
+        ("hikers_active", ["events_identified"]),
+    ],
+)
+def test_events_are_masked_with_the_count_of_people_who_made_them(people, events):
+    """Reproduced for installs: a month's installs is its new phones near
+    enough, so it printed the number devices_new was masked to hide."""
+    cell = {"devices_active": 900, people: 12, **{event: 15 for event in events}}
+
+    masked, _ = mask_cells({"2026-10|*|*": cell})
+
+    assert [masked["2026-10|*|*"][event] for event in events] == [None] * len(events)
+
+
+def test_hidden_platforms_are_hidden_together_until_they_hold_the_floor():
+    """Two hidden platforms of 10 and 5 came back as a 15 by subtraction."""
+    cells = {
+        "2026-10|*|*": {"devices_active": 300},
+        "2026-10|*|ios": {"devices_active": 285},
+        "2026-10|*|android": {"devices_active": 10},
+        "2026-10|*|web": {"devices_active": 5},
+    }
+
+    _, whole = mask_cells(cells)
+
+    assert whole == {"2026-10|*|ios", "2026-10|*|android", "2026-10|*|web"}
+
+
+def test_a_metric_masked_inside_one_platform_is_masked_in_the_next_smallest_too():
+    """Platforms add up to the whole app exactly, so iOS's masked 10 would be
+    the total less Android and the web."""
+    cells = {
+        "2026-10|*|*": {"devices_active": 600, "devices_plan_completed": 66, "plans_completed": 70},
+        "2026-10|*|ios": {"devices_active": 300, "devices_plan_completed": 10, "plans_completed": 11},
+        "2026-10|*|android": {"devices_active": 200, "devices_plan_completed": 30, "plans_completed": 31},
+        "2026-10|*|web": {"devices_active": 100, "devices_plan_completed": 26, "plans_completed": 28},
+    }
+
+    masked, whole = mask_cells(cells)
+
+    assert not whole
+    assert masked["2026-10|*|ios"]["devices_plan_completed"] is None
+    assert masked["2026-10|*|web"]["devices_plan_completed"] is None, "the next-smallest platform"
+    assert masked["2026-10|*|web"]["plans_completed"] is None, "and the events that go with it"
+    assert masked["2026-10|*|android"]["devices_plan_completed"] == 30
+
+
+def test_lost_since_last_month_is_worked_out_and_masked_by_the_server():
+    cells = {
+        "2026-09|*|*": {"devices_active": 400},
+        "2026-10|*|*": {"devices_active": 400, "devices_new": 50, "devices_returning": 300, "devices_back": 50},
+    }
+
+    masked, _ = mask_cells(cells)
+
+    assert masked["2026-10|*|*"]["devices_lost"] == 100
+
+
+def test_returning_phones_are_masked_when_last_month_less_them_is_under_the_floor():
+    """390 of September's 400 back in October says 10 were lost: the page
+    used to print that subtraction, and both of its inputs."""
+    cells = {
+        "2026-09|*|*": {"devices_active": 400},
+        "2026-10|*|*": {"devices_active": 450, "devices_new": 30, "devices_returning": 390, "devices_back": 30},
+    }
+
+    masked, _ = mask_cells(cells)
+
+    october = masked["2026-10|*|*"]
+    assert october["devices_lost"] is None
+    assert [october[part] for part in ("devices_new", "devices_returning", "devices_back")] == [None, None, None]
+    assert october["devices_active"] == 450
+
+
 def _month_with_a_small_club(db_session):
     db_session.add(AnalyticsMonth(month=OCTOBER, status=MonthStatus.provisional, definition_version=1))
     for club, devices, miles in (("*", 400, 5000.0), ("NYNJTC", 300, 4300.0), ("PATC", 80, 650.5), ("GMC", 9, 271.75)):
@@ -175,6 +285,104 @@ def test_cohorts_hide_a_cohort_smaller_than_the_floor(db_session):
     september = next(row for row in data["cohorts"] if row["cohort"] == "2026-09")
     assert september["size"] is None and september["retained"] == [None]
     assert data["users"]["hikers"] is None
+
+
+def _cohort_of_30_with_28_back(db_session):
+    db_session.add(AnalyticsMonth(month=OCTOBER, status=MonthStatus.provisional, definition_version=1))
+    for index in range(30):
+        db_session.add(
+            AnalyticsUser(
+                user_key=f"{index:032d}",
+                first_seen_on=date(2026, 9, 2),
+                new_month=date(2026, 9, 1),
+                last_seen_on=date(2026, 10, 2),
+                first_platform="ios",
+                last_platform="ios",
+                first_plan_on=date(2026, 9, 3) if index < 28 else None,
+                active_months=[202609, 202610] if index < 28 else [202609],
+            )
+        )
+    db_session.commit()
+
+
+def test_a_cohorts_retention_is_masked_when_those_who_left_are_under_the_floor(db_session):
+    """Of 30 hikers, "28 came back" says 2 did not."""
+    _cohort_of_30_with_28_back(db_session)
+
+    september = next(row for row in build_report_data(db_session, environment="Test")["cohorts"] if row["cohort"] == "2026-09")
+
+    assert september["size"] == 30 and september["retained"] == [None]
+
+
+def test_the_user_table_line_masks_a_count_whose_complement_is_under_the_floor(db_session):
+    _cohort_of_30_with_28_back(db_session)
+
+    users = build_report_data(db_session, environment="Test")["users"]
+
+    assert users == {"hikers": 30, "ever_planned": None, "ever_completed": 0}
+
+
+def test_the_quality_panel_publishes_no_band_edges_and_no_share_below_the_floor(db_session):
+    """Reproduced: high / expected = 1 + 4/sqrt(E) gave the exact daily count
+    back on 50 of 56 days. A share is published only where 25 or more were
+    expected, and the band the page draws is fixed."""
+    today = date(2026, 11, 20)
+    rows = []
+    for back in range(63, 0, -1):
+        day = today - timedelta(days=back)
+        for event, n in (("session", 40), ("hike_plan_made", 12)):
+            for _ in range(n):
+                rows.append(
+                    {
+                        "id": str(uuid.uuid4()),
+                        "local_date": day,
+                        "received_on": day,
+                        "event": event,
+                        "platform": "ios",
+                        "week_first": False,
+                        "month_first": False,
+                        "ever_first": False,
+                        "kind_month_first": False,
+                        "month_returning": False,
+                        "signed_in": False,
+                        "has_fix": False,
+                        "seal": "none",
+                        "pageviews": 3 if event == "session" else None,
+                        "session_length": "m1_to_5" if event == "session" else None,
+                    }
+                )
+    db_session.execute(insert(AnalyticsEvent.__table__).values(rows))
+    db_session.commit()
+
+    panel = build_report_data(db_session, environment="Test", today=today)["quality"]
+
+    assert panel["band"] == [0.5, 1.5]
+    assert {key for points in panel["series"].values() for point in points for key in point} == {"day", "status", "share"}
+    assert panel["series"]["sessions"][-1] == {"day": "2026-11-19", "status": "ok", "share": 1.0}
+    assert panel["series"]["plans_made"][-1] == {"day": "2026-11-19", "status": "ok", "share": None}, "12 expected"
+
+
+def test_every_check_the_nightly_job_names_has_a_label_in_the_page(report_script):
+    """A finding shown as `rows_unsealed_no_key` is a finding nobody reads."""
+    template = report_script.TEMPLATE.read_text(encoding="utf-8")
+    block = re.search(r"var CHECK_NAMES = \{(.*?)\};", template, re.DOTALL)
+    names = re.search(r"var QUALITY_NAMES = \{(.*?)\};", template, re.DOTALL)
+    assert block is not None and names is not None, "CHECK_NAMES or QUALITY_NAMES is not where this test reads it"
+
+    labelled = set(re.findall(r"(\w+):", block.group(1)))
+    metrics = set(re.findall(r"(\w+):", names.group(1)))
+
+    assert set(quality.NAMED_CHECKS) - labelled == set()
+    assert set(quality.VOLUME_METRICS) | set(quality.PER_SESSION) | set(quality.PLATFORM_METRICS) <= metrics
+
+
+def test_the_page_draws_the_servers_figures_rather_than_working_out_its_own(report_script):
+    """Lost phones and the quality band both used to be computed in the page,
+    from figures the file carried - which is how the masks were got round."""
+    template = report_script.TEMPLATE.read_text(encoding="utf-8")
+
+    assert "'devices_lost'" in template and "before - returning" not in template
+    assert "q.band" in template and re.search(r"\bp\.(low|high)\b", template) is None
 
 
 def test_an_empty_database_builds_an_empty_report(db_session, report_script):

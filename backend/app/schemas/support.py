@@ -4,6 +4,8 @@ from typing import Literal
 
 from pydantic import BaseModel
 
+from app.core.support import BLOCKS_CHOICE, RUNNING, STOPPABLE
+from app.core.support_providers import current_provider, provider_for
 from app.core.time import UtcDatetime
 from app.models.support import SupportCadence, SupportChoice
 
@@ -25,62 +27,96 @@ class SupportChoiceIn(BaseModel):
     delivery: Literal["redirect", "email"]
 
 
-SupportStatusOut = Literal["none", "pending", "active", "stop_requested", "stopped"]
+SupportStatusOut = Literal["none", "pending", "active", "paused", "cancel_scheduled", "stop_requested", "stopped"]
 
 
 class SupportOut(BaseModel):
-    """The caller's latest paid choice, or `status: "none"` with every other
-    field null. Mirrors the client's `SupportSummary` (client/src/lib/
-    support.ts), which tests/test_client_response_contract.py holds it to."""
+    """The caller's support, or `status: "none"` with every other field null.
+    Mirrors the client's `SupportSummary` (client/src/lib/api.ts), which
+    tests/test_client_response_contract.py holds it to.
+
+    The three booleans are the server's answer so the app does not keep its
+    own copy of the state machine (the #1885 architecture review):
+    `supporting` - a recurring payment exists and nothing has ended it, so the
+    day-5 ask has its answer; `can_stop` - the Stop button does something;
+    `can_choose` - a new choice would be accepted rather than 409.
+    `provider_label` is for the website only: the store apps never name a
+    payment provider.
+    """
 
     status: SupportStatusOut
     amount_cents: int | None
     cadence: SupportCadence | None
     provider: str | None
+    provider_label: str | None
     email: str | None
     chosen_at: UtcDatetime | None
     started_at: UtcDatetime | None
+    period_end: UtcDatetime | None
     stop_requested_at: UtcDatetime | None
     ended_at: UtcDatetime | None
+    supporting: bool
+    can_stop: bool
+    can_choose: bool
 
     @classmethod
-    def from_row(cls, row: SupportChoice | None) -> "SupportOut":
+    def from_row(cls, row: SupportChoice | None, *, blocked: bool | None = None) -> "SupportOut":
+        """`blocked` is whether ANY of the caller's rows blocks a new choice
+        (see core/support.BLOCKS_CHOICE); the router knows, a single row may
+        not. Left None, it is read off this row."""
         if row is None:
             return cls(
                 status="none",
                 amount_cents=None,
                 cadence=None,
                 provider=None,
+                provider_label=None,
                 email=None,
                 chosen_at=None,
                 started_at=None,
+                period_end=None,
                 stop_requested_at=None,
                 ended_at=None,
+                supporting=False,
+                can_stop=False,
+                can_choose=current_provider() is not None,
             )
+        provider = provider_for(row.provider)
+        if blocked is None:
+            current = current_provider()
+            blocked = current is not None and row.provider == current.key and row.status in BLOCKS_CHOICE
         return cls(
             status=row.status.value,
             amount_cents=row.amount_cents,
             cadence=row.cadence,
             provider=row.provider,
+            provider_label=provider.label if provider is not None else None,
             email=row.email,
             chosen_at=row.chosen_at,
             started_at=row.started_at,
+            period_end=row.period_end,
             stop_requested_at=row.stop_requested_at,
             ended_at=row.ended_at,
+            supporting=row.status in RUNNING,
+            can_stop=row.status in STOPPABLE,
+            can_choose=current_provider() is not None and not blocked,
         )
 
 
 class SupportChoiceReceipt(BaseModel):
     support: SupportOut
     # Where the website app goes to pay; null for `delivery: "email"`.
+    # Always https - the app refuses to navigate anywhere else.
     checkout_url: str | None
-    # Whether the store apps' setup email actually went.
+    # Whether a setup email reached the hiker's address, now or within the
+    # last day (core/support_mail.SETUP_LINK_EVERY).
     emailed: bool
 
 
 class SupportTotalOut(BaseModel):
     """The published running total (the maintainer chose to publish it rather
-    than cut anything off at the $100,000 line, 2026-10-23). Before fees."""
+    than cut anything off at the $100,000 line, 2026-10-23). Dollars only,
+    before fees."""
 
     year: int
     total_cents: int
@@ -88,7 +124,7 @@ class SupportTotalOut(BaseModel):
 
 
 class WebhookAck(BaseModel):
-    """What this server did with one delivery, in a word - for Buy Me a
-    Coffee's delivery log and for the test that reads it."""
+    """What this server did with one delivery, in a word - for the provider's
+    delivery log and for the test that reads it."""
 
     result: str

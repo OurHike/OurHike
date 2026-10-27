@@ -108,6 +108,8 @@ def _furnish(db, profile_id: str, *, hours_state=HoursState.claimed) -> None:
         SupportChoice(
             profile_id=profile_id,
             email=f"{profile_id}@example.com",
+            provider="buymeacoffee",
+            provider_ref=f"membership-{profile_id}",
             amount_cents=1000,
             status=SupportStatus.active,
             started_at=dt.datetime(2026, 10, 1),
@@ -380,6 +382,28 @@ def test_support_that_was_running_is_asked_to_stop_and_kept(db_session, hiker):
     assert [row.status for row in rows] == [SupportStatus.stop_requested]
     assert rows[0].stop_requested_at is not None
     assert summary.support_stops_requested == [rows[0].id]
+
+
+def test_a_support_choice_nobody_paid_for_is_deleted_not_kept(db_session, hiker):
+    """#1885 review: a choice the provider never confirmed is nobody's money
+    record - only an address and a figure - so it goes with the account."""
+    db_session.add(
+        SupportChoice(
+            profile_id=hiker.id,
+            email="unpaid@example.com",
+            provider="buymeacoffee",
+            amount_cents=10000,
+            status=SupportStatus.pending,
+            chosen_at=dt.datetime(2026, 10, 20),
+        )
+    )
+    db_session.commit()
+
+    delete_account(db_session, hiker)
+    db_session.commit()
+
+    left = db_session.query(SupportChoice).filter(SupportChoice.profile_id == hiker.id).all()
+    assert [row.email for row in left] == [f"{hiker.id}@example.com"]
 
 
 def test_the_summary_omits_the_zeroes(db_session):

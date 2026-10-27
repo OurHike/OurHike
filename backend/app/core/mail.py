@@ -176,7 +176,13 @@ def _build(
     message.set_content(body_text)
     if body_html:
         message.add_alternative(body_html, subtype="html")
-    return message.as_bytes()
+    # RFC 5322's 998-character line rather than the library's 78. At 78 a
+    # header with no space to fold at is rewritten as RFC 2047 encoded words,
+    # and `List-Unsubscribe: =?utf-8?q?=3Chttps...` is not a URL any mail
+    # client will offer: measured 2026-10-27, every unsubscribe URL over
+    # about 60 characters came out that way, which a real 43-character link
+    # token always is (#1885).
+    return message.as_bytes(policy=message.policy.clone(max_line_length=998))
 
 
 def send(

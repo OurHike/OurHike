@@ -272,13 +272,31 @@ class Settings(BaseSettings):
     #     without the secret this cannot tell Buy Me a Coffee from anybody
     #     else posting "membership.started" for an address of their choosing;
     #   - no notify address: a Stop is still recorded and the hiker still
-    #     told, but nobody is emailed to cancel it, and the response says so.
+    #     told, but nobody is emailed to cancel it. The row stays in the
+    #     retry queue (`stop_notified_at` empty) until somebody can be.
     # The checkout URL is the creator's own membership page, e.g.
     # https://buymeacoffee.com/<page>/membership; the secret is the one Buy Me
     # a Coffee shows on the webhook's own page (its webhook spec, 2026-10-23).
+    #
+    # `support_provider` names where NEW choices go - a key in
+    # app/core/support_providers/. Changing it is how OurHike moves provider:
+    # every provider there keeps receiving its own webhooks, so supporters on
+    # the old one are still recorded until they move.
+    support_provider: str = "buymeacoffee"
     buymeacoffee_checkout_url: str = ""
     buymeacoffee_webhook_secret: str = ""
+    # Comma-separated Buy Me a Coffee membership level ids that are OurHike
+    # support. Empty believes every level on the page, which is right while
+    # the page sells nothing else; a level added later for something that is
+    # not support (a sticker club) would otherwise land in the published total.
+    buymeacoffee_level_ids: str = ""
     support_notify_address: str = ""
+    # This API's own public address, e.g. https://api.ourhike.org - where a
+    # support email's one-click unsubscribe link points (RFC 8058 wants a
+    # URL that takes a POST, which the static app pages cannot). Empty sends
+    # the link to the app's "Your support" page instead, which stops the
+    # payment but not the mail.
+    api_public_url: str = ""
 
     @property
     def mail_allowed(self) -> tuple[str, ...]:

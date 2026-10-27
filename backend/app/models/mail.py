@@ -46,12 +46,14 @@ class MailPurpose(str, enum.Enum):
     nomination_proposal = "nomination_proposal"
     nomination_reminder = "nomination_reminder"
     nomination_outcome = "nomination_outcome"
-    # Supporting OurHike (#1876). Neither is cold: the first goes to a hiker
+    # Supporting OurHike (#1876). None is cold: the first goes to a hiker
     # who pressed "Email me how to set it up" in a store app, the second to
-    # the founder when a hiker presses Stop. Both fit the rule above - a
-    # message somebody needs to finish something they asked for.
+    # the founder when a hiker presses Stop, the third to that hiker once the
+    # payment has actually stopped. All fit the rule above - a message
+    # somebody needs to finish something they asked for.
     support_setup_link = "support_setup_link"
     support_stop_request = "support_stop_request"
+    support_stopped = "support_stopped"
 
 
 class MailState(str, enum.Enum):
@@ -104,6 +106,8 @@ class SuppressionReason(str, enum.Enum):
     complained = "complained"
     refused = "refused"
     manual = "manual"
+    # A hiker pressing the unsubscribe link in a support email (#1876).
+    unsubscribed = "unsubscribed"
 
 
 class EmailSuppression(Base):

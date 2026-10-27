@@ -78,7 +78,7 @@ from app.models.preferences import UserPreferences
 from app.models.profile import Profile, Role
 from app.models.report import Report
 from app.models.ridge_runner import RidgeRunnerCommitment
-from app.models.support import SupportChoice, SupportStatus
+from app.models.support import SupportChoice, SupportEvent, SupportStatus
 from app.models.synced_day_hike import SyncedDayHike
 from app.models.synced_hike import SyncedActiveHike, SyncedHike
 from app.models.synced_trip import SyncedPlannedHike, SyncedTrip
@@ -324,24 +324,49 @@ def delete_account(db: Session, profile: Profile, now=None) -> DeletionSummary:
         report.signed_name_kind = None
         report.contact_ok = False
 
-    # WHAT A HIKER GIVES OURHIKE (#1876) STAYS, AND STOPS. The rows stay:
-    # they are the money record the published accounting and any later refund
-    # question rely on, which is this module's rule for keeping a row. But a
-    # deleted account can no longer reach More -> Your support to press Stop,
-    # so anything still running is asked to stop here, exactly as Stop would -
-    # nobody deleting their account means "keep charging me". The founder is
-    # emailed by the router once the deletion has committed.
+    # WHAT A HIKER GIVES OURHIKE (#1876): A PAYMENT STAYS AND STOPS; A CHOICE
+    # NOBODY PAID FOR GOES. A row the provider confirmed is the money record
+    # the published accounting and any later refund question rely on, which
+    # is this module's rule for keeping a row. A choice that never became a
+    # payment (no provider id, never started) is nobody's money record - only
+    # an email address and a dollar figure - so it is deleted with the rest
+    # (the #1885 review). And a deleted account can no longer reach More ->
+    # Your support to press Stop, so anything still charging is asked to stop
+    # here, exactly as Stop would - nobody deleting their account means "keep
+    # charging me". Whoever cancels it is asked by the router once the
+    # deletion has committed.
+    unpaid = (
+        db.query(SupportChoice)
+        .filter(
+            SupportChoice.profile_id == profile_id,
+            SupportChoice.provider_ref.is_(None),
+            SupportChoice.started_at.is_(None),
+        )
+        .all()
+    )
+    unpaid_ids = [choice.id for choice in unpaid]
+    if unpaid_ids:
+        db.query(SupportChoice).filter(SupportChoice.replaces_choice_id.in_(unpaid_ids)).update(
+            {SupportChoice.replaces_choice_id: None}, synchronize_session=False
+        )
+        db.query(SupportEvent).filter(SupportEvent.choice_id.in_(unpaid_ids)).update(
+            {SupportEvent.choice_id: None}, synchronize_session=False
+        )
+        for choice in unpaid:
+            db.delete(choice)
+        db.flush()
     stopping = (
         db.query(SupportChoice)
         .filter(
             SupportChoice.profile_id == profile_id,
-            SupportChoice.status.in_((SupportStatus.pending, SupportStatus.active)),
+            SupportChoice.status.in_((SupportStatus.active, SupportStatus.paused, SupportStatus.stop_requested)),
         )
         .all()
     )
     for choice in stopping:
-        choice.status = SupportStatus.stop_requested
-        choice.stop_requested_at = now
+        if choice.status != SupportStatus.stop_requested:
+            choice.status = SupportStatus.stop_requested
+            choice.stop_requested_at = now
 
     # --- The rows other people are relying on. Untouched, and counted so the
     # hiker is told rather than left to assume. ---

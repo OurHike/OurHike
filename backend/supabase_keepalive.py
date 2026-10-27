@@ -156,6 +156,9 @@ KEEPALIVE_TABLES: tuple[str, ...] = (
     # amount. A readable one would publish the list of who pays and how much,
     # which the published total exists precisely not to do.
     "support_choices",
+    # And every event a payment provider sent about them (#1876): redacted
+    # of names and notes, but still a per-supporter amount and date history.
+    "support_events",
     # A hiker's own day hikes (#976): the same private-planning claim as the
     # #892 pair below - a route somebody intends to walk, served to nobody
     # else.

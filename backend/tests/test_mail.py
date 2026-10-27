@@ -214,6 +214,15 @@ class TestWhatGoesOnTheWire:
         assert "List-Unsubscribe: <https://ourhike.org/n/abc123/no-thank-you>" in raw
         assert "List-Unsubscribe-Post: List-Unsubscribe=One-Click" in raw
 
+    def test_a_long_unsubscribe_link_stays_a_link(self, db_session):
+        """A real link token is 43 characters, and at the library's 78-column
+        fold the header became RFC 2047 encoded words no client reads as a URL."""
+        url = "https://api.ourhike.org/support/mail/stop/" + "A" * 43
+        provider = Provider()
+        send(db_session, provider=provider, enabled=True, **{**a_message(), "unsubscribe_url": url})
+        raw = provider.sent[0]["Content"]["Raw"]["Data"].decode()
+        assert f"List-Unsubscribe: <{url}>" in raw
+
     def test_a_message_with_nowhere_to_unsubscribe_cannot_even_be_called(self):
         """Not an oversight to tolerate: it is the one header that must be there.
 

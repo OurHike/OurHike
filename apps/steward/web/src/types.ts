@@ -21,6 +21,17 @@ export interface FromTrail {
   toward: Compass
 }
 
+export const WEIGHT_NAMES = [
+  'deficit',
+  'water',
+  'trail',
+  'cluster',
+  'restricted',
+] as const
+export type WeightName = (typeof WEIGHT_NAMES)[number]
+export type Weights = Record<WeightName, number>
+export type NeedParts = Record<WeightName, number>
+
 export type Camping =
   { source: 'guess'; regime: string } | { source: 'reviewed'; restricted: boolean }
 
@@ -56,6 +67,9 @@ export interface Site {
   }
   camping: Camping
   need: number
+  /** What each weight multiplies for this site (rules.need_parts); null where the
+   *  assessment is incomplete. A club's need is the weighted sum: src/ranking.ts. */
+  need_parts: NeedParts | null
   tier: Tier | null
   action: Action
   crew: Crew | null
@@ -110,13 +124,7 @@ export interface Summary {
     guesses: Record<string, number>
   }
   method: {
-    weights: {
-      deficit: number
-      water: number
-      trail: number
-      cluster: number
-      restricted: number
-    }
+    weights: Weights
     tiers: { P1_min: number; P2_min: number }
     work_csi_max: number
     close_water_ft: number

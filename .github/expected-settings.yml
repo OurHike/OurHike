@@ -330,6 +330,16 @@ settings:
       it is set; it has to name a project that already exists, because
       wrangler does not create one from CI.
 
+  STEWARD_API_URL:
+    where: variable
+    required: false
+    why: >-
+      Where Campsite Steward's API (apps/steward/api/, #1906) runs, built into
+      the steward web app by steward-analysis.yml. Unset, the app is built with
+      no sign-in, lists or club weights, and says sign-in is not set up; the
+      map and the analysis are unaffected. A variable because it is a public
+      address every browser calls.
+
   UA_MIGRATION_DATABASE_URL:
     where: secret
     required: false

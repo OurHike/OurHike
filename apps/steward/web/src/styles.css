@@ -84,6 +84,18 @@ h3 {
 .brand:hover {
   color: #fff;
 }
+.nav-account {
+  margin-left: auto;
+  color: #fff;
+  text-decoration: none;
+  padding: 8px 12px;
+  border: 1px solid #3c5257;
+  border-radius: 6px;
+}
+.nav-account:hover {
+  color: #fff;
+  background: #2a3d42;
+}
 .nav {
   display: flex;
   flex-wrap: wrap;

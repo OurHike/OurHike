@@ -1,7 +1,8 @@
 # Campsite Steward — build plan
 
-**Status: phases 0 and 1 built** (§9): the weekly analysis job and the read-only web
-app. Phases 2 to 4 are not started. This file began as the
+**Status: phases 0 and 1 built, phase 2 built but not deployed** (§9): the weekly
+analysis job, the read-only web app, and sign-in, lists and club weights with the API
+behind them. The API has no host or database yet (§11). Phases 3 and 4 are not started. This file began as the
 deliverable of **#1899 — Plan Campsite Steward, a separate app that ranks the A.T.
 campsites needing restoration and lets volunteers claim them**, written 2026-10-24 to
 2026-10-26 from a planning session with the maintainer: a first-pass analysis, then
@@ -372,7 +373,8 @@ spatial work uses numpy and shapely, and DuckDB runs the summary's SQL. It write
 outputs under its gitignored `data/out/`:
 
 - **`sites.json`:** every site with its location and every score, sorted by club and
-  then by need. 3.7 MB as written, about 400 KB gzipped (measured 2026-10-27).
+  then by need, each with its `need_parts` for re-ranking under a club's weights. 4.3 MB
+  as written, 470 KB gzipped (measured 2026-10-27).
 - **`summary.json`:** counts by club, tier, action and crew size, plus the method text.
   At 8 KB, it is the Analysis screen's whole input, so that screen never downloads the
   sites file to draw a chart.
@@ -416,8 +418,8 @@ directions.
 
 | Part | What it is | Reused from OurHike, or new |
 |---|---|---|
-| Sign-in | The same Supabase project, so an OurHike account works here | Reused: `backend/app/core/auth.py`'s token check |
-| API | A FastAPI service under `apps/steward/api/`, with its own Postgres database. It handles claims, lists, invites, submissions, reviews, hours and weights | New |
+| Sign-in | The same Supabase project, so an OurHike account works here. A six-digit code by email, typed back: the shared project's email template sends a code, not a link, and `client/src/lib/auth.ts` (#1600) records why asking it for a link fails. A code also needs no redirect address registered with Supabase | Reused: `backend/app/core/auth.py`'s token check, copied into `apps/steward/api/steward_api/auth.py` because the two deploy separately |
+| API | A FastAPI service under `apps/steward/api/`, with its own Postgres database. Built in phase 2 (#1906) for lists, share links and weights; claims, invites, submissions, reviews and hours come in phase 3. Its Dockerfile is `backend/Dockerfile`'s shape, so it runs on Render beside OurHike's API (`backend/HOSTING.md` chose Render's free tier). Not deployed: the database is §11's first open item | New |
 | Photos | R2, keyed by the record id, following the pattern in `backend/app/core/photos.py` | Pattern reused, own bucket |
 | Club sections | Which club owns which mile | Reused: `pipeline/export_club_sections.py`'s output |
 | ArcGIS reading | Paging an ArcGIS layer | Reused: `pipeline/lib/arcgis.py` |
@@ -625,7 +627,7 @@ returns excerpts; their quotes are near-verbatim.
 |---|---|---|---|
 | 0 | Analysis job | **Built, #1901:** the scoring job, its tests and CI, `summary.json` and `sites.json`, and the weekly run that attaches them to itself until the app can serve them | 1–2 weeks |
 | 1 | Read-only app | **Built, #1904:** the dashboard with club, mile-range, tier, action and crew filters, the map and CSV export; the site page with directions, the indicator bars and the plan; the Analysis screen; the guide. Deployed by the weekly job | 2–3 weeks |
-| 2 | Sign-in and lists | Supabase sign-in, locations for signed-in users, lists and share links, club weights with history | 2 weeks |
+| 2 | Sign-in and lists | **Built, not deployed, #1906:** email-code sign-in; lists and share links; club weights with history and restore, re-ranking the dashboard through each site's `need_parts`; the API with 52 tests on Postgres. The web app switches accounts on when `STEWARD_API_URL` is set | 2 weeks |
 | 3 | Claims | Claims, the 14-day clock and reminders, before you go, invites, photo points and extras, review, hours | 3–4 weeks |
 | 4 | Field-ready | Offline for claimed sites, the photo-point outline, follow-up visits, CSV export | 2–3 weeks |
 
@@ -652,7 +654,9 @@ below are where the evidence is thinnest.
 - **Open review.** With anyone able to verify, "Verified" means another account looked at
   the photos, not that a club did. The CSV export should name the reviewer of each site.
 - **Open weights.** Anyone can re-rank a club's sites. The history makes a change visible
-  and undoable; nothing prevents it.
+  and undoable; nothing prevents it. The API caps one account at 30 changes a day and
+  refuses a change that changes nothing, which keeps the history readable and does
+  nothing about a determined account with several addresses.
 - **ATC is not being approached (decided).** The app uses ATC's inventory in a way ATC did
   not publish it for. If ATC objects, its likely asks are to hide user-created locations
   or to route claims through clubs. §4's fallbacks and §7's approval table are the
@@ -667,6 +671,15 @@ below are where the evidence is thinnest.
 ---
 
 ## 11. Still open
+
+- **Where the steward API's database lives.** The API is built and tested but has no
+  database: a schema in OurHike's Supabase Postgres, a separate Supabase project, or
+  Render's own Postgres. Until one exists, the app is built without accounts.
+- **Which Supabase project.** The deploy uses OurHike's production project
+  (`SUPABASE_URL`), as §3's "the same project" implies. The sign-in email will carry
+  OurHike's template and name.
+- **A privacy statement for this app.** It holds a Supabase user id, a chosen display
+  name, lists, and weights changes. OurHike's privacy policy does not cover a second app.
 
 - Who transcribes the camping rules (decided: the session, reviewed by the maintainer)
   and when. It blocks the "+10 restricted" weight, not phase 0.

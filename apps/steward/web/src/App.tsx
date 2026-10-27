@@ -1,7 +1,11 @@
+import { useAccount } from './account'
 import { useStewardData, type StewardData } from './data'
 import { useRoute, type Route } from './route'
+import { AccountScreen } from './screens/AccountScreen'
 import { AnalysisScreen } from './screens/AnalysisScreen'
 import { GuideScreen } from './screens/GuideScreen'
+import { ListsScreen } from './screens/ListsScreen'
+import { SharedScreen } from './screens/SharedScreen'
 import { SitePage } from './screens/SitePage'
 import { SitesScreen } from './screens/SitesScreen'
 
@@ -32,12 +36,17 @@ function Screen({ route, data }: { route: Route; data: StewardData }) {
   }
   if (route.screen === 'analysis') return <AnalysisScreen summary={data.summary} />
   if (route.screen === 'guide') return <GuideScreen />
+  if (route.screen === 'account') return <AccountScreen />
+  if (route.screen === 'lists') return <ListsScreen sites={data.sites} />
+  if (route.screen === 'shared')
+    return <SharedScreen token={route.token} sites={data.sites} />
   return <SitesScreen sites={data.sites} summary={data.summary} />
 }
 
 export function App({ load }: { load?: () => Promise<StewardData> }) {
   const route = useRoute()
   const loaded = useStewardData(load)
+  const { session } = useAccount()
   return (
     <>
       <header className="top">
@@ -56,7 +65,24 @@ export function App({ load }: { load?: () => Promise<StewardData> }) {
                 {item.label}
               </a>
             ))}
+            {session.state === 'signed_in' && (
+              <a
+                href="#/lists"
+                aria-current={route.screen === 'lists' ? 'page' : undefined}
+              >
+                Your lists
+              </a>
+            )}
           </nav>
+          {session.state !== 'off' && (
+            <a
+              className="nav-account"
+              href="#/account"
+              aria-current={route.screen === 'account' ? 'page' : undefined}
+            >
+              {session.state === 'signed_in' ? 'Account' : 'Sign in'}
+            </a>
+          )}
         </div>
       </header>
       <main className="page">

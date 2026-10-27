@@ -1,4 +1,7 @@
-import { useMemo, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
+import { useAccount } from '../account'
+import type { ClubWeights } from '../api'
+import { ClubWeightsPanel } from '../components/ClubWeightsPanel'
 import { SiteMap } from '../components/SiteMap'
 import {
   NO_FILTERS,
@@ -11,11 +14,27 @@ import {
   type Filters,
 } from '../filters'
 import { ACTION_LABEL, CREW_LABEL, TIERS, count, siteKind, siteName } from '../format'
+import { rerank } from '../ranking'
 import { siteHref } from '../route'
-import type { Action, Crew, Site, Summary } from '../types'
+import {
+  WEIGHT_NAMES,
+  type Action,
+  type Crew,
+  type Site,
+  type Summary,
+  type WeightName,
+} from '../types'
 
 const ACTION_CHIPS: Action[] = ['close_restore', 'harden', 'adopt_note', 'monitor']
 const CREW_CHIPS: Crew[] = ['one_person', 'team', 'crew']
+/** The ranking bar's short names for the five weights. */
+const BAR_LABEL: Record<WeightName, string> = {
+  deficit: 'CSI shortfall',
+  water: 'water',
+  trail: 'trail',
+  cluster: 'cluster',
+  restricted: 'camping rules',
+}
 /** Rows drawn before "Show all": enough for any one club's work list, light enough for a phone. */
 const FIRST_ROWS = 100
 
@@ -27,8 +46,36 @@ interface Props {
 export function SitesScreen({ sites, summary }: Props) {
   const [filters, setFilters] = useState<Filters>(NO_FILTERS)
   const [showAll, setShowAll] = useState(false)
+  const { api, session } = useAccount()
+  const [loaded, setLoaded] = useState<ClubWeights | null>(null)
+  const [editingClub, setEditingClub] = useState<string | null>(null)
   const allClubs = useMemo(() => clubs(sites), [sites])
-  const shown = useMemo(() => filterSites(sites, filters), [sites, filters])
+  // Only the chosen club's weights, and only while signed in, count; anything
+  // else loaded earlier is ignored rather than cleared.
+  const clubWeights = api && loaded && loaded.club === filters.club ? loaded : null
+  const editing = clubWeights !== null && editingClub === clubWeights.club
+
+  // A chosen club, for someone signed in, ranks by that club's own weights (#1906).
+  useEffect(() => {
+    if (!api || !filters.club) return
+    let live = true
+    api.weights(filters.club).then(
+      (found) => live && setLoaded(found),
+      () => {},
+    )
+    return () => {
+      live = false
+    }
+  }, [api, filters.club])
+
+  const ranked = useMemo(
+    () =>
+      clubWeights ? rerank(sites, clubWeights.current, summary.method.tiers) : sites,
+    [sites, clubWeights, summary.method.tiers],
+  )
+  const shown = useMemo(() => filterSites(ranked, filters), [ranked, filters])
+  const weights = clubWeights?.current ?? summary.method.weights
+  const lastChange = clubWeights?.history[0]
   const range = mileRange(sites, filters.club)
   const rows = showAll ? shown : shown.slice(0, FIRST_ROWS)
   const p1 = shown.filter((s) => s.tier === 'P1').length
@@ -243,13 +290,16 @@ export function SitesScreen({ sites, summary }: Props) {
         }}
       >
         <b style={{ fontFamily: 'var(--display)', fontSize: 16 }}>
-          How this list is ranked
+          {clubWeights
+            ? `Ranked by ${clubWeights.club}'s weights`
+            : 'Ranked by the default weights'}
         </b>
-        <span>Need = CSI shortfall ({summary.method.weights.deficit})</span>
-        <span>+ water {summary.method.weights.water}</span>
-        <span>+ trail {summary.method.weights.trail}</span>
-        <span>+ cluster {summary.method.weights.cluster}</span>
-        <span>+ camping rules {summary.method.weights.restricted}</span>
+        {WEIGHT_NAMES.map((name, i) => (
+          <span key={name}>
+            {i === 0 ? 'Need = ' : '+ '}
+            {BAR_LABEL[name]} {weights[name]}
+          </span>
+        ))}
         {summary.camping_rules.reviewed_units === 0 && (
           <span
             className="pill"
@@ -258,10 +308,35 @@ export function SitesScreen({ sites, summary }: Props) {
             Camping rules: pending review
           </span>
         )}
-        <a href="#/analysis" style={{ marginLeft: 'auto', fontWeight: 600 }}>
-          Method and numbers
-        </a>
+        {lastChange && (
+          <span className="muted" style={{ fontSize: 13 }}>
+            Last changed by{' '}
+            {lastChange.by_you ? 'you' : (lastChange.changed_by ?? 'a volunteer')}
+          </span>
+        )}
+        <span
+          style={{ marginLeft: 'auto', display: 'flex', gap: 12, alignItems: 'center' }}
+        >
+          {clubWeights && api && (
+            <button
+              type="button"
+              className="button"
+              onClick={() => setEditingClub(editing ? null : clubWeights.club)}
+            >
+              {editing ? 'Close weights' : 'Edit weights'}
+            </button>
+          )}
+          {filters.club && session.state === 'signed_out' && (
+            <a href="#/account">Sign in to rank by {filters.club}'s own weights</a>
+          )}
+          <a href="#/analysis" style={{ fontWeight: 600 }}>
+            Method and numbers
+          </a>
+        </span>
       </section>
+      {editing && clubWeights && api && (
+        <ClubWeightsPanel api={api} weights={clubWeights} onChange={setLoaded} />
+      )}
     </>
   )
 }

@@ -13,9 +13,11 @@
     "format": "prettier --write .",
     "format:check": "prettier --check .",
     "typecheck": "tsc --noEmit -p tsconfig.app.json && tsc --noEmit -p tsconfig.test.json",
-    "test": "vitest run"
+    "test": "vitest run",
+    "dev:account": "VITE_STEWARD_FIXTURES=1 VITE_STEWARD_FAKE_ACCOUNT=1 vite"
   },
   "dependencies": {
+    "@supabase/supabase-js": "^2.118.0",
     "maplibre-gl": "^6.7.0",
     "react": "^19.2.7",
     "react-dom": "^19.2.7"

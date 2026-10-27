@@ -99,9 +99,18 @@ jobs:
           cache: npm
           cache-dependency-path: apps/steward/web/package-lock.json
 
+      # Sign-in and lists (#1906) switch on only when STEWARD_API_URL names a
+      # running steward API. Supabase is OurHike's production project, the one
+      # account across both apps that PLAN.md §3 plans; its URL and anon key are
+      # public by design (every browser client carries them). Unset, the app
+      # builds with no accounts and says sign-in is not set up.
       - name: Build the app with this run's analysis
         if: steps.can.outputs.publish == 'true'
         working-directory: apps/steward/web
+        env:
+          VITE_SUPABASE_URL: ${{ vars.SUPABASE_URL }}
+          VITE_SUPABASE_ANON_KEY: ${{ vars.SUPABASE_ANON_KEY }}
+          VITE_STEWARD_API_URL: ${{ vars.STEWARD_API_URL }}
         run: |
           npm ci
           mkdir -p public/data

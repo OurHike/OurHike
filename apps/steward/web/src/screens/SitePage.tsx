@@ -11,6 +11,8 @@ import {
   siteKind,
   siteName,
 } from '../format'
+import { useAccount } from '../account'
+import { SaveToList } from '../components/SaveToList'
 import { planFor } from '../guide'
 import { siteHref } from '../route'
 import type { Site } from '../types'
@@ -66,6 +68,7 @@ const INDICATORS: {
 ]
 
 export function SitePage({ site, sites }: Props) {
+  const { session } = useAccount()
   if (!site) {
     return (
       <section className="card">
@@ -102,9 +105,17 @@ export function SitePage({ site, sites }: Props) {
             <span className="pill plain">need {site.need}</span>
           )}
           <span className="pill">{ACTION_LABEL[site.action]}</span>
+          {session.state === 'signed_in' && site.club && (
+            <span className="muted" style={{ fontSize: 13 }}>
+              Need under the default weights; {site.club}'s own weights can rank it
+              differently on the dashboard.
+            </span>
+          )}
           {site.crew && <span className="pill plain">{CREW_LABEL[site.crew]}</span>}
         </div>
       </header>
+
+      <SaveToList rimsId={site.rims_id} />
 
       {site.action === 'adopt_note' && (
         <p className="note" style={{ margin: 0 }}>

@@ -3,7 +3,8 @@
 // show a real user-created campsite (CLAUDE.md's screenshot rule). Clubs, names and miles
 // are made up too. `npm run dev:fixtures` serves the app on these.
 
-import type { Action, Crew, Site, Summary, Tier } from './types'
+import { needUnder, tierFor } from './ranking'
+import type { Action, Crew, NeedParts, Site, Summary, Tier, Weights } from './types'
 
 const FEET_PER_DEG = 364_000
 
@@ -13,8 +14,6 @@ interface Seed {
   north: number
   east: number
   type: 'User Created Campsite' | 'Shelter' | 'A.T. Club or Agency Created Campsite'
-  need: number
-  tier: Tier | null
   action: Action
   crew: Crew | null
   csi: number
@@ -31,8 +30,6 @@ const SEEDS: Seed[] = [
     north: 0,
     east: 0,
     type: 'User Created Campsite',
-    need: 74,
-    tier: 'P1',
     action: 'close_restore',
     crew: 'team',
     csi: 7,
@@ -46,8 +43,6 @@ const SEEDS: Seed[] = [
     north: 150,
     east: 40,
     type: 'User Created Campsite',
-    need: 66,
-    tier: 'P1',
     action: 'close_restore',
     crew: 'crew',
     csi: 9,
@@ -61,8 +56,6 @@ const SEEDS: Seed[] = [
     north: 260,
     east: -30,
     type: 'Shelter',
-    need: 71,
-    tier: 'P1',
     action: 'harden',
     crew: 'crew',
     csi: 8,
@@ -76,8 +69,6 @@ const SEEDS: Seed[] = [
     north: 6000,
     east: 500,
     type: 'User Created Campsite',
-    need: 63,
-    tier: 'P1',
     action: 'close_restore',
     crew: 'one_person',
     csi: 8,
@@ -91,8 +82,6 @@ const SEEDS: Seed[] = [
     north: 9000,
     east: -800,
     type: 'User Created Campsite',
-    need: 55,
-    tier: 'P2',
     action: 'close_restore',
     crew: 'one_person',
     csi: 11,
@@ -106,8 +95,6 @@ const SEEDS: Seed[] = [
     north: 12000,
     east: 300,
     type: 'A.T. Club or Agency Created Campsite',
-    need: 52,
-    tier: 'P2',
     action: 'harden',
     crew: 'crew',
     csi: 12,
@@ -121,8 +108,6 @@ const SEEDS: Seed[] = [
     north: 15000,
     east: -200,
     type: 'User Created Campsite',
-    need: 47,
-    tier: 'P3',
     action: 'close_restore',
     crew: 'team',
     csi: 12,
@@ -136,8 +121,6 @@ const SEEDS: Seed[] = [
     north: 18000,
     east: 900,
     type: 'User Created Campsite',
-    need: 33,
-    tier: null,
     action: 'adopt_note',
     crew: null,
     csi: 24,
@@ -151,8 +134,6 @@ const SEEDS: Seed[] = [
     north: 21000,
     east: 100,
     type: 'User Created Campsite',
-    need: 40,
-    tier: null,
     action: 'monitor',
     crew: null,
     csi: 16,
@@ -166,8 +147,6 @@ const SEEDS: Seed[] = [
     north: 24000,
     east: -400,
     type: 'Shelter',
-    need: 18,
-    tier: null,
     action: 'ok',
     crew: null,
     csi: 23,
@@ -182,8 +161,6 @@ const SEEDS: Seed[] = [
     north: 40000,
     east: 0,
     type: 'User Created Campsite',
-    need: 61,
-    tier: 'P1',
     action: 'close_restore',
     crew: 'team',
     csi: 10,
@@ -197,8 +174,6 @@ const SEEDS: Seed[] = [
     north: 40120,
     east: 60,
     type: 'User Created Campsite',
-    need: 58,
-    tier: 'P2',
     action: 'close_restore',
     crew: 'team',
     csi: 12,
@@ -212,8 +187,6 @@ const SEEDS: Seed[] = [
     north: 45000,
     east: -600,
     type: 'User Created Campsite',
-    need: 0,
-    tier: null,
     action: 'monitor_recovery',
     crew: null,
     csi: 14,
@@ -227,8 +200,6 @@ const SEEDS: Seed[] = [
     north: 50000,
     east: 250,
     type: 'User Created Campsite',
-    need: 44,
-    tier: 'P3',
     action: 'close_restore',
     crew: 'one_person',
     csi: 12,
@@ -238,10 +209,36 @@ const SEEDS: Seed[] = [
   },
 ]
 
+const DEFAULT_WEIGHTS: Weights = {
+  deficit: 60,
+  water: 12,
+  trail: 6,
+  cluster: 8,
+  restricted: 10,
+}
+
+/** The analysis job's rules.need_parts, for these invented facts, so need and tier
+ *  below come out as the job would write them rather than as typed numbers. */
+function needParts(seed: Seed, trailFt: number): NeedParts {
+  if (seed.action === 'monitor_recovery') {
+    return { deficit: 0, water: 0, trail: 0, cluster: 0, restricted: 0 }
+  }
+  return {
+    deficit: (30 - seed.csi) / 27,
+    water: seed.water < 100 ? 1 : seed.water < 200 ? 0.5 : 0,
+    trail: trailFt < 50 ? 1 : 0,
+    cluster: seed.complex >= 4 ? 1 : seed.complex >= 2 ? 0.5 : 0,
+    restricted: 0,
+  }
+}
+
 function site(seed: Seed): Site {
   const lat = seed.north / FEET_PER_DEG
   const lon = seed.east / FEET_PER_DEG
   const trailFt = 40 + (seed.n % 4) * 60
+  const parts = needParts(seed, trailFt)
+  const scored = { need: 0, need_parts: parts } as Site
+  const need = needUnder(scored, DEFAULT_WEIGHTS)
   return {
     rims_id: `example-${String(seed.n).padStart(4, '0')}`,
     global_id: `example-global-${seed.n}`,
@@ -299,8 +296,9 @@ function site(seed: Seed): Site {
       state: 'XX',
     },
     camping: { source: 'guess', regime: 'dispersed_allowed?' },
-    need: seed.need,
-    tier: seed.tier,
+    need,
+    need_parts: parts,
+    tier: tierFor(need, seed.action, { P1_min: 60, P2_min: 50 }),
     action: seed.action,
     crew: seed.crew,
   }
@@ -366,7 +364,7 @@ export const fixtureSummary: Summary = {
     guesses: { 'dispersed_allowed?': fixtureSites.length },
   },
   method: {
-    weights: { deficit: 60, water: 12, trail: 6, cluster: 8, restricted: 10 },
+    weights: DEFAULT_WEIGHTS,
     tiers: { P1_min: 60, P2_min: 50 },
     work_csi_max: 12,
     close_water_ft: 100,

@@ -5,6 +5,9 @@ export type Route =
   | { screen: 'site'; id: string }
   | { screen: 'analysis' }
   | { screen: 'guide' }
+  | { screen: 'account' }
+  | { screen: 'lists' }
+  | { screen: 'shared'; token: string }
 
 /** Hash routes, so the app is a folder of static files that any host can serve. */
 export function parseRoute(hash: string): Route {
@@ -14,11 +17,20 @@ export function parseRoute(hash: string): Route {
     return { screen: 'site', id: decodeURIComponent(second) }
   if (first === 'analysis') return { screen: 'analysis' }
   if (first === 'guide') return { screen: 'guide' }
+  if (first === 'account') return { screen: 'account' }
+  if (first === 'lists') return { screen: 'lists' }
+  if (first === 'shared' && second)
+    return { screen: 'shared', token: decodeURIComponent(second) }
   return { screen: 'sites' }
 }
 
 export function siteHref(id: string): string {
   return `#/site/${encodeURIComponent(id)}`
+}
+
+/** A share token rides in the hash, so the static host never sees it in a request. */
+export function sharedHref(token: string): string {
+  return `#/shared/${encodeURIComponent(token)}`
 }
 
 export function useRoute(): Route {

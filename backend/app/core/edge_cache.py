@@ -30,11 +30,13 @@ report waiting in the queue cannot be handed to the next caller.
 and the edge keys its copy on the URL, not on the Origin. A copy filled by
 curl, a monitor or a crawler would otherwise reach every browser for the next
 `EDGE_TTL_SECONDS` without the header, and every browser would refuse to read
-it. That is #427's failure (the data bucket's allow-list missing production for
-eight days), one layer up. Setting `*` here repeats what `allow_origins=["*"]`
-in app/main.py already answers any browser. If CORS is ever narrowed from `*`,
-one origin's answer can no longer be shared, and these routes have to leave
-the edge cache in the same change.
+it. That is #427's shape one layer up: there, every check that sent no
+`Origin` saw the data bucket answer correctly, while every browser was refused
+because the policy's spelling of production's origin could never match.
+Setting `*` here repeats what `allow_origins=["*"]` in app/main.py already
+answers any browser. If CORS is ever narrowed from `*`, one origin's answer can
+no longer be shared, and these routes have to leave the edge cache in the same
+change.
 
 **EVERYTHING ELSE SAYS `no-store`** (NoStoreByDefaultMiddleware). A cache rule
 set up more generously than LAUNCH_CHECKLIST.md §6 asks for then still cannot

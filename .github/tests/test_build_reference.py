@@ -471,6 +471,21 @@ def test_a_monthly_build_that_held_part_of_itself_back_publishes_to_ua_and_then_
     assert red["steps"][-1]["run"].rstrip().endswith("exit 1")
 
 
+def test_every_step_reading_the_dbt_writers_files_is_told_when_the_build_held_a_writer(workflow):
+    """#1921 - A partial monthly build crashes the podcast and confirm steps on the writer it held. Only "Publish to
+    UA" carried OURHIKE_BUILD_PARTIAL, so build 8's held pub_elevation_profile publish kept UA's last copy and then
+    the podcast upload and the confirm check, reading the same files without it, refused the run on that writer."""
+    readers = {
+        step["name"]: (step.get("env") or {}).get("OURHIKE_BUILD_PARTIAL")
+        for job in workflow["jobs"].values()
+        for step in job.get("steps", [])
+        if (step.get("env") or {}).get("OURHIKE_PHONE_FILES") == "dbt" or "collect_dbt_phone_files" in step.get("run", "")
+    }
+
+    assert len(readers) >= 3, readers
+    assert readers == dict.fromkeys(readers, "${{ needs.build.outputs.partial }}")
+
+
 def test_confirm_runs_when_publish_was_cancelled_and_holds_no_credential(workflow):
     job = workflow["jobs"]["confirm"]
 

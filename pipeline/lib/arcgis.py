@@ -181,6 +181,7 @@ def fetch_layer_geojson(
     out_fields: str = "*",
     geometry_precision: int | None = None,
     page_size: int | None = None,
+    where: str = "1=1",
 ) -> dict:
     """Fetch every feature from an ArcGIS FeatureServer/MapServer layer as GeoJSON.
 
@@ -198,7 +199,10 @@ def fetch_layer_geojson(
     precision, in bigger pages. Its stop condition trusted
     `exceededTransferLimit`, which is the early exit the tests above exist to
     prevent, so the fix was to make this function able to answer that
-    caller rather than to keep two loops.
+    caller rather than to keep two loops. `where` is a registry row's own
+    filter (`sources.json`), the clause the extract sends for the same row
+    (#1920); the truncation count is taken under it too, or a filtered read
+    would look short against the whole layer.
 
     `page_size` resolves against the module constant in the BODY rather than
     in the signature, so a test monkeypatching `arcgis.PAGE_SIZE` still
@@ -228,9 +232,11 @@ def fetch_layer_geojson(
     """
     query_url = layer_url.rstrip("/") + "/query"
     features = []
-    for batch in iter_layer_pages(layer_url, out_fields=out_fields, geometry_precision=geometry_precision, page_size=page_size):
+    for batch in iter_layer_pages(
+        layer_url, out_fields=out_fields, geometry_precision=geometry_precision, page_size=page_size, where=where
+    ):
         features.extend(batch)
-    check_not_truncated(query_url, len(features))
+    check_not_truncated(query_url, len(features), where=where)
     return {"type": "FeatureCollection", "features": features}
 
 
@@ -581,7 +587,7 @@ def esri_feature_to_geojson(feature: dict) -> dict:
     }
 
 
-def check_not_truncated(query_url: str, fetched: int) -> None:
+def check_not_truncated(query_url: str, fetched: int, *, where: str = "1=1") -> None:
     """Raise when the server says the layer holds more features than were fetched (#1730).
 
     The loop above stops on an empty page, which a server can also answer
@@ -601,7 +607,7 @@ def check_not_truncated(query_url: str, fetched: int) -> None:
     turn a missing capability into an outage. @unvalidated: the support
     is asserted by the ArcGIS REST spec, not checked per registered source.
     """
-    count = layer_count(query_url)
+    count = layer_count(query_url, where=where)
     if count is not None and fetched < count:
         raise RuntimeError(f"{query_url} holds {count} features but {fetched} were fetched; the layer was truncated")
 
@@ -698,6 +704,7 @@ def fetch_layer_to_file(
     out_fields: str = "*",
     geometry_precision: int | None = None,
     page_size: int | None = None,
+    where: str = "1=1",
 ) -> int:
     """Fetch a layer and write it to out_path as GeoJSON. Returns feature count."""
     fc = fetch_layer_geojson(
@@ -705,6 +712,7 @@ def fetch_layer_to_file(
         out_fields=out_fields,
         geometry_precision=geometry_precision,
         page_size=page_size,
+        where=where,
     )
     out_path.parent.mkdir(parents=True, exist_ok=True)
     out_path.write_text(json.dumps(fc))

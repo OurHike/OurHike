@@ -60,7 +60,7 @@ def built(tmp_path):
     rows, parking, padus = invented_layer()
     write_raw(tmp_path / "raw", rows, parking, padus)
     summary = build.run(tmp_path)
-    sites = {p.stem: json.loads(p.read_text()) for p in (tmp_path / "out" / "sites").glob("*.json")}
+    sites = json.loads((tmp_path / "out" / "sites.json").read_text())
     return rows, json.loads((tmp_path / "out" / "summary.json").read_text()), summary, sites
 
 
@@ -77,7 +77,8 @@ def walk(value, path=()):
 
 
 def test_the_summary_carries_no_location_of_any_site(built):
-    """summary.json is the public file (PLAN.md §2g): counts only, never a place, a mile or an id."""
+    """summary.json is the Analysis screen's whole input (PLAN.md §2g). It stays counts only, so that
+    screen never needs the 3.7 MB of locations, and so a chart can never leak one place by accident."""
     rows, summary, _, _ = built
     forbidden_keys = {"lat", "lon", "latitude", "longitude", "mile", "coordinates", "rims_id", "global_id", "name", "location"}
     identifying = {str(r[f]) for r in rows for f in ("RIMS_ID", "GlobalID", "Location")}
@@ -89,23 +90,24 @@ def test_the_summary_carries_no_location_of_any_site(built):
             assert round(value, 5) not in coordinates, path
 
 
-def test_each_clubs_private_file_holds_its_own_sites_with_their_locations(built):
+def test_sites_json_holds_every_site_with_its_location_grouped_by_club_then_need(built):
     _, _, _, sites = built
-    assert set(sites) == {"example-trail-club", "second-example-club"}
-    assert len(sites["example-trail-club"]) == 6
-    assert all(s["lat"] is not None and s["lon"] is not None and s["mile"] for s in sites["example-trail-club"])
-    needs = [s["need"] for s in sites["example-trail-club"]]
-    assert needs == sorted(needs, reverse=True)
+    assert len(sites) == 8
+    assert all(s["lat"] is not None and s["lon"] is not None and s["mile"] for s in sites)
+    clubs = [s["club"] for s in sites]
+    assert clubs == sorted(clubs)
+    first_club = [s["need"] for s in sites if s["club"] == "Example Trail Club"]
+    assert len(first_club) == 6 and first_club == sorted(first_club, reverse=True)
 
 
-def test_the_private_files_never_carry_atcs_photo_links(built):
+def test_sites_json_never_carries_atcs_photo_links(built):
     _, _, _, sites = built
-    assert not any("photo" in str(k).lower() for club in sites.values() for s in club for k in s)
+    assert not any("photo" in str(k).lower() for s in sites for k in s)
 
 
 def test_actions_crews_and_complexes_come_out_as_the_rules_say(built):
     _, _, _, sites = built
-    by_id = {s["rims_id"]: s for club in sites.values() for s in club}
+    by_id = {s["rims_id"]: s for s in sites}
     assert {by_id[f"rims-000{n}"]["complex_id"] for n in (1, 2, 3)} == {"cx-rims-000"}
     assert by_id["rims-0001"]["complex_size"] == 3
     assert (by_id["rims-0001"]["action"], by_id["rims-0001"]["crew"]) == (rules.CLOSE_RESTORE, rules.CREW)
@@ -118,7 +120,7 @@ def test_actions_crews_and_complexes_come_out_as_the_rules_say(built):
 
 def test_nearest_parking_and_land_unit_are_named_on_each_site(built):
     _, _, _, sites = built
-    first = next(s for s in sites["example-trail-club"] if s["rims_id"] == "rims-0001")
+    first = next(s for s in sites if s["rims_id"] == "rims-0001")
     assert first["nearest_parking"]["name"] == "Example Gap lot"
     assert first["nearest_parking"]["mi"] == pytest.approx(1000 / 5280, abs=0.01)
     assert first["land_unit"]["name"] == "Example National Forest"

@@ -3,23 +3,23 @@
     python -m steward_analysis.build --fetch     read the three layers, then score
     python -m steward_analysis.build             score what data/raw/ already holds
 
-Writes, under data/out/ (gitignored, like everything under data/):
+Writes, under data/out/ (gitignored, like everything under data/), two public files
+that the web app will serve as static files beside itself (decided 2026-10-27,
+PLAN.md §2g):
 
-    summary.json         PUBLIC. Counts by type, action, tier, crew size and club, the
-                         method and its weights. No coordinates, no miles, no site ids:
-                         test_build.py's test_the_summary_carries_no_location_of_any_site
-                         holds that, because this file is the one meant to be served
-                         to people who are not signed in.
-    sites/<club>.json    PRIVATE. One record per site, with its location. Served only to
-                         signed-in users, from a private bucket, once phase 2 exists
-                         (PLAN.md §2g, §4).
+    summary.json   Counts by type, action, tier, crew size and club, plus the method and
+                   its weights: the Analysis screen's whole input, and small (8 KB).
+                   It carries no coordinates, miles or site ids, so the Analysis screen
+                   never downloads the 3.7 MB below to draw a chart.
+    sites.json     One record per site with its location and every score, sorted by
+                   club and then by need. ATC publishes the same locations in its own
+                   open layer; this file adds the scores.
 """
 
 from __future__ import annotations
 
 import argparse
 import json
-import re
 from datetime import UTC, datetime
 from pathlib import Path
 
@@ -67,11 +67,6 @@ def check_schema(rows: list[dict]) -> None:
     missing = [f for f in sources.CSI_FIELDS if f not in rows[0]]
     if missing:
         raise SchemaError(f"the CSI layer no longer has {missing}; the rules in rules.py read them")
-
-
-def slug(name: str | None) -> str:
-    text = re.sub(r"[^a-z0-9]+", "-", (name or "").strip().lower()).strip("-")
-    return text or "unassigned"
 
 
 def score(csi_rows: list[dict], parking: dict, padus: dict, camping_rules: dict[str, bool] | None = None) -> pd.DataFrame:
@@ -149,7 +144,6 @@ def score(csi_rows: list[dict], parking: dict, padus: dict, camping_rules: dict[
     df["need"] = needs
     df["tier"] = tiers
     df["crew"] = crews
-    df["club_slug"] = df["Trail_Club"].map(slug)
     return df
 
 
@@ -263,12 +257,15 @@ def _num(value, digits: int):
     return None if value is None or pd.isna(value) else round(float(value), digits)
 
 
-def site_records(df: pd.DataFrame) -> dict[str, list[dict]]:
-    """The private files' contents, one list per club, highest need first."""
-    out: dict[str, list[dict]] = {}
-    for row in df.sort_values(["need", "RIMS_ID"], ascending=[False, True]).to_dict("records"):
+def site_records(df: pd.DataFrame) -> list[dict]:
+    """sites.json's contents: every site, grouped by club, highest need first within each."""
+    out: list[dict] = []
+    ordered = df.assign(_club=df["Trail_Club"].fillna("")).sort_values(
+        ["_club", "need", "RIMS_ID"], ascending=[True, False, True]
+    )
+    for row in ordered.to_dict("records"):
         documented = [d.strip() for d in (row.get("Documented") or "").split(",") if d.strip()]
-        out.setdefault(row["club_slug"], []).append(
+        out.append(
             {
                 "rims_id": row["RIMS_ID"],
                 "global_id": row["GlobalID"],
@@ -319,14 +316,11 @@ def _plain(value):
     raise TypeError(f"{type(value).__name__} is not JSON serializable")
 
 
-def write_outputs(out_dir: Path, summary: dict, per_club: dict[str, list[dict]]) -> None:
-    sites_dir = out_dir / "sites"
-    sites_dir.mkdir(parents=True, exist_ok=True)
+def write_outputs(out_dir: Path, summary: dict, sites: list[dict]) -> None:
+    out_dir.mkdir(parents=True, exist_ok=True)
     (out_dir / "summary.json").write_text(json.dumps(summary, indent=2, default=_plain, allow_nan=False) + "\n")
-    for old in sites_dir.glob("*.json"):
-        old.unlink()
-    for club, records in per_club.items():
-        (sites_dir / f"{club}.json").write_text(json.dumps(records, indent=1, default=_plain, allow_nan=False) + "\n")
+    # Compact: this is the file a phone downloads, and indentation alone would be a third of it.
+    (out_dir / "sites.json").write_text(json.dumps(sites, separators=(",", ":"), default=_plain, allow_nan=False) + "\n")
 
 
 def run(data_dir: Path, fetch: bool = False) -> dict:

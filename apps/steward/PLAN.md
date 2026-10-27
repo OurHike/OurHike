@@ -26,24 +26,32 @@ trying to close, and publishing them as places to camp would put OurHike on the 
 side of every partner it depends on." `pipeline/build_water_distance.py` never even
 requests those rows.
 
-**Campsite Steward shows user-created site locations to any signed-in user.** Sign-up is
-open to anyone with a Google, Apple or email account. The maintainer chose this by poll on
-2026-10-24 and confirmed it the same day once the alternatives had been drawn for them:
+**Campsite Steward publishes every site's location openly, user-created ones included.**
+The scored data is two plain public files served beside the app, and anyone can open the
+map without signing in. The maintainer decided this in two steps:
 
-- club-verified users only;
-- the nearest mile until a site is claimed.
+- **2026-10-24:** locations for any signed-in user, over club-verified users only or
+  locations rounded to the nearest mile until claimed.
+- **2026-10-27:** open, with no sign-in at all. The maintainer reasoned that "the data is
+  open": ATC publishes the same locations in its own public layer, which anyone can query
+  without signing in, and the job reads them from there. A private bucket would have
+  protected little and cost a bucket, a token and three secrets. The other options were
+  a private bucket, or publishing scores only and having the app read locations live
+  from ATC's layer. The poll named the cost of the chosen option: OurHike's
+  infrastructure becomes a second public host of the 2,411 user-created locations.
 
-What still holds, whatever the decision:
+What still holds:
 
-- Locations never appear on a public page, in a share-link preview, in a public bucket,
-  or in a search engine's index. The analysis summary page shows counts only.
 - OurHike's screenshot rule applies to this folder: "a dispersed or user-created
   campsite at a readable zoom" never appears in a preview shot. The steward app's
   preview recipes will draw fixture sites with invented coordinates.
+- Nothing fetched or scored is committed to this repository
+  (`.github/tests/test_no_committed_data.py`).
 - OurHike itself is unchanged. Its export still requests official sites only.
 
-If ATC or a land manager objects, the fallbacks are already designed: club-verified
-access, or locations rounded to the nearest mile until a site is claimed (§4).
+If ATC or a land manager objects, the fallbacks are already designed (§4): scores only
+with locations read live from ATC, club-verified access, or locations rounded to the
+nearest mile until a site is claimed.
 
 ---
 
@@ -78,7 +86,8 @@ so that the next reader knows they were considered, not so that they get argued 
 | 2026-10-24 | The empty fifth bullet in the original request | Volunteer hours logging | Nothing more; reporting to ATC and land managers; club notifications |
 | 2026-10-26 | The look in the mockups | Kept as drawn: IBM Plex type, dark slate and teal, with flagging-tape orange used only for top priority, the camera button and the logo | Less orange; a second direction |
 | 2026-10-26 | Who may change a club's ranking weights | Any signed-in user, with a visible history of who changed what and an undo | Named editors per club; the maintainer only; no per-club weights |
-| 2026-10-27 | Where the private per-club files live | A private Cloudflare R2 bucket of the app's own, with a token limited to it. One store for these files now and the volunteers' photos later | A private Google Drive folder (asked about by the maintainer; would mean a second store once photos arrive); run by hand for now |
+| 2026-10-27 | Where the scored files live, first answer | A private Cloudflare R2 bucket of the app's own (replaced the same day, next row) | A private Google Drive folder; run by hand for now |
+| 2026-10-27 | Where the scored files live, revisited ("the data is open… can't we just keep this simple?") | Two public static files, `summary.json` and `sites.json`, served beside the app, locations included. No bucket, no secrets. Anyone can see the map without signing in; sign-in is for claims, lists, reviews and weights | Scores only, with locations read live from ATC's layer; keep the private R2 bucket |
 | 2026-10-27 | How often the job re-scores | Weekly | Monthly; only when ATC's layer changes |
 | 2026-10-26 | How a follow-up visitor finds a hidden site | The site page adds coordinates and a bearing (for example, "leave the A.T. at mile 12.4, walk 40 ft west, bearing 270°"), and photo point 1 keeps its own position | Mile and offset only; step-by-step directions from parking |
 
@@ -161,8 +170,7 @@ Guidance ("at least 200 feet from water sources"; side-hill benches "where the s
 ## 2. The analysis (first pass)
 
 The job in `apps/steward/pipeline/` (phase 0, **#1901 — Campsite Steward phase 0: score
-ATC's CSI sites in a tested job that writes a public summary and private per-club site
-files**) reads three inputs:
+ATC's CSI sites in a tested job that writes a public summary and a public sites file**) reads three inputs:
 
 - the CSI layer above, attributes only;
 - USGS PAD-US, `services.arcgis.com/v01gqwM5QqNysAAi/ArcGIS/rest/services/Manager_Name_PADUS/FeatureServer/0`,
@@ -362,25 +370,27 @@ The job under `apps/steward/pipeline/` is Python in the style of OurHike's `pipe
 spatial work uses numpy and shapely, and DuckDB runs the summary's SQL. It writes two
 outputs under its gitignored `data/out/`:
 
-- **A per-club site file with locations.** It is served through the API to signed-in
-  users only, from a private bucket, never OurHike's public one.
-- **A public summary:** counts by club, tier, action and crew size, plus the method
-  text. It contains no locations, and the Analysis screen draws from it.
+- **`sites.json`:** every site with its location and every score, sorted by club and
+  then by need. 3.7 MB as written, about 400 KB gzipped (measured 2026-10-27).
+- **`summary.json`:** counts by club, tier, action and crew size, plus the method text.
+  At 8 KB, it is the Analysis screen's whole input, so that screen never downloads the
+  sites file to draw a chart.
+
+Both are public (decided 2026-10-27, see the opening section). Once the web app exists,
+its deploy serves them as static files beside itself.
 
 Nothing the job produces is committed: CONTRIBUTING.md's "Data does not go in commits"
 applies to this folder too. `.github/tests/test_no_committed_data.py` holds it with its own
 rule: nothing under `apps/steward/` that is JSON or sits in a `data/` folder.
 `steward_analysis/build.py`'s tests check that the summary carries no coordinate, mile or
 site id, and that neither output carries ATC's assessment-photo links. The job never
-requests those links.
+requests those links, because nobody has said who owns the photos (§1).
 
-**The schedule and the upload.** `.github/workflows/steward-analysis.yml` runs the job
-every Monday at 06:47 UTC and uploads to the app's private R2 bucket
-(`steward_analysis/publish.py`). Each run goes under its own prefix,
-`analysis/runs/<run id>/`, and `analysis/latest.json` moves to it last, so a reader never
-sees a half-uploaded run. Nothing leaves the runner any other way: no Actions artifact,
-no cache, and no log line beyond counts. Until the bucket's three `STEWARD_R2_*` secrets
-are stored, the job still scores every week and then stops by name at the upload (§11).
+**The schedule.** `.github/workflows/steward-analysis.yml` runs the job every Monday at
+06:47 UTC, and on dispatch. It needs no secrets. Until the web app exists, each run
+attaches `summary.json` and `sites.json` to itself as the artifact
+`campsite-steward-data`, kept 35 days and downloadable from the run's page. From phase 1,
+the app's deploy picks up the newest pair and serves them.
 
 ---
 
@@ -414,10 +424,13 @@ Its CI jobs need their own workflow file, with the folder in its path scope, so
 
 | Who | Sees |
 |---|---|
-| Anyone, signed out | The Analysis summary (counts, no locations) and the Guide |
-| Any signed-in user | Every site with its location, lists, claims, reviews, and the club weights with their history |
+| Anyone, signed out | Every site with its location and scores, the Analysis summary and the Guide |
+| Any signed-in user | Also: lists, claims, reviews, hours, and the club weights with their history |
 
-The fallbacks, drawn for the maintainer on 2026-10-24 and not chosen:
+Decided 2026-10-27 (opening section). The fallbacks, should ATC or a land manager object:
+
+- **Scores only:** publish no coordinates, and have the app read locations live from
+  ATC's own layer, so OurHike hosts no copy.
 
 - **Club-verified only:** a club coordinator verifies a person before they see that
   club's user-created sites.
@@ -574,7 +587,7 @@ returns excerpts; their quotes are near-verbatim.
 
 | Table | Holds | Note |
 |---|---|---|
-| `site` | `RIMS_ID`, `GlobalID`, club, mile, coordinates, indicator scores, action, crew, tier, complex id, camping regime | Rebuilt nightly by the job; read-only to the app |
+| `site` | `RIMS_ID`, `GlobalID`, club, mile, coordinates, indicator scores, action, crew, tier, complex id, camping regime | Loaded from the job's weekly `sites.json`; read-only to the app |
 | `club_weights` | club, the four weights, changed_by, changed_at | Every change is a new row, so the history and undo come free |
 | `camping_rule` | land unit, regime, rule text, quote, source URL, read_on, reviewed_by, reviewed_on | Replaces the "?" placeholder |
 | `list`, `list_item` | named lists of sites, owner, share token | Opening a share link requires sign-in |
@@ -592,7 +605,7 @@ returns excerpts; their quotes are near-verbatim.
 
 | # | Phase | Ships | Rough size |
 |---|---|---|---|
-| 0 | Analysis job | **Built, #1901:** the scoring job, its tests and CI, the public summary and per-club site files, the weekly schedule and the private upload. Waiting on the maintainer: the bucket and its secrets | 1–2 weeks |
+| 0 | Analysis job | **Built, #1901:** the scoring job, its tests and CI, `summary.json` and `sites.json`, and the weekly run that attaches them to itself until the app can serve them | 1–2 weeks |
 | 1 | Read-only app | The Analysis screen, the dashboard with club and section filters, and the guide | 2–3 weeks |
 | 2 | Sign-in and lists | Supabase sign-in, locations for signed-in users, lists and share links, club weights with history | 2 weeks |
 | 3 | Claims | Claims, the 14-day clock and reminders, before you go, invites, photo points and extras, review, hours | 3–4 weeks |
@@ -614,9 +627,10 @@ below are where the evidence is thinnest.
   an official site behind land-manager approval, and cover only volunteers working
   through a club. Instant claims for every kind of work invite uncovered, unapproved
   work. The app shows the rules and cannot enforce them.
-- **Open location access.** Any account sees 2,411 user-created sites. The rule at the
-  top of this file keeps them off public surfaces, but not out of the hands of whoever
-  signs up.
+- **Open locations.** Anyone can download the location of every one of the 2,411
+  user-created sites from OurHike's infrastructure, with no sign-in. ATC already
+  publishes them, so this adds a second host rather than new exposure, but it is the
+  thing `pipeline/SOURCE_SURVEY.md` §3b keeps OurHike itself from doing.
 - **Open review.** With anyone able to verify, "Verified" means another account looked at
   the photos, not that a club did. The CSV export should name the reviewer of each site.
 - **Open weights.** Anyone can re-rank a club's sites. The history makes a change visible
@@ -636,10 +650,6 @@ below are where the evidence is thinnest.
 
 ## 11. Still open
 
-- **A maintainer action:** create the private R2 bucket (decided 2026-10-27) and an R2
-  API token limited to it, then store `STEWARD_R2_BUCKET`, `STEWARD_R2_ACCESS_KEY_ID` and
-  `STEWARD_R2_SECRET_ACCESS_KEY` as repository secrets. `R2_ENDPOINT_URL` is OurHike's
-  and is already set. The weekly upload stops by name until then.
 - Who transcribes the camping rules (decided: the session, reviewed by the maintainer)
   and when. It blocks the "+10 restricted" weight, not phase 0.
 - Whether the steward API shares OurHike's Supabase project or only trusts its tokens.

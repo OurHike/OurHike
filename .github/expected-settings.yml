@@ -99,33 +99,6 @@ settings:
       The other half, shown once at creation, so a lost one is a reminted
       key. Required: false for R2_RAW_BUCKET's reason.
 
-  STEWARD_R2_BUCKET:
-    where: secret
-    required: false
-    why: >-
-      Campsite Steward's private bucket (#1901, apps/steward/PLAN.md §2g),
-      which steward-analysis.yml uploads the weekly scored files to. They hold
-      the location of every user-created campsite in ATC's inventory, so the
-      bucket is private and is never OurHike's public one. REQUIRED: FALSE
-      until the maintainer has created the bucket and stored the three
-      STEWARD_R2_* secrets, so settings-configured.yml stays green until then;
-      the workflow scores anyway and its upload step stops by name.
-
-  STEWARD_R2_ACCESS_KEY_ID:
-    where: secret
-    required: false
-    why: >-
-      Half of a token limited to STEWARD_R2_BUCKET, never one of OurHike's
-      keys: a key that can read these files must not also reach the public
-      bucket, and the reverse. Required: false for STEWARD_R2_BUCKET's reason.
-
-  STEWARD_R2_SECRET_ACCESS_KEY:
-    where: secret
-    required: false
-    why: >-
-      The other half, shown once at creation, so a lost one is a reminted
-      token. Required: false for STEWARD_R2_BUCKET's reason.
-
   NPS_API_KEY:
     where: secret
     required: false

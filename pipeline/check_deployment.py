@@ -105,6 +105,26 @@ SKIPPED = "skipped"
 BACKEND_HEALTH_PATH = "/health"
 BACKEND_COLD_START_TIMEOUT = 90
 
+# The anonymous read the edge in front of the backend must keep, and the
+# Cloudflare cache states that mean it did.
+#
+# backend/app/core/edge_cache.py marks GET /closures, /reports and /disputes
+# shareable for 300 s, and backend/HOSTING.md says why that matters: without
+# it the free tier's 5 GB of bandwidth and egress a month run out at a few
+# thousand hikers (reasoned from a cost model, #600). The three share one
+# dependency and one cache rule, so /closures stands for all three. HIT is
+# what a second request right after a first should get; STALE, UPDATING and
+# REVALIDATED are Cloudflare serving its copy while it refreshes, which is the
+# edge still doing its job.
+#
+# Three tries rather than two because a back-to-back pair can land on two
+# machines in the same data centre before the copy reaches both. A cache that
+# misses three times running is not keeping anything, and a single unlucky
+# miss must not open the tracking issue.
+BACKEND_EDGE_PATH = "/closures"
+BACKEND_EDGE_TRIES = 3
+EDGE_SERVED = frozenset({"HIT", "STALE", "UPDATING", "REVALIDATED"})
+
 # The prefix the hourly bake writes under, and how old its newest file may be
 # before this says so (#1129).
 #
@@ -888,6 +908,110 @@ def check_backend_health(api_base: str | None, session: requests.Session | None 
     return {"check": "backend", "key": url, "state": OK, "hiker_facing": False, "detail": "answering"}
 
 
+def hiker_facing_origin(manifest: dict) -> str | None:
+    """The origin every hiker's browser sends, as a probe will see it."""
+    for origin in manifest["origins"]:
+        if origin.get("hiker_facing"):
+            return origin.get("probe") or origin["pattern"]
+    return None
+
+
+def check_backend_edge_cache(
+    api_base: str | None,
+    origin: str | None,
+    session: requests.Session | None = None,
+    run_id: str | None = None,
+) -> dict:
+    """Is the edge keeping the backend's anonymous reads - the assumption its free tier rests on.
+
+    Two things can go wrong while `/health` stays green, and this is the only
+    check that sees either:
+
+    **The cache stops answering.** A cache rule deleted, the record switched to
+    DNS-only, or `API_BASE_URL` pointed at the `onrender.com` host: every
+    hiker's open then reaches Render and Supabase again, and the free quotas are
+    a few thousand hikers away. Nothing breaks on the day it happens, which is
+    why it needs a check rather than a symptom.
+
+    **A shared copy a browser cannot read.** Starlette adds
+    `Access-Control-Allow-Origin` only when a request sends an `Origin`, so a
+    copy filled by curl or a crawler carries the header only because
+    backend/app/core/edge_cache.py adds it regardless. If that ever stops, every
+    browser served such a copy is refused, while every check that sends no
+    `Origin` passes - #427's failure on the data bucket. So the copy is filled
+    here the way a crawler would, with no `Origin`, and read back the way a
+    browser would. The URL carries a query string unique to this run, which
+    the edge keys separately: the copy read back is the one this run filled,
+    not one somebody else's request left there.
+
+    Not hiker-facing, for `check_backend_health`'s reason: a refused live read
+    falls back to the published baseline, so this failing costs money and
+    freshness, not the map.
+    """
+    if not api_base:
+        return {
+            "check": "backend-edge",
+            "key": "API_BASE_URL",
+            "state": SKIPPED,
+            "hiker_facing": False,
+            "detail": "unset, so there is no backend edge to ask (#600)",
+        }
+
+    stamp = run_id or datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ")
+    url = f"{api_base.rstrip('/')}{BACKEND_EDGE_PATH}?edge-check={stamp}"
+    requester = session or requests
+    seen: list[str] = []
+    try:
+        # The fill: no Origin, so the backend's own header is all the copy has.
+        requester.get(url, timeout=BACKEND_COLD_START_TIMEOUT)
+        for _ in range(BACKEND_EDGE_TRIES):
+            response = requester.get(url, headers={"Origin": origin} if origin else {}, timeout=BACKEND_COLD_START_TIMEOUT)
+            status = (response.headers.get("cf-cache-status") or "").upper()
+            seen.append(status or "none")
+            if response.status_code != 200 or status in EDGE_SERVED:
+                break
+    except requests.RequestException as exc:
+        return {
+            "check": "backend-edge",
+            "key": url,
+            "state": UNREACHABLE,
+            "hiker_facing": False,
+            "detail": f"could not ask: {exc.__class__.__name__}",
+        }
+
+    def failed(detail: str) -> dict:
+        return {"check": "backend-edge", "key": url, "state": FAILED, "hiker_facing": False, "detail": detail}
+
+    if response.status_code != 200:
+        return failed(f"{BACKEND_EDGE_PATH} answered {response.status_code}")
+
+    if seen[-1] == "none":
+        return failed(
+            f"no cf-cache-status on {BACKEND_EDGE_PATH}: the backend is not behind Cloudflare's cache, "
+            "so every hiker's read reaches Render and Supabase"
+        )
+
+    if seen[-1] not in EDGE_SERVED:
+        return failed(
+            f"cf-cache-status was {', '.join(seen)} on {len(seen)} reads after the fill: the edge is not "
+            f"keeping {BACKEND_EDGE_PATH} (Cache-Control was {response.headers.get('Cache-Control')!r})"
+        )
+
+    if response.headers.get("Access-Control-Allow-Origin") not in ("*", origin):
+        return failed(
+            f"the edge's copy of {BACKEND_EDGE_PATH}, filled without an Origin, carries no "
+            f"Access-Control-Allow-Origin for {origin}, so a browser would refuse the live read"
+        )
+
+    return {
+        "check": "backend-edge",
+        "key": url,
+        "state": OK,
+        "hiker_facing": False,
+        "detail": f"served from the edge ({', '.join(seen)}) with a header a browser accepts",
+    }
+
+
 def hiker_facing_failures(reports: list[dict], manifest: dict) -> list[dict]:
     """The failures that mean a hiker cannot get the map.
 
@@ -985,7 +1109,9 @@ def main(argv: list[str] | None = None) -> int:
     # Appended rather than folded into check_all, which is the bucket's alone.
     # This asks a different service on a different host, and its report is
     # `skipped` until somebody deploys one (#1359).
-    reports.append(check_backend_health(args.api_base or os.environ.get("API_BASE_URL")))
+    api_base = args.api_base or os.environ.get("API_BASE_URL")
+    reports.append(check_backend_health(api_base))
+    reports.append(check_backend_edge_cache(api_base, hiker_facing_origin(manifest)))
 
     for report in reports:
         subject = report.get("origin") or report.get("key") or ""

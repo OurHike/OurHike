@@ -148,8 +148,9 @@ list carries no signature, which is
 
 **What would undo it.** Narrowing CORS from `*` (a shared copy can carry only one answer),
 or a cache rule that stops honouring the origin's `Cache-Control`. The second is the one to
-watch: `cf-cache-status: HIT` on a repeated anonymous `GET /closures` is the check, and §6
-step 6 runs it.
+watch: `cf-cache-status: HIT` on a repeated anonymous `GET /closures` is the check. §6
+step 7 runs it once by hand, and `pipeline/check_deployment.py` asks it every day: it
+fills a copy with no `Origin`, as curl or a crawler would, and reads it back as a browser.
 
 ## Which build is serving, and why the release order depends on it
 

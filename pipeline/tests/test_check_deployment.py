@@ -1030,6 +1030,9 @@ class TestBackendHealth:
         monkeypatch.setenv("DATA_BASE_URL", BASE)
         monkeypatch.setenv("API_BASE_URL", self.API)
         mock.get(self.HEALTH, json={"status": "ok"})
+        # main() asks the edge too (TestBackendEdgeCache), and an unregistered
+        # URL raises rather than counting as a refused request.
+        mock.get(f"{self.API}/closures", json=[])
 
         check_deployment.main(["--exit-zero"])
 
@@ -1045,3 +1048,151 @@ class TestBackendHealth:
         check_deployment.main(["--exit-zero"])
 
         assert "SKIPPED" in capsys.readouterr().out
+
+
+class TestBackendEdgeCache:
+    """The edge in front of the backend (#600, backend/app/core/edge_cache.py).
+
+    `/health` stays green through both failures this exists for: the edge no
+    longer keeping the anonymous reads, which puts the free tier's quotas back
+    within a few thousand hikers, and a shared copy that carries no CORS
+    header, which every browser refuses while every Origin-less check passes.
+    """
+
+    API = "https://api.example.org"
+    URL = f"{API}/closures?edge-check=run1"
+    ORIGIN = "https://ourhike.org"
+
+    def _ask(self, session=None):
+        return check_deployment.check_backend_edge_cache(self.API, self.ORIGIN, session=session, run_id="run1")
+
+    def test_an_unset_base_is_skipped_rather_than_failed(self):
+        report = check_deployment.check_backend_edge_cache(None, self.ORIGIN)
+
+        assert report["state"] == check_deployment.SKIPPED
+        document = verdict_document(BASE, [report], load_manifest(), published=True)
+        assert document["failed"] == [] and document["unreachable"] == []
+
+    def test_a_copy_the_edge_serves_with_allow_origin_passes(self, requests_mock):
+        requests_mock.get(
+            self.URL,
+            [
+                {"json": [], "headers": {"cf-cache-status": "MISS", "Access-Control-Allow-Origin": "*"}},
+                {"json": [], "headers": {"cf-cache-status": "HIT", "Access-Control-Allow-Origin": "*"}},
+            ],
+        )
+
+        report = self._ask()
+
+        assert report["state"] == OK
+        assert "HIT" in report["detail"]
+
+    def test_the_fill_sends_no_origin_and_the_reads_send_the_hikers_origin(self, requests_mock):
+        """The order is the test: a copy filled by an Origin-less request is
+        the one that would reach browsers without the header, so that is the
+        copy read back."""
+        requests_mock.get(
+            self.URL,
+            [
+                {"json": [], "headers": {"cf-cache-status": "MISS", "Access-Control-Allow-Origin": "*"}},
+                {"json": [], "headers": {"cf-cache-status": "HIT", "Access-Control-Allow-Origin": "*"}},
+            ],
+        )
+
+        self._ask()
+
+        fill, read = requests_mock.request_history
+        assert "Origin" not in fill.headers
+        assert read.headers["Origin"] == self.ORIGIN
+
+    def test_a_shared_copy_without_allow_origin_fails_because_browsers_would_refuse_it(self, requests_mock):
+        requests_mock.get(
+            self.URL,
+            [
+                {"json": [], "headers": {"cf-cache-status": "MISS"}},
+                {"json": [], "headers": {"cf-cache-status": "HIT"}},
+            ],
+        )
+
+        report = self._ask()
+
+        assert report["state"] == FAILED
+        assert "filled without an Origin" in report["detail"]
+
+    def test_no_cf_cache_status_fails_because_the_backend_is_not_behind_the_edge(self, requests_mock):
+        """`API_BASE_URL` pointed at the onrender.com host, or the record
+        switched to DNS-only: the reads work and the free tier is back on the
+        clock."""
+        requests_mock.get(self.URL, json=[], headers={"Access-Control-Allow-Origin": "*"})
+
+        report = self._ask()
+
+        assert report["state"] == FAILED
+        assert "not behind Cloudflare" in report["detail"]
+
+    def test_three_misses_after_the_fill_fail_and_name_what_the_edge_said(self, requests_mock):
+        requests_mock.get(
+            self.URL,
+            json=[],
+            headers={"cf-cache-status": "MISS", "Access-Control-Allow-Origin": "*", "Cache-Control": "no-store"},
+        )
+
+        report = self._ask()
+
+        assert report["state"] == FAILED
+        assert "MISS, MISS, MISS" in report["detail"]
+        assert "no-store" in report["detail"]
+        assert len(requests_mock.request_history) == 1 + check_deployment.BACKEND_EDGE_TRIES
+
+    def test_one_unlucky_miss_does_not_fail_the_run(self, requests_mock):
+        """Two machines in one data centre can each miss once before the copy
+        reaches both. A monitor that fires on that gets muted."""
+        requests_mock.get(
+            self.URL,
+            [
+                {"json": [], "headers": {"cf-cache-status": "MISS", "Access-Control-Allow-Origin": "*"}},
+                {"json": [], "headers": {"cf-cache-status": "MISS", "Access-Control-Allow-Origin": "*"}},
+                {"json": [], "headers": {"cf-cache-status": "HIT", "Access-Control-Allow-Origin": "*"}},
+            ],
+        )
+
+        assert self._ask()["state"] == OK
+
+    def test_a_non_200_fails(self, requests_mock):
+        requests_mock.get(self.URL, status_code=503)
+
+        report = self._ask()
+
+        assert report["state"] == FAILED
+        assert "503" in report["detail"]
+
+    def test_a_request_that_never_completed_is_unreachable_not_failed(self, requests_mock):
+        requests_mock.get(self.URL, exc=requests.exceptions.ConnectTimeout)
+
+        assert self._ask()["state"] == UNREACHABLE
+
+    def test_a_failing_edge_does_not_claim_a_hiker_cannot_download_the_map(self, requests_mock):
+        requests_mock.get(self.URL, json=[], headers={"Access-Control-Allow-Origin": "*"})
+
+        report = self._ask()
+
+        assert report["state"] == FAILED
+        assert hiker_facing_failures([report], load_manifest()) == []
+
+    def test_the_origin_asked_with_is_the_one_every_hiker_is_on(self):
+        assert check_deployment.hiker_facing_origin(load_manifest()) == "https://ourhike.org"
+
+    def test_main_reports_the_edge_line_beside_the_backend_line(self, mock, monkeypatch, capsys):
+        _healthy_bucket(mock)
+        monkeypatch.setenv("DATA_BASE_URL", BASE)
+        monkeypatch.setenv("API_BASE_URL", self.API)
+        mock.get(f"{self.API}/health", json={"status": "ok"})
+        mock.get(
+            f"{self.API}/closures",
+            json=[],
+            headers={"cf-cache-status": "HIT", "Access-Control-Allow-Origin": "*"},
+        )
+
+        check_deployment.main(["--exit-zero"])
+
+        assert "backend-edge" in capsys.readouterr().out

@@ -1,0 +1,94 @@
+# Campsite Steward's weekly analysis: fetch ATC's Campsite Sustainability
+# Index, score every site, and upload the results to Campsite Steward's private
+# R2 bucket (#1901, apps/steward/PLAN.md §2g). Weekly and private were the
+# maintainer's choices by poll on 2026-10-27.
+#
+# WHAT LEAVES THE RUNNER, AND WHAT NEVER DOES. The scored files hold the
+# location of every user-created campsite in ATC's inventory, so they go to the
+# private bucket and nowhere else: no Actions artifact, no cache, no log line.
+# The job's own output is counts. The raw layers die with the runner.
+#
+# THE BUCKET IS THE MAINTAINER'S TO CREATE, with a token limited to it. Until
+# STEWARD_R2_BUCKET and its key pair are stored, the scoring still runs every
+# week, which keeps the job proven against the live layers, and the publish
+# step stops by name. Those three secrets are `required: false` in
+# .github/expected-settings.yml for that reason.
+#
+# A dispatch can score without publishing (`publish: false`), for checking a
+# rule change against the live layers.
+
+name: Campsite Steward analysis
+
+on:
+  schedule:
+    # Mondays at 06:47 UTC, off the hour so it does not queue behind the
+    # workflows that fire on it.
+    - cron: "47 6 * * 1"
+  workflow_dispatch:
+    inputs:
+      publish:
+        description: Upload the scored files to the private bucket
+        type: boolean
+        default: true
+
+permissions:
+  contents: read
+
+# One run at a time, and a slow one is never cancelled by the next: two
+# uploads can only race to move latest.json, and the later one should win.
+concurrency:
+  group: steward-analysis
+  cancel-in-progress: false
+
+jobs:
+  score:
+    name: Score the CSI sites and publish them privately
+    runs-on: ubuntu-latest
+    # Measured 2026-10-26: 51 s for the fetch and the scoring on a sandbox. Ten
+    # minutes is room for a slow ArcGIS host's three retries without letting a
+    # hung connection hold the job for GitHub's six-hour default.
+    timeout-minutes: 10
+    defaults:
+      run:
+        working-directory: apps/steward/pipeline
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/setup-python@v7
+        with:
+          python-version: "3.14"
+          cache: pip
+          cache-dependency-path: apps/steward/pipeline/requirements.txt
+
+      - name: Install dependencies
+        run: pip install -r requirements.txt
+
+      - name: Fetch and score
+        run: python -m steward_analysis.build --fetch
+
+      - name: Name every secret the upload needs, and stop if one is missing
+        if: github.event_name == 'schedule' || inputs.publish
+        env:
+          R2_ENDPOINT_URL: ${{ secrets.R2_ENDPOINT_URL }}
+          STEWARD_R2_BUCKET: ${{ secrets.STEWARD_R2_BUCKET }}
+          STEWARD_R2_ACCESS_KEY_ID: ${{ secrets.STEWARD_R2_ACCESS_KEY_ID }}
+          STEWARD_R2_SECRET_ACCESS_KEY: ${{ secrets.STEWARD_R2_SECRET_ACCESS_KEY }}
+        run: |
+          missing=()
+          for name in R2_ENDPOINT_URL STEWARD_R2_BUCKET STEWARD_R2_ACCESS_KEY_ID STEWARD_R2_SECRET_ACCESS_KEY; do
+            if [ -z "${!name}" ]; then missing+=("$name"); fi
+          done
+          if [ "${#missing[@]}" -gt 0 ]; then
+            echo "::error title=Campsite Steward bucket not set up::${missing[*]} not set; the sites were scored and nothing was uploaded."
+            exit 1
+          fi
+
+      - name: Publish to the private bucket
+        if: github.event_name == 'schedule' || inputs.publish
+        env:
+          R2_ENDPOINT_URL: ${{ secrets.R2_ENDPOINT_URL }}
+          STEWARD_R2_BUCKET: ${{ secrets.STEWARD_R2_BUCKET }}
+          STEWARD_R2_ACCESS_KEY_ID: ${{ secrets.STEWARD_R2_ACCESS_KEY_ID }}
+          STEWARD_R2_SECRET_ACCESS_KEY: ${{ secrets.STEWARD_R2_SECRET_ACCESS_KEY }}
+          STEWARD_R2_WRITE_ENABLED: "true"
+        run: python -m steward_analysis.publish

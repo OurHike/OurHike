@@ -78,6 +78,8 @@ so that the next reader knows they were considered, not so that they get argued 
 | 2026-10-24 | The empty fifth bullet in the original request | Volunteer hours logging | Nothing more; reporting to ATC and land managers; club notifications |
 | 2026-10-26 | The look in the mockups | Kept as drawn: IBM Plex type, dark slate and teal, with flagging-tape orange used only for top priority, the camera button and the logo | Less orange; a second direction |
 | 2026-10-26 | Who may change a club's ranking weights | Any signed-in user, with a visible history of who changed what and an undo | Named editors per club; the maintainer only; no per-club weights |
+| 2026-10-27 | Where the private per-club files live | A private Cloudflare R2 bucket of the app's own, with a token limited to it. One store for these files now and the volunteers' photos later | A private Google Drive folder (asked about by the maintainer; would mean a second store once photos arrive); run by hand for now |
+| 2026-10-27 | How often the job re-scores | Weekly | Monthly; only when ATC's layer changes |
 | 2026-10-26 | How a follow-up visitor finds a hidden site | The site page adds coordinates and a bearing (for example, "leave the A.T. at mile 12.4, walk 40 ft west, bearing 270°"), and photo point 1 keeps its own position | Mile and offset only; step-by-step directions from parking |
 
 ---
@@ -372,9 +374,13 @@ rule: nothing under `apps/steward/` that is JSON or sits in a `data/` folder.
 site id, and that neither output carries ATC's assessment-photo links. The job never
 requests those links.
 
-**Not built yet:** the schedule and the publishing step. Both wait on a private bucket,
-which §11 lists. Until then the job runs by hand, and its output stays on the machine that
-ran it.
+**The schedule and the upload.** `.github/workflows/steward-analysis.yml` runs the job
+every Monday at 06:47 UTC and uploads to the app's private R2 bucket
+(`steward_analysis/publish.py`). Each run goes under its own prefix,
+`analysis/runs/<run id>/`, and `analysis/latest.json` moves to it last, so a reader never
+sees a half-uploaded run. Nothing leaves the runner any other way: no Actions artifact,
+no cache, and no log line beyond counts. Until the bucket's three `STEWARD_R2_*` secrets
+are stored, the job still scores every week and then stops by name at the upload (§11).
 
 ---
 
@@ -586,7 +592,7 @@ returns excerpts; their quotes are near-verbatim.
 
 | # | Phase | Ships | Rough size |
 |---|---|---|---|
-| 0 | Analysis job | **Built, #1901:** the scoring job, its tests and CI, the public summary and per-club site files. Not yet: the schedule and the publishing step, which wait on a private bucket | 1–2 weeks |
+| 0 | Analysis job | **Built, #1901:** the scoring job, its tests and CI, the public summary and per-club site files, the weekly schedule and the private upload. Waiting on the maintainer: the bucket and its secrets | 1–2 weeks |
 | 1 | Read-only app | The Analysis screen, the dashboard with club and section filters, and the guide | 2–3 weeks |
 | 2 | Sign-in and lists | Supabase sign-in, locations for signed-in users, lists and share links, club weights with history | 2 weeks |
 | 3 | Claims | Claims, the 14-day clock and reminders, before you go, invites, photo points and extras, review, hours | 3–4 weeks |
@@ -630,8 +636,10 @@ below are where the evidence is thinnest.
 
 ## 11. Still open
 
-- Where the private per-club files live: a private bucket and its credentials, which
-  only the maintainer can create. Phase 0's schedule and publishing step wait on it.
+- **A maintainer action:** create the private R2 bucket (decided 2026-10-27) and an R2
+  API token limited to it, then store `STEWARD_R2_BUCKET`, `STEWARD_R2_ACCESS_KEY_ID` and
+  `STEWARD_R2_SECRET_ACCESS_KEY` as repository secrets. `R2_ENDPOINT_URL` is OurHike's
+  and is already set. The weekly upload stops by name until then.
 - Who transcribes the camping rules (decided: the session, reviewed by the maintainer)
   and when. It blocks the "+10 restricted" weight, not phase 0.
 - Whether the steward API shares OurHike's Supabase project or only trusts its tokens.

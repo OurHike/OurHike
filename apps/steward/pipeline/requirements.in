@@ -3,6 +3,9 @@
 # says why). Compiled with `-c ../../../pipeline/requirements-dev.txt` (the
 # command is in requirements.txt's header), so every package the two share
 # resolves to the pipeline's version and one interpreter can hold both suites.
+# boto3 uploads to the private R2 bucket (steward_analysis/publish.py), as
+# pipeline/publish.py does for OurHike's public one.
+boto3
 duckdb==1.5.5
 numpy==2.5.2
 pandas

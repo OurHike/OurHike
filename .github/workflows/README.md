@@ -130,6 +130,7 @@ group, `extract-notices`, and never `publish-data`:
 | | |
 |---|---|
 | `extract-notices.yml` | every club's and agency's closures and warnings notices into the private raw store, every 4 hours with up to an hour to read, then a write-once copy of what a build reads, which `publish-conditions.yml`'s hourly dbt path adds to its warehouse → `extract`, one leg per environment, production from `main` only and only while `publish-conditions.yml`'s `PRODUCTION_PHONE_FILES` is `dbt`; a `production` dispatch runs that leg alone. Writes no phone file |
+| `steward-analysis.yml` | Campsite Steward's weekly scoring of ATC's Campsite Sustainability Index (#1901), a separate app kept in this repository → `score`: fetches and scores every site, then uploads to the app's own private R2 bucket under its own `STEWARD_R2_*` key, never OurHike's. Not `publish.py`, so it holds its own `steward-analysis` group rather than `publish-data`. Weekly as well as dispatch, with a boolean `publish` input. Until the bucket's secrets are stored it scores and then stops by name at the upload |
 
 And one only ever removes from the raw store, holding the monthly lane's
 group, `raw-lake-monthly`, so it never runs beside `refresh-reference.yml` or
@@ -260,6 +261,7 @@ gathered rather than restated.
 | `7,37 * * * *` | twice an hour | `check-pending-approvals.yml` — the tightest cadence here, because its worst case is a production publish expiring unapproved at 30 days |
 | `15 5 3 * *` | the 3rd of each month | `refresh-reference.yml` — the 05:00 hour holds no other daily or weekly job, `:15` misses the four hourly slots, and the 3rd is off the 1st by analogy with the `:00` rule only. The `build-reference.yml` run it dispatches has no schedule of its own |
 | `25 6 * * 1` | Mondays | `build-data-release.yml` — early, because the answer is most useful before the week's work is planned; gives way once the monthly lane's build has refreshed UA |
+| `47 6 * * 1` | Mondays | `steward-analysis.yml` — Campsite Steward's weekly scoring, after `build-data-release.yml` and well before the 07:00 hour's checks |
 | `20 7 * * *` | daily | `check-upstream-freshness.yml` |
 | `35 7 * * 1` | Mondays | `settings-configured.yml` |
 | `45 7 * * 1` | Mondays | `protections-check.yml` |

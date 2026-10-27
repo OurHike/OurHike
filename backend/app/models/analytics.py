@@ -222,7 +222,7 @@ class IntakeOutcome(str, enum.Enum):
 
     Two more were turned away whole, unread, and counted under no version
     because nothing in the batch was read: `over_budget` when the day's row
-    budget or the table's storage ceiling was reached, `paused` when the
+    budget or the rows-held ceiling was reached, `paused` when the
     nightly rollup - the job that deletes rows at six months - has not run for
     `analytics_rollup_stale_days` (app/config.py). Neither is lost: the answer
     is a 503, and the phone keeps the rows to send later.

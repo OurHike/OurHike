@@ -293,21 +293,25 @@ class Settings(BaseSettings):
     # so without a ceiling anybody could fill this database with made-up rows.
     # Two bounds, checked before a batch is read (app/routers/analytics.py):
     # rows stored in one UTC day, read from that day's `stored` count in
-    # `analytics_intake`, and the size of `analytics_events` on disk, indexes
-    # included (`pg_total_relation_size`). Past either, a batch is counted as
-    # `over_budget` and answered 503, and the phone keeps its rows and sends
-    # them later (client/src/lib/usageQueue.ts `sendUsageBatch`) - so a real
-    # day that runs over arrives late rather than going missing.
+    # `analytics_intake`, and rows held at all, against the ceiling below
+    # turned into rows (app/core/analytics_storage.py, which says why it
+    # counts rows and not the table's size on disk). Past either, a batch is
+    # counted as `over_budget` and answered 503, and the phone keeps its rows
+    # and sends them later (client/src/lib/usageQueue.ts `sendUsageBatch`).
     #
     # @unvalidated, both. The budget is about one and a half times
     # EVENTING.md §8's estimate of 33,000 rows a day, itself never measured.
     # The ceiling is half the 500 MB LAUNCH_CHECKLIST.md 4.1 gives the free
     # plan, so usage rows alone cannot fill the database the rest of the app
-    # lives in. Measured 2026-10-27 on Postgres 16, a mixed batch with half its
-    # rows sealed takes 382 bytes a row, so 250 MB holds about 690,000 rows:
-    # three weeks at §8's estimate, against six months of retention. At that
-    # scale the ceiling binds long before the budget does. What would settle
-    # both: the production plan's real quota, and a season of real daily volume.
+    # lives in: about 690,000 rows at the measured 380-382 bytes a row, which
+    # is three weeks at §8's estimate against six months of retention.
+    #
+    # The maintainer's decision (poll, 2026-10-27): keep six months of raw
+    # rows, and move to a paid database plan before daily phones near 300 -
+    # roughly where six months of rows outgrow 250 MB at 6 to 11 rows a phone
+    # a day - raising this ceiling to the new plan's room. The nightly checks
+    # warn at `STORAGE_WARN_SHARE` of it (app/core/analytics_quality.py), so
+    # the move is prompted before a batch is turned away.
     analytics_daily_row_budget: int = 50_000
     analytics_storage_ceiling_mb: int = 250
 

@@ -12,7 +12,9 @@ from datetime import date, datetime, timedelta
 import pytest
 from sqlalchemy.dialects.postgresql import insert
 
+from app.config import settings
 from app.core import analytics_quality as quality
+from app.core import analytics_storage
 from app.core.analytics_rollup import ALL, run
 from app.models.analytics import (
     AnalyticsAnomaly,
@@ -272,6 +274,22 @@ def test_batches_turned_away_whole_are_found(db_session):
     found = {(f.check_name, f.status) for f in _findings(db_session)}
 
     assert {("rows_over_budget", "warn"), ("rows_paused", "warn")} <= found
+
+
+@pytest.mark.parametrize(("held", "warned"), [(7, False), (8, True)], ids=["seven-tenths", "eight-tenths"])
+def test_rows_held_near_the_storage_ceiling_are_a_warning_before_a_batch_is_turned_away(db_session, monkeypatch, held, warned):
+    """The maintainer keeps six months of rows and moves to a paid plan before
+    the ceiling binds (poll, 2026-10-27): this is the notice to move."""
+    monkeypatch.setattr(settings, "analytics_storage_ceiling_mb", 1)
+    monkeypatch.setattr(analytics_storage, "STORED_ROW_BYTES", 1024 * 1024 // 10)
+    db_session.add(
+        AnalyticsIntake(received_on=TODAY - timedelta(days=30), app_version="1.4.0", outcome=IntakeOutcome.stored, rows=held)
+    )
+    db_session.commit()
+
+    found = quality.run_checks(db_session, today=TODAY)
+
+    assert (quality.Finding(TODAY, "storage_near_ceiling", ALL, "warn", held / 10, 0.8) in found) is warned
 
 
 def test_a_rollup_that_failed_tonight_is_a_finding_tonight(db_session):

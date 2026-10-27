@@ -81,6 +81,7 @@ from sqlalchemy.dialects.postgresql import insert
 from sqlalchemy.orm import Session
 
 from app.core.analytics_rollup import ALL, add_months, closes_on, retention_start
+from app.core.analytics_storage import ceiling_rows, rows_held
 from app.models.analytics import AnalyticsAnomaly, AnalyticsMonth, AnalyticsMonthly, MonthStatus, UsagePlatform
 
 # @unvalidated - see the module docstring for what would settle each.
@@ -120,6 +121,15 @@ OVERDUE_GRACE_DAYS = 2
 # the rest: what would settle it is how long after a close the maintainer
 # still acts on a finding about that month.
 MONTH_JUDGED_DAYS = 14
+# The share of the storage ceiling at which rows held are a warning
+# (app/core/analytics_storage.py). The maintainer chose to keep six months of
+# rows and move to a paid plan before the ceiling binds (poll, 2026-10-27),
+# so this is the notice to move, given while batches still go in. The last
+# fifth of 250 MB is about 137,000 rows: six to eleven weeks at 300 phones a
+# day, four to eight days at §8's 3,000 (6 to 11 rows a phone a day, itself
+# @unvalidated). @unvalidated, like the rest: what would settle it is how long
+# a move to a paid plan takes, against how fast the table grows.
+STORAGE_WARN_SHARE = 0.8
 
 # Every daily series, by name. Each is a column of `_DAILY` below. Screens
 # (`pageviews`) are loaded for `pageviews_per_session` and drawn by nothing
@@ -432,6 +442,10 @@ def _pipeline_findings(db: Session, today: date) -> list[Finding]:
         status = getattr(state.status, "value", state.status)
         if status == MonthStatus.provisional.value and today > closes_on(state.month) + timedelta(days=OVERDUE_GRACE_DAYS):
             findings.append(Finding(state.month, "month_not_closed", ALL, "warn"))
+    ceiling = ceiling_rows()
+    held = rows_held(db)
+    if ceiling and held >= STORAGE_WARN_SHARE * ceiling:
+        findings.append(Finding(today, "storage_near_ceiling", ALL, "warn", held / ceiling, STORAGE_WARN_SHARE))
     return findings
 
 
@@ -581,6 +595,7 @@ NAMED_CHECKS = (
     "rows_paused",
     "rows_unsealed_no_key",
     "rollup_failed",
+    "storage_near_ceiling",
     *MONTH_CHECKS,
 )
 

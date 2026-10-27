@@ -37,11 +37,12 @@ claim is only that the grouping is never written (EVENTING.md §2).
 
 **It caps what it stores, and turns a batch away rather than fill the
 database.** Past `analytics_daily_row_budget` rows stored in a UTC day, or
-with `analytics_events` past `analytics_storage_ceiling_mb` (app/config.py),
-a batch is counted as `over_budget` unread and answered 503 with a
-`Retry-After`. The phone keeps a batch a 5xx answered and sends it later
-(client/src/lib/usageQueue.ts `sendUsageBatch`), so a real day that runs over
-arrives late rather than going missing.
+with more rows held than `analytics_storage_ceiling_mb` allows (app/config.py,
+counted by app/core/analytics_storage.py), a batch is counted as
+`over_budget` unread and answered 503 with a `Retry-After`. The phone keeps a
+batch a 5xx answered and sends it later (client/src/lib/usageQueue.ts
+`sendUsageBatch`), so a real day that runs over arrives late rather than
+going missing - up to the 200 rows a phone holds.
 
 **It collects nothing that nothing would delete.** Six-month retention is
 kept by the nightly rollup (app/core/analytics_rollup.py), so when that
@@ -73,6 +74,7 @@ from sqlalchemy.orm import Session
 from app.config import settings
 from app.core.analytics_rollup import month_start, retention_start
 from app.core.analytics_seal import month_label, seal, user_key
+from app.core.analytics_storage import ROWS_HELD_SQL, ceiling_rows
 from app.core.auth import get_current_user_optional
 from app.core.time import utc_now
 from app.db.session import get_db
@@ -144,14 +146,14 @@ def normalised_shares(clubs: dict[str, float] | None) -> dict[str, float] | None
 
 
 # Read once per batch, in one round trip, before anything in it is: how many
-# rows today has stored, how large the raw table has grown, and when the
-# nightly rollup last ran.
+# rows today has stored, how many are held at all
+# (app/core/analytics_storage.py), and when the nightly rollup last ran.
 _INTAKE_GATE = text(
-    """
+    f"""
     select
       (select coalesce(sum(rows), 0) from analytics_intake
         where received_on = :today and outcome = 'stored') as stored_today,
-      pg_total_relation_size('analytics_events') as table_bytes,
+      ({ROWS_HELD_SQL}) as rows_held,
       (select max(computed_at) from analytics_months) as rollup_ran_at
     """
 )
@@ -164,10 +166,7 @@ def _gate_outcome(db: Session, now: datetime) -> IntakeOutcome | None:
     holds whether or not the rollup is running.
     """
     gate = db.execute(_INTAKE_GATE, {"today": now.date()}).one()
-    if (
-        gate.stored_today >= settings.analytics_daily_row_budget
-        or gate.table_bytes >= settings.analytics_storage_ceiling_mb * 1024 * 1024
-    ):
+    if gate.stored_today >= settings.analytics_daily_row_budget or gate.rows_held >= ceiling_rows():
         return IntakeOutcome.over_budget
     if gate.rollup_ran_at is None or gate.rollup_ran_at < now - timedelta(days=settings.analytics_rollup_stale_days):
         return IntakeOutcome.paused

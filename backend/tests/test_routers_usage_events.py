@@ -27,6 +27,7 @@ from sqlalchemy import inspect
 
 from app.config import settings
 from app.core import analytics_quality as quality
+from app.core import analytics_storage
 from app.core.analytics_rollup import add_months, month_start, retention_start, run
 from app.core.analytics_seal import month_label, month_private_key, month_public_key, new_secret, open_sealed, user_key
 from app.core.time import utc_now
@@ -404,6 +405,22 @@ def test_a_table_past_its_storage_ceiling_turns_every_batch_away(client, db_sess
     assert response.status_code == 503 and response.headers["Retry-After"] == "3600"
     assert db_session.query(AnalyticsEvent).count() == 0
     assert _intake(db_session) == {("", "over_budget"): 1}
+
+
+def test_the_storage_ceiling_counts_rows_held_so_a_deleted_month_lets_batches_in_again(client, db_session, today, monkeypatch):
+    """The first ceiling read the table's size on disk, and a Postgres table's
+    file does not shrink when rows are deleted (app/core/analytics_storage.py
+    has the measurement) - so once met, it would have turned every batch away
+    for good. Rows held come down when the rollup deletes a month."""
+    monkeypatch.setattr(settings, "analytics_storage_ceiling_mb", 1)
+    monkeypatch.setattr(analytics_storage, "STORED_ROW_BYTES", 1024 * 1024 // 2)
+    assert _post(client, [_event(today), _event(today)]).status_code == 202
+
+    assert _post(client, [_event(today)]).status_code == 503, "two rows held fill a two-row ceiling"
+
+    run(db_session, today=add_months(today, 7))
+    assert db_session.query(AnalyticsEvent).count() == 0, "the month left retention"
+    assert _post(client, [_event(today)]).status_code == 202
 
 
 def test_with_no_rollup_heartbeat_at_all_every_batch_is_paused(client, db_session, today):

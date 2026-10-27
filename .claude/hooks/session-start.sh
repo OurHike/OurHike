@@ -171,6 +171,10 @@ echo "[session-start] client deps"
 # repository, so #1354 records the mismatch rather than pretending it away.
 (cd client && npm ci --no-audit --no-fund)
 
+echo "[session-start] campsite steward web deps"
+# apps/steward/web/ (#1904), the same `npm ci` for the same reason as above.
+(cd apps/steward/web && npm ci --no-audit --no-fund)
+
 # THE GATE: prove what this script claims, or fail saying which part is missing.
 #
 # Both times this hook silently provisioned nothing (#822 and the

@@ -5,11 +5,16 @@
 #
 # PUBLIC AND SIMPLE, by the maintainer's choice the same day: the scored files
 # are plain public static files, locations included, because ATC already
-# publishes the same locations in its own open layer. There is no bucket and
-# no secret. Once the steward web app exists (phase 1), its deploy serves
-# summary.json and sites.json beside the app. Until then each run attaches
-# them to itself as the artifact `campsite-steward-data`, to be downloaded
-# from the run's page.
+# publishes the same locations in its own open layer. There is no bucket.
+#
+# Each run does two things with them. It attaches them to itself as the
+# artifact `campsite-steward-data`, always. And it builds the web app
+# (apps/steward/web/, #1904) with the two files in its data/ folder and
+# uploads the lot to Cloudflare Pages, so the app and the analysis it shows
+# are always one deployment and can never disagree. The upload needs the
+# STEWARD_PAGES_PROJECT variable naming a Pages project that already exists
+# (wrangler does not create one from CI); until the maintainer creates it,
+# the run skips the upload with a notice and is still green.
 
 name: Campsite Steward analysis
 
@@ -31,10 +36,12 @@ jobs:
   score:
     name: Score the CSI sites
     runs-on: ubuntu-latest
-    # Measured 2026-10-26: 51 s for the fetch and the scoring on a sandbox. Ten
-    # minutes is room for a slow ArcGIS host's three retries without letting a
-    # hung connection hold the job for GitHub's six-hour default.
-    timeout-minutes: 10
+    # Measured 2026-10-26: 51 s for the fetch and the scoring on a sandbox; the
+    # app's install and build add about a minute more (not yet measured on a
+    # runner). Fifteen minutes is room for a slow ArcGIS host's three retries
+    # without letting a hung connection hold the job for GitHub's six-hour
+    # default.
+    timeout-minutes: 15
     defaults:
       run:
         working-directory: apps/steward/pipeline
@@ -65,3 +72,51 @@ jobs:
           if-no-files-found: error
           # Five weekly runs' worth: the newest is the one anybody wants.
           retention-days: 35
+
+      # From main only, so a dispatch on a pull request's branch can never
+      # replace the live app with unreviewed code.
+      - name: Decide whether to publish
+        id: can
+        env:
+          PROJECT: ${{ vars.STEWARD_PAGES_PROJECT }}
+          API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+        run: |
+          if [ "$GITHUB_REF" != "refs/heads/main" ]; then
+            echo "::notice::Not publishing: this run is on $GITHUB_REF, and only main publishes the app."
+            echo "publish=false" >> "$GITHUB_OUTPUT"
+          elif [ -z "$PROJECT" ] || [ -z "$API_TOKEN" ] || [ -z "$ACCOUNT_ID" ]; then
+            echo "::notice::Not publishing: set the STEWARD_PAGES_PROJECT variable to a Cloudflare Pages project that exists (the Cloudflare secrets are OurHike's preview pair). The scored files are in this run's artifact."
+            echo "publish=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "publish=true" >> "$GITHUB_OUTPUT"
+          fi
+
+      - uses: actions/setup-node@v7
+        if: steps.can.outputs.publish == 'true'
+        with:
+          node-version: 24
+          cache: npm
+          cache-dependency-path: apps/steward/web/package-lock.json
+
+      - name: Build the app with this run's analysis
+        if: steps.can.outputs.publish == 'true'
+        working-directory: apps/steward/web
+        run: |
+          npm ci
+          mkdir -p public/data
+          cp ../pipeline/data/out/summary.json ../pipeline/data/out/sites.json public/data/
+          npm run build
+          ls -la dist/data
+
+      - name: Publish to Cloudflare Pages
+        if: steps.can.outputs.publish == 'true'
+        uses: cloudflare/wrangler-action@953926a2e2182532811c01a25e53647d93bf07c0 # v4.0.0 - SHA-pinned: this step holds the Cloudflare token (#660)
+        with:
+          apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          command: >-
+            pages deploy apps/steward/web/dist
+            --project-name=${{ vars.STEWARD_PAGES_PROJECT }}
+            --branch=main
+            --commit-dirty=true

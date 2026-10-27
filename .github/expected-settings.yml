@@ -317,6 +317,19 @@ settings:
       create one from CI, and a typo here is a deploy that fails saying the
       project was not found.
 
+  STEWARD_PAGES_PROJECT:
+    where: variable
+    required: false
+    why: >-
+      The Cloudflare Pages project Campsite Steward's web app is uploaded to
+      by steward-analysis.yml (#1904), with the week's scored files beside it.
+      A separate project from CLOUDFLARE_PAGES_PROJECT because it is a
+      separate app at its own address. Uploaded with OurHike's Cloudflare
+      token and account, which are scoped to the account rather than to one
+      project. Optional because the job skips the upload with a notice until
+      it is set; it has to name a project that already exists, because
+      wrangler does not create one from CI.
+
   UA_MIGRATION_DATABASE_URL:
     where: secret
     required: false

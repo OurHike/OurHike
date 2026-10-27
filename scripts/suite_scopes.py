@@ -44,6 +44,8 @@ WORKFLOWS = {
     "backend": (".github/workflows/backend-tests.yml", "pytest-postgres"),
     # Campsite Steward's analysis job (#1901), a separate app kept in this repository.
     "steward": (".github/workflows/steward-tests.yml", "steward"),
+    # ...and its web app (#1904), the second job in the same workflow.
+    "steward-web": (".github/workflows/steward-tests.yml", "steward-web"),
 }
 
 

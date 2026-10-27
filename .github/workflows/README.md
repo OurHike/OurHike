@@ -79,7 +79,7 @@ whether it holds credentials, and whether a failure reaches anyone.
 | `settings-manifest.yml` | required check `Manifest agrees with the workflows` |
 | `pr-preview.yml` | builds the pull request and deploys it to `pr-<n>.ourhike-preview.pages.dev` |
 | `build-shells.yml` | jobs `android` and `ios` — compiles the two native shells, which nothing did before #1193. Not a required check |
-| `steward-tests.yml` | job `steward` — Campsite Steward's analysis suite (`apps/steward/pipeline/`, #1901), a separate app kept in this repository. Not a required check, and not named `pytest`, which is `pipeline-tests.yml`'s required check name |
+| `steward-tests.yml` | job `steward` — Campsite Steward's analysis suite (`apps/steward/pipeline/`, #1901), a separate app kept in this repository; job `steward-web` — its web app (`apps/steward/web/`, #1904): lint, format, typecheck, vitest and build. Neither is a required check, and neither is named `pytest`, which is `pipeline-tests.yml`'s required check name |
 
 `shard-seam-spike.yml` also triggers on `pull_request`, filtered to its own
 paths — it is a spike, and lives in the last family.
@@ -130,7 +130,7 @@ group, `extract-notices`, and never `publish-data`:
 | | |
 |---|---|
 | `extract-notices.yml` | every club's and agency's closures and warnings notices into the private raw store, every 4 hours with up to an hour to read, then a write-once copy of what a build reads, which `publish-conditions.yml`'s hourly dbt path adds to its warehouse → `extract`, one leg per environment, production from `main` only and only while `publish-conditions.yml`'s `PRODUCTION_PHONE_FILES` is `dbt`; a `production` dispatch runs that leg alone. Writes no phone file |
-| `steward-analysis.yml` | Campsite Steward's weekly scoring of ATC's Campsite Sustainability Index (#1901), a separate app kept in this repository → `score`: fetches and scores every site and attaches `summary.json` and `sites.json` to the run as the artifact `campsite-steward-data`, kept 35 days. Public files by the maintainer's choice (2026-10-27): no bucket, no secret, and not `publish.py`, so it holds its own `steward-analysis` group. Weekly as well as dispatch. Once the steward web app exists, its deploy serves the two files instead |
+| `steward-analysis.yml` | Campsite Steward's weekly scoring of ATC's Campsite Sustainability Index (#1901), a separate app kept in this repository → `score`: fetches and scores every site and attaches `summary.json` and `sites.json` to the run as the artifact `campsite-steward-data`, kept 35 days. Public files by the maintainer's choice (2026-10-27): no bucket, no secret, and not `publish.py`, so it holds its own `steward-analysis` group. Weekly as well as dispatch. From `main`, it then builds the steward web app (#1904) with the two files in its `data/` folder and uploads it to the Cloudflare Pages project named by the `STEWARD_PAGES_PROJECT` variable, skipping the upload with a notice while that is unset |
 
 And one only ever removes from the raw store, holding the monthly lane's
 group, `raw-lake-monthly`, so it never runs beside `refresh-reference.yml` or

@@ -1,6 +1,7 @@
 # Campsite Steward — build plan
 
-**Status: planning.** Nothing under `apps/steward/` is built yet. This file is the
+**Status: phases 0 and 1 built** (§9): the weekly analysis job and the read-only web
+app. Phases 2 to 4 are not started. This file began as the
 deliverable of **#1899 — Plan Campsite Steward, a separate app that ranks the A.T.
 campsites needing restoration and lets volunteers claim them**, written 2026-10-24 to
 2026-10-26 from a planning session with the maintainer: a first-pass analysis, then
@@ -376,21 +377,38 @@ outputs under its gitignored `data/out/`:
   At 8 KB, it is the Analysis screen's whole input, so that screen never downloads the
   sites file to draw a chart.
 
-Both are public (decided 2026-10-27, see the opening section). Once the web app exists,
-its deploy serves them as static files beside itself.
+Both are public (decided 2026-10-27, see the opening section). The web app's deploy
+serves them as static files beside itself, in its `data/` folder.
 
 Nothing the job produces is committed: CONTRIBUTING.md's "Data does not go in commits"
 applies to this folder too. `.github/tests/test_no_committed_data.py` holds it with its own
-rule: nothing under `apps/steward/` that is JSON or sits in a `data/` folder.
+rule: nothing under `apps/steward/` that sits in a `data/` folder, and no JSON there except
+the web app's named tool configuration (`package.json`, the `tsconfig` files and so on).
 `steward_analysis/build.py`'s tests check that the summary carries no coordinate, mile or
 site id, and that neither output carries ATC's assessment-photo links. The job never
 requests those links, because nobody has said who owns the photos (§1).
 
 **The schedule.** `.github/workflows/steward-analysis.yml` runs the job every Monday at
-06:47 UTC, and on dispatch. It needs no secrets. Until the web app exists, each run
-attaches `summary.json` and `sites.json` to itself as the artifact
-`campsite-steward-data`, kept 35 days and downloadable from the run's page. From phase 1,
-the app's deploy picks up the newest pair and serves them.
+06:47 UTC, and on dispatch. Each run attaches `summary.json` and `sites.json` to itself
+as the artifact `campsite-steward-data`, kept 35 days. Then, on `main` only, it builds the
+web app with the pair in its `data/` folder and uploads both to the Cloudflare Pages project
+named by the repository variable `STEWARD_PAGES_PROJECT`, with OurHike's existing
+Cloudflare token. App and data are one deployment, so the app can never show a week's
+scores with another week's code. Until the maintainer creates that project and sets the
+variable, the run skips the upload with a notice and stays green.
+
+**Directions from the trail.** The job also measures, for each site, the nearest point
+on ATC's centerline (`ANST_Centerline`, simplified to about 5 m) and the bearing from
+there to the site, so the site page can say "leave the A.T. at mile 100.0 and walk 100 ft
+east (bearing 90°)". Measured 2026-10-27: the distance this gives differs from ATC's own
+`Proximity_AT_ft` by a median of 12 ft, and 3,414 of 3,442 sites agree within 50 ft. Where
+the two disagree by more than the larger of 100 ft and half of ATC's figure, the job
+withholds the directions rather than guess which is wrong: 18 sites, all in Georgia, where
+the gap reached 24,770 ft. Their pages say there are no walking directions and to use the
+coordinates. A wrong bearing sends a volunteer the wrong way off-trail, which is worse
+than none (CLAUDE.md, "omit rather than guess"). `@unvalidated`: the 100 ft gate was
+picked to sit well above the 12 ft median; nobody has walked to a site on these
+directions.
 
 ---
 
@@ -403,8 +421,8 @@ the app's deploy picks up the newest pair and serves them.
 | Photos | R2, keyed by the record id, following the pattern in `backend/app/core/photos.py` | Pattern reused, own bucket |
 | Club sections | Which club owns which mile | Reused: `pipeline/export_club_sections.py`'s output |
 | ArcGIS reading | Paging an ArcGIS layer | Reused: `pipeline/lib/arcgis.py` |
-| Basemap | The map under the sites | Reused: OurHike's public basemap tiles on R2 |
-| Web app | React, Vite and MapLibre under `apps/steward/web/`, a PWA, on its own Cloudflare Pages project and domain | New |
+| Basemap | The map under the sites | Not reused: OpenFreeMap's OpenStreetMap tiles (`tiles.openfreemap.org`), free and keyless at every zoom. OurHike's basemap is a PMTiles file with OurHike's own style and protocol handler, which would have had to be copied in. `@unvalidated`: nobody has checked OpenFreeMap's uptime; if it fails, the table and every site page still work |
+| Web app | React, Vite and MapLibre under `apps/steward/web/`, on its own Cloudflare Pages project. Static: hash routes, no server. Built in phase 1 (#1904); the PWA manifest and offline cache come in phase 4 | New |
 | Invites | An email invite that is claimed on first sign-in | Copied as a pattern from `RoleInvite`, not a shared table |
 | Hours | Hours per person per verified submission | Copied as a pattern from VOLUNTEERING.md's `VolunteerHoursRecord` |
 
@@ -606,7 +624,7 @@ returns excerpts; their quotes are near-verbatim.
 | # | Phase | Ships | Rough size |
 |---|---|---|---|
 | 0 | Analysis job | **Built, #1901:** the scoring job, its tests and CI, `summary.json` and `sites.json`, and the weekly run that attaches them to itself until the app can serve them | 1–2 weeks |
-| 1 | Read-only app | The Analysis screen, the dashboard with club and section filters, and the guide | 2–3 weeks |
+| 1 | Read-only app | **Built, #1904:** the dashboard with club, mile-range, tier, action and crew filters, the map and CSV export; the site page with directions, the indicator bars and the plan; the Analysis screen; the guide. Deployed by the weekly job | 2–3 weeks |
 | 2 | Sign-in and lists | Supabase sign-in, locations for signed-in users, lists and share links, club weights with history | 2 weeks |
 | 3 | Claims | Claims, the 14-day clock and reminders, before you go, invites, photo points and extras, review, hours | 3–4 weeks |
 | 4 | Field-ready | Offline for claimed sites, the photo-point outline, follow-up visits, CSV export | 2–3 weeks |

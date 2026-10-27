@@ -8,9 +8,11 @@
 # Not a required check, and its job is not called `pytest`: branch protection
 # matches checks by name, and `pytest` is pipeline-tests.yml's required check.
 #
-# The tests never touch the network (tests/conftest.py), and nothing here reads
-# a secret or publishes anything. Where the scored files will live is the
-# maintainer's to set up and is not decided yet (#1901).
+# Two jobs, one per half of the app: `steward` is the analysis job's Python
+# suite, `steward-web` the web app in apps/steward/web/ (#1904). Neither test
+# suite touches the network (tests/conftest.py; the web tests run on the
+# invented sites in src/fixtures.ts), and nothing here reads a secret or
+# publishes anything. Publishing is steward-analysis.yml's.
 
 name: Campsite Steward tests
 
@@ -70,3 +72,58 @@ jobs:
       - name: Run tests
         if: steps.scope.outputs.run == 'true'
         run: python -m pytest -v
+
+  steward-web:
+    name: Campsite Steward web tests
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: apps/steward/web
+    steps:
+      - uses: actions/checkout@v7
+
+      - id: scope
+        uses: ./.github/actions/changed-paths
+        with:
+          # The app imports nothing from outside apps/steward/web/: it reads
+          # the analysis job's output at runtime, as files served beside it,
+          # and its tests use src/fixtures.ts instead. src/types.ts names that
+          # output's shape by hand, so a change to the job's output that
+          # forgets the type is caught by neither suite; build.py is listed so
+          # that such a change at least runs this one.
+          paths: >-
+            apps/steward/web/
+            apps/steward/pipeline/steward_analysis/build.py
+            .github/workflows/steward-tests.yml
+            .github/actions/changed-paths/
+
+      - uses: actions/setup-node@v7
+        if: steps.scope.outputs.run == 'true'
+        with:
+          node-version: 24
+          cache: npm
+          cache-dependency-path: apps/steward/web/package-lock.json
+
+      - name: Install dependencies
+        if: steps.scope.outputs.run == 'true'
+        run: npm ci
+
+      - name: Lint
+        if: steps.scope.outputs.run == 'true'
+        run: npm run lint
+
+      - name: Check formatting
+        if: steps.scope.outputs.run == 'true'
+        run: npm run format:check
+
+      - name: Typecheck
+        if: steps.scope.outputs.run == 'true'
+        run: npm run typecheck
+
+      - name: Run tests
+        if: steps.scope.outputs.run == 'true'
+        run: npm test
+
+      - name: Build
+        if: steps.scope.outputs.run == 'true'
+        run: npm run build

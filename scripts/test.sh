@@ -193,7 +193,7 @@ scope_for_suite_workflows() {
 # every PR" is "run it whenever anything changed", and the suite is cheap
 # enough to carry that.
 
-suite_names=(client backend pipeline dbt steward settings)
+suite_names=(client backend pipeline dbt steward steward-web settings)
 
 scope_for_suite() {
   scope_for_suite_workflows "$1"
@@ -449,6 +449,11 @@ if selected_has settings; then
   step "settings ruff check"   "$PY" -m ruff check .github/tests
   step "settings ruff format"  "$PY" -m ruff format --check .github/tests
 fi
+if selected_has steward-web; then
+  step "steward-web lint"          npm --prefix apps/steward/web run lint
+  step "steward-web format:check"  npm --prefix apps/steward/web run format:check
+  step "steward-web typecheck"     npm --prefix apps/steward/web run typecheck
+fi
 if selected_has client; then
   step "client lint"           npm --prefix client run lint
   step "client format:check"   npm --prefix client run format:check
@@ -469,6 +474,12 @@ fi
 if selected_has steward; then
   # About a second of tests, so no xdist workers and no coverage report.
   step "steward tests"  env -C apps/steward/pipeline "$PY" -m pytest -q
+fi
+if selected_has steward-web; then
+  # `run`, not `exec`, for the reason CLIENT_TEST's note gives: the script has
+  # to run with apps/steward/web/ as its directory to load its vite.config.ts.
+  step "steward-web tests"  npm --prefix apps/steward/web run test
+  step "steward-web build"  npm --prefix apps/steward/web run build
 fi
 
 # pipeline-tests.yml's `dbt` job, in its order, with four differences and

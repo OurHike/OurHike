@@ -3,11 +3,17 @@
 **Unlike app/schemas/app_failure.py, this refuses rather than truncates.** An
 app-failure report is somebody asking to be heard, and losing one to a strict
 schema gets the priority backwards. A usage event is the opposite: the first
-thing dropped and the last thing sent (EVENTING.md §1 rule 4), so a batch that
+thing dropped and the last thing sent (EVENTING.md §1 rule 4), so a row that
 does not match the registry costs nothing worth keeping, while one that is
 let through is how free text, an unregistered key or a coordinate in the wrong
 field gets stored. Every field is closed: `extra="forbid"`, enums for the
 names, patterns for the two strings, ranges for the numbers.
+
+**Refused one ROW at a time, not one batch.** `UsageBatchIn.events` is taken
+as raw objects and each is checked against `UsageEventIn` by the route, so a
+row from a phone whose clock jumped costs that row and not the 199 sent with
+it. Refused rows are counted (`analytics_intake`) - the phone keeps no copy,
+so that count is the only sign a release broke something.
 
 THE TWO THINGS A CLIENT CANNOT DO WITH THIS SCHEMA
 
@@ -31,7 +37,7 @@ from __future__ import annotations
 import math
 import uuid
 from datetime import date
-from typing import Annotated
+from typing import Annotated, Any
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
@@ -53,6 +59,9 @@ MAX_PLAN_MILES = 5000.0
 # the same as no club at all, which is an event that was not about a trail.
 CLUB_NOT_RECORDED = "_unrecorded"
 ClubId = Annotated[str, Field(pattern=r"^(_unrecorded|[A-Za-z0-9][A-Za-z0-9._-]{0,63})$")]
+
+# A version string as the phone's build stamps it: no spaces, so no sentence.
+VERSION_PATTERN = r"^[0-9A-Za-z][0-9A-Za-z.+_-]*$"
 
 # Clubs' shares must add up to one event. Floating point and the phone's own
 # rounding of mile splits are allowed this much slack and no more.
@@ -78,12 +87,15 @@ class UsageEventIn(BaseModel):
     event: UsageEvent
     local_date: date
     platform: UsagePlatform
-    app_version: str | None = Field(default=None, max_length=40, pattern=r"^[0-9A-Za-z][0-9A-Za-z.+_-]*$")
+    app_version: str | None = Field(default=None, max_length=40, pattern=VERSION_PATTERN)
 
     week_first: bool = False
     month_first: bool = False
     ever_first: bool = False
     club_firsts: list[ClubId] = Field(default_factory=list, max_length=MAX_CLUBS_PER_EVENT)
+    kind_month_first: bool = False
+    month_returning: bool = False
+    signed_in: bool = False
 
     clubs: dict[ClubId, FiniteFloat] | None = Field(default=None, max_length=MAX_CLUBS_PER_EVENT)
     miles: FiniteFloat | None = Field(default=None, ge=0, le=MAX_PLAN_MILES)
@@ -110,32 +122,34 @@ class UsageEventIn(BaseModel):
                 raise ValueError("clubs' shares add up to one event")
         if len(set(self.club_firsts)) != len(self.club_firsts):
             raise ValueError("club_firsts names each club once")
+        if self.month_returning and not self.month_first:
+            raise ValueError("month_returning rides on the month's first row only")
         return self
 
 
 class UsageBatchIn(BaseModel):
+    """The envelope. Its rows are checked one by one by the route."""
+
     model_config = ConfigDict(extra="forbid")
 
     # The hiker said yes to linking their account (the split consent, poll
     # 2026-10-27). Honoured only alongside a valid token; ignored without one.
     identified: bool = False
-    events: list[UsageEventIn] = Field(min_length=1, max_length=MAX_EVENTS_PER_BATCH)
-
-    @model_validator(mode="after")
-    def _ids_are_unique(self) -> UsageBatchIn:
-        if len({event.id for event in self.events}) != len(self.events):
-            raise ValueError("each event id appears once in a batch")
-        return self
+    # Raw objects, each validated against `UsageEventIn` by the route so a bad
+    # one is refused alone. The cap is still the envelope's: over it, the whole
+    # batch is refused, because no phone sends one.
+    events: list[Any] = Field(min_length=1, max_length=MAX_EVENTS_PER_BATCH)
 
 
 class UsageBatchAck(BaseModel):
-    """How many rows were new and how many were resends of rows already held.
+    """How many rows were new, how many were resends, how many were refused.
 
     Deliberately says nothing else - not whether the batch was linked to an
-    account, not whether a fix was sealed - because the phone does nothing
-    differently either way, and an acknowledgement is not a place to confirm
-    facts about the database to whoever sent it.
+    account, not whether a fix was sealed, not why a row was refused - because
+    the phone does nothing differently either way, and an acknowledgement is
+    not a place to confirm facts about the database to whoever sent it.
     """
 
     accepted: int
     duplicates: int
+    refused: int

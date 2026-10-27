@@ -48,7 +48,7 @@ function input(overrides: Partial<UsageMeasurementInput> = {}): UsageMeasurement
   return {
     ready: true,
     enabled: true,
-    linked: false,
+    linkedAccount: null,
     newInstall: false,
     signedIn: false,
     online: false,
@@ -172,13 +172,31 @@ describe('plans', () => {
 
   it('links a row to the account only while the hiker said yes and is signed in', async () => {
     const { result } = renderHook(() =>
-      useUsageMeasurement(input({ linked: true, signedIn: true })),
+      useUsageMeasurement(input({ linkedAccount: 'tag-alice', signedIn: true })),
     )
 
     result.current.planCompleted({ miles: 8 })
 
     await waitFor(async () => expect((await readUsage()).rows).toHaveLength(1))
-    expect((await readUsage()).rows[0].linked).toBe(true)
+    const [queued] = (await readUsage()).rows
+    expect(queued.linkedTo).toBe('tag-alice')
+    expect(queued.row.signed_in).toBe(true)
+  })
+
+  it('unlinks what is waiting when a signed-in hiker says no', async () => {
+    const { result, rerender } = renderHook(
+      (props: UsageMeasurementInput) => useUsageMeasurement(props),
+      { initialProps: input({ linkedAccount: 'tag-alice', signedIn: true }) },
+    )
+    result.current.planMade({ miles: 4 })
+    await waitFor(async () =>
+      expect((await readUsage()).rows[0]?.linkedTo).toBe('tag-alice'),
+    )
+
+    rerender(input({ linkedAccount: null, signedIn: true }))
+
+    await waitFor(async () => expect((await readUsage()).rows[0]?.linkedTo).toBeNull())
+    expect(await events()).toEqual(['hike_plan_made'])
   })
 })
 

@@ -6,7 +6,7 @@ Create Date: 2026-10-27 00:48:19.362691
 
 #1902 - Count six usage events with a sealed account id and GPS fix, keep
 them six months, close each month into a table, and report them per club.
-Six tables, all new, nothing existing touched:
+Eight tables, all new, nothing existing touched:
 
 - `analytics_events`, the raw rows `POST /usage-events` writes, deleted by the
   nightly rollup six months on. The account id and the exact fix live only in
@@ -20,6 +20,10 @@ Six tables, all new, nothing existing touched:
   (app/models/analytics.py).
 - `analytics_seal_keys`, the public half of each month's sealing key, and
   `analytics_openings`, the record each use of the secret writes first.
+- `analytics_intake`, how many rows arrived each day by app version and by
+  what became of them - the only trace of a row the server refused - and
+  `analytics_anomalies`, every finding of the nightly data-quality checks
+  (app/core/analytics_quality.py).
 
 A plain table with a date index rather than one partition per month, which
 the strategy page drew: a month's rows go in one guarded DELETE
@@ -28,9 +32,10 @@ is cheap, while partitions would need creating ahead of every month and would
 have to be taught to the test harness and the drift check. Reasoned, not
 measured; a month that DELETE is slow for is the evidence that would reverse it.
 
-RLS: all six join the union tests/test_migration_rls.py checks. Every one of
-them is either a hiker's own measurement or the means to open it, and
-PostgREST would otherwise serve them to anyone holding the anon key.
+RLS: all eight join the union tests/test_migration_rls.py checks. Every one
+of them is either a hiker's own measurement, the means to open it, or counts
+describing it, and PostgREST would otherwise serve them to anyone holding the
+anon key.
 """
 
 from typing import Sequence, Union
@@ -56,6 +61,8 @@ RLS_TABLES: tuple[str, ...] = (
     "analytics_users",
     "analytics_seal_keys",
     "analytics_openings",
+    "analytics_intake",
+    "analytics_anomalies",
 )
 
 
@@ -68,7 +75,7 @@ def rls_statements(dialect_name: str, *, enable: bool) -> list[str]:
 
 
 def upgrade() -> None:
-    """Create the six tables, and lock them before anything can reach them."""
+    """Create the eight tables, and lock them before anything can reach them."""
     op.create_table(
         "analytics_events",
         sa.Column("id", sa.String(length=36), nullable=False),
@@ -98,6 +105,9 @@ def upgrade() -> None:
         sa.Column("month_first", sa.Boolean(), nullable=False),
         sa.Column("ever_first", sa.Boolean(), nullable=False),
         sa.Column("club_firsts", sa.JSON(none_as_null=True), nullable=True),
+        sa.Column("kind_month_first", sa.Boolean(), nullable=False),
+        sa.Column("month_returning", sa.Boolean(), nullable=False),
+        sa.Column("signed_in", sa.Boolean(), nullable=False),
         sa.Column("clubs", sa.JSON(none_as_null=True), nullable=True),
         sa.Column("miles", sa.Float(), nullable=True),
         sa.Column("pageviews", sa.SmallInteger(), nullable=True),
@@ -115,6 +125,32 @@ def upgrade() -> None:
     )
     op.create_index(op.f("ix_analytics_events_local_date"), "analytics_events", ["local_date"], unique=False)
     op.create_index(op.f("ix_analytics_events_user_key"), "analytics_events", ["user_key"], unique=False)
+    op.create_table(
+        "analytics_anomalies",
+        sa.Column("day", sa.Date(), nullable=False),
+        sa.Column("check_name", sa.String(length=48), nullable=False),
+        sa.Column("scope", sa.String(length=64), nullable=False),
+        sa.Column("status", sa.String(length=12), nullable=False),
+        sa.Column("observed", sa.Float(), nullable=True),
+        sa.Column("expected", sa.Float(), nullable=True),
+        sa.Column("low", sa.Float(), nullable=True),
+        sa.Column("high", sa.Float(), nullable=True),
+        sa.Column("first_seen_on", sa.Date(), nullable=False),
+        sa.Column("last_seen_on", sa.Date(), nullable=False),
+        sa.PrimaryKeyConstraint("day", "check_name", "scope"),
+    )
+    op.create_table(
+        "analytics_intake",
+        sa.Column("received_on", sa.Date(), nullable=False),
+        sa.Column("app_version", sa.String(length=40), nullable=False),
+        sa.Column(
+            "outcome",
+            sa.Enum("stored", "duplicate", "invalid", "too_old", "future", name="intakeoutcome", native_enum=False, length=12),
+            nullable=False,
+        ),
+        sa.Column("rows", sa.Integer(), nullable=False),
+        sa.PrimaryKeyConstraint("received_on", "app_version", "outcome"),
+    )
     op.create_table(
         "analytics_monthly",
         sa.Column("month", sa.Date(), nullable=False),
@@ -184,7 +220,9 @@ def upgrade() -> None:
 
 
 def downgrade() -> None:
-    """Drop the six tables; the locks go with them."""
+    """Drop the eight tables; the locks go with them."""
+    op.drop_table("analytics_intake")
+    op.drop_table("analytics_anomalies")
     op.drop_table("analytics_users")
     op.drop_table("analytics_seal_keys")
     op.drop_table("analytics_openings")

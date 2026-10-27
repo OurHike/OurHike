@@ -61,6 +61,12 @@ export interface UsageRow {
   month_first: boolean
   ever_first: boolean
   club_firsts: string[]
+  /** The first event of this kind on this phone this month. */
+  kind_month_first: boolean
+  /** On a `month_first` row: this phone was counted last month too. */
+  month_returning: boolean
+  /** An account was signed in on this phone - never which one. */
+  signed_in: boolean
   clubs?: Record<string, number>
   miles?: number
   pageviews?: number
@@ -69,40 +75,131 @@ export interface UsageRow {
 }
 
 /**
- * A row waiting to send, and whether it may be linked to the account.
+ * A row waiting to send, and which account it may be linked to.
  *
- * Decided when the row is RECORDED, not when it is sent: a hiker who said yes,
- * walked a week offline and said no on the way home has a week of rows that
- * were recorded under the yes - and the no applies from the moment it was
- * said. lib/usageQueue.ts drops linked rows that are still waiting when the
- * answer changes to no, so the yes does not outlive itself either.
+ * `linkedTo` is `accountTag` of the account that was signed in, with the
+ * hiker's yes, when the row was RECORDED - or null. lib/usageQueue.ts sends a
+ * row linked only while that same account is signed in with its yes still
+ * standing; every other row goes without an account. So a phone shared by
+ * two hikers cannot send one's rows with the other's token, a sign-out sends
+ * what was waiting unlinked rather than losing it, and a no said on the way
+ * home applies to the week of rows still waiting (`unlinkWaitingRows`).
  */
 export interface QueuedUsageRow {
   row: UsageRow
-  linked: boolean
+  linkedTo: string | null
+}
+
+/**
+ * A short, stable tag for an account, from its email: enough to tell two
+ * accounts on one phone apart, and kept on that phone only. Not a secret and
+ * not an identifier anybody else sees - the email it is made from is already
+ * in the sign-in session on the same phone. cyrb53, a 53-bit string hash.
+ */
+export function accountTag(email: string): string {
+  const text = email.trim().toLowerCase()
+  let h1 = 0xdeadbeef
+  let h2 = 0x41c6ce57
+  for (let i = 0; i < text.length; i += 1) {
+    const code = text.charCodeAt(i)
+    h1 = Math.imul(h1 ^ code, 2654435761)
+    h2 = Math.imul(h2 ^ code, 1597334677)
+  }
+  h1 = Math.imul(h1 ^ (h1 >>> 16), 2246822507) ^ Math.imul(h2 ^ (h2 >>> 13), 3266489909)
+  h2 = Math.imul(h2 ^ (h2 >>> 16), 2246822507) ^ Math.imul(h1 ^ (h1 >>> 13), 3266489909)
+  return (4294967296 * (2097151 & h2) + (h1 >>> 0)).toString(36)
 }
 
 /**
  * What the phone remembers so it can answer "first time this week / this
  * month / ever" without anybody else ever telling two phones apart
  * (EVENTING.md §2, MeasurementState in §10).
+ *
+ * SETS OF PERIODS, NOT THE LAST ONE. A session row is dated when the visit
+ * began and recorded when it ended, so rows do not arrive in date order: a
+ * visit from Sunday night is recorded after Monday's first row. Remembering
+ * only the last week made that Sunday row "first this week" a second time,
+ * and the next Monday row a second time too - two phones where there was one,
+ * in ordinary use and not only when a clock was wrong. 400 seeded synthetic
+ * histories with clock steps switched off counted 1,458 of 2,243 phone-months
+ * more than once before this (usageHeartbeat.test.ts, 2026-10-27; the
+ * generator is harsher than real use, and the real rate was never measured).
  */
 export interface Heartbeat {
-  /** ISO year and week of the last recorded event, `2026-W44`. */
-  week: string | null
-  /** Calendar month of the last recorded event, `2026-10`. */
-  month: string | null
+  /** ISO weeks this phone has been counted in, `2026-W44`, oldest first. */
+  weeks: string[]
+  /** Calendar months this phone has been counted in, `2026-10`, oldest first. */
+  months: string[]
   /** Whether this install has recorded anything, ever. */
   ever: boolean
-  /** The clubs already touched in `month`. */
-  clubs: string[]
+  /** The clubs already counted, for each remembered month. */
+  clubs: Record<string, string[]>
+  /** The event kinds already counted, for each remembered month. */
+  kinds: Record<string, string[]>
 }
 
+/**
+ * How many weeks and months are remembered. Reasoned: a row is dated at
+ * most a visit's length before the row recorded ahead of it, plus whatever a
+ * phone's clock does, so ten weeks and four months leave room for a clock
+ * that jumps a fortnight. A row older than everything remembered cannot be
+ * told apart from one already counted, and is treated as counted - an
+ * undercount by one phone, never a double count.
+ */
+export const WEEKS_REMEMBERED = 10
+export const MONTHS_REMEMBERED = 4
+
 export const FRESH_HEARTBEAT: Heartbeat = {
-  week: null,
-  month: null,
+  weeks: [],
+  months: [],
   ever: false,
-  clubs: [],
+  clubs: {},
+  kinds: {},
+}
+
+function strings(value: unknown): string[] {
+  return Array.isArray(value)
+    ? value.filter((item): item is string => typeof item === 'string')
+    : []
+}
+
+function stringLists(value: unknown): Record<string, string[]> {
+  if (typeof value !== 'object' || value === null || Array.isArray(value)) return {}
+  return Object.fromEntries(
+    Object.entries(value as Record<string, unknown>).map(([key, list]) => [
+      key,
+      strings(list),
+    ]),
+  )
+}
+
+/**
+ * A heartbeat read back from storage, whatever wrote it. An earlier build of
+ * this branch stored only the last week and month; those become one-entry
+ * sets, which is exactly what they knew.
+ */
+export function normaliseHeartbeat(raw: unknown): Heartbeat {
+  if (typeof raw !== 'object' || raw === null) return FRESH_HEARTBEAT
+  const stored = raw as Record<string, unknown>
+  const legacyMonth = typeof stored.month === 'string' ? stored.month : null
+  return {
+    weeks: Array.isArray(stored.weeks)
+      ? strings(stored.weeks).sort()
+      : typeof stored.week === 'string'
+        ? [stored.week]
+        : [],
+    months: Array.isArray(stored.months)
+      ? strings(stored.months).sort()
+      : legacyMonth === null
+        ? []
+        : [legacyMonth],
+    ever: stored.ever === true,
+    clubs:
+      Array.isArray(stored.clubs) && legacyMonth !== null
+        ? { [legacyMonth]: strings(stored.clubs) }
+        : stringLists(stored.clubs),
+    kinds: stringLists(stored.kinds),
+  }
 }
 
 /**
@@ -154,6 +251,33 @@ export interface HeartbeatStamp {
   month_first: boolean
   ever_first: boolean
   club_firsts: string[]
+  kind_month_first: boolean
+  month_returning: boolean
+}
+
+/**
+ * Whether a period is new to a remembered set. A full set has forgotten
+ * whatever came before its oldest entry, so a period older than that is
+ * unknown - and unknown counts as already counted.
+ */
+function isNew(seen: readonly string[], period: string, cap: number): boolean {
+  if (seen.includes(period)) return false
+  return seen.length < cap || period > seen[0]
+}
+
+/** `seen` with `period` added, sorted, keeping the newest `cap`. */
+function remember(seen: readonly string[], period: string, cap: number): string[] {
+  if (seen.includes(period)) return [...seen]
+  const next = [...seen, period].sort()
+  return next.length > cap ? next.slice(next.length - cap) : next
+}
+
+/** `2026-01` -> `2025-12`. */
+export function previousMonth(month: string): string {
+  const [year, number] = month.split('-').map(Number)
+  return number === 1
+    ? `${String(year - 1).padStart(4, '0')}-12`
+    : `${String(year).padStart(4, '0')}-${String(number - 1).padStart(2, '0')}`
 }
 
 /**
@@ -161,27 +285,57 @@ export interface HeartbeatStamp {
  *
  * A phone active four days in a week records events on all four, and exactly
  * one of them says `week_first` - so the server's count of `week_first` rows
- * is a count of phones, with no phone ever told apart from another.
+ * is a count of phones, with no phone ever told apart from another. The same
+ * holds per month, per club per month, and per kind of event per month
+ * (`kind_month_first`: phones that made a plan this month, every phone and
+ * not only hikers who linked an account). `month_returning` rides on the
+ * `month_first` row and says the phone was counted last month too, which is
+ * the whole of what new / returning / back-again needs.
  */
 export function stampHeartbeat(
   heartbeat: Heartbeat,
   now: Date,
   clubs: readonly string[],
+  kind: UsageEventName,
 ): { stamp: HeartbeatStamp; next: Heartbeat } {
   const week = isoWeek(now)
   const month = usageDate(now).slice(0, 7)
-  const sameMonth = heartbeat.month === month
-  const seen = new Set(sameMonth ? heartbeat.clubs : [])
-  const clubFirsts = clubs.filter((club) => !seen.has(club))
-  for (const club of clubFirsts) seen.add(club)
+  const monthFirst = isNew(heartbeat.months, month, MONTHS_REMEMBERED)
+  // A month older than everything remembered: its clubs and kinds are as
+  // unknown as the month itself, so nothing about it is first either.
+  const forgotten = !monthFirst && !heartbeat.months.includes(month)
+
+  const seenClubs = heartbeat.clubs[month] ?? []
+  const clubFirsts = forgotten
+    ? []
+    : [...new Set(clubs)].filter((club) => !seenClubs.includes(club))
+  const seenKinds = heartbeat.kinds[month] ?? []
+  const kindFirst = !forgotten && !seenKinds.includes(kind)
+
+  const months = forgotten
+    ? heartbeat.months
+    : remember(heartbeat.months, month, MONTHS_REMEMBERED)
+  const kept = (lists: Record<string, string[]>, current: string[]) => {
+    const all = forgotten ? lists : { ...lists, [month]: current }
+    return Object.fromEntries(months.filter((m) => m in all).map((m) => [m, all[m]]))
+  }
+
   return {
     stamp: {
-      week_first: heartbeat.week !== week,
-      month_first: !sameMonth,
+      week_first: isNew(heartbeat.weeks, week, WEEKS_REMEMBERED),
+      month_first: monthFirst,
       ever_first: !heartbeat.ever,
       club_firsts: clubFirsts,
+      kind_month_first: kindFirst,
+      month_returning: monthFirst && heartbeat.months.includes(previousMonth(month)),
     },
-    next: { week, month, ever: true, clubs: [...seen] },
+    next: {
+      weeks: remember(heartbeat.weeks, week, WEEKS_REMEMBERED),
+      months,
+      ever: true,
+      clubs: kept(heartbeat.clubs, [...seenClubs, ...clubFirsts]),
+      kinds: kept(heartbeat.kinds, kindFirst ? [...seenKinds, kind] : [...seenKinds]),
+    },
   }
 }
 
@@ -355,6 +509,7 @@ export function usageRow(options: {
   platform: UsagePlatform
   version: string
   stamp: HeartbeatStamp
+  signedIn: boolean
   details: UsageDetails
 }): UsageRow {
   const { details } = options
@@ -367,6 +522,9 @@ export function usageRow(options: {
     month_first: options.stamp.month_first,
     ever_first: options.stamp.ever_first,
     club_firsts: options.stamp.club_firsts,
+    kind_month_first: options.stamp.kind_month_first,
+    month_returning: options.stamp.month_returning,
+    signed_in: options.signedIn,
   }
   const version = usageVersion(options.version)
   if (version !== undefined) row.app_version = version

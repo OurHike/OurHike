@@ -48,6 +48,7 @@ from tests.test_client_report_contract import CLIENT_FILES_READ as REPORT_FILES
 from tests.test_client_response_contract import CLIENT_FILES_READ as RESPONSE_FILES
 from tests.test_conditions_publisher_contract import PIPELINE_FILES_READ
 from tests.test_preferences_contract import CLIENT_MODEL
+from tests.test_usage_golden_batch import CLIENT_FILES_READ as GOLDEN_FILES
 from tests.test_usage_registry_contract import CLIENT_FILES_READ as USAGE_FILES
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
@@ -67,6 +68,7 @@ CLIENT_FILES = {
     CLIENT_MODEL,
     *PIPELINE_FILES_READ,
     *USAGE_FILES,
+    *GOLDEN_FILES,
 }
 
 

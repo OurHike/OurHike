@@ -15,10 +15,14 @@ then comes from the token, never from the body.
 has been published for the month, both are thrown away, never kept in the
 clear, and the row says `no_key`.
 
-**It refuses rather than repairs.** A usage event is the first thing a phone
-drops (EVENTING.md §1 rule 4), so a batch that does not match the registry is
-refused whole with a 422, and the client drops it. app/schemas/analytics.py
-has the rules.
+**It refuses rather than repairs, one row at a time.** A usage event is the
+first thing a phone drops (EVENTING.md §1 rule 4), so a row that does not
+match the registry, or is dated outside what is kept, is refused - but only
+that row. Refusing the batch meant one row from a phone whose clock jumped
+cost the 199 good rows sent with it, because the phone drops a refused batch
+whole. Every outcome is counted per day and app version in
+`analytics_intake`, which is the only trace a refused row leaves.
+app/schemas/analytics.py has the rules.
 
 **It writes no IP address and keeps no batch.** No column holds one, and
 nothing here logs the request. A batch is momentarily linkable on the wire -
@@ -34,10 +38,13 @@ data. Said out loud so it is noticed before it is discovered.
 from __future__ import annotations
 
 import math
-from collections import defaultdict
+import re
+from collections import Counter, defaultdict
 from datetime import date, timedelta
+from typing import Any
 
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, status
+from pydantic import ValidationError
 from sqlalchemy import select, text
 from sqlalchemy.dialects.postgresql import insert
 from sqlalchemy.orm import Session
@@ -48,9 +55,16 @@ from app.core.analytics_seal import month_label, seal, user_key
 from app.core.auth import get_current_user_optional
 from app.core.time import utc_now
 from app.db.session import get_db
-from app.models.analytics import AnalyticsEvent, AnalyticsSealKey, SealState, UsageEvent
+from app.models.analytics import (
+    AnalyticsEvent,
+    AnalyticsIntake,
+    AnalyticsSealKey,
+    IntakeOutcome,
+    SealState,
+    UsageEvent,
+)
 from app.models.profile import Profile
-from app.schemas.analytics import UsageBatchAck, UsageBatchIn, UsageEventIn
+from app.schemas.analytics import VERSION_PATTERN, UsageBatchAck, UsageBatchIn, UsageEventIn
 
 router = APIRouter(prefix="/usage-events", tags=["usage-events"])
 
@@ -66,17 +80,68 @@ def _area(degrees: float) -> float:
     return math.floor(degrees * 10) / 10
 
 
-def _check_dates(events: list[UsageEventIn], today: date) -> None:
+_REFUSED = frozenset({IntakeOutcome.invalid, IntakeOutcome.too_old, IntakeOutcome.future})
+_VERSION = re.compile(VERSION_PATTERN)
+
+
+def _version_of(raw: Any) -> str:
+    """A refused row's version when it carried a readable one, for the intake count."""
+    version = raw.get("app_version") if isinstance(raw, dict) else None
+    return version if isinstance(version, str) and len(version) <= 40 and _VERSION.match(version) else ""
+
+
+def _sort_rows(raws: list[Any], today: date) -> tuple[list[UsageEventIn], Counter]:
+    """The rows worth storing, and a count of the rest by version and outcome.
+
+    A row dated before retention would land in a month the rollup has already
+    deleted; one more than a day ahead is a wrong clock. Both are refused like
+    a row that breaks the registry - alone.
+    """
     earliest = retention_start(today)
     latest = today + FUTURE_SLACK
-    for event in events:
+    kept: list[UsageEventIn] = []
+    seen: set = set()
+    outcomes: Counter = Counter()
+    for raw in raws:
+        version = _version_of(raw)
+        try:
+            event = UsageEventIn.model_validate(raw)
+        except ValidationError:
+            outcomes[(version, IntakeOutcome.invalid)] += 1
+            continue
         if event.local_date > latest:
-            raise HTTPException(status.HTTP_422_UNPROCESSABLE_CONTENT, "an event is dated in the future")
-        if event.local_date < earliest:
-            raise HTTPException(
-                status.HTTP_422_UNPROCESSABLE_CONTENT,
-                "an event is older than the six months usage events are kept",
-            )
+            outcomes[(version, IntakeOutcome.future)] += 1
+        elif event.local_date < earliest:
+            outcomes[(version, IntakeOutcome.too_old)] += 1
+        elif event.id in seen:
+            # The same row twice in one batch is a resend that met itself.
+            outcomes[(version, IntakeOutcome.duplicate)] += 1
+        else:
+            seen.add(event.id)
+            kept.append(event)
+    return kept, outcomes
+
+
+def _count_intake(db: Session, today: date, outcomes: Counter) -> None:
+    """Add this batch's outcomes to the day's counts, in one statement.
+
+    Sorted, so two batches arriving together take the counters' row locks in
+    the same order and cannot deadlock each other.
+    """
+    if not outcomes:
+        return
+    table = AnalyticsIntake.__table__
+    values = [
+        {"received_on": today, "app_version": version, "outcome": outcome.value, "rows": count}
+        for (version, outcome), count in sorted(outcomes.items(), key=lambda item: (item[0][0], item[0][1].value))
+    ]
+    statement = insert(table).values(values)
+    db.execute(
+        statement.on_conflict_do_update(
+            index_elements=["received_on", "app_version", "outcome"],
+            set_={"rows": table.c.rows + statement.excluded.rows},
+        )
+    )
 
 
 def _public_keys(db: Session, months: set[date]) -> dict[date, bytes]:
@@ -120,6 +185,9 @@ def _row(event: UsageEventIn, *, today: date, key: str | None, account_id: str |
         "month_first": event.month_first,
         "ever_first": event.ever_first,
         "club_firsts": list(event.club_firsts) or None,
+        "kind_month_first": event.kind_month_first,
+        "month_returning": event.month_returning,
+        "signed_in": event.signed_in,
         "clubs": dict(event.clubs) if event.clubs else None,
         "miles": event.miles,
         "pageviews": event.pageviews,
@@ -246,28 +314,39 @@ def receive_usage_events(
 
     202 rather than 201: what was accepted is counted, not created as anything
     the caller can come back for. Idempotent on each event's `id`, so the
-    outbox's resend after a lost response stores nothing twice.
+    outbox's resend after a lost response stores nothing twice. 202 even when
+    every row was refused: the phone drops the batch either way, and the
+    counts below are where the refusal is recorded.
     """
     today = utc_now().date()
-    _check_dates(payload.events, today)
+    events, outcomes = _sort_rows(payload.events, today)
 
     linked = payload.identified and current_user is not None and bool(settings.analytics_user_key_secret)
     key = user_key(settings.analytics_user_key_secret, current_user.id) if linked else None
     account_id = current_user.id if linked else None
 
-    public_keys = _public_keys(db, {month_start(event.local_date) for event in payload.events})
-    rows = [_row(event, today=today, key=key, account_id=account_id, public_keys=public_keys) for event in payload.events]
-
-    stored_ids = set(
-        db.execute(
-            insert(AnalyticsEvent.__table__)
-            .values(rows)
-            .on_conflict_do_nothing(index_elements=["id"])
-            .returning(AnalyticsEvent.__table__.c.id)
-        ).scalars()
-    )
-    if key is not None and stored_ids:
-        _update_users(db, key, [row for row in rows if row["id"] in stored_ids])
+    stored_ids: set[str] = set()
+    if events:
+        public_keys = _public_keys(db, {month_start(event.local_date) for event in events})
+        rows = [_row(event, today=today, key=key, account_id=account_id, public_keys=public_keys) for event in events]
+        stored_ids = set(
+            db.execute(
+                insert(AnalyticsEvent.__table__)
+                .values(rows)
+                .on_conflict_do_nothing(index_elements=["id"])
+                .returning(AnalyticsEvent.__table__.c.id)
+            ).scalars()
+        )
+        for row in rows:
+            outcome = IntakeOutcome.stored if row["id"] in stored_ids else IntakeOutcome.duplicate
+            outcomes[(row["app_version"] or "", outcome)] += 1
+        if key is not None and stored_ids:
+            _update_users(db, key, [row for row in rows if row["id"] in stored_ids])
+    _count_intake(db, today, outcomes)
     db.commit()
 
-    return UsageBatchAck(accepted=len(stored_ids), duplicates=len(rows) - len(stored_ids))
+    return UsageBatchAck(
+        accepted=len(stored_ids),
+        duplicates=sum(count for (_, outcome), count in outcomes.items() if outcome == IntakeOutcome.duplicate),
+        refused=sum(count for (_, outcome), count in outcomes.items() if outcome in _REFUSED),
+    )

@@ -7,7 +7,9 @@ if it is broken:
     batch says the hiker agreed AND the token is valid.
   - **The account and the fix are only ever sealed.** No plain column holds
     either, and without a published key both are thrown away.
-  - **Anything outside the registry is refused**, whole, with a 422.
+  - **Anything outside the registry is refused, one row at a time**, and the
+    refusal is counted in `analytics_intake` - the phone keeps no copy, so
+    that count is the only trace.
   - **The User table counts each stored row once**, however often a phone
     resends it.
 """
@@ -23,7 +25,7 @@ from app.config import settings
 from app.core.analytics_rollup import add_months, month_start, retention_start
 from app.core.analytics_seal import month_label, month_private_key, month_public_key, new_secret, open_sealed, user_key
 from app.core.time import utc_now
-from app.models.analytics import AnalyticsEvent, AnalyticsSealKey, AnalyticsUser
+from app.models.analytics import AnalyticsEvent, AnalyticsIntake, AnalyticsSealKey, AnalyticsUser
 from tests.factories import make_profile
 from tests.tokens import auth_headers
 
@@ -64,6 +66,15 @@ def _post(client, events, *, identified=False, headers=None):
     return client.post("/usage-events", json={"identified": identified, "events": events}, headers=headers or {})
 
 
+def _intake(db_session) -> dict[tuple[str, str], int]:
+    """{(app_version, outcome): rows} across every day."""
+    counts: dict[tuple[str, str], int] = {}
+    for row in db_session.query(AnalyticsIntake).all():
+        outcome = row.outcome.value if hasattr(row.outcome, "value") else row.outcome
+        counts[(row.app_version, outcome)] = counts.get((row.app_version, outcome), 0) + row.rows
+    return counts
+
+
 # --- what is stored ---------------------------------------------------------
 
 
@@ -73,7 +84,7 @@ def test_a_signed_out_batch_is_stored_with_no_key(client, db_session, today):
     response = _post(client, [event])
 
     assert response.status_code == 202
-    assert response.json() == {"accepted": 1, "duplicates": 0}
+    assert response.json() == {"accepted": 1, "duplicates": 0, "refused": 0}
     stored = db_session.get(AnalyticsEvent, event["id"])
     assert stored.user_key is None and stored.month_first is True
 
@@ -84,8 +95,9 @@ def test_resending_a_batch_stores_nothing_twice(client, db_session, today):
 
     response = _post(client, events)
 
-    assert response.json() == {"accepted": 0, "duplicates": 2}
+    assert response.json() == {"accepted": 0, "duplicates": 2, "refused": 0}
     assert db_session.query(AnalyticsEvent).count() == 2
+    assert _intake(db_session) == {("", "stored"): 2, ("", "duplicate"): 2}
 
 
 # --- a token alone links nothing ---------------------------------------------
@@ -205,7 +217,7 @@ def test_no_column_could_hold_an_ip_address():
     assert not columns & {"ip", "ip_address", "remote_addr", "client_host", "user_agent"}
 
 
-# --- anything outside the registry is refused -----------------------------------
+# --- anything outside the registry is refused, row by row ------------------------
 
 
 @pytest.mark.parametrize(
@@ -239,13 +251,43 @@ def test_no_column_could_hold_an_ip_address():
         "a-version-string-with-spaces",
     ],
 )
-def test_a_batch_outside_the_registry_is_refused_whole(client, db_session, today, fields):
-    good = _event(today)
+def test_a_row_outside_the_registry_is_refused_alone(client, db_session, today, fields):
+    good = _event(today, app_version="1.4.0")
+    bad = _event(today, **{"app_version": "1.5.0", **fields})
 
-    response = _post(client, [good, _event(today, **fields)])
+    response = _post(client, [good, bad])
 
-    assert response.status_code == 422
-    assert db_session.query(AnalyticsEvent).count() == 0, "nothing from a refused batch is stored"
+    assert response.status_code == 202
+    assert response.json() == {"accepted": 1, "duplicates": 0, "refused": 1}
+    assert db_session.get(AnalyticsEvent, good["id"]) is not None
+    assert db_session.get(AnalyticsEvent, bad["id"]) is None, "the refused row is not stored"
+    version = "" if fields.get("app_version") else "1.5.0"
+    assert _intake(db_session) == {("1.4.0", "stored"): 1, (version, "invalid"): 1}
+
+
+def test_a_returning_flag_off_the_months_first_row_is_refused(client, db_session, today):
+    """`month_returning` means "counted last month too" and only on the row that
+    counts this month; anywhere else it would count a phone as returning twice."""
+    response = _post(client, [_event(today, month_returning=True)])
+
+    assert response.json()["refused"] == 1
+
+
+def test_the_three_phone_answers_are_stored_as_sent(client, db_session, today):
+    event = _event(today, month_first=True, month_returning=True, kind_month_first=True, signed_in=True)
+
+    _post(client, [event])
+
+    stored = db_session.get(AnalyticsEvent, event["id"])
+    assert (stored.month_returning, stored.kind_month_first, stored.signed_in) == (True, True, True)
+
+
+def test_a_batch_of_nothing_but_refused_rows_is_still_counted(client, db_session, today):
+    response = _post(client, [{"not": "an event"}, 7, None])
+
+    assert response.status_code == 202
+    assert response.json() == {"accepted": 0, "duplicates": 0, "refused": 3}
+    assert _intake(db_session) == {("", "invalid"): 3}
 
 
 def test_a_session_may_carry_pageviews_and_a_plan_may_carry_miles(client, db_session, today):
@@ -260,17 +302,20 @@ def test_a_session_may_carry_pageviews_and_a_plan_may_carry_miles(client, db_ses
     assert response.status_code == 202
 
 
-def test_a_date_more_than_a_day_ahead_is_refused(client, today):
-    response = _post(client, [_event(today + timedelta(days=2))])
+def test_a_date_more_than_a_day_ahead_is_refused_and_the_rest_kept(client, db_session, today):
+    response = _post(client, [_event(today + timedelta(days=2)), _event(today)])
 
-    assert response.status_code == 422
+    assert response.json() == {"accepted": 1, "duplicates": 0, "refused": 1}
+    assert _intake(db_session)[("", "future")] == 1
 
 
-def test_a_date_older_than_retention_is_refused(client, today):
-    """It would land in a month the rollup has already deleted."""
-    response = _post(client, [_event(retention_start(today) - timedelta(days=1))])
+def test_a_date_older_than_retention_is_refused_and_the_rest_kept(client, db_session, today):
+    """It would land in a month the rollup has already deleted - and before
+    rows were refused one at a time, it took every good row in its batch with it."""
+    response = _post(client, [_event(retention_start(today) - timedelta(days=1)), _event(today)])
 
-    assert response.status_code == 422
+    assert response.json() == {"accepted": 1, "duplicates": 0, "refused": 1}
+    assert _intake(db_session)[("", "too_old")] == 1
 
 
 def test_a_batch_over_the_cap_is_refused(client, today):
@@ -279,10 +324,11 @@ def test_a_batch_over_the_cap_is_refused(client, today):
     assert response.status_code == 422
 
 
-def test_the_same_id_twice_in_one_batch_is_refused(client, today):
+def test_the_same_id_twice_in_one_batch_is_stored_once(client, db_session, today):
     event = _event(today)
 
-    assert _post(client, [event, event]).status_code == 422
+    assert _post(client, [event, event]).json() == {"accepted": 1, "duplicates": 1, "refused": 0}
+    assert db_session.query(AnalyticsEvent).count() == 1
 
 
 # --- the User table ------------------------------------------------------------

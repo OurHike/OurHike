@@ -10,7 +10,9 @@ somewhere reachable from here... before autogenerate will see it."
 """
 
 from app.models.analytics import (
+    AnalyticsAnomaly,
     AnalyticsEvent,
+    AnalyticsIntake,
     AnalyticsMonth,
     AnalyticsMonthly,
     AnalyticsOpening,
@@ -97,7 +99,9 @@ from app.models.work_project import (
 )
 
 __all__ = [
+    "AnalyticsAnomaly",
     "AnalyticsEvent",
+    "AnalyticsIntake",
     "AnalyticsMonth",
     "AnalyticsMonthly",
     "AnalyticsOpening",

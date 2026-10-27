@@ -20,8 +20,10 @@
 // NOTHING IS RECORDED WHILE "Share usage statistics" IS OFF, and turning it
 // off empties the queue - lib/usageQueue.ts `clearUsage`. A row is LINKED to
 // the account only while the hiker's answer to "Link your usage to your
-// account?" is yes AND they are signed in; the token goes with linked batches
-// and with no others.
+// account?" is yes AND they are signed in, and only to THAT account: each row
+// remembers which account recorded it (`accountTag`), and is sent with a
+// token only while the same account is signed in with its yes standing. The
+// token goes with linked batches and with no others.
 
 import { useCallback, useEffect, useMemo, useRef } from 'react'
 
@@ -44,9 +46,9 @@ import {
 import {
   clearUsage,
   flushUsage,
-  forgetLinkedRows,
   type PendingSession,
   readUsage,
+  unlinkWaitingRows,
   updateUsage,
   type UsageStore,
   withRows,
@@ -60,8 +62,11 @@ export interface UsageMeasurementInput {
   ready: boolean
   /** "Share usage statistics". */
   enabled: boolean
-  /** "Link them to my account", and signed in. */
-  linked: boolean
+  /**
+   * `accountTag` of the signed-in account while its "Link them to my
+   * account" is yes, otherwise null.
+   */
+  linkedAccount: string | null
   /** First run is not finished - read once, when `ready` first turns true. */
   newInstall: boolean
   signedIn: boolean
@@ -143,6 +148,7 @@ export function useUsageMeasurement(input: UsageMeasurementInput): UsageMeasurem
           store.heartbeat,
           at,
           Object.keys(clubs ?? {}),
+          event,
         )
         const row = usageRow({
           id: crypto.randomUUID(),
@@ -151,13 +157,16 @@ export function useUsageMeasurement(input: UsageMeasurementInput): UsageMeasurem
           platform: traceShell(),
           version: BUILD_INFO.version,
           stamp,
+          signedIn: current.signedIn,
           details: {
             ...details,
             ...(clubs === undefined ? {} : { clubs }),
             ...(fix === undefined ? {} : { fix }),
           },
         })
-        return withRows({ ...store, heartbeat: next }, [{ row, linked: current.linked }])
+        return withRows({ ...store, heartbeat: next }, [
+          { row, linkedTo: current.linkedAccount },
+        ])
       })
     },
     [pointClubs],
@@ -295,20 +304,30 @@ export function useUsageMeasurement(input: UsageMeasurementInput): UsageMeasurem
     }
   }, [input.ready, input.enabled])
 
-  const wasLinked = useRef(input.linked)
+  // A no said while signed in unlinks what is still waiting. A sign-out needs
+  // nothing here: rows recorded under the account that left no longer match
+  // whoever is signed in, so they go without an account by themselves.
+  const wasLinked = useRef(input.linkedAccount)
   useEffect(() => {
-    if (wasLinked.current && !input.linked && input.ready) void forgetLinkedRows()
-    wasLinked.current = input.linked
-  }, [input.linked, input.ready])
+    if (
+      wasLinked.current !== null &&
+      input.linkedAccount === null &&
+      input.signedIn &&
+      input.ready
+    )
+      void unlinkWaitingRows()
+    wasLinked.current = input.linkedAccount
+  }, [input.linkedAccount, input.signedIn, input.ready])
 
   // --- sending, after the hiker's own work ----------------------------------------------
   const canSend =
     input.ready && input.enabled && input.online && input.reportsWaiting === 0
   useEffect(() => {
     if (!canSend) return
-    void flushUsage()
+    void flushUsage(undefined, latest.current.linkedAccount)
     const timer = window.setInterval(() => {
-      if (document.visibilityState === 'visible') void flushUsage()
+      if (document.visibilityState === 'visible')
+        void flushUsage(undefined, latest.current.linkedAccount)
     }, FLUSH_EVERY_MS)
     return () => window.clearInterval(timer)
   }, [canSend])

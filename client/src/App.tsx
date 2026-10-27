@@ -543,7 +543,7 @@ import {
   type MileRange,
 } from './lib/walkedMiles'
 import { clubRunAtMile, clubTimeline } from './lib/clubSections'
-import { clubAtTrailMile } from './lib/usageEvents'
+import { accountTag, clubAtTrailMile } from './lib/usageEvents'
 import { hikeExtent, planExtent } from './lib/usagePlans'
 import { type UsageMeasurement, useUsageMeasurement } from './lib/useUsageMeasurement'
 import {
@@ -3770,7 +3770,10 @@ function App() {
   const usage = useUsageMeasurement({
     ready: preferencesLoaded,
     enabled: preferences.measurement_enabled,
-    linked: preferences.measurement_linked === true && account !== null,
+    linkedAccount:
+      preferences.measurement_linked === true && account !== null
+        ? accountTag(account.email)
+        : null,
     newInstall: !preferences.onboarding_completed,
     signedIn: account !== null,
     online,

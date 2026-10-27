@@ -5,10 +5,10 @@ import {
   clearUsage,
   EMPTY_USAGE,
   flushUsage,
-  forgetLinkedRows,
   MAX_QUEUED,
   readUsage,
   type SendResult,
+  unlinkWaitingRows,
   type UsageStore,
   withRows,
 } from './usageQueue'
@@ -16,8 +16,9 @@ import type { QueuedUsageRow, UsageRow } from './usageEvents'
 
 // Where usage rows wait for signal (#1902). The promises pinned here: the
 // queue never grows past its cap, a refused batch is not retried for ever,
-// rows recorded under a yes do not outlive a no, and switching measurement
-// off empties everything that was waiting.
+// rows recorded under a yes are never linked after a no, a row is never sent
+// with another account's token, and switching measurement off empties
+// everything that was waiting.
 
 vi.mock('idb-keyval', () => ({ get: vi.fn(), set: vi.fn(), update: vi.fn() }))
 vi.mock('./api', () => ({
@@ -49,11 +50,17 @@ function row(id: string): UsageRow {
     month_first: false,
     ever_first: false,
     club_firsts: [],
+    kind_month_first: false,
+    month_returning: false,
+    signed_in: false,
   }
 }
 
-function queued(id: string, linked = false): QueuedUsageRow {
-  return { row: row(id), linked }
+const ALICE = 'tag-alice'
+const BOB = 'tag-bob'
+
+function queued(id: string, linkedTo: string | null = null): QueuedUsageRow {
+  return { row: row(id), linkedTo }
 }
 
 async function seed(rows: QueuedUsageRow[]) {
@@ -76,14 +83,36 @@ describe('withRows', () => {
 
 describe('flushUsage', () => {
   it('sends anonymous and linked rows in separate batches, the token only with the linked one', async () => {
-    await seed([queued('a'), queued('b', true)])
+    await seed([queued('a'), queued('b', ALICE)])
     const send = vi.fn(async (): Promise<SendResult> => 'sent')
 
-    await flushUsage(send)
+    await flushUsage(send, ALICE)
 
     expect(send).toHaveBeenCalledWith([row('a')], false)
     expect(send).toHaveBeenCalledWith([row('b')], true)
     expect((await readUsage()).rows).toEqual([])
+  })
+
+  it('never sends one account’s rows with another account’s token', async () => {
+    // Alice linked and recorded, her session expired with the app closed,
+    // and Bob signed in on the same phone before the queue had gone.
+    await seed([queued('alice-1', ALICE), queued('bob-1', BOB)])
+    const send = vi.fn(async (): Promise<SendResult> => 'sent')
+
+    await flushUsage(send, BOB)
+
+    expect(send).toHaveBeenCalledWith([row('alice-1')], false)
+    expect(send).toHaveBeenCalledWith([row('bob-1')], true)
+  })
+
+  it('sends rows recorded before a sign-out without any account, rather than losing them', async () => {
+    await seed([queued('a', ALICE)])
+    const send = vi.fn(async (): Promise<SendResult> => 'sent')
+
+    await flushUsage(send, null)
+
+    expect(send).toHaveBeenCalledTimes(1)
+    expect(send).toHaveBeenCalledWith([row('a')], false)
   })
 
   it('drops a refused batch rather than retrying it for ever', async () => {
@@ -95,10 +124,10 @@ describe('flushUsage', () => {
   })
 
   it('keeps everything for later when there is no signal', async () => {
-    await seed([queued('a'), queued('b', true)])
+    await seed([queued('a'), queued('b', ALICE)])
     const send = vi.fn(async (): Promise<SendResult> => 'later')
 
-    await flushUsage(send)
+    await flushUsage(send, ALICE)
 
     expect(send).toHaveBeenCalledTimes(1)
     expect((await readUsage()).rows).toHaveLength(2)
@@ -116,7 +145,7 @@ describe('flushUsage', () => {
 
 describe('the two switches', () => {
   it('empties the queue when measurement is switched off', async () => {
-    await seed([queued('a'), queued('b', true)])
+    await seed([queued('a'), queued('b', ALICE)])
 
     await clearUsage()
 
@@ -125,11 +154,17 @@ describe('the two switches', () => {
     expect(after.initialized).toBe(true)
   })
 
-  it('drops rows recorded under a yes when the hiker says no, and keeps the rest', async () => {
-    await seed([queued('anonymous'), queued('linked', true)])
+  it('unlinks rows recorded under a yes when the hiker says no, and still counts them', async () => {
+    await seed([queued('anonymous'), queued('linked', ALICE)])
 
-    await forgetLinkedRows()
+    await unlinkWaitingRows()
 
-    expect((await readUsage()).rows.map((q) => q.row.id)).toEqual(['anonymous'])
+    expect((await readUsage()).rows).toEqual([queued('anonymous'), queued('linked')])
+  })
+
+  it('reads a row queued before rows were bound to an account as unlinked', async () => {
+    stored = { ...EMPTY_USAGE, rows: [{ row: row('old'), linked: true }] }
+
+    expect((await readUsage()).rows).toEqual([queued('old')])
   })
 })

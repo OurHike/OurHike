@@ -72,9 +72,12 @@ KEEPALIVE_TABLES: tuple[str, ...] = (
     # holds every hiker's account id and GPS fix, sealed, beside a keyed hash
     # of the account - readable with the anon key, that would be the
     # identifier-next-to-a-place pair #252 removed, served to anyone. The
-    # other five are the monthly figures, the User table, the public keys and
-    # the record of every opening.
+    # other seven are the monthly figures, the User table, the public keys,
+    # the record of every opening, the intake counts and the data-quality
+    # findings.
+    "analytics_anomalies",
     "analytics_events",
+    "analytics_intake",
     "analytics_monthly",
     "analytics_months",
     "analytics_openings",

@@ -160,6 +160,20 @@ class AnalyticsEvent(Base):
     # §2's trick applied per club, so "devices active on a club's trails"
     # needs no identifier either.
     club_firsts = Column(JSON(none_as_null=True), nullable=True)
+    # The same trick per kind of event: the device's first map view, plan,
+    # completion, sign-in or session this month. Counting these is "phones
+    # that made a plan this month" for every phone, not only for hikers who
+    # linked an account - the funnel the User table alone cannot give.
+    kind_month_first = Column(Boolean, nullable=False, default=False)
+    # On a `month_first` row only: the device was counted last month too.
+    # New (`ever_first`), returning (this) and back-again (neither) split
+    # every month's active devices with no identifier at all.
+    month_returning = Column(Boolean, nullable=False, default=False)
+    # An account was signed in on the phone when the event happened - never
+    # which one. Lets a report say what share of phones are signed in, which
+    # nothing else here can: a hiker who said no to linking looks exactly like
+    # a signed-out one otherwise.
+    signed_in = Column(Boolean, nullable=False, default=False)
 
     # Which clubs the event was about, and in what share: {club: share}, the
     # shares summing to 1. A plan is split by its miles in each club ("assigned
@@ -188,6 +202,71 @@ class AnalyticsEvent(Base):
     # to the month's public key. Nothing in this backend can open it; only
     # `scripts/analytics_keys.py open`, run with the secret, can.
     sealed = Column(LargeBinary, nullable=True)
+
+
+class IntakeOutcome(str, enum.Enum):
+    """What `POST /usage-events` did with one row it was sent.
+
+    `stored` and `duplicate` were accepted (a duplicate is a resend of a row
+    already held). The other three were refused: `invalid` broke the registry,
+    `too_old` is dated before retention would keep it, `future` is dated more
+    than a day ahead. A refused row is dropped by the phone, so these counts
+    are the only trace it ever existed.
+    """
+
+    stored = "stored"
+    duplicate = "duplicate"
+    invalid = "invalid"
+    too_old = "too_old"
+    future = "future"
+
+
+class AnalyticsIntake(Base):
+    """How many rows arrived each day, by app version and by what became of them.
+
+    The phone drops a refused row and keeps no copy, so before this table a
+    release that broke one field was a silent hole in the numbers: the only
+    symptom was a count that came in low. Here it is a count of `invalid`
+    rows under that release's version on the day it shipped, which
+    app/core/analytics_quality.py checks every night.
+
+    No row content, no account, no place - counts only, deleted with the raw
+    rows six months on.
+    """
+
+    __tablename__ = "analytics_intake"
+
+    received_on = Column(Date, primary_key=True)
+    # The row's own version when it carried a readable one, otherwise "".
+    app_version = Column(String(40), primary_key=True)
+    outcome = Column(Enum(IntakeOutcome, native_enum=False, length=12), primary_key=True)
+    rows = Column(Integer, nullable=False, default=0)
+
+
+class AnalyticsAnomaly(Base):
+    """One finding of the nightly data-quality checks (app/core/analytics_quality.py).
+
+    Only findings are stored - a check that came out normal leaves no row - so
+    this table is the history of everything that has ever looked wrong, and
+    the report's data-quality panel reads it. `day` is the day (or the first of
+    the month) the finding is about; a finding seen on several nights keeps
+    one row, its `first_seen_on` the night it appeared.
+    """
+
+    __tablename__ = "analytics_anomalies"
+
+    day = Column(Date, primary_key=True)
+    check_name = Column(String(48), primary_key=True)
+    # "*" for the whole app, or a narrower slice: "version:1.5.2".
+    scope = Column(String(64), primary_key=True)
+    # low, high, zero, broken (an invariant failed) or warn (a pipeline fault).
+    status = Column(String(12), nullable=False)
+    observed = Column(Float, nullable=True)
+    expected = Column(Float, nullable=True)
+    low = Column(Float, nullable=True)
+    high = Column(Float, nullable=True)
+    first_seen_on = Column(Date, nullable=False)
+    last_seen_on = Column(Date, nullable=False)
 
 
 class AnalyticsMonth(Base):

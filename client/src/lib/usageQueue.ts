@@ -12,7 +12,10 @@
 // FIRE AND FORGET. A refused batch (a 4xx other than a timeout or a rate
 // limit) is dropped - the server will never take it, and nothing here is
 // worth a retry loop or a message to the hiker. A batch that could not be
-// delivered stays for the next chance.
+// delivered stays for the next chance. The server refuses ROWS rather than
+// batches since #1902's accuracy pass, so one row with a wrong date costs
+// that row and not the 199 sent with it - and the server counts what it
+// refused, which is how a release that breaks a row shows up at all.
 
 import { get, set, update } from 'idb-keyval'
 
@@ -20,6 +23,7 @@ import { accessToken, ApiError, apiFetch, API_CONFIGURED } from './api'
 import {
   FRESH_HEARTBEAT,
   type Heartbeat,
+  normaliseHeartbeat,
   type QueuedUsageRow,
   type UsageRow,
 } from './usageEvents'
@@ -57,13 +61,27 @@ export const EMPTY_USAGE: UsageStore = {
   initialized: false,
 }
 
+function queuedRow(raw: unknown): QueuedUsageRow | null {
+  if (typeof raw !== 'object' || raw === null) return null
+  const queued = raw as { row?: unknown; linkedTo?: unknown }
+  if (typeof queued.row !== 'object' || queued.row === null) return null
+  // A row written before rows were bound to an account carries no account to
+  // check a token against, so it goes without one.
+  return {
+    row: queued.row as UsageRow,
+    linkedTo: typeof queued.linkedTo === 'string' ? queued.linkedTo : null,
+  }
+}
+
 function normalise(raw: unknown): UsageStore {
   if (typeof raw !== 'object' || raw === null) return EMPTY_USAGE
-  const store = raw as Partial<UsageStore>
+  const store = raw as Partial<Record<keyof UsageStore, unknown>>
   return {
-    rows: Array.isArray(store.rows) ? store.rows : [],
-    heartbeat: store.heartbeat ?? FRESH_HEARTBEAT,
-    session: store.session ?? null,
+    rows: Array.isArray(store.rows)
+      ? store.rows.map(queuedRow).filter((row): row is QueuedUsageRow => row !== null)
+      : [],
+    heartbeat: normaliseHeartbeat(store.heartbeat),
+    session: (store.session as PendingSession | null | undefined) ?? null,
     initialized: store.initialized === true,
   }
 }
@@ -114,11 +132,15 @@ export async function clearUsage(): Promise<void> {
   }
 }
 
-/** The hiker said no to linking: rows recorded under their yes do not leave. */
-export async function forgetLinkedRows(): Promise<void> {
+/**
+ * The hiker said no to linking: rows recorded under their yes leave without
+ * the account. Still counted - "Share usage statistics" is still on, and a
+ * no to linking is a no to the account, not to the count.
+ */
+export async function unlinkWaitingRows(): Promise<void> {
   await updateUsage((store) => ({
     ...store,
-    rows: store.rows.filter((queued) => !queued.linked),
+    rows: store.rows.map((queued) => ({ ...queued, linkedTo: null })),
   }))
 }
 
@@ -155,16 +177,25 @@ let inFlight: Promise<number> | null = null
 /**
  * Send what is waiting, linked rows and anonymous rows in separate batches.
  * Returns how many rows left the queue. Overlapping calls share one flush.
+ *
+ * `linkedAccount` is `accountTag` of the account signed in now with its yes
+ * standing, or null. A row goes linked only when it was recorded under that
+ * same account; a row recorded under another account, or before a sign-out,
+ * goes without one - counted, and never attributed to whoever holds the
+ * phone today.
  */
 export function flushUsage(
   send: typeof sendUsageBatch = sendUsageBatch,
+  linkedAccount: string | null = null,
 ): Promise<number> {
   if (inFlight !== null) return inFlight
   inFlight = (async () => {
     let gone = 0
     const { rows } = await readUsage()
+    const linkable = (queued: QueuedUsageRow) =>
+      linkedAccount !== null && queued.linkedTo === linkedAccount
     for (const linked of [false, true]) {
-      const waiting = rows.filter((queued) => queued.linked === linked)
+      const waiting = rows.filter((queued) => linkable(queued) === linked)
       for (let start = 0; start < waiting.length; start += BATCH_SIZE) {
         const batch = waiting.slice(start, start + BATCH_SIZE)
         const result = await send(

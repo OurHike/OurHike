@@ -60,45 +60,90 @@ describe('isoWeek', () => {
 })
 
 describe('stampHeartbeat', () => {
+  const view = 'map_screen_viewed' as const
+
   it('marks a phone’s first event ever as first of the week, the month and ever', () => {
-    const { stamp } = stampHeartbeat(FRESH_HEARTBEAT, new Date(2026, 9, 27), [])
+    const { stamp } = stampHeartbeat(FRESH_HEARTBEAT, new Date(2026, 9, 27), [], view)
 
     expect(stamp).toEqual({
       week_first: true,
       month_first: true,
       ever_first: true,
       club_firsts: [],
+      kind_month_first: true,
+      month_returning: false,
     })
   })
 
-  it('marks nothing on a second event the same day', () => {
-    const first = stampHeartbeat(FRESH_HEARTBEAT, new Date(2026, 9, 27), [])
-    const { stamp } = stampHeartbeat(first.next, new Date(2026, 9, 27, 18), [])
+  it('marks nothing on a second event of the same kind the same day', () => {
+    const first = stampHeartbeat(FRESH_HEARTBEAT, new Date(2026, 9, 27), [], view)
+    const { stamp } = stampHeartbeat(first.next, new Date(2026, 9, 27, 18), [], view)
 
     expect(stamp).toEqual({
       week_first: false,
       month_first: false,
       ever_first: false,
       club_firsts: [],
+      kind_month_first: false,
+      month_returning: false,
     })
   })
 
+  it('marks a different kind of event as that kind’s first this month', () => {
+    const first = stampHeartbeat(FRESH_HEARTBEAT, new Date(2026, 9, 27), [], view)
+    const { stamp } = stampHeartbeat(
+      first.next,
+      new Date(2026, 9, 28),
+      [],
+      'hike_plan_made',
+    )
+
+    expect(stamp.kind_month_first).toBe(true)
+    expect(stamp.month_first).toBe(false)
+  })
+
   it('marks only the week when a new week starts inside the same month', () => {
-    const first = stampHeartbeat(FRESH_HEARTBEAT, new Date(2026, 9, 14), [])
-    const { stamp } = stampHeartbeat(first.next, new Date(2026, 9, 21), [])
+    const first = stampHeartbeat(FRESH_HEARTBEAT, new Date(2026, 9, 14), [], view)
+    const { stamp } = stampHeartbeat(first.next, new Date(2026, 9, 21), [], view)
 
     expect(stamp.week_first).toBe(true)
     expect(stamp.month_first).toBe(false)
   })
 
   it('counts a club once a month per phone, and again the next month', () => {
-    const october = stampHeartbeat(FRESH_HEARTBEAT, new Date(2026, 9, 3), ['NYNJTC'])
-    const again = stampHeartbeat(october.next, new Date(2026, 9, 9), ['NYNJTC', 'GATC'])
-    const november = stampHeartbeat(again.next, new Date(2026, 10, 2), ['NYNJTC'])
+    const october = stampHeartbeat(
+      FRESH_HEARTBEAT,
+      new Date(2026, 9, 3),
+      ['NYNJTC'],
+      view,
+    )
+    const again = stampHeartbeat(
+      october.next,
+      new Date(2026, 9, 9),
+      ['NYNJTC', 'GATC'],
+      view,
+    )
+    const november = stampHeartbeat(again.next, new Date(2026, 10, 2), ['NYNJTC'], view)
 
     expect(october.stamp.club_firsts).toEqual(['NYNJTC'])
     expect(again.stamp.club_firsts).toEqual(['GATC'])
     expect(november.stamp.club_firsts).toEqual(['NYNJTC'])
+    expect(november.stamp.month_returning).toBe(true)
+  })
+
+  it('does not count a visit from Sunday night twice when it is recorded after Monday’s first row', () => {
+    // The ordering that double-counted every phone whose visit crossed a
+    // week boundary before the heartbeat kept sets (usageHeartbeat.test.ts).
+    const sunday = new Date(2026, 9, 25, 23, 40)
+    const monday = new Date(2026, 9, 26, 0, 20)
+    const sundayView = stampHeartbeat(FRESH_HEARTBEAT, sunday, [], view)
+    const mondayView = stampHeartbeat(sundayView.next, monday, [], view)
+    const visit = stampHeartbeat(mondayView.next, sunday, [], 'session')
+    const later = stampHeartbeat(visit.next, new Date(2026, 9, 26, 9), [], view)
+
+    expect([sundayView, mondayView, visit, later].map((s) => s.stamp.week_first)).toEqual(
+      [true, true, false, false],
+    )
   })
 })
 
@@ -196,6 +241,8 @@ describe('usageRow', () => {
     month_first: false,
     ever_first: false,
     club_firsts: [],
+    kind_month_first: true,
+    month_returning: false,
   }
 
   it('dates a row by the phone’s calendar and carries no account or time of day', () => {
@@ -206,10 +253,12 @@ describe('usageRow', () => {
       platform: 'android',
       version: '1.4.0',
       stamp,
+      signedIn: true,
       details: {},
     })
 
     expect(row.local_date).toBe('2026-10-27')
+    expect(row.signed_in).toBe(true)
     expect(Object.keys(row).sort()).toEqual(
       [
         'app_version',
@@ -217,9 +266,12 @@ describe('usageRow', () => {
         'event',
         'ever_first',
         'id',
+        'kind_month_first',
         'local_date',
         'month_first',
+        'month_returning',
         'platform',
+        'signed_in',
         'week_first',
       ].sort(),
     )
@@ -233,6 +285,7 @@ describe('usageRow', () => {
       platform: 'ios',
       version: '1.4.0',
       stamp,
+      signedIn: false,
       details: { miles: 12.3456 },
     })
 

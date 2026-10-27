@@ -10,6 +10,7 @@ import json
 import logging
 from datetime import datetime, timedelta
 from html import escape
+from urllib.parse import parse_qs
 
 from fastapi import APIRouter, Depends, HTTPException, Request, Response, status
 from fastapi.responses import HTMLResponse
@@ -17,20 +18,21 @@ from sqlalchemy.exc import InterfaceError, OperationalError
 from sqlalchemy.orm import Session
 
 from app.core.auth import get_current_email, get_current_user
-from app.core.mail import ses_client, suppress
+from app.core.mail import lift_unsubscribe, ses_client, suppress, suppression_reason
 from app.core.support import (
     BLOCKS_CHOICE,
     STOPPABLE,
     apply_delivery,
     mark_stop,
     notify_stop,
+    purge_expired,
     record_failed_delivery,
     retry_stop_requests,
     settle_lapsed,
     summary_row,
     year_total,
 )
-from app.core.support_mail import manage_url, send_setup_link
+from app.core.support_mail import manage_url, send_setup_link, set_support_mail, support_mail_on
 from app.core.support_providers import current_provider, provider_for
 from app.core.time import utc_now
 from app.db.session import get_db
@@ -40,6 +42,7 @@ from app.models.support import SUPPORT_TERMS_VERSION, SupportCadence, SupportCho
 from app.schemas.support import (
     SupportChoiceIn,
     SupportChoiceReceipt,
+    SupportMailIn,
     SupportOut,
     SupportTotalOut,
     WebhookAck,
@@ -60,7 +63,12 @@ def _blocked(rows: list[SupportChoice]) -> bool:
 
 
 def _summary(db: Session, profile_id: str) -> SupportOut:
-    return SupportOut.from_row(summary_row(db, profile_id), blocked=_blocked(_rows(db, profile_id)))
+    row = summary_row(db, profile_id)
+    return SupportOut.from_row(
+        row,
+        blocked=_blocked(_rows(db, profile_id)),
+        support_emails=support_mail_on(db, row.email if row is not None else None),
+    )
 
 
 @router.get("/me", response_model=SupportOut)
@@ -166,6 +174,25 @@ def choose_support(
         checkout_url=checkout if choice.delivery == "redirect" else None,
         emailed=emailed,
     )
+
+
+@router.put("/me/mail", response_model=SupportOut)
+def set_my_support_mail(
+    choice: SupportMailIn,
+    current_user: Profile = Depends(get_current_user),
+    email: str | None = Depends(get_current_email),
+    db: Session = Depends(get_db),
+) -> SupportOut:
+    """The app's "Emails about my support" switch, for the verified address
+    on the caller's token - the same address the emails go to."""
+    if email is None:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
+            detail="Your sign-in carries no email address.",
+        )
+    set_support_mail(db, email, choice.support_emails)
+    db.commit()
+    return _summary(db, current_user.id)
 
 
 @router.post("/me/stop", response_model=SupportOut)
@@ -291,6 +318,9 @@ def provider_webhook(
         # Committed whether or not any went: a failed try still records when
         # it was made, which is what spaces the next one out.
         retry_stop_requests(db, mail_provider=mail_provider)
+        # Nothing here runs on a schedule, so the seven-year purge rides on
+        # deliveries too, a few rows at a time.
+        purge_expired(db)
         db.commit()
     except Exception as exc:  # best effort; the delivery itself is recorded
         db.rollback()
@@ -301,8 +331,15 @@ def provider_webhook(
 _PAGE = """<!doctype html>
 <html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
 <title>OurHike email</title>
-<style>body{{font:16px/1.5 system-ui,sans-serif;max-width:32rem;margin:3rem auto;padding:0 1rem}}
-button{{font:inherit;padding:.6rem 1.2rem}}</style></head>
+<style>body{{font:16px/1.5 system-ui,sans-serif;max-width:32rem;margin:3rem auto;padding:0 1rem;color:#1d2a22}}
+button{{font:inherit;padding:.6rem 1.2rem}}
+.switch{{display:flex;align-items:center;justify-content:space-between;gap:1rem;padding:.9rem 0;border-top:1px solid #d9d2c3}}
+.switch small{{display:block;color:#5b6b60}}
+.switch input{{appearance:none;flex:none;width:3rem;height:1.75rem;border-radius:1rem;background:#c9c2b4;position:relative;cursor:pointer}}
+.switch input::after{{content:"";position:absolute;top:.2rem;left:.2rem;width:1.35rem;height:1.35rem;border-radius:50%;background:#fff;transition:left .15s}}
+.switch input:checked{{background:#2f5a3a}} .switch input:checked::after{{left:1.45rem}}
+.switch input:disabled{{opacity:.5;cursor:not-allowed}}
+.switch input:focus-visible{{outline:3px solid #b5651d;outline-offset:2px}}</style></head>
 <body>{body}</body></html>"""
 
 
@@ -310,32 +347,71 @@ def _choice_for_token(db: Session, token: str) -> SupportChoice:
     row = None
     if 0 < len(token) <= 64:
         row = db.query(SupportChoice).filter(SupportChoice.link_token == token).first()
-    if row is None:
+    if row is None or not row.email:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="This link is not one of ours.")
     return row
 
 
+def _switches_page(db: Session, row: SupportChoice, *, saved: bool = False) -> HTMLResponse:
+    """The two switches, set to what is true now (the maintainer's choice,
+    poll 2026-10-27: switches the hiker controls, not buttons)."""
+    support_on = support_mail_on(db, row.email)
+    reason = suppression_reason(db, row.email)
+    everything_on = reason is None
+    # Only the hiker's own unsubscribe can be undone here; a bounce or a
+    # refusal is not theirs to switch back.
+    locked = reason is not None and reason != SuppressionReason.unsubscribed
+    note = (
+        "<p><small>This address can't get OurHike email right now: mail to it was returned or refused. "
+        "Write to hello@ourhike.org if that's wrong.</small></p>"
+        if locked
+        else ""
+    )
+    body = (
+        "<h1>Your email from OurHike</h1>"
+        f"<p>For {escape(row.email)}. Turning these off doesn't stop a payment - that's "
+        f'<a href="{escape(manage_url())}">More → Your support → Stop</a> in the app.</p>'
+        + ('<p role="status"><strong>Saved.</strong></p>' if saved else "")
+        + '<form method="post"><input type="hidden" name="form" value="1">'
+        '<label class="switch"><span>Emails about my support<small>Receipts, and word when a payment stops</small></span>'
+        f'<input type="checkbox" role="switch" name="support"{" checked" if support_on else ""}></label>'
+        '<label class="switch"><span>Every other email from OurHike<small>Including a setup link you ask for</small></span>'
+        f'<input type="checkbox" role="switch" name="everything"{" checked" if everything_on else ""}'
+        f"{' disabled' if locked else ''}></label>"
+        f"{note}"
+        '<p><button type="submit">Save</button></p></form>'
+    )
+    return HTMLResponse(_PAGE.format(body=body))
+
+
 @router.get("/mail/stop/{token}", response_class=HTMLResponse)
 def unsubscribe_page(token: str, db: Session = Depends(get_db)) -> HTMLResponse:
-    """A button, not an action: mail scanners follow GET links, and a GET
-    that unsubscribed would unsubscribe whoever's inbox a scanner sits in."""
-    _choice_for_token(db, token)
-    return HTMLResponse(
-        _PAGE.format(
-            body="<h1>Stop OurHike's emails about your support?</h1>"
-            "<p>This stops every email OurHike sends to this address. It does not stop a payment - "
-            f'that is <a href="{escape(manage_url())}">More → Your support → Stop</a> in the app.</p>'
-            '<form method="post"><button type="submit">Stop the emails</button></form>'
-        )
-    )
+    """The switches, as they stand. A page, not an action: mail scanners
+    follow GET links, and a GET that changed anything would change it for
+    whoever's inbox a scanner sits in."""
+    return _switches_page(db, _choice_for_token(db, token))
 
 
 @router.post("/mail/stop/{token}", response_class=HTMLResponse)
-def unsubscribe(token: str, db: Session = Depends(get_db)) -> HTMLResponse:
-    """RFC 8058's one-click unsubscribe, and the page's button. Writes the
-    address to app/core/mail.py's one suppression list, which nothing this
-    project sends steps around."""
+def unsubscribe(token: str, raw: bytes = Depends(_raw_body), db: Session = Depends(get_db)) -> HTMLResponse:
+    """RFC 8058's one-click unsubscribe, and the page's Save.
+
+    A mail app's one-click (`List-Unsubscribe=One-Click`) turns off emails
+    about support only - the narrow default the maintainer chose. The page's
+    form sets both switches as the hiker left them: "Every other email" off
+    writes the address to app/core/mail.py's one suppression list, and on
+    lifts only an unsubscribe the hiker made themselves.
+    """
     row = _choice_for_token(db, token)
-    suppress(db, row.email, SuppressionReason.unsubscribed, note="support email link")
+    fields = parse_qs(raw.decode("utf-8", "replace"), keep_blank_values=True)
+    if "form" not in fields:
+        set_support_mail(db, row.email, False)
+        db.commit()
+        return _switches_page(db, row, saved=True)
+    set_support_mail(db, row.email, "support" in fields)
+    if "everything" in fields:
+        lift_unsubscribe(db, row.email)
+    else:
+        suppress(db, row.email, SuppressionReason.unsubscribed, note="support email switches")
     db.commit()
-    return HTMLResponse(_PAGE.format(body="<h1>Done.</h1><p>OurHike won't email this address again.</p>"))
+    return _switches_page(db, row, saved=True)

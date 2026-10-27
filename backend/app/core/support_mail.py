@@ -30,10 +30,15 @@ choice, then a new one) cannot each send their own; it is per amount, so a
 hiker who changes tier gets the link for the tier they now chose.
 
 **EVERY HIKER-FACING MESSAGE CARRIES A REAL UNSUBSCRIBE** when
-`settings.api_public_url` is set: a per-row token that suppresses the address
-through app/core/mail.py's one list. The founder's cancel request does not -
-it is the cancellation's first step, and a founder who could opt out of it
-could opt a hiker into being charged.
+`settings.api_public_url` is set: a per-row token whose page holds two
+switches, "Emails about my support" and "Every other email from OurHike"
+(the maintainer's choice, poll 2026-10-27, over one link that stopped
+everything). A mail app's own one-click Unsubscribe turns off only the
+first. The first is `SupportMailPreference`, checked here and nowhere else;
+the second is app/core/mail.py's one suppression list. The setup link is
+sent only when the hiker asks for it, so only the second stops it. The
+founder's mail carries neither - a founder who could opt out of a cancel
+request could opt a hiker into being charged.
 
 **NOTHING HERE RAISES AND NOTHING HERE LOGS AN ADDRESS.** Each returns whether
 the message went; a refusal is logged by the row id and the exception's class,
@@ -51,8 +56,9 @@ from sqlalchemy.orm import Session
 
 from app.config import settings
 from app.core.mail import MailDisabled, MailFailed, MailSuppressed, normalise, send
+from app.core.time import utc_now
 from app.models.mail import EmailSend, MailPurpose, MailState
-from app.models.support import SupportChoice, SupportStatus
+from app.models.support import SupportChoice, SupportMailPreference, SupportStatus
 
 log = logging.getLogger(__name__)
 
@@ -85,7 +91,28 @@ def unsubscribe_url(choice: SupportChoice) -> str:
 def _stop_line(choice: SupportChoice) -> str:
     """The body's own unsubscribe line, when there is a real one to give."""
     url = unsubscribe_url(choice)
-    return "" if url == manage_url() else f"\nStop emails like this one: {url}\n"
+    return "" if url == manage_url() else f"\nChoose which emails you get from OurHike: {url}\n"
+
+
+def support_mail_on(db: Session, address: str | None) -> bool:
+    """Whether this address still wants emails about its support."""
+    if not address:
+        return True
+    row = db.get(SupportMailPreference, normalise(address))
+    return row is None or row.off_at is None
+
+
+def set_support_mail(db: Session, address: str, on: bool) -> None:
+    """Turn emails about this address's support on or off. Does not commit."""
+    key = normalise(address)
+    if not key:
+        return
+    row = db.get(SupportMailPreference, key)
+    if row is None:
+        row = SupportMailPreference(address=key)
+        db.add(row)
+    row.off_at = None if on else (row.off_at or utc_now())
+    db.flush()
 
 
 def dollars(cents: int, currency: str = "USD") -> str:
@@ -104,8 +131,15 @@ def _send(
     body: str,
     unsubscribe: str,
     mail_provider,
+    optional: bool = True,
 ) -> bool:
+    """Send one message. `optional` mail is what the "Emails about my
+    support" switch turns off; the founder's mail and a setup link the hiker
+    just asked for are not."""
     if mail_provider is None or not to:
+        return False
+    if optional and to != settings.support_notify_address and not support_mail_on(db, to):
+        log.info("support: %s for choice %s not sent: support emails are off", purpose.value, choice.id)
         return False
     try:
         send(
@@ -180,6 +214,7 @@ def send_setup_link(
         body=body,
         unsubscribe=unsubscribe_url(choice),
         mail_provider=mail_provider,
+        optional=False,
     )
 
 
@@ -239,6 +274,7 @@ def email_founder_to_cancel(
         db,
         choice=choice,
         to=settings.support_notify_address,
+        optional=False,
         purpose=MailPurpose.support_stop_request,
         subject=f"Stop requested: {amount} a {choice.cadence.value} on {provider_label}",
         body="\n".join(lines) + "\n",
@@ -324,6 +360,7 @@ def email_founder_payment_note(
         db,
         choice=choice,
         to=settings.support_notify_address,
+        optional=False,
         purpose=MailPurpose.support_payment_note,
         subject=f"A {amount} payment the app could not place",
         body="\n".join(lines) + "\n",

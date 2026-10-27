@@ -1,4 +1,4 @@
-// The three support calls (#1876): read, choose, Stop.
+// The support calls (#1876): read, choose, Stop, and the email switch.
 //
 // All three are `authedFetch`, and none is queued through the outbox: a
 // support choice is a decision made with the hiker looking at the screen, so
@@ -48,6 +48,15 @@ export async function chooseSupport(
     body: JSON.stringify(request),
   })
   return (await response.json()) as SupportChoiceReceipt
+}
+
+/** The "Emails about my support" switch. Answers the summary, as Stop does. */
+export async function setSupportMail(on: boolean): Promise<SupportSummary> {
+  const response = await authedFetch('/support/me/mail', {
+    method: 'PUT',
+    body: JSON.stringify({ support_emails: on }),
+  })
+  return (await response.json()) as SupportSummary
 }
 
 /** Ask for the recurring payment to stop. One call, no reason asked. */

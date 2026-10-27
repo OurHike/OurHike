@@ -17,7 +17,8 @@
 
 import { useState } from 'react'
 import { Capacitor } from '@capacitor/core'
-import { stopSupport } from '../lib/supportApi'
+import { setSupportMail, stopSupport } from '../lib/supportApi'
+import { usePaidChoiceAllowed } from '../lib/storefront'
 import { useSupport } from '../lib/useSupport'
 import { dollars, type LocalChoice, type SupportSummary } from '../lib/support'
 import './support.css'
@@ -35,9 +36,15 @@ export interface YourSupportProps {
   /** Open the ask at its choice, to pick or change a paid amount. */
   onChoose: () => void
   onStopped: (support: SupportSummary) => void
+  /** The email switch answered with a new summary. */
+  onMailChanged?: (support: SupportSummary) => void
   /** Injected for tests. */
   stop?: typeof stopSupport
+  setMail?: typeof setSupportMail
   native?: boolean
+  /** Whether this install may offer a paid choice (lib/storefront.ts): a
+   *  store app only on a US account. Null while the store is asked. */
+  paidAllowed?: boolean | null
 }
 
 function day(iso: string | null): string {
@@ -60,11 +67,32 @@ export function YourSupport({
   onChoose,
   onStopped,
   stop = stopSupport,
+  onMailChanged = onStopped,
+  setMail = setSupportMail,
+  paidAllowed = true,
   native = Capacitor.isNativePlatform(),
 }: YourSupportProps) {
   const [confirming, setConfirming] = useState(false)
   const [busy, setBusy] = useState(false)
   const [stopError, setStopError] = useState(false)
+
+  // Every "Choose" below waits on this. Stop never does: stopping a payment
+  // is not a call to buy, in any store.
+  const canChoose = paidAllowed === true
+  const [mailBusy, setMailBusy] = useState(false)
+  const [mailError, setMailError] = useState(false)
+
+  async function toggleMail(on: boolean) {
+    setMailBusy(true)
+    setMailError(false)
+    try {
+      onMailChanged(await setMail(on))
+    } catch {
+      setMailError(true)
+    } finally {
+      setMailBusy(false)
+    }
+  }
 
   async function confirmStop() {
     setBusy(true)
@@ -124,7 +152,8 @@ export function YourSupport({
             <p className="your-support__meta">{meta(server)}</p>
           </div>
           {!server.can_stop ? (
-            server.can_choose && (
+            server.can_choose &&
+            canChoose && (
               <button type="button" className="settings__action" onClick={onChoose}>
                 Choose an amount again
               </button>
@@ -175,7 +204,7 @@ export function YourSupport({
           {/* Both at once: a pending choice whose amount can still change,
               or a payment on a provider OurHike has moved away from. The
               server says which (the third #1885 review). */}
-          {server.can_stop && server.can_choose && !confirming && (
+          {server.can_stop && server.can_choose && canChoose && !confirming && (
             <button type="button" className="settings__action" onClick={onChoose}>
               Choose a different amount
             </button>
@@ -200,7 +229,7 @@ export function YourSupport({
                 : `${day(server.ended_at)}. No more charges. Thank you for the time you gave.`}
             </p>
           </div>
-          {server.can_choose && (
+          {server.can_choose && canChoose && (
             <button type="button" className="settings__action" onClick={onChoose}>
               Choose an amount again
             </button>
@@ -209,19 +238,54 @@ export function YourSupport({
       ) : (
         <>
           <p className="settings__note">
-            {local !== null && local.year === now.getFullYear()
-              ? `You chose $0 for ${local.year}. That's a real answer, and everything keeps working.`
-              : "You haven't chosen yet this year. Everything keeps working either way."}
+            {paidAllowed === false
+              ? '$0 is the only answer in this app, and everything keeps working.'
+              : local !== null && local.year === now.getFullYear()
+                ? `You chose $0 for ${local.year}. That's a real answer, and everything keeps working.`
+                : "You haven't chosen yet this year. Everything keeps working either way."}
           </p>
-          <button type="button" className="settings__action" onClick={onChoose}>
-            Choose an amount
-          </button>
+          {canChoose && (
+            <button type="button" className="settings__action" onClick={onChoose}>
+              Choose an amount
+            </button>
+          )}
           {!signedIn && (
             <button type="button" className="settings__action" onClick={onSignIn}>
               Already supporting? Sign in
             </button>
           )}
         </>
+      )}
+
+      {/* The maintainer's switch (poll, 2026-10-27): the same choice an
+          email's own page offers, so it can be turned back on from here.
+          Only with a server answer to hang it on - the address it governs
+          is the one that support is under. */}
+      {apiConfigured && signedIn && server !== null && server.status !== 'none' && (
+        <div className="your-support__mail">
+          <span className="your-support__mail-text">
+            <span id="your-support-mail-label">Emails about my support</span>
+            <span className="settings__link-hint">
+              Receipts, and word when a payment stops
+            </span>
+          </span>
+          <button
+            type="button"
+            role="switch"
+            className="your-support__switch"
+            aria-labelledby="your-support-mail-label"
+            aria-checked={server.support_emails}
+            disabled={mailBusy}
+            onClick={() => void toggleMail(!server.support_emails)}
+          >
+            <span className="your-support__switch-knob" aria-hidden="true" />
+          </button>
+        </div>
+      )}
+      {mailError && (
+        <p className="support-ask__error" role="alert">
+          That didn&rsquo;t save. Check your signal and try again.
+        </p>
       )}
 
       {error && (
@@ -268,6 +332,7 @@ export function YourSupportPage({
   onChoose,
 }: YourSupportPageProps) {
   const support = useSupport(signedIn)
+  const paidAllowed = usePaidChoiceAllowed()
   return (
     <YourSupport
       apiConfigured={apiConfigured}
@@ -279,6 +344,8 @@ export function YourSupportPage({
       onSignIn={onSignIn}
       onChoose={onChoose}
       onStopped={support.replace}
+      onMailChanged={support.replace}
+      paidAllowed={paidAllowed}
     />
   )
 }

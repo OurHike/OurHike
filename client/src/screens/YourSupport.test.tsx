@@ -23,6 +23,7 @@ const ACTIVE: SupportSummary = {
   supporting: true,
   can_stop: true,
   can_choose: false,
+  support_emails: true,
 }
 
 const NOW = new Date('2026-10-23T12:00:00')
@@ -110,6 +111,35 @@ describe('Your support', () => {
 
     expect(props.onChoose).toHaveBeenCalled()
     expect(screen.getByRole('button', { name: 'Stop my support' })).toBeInTheDocument()
+  })
+
+  it('turns emails about support off with a switch, and says what the server answered', async () => {
+    const answered = { ...ACTIVE, support_emails: false }
+    const setMail = vi.fn().mockResolvedValue(answered)
+    const props = setup({ setMail, onMailChanged: vi.fn() })
+    const toggle = screen.getByRole('switch', { name: 'Emails about my support' })
+    expect(toggle).toHaveAttribute('aria-checked', 'true')
+
+    await userEvent.click(toggle)
+
+    expect(setMail).toHaveBeenCalledWith(false)
+    expect(props.onMailChanged).toHaveBeenCalledWith(answered)
+  })
+
+  it('offers no paid choice in a store app on a non-US account, but still offers Stop', () => {
+    setup({ paidAllowed: false, server: { ...ACTIVE, can_choose: true } })
+    expect(screen.getByRole('button', { name: 'Stop my support' })).toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: /Choose/ })).not.toBeInTheDocument()
+    cleanup()
+
+    setup({ paidAllowed: false, server: null })
+    expect(screen.getByText(/\$0 is the only answer in this app/)).toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: /Choose/ })).not.toBeInTheDocument()
+  })
+
+  it('shows no email switch with no support to hang it on', () => {
+    setup({ server: { ...ACTIVE, status: 'none', amount_cents: null } })
+    expect(screen.queryByRole('switch')).not.toBeInTheDocument()
   })
 
   it('offers Stop only when the server says it would do something', () => {

@@ -162,6 +162,9 @@ KEEPALIVE_TABLES: tuple[str, ...] = (
     # And each charge (#1876): an amount and a date per supporter, which the
     # published total sums so that nobody has to read these.
     "support_charges",
+    # And which addresses turned support emails off (#1876): an address per
+    # row, the same claim as the two above.
+    "support_mail_preferences",
     # A hiker's own day hikes (#976): the same private-planning claim as the
     # #892 pair below - a route somebody intends to walk, served to nobody
     # else.

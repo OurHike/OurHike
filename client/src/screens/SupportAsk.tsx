@@ -87,7 +87,9 @@ const TIER_LINES: Record<Tier, string> = {
   1200: 'Pay what you can.',
   6000: 'Pay what you want.',
   12000: 'Pay it forward.',
-  0: "I can't right now. Trails are for everyone, and so is this map.",
+  // "Not this year" rather than "I can't right now" (the maintainer,
+  // 2026-10-27): $0 is a choice, not a confession of being short of money.
+  0: 'Not this year. Trails are for everyone, and so is this map.',
 }
 
 export function SupportAsk({
@@ -106,7 +108,6 @@ export function SupportAsk({
   const [picked, setPicked] = useState<Tier | null>(
     initial.kind === 'confirm' ? initial.tier : null,
   )
-  const [accounting, setAccounting] = useState(false)
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
@@ -126,7 +127,10 @@ export function SupportAsk({
     try {
       receipt = await choose({
         amount_cents: tier,
-        accounting_email: accounting,
+        // The yearly accounting email is hidden until it exists (the
+        // maintainer, 2026-10-27): a box promising mail nobody sends is a
+        // claim nobody stands behind. The field stays, so it can return.
+        accounting_email: false,
         delivery: native ? 'email' : 'redirect',
       })
     } catch {
@@ -280,14 +284,6 @@ export function SupportAsk({
             If OurHike ever changes payment provider, we&rsquo;ll email you once to move
             it. Nothing moves without you.
           </p>
-          <label className="support-ask__check">
-            <input
-              type="checkbox"
-              checked={accounting}
-              onChange={(event) => setAccounting(event.target.checked)}
-            />
-            <span>Email me the yearly accounting of where the money went.</span>
-          </label>
           {error !== null && (
             <p className="support-ask__error" role="alert">
               {error}

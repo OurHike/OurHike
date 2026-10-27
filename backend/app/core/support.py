@@ -37,7 +37,13 @@ acknowledged - unless the failure was the database connection itself, which
 the router answers 503 so the provider retries.
 
 **THE TOTAL IS READ FROM CHARGES**, one row per provider charge id in
-`support_charges`, which a unique key keeps from being counted twice.
+`support_charges`, which a unique key keeps from being counted twice, net of
+refunds (a refund is a negative row, recognised by the payer's provider id).
+
+**A PAID RECORD IS KEPT SEVEN YEARS AFTER IT ENDS, THEN DELETED**, once the
+account it belonged to is gone (the maintainer, 2026-10-27). `purge_expired`
+does it a few rows at a time on each webhook delivery, since nothing here
+runs on a schedule.
 
 **A STOP IS RECORDED BEFORE THE PROVIDER IS ASKED, AND RETRIED UNTIL IT IS.**
 `mark_stop` changes the row; the caller commits; `notify_stop` then asks the
@@ -60,6 +66,7 @@ from sqlalchemy.orm import Session
 from app.core.support_mail import email_founder_payment_note, email_hiker_started, email_hiker_stopped
 from app.core.support_providers import EventKind, ProviderEvent, SupportProvider, provider_for
 from app.core.time import utc_now
+from app.models.profile import Profile
 from app.models.support import SupportCadence, SupportCharge, SupportChoice, SupportEvent, SupportStatus
 
 log = logging.getLogger(__name__)
@@ -90,6 +97,14 @@ TOTAL_CURRENCY = "USD"
 # lands the same day"; the first real outage would settle it.
 RETRY_BATCH = 5
 RETRY_EVERY = timedelta(minutes=15)
+
+# How long a paid record outlives its end once its account is deleted: the
+# maintainer's seven years (poll, 2026-10-27), chosen over three and over
+# forever. Seven covers the IRS's longest ordinary look-back for a return
+# (reasoned from IRS guidance on how long to keep records, not a tax
+# professional's advice). 2,557 days is seven years with two leap days.
+RETENTION = timedelta(days=2557)
+PURGE_BATCH = 50
 
 
 def summary_row(db: Session, profile_id: str) -> SupportChoice | None:
@@ -223,6 +238,7 @@ def _record_charge(
         charge_ref=event.charge_ref,
         subscription_ref=event.subscription_ref,
         choice_id=row.id if row is not None else None,
+        customer_ref=event.customer_ref or (row.customer_ref if row is not None else None),
         amount_cents=event.amount_cents,
         currency=event.currency,
         charged_at=event.occurred_at or now,
@@ -238,6 +254,71 @@ def _record_charge(
     if row is not None and event.period_end is not None:
         row.period_end = max(row.period_end or event.period_end, event.period_end)
     return "charged", row
+
+
+REFUND_PREFIX = "refund:"
+
+
+def _record_refund(db: Session, provider: SupportProvider, event: ProviderEvent, now: datetime) -> tuple[str, None]:
+    """Money went back: one negative `support_charges` row per refunded
+    charge, holding the total refunded of it so far, so a second partial
+    refund updates it and a resent event changes nothing.
+
+    Counted only when the payer is one of OurHike's - a customer one of its
+    charges or choices names. Anything else refunded on the same Stripe
+    account is left alone, as its charges were.
+    """
+    if not event.charge_ref or not event.customer_ref or event.amount_cents is None:
+        return "ignored_incomplete_refund", None
+    ours = (
+        db.query(SupportCharge)
+        .filter(
+            SupportCharge.provider == provider.key,
+            SupportCharge.customer_ref == event.customer_ref,
+            SupportCharge.amount_cents > 0,
+        )
+        .order_by(SupportCharge.charged_at.desc())
+        .first()
+    )
+    if ours is None:
+        return "ignored_not_ours", None
+    ref = REFUND_PREFIX + event.charge_ref
+    amount = -abs(event.amount_cents)
+    existing = (
+        db.query(SupportCharge)
+        .filter(SupportCharge.provider == provider.key, SupportCharge.charge_ref == ref)
+        .with_for_update()
+        .first()
+    )
+    if existing is None:
+        refund = SupportCharge(
+            provider=provider.key,
+            charge_ref=ref,
+            subscription_ref=ours.subscription_ref,
+            choice_id=ours.choice_id,
+            customer_ref=event.customer_ref,
+            amount_cents=amount,
+            currency=event.currency or ours.currency,
+            charged_at=event.occurred_at or now,
+            received_at=now,
+        )
+        try:
+            with db.begin_nested():
+                db.add(refund)
+                db.flush()
+            return "refunded", None
+        except IntegrityError:
+            existing = (
+                db.query(SupportCharge)
+                .filter(SupportCharge.provider == provider.key, SupportCharge.charge_ref == ref)
+                .with_for_update()
+                .first()
+            )
+    if existing is not None and amount < existing.amount_cents:
+        # A later partial refund: Stripe's figure is the running total.
+        existing.amount_cents = amount
+        return "refunded", None
+    return "duplicate", None
 
 
 def _join_charges(db: Session, provider: SupportProvider, row: SupportChoice) -> None:
@@ -307,6 +388,8 @@ def apply_event(
     now = now or utc_now()
     if event.kind is EventKind.charged:
         return _record_charge(db, provider, event, now)
+    if event.kind is EventKind.refunded:
+        return _record_refund(db, provider, event, now)
 
     row = _by_payment(db, provider, event.subscription_ref)
     if row is None:
@@ -541,16 +624,17 @@ def retry_stop_requests(
 
 
 def year_total(db: Session, year: int) -> tuple[int, int]:
-    """(cents, payments) given in `year`, in dollars, before fees and refunds.
+    """(cents, payments) given in `year`, in dollars, before fees and net of
+    refunds.
 
     **Read from charges, not reasoned.** The sum of every `support_charges`
-    row charged in the year - money a provider says arrived, once per charge
-    id - and the number of distinct recurring payments it came from.
+    row dated in the year - money a provider says arrived, once per charge
+    id, less what went back, dated when it went back - and the number of
+    distinct recurring payments the money came from. A refund does not
+    lower that count: the person did give, and was given it back.
 
-    A refund is not subtracted: no refund event is handled yet, and the page
-    says "before refunds". Only `TOTAL_CURRENCY` is summed: an amount in
-    another currency is left out rather than converted at a rate nobody here
-    can stand behind.
+    Only `TOTAL_CURRENCY` is summed: an amount in another currency is left
+    out rather than converted at a rate nobody here can stand behind.
     """
     in_year = (
         SupportCharge.currency == TOTAL_CURRENCY,
@@ -560,8 +644,49 @@ def year_total(db: Session, year: int) -> tuple[int, int]:
     total = db.query(func.coalesce(func.sum(SupportCharge.amount_cents), 0)).filter(*in_year).scalar() or 0
     payments = (
         db.query(func.count(func.distinct(func.coalesce(SupportCharge.subscription_ref, SupportCharge.charge_ref))))
-        .filter(*in_year)
+        .filter(*in_year, SupportCharge.amount_cents > 0)
         .scalar()
         or 0
     )
     return int(total), int(payments)
+
+
+def purge_expired(db: Session, *, now: datetime | None = None) -> int:
+    """Delete paid records `RETENTION` after they ended, once nobody's account
+    holds them: rows whose account was deleted, rows that never had one, and
+    the charges and events that belong to them. At most `PURGE_BATCH` rows a
+    call. Returns how many choices went. Does not commit.
+
+    A row still charging, or one whose account still exists, is never
+    touched: the hiker can see it under Your support and in their export.
+    """
+    cutoff = (now or utc_now()) - RETENTION
+    deleted_accounts = db.query(Profile.id).filter(Profile.deleted_at.isnot(None))
+    ended = func.coalesce(SupportChoice.ended_at, SupportChoice.updated_at)
+    ids = [
+        row_id
+        for (row_id,) in db.query(SupportChoice.id)
+        .filter(
+            SupportChoice.status == SupportStatus.stopped,
+            ended < cutoff,
+            or_(SupportChoice.profile_id.is_(None), SupportChoice.profile_id.in_(deleted_accounts)),
+        )
+        .limit(PURGE_BATCH)
+        .all()
+    ]
+    if ids:
+        db.query(SupportChoice).filter(SupportChoice.replaces_choice_id.in_(ids)).update(
+            {SupportChoice.replaces_choice_id: None}, synchronize_session=False
+        )
+        db.query(SupportEvent).filter(SupportEvent.choice_id.in_(ids)).delete(synchronize_session=False)
+        db.query(SupportCharge).filter(SupportCharge.choice_id.in_(ids)).delete(synchronize_session=False)
+        db.query(SupportChoice).filter(SupportChoice.id.in_(ids)).delete(synchronize_session=False)
+    # What never joined a row: charges whose checkout never came, and events
+    # about nothing OurHike kept.
+    db.query(SupportCharge).filter(SupportCharge.choice_id.is_(None), SupportCharge.charged_at < cutoff).delete(
+        synchronize_session=False
+    )
+    db.query(SupportEvent).filter(SupportEvent.choice_id.is_(None), SupportEvent.received_at < cutoff).delete(
+        synchronize_session=False
+    )
+    return len(ids)

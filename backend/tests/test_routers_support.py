@@ -36,13 +36,15 @@ from sqlalchemy.orm import Session
 
 from app.config import settings
 from app.core import support as support_core
-from app.core.mail import is_suppressed
+from app.core.mail import is_suppressed, suppress
 from app.core.support import year_total
+from app.core.support_mail import support_mail_on
 from app.core.support_providers import PROVIDERS
 from app.core.support_providers import stripe as stripe_provider
 from app.core.support_providers.stripe import MARKER
 from app.core.time import utc_now
-from app.models.mail import EmailSend, MailPurpose
+from app.models.mail import EmailSend, MailPurpose, SuppressionReason
+from app.models.profile import Profile
 from app.models.support import SupportCharge, SupportChoice, SupportEvent, SupportStatus
 from app.routers.support import clear_total_cache
 from tests.tokens import auth_headers
@@ -293,6 +295,27 @@ def _invoice(*, sub="sub_777", amount=6000, currency="usd", paid_at=None, basil=
         obj["subscription"] = sub
         obj["subscription_details"] = snapshot
     return _event("invoice.paid", obj, created=paid_at, event_id=event_id)
+
+
+def _refund(*, charge="ch_1", customer="cus_42", refunded=6000, created=None, event_id=None):
+    """`charge.refunded`: the Charge with its running `amount_refunded`, and
+    no invoice or subscription metadata (since 2025-03-31.basil)."""
+    created = int(time.time()) if created is None else created
+    return _event(
+        "charge.refunded",
+        {
+            "id": charge,
+            "object": "charge",
+            "customer": customer,
+            "amount": 6000,
+            "amount_refunded": refunded,
+            "currency": "usd",
+            "refunded": refunded >= 6000,
+            "billing_details": {"name": "Ramen Bomb", "email": "hiker@example.com"},
+        },
+        created=created,
+        event_id=event_id,
+    )
 
 
 def _choice_id(receipt) -> str:
@@ -1161,17 +1184,88 @@ def test_a_hikers_support_email_carries_a_real_one_click_unsubscribe(client, con
     [message] = configured.sent
     headers = _parsed(message)
     assert headers["List-Unsubscribe"] == f"<https://api.ourhike.org/support/mail/stop/{token}>"
-    assert f"Stop emails like this one: https://api.ourhike.org/support/mail/stop/{token}" in (
+    assert f"Choose which emails you get from OurHike: https://api.ourhike.org/support/mail/stop/{token}" in (
         headers.get_body(("plain",)).get_content()
     )
 
     page = client.get(f"/support/mail/stop/{token}")
     assert page.status_code == 200
-    assert "<form" in page.text
+    assert page.text.count('role="switch"') == 2
     assert not is_suppressed(db_session, "hiker@example.com")
 
-    assert client.post(f"/support/mail/stop/{token}").status_code == 200
+    # A mail app's own Unsubscribe button: support emails only (poll, 2026-10-27).
+    one_click = client.post(f"/support/mail/stop/{token}", content=b"List-Unsubscribe=One-Click")
+    assert one_click.status_code == 200
+    assert not support_mail_on(db_session, "hiker@example.com")
+    assert not is_suppressed(db_session, "hiker@example.com")
+
+
+def _save_switches(client, token, **on):
+    fields = "&".join(["form=1", *(f"{name}=on" for name, value in on.items() if value)])
+    return client.post(
+        f"/support/mail/stop/{token}",
+        content=fields.encode(),
+        headers={"content-type": "application/x-www-form-urlencoded"},
+    )
+
+
+def test_the_email_page_switches_each_kind_of_mail_on_and_off(client, configured, monkeypatch, db_session):
+    monkeypatch.setattr(settings, "api_public_url", "https://api.ourhike.org")
+    _choose(client, str(uuid.uuid4()), delivery="email")
+    token = db_session.query(SupportChoice).one().link_token
+
+    assert "Saved." in _save_switches(client, token, support=True, everything=False).text
+    db_session.expire_all()
+    assert (support_mail_on(db_session, "hiker@example.com"), is_suppressed(db_session, "hiker@example.com")) == (True, True)
+
+    _save_switches(client, token, support=False, everything=True)
+    db_session.expire_all()
+    assert (support_mail_on(db_session, "hiker@example.com"), is_suppressed(db_session, "hiker@example.com")) == (False, False)
+
+
+def test_the_email_page_cannot_switch_back_on_an_address_that_bounced(client, configured, monkeypatch, db_session):
+    monkeypatch.setattr(settings, "api_public_url", "https://api.ourhike.org")
+    _choose(client, str(uuid.uuid4()), delivery="email")
+    token = db_session.query(SupportChoice).one().link_token
+    suppress(db_session, "hiker@example.com", SuppressionReason.bounced)
+    db_session.commit()
+
+    page = client.get(f"/support/mail/stop/{token}")
+    assert "disabled" in page.text
+    _save_switches(client, token, support=True, everything=True)
+
+    db_session.expire_all()
     assert is_suppressed(db_session, "hiker@example.com")
+
+
+def test_with_support_emails_off_no_receipt_goes_but_an_asked_for_setup_link_does(client, configured, db_session):
+    user_id = str(uuid.uuid4())
+    assert (
+        client.put(
+            "/support/me/mail", json={"support_emails": False}, headers=auth_headers(user_id, email="hiker@example.com")
+        ).status_code
+        == 200
+    )
+
+    _paying(client, user_id)
+    assert configured.to("hiker@example.com", about="You're giving OurHike") == []
+
+    other = str(uuid.uuid4())
+    client.put("/support/me/mail", json={"support_emails": False}, headers=auth_headers(other, email="store@example.com"))
+    _choose(client, other, email="store@example.com", delivery="email")
+    assert configured.to("store@example.com", about="Set up your")
+
+
+def test_the_apps_switch_reads_back_and_turns_support_emails_on_again(client, configured):
+    user_id = str(uuid.uuid4())
+    _paying(client, user_id)
+
+    off = client.put("/support/me/mail", json={"support_emails": False}, headers=auth_headers(user_id, email="hiker@example.com"))
+    assert off.json()["support_emails"] is False
+    assert _me(client, user_id)["support_emails"] is False
+
+    on = client.put("/support/me/mail", json={"support_emails": True}, headers=auth_headers(user_id, email="hiker@example.com"))
+    assert on.json()["support_emails"] is True
 
 
 def test_an_unsubscribe_link_that_is_not_ours_is_404(client):
@@ -1242,6 +1336,35 @@ def test_a_charge_that_arrives_before_its_checkout_still_counts_and_joins_it(cli
     assert _me(client, user_id)["period_end"] is not None
 
 
+def test_a_refund_comes_off_the_total_and_a_second_partial_refund_updates_it(client, configured):
+    """The maintainer, 2026-10-27: the published total is net of refunds."""
+    _deliver(client, _invoice(amount=6000))
+
+    assert _deliver(client, _refund(refunded=1000)).json() == {"result": "refunded"}
+    clear_total_cache()
+    assert client.get("/support/total").json()["total_cents"] == 5000
+
+    assert _deliver(client, _refund(refunded=6000)).json() == {"result": "refunded"}
+    assert _deliver(client, _refund(refunded=6000)).json() == {"result": "duplicate"}
+    clear_total_cache()
+    assert client.get("/support/total").json() == {"year": utc_now().year, "total_cents": 0, "supporters": 1}
+
+
+def test_a_refund_of_anything_else_on_the_stripe_account_is_left_alone(client, configured, db_session):
+    _deliver(client, _invoice(amount=6000))
+
+    assert _deliver(client, _refund(customer="cus_shop")).json() == {"result": "ignored_not_ours"}
+    assert db_session.query(SupportCharge).count() == 1
+
+
+def test_the_refund_event_keeps_no_name_or_email(client, configured, db_session):
+    _deliver(client, _invoice(amount=6000))
+    _deliver(client, _refund())
+
+    stored = json.dumps([event.payload for event in db_session.query(SupportEvent).all()])
+    assert "Ramen Bomb" not in stored and "hiker@example.com" not in stored
+
+
 def test_the_total_is_computed_at_most_hourly(client, configured):  # C3
     assert client.get("/support/total").json()["total_cents"] == 0
     _deliver(client, _invoice(amount=12000))
@@ -1281,3 +1404,64 @@ def test_another_currency_is_left_out_of_the_dollar_total(db_session):  # C1
     db_session.commit()
 
     assert year_total(db_session, 2026) == (6000, 1)
+
+
+def test_a_refund_counts_in_the_year_it_was_made(db_session):
+    db_session.add_all([_charge(datetime(2026, 12, 1)), _charge(datetime(2027, 1, 5), cents=-6000)])
+    db_session.commit()
+
+    assert year_total(db_session, 2026) == (6000, 1)
+    assert year_total(db_session, 2027) == (-6000, 0)
+
+
+# ---- Keeping paid records seven years, then not ----
+
+
+def _ended_row(db_session, *, profile_id=None, ended=None, status=SupportStatus.stopped):
+    row = SupportChoice(
+        profile_id=profile_id,
+        email="hiker@example.com",
+        provider="stripe",
+        provider_ref=f"sub_{uuid.uuid4().hex[:8]}",
+        amount_cents=6000,
+        status=status,
+        ended_at=ended,
+    )
+    db_session.add(row)
+    db_session.flush()
+    db_session.add(_charge(datetime(2018, 3, 1), subscription=row.provider_ref))
+    db_session.query(SupportCharge).filter(SupportCharge.subscription_ref == row.provider_ref).update(
+        {SupportCharge.choice_id: row.id}
+    )
+    db_session.commit()
+    return row.id
+
+
+def test_a_deleted_accounts_paid_record_goes_seven_years_after_it_ended(client, db_session):
+    """The maintainer's seven years (poll, 2026-10-27)."""
+    gone = str(uuid.uuid4())
+    _me(client, gone)  # creates the profile
+    db_session.query(Profile).filter(Profile.id == gone).update({Profile.deleted_at: utc_now()})
+    db_session.commit()
+    old = _ended_row(db_session, profile_id=gone, ended=utc_now() - support_core.RETENTION - timedelta(days=1))
+    recent = _ended_row(db_session, profile_id=gone, ended=utc_now() - timedelta(days=400))
+
+    assert support_core.purge_expired(db_session) == 1
+    db_session.commit()
+
+    assert db_session.get(SupportChoice, old) is None
+    assert db_session.get(SupportChoice, recent) is not None
+    assert db_session.query(SupportCharge).filter(SupportCharge.choice_id == old).count() == 0
+
+
+def test_a_live_accounts_record_and_anything_still_charging_are_never_purged(client, db_session):
+    live = str(uuid.uuid4())
+    _me(client, live)
+    ancient = utc_now() - support_core.RETENTION - timedelta(days=30)
+    kept = [
+        _ended_row(db_session, profile_id=live, ended=ancient),
+        _ended_row(db_session, ended=ancient, status=SupportStatus.stop_requested),
+    ]
+
+    assert support_core.purge_expired(db_session) == 0
+    assert all(db_session.get(SupportChoice, row_id) is not None for row_id in kept)

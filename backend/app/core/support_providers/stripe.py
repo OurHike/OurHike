@@ -34,6 +34,15 @@ Everything here is read off Stripe's documentation (docs.stripe.com, read
 - **A charge is counted once by its invoice id**, which core/support.py keeps
   unique: Stripe resends an event with the same id on a retry, and says some
   actions produce two separate events for one object.
+- **A refund is `charge.refunded`**, carrying the Charge with its running
+  `amount_refunded`. Since API version 2025-03-31.basil a Charge no longer
+  names its invoice, and finding it takes the Invoice Payments API and a key
+  allowed to read invoices ("Using webhooks with subscriptions", read
+  2026-10-27). A Charge names its `customer` in every version, and every
+  Payment Link checkout makes a customer of its own, so the refund is passed
+  on with that and core/support.py counts it only when the customer is one
+  of OurHike's. A Charge carries no subscription metadata, so this one event
+  is exempt from the metadata check below and filtered there instead.
 - **A failed renewal is `past_due`, then `unpaid`**, while Stripe retries the
   card. Cancelling at the period's end would leave that open invoice being
   retried; cancelling the subscription outright stops it. So a Stop on a
@@ -257,11 +266,29 @@ class Stripe:
         obj = _mapping(_mapping(envelope.get("data")).get("object"))
         if not obj:
             return _ignored(kind, event_id, "no object")
-        if kind not in _SESSION_KINDS and kind not in _SUBSCRIPTION_KINDS and kind != "invoice.paid":
+        if kind not in _SESSION_KINDS and kind not in _SUBSCRIPTION_KINDS and kind not in ("invoice.paid", "charge.refunded"):
             return _ignored(kind, event_id, "not an event support uses")
+        created = _when(envelope.get("created"))
+        if kind == "charge.refunded":
+            refunded = _cents(obj.get("amount_refunded"))
+            charge = _ref(obj.get("id"))
+            customer = _ref(obj.get("customer"))
+            if refunded is None or charge is None or customer is None:
+                return _ignored(kind, event_id, "no amount, charge or customer")
+            return [
+                ProviderEvent(
+                    kind=EventKind.refunded,
+                    event_id=event_id,
+                    occurred_at=created,
+                    charge_ref=charge,
+                    customer_ref=customer,
+                    amount_cents=refunded,
+                    currency=_currency(obj.get("currency")),
+                    payload=_payload(kind, obj, amount_refunded=refunded),
+                )
+            ]
         if not _is_ourhike(obj):
             return _ignored(kind, event_id, f"no {MARKER} metadata, so not one of OurHike's links")
-        created = _when(envelope.get("created"))
 
         if kind in _SESSION_KINDS:
             if obj.get("mode") != "subscription":

@@ -102,7 +102,7 @@ class SupportCadence(str, enum.Enum):
 # The wording a hiker agrees to on the choice screen - the one move email and
 # the stop terms. Bumped whenever client/src/screens/SupportAsk.tsx's
 # confirmation copy changes, so a stored choice says which words it was.
-SUPPORT_TERMS_VERSION = "support-terms-2026-10-27"
+SUPPORT_TERMS_VERSION = "support-terms-2026-10-27b"
 
 
 class SupportChoice(Base):
@@ -209,6 +209,11 @@ class SupportCharge(Base):
     events (Stripe says so), and only a unique key on the provider's id for
     the charge itself stops it being counted twice; and a total that read a
     provider's payload keys would count nothing for the next provider.
+
+    A refund is a row too, with a negative amount, keyed `refund:<the
+    provider's charge id>` so a second partial refund of one charge updates
+    it rather than adding another (the maintainer, 2026-10-27: the total is
+    net of refunds).
     """
 
     __tablename__ = "support_charges"
@@ -222,9 +227,38 @@ class SupportCharge(Base):
     # its checkout can be joined to the choice afterwards.
     subscription_ref = Column(String(100), nullable=True, index=True)
     choice_id = Column(String, ForeignKey("support_choices.id"), nullable=True, index=True)
+    # The provider's id for the payer, which is how a refund is recognised
+    # as one of these charges' (a refunded Stripe charge names its customer
+    # in every API version, and its invoice in none since 2025-03-31.basil).
+    customer_ref = Column(String(100), nullable=True, index=True)
+    # Negative for a refund.
     amount_cents = Column(Integer, nullable=False)
     currency = Column(String(3), nullable=False)
     charged_at = Column(DateTime, nullable=False, index=True)
     # The end of the period this charge paid for.
     period_end = Column(DateTime, nullable=True)
     received_at = Column(DateTime, nullable=False, default=utc_now)
+
+
+class SupportMailPreference(Base):
+    """Whether an address hears about its support, kept apart from the one
+    suppression list on purpose.
+
+    The maintainer chose switches the hiker controls, on the email's page and
+    in the app (poll, 2026-10-27): "Emails about my support" separately from
+    everything else OurHike sends. app/models/mail.py's suppression list is
+    the "everything" switch and stays the one list every send checks; this
+    is the narrower one, checked on the one path support mail takes
+    (app/core/support_mail.py's `_send`), and nothing else reads it.
+
+    Keyed by the normalised address, as a suppression is, so it follows the
+    person across their choices rather than one row. Kept when an account is
+    deleted, as a suppression is: an opt-out is honoured, not forgotten.
+    """
+
+    __tablename__ = "support_mail_preferences"
+
+    address = Column(String(320), primary_key=True)
+    # When the hiker turned support emails off; null means on.
+    off_at = Column(DateTime, nullable=True)
+    updated_at = Column(DateTime, nullable=False, default=utc_now, onupdate=utc_now)

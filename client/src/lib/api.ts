@@ -1642,4 +1642,7 @@ export interface SupportSummary {
   can_stop: boolean
   /** A new choice would be accepted. */
   can_choose: boolean
+  /** The "Emails about my support" switch for this support's address: false
+   *  when the hiker turned it off, here or from an email's page. */
+  support_emails: boolean
 }

@@ -25,6 +25,7 @@
 import { useEffect, useRef, useState } from 'react'
 import { API_CONFIGURED } from '../lib/api'
 import { daysIncludingToday, recordActiveDay } from '../lib/activeDays'
+import { usePaidChoiceAllowed } from '../lib/storefront'
 import { shouldAsk, supportSummaryLine } from '../lib/support'
 import { holdPendingSupportTier, takePendingSupportTier } from '../lib/supportPending'
 import { useSupport } from '../lib/useSupport'
@@ -53,6 +54,9 @@ export interface SupportGateProps {
   onSignIn: () => void
   /** The More row's second line, whenever it changes. */
   onSummary: (line: string) => void
+  /** Whether a paid choice may be offered here; null while the store is
+   *  asked. Injected for tests; lib/storefront.ts's answer otherwise. */
+  paidAllowed?: boolean | null
 }
 
 export function SupportGate({
@@ -62,7 +66,12 @@ export function SupportGate({
   openRequest,
   onSignIn,
   onSummary,
+  paidAllowed: injected,
 }: SupportGateProps) {
+  const asked = usePaidChoiceAllowed()
+  // A store app on a non-US account never asks (the maintainer, 2026-10-27:
+  // a required choice with one answer is a sheet over the map for nothing).
+  const paidAllowed = injected === undefined ? asked : injected
   const signedIn = accountEmail !== null
   const support = useSupport(signedIn)
   const [days] = useState(() => daysIncludingToday(new Date()))
@@ -92,11 +101,11 @@ export function SupportGate({
   // "Choose an amount" on More → Your support. Zero is the shell's starting
   // value, so a mount alone opens nothing.
   useEffect(() => {
-    if (openRequest > 0) setAsk({ kind: 'choose' })
-  }, [openRequest])
+    if (openRequest > 0 && paidAllowed === true) setAsk({ kind: 'choose' })
+  }, [openRequest, paidAllowed])
 
   useEffect(() => {
-    if (ask !== null || held) return
+    if (ask !== null || held || paidAllowed !== true) return
     // Back from signing in with a paid tier already picked: pick up at the
     // confirmation rather than at the top. In this effect rather than one
     // of its own, because two effects setting the same state in one commit
@@ -129,6 +138,7 @@ export function SupportGate({
   }, [
     ask,
     held,
+    paidAllowed,
     signedIn,
     online,
     days,

@@ -33,6 +33,7 @@ function server(over: Partial<SupportSummary>): SupportSummary {
     supporting: false,
     can_stop: false,
     can_choose: true,
+    support_emails: true,
     ...over,
   }
 }

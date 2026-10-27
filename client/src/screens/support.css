@@ -90,22 +90,6 @@
   color: var(--fg-2);
 }
 
-.support-ask__check {
-  display: flex;
-  gap: 10px;
-  align-items: flex-start;
-  font-size: 14px;
-  line-height: 1.4;
-  color: var(--fg-1);
-}
-
-.support-ask__check input {
-  margin-top: 2px;
-  width: 18px;
-  height: 18px;
-  accent-color: var(--brand-primary);
-}
-
 .support-ask__primary,
 .support-ask__secondary {
   min-height: var(--min-touch-target, 44px);
@@ -280,4 +264,70 @@
 .your-support__stop--confirm {
   background: var(--danger);
   color: var(--fg-on-brand);
+}
+
+/* "Emails about my support" (#1876): a role="switch" button, the Legend's
+   Blaze row's pattern, so assistive tech hears on and off rather than a
+   checkbox's checked. */
+.your-support__mail {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 12px 0;
+  border-top: 1px solid var(--border-1, rgba(0, 0, 0, 0.12));
+}
+
+.your-support__mail-text {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  color: var(--fg-1);
+}
+
+.your-support__switch {
+  flex: none;
+  position: relative;
+  width: 48px;
+  height: 28px;
+  min-height: 28px;
+  padding: 0;
+  border: 0;
+  border-radius: 14px;
+  background: var(--fg-3, #c9c2b4);
+  cursor: pointer;
+}
+
+.your-support__switch[aria-checked='true'] {
+  background: var(--brand-primary);
+}
+
+.your-support__switch:focus-visible {
+  outline: 3px solid var(--accent-blaze-orange, #b5651d);
+  outline-offset: 2px;
+}
+
+.your-support__switch:disabled {
+  opacity: 0.6;
+}
+
+.your-support__switch-knob {
+  position: absolute;
+  top: 3px;
+  left: 3px;
+  width: 22px;
+  height: 22px;
+  border-radius: 50%;
+  background: #fff;
+  transition: left 0.15s ease;
+}
+
+.your-support__switch[aria-checked='true'] .your-support__switch-knob {
+  left: 23px;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .your-support__switch-knob {
+    transition: none;
+  }
 }

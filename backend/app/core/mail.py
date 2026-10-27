@@ -141,6 +141,32 @@ def suppress(
     return row
 
 
+def suppression_reason(db: Session, address: str) -> SuppressionReason | None:
+    """Why this address is suppressed, or None when it is not."""
+    row = db.query(EmailSuppression).filter(EmailSuppression.address == normalise(address)).first()
+    return row.reason if row is not None else None
+
+
+def lift_unsubscribe(db: Session, address: str) -> bool:
+    """Undo the address owner's own unsubscribe. True when nothing now stops mail.
+
+    The one way off the list, and only for `unsubscribed`: a hiker who turned
+    "Every other email from OurHike" off from a link sent to that address
+    can turn it back on from the same link (the maintainer's switches, poll
+    2026-10-27). A bounce, a complaint, a club's refusal or a manual entry is
+    a fact about delivery or somebody else's decision, and stays.
+    """
+    address = normalise(address)
+    row = db.query(EmailSuppression).filter(EmailSuppression.address == address).first()
+    if row is None:
+        return True
+    if row.reason != SuppressionReason.unsubscribed:
+        return False
+    db.delete(row)
+    db.flush()
+    return True
+
+
 def _sanitise_header(value: str) -> str:
     """A header value with no way out of its own line.
 

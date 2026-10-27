@@ -60,6 +60,11 @@ class EventKind(str, enum.Enum):
     - `ended`: it will charge no more.
     - `charged`: money actually arrived - one charge, which the published
       total sums. It never changes a row's state.
+    - `refunded`: money went back. `charge_ref` is the provider's id for
+      what was refunded, `amount_cents` the total refunded of it so far, and
+      `customer_ref` the payer, which is how core/support.py tells one of
+      OurHike's charges from anything else on the account. It never changes
+      a row's state either.
     """
 
     started = "started"
@@ -68,6 +73,7 @@ class EventKind(str, enum.Enum):
     paused = "paused"
     ended = "ended"
     charged = "charged"
+    refunded = "refunded"
 
 
 @dataclass(frozen=True)

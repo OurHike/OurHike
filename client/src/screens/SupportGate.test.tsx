@@ -116,6 +116,25 @@ describe('when the day-5 ask opens', () => {
     expect(screen.queryByText(TITLE)).not.toBeInTheDocument()
   })
 
+  it('never opens in a store app on a non-US account, even when asked for', () => {
+    fourDaysBefore()
+    const { props, rerender } = gate({ paidAllowed: false })
+
+    act(() => rerender(<SupportGate {...props} openRequest={1} />))
+
+    expect(screen.queryByText(TITLE)).not.toBeInTheDocument()
+  })
+
+  it('waits for the store to answer, then opens on a US account', () => {
+    fourDaysBefore()
+    const { props, rerender } = gate({ paidAllowed: null })
+    expect(screen.queryByText(TITLE)).not.toBeInTheDocument()
+
+    rerender(<SupportGate {...props} paidAllowed />)
+
+    expect(screen.getByText(TITLE)).toBeInTheDocument()
+  })
+
   it('still opens whenever the hiker asks for it from More → Your support', () => {
     const { props, rerender } = gate()
     expect(screen.queryByText(TITLE)).not.toBeInTheDocument()

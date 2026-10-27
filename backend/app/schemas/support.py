@@ -2,7 +2,7 @@
 
 from typing import Literal
 
-from pydantic import BaseModel
+from pydantic import BaseModel, ConfigDict
 
 from app.core.support import BLOCKS_CHOICE, RUNNING, STOPPABLE
 from app.core.support_providers import current_provider, provider_for
@@ -62,9 +62,12 @@ class SupportOut(BaseModel):
     supporting: bool
     can_stop: bool
     can_choose: bool
+    # The "Emails about my support" switch, for the address this support is
+    # under (the maintainer, poll 2026-10-27). True when nothing turned it off.
+    support_emails: bool
 
     @classmethod
-    def from_row(cls, row: SupportChoice | None, *, blocked: bool | None = None) -> "SupportOut":
+    def from_row(cls, row: SupportChoice | None, *, blocked: bool | None = None, support_emails: bool = True) -> "SupportOut":
         """`blocked` is whether ANY of the caller's rows blocks a new choice
         (see core/support.BLOCKS_CHOICE); the router knows, a single row may
         not. Left None, it is read off this row."""
@@ -84,6 +87,7 @@ class SupportOut(BaseModel):
                 supporting=False,
                 can_stop=False,
                 can_choose=current_provider() is not None,
+                support_emails=support_emails,
             )
         provider = provider_for(row.provider)
         if blocked is None:
@@ -104,6 +108,7 @@ class SupportOut(BaseModel):
             supporting=row.status in RUNNING,
             can_stop=row.status in STOPPABLE,
             can_choose=current_provider() is not None and not blocked,
+            support_emails=support_emails,
         )
 
 
@@ -132,3 +137,11 @@ class WebhookAck(BaseModel):
     delivery log and for the test that reads it."""
 
     result: str
+
+
+class SupportMailIn(BaseModel):
+    """The app's "Emails about my support" switch."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    support_emails: bool

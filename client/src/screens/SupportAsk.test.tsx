@@ -24,6 +24,7 @@ const PENDING: SupportSummary = {
   supporting: false,
   can_stop: true,
   can_choose: true,
+  support_emails: true,
 }
 
 function setup(over: Partial<Parameters<typeof SupportAsk>[0]> = {}) {
@@ -117,12 +118,13 @@ describe('the day-5 ask', () => {
     const props = setup()
     await userEvent.click(screen.getByRole('radio', { name: /^\$60 a year/ }))
     await userEvent.click(screen.getByRole('button', { name: 'Continue' }))
-    await userEvent.click(screen.getByRole('checkbox', { name: /yearly accounting/ }))
+    // The yearly accounting email is hidden until something sends it.
+    expect(screen.queryByRole('checkbox')).not.toBeInTheDocument()
     await userEvent.click(screen.getByRole('button', { name: 'Continue to payment' }))
 
     expect(props.choose).toHaveBeenCalledWith({
       amount_cents: 6000,
-      accounting_email: true,
+      accounting_email: false,
       delivery: 'redirect',
     })
     expect(props.onChosen).toHaveBeenCalledWith(PENDING)

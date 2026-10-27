@@ -68,6 +68,12 @@ def unsubscribe_url(choice: SupportChoice) -> str:
     return manage_url()
 
 
+def _stop_line(choice: SupportChoice) -> str:
+    """The body's own unsubscribe line, when there is a real one to give."""
+    url = unsubscribe_url(choice)
+    return "" if url == manage_url() else f"\nStop emails like this one: {url}\n"
+
+
 def dollars(cents: int, currency: str = "USD") -> str:
     whole = cents / 100
     text = f"{whole:,.0f}" if cents % 100 == 0 else f"{whole:,.2f}"
@@ -147,6 +153,7 @@ def send_setup_link(
         f"{checkout_url}\n\n"
         "Stopping is two taps in the app: More → Your support → Stop. We cancel it for you.\n\n"
         "Not tax-deductible: OurHike isn't a nonprofit yet.\n"
+        f"{_stop_line(choice)}"
     )
     return _send(
         db,
@@ -234,6 +241,7 @@ def email_hiker_stopped(db: Session, choice: SupportChoice, *, mail_provider) ->
     body = (
         f"Your {amount} a {choice.cadence.value} to OurHike is stopped. {when}\n\n"
         "Thank you for what you gave. Choosing again is in the app, under More → Your support.\n"
+        f"{_stop_line(choice)}"
     )
     return _send(
         db,

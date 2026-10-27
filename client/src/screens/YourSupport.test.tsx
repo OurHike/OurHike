@@ -13,11 +13,16 @@ const ACTIVE: SupportSummary = {
   amount_cents: 1000,
   cadence: 'year',
   provider: 'buymeacoffee',
+  provider_label: 'Buy Me a Coffee',
   email: 'hiker@example.com',
   chosen_at: '2026-10-20T12:00:00Z',
   started_at: '2026-10-21T12:00:00Z',
+  period_end: '2027-10-21T12:00:00Z',
   stop_requested_at: null,
   ended_at: null,
+  supporting: true,
+  can_stop: true,
+  can_choose: false,
 }
 
 const NOW = new Date('2026-10-23T12:00:00')
@@ -38,6 +43,8 @@ function setup(over: Partial<Parameters<typeof YourSupport>[0]> = {}) {
       ...ACTIVE,
       status: 'stop_requested',
       stop_requested_at: '2026-10-23T12:00:00Z',
+      can_stop: false,
+      can_choose: true,
     }),
     ...over,
   }
@@ -63,16 +70,53 @@ describe('Your support', () => {
     )
   })
 
-  it('says a requested stop is cancelled by hand, rather than claiming it already is', () => {
+  it('says a requested stop is cancelled for the hiker, rather than claiming it already is', () => {
     setup({
       server: {
         ...ACTIVE,
         status: 'stop_requested',
         stop_requested_at: '2026-10-23T12:00:00Z',
+        can_stop: false,
       },
     })
-    expect(screen.getByText(/by hand, the same day/)).toBeInTheDocument()
+    expect(screen.getByText(/We cancel it for you the same day/)).toBeInTheDocument()
     expect(screen.queryByText(/cancelled it/)).not.toBeInTheDocument()
+  })
+
+  it('offers Stop only when the server says it would do something', () => {
+    setup({ server: { ...ACTIVE, status: 'cancel_scheduled', can_stop: false } })
+    expect(
+      screen.queryByRole('button', { name: 'Stop my support' }),
+    ).not.toBeInTheDocument()
+    expect(screen.getByText(/No more charges · ends Oct 21, 2027/)).toBeInTheDocument()
+  })
+
+  it('names the payment provider on the website and never in the store apps', () => {
+    setup()
+    expect(screen.getByText(/via Buy Me a Coffee/)).toBeInTheDocument()
+    cleanup()
+    setup({ native: true })
+    expect(screen.queryByText(/Buy Me a Coffee/)).not.toBeInTheDocument()
+  })
+
+  it('says a cleared choice that was never paid needed no cancelling', () => {
+    setup({
+      server: {
+        ...ACTIVE,
+        status: 'stopped',
+        started_at: null,
+        ended_at: '2026-10-23T12:00:00Z',
+        supporting: false,
+        can_stop: false,
+        can_choose: true,
+      },
+    })
+    expect(
+      screen.getByText(/Nothing was paid, so nothing needed cancelling/),
+    ).toBeInTheDocument()
+    expect(
+      screen.getByRole('button', { name: 'Choose an amount again' }),
+    ).toBeInTheDocument()
   })
 
   it('treats $0 as a real answer and offers a paid amount without pressing it', () => {
@@ -106,6 +150,12 @@ describe('the More row line', () => {
     expect(supportSummaryLine(ACTIVE, null, NOW)).toBe('$10 a year')
     expect(supportSummaryLine({ ...ACTIVE, status: 'pending' }, null, NOW)).toBe(
       '$10 a year, waiting to be confirmed',
+    )
+    expect(supportSummaryLine({ ...ACTIVE, status: 'paused' }, null, NOW)).toBe(
+      '$10 a year, paused',
+    )
+    expect(supportSummaryLine({ ...ACTIVE, status: 'cancel_scheduled' }, null, NOW)).toBe(
+      '$10 a year, ending',
     )
     expect(supportSummaryLine(null, { year: 2026, chosenAt: '' }, NOW)).toBe(
       '$0 this year',

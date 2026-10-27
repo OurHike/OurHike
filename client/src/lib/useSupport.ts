@@ -3,7 +3,7 @@
 //
 // Fetched when signed in and a backend is configured, and again whenever
 // the window regains focus - which is the moment a hiker comes back from
-// Buy Me a Coffee's checkout in another tab, or from the email the store
+// the provider's checkout in another tab, or from the email the store
 // apps send. A failed fetch leaves the last answer standing and `error`
 // set; it never invents a status, because `shouldAsk` reads null as "no
 // account answer" and a guessed `none` would ask somebody who already pays.

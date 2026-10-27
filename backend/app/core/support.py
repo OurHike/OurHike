@@ -113,6 +113,29 @@ def claim_unattached(db: Session, profile_id: str, email: str | None) -> int:
     return len(rows)
 
 
+def settle_lapsed(db: Session, profile_id: str, now: datetime | None = None) -> int:
+    """Move a `cancel_scheduled` payment whose end has passed to `stopped`.
+
+    No provider sends an event at the end of a period it was told not to
+    renew, so without this a scheduled cancellation would read as supporting
+    forever and the yearly ask would never come back. Does not commit.
+    """
+    now = now or utc_now()
+    rows = (
+        db.query(SupportChoice)
+        .filter(
+            SupportChoice.profile_id == profile_id,
+            SupportChoice.status == SupportStatus.cancel_scheduled,
+            SupportChoice.ended_at.isnot(None),
+            SupportChoice.ended_at <= now,
+        )
+        .all()
+    )
+    for row in rows:
+        row.status = SupportStatus.stopped
+    return len(rows)
+
+
 def _match(db: Session, provider: SupportProvider, event: ProviderEvent) -> SupportChoice | None:
     if event.subscription_ref:
         row = (

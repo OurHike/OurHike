@@ -48,16 +48,20 @@ The public reading is [`site/src/pages/support.astro`](../site/src/pages/support
 ## 4. Verification, and what is kept
 
 - **A $0 choice stays on the phone** and needs no account.
-- **A paid choice is verified through a signed-in account.**
-  - Buy Me a Coffee's signed `membership.*` webhooks are matched to the email on the account's token, never to one typed into a form.
-  - The mechanism is [`backend/app/core/support.py`](../backend/app/core/support.py).
-  - Signature recipe: HMAC-SHA256 of the raw body, hex in `x-signature-sha256`, from Buy Me a Coffee's webhook OpenAPI spec (read 2026-10-23). Test events carry `live_mode: false` and are ignored.
-- **Collected at the start** ("grab the right info from the get-go", poll):
-  - the email, plus the stated term that a provider move means **one** email asking the supporter to move;
-  - an **opt-in** yearly accounting email, off unless ticked.
-  - The record also keeps the amount in cents and its currency, the cadence, every date, Buy Me a Coffee's membership id, and Stripe's subscription id (`psp_id` in the payload). Model: [`backend/app/models/support.py`](../backend/app/models/support.py).
-  - **@unvalidated:** whether Stripe's id lets a move skip the re-confirm. Buy Me a Coffee says it uses "Stripe Standard Connect", which would put the subscriptions in the creator's own Stripe account, and nobody has checked.
-- **The published total** (`GET /support/total`) is **reasoned from start dates, not read from payouts.** Nothing Buy Me a Coffee sends reports a renewal charge, so a refund or a failed card would make the total high.
+- **A paid choice is verified through a signed-in account.** The email is always the one on the account's token, never one typed into a form.
+- **How a payment meets its choice** ([`backend/app/core/support.py`](../backend/app/core/support.py)). Tightened after the #1885 adversarial review found the first version matched any event by email, so a stranger's cancellation typed with a hiker's address could stop the hiker's choice:
+  - by the provider's own id for the payment, wherever it has been seen;
+  - otherwise, only for a **started** event, by email onto a `pending` choice for the **same amount**, on the **same provider**, chosen no later than the payment began (plus `EMAIL_MATCH_SKEW`, ten minutes, `@unvalidated`);
+  - a payment that matches nothing is kept unattached, so the total is honest, and attached to the account whose **verified** email it carries the next time that account opens Your support. That is also how a supporter who paid on the provider's page gets a Stop button.
+- **Order and repeats.** Each row keeps the time of the newest event it took and drops anything older, and `stopped` is final for a provider id. A retried "updated" that arrives after the cancellation cannot bring the payment back.
+- **Every event is kept** in `support_events` with what was done about it. A provider's module drops the supporter's display name, their note, a cancellation reason and the email before anything is stored. An event whose handling raised is stored as `failed` and still answered 200, because Buy Me a Coffee switches a webhook off after ten failures in a row and then nothing is recorded at all.
+- **Collected at the start** ("grab the right info from the get-go", poll) — model: [`backend/app/models/support.py`](../backend/app/models/support.py):
+  - the email; the wording version shown (`terms_version`), the path (`delivery`) and when, which is the consent record for the stated term that a provider move means **one** email;
+  - an **opt-in** yearly accounting email, off unless ticked, with when it was ticked;
+  - the amount chosen beside the amount the provider reports, the currency, the cadence, the start and the renewal date (`period_end`);
+  - the provider's ids: the payment, the person, the level, and the card processor's subscription behind it (Stripe's, for Buy Me a Coffee).
+  - **@unvalidated:** whether Stripe's id lets a move skip the re-confirm. Buy Me a Coffee says it uses "Stripe Standard Connect", which would put the subscriptions in the creator's own Stripe account, and nobody has checked. Stripe's own import guide copies customers but "Subscription data isn't copied".
+- **The published total** (`GET /support/total`) is **reasoned from start dates, not read from payouts.** Nothing Buy Me a Coffee sends reports a renewal charge, so a refund, a failed card or a paused membership's skipped charge would make the total high. It counts US dollars only (another currency is left out rather than converted), and is computed at most once an hour per server.
 
 ## 5. No payment inside the app
 
@@ -71,25 +75,37 @@ The public reading is [`site/src/pages/support.astro`](../site/src/pages/support
 ## 6. Stop
 
 - **More → Your support → Stop: one tap and one confirm, no reason asked.** We cancel it for the hiker. Chosen over sending them through Buy Me a Coffee's own cancel, which is about eight steps after logging in there (its help article).
-- **No cancel API was found**, so the backend marks the choice `stop_requested` and emails `SUPPORT_NOTIFY_ADDRESS` to cancel it by hand the same day.
-  - The `membership.cancelled` webhook then marks it `stopped`.
+- **A choice nobody paid for** (`pending`, nothing confirmed) has nothing to cancel, so Stop clears it at once and the hiker can choose again. The first version marked it `stop_requested` and then refused every new choice.
+- **A payment still charging** becomes `stop_requested`, and whoever cancels it is asked. Buy Me a Coffee has no cancel API, so that is an email to `SUPPORT_NOTIFY_ADDRESS` to cancel it by hand the same day.
+  - The email lists every other record under the same address that is not stopped. A provider names a supporter only by an email anybody can type, and the founder cancelling by hand is the one point a person can see both and pick the right one.
+  - A request that does not go stays queued (`stop_notified_at` empty) and is asked again by the next Stop press, the hiker's next look at the page, and every webhook delivery.
+  - The provider's cancellation event then marks it `stopped`, and **the hiker is emailed that it is done**.
   - The screen says exactly that, rather than claiming a cancellation that has not happened.
-- **Deleting an account requests the same stop**, because the deleted account can no longer reach the button. The record stays as the money record. See [`account_deletion.py`](../backend/app/core/account_deletion.py).
+- **What the page offers is the server's answer.** `GET /support/me` carries `supporting`, `can_stop` and `can_choose`, so the app keeps no copy of the state machine. The states are `pending`, `active`, `paused`, `cancel_scheduled` (no more charges, ends at `period_end`), `stop_requested` and `stopped`.
+- **Deleting an account** deletes a choice nobody paid for, and asks for the same stop on anything still charging, because the deleted account can no longer reach the button. A paid record stays as the money record. See [`account_deletion.py`](../backend/app/core/account_deletion.py).
+- **Every hiker-facing support email carries a real one-click unsubscribe** (`/support/mail/stop/{token}`, RFC 8058) once `API_PUBLIC_URL` is set. The store-app setup link goes at most once a day per address.
 
-## 7. Switching it on
+## 7. Switching it on, and moving provider
 
 | Where | Setting | What it does when empty |
 |---|---|---|
-| Backend host | `BUYMEACOFFEE_CHECKOUT_URL` — the page's membership URL | the website path answers 503 "not switched on" |
+| Backend host | `SUPPORT_PROVIDER` — where new choices go; default `buymeacoffee` | — (an unknown name answers 503 "not switched on") |
+| Backend host | `BUYMEACOFFEE_CHECKOUT_URL` — the page's membership URL, https only | the website path answers 503 "not switched on" |
 | Backend host | `BUYMEACOFFEE_WEBHOOK_SECRET` — shown on the webhook's page in Buy Me a Coffee | every webhook delivery is refused (503) |
-| Backend host | `SUPPORT_NOTIFY_ADDRESS` — where Stop requests go | Stop is recorded and the hiker told, but nobody is emailed |
-| Backend host | `MAIL_ENABLED` and SES | the store apps' setup email and the Stop notice do not send |
+| Backend host | `BUYMEACOFFEE_LEVEL_IDS` — the membership levels that are OurHike support, comma-separated | every level on the page is believed |
+| Backend host | `SUPPORT_NOTIFY_ADDRESS` — where Stop requests go | Stop is recorded and the hiker told, and the request waits in the retry queue |
+| Backend host | `API_PUBLIC_URL` — this API's own https address | support emails' unsubscribe link points at the app's Your support page, which stops payments but not mail |
+| Backend host | `MAIL_ENABLED` and SES | no support email sends |
 | Buy Me a Coffee | three **yearly** membership levels at $1, $10 and $100, and a webhook pointed at `<API>/support/webhooks/buymeacoffee` | — |
 | GitHub variables | `API_BASE_URL` | the app's ask stays dormant, and the site's total reads "Not available" |
+
+**The provider seam.** Everything provider-shaped lives in [`backend/app/core/support_providers/`](../backend/app/core/support_providers/): a provider owns its checkout link, how its webhook is verified, how its events become OurHike's four kinds (`started`, `updated`, `paused`, `ended`), and how a cancel is requested (an API call, or an email to a person). The state machine, matching, ordering, the event log and the total do not change per provider, and no app screen names one — the website shows `provider_label` from the server, and the store apps show nothing. Adding Open Source Collective is a module beside `buymeacoffee.py` and one line in the registry.
+
+**Moving a supporter.** Change `SUPPORT_PROVIDER`; every registered provider keeps receiving its own webhooks. A supporter still paying through the old one may choose again (their old payment no longer blocks a choice), the new choice records which one it replaces, and when the new payment starts the old one is asked to stop exactly as the hiker's own Stop would.
 
 ## 8. Open, and who settles it
 
 - **The tax treatment** in §2 — a tax professional, for the founder.
-- **What `membership.paused` means for a yearly supporter.** It is left unchanged and logged; the first real event settles it.
+- **What `membership.paused` means for a yearly supporter.** It is recorded as `paused`, still counts as supporting (the hiker made a choice), and is counted in the total as if it charged; the first real event settles which of those is wrong.
 - **Whether a renewal arrives as `membership.updated`.** If it does, the total could read real charges rather than infer them from start dates.
 - **`PENDING_GRACE_DAYS` = 30** — how long an uncompleted paid choice silences the ask. `@unvalidated`; real completion times would settle it.

@@ -1594,27 +1594,48 @@ export async function deleteAccount(): Promise<DeletionReceipt> {
 // and LAUNCH_BUDGET.md §3 has no room for code a launch never runs.
 
 /**
- * `GET /support/me`'s `status` (#1876).
+ * `GET /support/me`'s `status` (#1876). Provider-neutral: which provider
+ * holds the payment is `provider`, and nothing here depends on it.
  *
  * - `none`: no paid choice on this account.
- * - `pending`: chosen in the app, not yet confirmed by Buy Me a Coffee.
- * - `active`: Buy Me a Coffee says the membership started.
- * - `stop_requested`: the hiker pressed Stop. Buy Me a Coffee publishes no
- *   cancel API (searched 2026-10-23), so the founder cancels by hand and the
- *   `membership.cancelled` webhook moves this on.
- * - `stopped`: Buy Me a Coffee says it ended.
+ * - `pending`: chosen in the app; the provider has not confirmed a payment.
+ * - `active`: the provider says the recurring payment started.
+ * - `paused`: the provider says it exists and is not charging.
+ * - `cancel_scheduled`: no more charges; it ends at `period_end`.
+ * - `stop_requested`: the hiker pressed Stop and the provider has not yet
+ *   said it ended. For a provider with no cancel API (Buy Me a Coffee) the
+ *   founder cancels by hand, and the hiker is emailed when it is done.
+ * - `stopped`: ended - or a pending choice cleared, with nothing charged.
  */
-export type SupportStatus = 'none' | 'pending' | 'active' | 'stop_requested' | 'stopped'
+export type SupportStatus =
+  | 'none'
+  | 'pending'
+  | 'active'
+  | 'paused'
+  | 'cancel_scheduled'
+  | 'stop_requested'
+  | 'stopped'
 
 export interface SupportSummary {
   status: SupportStatus
   amount_cents: number | null
   cadence: 'year' | 'month' | null
   provider: string | null
-  /** The address Buy Me a Coffee will know the supporter by. */
+  /** The provider's name, for the website app only: the store apps never
+   *  name a payment provider. */
+  provider_label: string | null
+  /** The address the provider will know the supporter by. */
   email: string | null
   chosen_at: string | null
   started_at: string | null
+  period_end: string | null
   stop_requested_at: string | null
   ended_at: string | null
+  /** A recurring payment exists and nothing has ended it. The server's
+   *  answer, so the app keeps no copy of the state machine. */
+  supporting: boolean
+  /** Stop does something. */
+  can_stop: boolean
+  /** A new choice would be accepted. */
+  can_choose: boolean
 }

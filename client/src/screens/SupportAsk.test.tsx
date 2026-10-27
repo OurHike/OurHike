@@ -5,19 +5,25 @@ import { SupportAsk } from './SupportAsk'
 import { readLocalChoice, type SupportSummary } from '../lib/support'
 
 // The day-5 ask (#1876). A choice is required, $0 is a choice, and payment
-// never happens inside the app: the website app is sent on to Buy Me a
-// Coffee, the store apps get the link by email.
+// never happens inside the app: the website app is sent on to the provider's
+// https page, the store apps get the link by email, and neither names the
+// provider.
 
 const PENDING: SupportSummary = {
   status: 'pending',
   amount_cents: 1000,
   cadence: 'year',
   provider: 'buymeacoffee',
+  provider_label: 'Buy Me a Coffee',
   email: 'hiker@example.com',
   chosen_at: '2026-10-23T12:00:00Z',
   started_at: null,
+  period_end: null,
   stop_requested_at: null,
   ended_at: null,
+  supporting: false,
+  can_stop: true,
+  can_choose: true,
 }
 
 function setup(over: Partial<Parameters<typeof SupportAsk>[0]> = {}) {
@@ -92,9 +98,7 @@ describe('the day-5 ask', () => {
     await userEvent.click(screen.getByRole('radio', { name: /^\$10 a year/ }))
     await userEvent.click(screen.getByRole('button', { name: 'Continue' }))
     await userEvent.click(screen.getByRole('checkbox', { name: /yearly accounting/ }))
-    await userEvent.click(
-      screen.getByRole('button', { name: 'Continue to Buy Me a Coffee' }),
-    )
+    await userEvent.click(screen.getByRole('button', { name: 'Continue to payment' }))
 
     expect(props.choose).toHaveBeenCalledWith({
       amount_cents: 1000,
@@ -105,6 +109,29 @@ describe('the day-5 ask', () => {
     expect(props.navigate).toHaveBeenCalledWith(
       'https://buymeacoffee.com/ourhike/membership',
     )
+  })
+
+  it('never sends the website app anywhere but an https page', async () => {
+    const props = setup({
+      choose: vi.fn().mockResolvedValue({
+        support: PENDING,
+        checkout_url: 'javascript:alert(1)',
+        emailed: false,
+      }),
+    })
+    await userEvent.click(screen.getByRole('radio', { name: /^\$10 a year/ }))
+    await userEvent.click(screen.getByRole('button', { name: 'Continue' }))
+    await userEvent.click(screen.getByRole('button', { name: 'Continue to payment' }))
+
+    expect(props.navigate).not.toHaveBeenCalled()
+    expect(await screen.findByRole('alert')).toHaveTextContent(/nothing was charged/)
+  })
+
+  it('names no payment provider on the website either', async () => {
+    setup()
+    await userEvent.click(screen.getByRole('radio', { name: /^\$10 a year/ }))
+    await userEvent.click(screen.getByRole('button', { name: 'Continue' }))
+    expect(screen.queryByText(/Buy Me a Coffee/)).not.toBeInTheDocument()
   })
 
   it('in the store apps, never names a checkout: the setup link goes by email', async () => {
@@ -146,9 +173,7 @@ describe('the day-5 ask', () => {
     setup({ choose: vi.fn().mockRejectedValue(new Error('offline')) })
     await userEvent.click(screen.getByRole('radio', { name: /^\$1 a year/ }))
     await userEvent.click(screen.getByRole('button', { name: 'Continue' }))
-    await userEvent.click(
-      screen.getByRole('button', { name: 'Continue to Buy Me a Coffee' }),
-    )
+    await userEvent.click(screen.getByRole('button', { name: 'Continue to payment' }))
 
     expect(await screen.findByRole('alert')).toHaveTextContent(/nothing was charged/)
   })

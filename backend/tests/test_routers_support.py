@@ -16,6 +16,7 @@ architecture reviews' findings each test answers.
 """
 
 import email
+import email.policy
 import hashlib
 import hmac
 import json
@@ -612,6 +613,20 @@ def test_a_cancellation_at_the_period_end_is_scheduled_not_stopped(client, confi
     assert (mine["supporting"], mine["can_stop"], mine["can_choose"]) == (True, False, True)
 
 
+def test_a_scheduled_cancellation_reads_as_stopped_once_its_end_has_passed(client, configured, db_session):
+    """No provider says so when a period it was told not to renew runs out."""
+    user_id = str(uuid.uuid4())
+    _paying(client, user_id)
+    db_session.query(SupportChoice).update(
+        {SupportChoice.status: SupportStatus.cancel_scheduled, SupportChoice.ended_at: utc_now() - timedelta(days=1)}
+    )
+    db_session.commit()
+
+    mine = _me(client, user_id)
+
+    assert (mine["status"], mine["supporting"], mine["can_choose"]) == ("stopped", False, True)
+
+
 def test_one_provider_payment_is_one_row(db_session):  # P9
     for _ in range(2):
         db_session.add(SupportChoice(email="a@x.org", provider="buymeacoffee", provider_ref="1", amount_cents=100))
@@ -700,8 +715,11 @@ def test_a_hikers_support_email_carries_a_real_one_click_unsubscribe(client, con
     token = db_session.query(SupportChoice).one().link_token
 
     [message] = configured.sent
-    headers = email.message_from_bytes(message["Content"]["Raw"]["Data"])
+    headers = email.message_from_bytes(message["Content"]["Raw"]["Data"], policy=email.policy.default)
     assert headers["List-Unsubscribe"] == f"<https://api.ourhike.org/support/mail/stop/{token}>"
+    assert f"Stop emails like this one: https://api.ourhike.org/support/mail/stop/{token}" in (
+        headers.get_body(("plain",)).get_content()
+    )
 
     page = client.get(f"/support/mail/stop/{token}")
     assert page.status_code == 200

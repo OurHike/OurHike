@@ -23,11 +23,16 @@ function server(over: Partial<SupportSummary>): SupportSummary {
     amount_cents: null,
     cadence: null,
     provider: null,
+    provider_label: null,
     email: null,
     chosen_at: null,
     started_at: null,
+    period_end: null,
     stop_requested_at: null,
     ended_at: null,
+    supporting: false,
+    can_stop: false,
+    can_choose: true,
     ...over,
   }
 }
@@ -61,10 +66,20 @@ describe('shouldAsk', () => {
     expect(shouldAsk({ ...base, now: new Date('2027-08-01T12:00:00'), local })).toBe(true)
   })
 
-  it('does not ask a hiker whose paid choice is active', () => {
-    expect(
-      shouldAsk({ ...base, server: server({ status: 'active', amount_cents: 1000 }) }),
-    ).toBe(false)
+  it('does not ask a hiker the server says is supporting, whatever the state', () => {
+    for (const status of [
+      'active',
+      'paused',
+      'cancel_scheduled',
+      'stop_requested',
+    ] as const) {
+      expect(
+        shouldAsk({
+          ...base,
+          server: server({ status, amount_cents: 1000, supporting: true }),
+        }),
+      ).toBe(false)
+    }
   })
 
   it(`waits ${PENDING_GRACE_DAYS} days on a paid choice nobody completed, then asks again`, () => {

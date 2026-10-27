@@ -17,11 +17,15 @@
 // second confirm step, which would have read as a dark pattern. Every
 // button label names its amount, whatever the joke around it.
 //
-// NO PAYMENT IN THE APP. The website app sends a paid choice on to Buy Me a
-// Coffee; in the store apps (`native`) the last button is "Email me how to
-// set it up", and the link travels by email, which Apple's 3.1.3 allows and
-// its 3.1.1(a) and Google's Payments policy do not allow in the app. See
-// lib/support.ts for the sources.
+// NO PAYMENT IN THE APP. The website app sends a paid choice on to the
+// payment provider's page, and only to an https one; in the store apps
+// (`native`) the last button is "Email me how to set it up", and the link
+// travels by email, which Apple's 3.1.3 allows and its 3.1.1(a) and Google's
+// Payments policy do not allow in the app. See lib/support.ts for the sources.
+//
+// NO PROVIDER IS NAMED HERE. Which provider takes the money is the backend's
+// setting (app/core/support_providers/), and copy that named one would turn
+// a provider move into a release - the #1885 architecture review.
 
 import { useState } from 'react'
 import { Capacitor } from '@capacitor/core'
@@ -120,8 +124,17 @@ export function SupportAsk({
       return
     }
     onChosen(receipt.support)
-    if (!native && receipt.checkout_url !== null) {
-      navigate(receipt.checkout_url)
+    if (!native) {
+      // Only ever a payment page over https: the URL comes from the server,
+      // and `javascript:` or plain http is not somewhere a payment goes.
+      if (receipt.checkout_url?.startsWith('https://')) {
+        navigate(receipt.checkout_url)
+        return
+      }
+      setBusy(false)
+      setError(
+        "Payments aren't available just now. Your choice is saved; nothing was charged.",
+      )
       return
     }
     setBusy(false)
@@ -202,7 +215,7 @@ export function SupportAsk({
           <p className="support-ask__fine">
             {native
               ? 'Nothing is paid in this app. A paid choice is set up by email.'
-              : 'Payments happen on Buy Me a Coffee, never in the app.'}{' '}
+              : 'Payments happen on a payment page, never in the app.'}{' '}
             Stopping takes two taps: More → Your support → Stop.
           </p>
         </section>
@@ -228,7 +241,7 @@ export function SupportAsk({
           </p>
           {accountEmail !== null ? (
             <p className="support-ask__email">
-              {native ? 'The setup link goes to ' : 'Buy Me a Coffee will know you as '}
+              {native ? 'The setup link goes to ' : 'The payment page will know you as '}
               <strong>{accountEmail}</strong>. Use that same address when you pay, so the
               app can tell it&rsquo;s you.
             </p>
@@ -266,7 +279,7 @@ export function SupportAsk({
               ? 'Sign in to continue'
               : native
                 ? 'Email me how to set it up'
-                : 'Continue to Buy Me a Coffee'}
+                : 'Continue to payment'}
           </button>
           <button
             type="button"

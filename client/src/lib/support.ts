@@ -8,14 +8,14 @@
 //     choice is required, and **$0 is a choice**: it keeps everything
 //     working, and nothing anywhere is locked by not paying.
 //   - $0 stays on this phone and needs no account. A paid choice is
-//     verified through a signed-in account: the backend matches Buy Me a
-//     Coffee's signed membership webhooks to the account's email.
+//     verified through a signed-in account: the backend matches the payment
+//     provider's signed webhooks to it (Buy Me a Coffee's, for now).
 //   - Picking $0 brings one more screen, at most once a year: a nudge
 //     toward $1 or $10 in a hiker-trash voice, with a line that rotates
 //     (lib/supportNudges.ts). "Keep it at $0" stays on that screen and
 //     readable.
 //   - Payment never happens inside the app. The website app continues to
-//     Buy Me a Coffee; the iOS and Android apps send the setup link by email
+//     the provider's page; the iOS and Android apps send the setup link by email
 //     instead, because Apple's 3.1.1(a) bars buttons and links to a
 //     non-in-app purchase outside the US and Google's Payments policy bars
 //     leading users to another payment method (read 2026-10-23).
@@ -40,7 +40,7 @@ export const TIERS = [100, 1000, 10000] as const
 export type PaidTier = (typeof TIERS)[number]
 export type Tier = 0 | PaidTier
 
-/** How long a paid choice waits for Buy Me a Coffee to confirm before the
+/** How long a paid choice waits for the provider to confirm before the
  *  app asks again. @unvalidated - long enough for somebody to open the
  *  email on a town day, short enough that a choice nobody completed does
  *  not silence the ask for most of a season. What would settle it: how long
@@ -151,9 +151,9 @@ function sameYear(iso: string | null, year: number): boolean {
  *   - this phone has counted `ASK_ON_DAY` days this year;
  *   - no $0 answer on this phone for this year;
  *   - the account (when there is one) holds no live paid choice: not
- *     `active`, not `pending` within `PENDING_GRACE_DAYS`, and not stopped
- *     or stop-requested this year (a hiker who just pressed Stop is not
- *     asked again until next year).
+ *     `supporting` (the server's answer), not `pending` within
+ *     `PENDING_GRACE_DAYS`, and not stopped this year (a hiker who just
+ *     pressed Stop is not asked again until next year).
  */
 export function shouldAsk(inputs: AskInputs): boolean {
   const { now, apiConfigured, online, server } = inputs
@@ -167,13 +167,13 @@ export function shouldAsk(inputs: AskInputs): boolean {
   if (local !== null && local.year === year) return false
 
   if (server !== null) {
-    if (server.status === 'active') return false
+    if (server.supporting) return false
     if (server.status === 'pending' && server.chosen_at !== null) {
       const waited = (now.getTime() - new Date(server.chosen_at).getTime()) / 86_400_000
       if (waited < PENDING_GRACE_DAYS) return false
     }
     if (
-      (server.status === 'stop_requested' || server.status === 'stopped') &&
+      server.status === 'stopped' &&
       (sameYear(server.stop_requested_at, year) || sameYear(server.ended_at, year))
     ) {
       return false
@@ -196,6 +196,8 @@ export function supportSummaryLine(
     const amount = `${dollars(server.amount_cents)} a year`
     if (server.status === 'active') return amount
     if (server.status === 'pending') return `${amount}, waiting to be confirmed`
+    if (server.status === 'paused') return `${amount}, paused`
+    if (server.status === 'cancel_scheduled') return `${amount}, ending`
     if (server.status === 'stop_requested') return 'Stopping'
     if (server.status === 'stopped') return 'Stopped'
   }

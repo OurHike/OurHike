@@ -6,7 +6,13 @@
 // logging in there (its help article, read 2026-10-23). Buy Me a Coffee
 // publishes no cancel API that the same search found, so the backend marks
 // the request and the founder cancels by hand; the page says exactly that
-// rather than claiming a cancellation that has not happened yet.
+// rather than claiming a cancellation that has not happened yet, and the
+// backend emails the hiker once the provider confirms it ended.
+//
+// WHAT THE PAGE OFFERS IS THE SERVER'S ANSWER: `can_stop` and `can_choose`
+// on SupportSummary, so this file keeps no copy of the state machine (the
+// #1885 architecture review). The provider is named on the website only;
+// the store apps never name one.
 //
 // No reason is asked and no "are you sure you want to leave" is shown. The
 // confirm says what stopping does - no more charges - and that $0 is fine.
@@ -78,7 +84,22 @@ export function YourSupport({
   const live =
     server !== null &&
     server.amount_cents !== null &&
-    (server.status === 'active' || server.status === 'pending')
+    (server.status === 'active' ||
+      server.status === 'pending' ||
+      server.status === 'paused' ||
+      server.status === 'cancel_scheduled')
+  const via = !native && server?.provider_label ? ` · via ${server.provider_label}` : ''
+
+  function meta(summary: SupportSummary): string {
+    if (summary.status === 'pending') {
+      return `Chosen ${day(summary.chosen_at)} · waiting for the payment to be confirmed`
+    }
+    if (summary.status === 'paused') return `Paused · nothing is being charged${via}`
+    if (summary.status === 'cancel_scheduled') {
+      return `No more charges · ends ${day(summary.period_end ?? summary.ended_at)}${via}`
+    }
+    return `Since ${day(summary.started_at)}${via}`
+  }
 
   return (
     <section
@@ -98,13 +119,15 @@ export function YourSupport({
         <>
           <div className="your-support__card">
             <p className="your-support__amount">{dollars(server.amount_cents)} a year</p>
-            <p className="your-support__meta">
-              {server.status === 'active'
-                ? `Since ${day(server.started_at)} · via Buy Me a Coffee`
-                : `Chosen ${day(server.chosen_at)} · waiting for Buy Me a Coffee to confirm`}
-            </p>
+            <p className="your-support__meta">{meta(server)}</p>
           </div>
-          {confirming ? (
+          {!server.can_stop ? (
+            server.can_choose && (
+              <button type="button" className="settings__action" onClick={onChoose}>
+                Choose an amount again
+              </button>
+            )
+          ) : confirming ? (
             <div
               className="your-support__confirm"
               role="group"
@@ -152,9 +175,9 @@ export function YourSupport({
         <div className="your-support__card">
           <p className="your-support__amount">Stop requested</p>
           <p className="your-support__meta">
-            {day(server.stop_requested_at)}. We cancel it with Buy Me a Coffee by hand,
-            the same day, and email you when it&rsquo;s done. If a charge lands after
-            today, reply to that email and we refund it.
+            {day(server.stop_requested_at)}. We cancel it for you the same day and email
+            you when it&rsquo;s done. If a charge lands after today, reply to that email
+            and we refund it.
           </p>
         </div>
       ) : server !== null && server.status === 'stopped' ? (
@@ -162,12 +185,16 @@ export function YourSupport({
           <div className="your-support__card">
             <p className="your-support__amount">Stopped</p>
             <p className="your-support__meta">
-              {day(server.ended_at)}. No more charges. Thank you for the time you gave.
+              {server.started_at === null
+                ? `${day(server.ended_at)}. Nothing was paid, so nothing needed cancelling. If you did pay, it shows up here once it's confirmed.`
+                : `${day(server.ended_at)}. No more charges. Thank you for the time you gave.`}
             </p>
           </div>
-          <button type="button" className="settings__action" onClick={onChoose}>
-            Choose an amount again
-          </button>
+          {server.can_choose && (
+            <button type="button" className="settings__action" onClick={onChoose}>
+              Choose an amount again
+            </button>
+          )}
         </>
       ) : (
         <>

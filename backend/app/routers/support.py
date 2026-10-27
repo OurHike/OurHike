@@ -25,6 +25,7 @@ from app.core.support import (
     record_failed_delivery,
     request_stop,
     retry_stop_requests,
+    settle_lapsed,
     summary_row,
     year_total,
 )
@@ -72,12 +73,14 @@ def get_my_support(
     200 with `none` rather than 404, unlike `/preferences/me`: "no paid
     choice" is an answer the app acts on (it may ask), not a missing thing.
 
-    Two writes ride on this read, both idempotent: a payment made on the
+    Three writes ride on this read, all idempotent: a payment made on the
     provider's page under this verified address is attached to the account
-    (so it has a Stop button), and a Stop whose request never reached anybody
-    is asked again.
+    (so it has a Stop button), a scheduled cancellation whose end has passed
+    becomes `stopped`, and a Stop whose request never reached anybody is
+    asked again.
     """
     claim_unattached(db, current_user.id, email)
+    settle_lapsed(db, current_user.id)
     retry_stop_requests(db, mail_provider=ses_client(), profile_id=current_user.id)
     db.commit()
     return _summary(db, current_user.id)

@@ -159,6 +159,9 @@ KEEPALIVE_TABLES: tuple[str, ...] = (
     # And every event a payment provider sent about them (#1876): redacted
     # of names and notes, but still a per-supporter amount and date history.
     "support_events",
+    # And each charge (#1876): an amount and a date per supporter, which the
+    # published total sums so that nobody has to read these.
+    "support_charges",
     # A hiker's own day hikes (#976): the same private-planning claim as the
     # #892 pair below - a route somebody intends to walk, served to nobody
     # else.

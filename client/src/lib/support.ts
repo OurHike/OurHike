@@ -196,6 +196,7 @@ export function supportSummaryLine(
   if (server !== null && server.amount_cents !== null) {
     const amount = `${dollars(server.amount_cents)} a year`
     if (server.status === 'active') return amount
+    if (server.status === 'payment_failed') return `${amount}, payment didn't go through`
     if (server.status === 'pending') return `${amount}, waiting to be confirmed`
     if (server.status === 'paused') return `${amount}, paused`
     if (server.status === 'cancel_scheduled') return `${amount}, ending`

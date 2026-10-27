@@ -54,6 +54,11 @@ class MailPurpose(str, enum.Enum):
     support_setup_link = "support_setup_link"
     support_stop_request = "support_stop_request"
     support_stopped = "support_stopped"
+    # The receipt a supporter gets when a payment starts - the amount, the
+    # renewal date and how to stop - and the founder's note about a payment
+    # the app could not place (#1876, the third #1885 review).
+    support_started = "support_started"
+    support_payment_note = "support_payment_note"
 
 
 class MailState(str, enum.Enum):

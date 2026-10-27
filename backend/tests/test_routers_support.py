@@ -5,16 +5,18 @@ email and never a typed one, and checks out through the tier's Stripe Payment
 Link carrying the choice's id; a store-app choice travels by email, at most
 once a day, and never as a checkout link; Stop on a pending choice clears it
 at once, and on a running payment asks Stripe to stop renewing (or the
-founder, when Stripe cannot be reached), is retried until somebody is told,
-and ends with the hiker emailed; a webhook is believed only with Stripe's
-signature inside its replay window; a payment meets its choice by the
-choice's own id, and by email only when it starts, for the same amount,
-after the choice was made; a late or repeated event never undoes a later
-one; every event is logged without a name, address or email; and the
-published total sums the charges Stripe reports, each once.
+founder, when Stripe cannot be reached), is recorded before anybody is
+asked, is retried until somebody is told but never more often than
+`RETRY_EVERY`, and ends with the hiker emailed; a failing renewal is cancelled
+at once; a webhook is believed only with Stripe's signature inside its replay
+window and OurHike's own link metadata; a payment meets its choice by the
+choice's own id and never by email, and a payment for a choice that no longer
+wants one is stopped; a late or repeated event never undoes a later one;
+every event is logged without a name, address or email; and the published
+total sums the charges Stripe reports, each once by invoice id.
 
-The `# P<n>`, `# B<n>`, `# S<n>` and `# C<n>` marks name the #1885 security
-and architecture reviews' findings each test answers.
+The `# P<n>`, `# B<n>`, `# S<n>` and `# C<n>` marks name the first two #1885
+reviews' findings each test answers; `# R3-B<n>` the third review's.
 """
 
 import email
@@ -28,7 +30,9 @@ from datetime import datetime, timedelta
 from urllib.parse import parse_qs, urlsplit
 
 import pytest
-from sqlalchemy.exc import IntegrityError
+from sqlalchemy import text
+from sqlalchemy.exc import IntegrityError, OperationalError
+from sqlalchemy.orm import Session
 
 from app.config import settings
 from app.core import support as support_core
@@ -36,17 +40,18 @@ from app.core.mail import is_suppressed
 from app.core.support import year_total
 from app.core.support_providers import PROVIDERS
 from app.core.support_providers import stripe as stripe_provider
+from app.core.support_providers.stripe import MARKER
 from app.core.time import utc_now
 from app.models.mail import EmailSend, MailPurpose
-from app.models.support import SupportChoice, SupportEvent, SupportStatus
+from app.models.support import SupportCharge, SupportChoice, SupportEvent, SupportStatus
 from app.routers.support import clear_total_cache
 from tests.tokens import auth_headers
 
 SECRET = "whsec_test"
 LINKS = {
-    1200: "https://buy.stripe.com/test_twelve",
-    6000: "https://buy.stripe.com/test_sixty",
-    12000: "https://buy.stripe.com/test_hundred_twenty",
+    1200: "https://buy.stripe.com/twelve",
+    6000: "https://buy.stripe.com/sixty",
+    12000: "https://buy.stripe.com/hundred_twenty",
 }
 
 
@@ -65,19 +70,29 @@ class Mail:
 
 
 class StripeApi:
-    """A stand-in for Stripe's API: records each call, answers `status`."""
+    """A stand-in for Stripe's API: records each call, answers `status`.
+    `during` runs inside the call, for tests about what is committed then."""
 
     def __init__(self) -> None:
         self.calls: list[dict] = []
         self.status = 200
+        self.during = None
 
-    def post(self, url, **kwargs):
-        self.calls.append({"url": url, **kwargs})
+    def _call(self, method, url, kwargs):
+        self.calls.append({"method": method, "url": url, **kwargs})
+        if self.during is not None:
+            self.during()
 
         class Response:
             status_code = self.status
 
         return Response()
+
+    def post(self, url, **kwargs):
+        return self._call("POST", url, kwargs)
+
+    def delete(self, url, **kwargs):
+        return self._call("DELETE", url, kwargs)
 
 
 class World:
@@ -86,8 +101,9 @@ class World:
         self.api = api
         self.sent = mail.sent
 
-    def to(self, address):
-        return self.mail.to(address)
+    def to(self, address, about=None):
+        """Messages to `address`, or only those whose text carries `about`."""
+        return [m for m in self.mail.to(address) if about is None or about in _body(m)]
 
 
 def _text(message) -> str:
@@ -96,6 +112,12 @@ def _text(message) -> str:
 
 def _parsed(message):
     return email.message_from_bytes(message["Content"]["Raw"]["Data"], policy=email.policy.default)
+
+
+def _body(message) -> str:
+    """The plain-text body, decoded and unfolded, plus the subject."""
+    parsed = _parsed(message)
+    return f"{parsed['Subject']}\n{parsed.get_body(('plain',)).get_content()}"
 
 
 @pytest.fixture(autouse=True)
@@ -111,6 +133,7 @@ def configured(monkeypatch):
     monkeypatch.setattr(settings, "stripe_payment_links", ",".join(f"{c}={u}" for c, u in LINKS.items()))
     monkeypatch.setattr(settings, "stripe_webhook_secret", SECRET)
     monkeypatch.setattr(settings, "stripe_secret_key", "rk_live_fixture")
+    monkeypatch.setattr(settings, "stripe_mode", "live")
     monkeypatch.setattr(settings, "support_notify_address", "founder@ourhike.org")
     monkeypatch.setattr(settings, "api_public_url", "")
     monkeypatch.setattr(settings, "mail_enabled", True)
@@ -120,6 +143,7 @@ def configured(monkeypatch):
     monkeypatch.setattr("app.routers.support.ses_client", lambda: mail)
     monkeypatch.setattr("app.routers.profiles.ses_client", lambda: mail)
     monkeypatch.setattr(stripe_provider.httpx, "post", api.post)
+    monkeypatch.setattr(stripe_provider.httpx, "delete", api.delete)
     return World(mail, api)
 
 
@@ -171,15 +195,30 @@ def _event(kind, obj, *, created=None, live=True, event_id=None):
     }
 
 
-def _session(*, choice=None, email="hiker@example.com", sub="sub_777", amount=6000, mode="subscription", created=None, live=True):
-    """`checkout.session.completed`, as a Payment Link's checkout sends it."""
+def _session(
+    *,
+    choice=None,
+    email="hiker@example.com",
+    sub="sub_777",
+    amount=6000,
+    mode="subscription",
+    created=None,
+    live=True,
+    paid="paid",
+    ours=True,
+    kind="checkout.session.completed",
+):
+    """`checkout.session.completed`, as one of OurHike's Payment Links sends
+    it: `ours=False` is a link without OurHike's metadata."""
     created = int(time.time()) if created is None else created
     return _event(
-        "checkout.session.completed",
+        kind,
         {
             "id": f"cs_{uuid.uuid4().hex[:12]}",
             "object": "checkout.session",
             "mode": mode,
+            "payment_status": paid,
+            "metadata": {MARKER: str(amount)} if ours else {},
             "client_reference_id": choice,
             "subscription": sub,
             "customer": "cus_42",
@@ -220,6 +259,7 @@ def _subscription(kind="customer.subscription.updated", *, sub="sub_777", status
         "customer": "cus_42",
         "currency": "usd",
         "start_date": created,
+        "metadata": {MARKER: "6000"},
         "cancel_at_period_end": False,
         "cancel_at": None,
         "pause_collection": None,
@@ -233,10 +273,10 @@ def _subscription(kind="customer.subscription.updated", *, sub="sub_777", status
     return _event(kind, obj, created=created)
 
 
-def _invoice(*, sub="sub_777", amount=6000, currency="usd", paid_at=None, basil=True, event_id=None):
+def _invoice(*, sub="sub_777", amount=6000, currency="usd", paid_at=None, basil=True, event_id=None, invoice=None):
     paid_at = int(time.time()) if paid_at is None else paid_at
     obj = {
-        "id": f"in_{uuid.uuid4().hex[:12]}",
+        "id": invoice or f"in_{uuid.uuid4().hex[:12]}",
         "object": "invoice",
         "customer": "cus_42",
         "customer_email": "hiker@example.com",
@@ -244,11 +284,14 @@ def _invoice(*, sub="sub_777", amount=6000, currency="usd", paid_at=None, basil=
         "currency": currency,
         "billing_reason": "subscription_cycle",
         "status_transitions": {"paid_at": paid_at},
+        "lines": {"data": [{"period": {"start": paid_at, "end": paid_at + 365 * 86400}}]},
     }
+    snapshot = {"metadata": {MARKER: str(amount)}}
     if basil:
-        obj["parent"] = {"type": "subscription_details", "subscription_details": {"subscription": sub}}
+        obj["parent"] = {"type": "subscription_details", "subscription_details": {"subscription": sub, **snapshot}}
     else:
         obj["subscription"] = sub
+        obj["subscription_details"] = snapshot
     return _event("invoice.paid", obj, created=paid_at, event_id=event_id)
 
 
@@ -397,6 +440,32 @@ def test_a_running_payment_blocks_a_second_choice(client, configured):
     assert _me(client, user_id)["can_choose"] is False
 
 
+def test_the_hiker_gets_a_receipt_saying_what_renews_and_how_to_stop(client, configured):  # R3-B15
+    _paying(client, str(uuid.uuid4()))
+
+    [receipt] = configured.to("hiker@example.com")
+    assert _parsed(receipt)["Subject"] == "You're giving OurHike $60 a year"
+    assert "renews every year" in _body(receipt)
+    assert "More → Your support → Stop my support" in _body(receipt)
+
+
+@pytest.mark.parametrize("status", ["past_due", "unpaid"])
+def test_a_failing_renewal_reads_as_failing_and_still_blocks_a_second_choice(client, configured, t0, status):  # R3-B1
+    user_id = str(uuid.uuid4())
+    _paying(client, user_id, created=t0)
+
+    assert _deliver(client, _subscription(created=t0 + 60, status=status)).json() == {"result": "payment_failed"}
+
+    mine = _me(client, user_id)
+    assert (mine["status"], mine["supporting"], mine["can_stop"], mine["can_choose"]) == (
+        "payment_failed",
+        True,
+        True,
+        False,
+    )
+    assert _choose(client, user_id).status_code == 409
+
+
 # ---- Stop ----
 
 
@@ -424,12 +493,58 @@ def test_stop_asks_stripe_to_stop_renewing_and_nobody_has_to_do_it_by_hand(clien
     assert body["stop_requested_at"] is not None
     assert (body["supporting"], body["can_stop"]) == (True, False)
     [call] = configured.api.calls
-    assert call["url"] == "https://api.stripe.com/v1/subscriptions/sub_777"
+    assert (call["method"], call["url"]) == ("POST", "https://api.stripe.com/v1/subscriptions/sub_777")
     assert call["data"] == {"cancel_at_period_end": "true"}
     assert call["auth"] == ("rk_live_fixture", "")
-    assert call["headers"]["Idempotency-Key"].startswith("ourhike-stop-")
+    # A fixed key would replay a refusal for 24 hours (R3-B2).
+    assert "Idempotency-Key" not in call.get("headers", {})
     assert configured.to("founder@ourhike.org") == []
     assert db_session.query(SupportChoice).one().stop_notified_at is not None
+
+
+def test_stop_on_a_failing_renewal_cancels_it_at_once_so_no_retry_can_charge(client, configured, t0):  # R3-B1
+    user_id = str(uuid.uuid4())
+    _paying(client, user_id, created=t0)
+    _deliver(client, _subscription(created=t0 + 60, status="past_due"))
+
+    assert _stop(client, user_id).json()["status"] == "stop_requested"
+
+    [call] = configured.api.calls
+    assert (call["method"], call["url"]) == ("DELETE", "https://api.stripe.com/v1/subscriptions/sub_777")
+
+
+def test_when_stripe_cannot_be_reached_a_failing_renewal_is_handed_over_as_cancel_now(client, configured, t0):  # R3-B1
+    configured.api.status = 500
+    user_id = str(uuid.uuid4())
+    _paying(client, user_id, created=t0)
+    _deliver(client, _subscription(created=t0 + 60, status="unpaid"))
+
+    _stop(client, user_id)
+
+    [notice] = configured.to("founder@ourhike.org", about="Stop requested")
+    assert "IMMEDIATELY" in _text(notice)
+
+
+def test_stop_is_committed_before_stripe_is_asked(client, configured, db_engine):  # R3-B7
+    """A confirmation that lands while the cancel call is out must find the
+    Stop recorded, and must not be written over when the call returns."""
+    user_id = str(uuid.uuid4())
+    _paying(client, user_id)
+    seen = []
+
+    def confirmation_lands_meanwhile():
+        with Session(db_engine) as other:
+            other.execute(text("SET LOCAL lock_timeout = '2s'"))
+            row = other.query(SupportChoice).one()
+            seen.append(row.status)
+            row.status = SupportStatus.cancel_scheduled
+            row.ended_at = utc_now() + timedelta(days=300)
+            other.commit()
+
+    configured.api.during = confirmation_lands_meanwhile
+
+    assert _stop(client, user_id).json()["status"] == "cancel_scheduled"
+    assert seen == [SupportStatus.stop_requested]
 
 
 def test_pressing_stop_twice_asks_stripe_once(client, configured):
@@ -462,16 +577,26 @@ def test_when_stripe_cannot_be_reached_the_founder_is_asked_instead(client, conf
     assert "Cancel at end of period" in _text(notice)
 
 
+def _tried_long_ago(db_session):
+    """Move every Stop's last try back past `RETRY_EVERY`."""
+    db_session.query(SupportChoice).update(
+        {SupportChoice.stop_attempted_at: utc_now() - support_core.RETRY_EVERY - timedelta(minutes=1)}
+    )
+    db_session.commit()
+
+
 def test_a_stop_nobody_was_told_about_is_asked_again_until_somebody_is(client, configured, monkeypatch, db_session):  # B1
-    monkeypatch.setattr(settings, "stripe_secret_key", "")
-    monkeypatch.setattr(settings, "support_notify_address", "")
     user_id = str(uuid.uuid4())
     _paying(client, user_id)
+    # Stripe's key and the founder's address both gone, after the payment began.
+    monkeypatch.setattr(settings, "stripe_secret_key", "")
+    monkeypatch.setattr(settings, "support_notify_address", "")
 
     assert _stop(client, user_id).json()["status"] == "stop_requested"
     assert db_session.query(SupportChoice).one().stop_notified_at is None
 
     monkeypatch.setattr(settings, "stripe_secret_key", "rk_live_fixture")
+    _tried_long_ago(db_session)
     _me(client, user_id)
 
     assert len(configured.api.calls) == 1
@@ -479,13 +604,29 @@ def test_a_stop_nobody_was_told_about_is_asked_again_until_somebody_is(client, c
     assert db_session.query(SupportChoice).one().stop_notified_at is not None
 
 
-def test_a_webhook_delivery_retries_a_stop_nobody_was_told_about(client, configured, monkeypatch):  # B1
-    monkeypatch.setattr(settings, "stripe_secret_key", "")
+def test_a_stop_that_did_not_go_is_not_retried_on_every_look(client, configured, monkeypatch, db_session):  # R3-B12
+    configured.api.status = 500
     monkeypatch.setattr(settings, "support_notify_address", "")
     user_id = str(uuid.uuid4())
     _paying(client, user_id)
     _stop(client, user_id)
+
+    for _ in range(3):
+        _me(client, user_id)
+        _deliver(client, _subscription())
+
+    assert len(configured.api.calls) == 1
+
+
+def test_a_webhook_delivery_retries_a_stop_nobody_was_told_about(client, configured, monkeypatch, db_session):  # B1
+    user_id = str(uuid.uuid4())
+    _paying(client, user_id)
+    # Stripe's key and the founder's address both gone, after the payment began.
+    monkeypatch.setattr(settings, "stripe_secret_key", "")
+    monkeypatch.setattr(settings, "support_notify_address", "")
+    _stop(client, user_id)
     monkeypatch.setattr(settings, "stripe_secret_key", "rk_live_fixture")
+    _tried_long_ago(db_session)
 
     _deliver(client, _session(email="other@example.com", sub="sub_1"))
 
@@ -503,9 +644,38 @@ def test_the_hiker_is_emailed_once_stripe_confirms_it_will_not_renew(client, con
 
     mine = _me(client, user_id)
     assert (mine["status"], mine["supporting"], mine["can_stop"]) == ("cancel_scheduled", True, False)
-    [told] = configured.to("hiker@example.com")
-    assert "is stopped" in _text(told)
+    [told] = configured.to("hiker@example.com", about="is stopped")
     assert "covers you to" in _text(told)
+
+
+def test_the_hiker_is_told_once_whichever_order_stripes_events_arrive_in(client, configured, t0):  # R3-B7
+    user_id = str(uuid.uuid4())
+    _paying(client, user_id, created=t0)
+    _stop(client, user_id)
+
+    _deliver(client, _subscription("customer.subscription.deleted", status="canceled", created=t0 + 120))
+    _deliver(client, _subscription(created=t0 + 60, cancel_at_period_end=True))
+
+    assert len(configured.to("hiker@example.com", about="is stopped")) == 1
+
+
+def test_a_cancellation_undone_at_stripe_needs_a_new_stop_and_a_new_stop_reaches_stripe(
+    client, configured, t0, db_session
+):  # R3-B2
+    """Stripe's "Don't cancel": the old Stop is over, and the next one must
+    not be swallowed as already told."""
+    user_id = str(uuid.uuid4())
+    _paying(client, user_id, created=t0)
+    _stop(client, user_id)
+    _deliver(client, _subscription(created=t0 + 60, cancel_at_period_end=True))
+
+    assert _deliver(client, _subscription(created=t0 + 120)).json() == {"result": "active"}
+    row = db_session.query(SupportChoice).one()
+    assert (row.stop_requested_at, row.stop_notified_at, row.stop_confirmed_at) == (None, None, None)
+    assert _me(client, user_id)["can_stop"] is True
+
+    assert _stop(client, user_id).json()["status"] == "stop_requested"
+    assert len(configured.api.calls) == 2
 
 
 def test_a_deleted_subscription_is_stopped(client, configured, t0):
@@ -527,9 +697,8 @@ def test_the_founders_notice_lists_every_other_record_under_the_same_address(cli
 
     _stop(client, user_id)
 
-    notices = configured.to("founder@ourhike.org")
-    assert notices
-    assert "Other records under the same address" in _text(notices[0])
+    [notice] = configured.to("founder@ourhike.org", about="Stop requested")
+    assert "Other records under the same address" in _text(notice)
 
 
 def test_deleting_the_account_asks_stripe_to_stop_it(client, configured):
@@ -543,14 +712,35 @@ def test_deleting_the_account_asks_stripe_to_stop_it(client, configured):
     assert call["url"].endswith("/v1/subscriptions/sub_777")
 
 
-def test_deleting_the_account_deletes_a_choice_nobody_paid_for(client, configured, db_session):  # P6, S7
+def test_deleting_the_account_empties_a_choice_nobody_paid_for(client, configured, db_session):  # P6, S7, R3-B3
     user_id = str(uuid.uuid4())
-    _choose(client, user_id)
+    choice = _choice_id(_choose(client, user_id, accounting_email=True))
+    token = db_session.query(SupportChoice).one().link_token
 
     assert client.delete("/profiles/me", headers=auth_headers(user_id)).status_code == 200
 
-    assert db_session.query(SupportChoice).count() == 0
+    db_session.expire_all()
+    row = db_session.query(SupportChoice).one()
+    assert (row.id, row.profile_id, row.email, row.status) == (choice, None, "", SupportStatus.stopped)
+    assert (row.accounting_email, row.accounting_email_at) == (False, None)
+    assert row.link_token != token
     assert configured.sent == []
+
+
+def test_a_checkout_finished_after_the_account_was_deleted_is_stopped(client, configured, db_session):  # R3-B3
+    """An open checkout tab, or the setup email, can still be paid."""
+    user_id = str(uuid.uuid4())
+    choice = _choice_id(_choose(client, user_id))
+    client.delete("/profiles/me", headers=auth_headers(user_id))
+
+    assert _deliver(client, _session(choice=choice, sub="sub_late")).json() == {"result": "unwanted"}
+
+    db_session.expire_all()
+    late = db_session.query(SupportChoice).filter(SupportChoice.provider_ref == "sub_late").one()
+    assert (late.profile_id, late.status) == (None, SupportStatus.stop_requested)
+    [call] = configured.api.calls
+    assert call["url"].endswith("/v1/subscriptions/sub_late")
+    assert configured.to("founder@ourhike.org", about="no longer waiting for one")
 
 
 # ---- The webhook: believing it ----
@@ -595,16 +785,61 @@ def test_a_test_mode_event_is_ignored_by_a_live_key(client, configured, db_sessi
     assert db_session.query(SupportChoice).count() == 0
 
 
-def test_a_test_mode_key_believes_test_mode_events_so_ua_can_run_on_them(client, configured, monkeypatch):
+def test_test_mode_believes_test_mode_events_so_ua_can_run_on_them(client, configured, monkeypatch):
+    monkeypatch.setattr(settings, "stripe_mode", "test")
     monkeypatch.setattr(settings, "stripe_secret_key", "rk_test_fixture")
     assert _deliver(client, _session(live=False)).json() == {"result": "active"}
     assert _deliver(client, _session(sub="sub_live")).json() == {"result": "ignored"}
+
+
+def test_a_key_for_the_other_mode_switches_support_off_rather_than_half_on(client, configured, monkeypatch):  # R3
+    """A live server holding a test key would take real money and could
+    cancel none of it."""
+    monkeypatch.setattr(settings, "stripe_secret_key", "rk_test_fixture")
+
+    assert _me(client, str(uuid.uuid4()))["can_choose"] is False
+    assert _choose(client, str(uuid.uuid4())).status_code == 503
+
+
+def test_test_mode_links_on_a_live_server_switch_support_off(client, configured, monkeypatch):  # R3
+    """The setup the third review found dropping every event: test links,
+    no key, and STRIPE_MODE left at live."""
+    monkeypatch.setattr(settings, "stripe_secret_key", "")
+    monkeypatch.setattr(settings, "stripe_payment_links", "6000=https://buy.stripe.com/test_sixty")
+
+    assert _choose(client, str(uuid.uuid4())).status_code == 503
 
 
 def test_a_one_off_payment_and_other_event_types_are_left_alone(client, configured, db_session):
     assert _deliver(client, _session(mode="payment")).json() == {"result": "ignored"}
     assert _deliver(client, _event("customer.created", {"id": "cus_1"})).json() == {"result": "ignored"}
     assert db_session.query(SupportChoice).count() == 0
+
+
+def test_only_events_from_ourhikes_own_links_are_believed(client, configured, db_session):  # R3-B5
+    """Another product on the same Stripe account can neither enter the
+    published total nor be cancelled with OurHike's key."""
+    other = _subscription(sub="sub_shop")
+    other["data"]["object"]["metadata"] = {}
+    invoice = _invoice(sub="sub_shop")
+    invoice["data"]["object"]["parent"]["subscription_details"]["metadata"] = {}
+
+    for envelope in (_session(ours=False, sub="sub_shop"), other, invoice):
+        assert _deliver(client, envelope).json() == {"result": "ignored"}
+    assert db_session.query(SupportChoice).count() == 0
+    assert client.get("/support/total").json()["total_cents"] == 0
+
+
+def test_a_checkout_is_a_payment_only_once_it_is_paid(client, configured, db_session):  # R3
+    """A bank debit completes the session unpaid and settles days later."""
+    user_id = str(uuid.uuid4())
+    choice = _choice_id(_choose(client, user_id))
+
+    assert _deliver(client, _session(choice=choice, paid="unpaid")).json() == {"result": "ignored"}
+    assert _me(client, user_id)["status"] == "pending"
+
+    settled = _session(choice=choice, kind="checkout.session.async_payment_succeeded")
+    assert _deliver(client, settled).json() == {"result": "active"}
 
 
 def test_a_subscription_whose_first_payment_has_not_gone_through_is_left_alone(client, configured):
@@ -627,6 +862,18 @@ def test_a_delivery_whose_handling_raises_is_kept_and_still_acknowledged(client,
     [event] = db_session.query(SupportEvent).all()
     assert event.outcome == "failed: RuntimeError"
     assert event.payload["subscription"] == "sub_777"
+
+
+def test_a_delivery_the_database_could_not_take_is_refused_so_stripe_sends_it_again(
+    client, configured, monkeypatch, db_session
+):  # R3-B9
+    def unreachable(*args, **kwargs):
+        raise OperationalError("SELECT 1", {}, Exception("connection refused"))
+
+    monkeypatch.setattr(support_core, "apply_event", unreachable)
+
+    assert _deliver(client, _session()).status_code == 503
+    assert db_session.query(SupportEvent).count() == 0
 
 
 # ---- The webhook: which choice a payment belongs to ----
@@ -653,42 +900,61 @@ def test_a_payment_meets_its_choice_by_the_choices_own_id(client, configured, db
     )
 
 
-def test_without_the_choice_id_a_payment_falls_back_to_email_amount_and_time(client, configured, db_session):
+def test_without_the_choice_id_a_payment_is_kept_apart_and_the_founder_told(client, configured, db_session):  # R3-B4
     user_id = str(uuid.uuid4())
     _choose(client, user_id)
 
     assert _deliver(client, _session(email="HIKER@example.com")).json() == {"result": "active"}
-    assert db_session.query(SupportChoice).filter(SupportChoice.profile_id == user_id).one().provider_ref == "sub_777"
+
+    mine = db_session.query(SupportChoice).filter(SupportChoice.profile_id == user_id).one()
+    assert (mine.status, mine.provider_ref) == (SupportStatus.pending, None)
+    apart = db_session.query(SupportChoice).filter(SupportChoice.profile_id.is_(None)).one()
+    assert (apart.status, apart.provider_ref) == (SupportStatus.active, "sub_777")
+    [note] = configured.to("founder@ourhike.org", about="names no OurHike choice")
+    assert "sub_777" in _text(note)
 
 
-def test_a_payment_that_began_before_the_choice_is_not_that_choices_payment(client, configured, db_session, t0):  # P10
+def test_a_stranger_who_types_a_hikers_address_can_neither_block_nor_be_stopped_by_them(client, configured, db_session):  # R3-B4
+    """The third review's attack on matching by email: nothing here reads
+    the address to decide whose a payment is."""
+    _deliver(client, _session(sub="sub_stranger", amount=1200))  # the hiker's address, nobody's choice
+    hiker = str(uuid.uuid4())
+
+    assert _me(client, hiker)["status"] == "none"
+    assert _stop(client, hiker).status_code == 404
+    assert _choose(client, hiker).status_code == 200
+    assert configured.api.calls == []
+
+
+def test_a_choice_paid_twice_keeps_the_first_and_stops_the_second(client, configured, db_session):  # R3-B3
+    """Two tabs, or the setup email clicked after paying on the website."""
     user_id = str(uuid.uuid4())
-    _choose(client, user_id)
+    choice = _choice_id(_choose(client, user_id))
+    _deliver(client, _session(choice=choice, sub="sub_first"))
 
-    _deliver(client, _session(created=t0 - 86400))
+    assert _deliver(client, _session(choice=choice, sub="sub_second")).json() == {"result": "unwanted"}
 
-    assert db_session.query(SupportChoice).filter(SupportChoice.profile_id == user_id).one().provider_ref is None
-
-
-def test_a_payment_for_another_amount_does_not_take_the_choice(client, configured, db_session):  # P10
-    victim = str(uuid.uuid4())
-    _choose(client, victim, amount_cents=12000)
-
-    _deliver(client, _session(sub="sub_1", amount=1200))  # a stranger's $12, the hiker's address
-    _deliver(client, _session(sub="sub_2", amount=12000))  # the hiker's own
-
-    mine = db_session.query(SupportChoice).filter(SupportChoice.profile_id == victim).one()
-    assert (mine.provider_ref, mine.amount_cents) == ("sub_2", 12000)
+    rows = {row.provider_ref: row for row in db_session.query(SupportChoice).all()}
+    assert rows["sub_first"].status == SupportStatus.active
+    assert (rows["sub_second"].status, rows["sub_second"].profile_id) == (SupportStatus.stop_requested, user_id)
+    [call] = configured.api.calls
+    assert call["url"].endswith("/v1/subscriptions/sub_second")
+    [note] = configured.to("founder@ourhike.org", about="no longer waiting for one")
+    assert "sub_second" in _text(note)
 
 
-def test_a_choice_id_only_claims_a_choice_still_waiting(client, configured, db_session):
+def test_a_payment_for_a_choice_already_stopped_is_stopped_too(client, configured, db_session):  # R3-B3
+    """Paid, then Stop pressed before Stripe's webhook landed."""
     user_id = str(uuid.uuid4())
     choice = _choice_id(_choose(client, user_id))
     _stop(client, user_id)
 
-    _deliver(client, _session(choice=choice))
+    assert _deliver(client, _session(choice=choice)).json() == {"result": "unwanted"}
 
     assert db_session.get(SupportChoice, choice).status == SupportStatus.stopped
+    mine = _me(client, user_id)
+    assert (mine["status"], mine["can_choose"]) == ("stop_requested", True)
+    assert len(configured.api.calls) == 1
 
 
 def test_a_cancellation_for_an_unknown_payment_touches_no_choice(client, configured):  # P11
@@ -714,41 +980,29 @@ def test_an_email_never_matches_a_choice_made_with_another_provider(client, conf
     assert theirs.provider_ref is None
 
 
-def test_a_payment_after_a_pending_stop_is_kept_and_reaches_the_account_by_its_verified_email(
-    client, configured, db_session
-):  # P3, S6
-    user_id = str(uuid.uuid4())
-    _choose(client, user_id)
-    _stop(client, user_id)
-
-    _deliver(client, _session())
-
-    mine = _me(client, user_id)
-    assert (mine["status"], mine["can_stop"]) == ("active", True)
-
-
-def test_a_payment_from_a_link_with_no_choice_is_kept_until_its_account_reads_it(client, configured, db_session):  # S6
+def test_a_payment_from_a_link_with_no_choice_is_never_claimed_by_email(client, configured, db_session):  # S6, R3-B4
     _deliver(client, _session(email="walk-in@example.com", amount=12000))
 
     [row] = db_session.query(SupportChoice).all()
     assert row.profile_id is None
     assert (row.status, row.amount_cents) == (SupportStatus.active, 12000)
 
-    assert _me(client, str(uuid.uuid4()), email="walk-in@example.com")["status"] == "active"
-    assert _me(client, str(uuid.uuid4()), email="someone@example.com")["status"] == "none"
+    assert _me(client, str(uuid.uuid4()), email="walk-in@example.com")["status"] == "none"
+    db_session.expire_all()
+    assert db_session.query(SupportChoice).one().profile_id is None
 
 
 # ---- The webhook: order and repeats ----
 
 
 def test_a_retried_delivery_changes_nothing_the_first_did_not(client, configured, db_session):
-    session = _session()
-    _choose(client, str(uuid.uuid4()))
+    session = _session(choice=_choice_id(_choose(client, str(uuid.uuid4()))))
     _deliver(client, session)
     _deliver(client, session)
 
     assert db_session.query(SupportChoice).count() == 1
     assert db_session.query(SupportEvent).count() == 2
+    assert len(configured.to("hiker@example.com", about="You're giving OurHike")) == 1
 
 
 def test_a_late_update_never_brings_a_stopped_payment_back(client, configured, t0):  # P1, S1
@@ -848,6 +1102,9 @@ class OldPay:
         return None
 
     def webhook_configured(self):
+        return False
+
+    def ready(self):
         return False
 
     def verify(self, headers, raw_body):
@@ -956,8 +1213,17 @@ def test_a_charge_delivered_twice_counts_once(client, configured):
     assert client.get("/support/total").json()["total_cents"] == 6000
 
 
+def test_one_charge_sent_as_two_events_counts_once(client, configured):  # R3-B6
+    """Stripe says some actions produce two events for one object; the
+    invoice id, not the event id, is what is counted once."""
+    assert _deliver(client, _invoice(invoice="in_one")).json() == {"result": "charged"}
+    assert _deliver(client, _invoice(invoice="in_one")).json() == {"result": "duplicate"}
+
+    assert client.get("/support/total").json()["total_cents"] == 6000
+
+
 @pytest.mark.parametrize("basil", [True, False])
-def test_a_charge_that_arrives_before_its_checkout_still_counts(client, configured, basil):
+def test_a_charge_that_arrives_before_its_checkout_still_counts_and_joins_it(client, configured, db_session, basil):  # R3-B6
     """Stripe does not promise order: `invoice.paid` often beats the session."""
     _deliver(client, _invoice(sub="sub_early", amount=12000, basil=basil))
 
@@ -966,6 +1232,14 @@ def test_a_charge_that_arrives_before_its_checkout_still_counts(client, configur
         "total_cents": 12000,
         "supporters": 1,
     }
+
+    user_id = str(uuid.uuid4())
+    choice = _choice_id(_choose(client, user_id, amount_cents=12000))
+    _deliver(client, _session(choice=choice, sub="sub_early", amount=12000))
+
+    charge = db_session.query(SupportCharge).one()
+    assert charge.choice_id == choice
+    assert _me(client, user_id)["period_end"] is not None
 
 
 def test_the_total_is_computed_at_most_hourly(client, configured):  # C3
@@ -976,12 +1250,13 @@ def test_the_total_is_computed_at_most_hourly(client, configured):  # C3
 
 
 def _charge(at: datetime, cents=6000, currency="USD", subscription="sub_1"):
-    return SupportEvent(
+    return SupportCharge(
         provider="stripe",
-        kind="charged",
-        occurred_at=at,
-        outcome="charged",
-        payload={"amount_cents": cents, "currency": currency, "subscription": subscription},
+        charge_ref=f"in_{uuid.uuid4().hex[:12]}",
+        subscription_ref=subscription,
+        amount_cents=cents,
+        currency=currency,
+        charged_at=at,
     )
 
 
@@ -992,6 +1267,13 @@ def test_a_yearly_supporters_renewal_counts_in_the_year_it_was_charged(db_sessio
     assert year_total(db_session, 2025) == (6000, 1)
     assert year_total(db_session, 2026) == (6000, 1)
     assert year_total(db_session, 2027) == (0, 0)
+
+
+def test_two_renewals_of_one_payment_in_one_year_are_one_supporter(db_session):
+    db_session.add_all([_charge(datetime(2026, 1, 5)), _charge(datetime(2026, 12, 30))])
+    db_session.commit()
+
+    assert year_total(db_session, 2026) == (12000, 1)
 
 
 def test_another_currency_is_left_out_of_the_dollar_total(db_session):  # C1

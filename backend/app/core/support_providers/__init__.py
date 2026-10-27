@@ -19,8 +19,11 @@ def provider_for(key: str | None) -> SupportProvider | None:
 
 
 def current_provider() -> SupportProvider | None:
-    """Where new choices go, or None when the setting names nothing known."""
-    return provider_for(settings.support_provider)
+    """Where new choices go, or None when the setting names nothing known or
+    the provider it names is not `ready()` - no choice is taken that could
+    not be paid, recorded and stopped."""
+    provider = provider_for(settings.support_provider)
+    return provider if provider is not None and provider.ready() else None
 
 
 __all__ = ["EventKind", "PROVIDERS", "ProviderEvent", "SupportProvider", "current_provider", "provider_for"]

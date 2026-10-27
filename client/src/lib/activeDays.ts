@@ -79,6 +79,19 @@ export function activeDaysThisYear(now: Date): number {
  * a date at or before `last` in the same year adds nothing, which can only
  * ever make the ask later.
  */
+/**
+ * The count this launch reaches once today is recorded: the stored count,
+ * plus one when today is not in it yet. What the day-5 ask decides on at
+ * launch, so it never waits for the hiker's first tap and then opens under
+ * their finger (the third #1885 review). A phone that cannot store reads
+ * as day one every launch, so it is never asked, as `recordActiveDay` says.
+ */
+export function daysIncludingToday(now: Date): number {
+  const stored = read()
+  if (stored === null || stored.year !== now.getFullYear()) return 1
+  return localDate(now) <= stored.last ? stored.days : stored.days + 1
+}
+
 export function recordActiveDay(now: Date): number {
   const today = localDate(now)
   const year = now.getFullYear()

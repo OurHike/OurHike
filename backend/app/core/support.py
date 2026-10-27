@@ -6,42 +6,46 @@ lives behind app/core/support_providers/ - this module never reads a Stripe
 field name, and a second provider is a module there, not a change here (the
 Buy Me a Coffee to Stripe swap of 2026-10-27 was exactly that).
 
-What this module is for, and the rules the #1885 adversarial review made it
-keep:
+What this module is for, and the rules three adversarial reviews of #1885
+made it keep:
 
-**A PAYMENT MEETS ITS CHOICE BY THE PROVIDER'S OWN ID WHEREVER IT CAN.** Only a
-`started` event may fall back to the email, and only onto a `pending` choice
-for the same amount, made with that provider, that was chosen no later than
-the payment began. The review found the old fallback matched any event by
-email - so a stranger's cancellation typed with a hiker's address could stop
-the hiker's pending choice, and a stranger's $1 could become the hiker's
-record. An `updated`, `paused` or `ended` for an id nobody has seen is
-acknowledged and left alone.
+**A PAYMENT MEETS ITS CHOICE BY ID, NEVER BY EMAIL.** By the provider's id for
+the payment once it is known, and before that by OurHike's own choice id,
+which the provider carries through checkout. There is no email fallback and
+no claiming by email: the third review showed a stranger who types a hiker's
+address could put their payment on the hiker's record, block the hiker's own
+choice, and have the hiker's Stop cancel it. A payment that names no choice
+is kept unattached, for the total, and the founder is told.
+
+**A PAYMENT FOR A CHOICE THAT NO LONGER WANTS ONE IS STOPPED.** A choice id
+that is already stopped, already paid, or emptied by an account deletion
+still arrives - a hiker who paid and pressed Stop before the webhook landed,
+two tabs, an old setup email clicked after deleting the account. Each gets a
+row of its own, already `stop_requested`, the provider is asked to stop it,
+and the founder is told it may need refunding.
 
 **A LATE EVENT NEVER UNDOES A LATER ONE.** Deliveries are retried and may
-arrive in any order (Stripe says so outright), so each row keeps
-the time of the newest event it took (`last_event_at`) and drops anything
-older. And `stopped` is final for a provider id: a retried "updated" written
-before the cancellation cannot bring a stopped payment back to life. A new
-payment is a new id, and so a new row.
+arrive in any order (Stripe says so outright), so each row keeps the time of
+the newest event it took (`last_event_at`) and drops anything older. And
+`stopped` is final for a provider id. A cancellation that is reversed (the
+provider's "Don't cancel") clears the Stop's bookkeeping, so a second Stop
+reaches the provider again.
 
-**EVERY EVENT IS KEPT** in `support_events`, with what was done about it, so
-the order and the outcome can be read back - including an event whose
-handling raised, which is stored as `failed` and still acknowledged, because
-a provider that keeps getting errors eventually disables the endpoint, and
-then nothing is recorded at all.
+**EVERY EVENT THE PROVIDER RECOGNISES IS KEPT** in `support_events`, with what
+was done about it. An event whose handling raised is stored as `failed` and
+acknowledged - unless the failure was the database connection itself, which
+the router answers 503 so the provider retries.
 
-**THE TOTAL IS READ FROM CHARGES.** Every `charged` event is money that
-arrived, kept once by its event id (a provider's retry carries the same id),
-and `year_total` sums them. Nothing is inferred from start dates.
+**THE TOTAL IS READ FROM CHARGES**, one row per provider charge id in
+`support_charges`, which a unique key keeps from being counted twice.
 
-**A STOP IS RECORDED AT ONCE AND RETRIED UNTIL SOMEBODY IS TOLD.** For a
-provider with no cancel API the request is an email to the founder; a row
-whose request did not go keeps `stop_notified_at` empty, and the next Stop
-press, the hiker's next look at the page, or the next webhook tries again. A
-`pending` choice has nothing to cancel, so its Stop lands as `stopped` at
-once - the review found it otherwise wedged the hiker with no way to choose
-again.
+**A STOP IS RECORDED BEFORE THE PROVIDER IS ASKED, AND RETRIED UNTIL IT IS.**
+`mark_stop` changes the row; the caller commits; `notify_stop` then asks the
+provider and records the answer with an UPDATE that touches only the stop
+columns, so a confirmation webhook landing during the call is never written
+over. A row whose request did not go keeps `stop_notified_at` empty and is
+retried, at most every `RETRY_EVERY`. A `pending` choice has nothing to
+cancel, so its Stop lands as `stopped` at once.
 """
 
 from __future__ import annotations
@@ -49,39 +53,43 @@ from __future__ import annotations
 import logging
 from datetime import datetime, timedelta
 
+from sqlalchemy import func, or_
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
-from app.core.support_mail import email_hiker_stopped
+from app.core.support_mail import email_founder_payment_note, email_hiker_started, email_hiker_stopped
 from app.core.support_providers import EventKind, ProviderEvent, SupportProvider, provider_for
 from app.core.time import utc_now
-from app.models.support import SupportCadence, SupportChoice, SupportEvent, SupportStatus
+from app.models.support import SupportCadence, SupportCharge, SupportChoice, SupportEvent, SupportStatus
 
 log = logging.getLogger(__name__)
 
 # A recurring payment exists and nothing has ended it.
-RUNNING = (SupportStatus.active, SupportStatus.paused, SupportStatus.cancel_scheduled, SupportStatus.stop_requested)
+RUNNING = (
+    SupportStatus.active,
+    SupportStatus.payment_failed,
+    SupportStatus.paused,
+    SupportStatus.cancel_scheduled,
+    SupportStatus.stop_requested,
+)
 # What a hiker's Stop applies to: anything that could still charge them, and
 # a pending choice, which is how one is cleared.
-STOPPABLE = (SupportStatus.pending, SupportStatus.active, SupportStatus.paused)
-# What blocks a new choice: a payment on the current provider that is still
-# charging and that nobody has asked to stop.
-BLOCKS_CHOICE = (SupportStatus.active, SupportStatus.paused)
+STOPPABLE = (SupportStatus.pending, SupportStatus.active, SupportStatus.payment_failed, SupportStatus.paused)
+# What blocks a new choice: a payment on the current provider that nobody has
+# asked to stop. A failing one too - a second subscription beside one the
+# provider is still retrying would charge twice.
+BLOCKS_CHOICE = (SupportStatus.active, SupportStatus.payment_failed, SupportStatus.paused)
 
 # The published total is in dollars. Another currency's amount is not
 # summed into it, because no conversion here would be anybody's real rate.
 TOTAL_CURRENCY = "USD"
 
-# @unvalidated: how far a provider's clock may run behind this server's and
-# still have a payment meet the choice made just before it. Ten minutes is a
-# guess at clock drift plus checkout time going the wrong way, not a
-# measurement; what would settle it is `chosen_at` against the provider's
-# `started_at` on the first real supporters.
-EMAIL_MATCH_SKEW = timedelta(minutes=10)
-
-# How many unsent stop requests one webhook delivery retries, so a long outage
-# cannot turn one delivery into a long request.
-RETRY_BATCH = 20
+# How many unsent stop requests one webhook delivery retries, and how long a
+# row waits between tries. @unvalidated: fifteen minutes is a guess at "long
+# enough not to hammer a provider that is down, short enough that a Stop
+# lands the same day"; the first real outage would settle it.
+RETRY_BATCH = 5
+RETRY_EVERY = timedelta(minutes=15)
 
 
 def summary_row(db: Session, profile_id: str) -> SupportChoice | None:
@@ -101,29 +109,12 @@ def summary_row(db: Session, profile_id: str) -> SupportChoice | None:
     return None
 
 
-def claim_unattached(db: Session, profile_id: str, email: str | None) -> int:
-    """Attach payments made on a provider's page to the account whose
-    VERIFIED email they carry. Returns how many. Does not commit.
-
-    A supporter who paid on the page without choosing in the app otherwise
-    has no Stop button at all. The address is the token's, which
-    core/auth.py's `get_current_email` treats as a provider fact - the same
-    trust a paid choice already rests on.
-    """
-    if not email:
-        return 0
-    rows = db.query(SupportChoice).filter(SupportChoice.profile_id.is_(None), SupportChoice.email == email).all()
-    for row in rows:
-        row.profile_id = profile_id
-    return len(rows)
-
-
 def settle_lapsed(db: Session, profile_id: str, now: datetime | None = None) -> int:
     """Move a `cancel_scheduled` payment whose end has passed to `stopped`.
 
-    No provider sends an event at the end of a period it was told not to
-    renew, so without this a scheduled cancellation would read as supporting
-    forever and the yearly ask would never come back. Does not commit.
+    A provider normally says so itself (Stripe sends `deleted` at the end),
+    but a lost delivery would otherwise leave it reading as supporting forever
+    and the yearly ask would never come back. Does not commit.
     """
     now = now or utc_now()
     rows = (
@@ -141,58 +132,63 @@ def settle_lapsed(db: Session, profile_id: str, now: datetime | None = None) -> 
     return len(rows)
 
 
-def _match(db: Session, provider: SupportProvider, event: ProviderEvent) -> SupportChoice | None:
-    if event.subscription_ref:
-        row = (
-            db.query(SupportChoice)
-            .filter(SupportChoice.provider == provider.key, SupportChoice.provider_ref == event.subscription_ref)
-            .first()
-        )
-        if row is not None:
-            return row
-    if event.choice_ref:
-        row = db.get(SupportChoice, event.choice_ref)
-        if row is not None and row.provider == provider.key and row.provider_ref is None and row.status == SupportStatus.pending:
-            return row
-    if event.kind is not EventKind.started or not event.email:
+def _by_payment(db: Session, provider: SupportProvider, ref: str | None) -> SupportChoice | None:
+    if not ref:
         return None
-    query = db.query(SupportChoice).filter(
-        SupportChoice.provider == provider.key,
-        SupportChoice.email == event.email,
-        SupportChoice.provider_ref.is_(None),
-        SupportChoice.status == SupportStatus.pending,
-        SupportChoice.profile_id.isnot(None),
+    return (
+        db.query(SupportChoice)
+        .filter(SupportChoice.provider == provider.key, SupportChoice.provider_ref == ref)
+        .with_for_update()
+        .first()
     )
-    if event.amount_cents is not None:
-        query = query.filter(SupportChoice.amount_cents == event.amount_cents)
-    began = event.started_at or event.occurred_at
-    if began is not None:
-        query = query.filter(SupportChoice.chosen_at <= began + EMAIL_MATCH_SKEW)
-    return query.order_by(SupportChoice.chosen_at.desc()).first()
 
 
-def _new_unattached(db: Session, provider: SupportProvider, event: ProviderEvent) -> SupportChoice | None:
-    """A payment begun on the provider's page with no choice in the app.
-
-    Kept so the total is honest; `claim_unattached` gives it to the account
-    with the same verified email. Two deliveries racing to create the same
-    one meet the unique (provider, provider_ref) constraint, and the loser
-    reads the winner's row.
-    """
-    row = SupportChoice(
-        email=event.email,
-        provider=provider.key,
-        provider_ref=event.subscription_ref,
-        amount_cents=event.amount_cents or 0,
-        status=SupportStatus.active,
+def _by_choice(db: Session, provider: SupportProvider, ref: str | None) -> SupportChoice | None:
+    """The choice a checkout names, locked, so two checkouts of one choice
+    cannot both attach to it (the third review's two-tabs case)."""
+    if not ref:
+        return None
+    return (
+        db.query(SupportChoice).filter(SupportChoice.id == ref, SupportChoice.provider == provider.key).with_for_update().first()
     )
+
+
+def _insert(db: Session, row: SupportChoice) -> bool:
+    """Add a row in a savepoint. False when the unique (provider,
+    provider_ref) says another delivery got there first."""
     try:
         with db.begin_nested():
             db.add(row)
             db.flush()
     except IntegrityError:
-        return _match(db, provider, event)
-    return row
+        return False
+    return True
+
+
+def _new_row(
+    db: Session,
+    provider: SupportProvider,
+    event: ProviderEvent,
+    *,
+    status: SupportStatus,
+    like: SupportChoice | None,
+    now: datetime,
+) -> SupportChoice | None:
+    """A row for a payment no pending choice is waiting for. `like` is the
+    choice the payment named, whose account it belongs to; None for a payment
+    that named none. Returns the winner's row if two deliveries race."""
+    row = SupportChoice(
+        profile_id=like.profile_id if like is not None else None,
+        email=event.email or (like.email if like is not None else "") or "",
+        provider=provider.key,
+        provider_ref=event.subscription_ref,
+        amount_cents=event.amount_cents or (like.amount_cents if like is not None else 0),
+        status=status,
+        stop_requested_at=now if status == SupportStatus.stop_requested else None,
+    )
+    if _insert(db, row):
+        return row
+    return _by_payment(db, provider, event.subscription_ref)
 
 
 def _settled(event: ProviderEvent, now: datetime) -> tuple[SupportStatus, datetime | None] | None:
@@ -207,6 +203,98 @@ def _settled(event: ProviderEvent, now: datetime) -> tuple[SupportStatus, dateti
     return None
 
 
+def _record_charge(
+    db: Session, provider: SupportProvider, event: ProviderEvent, now: datetime
+) -> tuple[str, SupportChoice | None]:
+    """Money arrived: one `support_charges` row per provider charge id, and
+    never a change of state. A charge can arrive before the payment it
+    belongs to is known; `_join_charges` links it afterwards."""
+    row = (
+        db.query(SupportChoice)
+        .filter(SupportChoice.provider == provider.key, SupportChoice.provider_ref == event.subscription_ref)
+        .first()
+        if event.subscription_ref
+        else None
+    )
+    if not event.charge_ref or event.amount_cents is None or not event.currency:
+        return "ignored_incomplete_charge", row
+    charge = SupportCharge(
+        provider=provider.key,
+        charge_ref=event.charge_ref,
+        subscription_ref=event.subscription_ref,
+        choice_id=row.id if row is not None else None,
+        amount_cents=event.amount_cents,
+        currency=event.currency,
+        charged_at=event.occurred_at or now,
+        period_end=event.period_end,
+        received_at=now,
+    )
+    try:
+        with db.begin_nested():
+            db.add(charge)
+            db.flush()
+    except IntegrityError:
+        return "duplicate", row
+    if row is not None and event.period_end is not None:
+        row.period_end = max(row.period_end or event.period_end, event.period_end)
+    return "charged", row
+
+
+def _join_charges(db: Session, provider: SupportProvider, row: SupportChoice) -> None:
+    """Give charges that arrived before their checkout to the row, and take
+    the latest period end they paid for."""
+    if not row.provider_ref:
+        return
+    db.query(SupportCharge).filter(
+        SupportCharge.provider == provider.key,
+        SupportCharge.subscription_ref == row.provider_ref,
+        SupportCharge.choice_id.is_(None),
+    ).update({SupportCharge.choice_id: row.id}, synchronize_session=False)
+    latest = (
+        db.query(func.max(SupportCharge.period_end))
+        .filter(SupportCharge.provider == provider.key, SupportCharge.subscription_ref == row.provider_ref)
+        .scalar()
+    )
+    if latest is not None and (row.period_end is None or latest > row.period_end):
+        row.period_end = latest
+
+
+def _unwanted(
+    db: Session,
+    provider: SupportProvider,
+    event: ProviderEvent,
+    choice: SupportChoice,
+    *,
+    mail_provider,
+    now: datetime,
+) -> tuple[str, SupportChoice | None]:
+    """A payment for a choice that was stopped, already paid, or emptied by an
+    account deletion: a row of its own, asked to stop at once, and the
+    founder told it may need refunding."""
+    row = _new_row(db, provider, event, status=SupportStatus.stop_requested, like=choice, now=now)
+    if row is None:
+        return "ignored_no_supporter", None
+    row.started_at = row.started_at or event.started_at or now
+    row.last_event_at = event.occurred_at
+    for field in ("customer_ref", "plan_ref", "currency"):
+        value = getattr(event, field)
+        if value is not None:
+            setattr(row, field, value)
+    _join_charges(db, provider, row)
+    db.flush()
+    notify_stop(db, row, mail_provider=mail_provider, now=now)
+    email_founder_payment_note(
+        db,
+        row,
+        provider_label=provider.label,
+        what="A payment arrived for an OurHike choice that was no longer waiting for one - it had been "
+        "stopped, already paid, or emptied when its account was deleted. OurHike has asked for it to stop "
+        "renewing. If it was a duplicate, or the hiker did not mean it, refund it in the provider's dashboard.",
+        mail_provider=mail_provider,
+    )
+    return "unwanted", row
+
+
 def apply_event(
     db: Session,
     provider: SupportProvider,
@@ -218,31 +306,32 @@ def apply_event(
     """Apply one normalised event. Returns (outcome, row). Does not commit."""
     now = now or utc_now()
     if event.kind is EventKind.charged:
-        # Money arrived. Counted once per provider event id, and never a
-        # change of state - a charge can arrive before the payment it belongs
-        # to is known here, and still counts.
-        if event.event_id and (
-            db.query(SupportEvent)
-            .filter(
-                SupportEvent.provider == provider.key,
-                SupportEvent.event_id == event.event_id,
-                SupportEvent.outcome == "charged",
-            )
-            .first()
-            is not None
-        ):
-            return "duplicate", None
-        return "charged", _match(db, provider, event)
+        return _record_charge(db, provider, event, now)
 
-    row = _match(db, provider, event)
+    row = _by_payment(db, provider, event.subscription_ref)
     if row is None:
-        if event.kind not in (EventKind.started, EventKind.updated):
+        if event.kind is not EventKind.started:
             return "ignored_unknown_payment", None
-        if not event.subscription_ref or not event.email:
-            return "ignored_no_supporter", None
-        row = _new_unattached(db, provider, event)
-        if row is None:
-            return "ignored_no_supporter", None
+        if not event.subscription_ref:
+            return "ignored_no_payment_id", None
+        choice = _by_choice(db, provider, event.choice_ref)
+        if choice is not None and choice.status == SupportStatus.pending and choice.provider_ref is None:
+            row = choice
+        elif choice is not None:
+            return _unwanted(db, provider, event, choice, mail_provider=mail_provider, now=now)
+        else:
+            row = _new_row(db, provider, event, status=SupportStatus.active, like=None, now=now)
+            if row is None:
+                return "ignored_no_supporter", None
+            email_founder_payment_note(
+                db,
+                row,
+                provider_label=provider.label,
+                what="A payment arrived that names no OurHike choice - its link was edited, or it came from "
+                "somewhere other than the app. It counts in the published total, but nobody can stop it from "
+                "the app. If the payer writes in, cancel it in the provider's dashboard.",
+                mail_provider=mail_provider,
+            )
 
     if row.last_event_at is not None and event.occurred_at is not None and event.occurred_at < row.last_event_at:
         return "stale", row
@@ -252,7 +341,7 @@ def apply_event(
     if event.occurred_at is not None:
         row.last_event_at = max(row.last_event_at or event.occurred_at, event.occurred_at)
     row.provider_ref = row.provider_ref or event.subscription_ref
-    for field in ("customer_ref", "psp_ref", "plan_ref", "currency", "period_end", "cancel_at_period_end"):
+    for field in ("customer_ref", "psp_ref", "plan_ref", "provider_status", "currency", "period_end", "cancel_at_period_end"):
         value = getattr(event, field)
         if value is not None:
             setattr(row, field, value)
@@ -269,21 +358,40 @@ def apply_event(
         row.status, row.ended_at = settled
     elif event.kind is EventKind.paused:
         row.status = SupportStatus.paused
+    elif event.kind is EventKind.failing:
+        row.status = SupportStatus.payment_failed
     else:
         row.status = SupportStatus.active
-    if was == SupportStatus.stop_requested and row.status in (SupportStatus.active, SupportStatus.paused):
-        # The cancellation has not landed yet: an `updated` sent before it
-        # must not quietly undo the hiker's Stop.
+    if was == SupportStatus.stop_requested and row.status in BLOCKS_CHOICE:
+        # The cancellation has not landed yet: an event sent before it must
+        # not quietly undo the hiker's Stop.
         row.status = SupportStatus.stop_requested
+    if was == SupportStatus.cancel_scheduled and row.status in BLOCKS_CHOICE:
+        # The cancellation was reversed at the provider ("Don't cancel"). The
+        # old Stop is over; a new one must reach the provider again.
+        row.stop_requested_at = row.stop_notified_at = row.stop_attempted_at = row.stop_confirmed_at = None
 
-    if was == SupportStatus.stop_requested and row.status in (SupportStatus.stopped, SupportStatus.cancel_scheduled):
-        email_hiker_stopped(db, row, mail_provider=mail_provider)
+    if was == SupportStatus.pending and row.status in BLOCKS_CHOICE:
+        _join_charges(db, provider, row)
+        if row.profile_id is not None:
+            email_hiker_started(db, row, mail_provider=mail_provider)
+    if (
+        row.status in (SupportStatus.stopped, SupportStatus.cancel_scheduled)
+        and row.stop_requested_at is not None
+        and row.stop_confirmed_at is None
+        and row.profile_id is not None
+    ):
+        # Whatever order the events came in - keyed off the Stop, not off the
+        # status the row happened to have a moment ago.
+        if email_hiker_stopped(db, row, mail_provider=mail_provider):
+            row.stop_confirmed_at = now
     if was == SupportStatus.pending and row.status == SupportStatus.active and row.replaces_choice_id:
         # A move between providers: the new payment started, so the old one
         # is asked to stop exactly as the hiker's own Stop would.
         old = db.get(SupportChoice, row.replaces_choice_id)
-        if old is not None and old.status in STOPPABLE:
-            request_stop(db, old, mail_provider=mail_provider, now=now)
+        if old is not None and mark_stop(old, now=now):
+            db.flush()
+            notify_stop(db, old, mail_provider=mail_provider, now=now)
     return row.status.value, row
 
 
@@ -322,9 +430,10 @@ def apply_delivery(
 
 
 def record_failed_delivery(db: Session, provider: SupportProvider, envelope: dict, error: BaseException) -> None:
-    """Keep a delivery whose handling raised, to replay once the bug is
-    fixed. The payload is the provider's own redaction, never the raw body.
-    Does not commit."""
+    """Keep a delivery whose handling raised, by its event id, so it can be
+    resent from the provider's dashboard once the bug is fixed (Stripe keeps
+    events 30 days). The payload is the provider's own redaction, never the
+    raw body. Does not commit."""
     try:
         events = provider.normalise(envelope)
     except Exception:  # the normaliser is what raised
@@ -343,30 +452,75 @@ def record_failed_delivery(db: Session, provider: SupportProvider, envelope: dic
     db.flush()
 
 
-def request_stop(db: Session, row: SupportChoice, *, mail_provider, now: datetime | None = None) -> SupportChoice:
-    """Stop one recurring payment, as far as this server can. Does not commit.
+def mark_stop(row: SupportChoice, *, now: datetime) -> bool:
+    """Record a Stop on one row. Returns whether the provider now needs
+    asking. Changes the row only; the caller commits before `notify_stop`.
 
     `pending` with nothing confirmed by the provider has nothing to cancel and
-    lands as `stopped`. Anything still charging becomes `stop_requested`, and
-    whoever cancels it is asked; a request that did not go is retried by the
-    next call. Idempotent: a row already asked is not asked again.
+    lands as `stopped`. Anything still charging becomes `stop_requested`.
     """
-    now = now or utc_now()
     if row.status == SupportStatus.pending and row.provider_ref is None:
         row.status = SupportStatus.stopped
         row.stop_requested_at = row.stop_requested_at or now
         row.ended_at = now
-        return row
-    if row.status in (SupportStatus.active, SupportStatus.paused, SupportStatus.pending):
+        return False
+    if row.status in STOPPABLE:
         row.status = SupportStatus.stop_requested
         row.stop_requested_at = now
-    if row.status == SupportStatus.stop_requested and row.stop_notified_at is None:
-        provider = provider_for(row.provider)
-        if provider is not None and provider.request_cancel(db, row, mail_provider):
-            row.stop_notified_at = now
-        else:
-            log.warning("support: stop %s recorded but whoever cancels it was not reached", row.id)
+        row.stop_notified_at = row.stop_attempted_at = row.stop_confirmed_at = None
+    return row.status == SupportStatus.stop_requested and row.stop_notified_at is None
+
+
+def notify_stop(db: Session, row: SupportChoice, *, mail_provider, now: datetime | None = None) -> bool:
+    """Ask whoever cancels `row` to cancel it. True when it reached them.
+
+    The provider is called first and the answer recorded after, with UPDATEs
+    that touch only the stop columns and never the status: so a router that
+    committed its `mark_stop` holds no lock on the row while the provider is
+    out, and a provider's confirmation that commits during the call is not
+    written over (the third #1885 review's race). Does not commit.
+    """
+    now = now or utc_now()
+    provider = provider_for(row.provider)
+    reached = provider is not None and provider.request_cancel(db, row, mail_provider)
+    if not reached:
+        log.warning("support: stop %s recorded but whoever cancels it was not reached", row.id)
+    ids = SupportChoice.id == row.id
+    db.query(SupportChoice).filter(ids).update({SupportChoice.stop_attempted_at: now}, synchronize_session=False)
+    if reached:
+        db.query(SupportChoice).filter(ids, SupportChoice.stop_notified_at.is_(None)).update(
+            {SupportChoice.stop_notified_at: now}, synchronize_session=False
+        )
+    return reached
+
+
+def request_stop(db: Session, row: SupportChoice, *, mail_provider, now: datetime | None = None) -> SupportChoice:
+    """`mark_stop` then `notify_stop`, for a caller already inside one
+    transaction with nothing to race (a provider move). Does not commit."""
+    now = now or utc_now()
+    if mark_stop(row, now=now):
+        db.flush()
+        notify_stop(db, row, mail_provider=mail_provider, now=now)
     return row
+
+
+def stops_waiting(db: Session, *, profile_id: str | None = None, now: datetime | None = None) -> list[SupportChoice]:
+    """Stops nobody was told about and not tried in the last `RETRY_EVERY`,
+    least recently tried first, so a row that keeps failing cannot hold the
+    queue."""
+    now = now or utc_now()
+    query = db.query(SupportChoice).filter(
+        SupportChoice.status == SupportStatus.stop_requested,
+        SupportChoice.stop_notified_at.is_(None),
+        or_(SupportChoice.stop_attempted_at.is_(None), SupportChoice.stop_attempted_at <= now - RETRY_EVERY),
+    )
+    if profile_id is not None:
+        query = query.filter(SupportChoice.profile_id == profile_id)
+    return (
+        query.order_by(SupportChoice.stop_attempted_at.asc().nullsfirst(), SupportChoice.stop_requested_at)
+        .limit(RETRY_BATCH)
+        .all()
+    )
 
 
 def retry_stop_requests(
@@ -376,52 +530,38 @@ def retry_stop_requests(
     profile_id: str | None = None,
     now: datetime | None = None,
 ) -> int:
-    """Ask again for every Stop nobody was told about. Returns how many went.
-
-    `profile_id` narrows it to one hiker's rows. Without it, the oldest
-    `RETRY_BATCH`. Does not commit.
-    """
-    query = db.query(SupportChoice).filter(
-        SupportChoice.status == SupportStatus.stop_requested,
-        SupportChoice.stop_notified_at.is_(None),
+    """Ask again for Stops nobody was told about (`stops_waiting`). Returns
+    how many went. Does not commit."""
+    now = now or utc_now()
+    return sum(
+        1
+        for row in stops_waiting(db, profile_id=profile_id, now=now)
+        if notify_stop(db, row, mail_provider=mail_provider, now=now)
     )
-    if profile_id is not None:
-        query = query.filter(SupportChoice.profile_id == profile_id)
-    rows = query.order_by(SupportChoice.stop_requested_at).limit(RETRY_BATCH).all()
-    for row in rows:
-        request_stop(db, row, mail_provider=mail_provider, now=now)
-    return sum(1 for row in rows if row.stop_notified_at is not None)
 
 
 def year_total(db: Session, year: int) -> tuple[int, int]:
-    """(cents, supporters) given in `year`, in dollars, before fees.
+    """(cents, payments) given in `year`, in dollars, before fees and refunds.
 
-    **Read from charges, not reasoned.** The sum of every `charged` event
-    that landed in the year - each one money a provider says arrived - and
-    the number of distinct payments they came from.
+    **Read from charges, not reasoned.** The sum of every `support_charges`
+    row charged in the year - money a provider says arrived, once per charge
+    id - and the number of distinct recurring payments it came from.
 
-    A refund is not subtracted: no refund event is handled yet, so a refunded
-    charge keeps the total high until one is. Only `TOTAL_CURRENCY` is
-    summed: an amount in another currency is left out rather than converted
-    at a rate nobody here can stand behind.
+    A refund is not subtracted: no refund event is handled yet, and the page
+    says "before refunds". Only `TOTAL_CURRENCY` is summed: an amount in
+    another currency is left out rather than converted at a rate nobody here
+    can stand behind.
     """
-    charges = (
-        db.query(SupportEvent)
-        .filter(
-            SupportEvent.kind == EventKind.charged.value,
-            SupportEvent.outcome == "charged",
-            SupportEvent.occurred_at >= datetime(year, 1, 1),
-            SupportEvent.occurred_at < datetime(year + 1, 1, 1),
-        )
-        .all()
+    in_year = (
+        SupportCharge.currency == TOTAL_CURRENCY,
+        SupportCharge.charged_at >= datetime(year, 1, 1),
+        SupportCharge.charged_at < datetime(year + 1, 1, 1),
     )
-    total = 0
-    payments: set[str] = set()
-    for charge in charges:
-        payload = charge.payload or {}
-        cents = payload.get("amount_cents")
-        if payload.get("currency") != TOTAL_CURRENCY or isinstance(cents, bool) or not isinstance(cents, int):
-            continue
-        total += cents
-        payments.add(str(payload.get("subscription") or charge.choice_id or charge.id))
-    return total, len(payments)
+    total = db.query(func.coalesce(func.sum(SupportCharge.amount_cents), 0)).filter(*in_year).scalar() or 0
+    payments = (
+        db.query(func.count(func.distinct(func.coalesce(SupportCharge.subscription_ref, SupportCharge.charge_ref))))
+        .filter(*in_year)
+        .scalar()
+        or 0
+    )
+    return int(total), int(payments)

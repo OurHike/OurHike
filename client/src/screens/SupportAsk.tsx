@@ -8,8 +8,8 @@
 // that cannot be skipped (frame B, poll 2026-10-23), so the first two views
 // have no "Not now" and Escape does nothing on them. What keeps that from
 // standing between a hiker and the water source they opened the app for is
-// that $0 is one of the answers: "$0", then "Keep it at $0", and the map is
-// back. That is two taps at worst, once a year.
+// that $0 is one of the answers: "$0", "Continue", then "Keep it at $0",
+// and the map is back. That is three taps at worst, once a year.
 //
 // THE $0 NUDGE IS FORCEFUL BY DESIGN AND NEVER A TRAP. Its paid buttons are
 // big; "Keep it at $0" is an underlined link under them, always on screen
@@ -71,6 +71,16 @@ export interface SupportAskProps {
   /** Injected for tests: where the website app goes to pay. */
   navigate?: (url: string) => void
   choose?: typeof chooseSupport
+}
+
+// The tiers in the order they are shown, $0 last.
+const OPTIONS: readonly Tier[] = [...TIERS, 0]
+
+const ARROW_STEPS: Partial<Record<string, number>> = {
+  ArrowDown: 1,
+  ArrowRight: 1,
+  ArrowUp: -1,
+  ArrowLeft: -1,
 }
 
 const TIER_LINES: Record<Tier, string> = {
@@ -183,12 +193,24 @@ export function SupportAsk({
             role="radiogroup"
             aria-label="Choose an amount"
           >
-            {([...TIERS, 0] as const).map((tier) => (
+            {OPTIONS.map((tier, index) => (
               <button
                 key={tier}
                 type="button"
                 role="radio"
                 aria-checked={picked === tier}
+                // The ARIA radio group: one stop in the tab order, and the
+                // arrow keys move the choice (the third #1885 review).
+                tabIndex={picked === tier || (picked === null && index === 0) ? 0 : -1}
+                onKeyDown={(event) => {
+                  const step = ARROW_STEPS[event.key]
+                  if (step === undefined) return
+                  event.preventDefault()
+                  const next = (index + step + OPTIONS.length) % OPTIONS.length
+                  setPicked(OPTIONS[next])
+                  const sibling = event.currentTarget.parentElement?.children[next]
+                  if (sibling instanceof HTMLElement) sibling.focus()
+                }}
                 // Spelled out: read from the spans, the amount and its
                 // period run together ("$1a year") for a screen reader.
                 aria-label={`${dollars(tier)}${tier === 0 ? '' : ' a year'}: ${TIER_LINES[tier]}`}
@@ -219,7 +241,7 @@ export function SupportAsk({
             {native
               ? 'Nothing is paid in this app. A paid choice is set up by email.'
               : 'Payments happen on a payment page, never in the app.'}{' '}
-            Stopping takes two taps: More → Your support → Stop.
+            Stopping is in the app: More → Your support → Stop.
           </p>
         </section>
       )}
@@ -244,9 +266,8 @@ export function SupportAsk({
           </p>
           {accountEmail !== null ? (
             <p className="support-ask__email">
-              {native ? 'The setup link goes to ' : 'The payment page will know you as '}
-              <strong>{accountEmail}</strong>. Use that same address when you pay, so the
-              app can tell it&rsquo;s you.
+              {native ? 'The setup link goes to ' : 'Your receipt goes to '}
+              <strong>{accountEmail}</strong>.
             </p>
           ) : (
             <p className="support-ask__email">

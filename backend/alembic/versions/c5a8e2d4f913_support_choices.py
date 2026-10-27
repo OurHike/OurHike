@@ -13,19 +13,25 @@ Edited in place on 2026-10-26, before any release carried it, with the #1885
 review's fixes: the provider ids and dates a move needs, the ordering guard's
 `last_event_at`, the stop-request retry's `stop_notified_at`, the two new
 statuses, one row per provider payment (`uq_support_choices_provider_ref`),
-and the `support_events` log.
+and the `support_events` log. Edited again on 2026-10-27, still unreleased,
+with the third review's: the `payment_failed` status, `provider_status`,
+the Stop's `stop_attempted_at` (retry backoff) and `stop_confirmed_at` (the
+hiker told once), and `support_charges`, one row per provider charge, which
+the published total sums and whose unique key stops a charge being counted
+twice.
 
 Indexed on `profile_id` (the signed-in "my support" read), `email` and
 `provider_ref` (the keys a webhook can match on), `status`, `link_token` (the
-unsubscribe link's lookup), and on the event log's `event_id` and
-`choice_id`. Plain `ix_<table>_<column>` names, as the models declare them,
+unsubscribe link's lookup), on the event log's `event_id` and
+`choice_id`, and on the charges' `subscription_ref` (joining a charge that
+arrived before its checkout), `choice_id` and `charged_at` (the year's sum). Plain `ix_<table>_<column>` names, as the models declare them,
 so the drift check compares like with like.
 
-RLS is enabled on both tables because this revision adds them (b3d1c7a94e02's
+RLS is enabled on all three tables because this revision adds them (b3d1c7a94e02's
 rule, tests/test_migration_rls.py's union): PostgREST would otherwise serve
 every supporter's email and amount to anyone holding the anon key.
 
-Additive and reversible: downgrade drops the two tables and nothing else.
+Additive and reversible: downgrade drops the three tables and nothing else.
 """
 
 from typing import Sequence, Union
@@ -42,7 +48,7 @@ depends_on: Union[str, Sequence[str], None] = None
 
 
 # The tables this revision locks - see b3d1c7a94e02 for the mechanism.
-RLS_TABLES: tuple[str, ...] = ("support_choices", "support_events")
+RLS_TABLES: tuple[str, ...] = ("support_choices", "support_events", "support_charges")
 
 
 def rls_statements(dialect_name: str, *, enable: bool) -> list[str]:
@@ -78,6 +84,7 @@ def upgrade() -> None:
             sa.Enum(
                 "pending",
                 "active",
+                "payment_failed",
                 "paused",
                 "cancel_scheduled",
                 "stop_requested",
@@ -98,7 +105,10 @@ def upgrade() -> None:
         sa.Column("period_end", sa.DateTime(), nullable=True),
         sa.Column("cancel_at_period_end", sa.Boolean(), nullable=True),
         sa.Column("stop_requested_at", sa.DateTime(), nullable=True),
+        sa.Column("provider_status", sa.String(length=30), nullable=True),
         sa.Column("stop_notified_at", sa.DateTime(), nullable=True),
+        sa.Column("stop_attempted_at", sa.DateTime(), nullable=True),
+        sa.Column("stop_confirmed_at", sa.DateTime(), nullable=True),
         sa.Column("ended_at", sa.DateTime(), nullable=True),
         sa.Column("last_event_at", sa.DateTime(), nullable=True),
         sa.Column("replaces_choice_id", sa.String(), nullable=True),
@@ -132,6 +142,26 @@ def upgrade() -> None:
     op.create_index("ix_support_events_event_id", "support_events", ["event_id"])
     op.create_index("ix_support_events_choice_id", "support_events", ["choice_id"])
 
+    op.create_table(
+        "support_charges",
+        sa.Column("id", sa.String(), nullable=False),
+        sa.Column("provider", sa.String(length=40), nullable=False),
+        sa.Column("charge_ref", sa.String(length=100), nullable=False),
+        sa.Column("subscription_ref", sa.String(length=100), nullable=True),
+        sa.Column("choice_id", sa.String(), nullable=True),
+        sa.Column("amount_cents", sa.Integer(), nullable=False),
+        sa.Column("currency", sa.String(length=3), nullable=False),
+        sa.Column("charged_at", sa.DateTime(), nullable=False),
+        sa.Column("period_end", sa.DateTime(), nullable=True),
+        sa.Column("received_at", sa.DateTime(), nullable=False),
+        sa.ForeignKeyConstraint(["choice_id"], ["support_choices.id"]),
+        sa.PrimaryKeyConstraint("id"),
+        sa.UniqueConstraint("provider", "charge_ref", name="uq_support_charges_provider_ref"),
+    )
+    op.create_index("ix_support_charges_subscription_ref", "support_charges", ["subscription_ref"])
+    op.create_index("ix_support_charges_choice_id", "support_charges", ["choice_id"])
+    op.create_index("ix_support_charges_charged_at", "support_charges", ["charged_at"])
+
     for statement in rls_statements(op.get_bind().dialect.name, enable=True):
         op.execute(statement)
 
@@ -140,6 +170,10 @@ def downgrade() -> None:
     """Unlock, then drop - the reverse of upgrade, and only these tables."""
     for statement in rls_statements(op.get_bind().dialect.name, enable=False):
         op.execute(statement)
+    op.drop_index("ix_support_charges_charged_at", table_name="support_charges")
+    op.drop_index("ix_support_charges_choice_id", table_name="support_charges")
+    op.drop_index("ix_support_charges_subscription_ref", table_name="support_charges")
+    op.drop_table("support_charges")
     op.drop_index("ix_support_events_choice_id", table_name="support_events")
     op.drop_index("ix_support_events_event_id", table_name="support_events")
     op.drop_table("support_events")

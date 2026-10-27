@@ -11,10 +11,20 @@
 //
 // WHAT IT DECIDES is lib/support.ts's `shouldAsk`; what it renders is the
 // window from screens/SupportAsk.tsx, or nothing.
+//
+// IT DECIDES ONCE PER LAUNCH, AND ONLY NEAR THE START OF ONE (the third
+// #1885 review). The ask used to re-decide whenever the day count, the
+// signal or the account answer changed - so on day five it opened at the
+// hiker's first tap, under their finger, and a signal returning mid-hike
+// opened it over the map they were reading. Now: the count is the one this
+// launch reaches (`daysIncludingToday`, read at mount), the decision is
+// taken the first time the account answer has settled and nothing holds
+// the screen, and not at all after `ASK_WINDOW_MS`. A launch that does not
+// ask leaves it to the next launch.
 
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { API_CONFIGURED } from '../lib/api'
-import { activeDaysThisYear, recordActiveDay } from '../lib/activeDays'
+import { daysIncludingToday, recordActiveDay } from '../lib/activeDays'
 import { shouldAsk, supportSummaryLine } from '../lib/support'
 import { holdPendingSupportTier, takePendingSupportTier } from '../lib/supportPending'
 import { useSupport } from '../lib/useSupport'
@@ -22,6 +32,11 @@ import { SupportAsk, type AskView } from './SupportAsk'
 
 // Re-exported so screens/deferred.ts loads the page from this same chunk.
 export { YourSupportPage } from './YourSupport'
+
+// @unvalidated: fifteen seconds is a guess at "still the moment the app
+// came up, not yet the middle of something". What would settle it is how
+// long a launch takes to reach the map on a slow phone with one bar.
+export const ASK_WINDOW_MS = 15_000
 
 export interface SupportGateProps {
   /** The signed-in account's email, or null when signed out. */
@@ -50,14 +65,18 @@ export function SupportGate({
 }: SupportGateProps) {
   const signedIn = accountEmail !== null
   const support = useSupport(signedIn)
-  const [days, setDays] = useState(() => activeDaysThisYear(new Date()))
+  const [days] = useState(() => daysIncludingToday(new Date()))
+  const [mountedAt] = useState(() => Date.now())
+  const decided = useRef(false)
   const [ask, setAsk] = useState<AskView | null>(null)
 
   // EVENTING.md §2's "active": a foreground session with at least one hiker
   // interaction. The first pointer or key event after this mounts counts
   // today; `recordActiveDay` is idempotent, so a second one adds nothing.
   useEffect(() => {
-    const count = () => setDays(recordActiveDay(new Date()))
+    const count = () => {
+      recordActiveDay(new Date())
+    }
     window.addEventListener('pointerdown', count, { once: true, capture: true })
     window.addEventListener('keydown', count, { once: true, capture: true })
     return () => {
@@ -89,7 +108,12 @@ export function SupportGate({
         return
       }
     }
-    if (!support.settled) return
+    if (decided.current || !support.settled) return
+    decided.current = true
+    if (Date.now() - mountedAt > ASK_WINDOW_MS) return
+    // Signed in and the account could not be read: it may already be paying,
+    // and asking a supporter to choose again is the one wrong ask.
+    if (signedIn && support.server === null) return
     if (
       shouldAsk({
         now: new Date(),
@@ -102,7 +126,17 @@ export function SupportGate({
     ) {
       setAsk({ kind: 'choose' })
     }
-  }, [ask, held, signedIn, online, days, support.settled, support.server, support.local])
+  }, [
+    ask,
+    held,
+    signedIn,
+    online,
+    days,
+    mountedAt,
+    support.settled,
+    support.server,
+    support.local,
+  ])
 
   if (ask === null || held) return null
   return (

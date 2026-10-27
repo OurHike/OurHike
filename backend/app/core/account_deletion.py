@@ -59,10 +59,12 @@ it is not a contribution that stayed - it is a record about the account,
 and the export hands the hiker their own rows from it.
 """
 
+import secrets
 from dataclasses import dataclass, field
 
 from sqlalchemy.orm import Session
 
+from app.core.support import mark_stop
 from app.core.time import utc_now
 from app.models.app_failure import AppFailure
 from app.models.closure import Closure, ClosureApproval
@@ -78,7 +80,7 @@ from app.models.preferences import UserPreferences
 from app.models.profile import Profile, Role
 from app.models.report import Report
 from app.models.ridge_runner import RidgeRunnerCommitment
-from app.models.support import SupportChoice, SupportEvent, SupportStatus
+from app.models.support import SupportChoice, SupportStatus
 from app.models.synced_day_hike import SyncedDayHike
 from app.models.synced_hike import SyncedActiveHike, SyncedHike
 from app.models.synced_trip import SyncedPlannedHike, SyncedTrip
@@ -325,16 +327,21 @@ def delete_account(db: Session, profile: Profile, now=None) -> DeletionSummary:
         report.contact_ok = False
 
     # WHAT A HIKER GIVES OURHIKE (#1876): A PAYMENT STAYS AND STOPS; A CHOICE
-    # NOBODY PAID FOR GOES. A row the provider confirmed is the money record
-    # the published accounting and any later refund question rely on, which
-    # is this module's rule for keeping a row. A choice that never became a
-    # payment (no provider id, never started) is nobody's money record - only
-    # an email address and a dollar figure - so it is deleted with the rest
-    # (the #1885 review). And a deleted account can no longer reach More ->
-    # Your support to press Stop, so anything still charging is asked to stop
-    # here, exactly as Stop would - nobody deleting their account means "keep
-    # charging me". Whoever cancels it is asked by the router once the
-    # deletion has committed.
+    # NOBODY PAID FOR IS EMPTIED. A row the provider confirmed is the money
+    # record the published total and any later refund question rely on,
+    # which is this module's rule for keeping a row. A choice that never
+    # became a payment is nobody's money record, so everything that says who
+    # made it goes - the address, the account, the accounting opt-in, the
+    # unsubscribe token. The row itself stays, `stopped`, under its id: a
+    # setup email or an open checkout tab can still be paid after the
+    # account is gone, and that payment names this id. Deleting the row
+    # would make it a payment nobody asked to stop; keeping it lets
+    # core/support.py recognise it as unwanted and stop it (the third #1885
+    # review). A deleted account can no longer reach More -> Your support to
+    # press Stop, so anything still charging is asked to stop here, exactly
+    # as Stop would - nobody deleting their account means "keep charging
+    # me". Whoever cancels it is asked by the router once the deletion has
+    # committed.
     unpaid = (
         db.query(SupportChoice)
         .filter(
@@ -344,29 +351,21 @@ def delete_account(db: Session, profile: Profile, now=None) -> DeletionSummary:
         )
         .all()
     )
-    unpaid_ids = [choice.id for choice in unpaid]
-    if unpaid_ids:
-        db.query(SupportChoice).filter(SupportChoice.replaces_choice_id.in_(unpaid_ids)).update(
-            {SupportChoice.replaces_choice_id: None}, synchronize_session=False
-        )
-        db.query(SupportEvent).filter(SupportEvent.choice_id.in_(unpaid_ids)).update(
-            {SupportEvent.choice_id: None}, synchronize_session=False
-        )
-        for choice in unpaid:
-            db.delete(choice)
-        db.flush()
-    stopping = (
-        db.query(SupportChoice)
-        .filter(
-            SupportChoice.profile_id == profile_id,
-            SupportChoice.status.in_((SupportStatus.active, SupportStatus.paused, SupportStatus.stop_requested)),
-        )
-        .all()
-    )
-    for choice in stopping:
-        if choice.status != SupportStatus.stop_requested:
-            choice.status = SupportStatus.stop_requested
-            choice.stop_requested_at = now
+    for choice in unpaid:
+        choice.profile_id = None
+        choice.email = ""
+        choice.status = SupportStatus.stopped
+        choice.ended_at = choice.ended_at or now
+        choice.accounting_email = False
+        choice.accounting_email_at = None
+        choice.replaces_choice_id = None
+        choice.link_token = secrets.token_urlsafe(32)
+    db.flush()
+    stopping = [
+        choice
+        for choice in db.query(SupportChoice).filter(SupportChoice.profile_id == profile_id).all()
+        if mark_stop(choice, now=now) or (choice.status == SupportStatus.stop_requested and choice.stop_notified_at is None)
+    ]
 
     # --- The rows other people are relying on. Untouched, and counted so the
     # hiker is told rather than left to assume. ---

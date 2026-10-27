@@ -13,6 +13,7 @@ from html import escape
 
 from fastapi import APIRouter, Depends, HTTPException, Request, Response, status
 from fastapi.responses import HTMLResponse
+from sqlalchemy.exc import InterfaceError, OperationalError
 from sqlalchemy.orm import Session
 
 from app.core.auth import get_current_email, get_current_user
@@ -21,9 +22,9 @@ from app.core.support import (
     BLOCKS_CHOICE,
     STOPPABLE,
     apply_delivery,
-    claim_unattached,
+    mark_stop,
+    notify_stop,
     record_failed_delivery,
-    request_stop,
     retry_stop_requests,
     settle_lapsed,
     summary_row,
@@ -65,7 +66,6 @@ def _summary(db: Session, profile_id: str) -> SupportOut:
 @router.get("/me", response_model=SupportOut)
 def get_my_support(
     current_user: Profile = Depends(get_current_user),
-    email: str | None = Depends(get_current_email),
     db: Session = Depends(get_db),
 ) -> SupportOut:
     """The caller's support, or `status: "none"`.
@@ -73,13 +73,12 @@ def get_my_support(
     200 with `none` rather than 404, unlike `/preferences/me`: "no paid
     choice" is an answer the app acts on (it may ask), not a missing thing.
 
-    Three writes ride on this read, all idempotent: a payment made on the
-    provider's page under this verified address is attached to the account
-    (so it has a Stop button), a scheduled cancellation whose end has passed
-    becomes `stopped`, and a Stop whose request never reached anybody is
-    asked again.
+    Two writes ride on this read, both idempotent: a scheduled cancellation
+    whose end has passed becomes `stopped`, and a Stop whose request never
+    reached anybody is asked again (at most every `RETRY_EVERY`). Nothing is
+    claimed by email - a payment reaches an account only by the choice id it
+    was made from (core/support.py).
     """
-    claim_unattached(db, current_user.id, email)
     settle_lapsed(db, current_user.id)
     retry_stop_requests(db, mail_provider=ses_client(), profile_id=current_user.id)
     db.commit()
@@ -177,24 +176,26 @@ def stop_support(
     """Stop everything the caller gives. One call, no reason asked.
 
     A pending choice has nothing to cancel and is `stopped` at once. A payment
-    still charging becomes `stop_requested`, and whoever cancels it is asked -
-    Stripe's API, or an email to the founder when that cannot be reached.
-    Idempotent: a second press asks only where the first did not reach
-    anybody. Nothing running and nothing waiting is 404.
+    still charging becomes `stop_requested`, which is committed BEFORE
+    whoever cancels it is asked - Stripe's API, or an email to the founder
+    when that cannot be reached - so a provider's confirmation arriving
+    during that call finds the Stop already recorded (the third #1885
+    review). A second press re-asks only where the first did not reach
+    anybody, at most every `RETRY_EVERY`. Nothing running and nothing waiting
+    is 404.
     """
     rows = _rows(db, current_user.id)
-    waiting = [
-        row
-        for row in rows
-        if row.status in STOPPABLE or (row.status == SupportStatus.stop_requested and row.stop_notified_at is None)
-    ]
-    if not waiting and not any(row.status == SupportStatus.stop_requested for row in rows):
+    if not any(row.status in STOPPABLE or row.status == SupportStatus.stop_requested for row in rows):
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Nothing is running to stop.")
 
-    mail_provider = ses_client()
     now = utc_now()
-    for row in waiting:
-        request_stop(db, row, mail_provider=mail_provider, now=now)
+    ask = [row for row in rows if row.status in STOPPABLE and mark_stop(row, now=now)]
+    db.commit()
+
+    mail_provider = ses_client()
+    for row in ask:
+        notify_stop(db, row, mail_provider=mail_provider, now=now)
+    retry_stop_requests(db, mail_provider=mail_provider, profile_id=current_user.id, now=now)
     db.commit()
     return _summary(db, current_user.id)
 
@@ -244,9 +245,11 @@ def provider_webhook(
 
     404 for a provider this server does not know, 503 with that provider not
     configured, 401 on a bad signature, 400 on a body that is not a JSON
-    object, and 200 with a word for everything else - including events this
-    server ignores, and an event whose handling raised, which is kept as
-    `failed` to replay rather than refused into the provider's retry loop.
+    object, 503 when the database itself is unreachable (so the provider
+    retries - Stripe does for three days), and 200 with a word for everything
+    else - including events this server ignores, and an event whose handling
+    raised, which is kept as `failed` to replay rather than refused into the
+    provider's retry loop.
 
     A plain `def`, so FastAPI runs it in a worker thread: the database calls
     and the mail below would otherwise block every other request on the loop.
@@ -267,20 +270,28 @@ def provider_webhook(
 
     mail_provider = ses_client()
     try:
-        result = apply_delivery(db, provider, envelope, mail_provider=mail_provider)
-        db.commit()
-    except Exception as exc:  # kept to replay; see the docstring
+        try:
+            result = apply_delivery(db, provider, envelope, mail_provider=mail_provider)
+            db.commit()
+        except (OperationalError, InterfaceError):
+            raise
+        except Exception as exc:  # kept to replay; see the docstring
+            db.rollback()
+            log.error("support: a %s delivery failed and was kept to replay: %s", provider.key, type(exc).__name__)
+            record_failed_delivery(db, provider, envelope, exc)
+            db.commit()
+            return WebhookAck(result="failed")
+    except (OperationalError, InterfaceError) as exc:
+        # Nothing was recorded, so acknowledging would lose the event.
         db.rollback()
-        log.error("support: a %s delivery failed and was kept to replay: %s", provider.key, type(exc).__name__)
-        record_failed_delivery(db, provider, envelope, exc)
-        db.commit()
-        return WebhookAck(result="failed")
+        log.error("support: database unreachable for a %s delivery: %s", provider.key, type(exc).__name__)
+        raise HTTPException(status_code=status.HTTP_503_SERVICE_UNAVAILABLE, detail="Try again.") from None
 
     try:
-        if retry_stop_requests(db, mail_provider=mail_provider):
-            db.commit()
-        else:
-            db.rollback()
+        # Committed whether or not any went: a failed try still records when
+        # it was made, which is what spaces the next one out.
+        retry_stop_requests(db, mail_provider=mail_provider)
+        db.commit()
     except Exception as exc:  # best effort; the delivery itself is recorded
         db.rollback()
         log.warning("support: retrying stop requests failed: %s", type(exc).__name__)

@@ -55,6 +55,8 @@ class EventKind(str, enum.Enum):
     - `started` / `updated`: a recurring payment exists and is current.
     - `paused`: it exists and is not charging, by the member's or the
       creator's hand.
+    - `failing`: it exists, a renewal failed, and the provider is retrying
+      the card.
     - `ended`: it will charge no more.
     - `charged`: money actually arrived - one charge, which the published
       total sums. It never changes a row's state.
@@ -62,6 +64,7 @@ class EventKind(str, enum.Enum):
 
     started = "started"
     updated = "updated"
+    failing = "failing"
     paused = "paused"
     ended = "ended"
     charged = "charged"
@@ -80,6 +83,11 @@ class ProviderEvent:
     occurred_at: datetime | None = None
     # The provider's id for the recurring payment, and for the person.
     subscription_ref: str | None = None
+    # The provider's id for one charge (`charged` only): what stops the same
+    # money being counted twice.
+    charge_ref: str | None = None
+    # The provider's own word for the payment's state, stored on the row.
+    provider_status: str | None = None
     customer_ref: str | None = None
     # The card processor's id behind it, when the provider is not the card
     # processor itself and passes it on. None for Stripe, which is both.
@@ -115,6 +123,12 @@ class SupportProvider(Protocol):
     def checkout_url(self, choice: SupportChoice) -> str | None: ...
 
     def webhook_configured(self) -> bool: ...
+
+    def ready(self) -> bool:
+        """Whether new choices may go here: a hiker can pay, the payment will
+        be recorded, and a Stop can reach somebody. A provider that is not
+        ready takes no choices, rather than taking money it cannot stop."""
+        ...
 
     def verify(self, headers: Mapping[str, str], raw_body: bytes) -> bool: ...
 

@@ -292,10 +292,15 @@ class Settings(BaseSettings):
     # the Stripe dashboard.
     stripe_webhook_secret: str = ""
     # A RESTRICTED key with Subscriptions: Write and nothing else - all this
-    # backend ever asks Stripe to do is stop a subscription renewing. A
-    # `_test_` key also tells the webhook to believe test-mode events, which
-    # is what lets UA run against Stripe's test mode.
+    # backend ever asks Stripe to do is stop a subscription renewing, or
+    # cancel one whose renewal is failing.
     stripe_secret_key: str = ""
+    # "live" or "test": which of Stripe's two worlds this backend believes.
+    # Explicit, because a test-mode UA must not lose every event to a key it
+    # does not hold (the #1885 architecture review), and production must
+    # never believe a test event. A key from the other mode switches support
+    # off rather than half-working (Stripe.ready()).
+    stripe_mode: str = "live"
     support_notify_address: str = ""
     # This API's own public address, e.g. https://api.ourhike.org - where a
     # support email's one-click unsubscribe link points (RFC 8058 wants a

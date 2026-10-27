@@ -83,6 +83,35 @@ describe('Your support', () => {
     expect(screen.queryByText(/cancelled it/)).not.toBeInTheDocument()
   })
 
+  it('says a failed renewal plainly, and still offers Stop', () => {
+    setup({ server: { ...ACTIVE, status: 'payment_failed' } })
+
+    expect(screen.getByText(/Payment didn.t go through/)).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Stop my support' })).toBeInTheDocument()
+    expect(supportSummaryLine({ ...ACTIVE, status: 'payment_failed' }, null, NOW)).toBe(
+      "$60 a year, payment didn't go through",
+    )
+  })
+
+  it('offers a different amount beside Stop when the server would take one', async () => {
+    const props = setup({
+      server: {
+        ...ACTIVE,
+        status: 'pending',
+        started_at: null,
+        supporting: false,
+        can_choose: true,
+      },
+    })
+
+    await userEvent.click(
+      screen.getByRole('button', { name: 'Choose a different amount' }),
+    )
+
+    expect(props.onChoose).toHaveBeenCalled()
+    expect(screen.getByRole('button', { name: 'Stop my support' })).toBeInTheDocument()
+  })
+
   it('offers Stop only when the server says it would do something', () => {
     setup({ server: { ...ACTIVE, status: 'cancel_scheduled', can_stop: false } })
     expect(

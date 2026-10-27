@@ -29,7 +29,9 @@ class SupportChoiceIn(BaseModel):
     delivery: Literal["redirect", "email"]
 
 
-SupportStatusOut = Literal["none", "pending", "active", "paused", "cancel_scheduled", "stop_requested", "stopped"]
+SupportStatusOut = Literal[
+    "none", "pending", "active", "payment_failed", "paused", "cancel_scheduled", "stop_requested", "stopped"
+]
 
 
 class SupportOut(BaseModel):

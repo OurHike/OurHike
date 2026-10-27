@@ -83,6 +83,7 @@ export function YourSupport({
     server !== null &&
     server.amount_cents !== null &&
     (server.status === 'active' ||
+      server.status === 'payment_failed' ||
       server.status === 'pending' ||
       server.status === 'paused' ||
       server.status === 'cancel_scheduled')
@@ -93,6 +94,9 @@ export function YourSupport({
       return `Chosen ${day(summary.chosen_at)} · waiting for the payment to be confirmed`
     }
     if (summary.status === 'paused') return `Paused · nothing is being charged${via}`
+    if (summary.status === 'payment_failed') {
+      return `Payment didn't go through · the card is being tried again${via}`
+    }
     if (summary.status === 'cancel_scheduled') {
       return `No more charges · ends ${day(summary.period_end ?? summary.ended_at)}${via}`
     }
@@ -168,14 +172,22 @@ export function YourSupport({
               Stop my support
             </button>
           )}
+          {/* Both at once: a pending choice whose amount can still change,
+              or a payment on a provider OurHike has moved away from. The
+              server says which (the third #1885 review). */}
+          {server.can_stop && server.can_choose && !confirming && (
+            <button type="button" className="settings__action" onClick={onChoose}>
+              Choose a different amount
+            </button>
+          )}
         </>
       ) : server !== null && server.status === 'stop_requested' ? (
         <div className="your-support__card">
           <p className="your-support__amount">Stop requested</p>
           <p className="your-support__meta">
             {day(server.stop_requested_at)}. We&rsquo;re cancelling it for you, and we
-            email you when it&rsquo;s done. If a charge lands after today, reply to that
-            email and we refund it.
+            email you when it&rsquo;s done. If a charge lands after today, write to
+            hello@ourhike.org and we refund it.
           </p>
         </div>
       ) : server !== null && server.status === 'stopped' ? (

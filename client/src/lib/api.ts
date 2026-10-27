@@ -1600,6 +1600,8 @@ export async function deleteAccount(): Promise<DeletionReceipt> {
  * - `none`: no paid choice on this account.
  * - `pending`: chosen in the app; the provider has not confirmed a payment.
  * - `active`: the provider says the recurring payment started.
+ * - `payment_failed`: a renewal failed and the provider is retrying the
+ *   card. Still running: Stop cancels it at once, so no retry can charge.
  * - `paused`: the provider says it exists and is not charging.
  * - `cancel_scheduled`: no more charges; it ends at `period_end`.
  * - `stop_requested`: the hiker pressed Stop and the provider has not yet
@@ -1612,6 +1614,7 @@ export type SupportStatus =
   | 'none'
   | 'pending'
   | 'active'
+  | 'payment_failed'
   | 'paused'
   | 'cancel_scheduled'
   | 'stop_requested'

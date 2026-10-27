@@ -2,6 +2,7 @@ import { beforeEach, describe, expect, it } from 'vitest'
 import {
   ACTIVE_DAYS_KEY,
   activeDaysThisYear,
+  daysIncludingToday,
   localDate,
   recordActiveDay,
 } from './activeDays'
@@ -18,6 +19,15 @@ describe('counting the days a hiker used OurHike this year', () => {
     expect(recordActiveDay(at('2026-06-01T08:00:00'))).toBe(1)
     expect(recordActiveDay(at('2026-06-01T19:30:00'))).toBe(1)
     expect(recordActiveDay(at('2026-06-02T07:00:00'))).toBe(2)
+  })
+
+  it('says at launch what today will make the count, before the first tap records it', () => {
+    for (const day of ['01', '03', '09', '14'])
+      recordActiveDay(at(`2026-07-${day}T12:00:00`))
+
+    expect(daysIncludingToday(at('2026-07-20T06:00:00'))).toBe(5)
+    expect(daysIncludingToday(at('2026-07-14T18:00:00'))).toBe(4)
+    expect(daysIncludingToday(at('2027-01-02T06:00:00'))).toBe(1)
   })
 
   it('reaches five on the fifth distinct day, not the fifth launch', () => {

@@ -54,6 +54,26 @@ afterEach(() => {
 })
 
 describe('the day-5 ask', () => {
+  it('moves the choice with the arrow keys and keeps one tier in the tab order', async () => {
+    setup()
+    await userEvent.click(screen.getByRole('radio', { name: /^\$12 a year/ }))
+
+    await userEvent.keyboard('{ArrowDown}')
+
+    const sixty = screen.getByRole('radio', { name: /^\$60 a year/ })
+    expect(sixty).toHaveAttribute('aria-checked', 'true')
+    expect(sixty).toHaveFocus()
+    expect(screen.getAllByRole('radio').filter((radio) => radio.tabIndex === 0)).toEqual([
+      sixty,
+    ])
+
+    await userEvent.keyboard('{ArrowUp}{ArrowUp}')
+    expect(screen.getByRole('radio', { name: /^\$0/ })).toHaveAttribute(
+      'aria-checked',
+      'true',
+    )
+  })
+
   it('offers $12, $60 and $120 a year and $0, and says any of them keeps everything working', () => {
     setup()
     for (const name of [/^\$12 a year/, /^\$60 a year/, /^\$120 a year/, /^\$0/]) {
@@ -64,7 +84,7 @@ describe('the day-5 ask', () => {
     ).toBeInTheDocument()
   })
 
-  it('has no way to skip it, but $0 then "keep it" closes it in two taps and remembers the year', async () => {
+  it('has no way to skip it, but $0, Continue and "keep it" close it in three taps and remember the year', async () => {
     const props = setup()
     expect(
       screen.queryByRole('button', { name: /not now|skip|close/i }),

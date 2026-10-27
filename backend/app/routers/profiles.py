@@ -11,7 +11,7 @@ from app.core.account_export import build_export
 from app.core.auth import get_current_github_login, get_current_user
 from app.core.logs import describe_failure
 from app.core.mail import ses_client
-from app.core.support import request_stop
+from app.core.support import notify_stop
 from app.db.session import get_db
 from app.models.profile import Profile
 from app.models.support import SupportChoice
@@ -110,7 +110,7 @@ def delete_my_account(
         for choice_id in summary.support_stops_requested:
             choice = db.get(SupportChoice, choice_id)
             if choice is not None:
-                request_stop(db, choice, mail_provider=provider)
+                notify_stop(db, choice, mail_provider=provider)
         db.commit()
 
     return DeletionReceipt(

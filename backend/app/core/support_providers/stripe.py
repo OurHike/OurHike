@@ -16,13 +16,28 @@ Everything here is read off Stripe's documentation (docs.stripe.com, read
   else is silently dropped) and `prefilled_email` (editable by the payer), and
   hands both to the `checkout.session.completed` event. A link never expires,
   which the store apps' setup email needs, and making one URL needs no key.
+  A link's metadata is copied to the sessions it makes, and its
+  `subscription_data.metadata` to the subscription.
+- **Only OurHike's own links are believed.** Every event must carry the
+  `ourhike_tier_cents` metadata those links set (on the session, the
+  subscription, or the invoice's subscription snapshot); anything else on
+  the account - another product, a one-off link - is ignored, so it can
+  neither enter the published total nor be cancelled with OurHike's key (the
+  third #1885 review).
+- **A session is a payment only once it is paid.** `payment_status` must be
+  `paid`; a bank debit that settles later arrives as
+  `checkout.session.async_payment_succeeded`.
 - **Each delivery is signed** in `Stripe-Signature`: `t=<unix>,v1=<hex>`,
   where the hex is HMAC-SHA256 of `<t>.<raw body>` under the endpoint's
   signing secret. Stripe's own libraries refuse a `t` more than five minutes
   from now, which is the replay window `TOLERANCE_SECONDS` keeps.
-- **Stripe resends the same event id on a retry**, and its docs say to guard
-  against duplicates by logging event ids - which core/support.py does for
-  the one event where a duplicate would count twice, a charge.
+- **A charge is counted once by its invoice id**, which core/support.py keeps
+  unique: Stripe resends an event with the same id on a retry, and says some
+  actions produce two separate events for one object.
+- **A failed renewal is `past_due`, then `unpaid`**, while Stripe retries the
+  card. Cancelling at the period's end would leave that open invoice being
+  retried; cancelling the subscription outright stops it. So a Stop on a
+  failing renewal cancels at once (`request_cancel`).
 - **API version 2025-03-31.basil moved fields**: a subscription's period end
   is on its items, and an invoice's subscription is under
   `parent.subscription_details`. Both shapes are read, so the webhook
@@ -31,7 +46,7 @@ Everything here is read off Stripe's documentation (docs.stripe.com, read
 **WHAT IS KEPT** is a short list of fields named in `_payload`, not the event
 minus a few: a Stripe object carries the payer's name, address and card
 brand, and none of it is stored. The email is kept on the choice, never in
-the event log.
+the event log. An event this module ignores is logged by type and id only.
 """
 
 from __future__ import annotations
@@ -71,9 +86,20 @@ MAX_AMOUNT_CENTS = 10_000_000
 # RFC 5321's longest path, and the column's width.
 MAX_EMAIL_LENGTH = 320
 
+# The metadata key OurHike's Payment Links set on their sessions and
+# subscriptions (features/SUPPORTING_OURHIKE.md §7). Its presence is what
+# makes an event OurHike's.
+MARKER = "ourhike_tier_cents"
+
+# The subscription states in which a renewal is failing and Stripe is still
+# retrying the card - a Stop then cancels at once.
+FAILING = ("past_due", "unpaid")
+
 # What may go in a URL path or a client_reference_id without escaping.
 _SUBSCRIPTION_ID = re.compile(r"^sub_[A-Za-z0-9]{1,90}$")
 _CHOICE_ID = re.compile(r"^[A-Za-z0-9_-]{1,200}$")
+
+_SESSION_KINDS = ("checkout.session.completed", "checkout.session.async_payment_succeeded")
 
 _SUBSCRIPTION_KINDS = {
     "customer.subscription.updated": EventKind.updated,
@@ -120,10 +146,27 @@ def _email(value: Any) -> str | None:
     return address if address and len(address) <= MAX_EMAIL_LENGTH else None
 
 
-def _first_item(subscription: Mapping[str, Any]) -> Mapping[str, Any]:
-    items = subscription.get("items")
-    data = items.get("data") if isinstance(items, Mapping) else None
-    return data[0] if isinstance(data, list) and data and isinstance(data[0], Mapping) else {}
+def _mapping(value: Any) -> Mapping[str, Any]:
+    return value if isinstance(value, Mapping) else {}
+
+
+def _first_item(obj: Mapping[str, Any]) -> Mapping[str, Any]:
+    """The first line of a subscription's `items` or an invoice's `lines`."""
+    for key in ("items", "lines"):
+        data = _mapping(obj.get(key)).get("data")
+        if isinstance(data, list) and data and isinstance(data[0], Mapping):
+            return data[0]
+    return {}
+
+
+def _is_ourhike(obj: Mapping[str, Any]) -> bool:
+    """Whether an object came from one of OurHike's Payment Links, by the
+    metadata those links set (`MARKER`). An invoice carries its
+    subscription's metadata as a snapshot, in either API version's place."""
+    if MARKER in _mapping(obj.get("metadata")):
+        return True
+    details = _mapping(_mapping(obj.get("parent")).get("subscription_details")) or _mapping(obj.get("subscription_details"))
+    return MARKER in _mapping(details.get("metadata"))
 
 
 def payment_links() -> dict[int, str]:
@@ -135,6 +178,11 @@ def payment_links() -> dict[int, str]:
         if cents.strip().isdigit() and url.startswith("https://"):
             links[int(cents)] = url
     return links
+
+
+def _ignored(kind: Any, event_id: str | None, why: str) -> list[ProviderEvent]:
+    log.info("support: stripe %s %s ignored: %s", kind, event_id, why)
+    return []
 
 
 class Stripe:
@@ -155,6 +203,27 @@ class Stripe:
     def webhook_configured(self) -> bool:
         return bool(settings.stripe_webhook_secret)
 
+    def _live(self) -> bool:
+        return settings.stripe_mode != "test"
+
+    def ready(self) -> bool:
+        """Links to pay on, a webhook to record it, and a way to stop it: the
+        restricted key, or failing that the founder's address. A key or a link
+        from the other mode than `stripe_mode` is a misconfiguration, so not
+        ready: a server taking test-mode payments while it believes only
+        live-mode events would record none of them (the third #1885 review)."""
+        key = settings.stripe_secret_key
+        if key and ("_test_" in key) == self._live():
+            log.warning("support: STRIPE_SECRET_KEY is for the other mode than STRIPE_MODE; support is off")
+            return False
+        links = payment_links()
+        # Stripe's test-mode Payment Links live under buy.stripe.com/test_.
+        if any(("/test_" in url) == self._live() for url in links.values()):
+            log.warning("support: STRIPE_PAYMENT_LINKS are for the other mode than STRIPE_MODE; support is off")
+            return False
+        can_stop = bool(key) or bool(settings.support_notify_address)
+        return bool(links) and self.webhook_configured() and can_stop
+
     def verify(self, headers: Mapping[str, str], raw_body: bytes) -> bool:
         secret = settings.stripe_webhook_secret
         header = headers.get("stripe-signature")
@@ -168,35 +237,38 @@ class Stripe:
                 timestamp = value
             elif name == "v1":
                 signatures.append(value)
-        if timestamp is None or not timestamp.isdigit() or not signatures:
+        # Twelve digits is the year 33658; a longer `t` is not a timestamp,
+        # and int() on thousands of digits raises (the #1885 review).
+        if timestamp is None or not timestamp.isdigit() or len(timestamp) > 12 or not signatures:
             return False
         if abs(time.time() - int(timestamp)) > TOLERANCE_SECONDS:
             return False
         expected = hmac.new(secret.encode(), timestamp.encode() + b"." + raw_body, hashlib.sha256).hexdigest()
         return any(hmac.compare_digest(expected, signature) for signature in signatures)
 
-    def _expected_livemode(self) -> bool:
-        """Live events only, unless this backend holds a test-mode key - which
-        is how UA runs against Stripe's test mode without production ever
-        believing a test event."""
-        return "_test_" not in settings.stripe_secret_key
-
     def normalise(self, envelope: Mapping[str, Any]) -> list[ProviderEvent]:
-        if envelope.get("livemode") is not self._expected_livemode():
-            return []
-        data = envelope.get("data")
-        obj = data.get("object") if isinstance(data, Mapping) else None
-        if not isinstance(obj, Mapping):
-            return []
         kind = envelope.get("type")
         event_id = _ref(envelope.get("id"))
+        if envelope.get("livemode") is not self._live():
+            # Loud, because every event dropped this way is a payment the
+            # server will never record: usually STRIPE_MODE left unset.
+            log.warning("support: stripe %s %s ignored: livemode is not %s (STRIPE_MODE)", kind, event_id, self._live())
+            return []
+        obj = _mapping(_mapping(envelope.get("data")).get("object"))
+        if not obj:
+            return _ignored(kind, event_id, "no object")
+        if kind not in _SESSION_KINDS and kind not in _SUBSCRIPTION_KINDS and kind != "invoice.paid":
+            return _ignored(kind, event_id, "not an event support uses")
+        if not _is_ourhike(obj):
+            return _ignored(kind, event_id, f"no {MARKER} metadata, so not one of OurHike's links")
         created = _when(envelope.get("created"))
 
-        if kind == "checkout.session.completed":
+        if kind in _SESSION_KINDS:
             if obj.get("mode") != "subscription":
-                return []
-            details = obj.get("customer_details")
-            email = _email(details.get("email") if isinstance(details, Mapping) else None)
+                return _ignored(kind, event_id, "not a subscription")
+            if obj.get("payment_status") != "paid":
+                return _ignored(kind, event_id, "not paid yet")
+            details = _mapping(obj.get("customer_details"))
             choice = obj.get("client_reference_id")
             return [
                 ProviderEvent(
@@ -207,7 +279,7 @@ class Stripe:
                     customer_ref=_ref(obj.get("customer")),
                     plan_ref=_ref(obj.get("payment_link")),
                     choice_ref=choice if isinstance(choice, str) and _CHOICE_ID.match(choice) else None,
-                    email=email or _email(obj.get("customer_email")),
+                    email=_email(details.get("email")) or _email(obj.get("customer_email")),
                     amount_cents=_cents(obj.get("amount_total")),
                     currency=_currency(obj.get("currency")),
                     started_at=_when(obj.get("created")),
@@ -221,13 +293,15 @@ class Stripe:
             if status in ("canceled", "incomplete_expired"):
                 event_kind = EventKind.ended
             elif status == "incomplete":
-                # The first payment has not gone through; nothing exists yet.
-                return []
+                return _ignored(kind, event_id, "first payment not through yet")
+            elif status in FAILING:
+                event_kind = EventKind.failing
             elif status == "paused" or obj.get("pause_collection"):
                 event_kind = EventKind.paused
+            ended = event_kind is EventKind.ended
             item = _first_item(obj)
-            price = item.get("price") if isinstance(item.get("price"), Mapping) else {}
-            recurring = price.get("recurring") if isinstance(price.get("recurring"), Mapping) else {}
+            price = _mapping(item.get("price"))
+            recurring = _mapping(price.get("recurring"))
             quantity = item.get("quantity") if isinstance(item.get("quantity"), int) else 1
             unit = price.get("unit_amount")
             interval = recurring.get("interval")
@@ -241,73 +315,91 @@ class Stripe:
                     subscription_ref=_ref(obj.get("id")),
                     customer_ref=_ref(obj.get("customer")),
                     plan_ref=_ref(price.get("id")),
+                    provider_status=status if isinstance(status, str) else None,
                     amount_cents=_cents(unit * quantity) if isinstance(unit, int) else None,
                     currency=_currency(obj.get("currency") or price.get("currency")),
                     cadence=SupportCadence(interval) if interval in ("year", "month") else None,
                     # An ended subscription has no period left to schedule an
                     # end for, whatever its last flags said.
-                    period_end=None if event_kind is EventKind.ended else cancel_at or period_end,
-                    cancel_at_period_end=None
-                    if event_kind is EventKind.ended
-                    else bool(obj.get("cancel_at_period_end")) or cancel_at is not None,
+                    period_end=None if ended else cancel_at or period_end,
+                    cancel_at_period_end=None if ended else bool(obj.get("cancel_at_period_end")) or cancel_at is not None,
                     started_at=_when(obj.get("start_date")),
                     payload=_payload(kind, obj),
                 )
             ]
 
-        if kind == "invoice.paid":
-            parent = obj.get("parent")
-            details = parent.get("subscription_details") if isinstance(parent, Mapping) else None
-            subscription = _ref(details.get("subscription")) if isinstance(details, Mapping) else None
-            subscription = subscription or _ref(obj.get("subscription"))
-            amount = _cents(obj.get("amount_paid"))
-            if subscription is None or amount is None:
-                return []
-            transitions = obj.get("status_transitions")
-            paid_at = _when(transitions.get("paid_at")) if isinstance(transitions, Mapping) else None
-            return [
-                ProviderEvent(
-                    kind=EventKind.charged,
-                    event_id=event_id,
-                    occurred_at=paid_at or created,
-                    subscription_ref=subscription,
-                    customer_ref=_ref(obj.get("customer")),
-                    amount_cents=amount,
-                    currency=_currency(obj.get("currency")),
-                    # The total reads these three off the stored event.
-                    payload=_payload(kind, obj, subscription=subscription, amount_cents=amount),
-                )
-            ]
-        return []
+        # invoice.paid
+        details = _mapping(_mapping(obj.get("parent")).get("subscription_details"))
+        subscription = _ref(details.get("subscription")) or _ref(obj.get("subscription"))
+        amount = _cents(obj.get("amount_paid"))
+        charge = _ref(obj.get("id"))
+        if subscription is None or amount is None or charge is None:
+            return _ignored(kind, event_id, "no subscription, amount or invoice id")
+        paid_at = _when(_mapping(obj.get("status_transitions")).get("paid_at"))
+        line_period = _mapping(_first_item(obj).get("period"))
+        return [
+            ProviderEvent(
+                kind=EventKind.charged,
+                event_id=event_id,
+                occurred_at=paid_at or created,
+                subscription_ref=subscription,
+                charge_ref=charge,
+                customer_ref=_ref(obj.get("customer")),
+                amount_cents=amount,
+                currency=_currency(obj.get("currency")),
+                period_end=_when(line_period.get("end")),
+                payload=_payload(kind, obj, subscription=subscription, amount_paid=amount),
+            )
+        ]
 
     def request_cancel(self, db: Session, choice: SupportChoice, mail_provider: Any) -> bool:
-        """Stop the subscription renewing (`cancel_at_period_end`), keeping the
-        year already paid for. Falls back to asking the founder by email when
-        no key is configured or Stripe refuses, so a Stop is never stranded."""
+        """Stop one subscription, as the hiker's Stop asked.
+
+        A renewal that is failing (`past_due`, `unpaid`) is cancelled at once:
+        cancelling at the period's end would leave Stripe retrying the open
+        invoice, and a retry that succeeds charges a year after the hiker was
+        told "nothing more will be charged" (the #1885 reviews). Anything
+        else stops renewing (`cancel_at_period_end`), keeping the year already
+        paid for. Falls back to asking the founder by email when no key is
+        configured or Stripe refuses, so a Stop is never stranded.
+
+        No Idempotency-Key: both calls leave the same state however often
+        they are made, and a fixed key would replay a refusal, or a stale
+        success, for 24 hours (Stripe's idempotency docs).
+        """
         ref = choice.provider_ref or ""
+        now = choice.provider_status in FAILING
         if settings.stripe_secret_key and _SUBSCRIPTION_ID.match(ref):
             try:
-                response = httpx.post(
-                    f"{API}/v1/subscriptions/{ref}",
-                    data={"cancel_at_period_end": "true"},
-                    auth=(settings.stripe_secret_key, ""),
-                    # The same request twice is the same cancellation.
-                    headers={"Idempotency-Key": f"ourhike-stop-{choice.id}"},
-                    timeout=10.0,
-                )
+                if now:
+                    response = httpx.delete(f"{API}/v1/subscriptions/{ref}", auth=(settings.stripe_secret_key, ""), timeout=10.0)
+                else:
+                    response = httpx.post(
+                        f"{API}/v1/subscriptions/{ref}",
+                        data={"cancel_at_period_end": "true"},
+                        auth=(settings.stripe_secret_key, ""),
+                        timeout=10.0,
+                    )
                 if response.status_code == 200:
                     return True
                 log.warning("support: Stripe refused the stop for choice %s: HTTP %s", choice.id, response.status_code)
             except httpx.HTTPError as exc:
                 log.warning("support: Stripe unreachable for the stop of choice %s: %s", choice.id, type(exc).__name__)
+        how = (
+            "Its renewal payment is failing and Stripe is retrying the card, so cancel it IMMEDIATELY in the "
+            "Stripe dashboard (Subscriptions, find this id, Cancel subscription, Immediately) - cancelling at "
+            "the period's end would let a retry still charge them."
+            if now
+            else "In the Stripe dashboard, open Subscriptions, find this id, and choose Cancel at end of period."
+        )
         return email_founder_to_cancel(
             db,
             choice,
             provider_label=self.label,
             refs=[("Stripe subscription id", choice.provider_ref), ("Stripe customer id", choice.customer_ref)],
-            how="The app could not cancel it through Stripe's API. In the Stripe dashboard, open "
-            "Subscriptions, find this id, and choose Cancel at end of period. Stripe's webhook then "
-            "records it and emails the hiker that it is done.",
+            how="The app could not cancel it through Stripe's API. "
+            + how
+            + " Stripe's webhook then records it and emails the hiker that it is done.",
             mail_provider=mail_provider,
         )
 
@@ -316,12 +408,13 @@ def _payload(kind: str, obj: Mapping[str, Any], **extra: Any) -> dict[str, Any]:
     """The few fields worth keeping, by name - never the payer's name,
     address, card or email."""
     item = _first_item(obj)
-    price = item.get("price") if isinstance(item.get("price"), Mapping) else {}
-    recurring = price.get("recurring") if isinstance(price.get("recurring"), Mapping) else {}
+    price = _mapping(item.get("price"))
+    recurring = _mapping(price.get("recurring"))
     kept = {
         "type": kind,
         "object_id": _ref(obj.get("id")),
         "status": obj.get("status") if isinstance(obj.get("status"), str) else None,
+        "payment_status": obj.get("payment_status") if isinstance(obj.get("payment_status"), str) else None,
         "subscription": _ref(obj.get("subscription")),
         "customer": _ref(obj.get("customer")),
         "client_reference_id": obj.get("client_reference_id") if isinstance(obj.get("client_reference_id"), str) else None,

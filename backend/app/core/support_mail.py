@@ -1,7 +1,7 @@
 """The mail supporting OurHike sends, and the limits on it (#1876).
 
-Three messages, none cold - each is one somebody needs to finish a thing they
-asked for (app/models/mail.py's rule for `MailPurpose`):
+Five messages, none cold - each is one somebody needs to finish a thing they
+asked for or to act on money (app/models/mail.py's rule for `MailPurpose`):
 
 - **the setup link**, to a store-app hiker who pressed "Email me how to set
   it up". The one place a payment link reaches a store-app hiker: Apple's
@@ -13,12 +13,21 @@ asked for (app/models/mail.py's rule for `MailPurpose`):
 - **the stopped notice**, to the hiker, once the provider says the payment
   their Stop asked about has ended - the second half of what the Stop screen
   promises ("we email you when it's done").
+- **the started receipt**, to the hiker, when a payment begins: the amount,
+  that it renews yearly on that date, and how to stop. Auto-renewal law
+  (California's, amended 2025) expects exactly this acknowledgement, and an
+  unrecognised charge a year later is the textbook card dispute.
+- **the payment note**, to the founder, when a payment arrives that the app
+  could not place: one for a choice already stopped, paid or deleted (it is
+  set not to renew, and may need refunding), or one carrying no choice at
+  all (nobody can stop it from the app).
 
-**A SETUP LINK GOES AT MOST ONCE A DAY PER ADDRESS.** The #1885 security
-review found it had no limit: every PUT with `delivery: "email"` sent one,
-and the address is whatever the token carries. `SETUP_LINK_EVERY` is the
-limit, read off the send log rather than a column so that two rows (a choice,
-then a new one) cannot each send their own.
+**A SETUP LINK GOES AT MOST ONCE A DAY PER ADDRESS AND AMOUNT.** The #1885
+security review found it had no limit: every PUT with `delivery: "email"`
+sent one, and the address is whatever the token carries. `SETUP_LINK_EVERY`
+is the limit, read off the send log rather than a column so that two rows (a
+choice, then a new one) cannot each send their own; it is per amount, so a
+hiker who changes tier gets the link for the tier they now chose.
 
 **EVERY HIKER-FACING MESSAGE CARRIES A REAL UNSUBSCRIBE** when
 `settings.api_public_url` is set: a per-row token that suppresses the address
@@ -53,6 +62,10 @@ log = logging.getLogger(__name__)
 SETUP_LINK_EVERY = timedelta(hours=24)
 
 UNSUBSCRIBE_PATH = "/support/mail/stop/{token}"
+
+# How a hiker stops, said the same way in every email. No count of taps: the
+# #1885 review counted four and a sign-in where the copy said two.
+HOW_TO_STOP = "To stop, open OurHike and go to More → Your support → Stop my support. No reason needed, and we cancel it for you."
 
 
 def manage_url() -> str:
@@ -115,14 +128,16 @@ def _send(
     return True
 
 
-def setup_link_sent_since(db: Session, address: str, since: datetime) -> bool:
-    """Whether a setup link reached this address (or was handed to the
-    provider) since `since`. A `failed` send does not count - nothing went."""
+def setup_link_sent_since(db: Session, address: str, subject: str, since: datetime) -> bool:
+    """Whether this setup link - this address, this subject, which names the
+    amount - was sent (or handed to the provider) since `since`. A `failed`
+    send does not count: nothing went."""
     return (
         db.query(EmailSend)
         .filter(
             EmailSend.to_address == normalise(address),
             EmailSend.purpose == MailPurpose.support_setup_link,
+            EmailSend.subject == subject,
             EmailSend.state != MailState.failed,
             EmailSend.created_at >= since,
         )
@@ -145,14 +160,15 @@ def send_setup_link(
     one in their inbox. Does not commit."""
     if not checkout_url:
         return False
-    if setup_link_sent_since(db, choice.email, now - SETUP_LINK_EVERY):
-        return True
     amount = dollars(choice.amount_cents, choice.currency)
+    subject = f"Set up your {amount} a {choice.cadence.value} for OurHike"
+    if setup_link_sent_since(db, choice.email, subject, now - SETUP_LINK_EVERY):
+        return True
     body = (
         f"You chose to give OurHike {amount} a {choice.cadence.value}. Thank you.\n\n"
         f"Set it up here, on {provider_label}'s secure payment page:\n"
         f"{checkout_url}\n\n"
-        "Stopping is two taps in the app: More → Your support → Stop. We cancel it for you.\n"
+        f"{HOW_TO_STOP}\n"
         f"{_stop_line(choice)}"
     )
     return _send(
@@ -160,7 +176,7 @@ def send_setup_link(
         choice=choice,
         to=choice.email,
         purpose=MailPurpose.support_setup_link,
-        subject=f"Set up your {amount} a {choice.cadence.value} for OurHike",
+        subject=subject,
         body=body,
         unsubscribe=unsubscribe_url(choice),
         mail_provider=mail_provider,
@@ -251,5 +267,66 @@ def email_hiker_stopped(db: Session, choice: SupportChoice, *, mail_provider) ->
         subject=f"Your {amount} a {choice.cadence.value} to OurHike is stopped",
         body=body,
         unsubscribe=unsubscribe_url(choice),
+        mail_provider=mail_provider,
+    )
+
+
+def _day(when: datetime) -> str:
+    return f"{when:%B} {when.day}"
+
+
+def email_hiker_started(db: Session, choice: SupportChoice, *, mail_provider) -> bool:
+    """The receipt when a payment begins: what, how often, and how to stop.
+    Does not commit."""
+    amount = dollars(choice.amount_cents, choice.currency)
+    began = choice.started_at or choice.updated_at
+    renews = f"It renews every {choice.cadence.value}" + (f" on {_day(began)}" if began is not None else "") + "."
+    body = (
+        f"You're giving OurHike {amount} a {choice.cadence.value}. Thank you - it keeps the map free for "
+        f"the hiker behind you.\n\n"
+        f"{renews} You'll be charged {amount} each time until you stop it.\n\n"
+        f"{HOW_TO_STOP}\n\n"
+        "Questions, or a charge you don't recognise? Reply to this email.\n"
+        f"{_stop_line(choice)}"
+    )
+    return _send(
+        db,
+        choice=choice,
+        to=choice.email,
+        purpose=MailPurpose.support_started,
+        subject=f"You're giving OurHike {amount} a {choice.cadence.value}",
+        body=body,
+        unsubscribe=unsubscribe_url(choice),
+        mail_provider=mail_provider,
+    )
+
+
+def email_founder_payment_note(
+    db: Session,
+    choice: SupportChoice,
+    *,
+    provider_label: str,
+    what: str,
+    mail_provider,
+) -> bool:
+    """Tell the founder about a payment the app could not place. Does not
+    commit; never raises."""
+    amount = dollars(choice.amount_cents, choice.currency)
+    lines = [
+        what,
+        "",
+        f"Amount: {amount} a {choice.cadence.value} on {provider_label}",
+        f"Email the provider has: {choice.email or 'none'}",
+        f"Subscription id: {choice.provider_ref or 'unknown'}",
+        f"OurHike record: {choice.id}",
+    ]
+    return _send(
+        db,
+        choice=choice,
+        to=settings.support_notify_address,
+        purpose=MailPurpose.support_payment_note,
+        subject=f"A {amount} payment the app could not place",
+        body="\n".join(lines) + "\n",
+        unsubscribe=manage_url(),
         mail_provider=mail_provider,
     )

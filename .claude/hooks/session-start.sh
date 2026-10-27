@@ -126,7 +126,9 @@ pip_install_pinned .github/tests/requirements-dev.txt
 echo "[session-start] campsite steward deps"
 # apps/steward/pipeline/ (#1901). Its requirements are compiled against
 # pipeline/requirements-dev.txt, so this adds pandas and changes nothing the
-# pipeline suite already pinned.
+# pipeline suite already pinned. apps/steward/api/ (#1906) is compiled against
+# backend's runtime pins and the pipeline's tools, so it adds nothing new.
+pip_install_pinned apps/steward/api/requirements-dev.txt
 pip_install_pinned apps/steward/pipeline/requirements-dev.txt
 
 echo "[session-start] seeding the duckdb spatial extension"

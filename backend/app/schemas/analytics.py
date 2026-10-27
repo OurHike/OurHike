@@ -57,14 +57,26 @@ MAX_PLAN_MILES = 5000.0
 # pipeline/export_club_sections.py, #594). It is a club-shaped answer to
 # "which club" that says "not recorded" rather than guessing, and it is not
 # the same as no club at all, which is an event that was not about a trail.
+#
+# At most 16 characters. The ATC acronyms in this repository's tests and
+# golden batch run to six (`NYNJTC`, `AMC-DV`), so the cap leaves room for an
+# organization's slug while keeping a club id too short to carry a sentence.
 CLUB_NOT_RECORDED = "_unrecorded"
-ClubId = Annotated[str, Field(pattern=r"^(_unrecorded|[A-Za-z0-9][A-Za-z0-9._-]{0,63})$")]
+ClubId = Annotated[str, Field(pattern=r"^(_unrecorded|[A-Za-z0-9][A-Za-z0-9._-]{0,15})$")]
 
-# A version string as the phone's build stamps it: no spaces, so no sentence.
-VERSION_PATTERN = r"^[0-9A-Za-z][0-9A-Za-z.+_-]*$"
+# A version as the phone's build stamps it: semver, with an optional
+# pre-release (`1.5.0`, `1.5.0-beta.2`), and nothing else - no build metadata,
+# no spaces, no sentence. VERSION_BODY is the pattern without its anchors, for
+# app/routers/analytics.py, which matches it with `re.fullmatch`: Python's `$`
+# also matches before a trailing newline, so `^...$` with `re.match` would
+# let "1.4.0\n" through.
+VERSION_BODY = r"[0-9]{1,4}\.[0-9]{1,4}\.[0-9]{1,4}(?:-[0-9A-Za-z.]{1,24})?"
+VERSION_PATTERN = rf"^{VERSION_BODY}$"
 
 # Clubs' shares must add up to one event. Floating point and the phone's own
-# rounding of mile splits are allowed this much slack and no more.
+# rounding of mile splits are allowed this much slack and no more - and the
+# route then divides every share by the row's own sum, so the slack is never
+# stored (app/routers/analytics.py `normalised_shares`).
 SHARE_TOLERANCE = 0.02
 
 _PLAN_EVENTS = (UsageEvent.hike_plan_made, UsageEvent.hike_plan_completed)

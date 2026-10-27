@@ -145,7 +145,17 @@ def upgrade() -> None:
         sa.Column("app_version", sa.String(length=40), nullable=False),
         sa.Column(
             "outcome",
-            sa.Enum("stored", "duplicate", "invalid", "too_old", "future", name="intakeoutcome", native_enum=False, length=12),
+            sa.Enum(
+                "stored",
+                "duplicate",
+                "invalid",
+                "too_old",
+                "future",
+                "over_budget",
+                name="intakeoutcome",
+                native_enum=False,
+                length=12,
+            ),
             nullable=False,
         ),
         sa.Column("rows", sa.Integer(), nullable=False),

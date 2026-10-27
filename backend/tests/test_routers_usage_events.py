@@ -1,6 +1,6 @@
 """Tests for `POST /usage-events` (#1902, app/routers/analytics.py).
 
-The endpoint makes four promises, and each test below is one of them failing
+The endpoint makes these promises, and each test below is one of them failing
 if it is broken:
 
   - **A token alone links nothing.** A row carries a `user_key` only when the
@@ -12,6 +12,8 @@ if it is broken:
     that count is the only trace.
   - **The User table counts each stored row once**, however often a phone
     resends it.
+  - **It stores no more than its bounds allow** (app/config.py), and a batch
+    past them is turned away whole with a 503 the phone answers by keeping it.
 """
 
 import uuid
@@ -22,7 +24,8 @@ import pytest
 from sqlalchemy import inspect
 
 from app.config import settings
-from app.core.analytics_rollup import add_months, month_start, retention_start
+from app.core import analytics_quality as quality
+from app.core.analytics_rollup import add_months, month_start, retention_start, run
 from app.core.analytics_seal import month_label, month_private_key, month_public_key, new_secret, open_sealed, user_key
 from app.core.time import utc_now
 from app.models.analytics import AnalyticsEvent, AnalyticsIntake, AnalyticsSealKey, AnalyticsUser
@@ -235,6 +238,11 @@ def test_no_column_could_hold_an_ip_address():
         {"fix": {"lat": 91, "lon": 0}},
         {"fix": {"lat": 41.3, "lon": -74.2, "label": "home"}},
         {"app_version": "1.2.3 (beta; Pixel 8)"},
+        {"app_version": "1.4.0\n"},
+        {"app_version": "1.5.0+build.7"},
+        {"app_version": "1.5"},
+        {"clubs": {"ABCDEFGHIJKLMNOPQ": 1.0}},
+        {"club_firsts": ["ABCDEFGHIJKLMNOPQ"]},
         {"event": "session", "pageviews": 3},
         {"ever_first": True},
     ],
@@ -251,6 +259,11 @@ def test_no_column_could_hold_an_ip_address():
         "a-latitude-off-the-planet",
         "a-labelled-fix",
         "a-version-string-with-spaces",
+        "a-version-with-a-trailing-newline",
+        "a-version-with-build-metadata",
+        "a-version-of-two-parts",
+        "a-17-character-club-in-clubs",
+        "a-17-character-club-in-club-firsts",
         "a-session-without-its-length",
         "first-ever-off-the-months-first-row",
     ],
@@ -267,6 +280,80 @@ def test_a_row_outside_the_registry_is_refused_alone(client, db_session, today, 
     assert db_session.get(AnalyticsEvent, bad["id"]) is None, "the refused row is not stored"
     version = "" if fields.get("app_version") else "1.5.0"
     assert _intake(db_session) == {("1.4.0", "stored"): 1, (version, "invalid"): 1}
+
+
+def test_a_16_character_club_and_a_pre_release_version_are_stored(client, db_session, today):
+    """The longest club id and the pre-release shape the patterns allow, so
+    the refusals above are the cap and not something stricter."""
+    event = _event(today, app_version="1.5.0-beta.2", clubs={"ABCDEFGHIJKLMNOP": 1.0}, club_firsts=["ABCDEFGHIJKLMNOP"])
+
+    assert _post(client, [event]).json() == {"accepted": 1, "duplicates": 0, "refused": 0}
+    assert db_session.get(AnalyticsEvent, event["id"]).app_version == "1.5.0-beta.2"
+
+
+def test_club_shares_are_stored_as_exactly_one_event(client, db_session, today):
+    """0.509 + 0.509 is inside the schema's tolerance and is 1.018 of a plan;
+    stored as sent, one such row put the clubs' plans above the app's own."""
+    event = _event(today, event="hike_plan_made", miles=8.0, clubs={"GATC": 0.509, "SMHC": 0.509})
+
+    _post(client, [event])
+
+    assert db_session.get(AnalyticsEvent, event["id"]).clubs == {"GATC": 0.5, "SMHC": 0.5}
+
+
+def test_shares_that_already_add_up_are_stored_unchanged(client, db_session, today):
+    event = _event(today, event="hike_plan_made", miles=30.0, clubs={"NYNJTC": 0.6667, "AMC-NY": 0.2667, "_unrecorded": 0.0666})
+
+    _post(client, [event])
+
+    assert db_session.get(AnalyticsEvent, event["id"]).clubs == event["clubs"]
+
+
+def test_a_month_of_rounded_shares_keeps_the_clubs_plans_within_the_apps(client, db_session, today):
+    """The reproduction: one plan at 0.509 + 0.509 was enough for the nightly
+    `club_plans_within_total` check to call the month broken, for good."""
+    _post(client, [_event(today, event="hike_plan_made", miles=8.0, clubs={"GATC": 0.509, "SMHC": 0.509})])
+
+    run(db_session, today=today)
+
+    assert [f.check_name for f in quality.invariant_findings(db_session) if f.check_name == "club_plans_within_total"] == []
+
+
+# --- what it will store at all --------------------------------------------------------
+
+
+def test_a_batch_past_the_days_row_budget_is_turned_away_whole_and_counted(client, db_session, today, monkeypatch):
+    monkeypatch.setattr(settings, "analytics_daily_row_budget", 2)
+    _post(client, [_event(today), _event(today)])
+    late = [_event(today), _event(today), _event(today)]
+
+    response = _post(client, late)
+
+    assert response.status_code == 503
+    assert response.headers["Retry-After"] == "3600"
+    assert db_session.query(AnalyticsEvent).count() == 2, "nothing past the budget is stored"
+    assert _intake(db_session) == {("", "stored"): 2, ("", "over_budget"): 3}
+
+
+def test_a_table_past_its_storage_ceiling_turns_every_batch_away(client, db_session, today, monkeypatch):
+    monkeypatch.setattr(settings, "analytics_storage_ceiling_mb", 0)
+
+    response = _post(client, [_event(today)])
+
+    assert response.status_code == 503 and response.headers["Retry-After"] == "3600"
+    assert db_session.query(AnalyticsEvent).count() == 0
+    assert _intake(db_session) == {("", "over_budget"): 1}
+
+
+def test_a_turned_away_batch_is_told_nothing_about_which_bound_it_met(client, today, monkeypatch):
+    monkeypatch.setattr(settings, "analytics_storage_ceiling_mb", 0)
+    by_size = _post(client, [_event(today)]).json()
+    monkeypatch.setattr(settings, "analytics_storage_ceiling_mb", 250)
+    monkeypatch.setattr(settings, "analytics_daily_row_budget", 0)
+
+    by_count = _post(client, [_event(today)]).json()
+
+    assert by_size == by_count
 
 
 def test_a_returning_flag_off_the_months_first_row_is_refused(client, db_session, today):

@@ -1,8 +1,7 @@
 """`POST /usage-events` - where the app's usage measurement arrives (#1902).
 
 See ../../../features/EVENTING.md for the design and app/models/analytics.py
-for what each column means. Five things about this endpoint are decisions,
-not oversights:
+for what each column means. Each of these is a decision, not an oversight:
 
 **It takes no account, and a token alone links nothing.** Counts are on by
 default for everyone (the "split" consent, poll 2026-10-27), so a batch with
@@ -29,10 +28,19 @@ nothing here logs the request. A batch is momentarily linkable on the wire -
 nine heartbeats in one request came from one phone - and the claim is only
 that the grouping is never written (EVENTING.md §2).
 
-**What is deliberately NOT built:** rate limiting, the same gap
-app/routers/app_failures.py names for the other unauthenticated write. A
-flood of fake events would skew the counts; it could not reach anybody's
-data. Said out loud so it is noticed before it is discovered.
+**It caps what it stores, and turns a batch away rather than fill the
+database.** Past `analytics_daily_row_budget` rows stored in a UTC day, or
+with `analytics_events` past `analytics_storage_ceiling_mb` (app/config.py),
+a batch is counted as `over_budget` unread and answered 503 with a
+`Retry-After`. The phone keeps a batch a 5xx answered and sends it later
+(client/src/lib/usageQueue.ts `sendUsageBatch`), so a real day that runs over
+arrives late rather than going missing.
+
+**What is still NOT built: a limit per sender.** There is no IP to limit by,
+on purpose, and no account. So a flood of fake rows can still skew a day's
+counts, and can use up its budget so that real rows wait for the next day.
+It cannot reach anybody's data. Said out loud so it is noticed before it is
+discovered.
 """
 
 from __future__ import annotations
@@ -41,9 +49,9 @@ import math
 import re
 from collections import Counter, defaultdict
 from datetime import date, timedelta
-from typing import Any
+from typing import Any, NoReturn
 
-from fastapi import APIRouter, Depends, status
+from fastapi import APIRouter, Depends, HTTPException, status
 from pydantic import ValidationError
 from sqlalchemy import select, text
 from sqlalchemy.dialects.postgresql import insert
@@ -64,9 +72,19 @@ from app.models.analytics import (
     UsageEvent,
 )
 from app.models.profile import Profile
-from app.schemas.analytics import VERSION_PATTERN, UsageBatchAck, UsageBatchIn, UsageEventIn
+from app.schemas.analytics import VERSION_BODY, UsageBatchAck, UsageBatchIn, UsageEventIn
 
 router = APIRouter(prefix="/usage-events", tags=["usage-events"])
+
+# How long a phone is asked to wait after a batch is turned away. An hour,
+# because both reasons it is turned away - the day's budget, the table's
+# ceiling - clear on a scale of hours or longer, and a sooner retry would only
+# be turned away again. @unvalidated: nobody has watched what phones do with it.
+RETRY_AFTER_SECONDS = 3600
+
+# The same words whichever bound was reached: the caller is told to come back
+# later, and nothing about this database's size or traffic.
+TURNED_AWAY = "Usage counts are not being accepted right now. Send them again later."
 
 # A phone's calendar may run a day ahead of the server's UTC one - it is
 # already tomorrow in the hiker's own day for some hours of every evening
@@ -81,13 +99,66 @@ def _area(degrees: float) -> float:
 
 
 _REFUSED = frozenset({IntakeOutcome.invalid, IntakeOutcome.too_old, IntakeOutcome.future})
-_VERSION = re.compile(VERSION_PATTERN)
+_VERSION = re.compile(VERSION_BODY)
 
 
 def _version_of(raw: Any) -> str:
-    """A refused row's version when it carried a readable one, for the intake count."""
+    """A refused row's version when it carried a readable one, for the intake count.
+
+    `fullmatch`, never `match` with a `$`: Python's `$` also matches before a
+    trailing newline, and "1.4.0\\n" is not a version this table should hold.
+    """
     version = raw.get("app_version") if isinstance(raw, dict) else None
-    return version if isinstance(version, str) and len(version) <= 40 and _VERSION.match(version) else ""
+    return version if isinstance(version, str) and _VERSION.fullmatch(version) else ""
+
+
+def normalised_shares(clubs: dict[str, float] | None) -> dict[str, float] | None:
+    """Each club's share divided by the row's own sum, so a stored row is exactly one event.
+
+    The schema lets a row's shares miss one by `SHARE_TOLERANCE` (0.02), for
+    the phone's rounding of its mile splits. Stored as sent, that slack adds
+    up: two clubs at 0.509 each is 1.018 of a plan, and a month of such rows
+    puts the clubs' plans above the app's own (the nightly
+    `club_plans_within_total` check, app/core/analytics_quality.py) with no
+    way to correct it once the month closes. `math.fsum` so shares that
+    already add up to 1.0 come back unchanged.
+    """
+    if not clubs:
+        return None
+    total = math.fsum(clubs.values())
+    return {club: share / total for club, share in clubs.items()}
+
+
+# Read once per batch, before anything in it is: how many rows today has
+# stored, and how large the raw table has grown.
+_INTAKE_GATE = text(
+    """
+    select
+      (select coalesce(sum(rows), 0) from analytics_intake
+        where received_on = :today and outcome = 'stored') as stored_today,
+      pg_total_relation_size('analytics_events') as table_bytes
+    """
+)
+
+
+def _over_budget(db: Session, today: date) -> bool:
+    """Whether today's row budget or the table's storage ceiling has been reached (app/config.py)."""
+    gate = db.execute(_INTAKE_GATE, {"today": today}).one()
+    return (
+        gate.stored_today >= settings.analytics_daily_row_budget
+        or gate.table_bytes >= settings.analytics_storage_ceiling_mb * 1024 * 1024
+    )
+
+
+def _turn_away(db: Session, today: date, outcome: IntakeOutcome, rows: int) -> NoReturn:
+    """Count a whole batch under `outcome`, unread, and answer 503 so the phone keeps it."""
+    _count_intake(db, today, Counter({("", outcome): rows}))
+    db.commit()
+    raise HTTPException(
+        status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+        detail=TURNED_AWAY,
+        headers={"Retry-After": str(RETRY_AFTER_SECONDS)},
+    )
 
 
 def _sort_rows(raws: list[Any], today: date) -> tuple[list[UsageEventIn], Counter]:
@@ -188,7 +259,7 @@ def _row(event: UsageEventIn, *, today: date, key: str | None, account_id: str |
         "kind_month_first": event.kind_month_first,
         "month_returning": event.month_returning,
         "signed_in": event.signed_in,
-        "clubs": dict(event.clubs) if event.clubs else None,
+        "clubs": normalised_shares(event.clubs),
         "miles": event.miles,
         "pageviews": event.pageviews,
         "session_length": event.session_length.value if event.session_length is not None else None,
@@ -317,8 +388,14 @@ def receive_usage_events(
     outbox's resend after a lost response stores nothing twice. 202 even when
     every row was refused: the phone drops the batch either way, and the
     counts below are where the refusal is recorded.
+
+    503 only when the batch was turned away whole, before a row was read -
+    the one answer that tells the phone to keep it.
     """
     today = utc_now().date()
+    if _over_budget(db, today):
+        _turn_away(db, today, IntakeOutcome.over_budget, len(payload.events))
+
     events, outcomes = _sort_rows(payload.events, today)
 
     linked = payload.identified and current_user is not None and bool(settings.analytics_user_key_secret)

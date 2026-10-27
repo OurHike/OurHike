@@ -208,10 +208,15 @@ class IntakeOutcome(str, enum.Enum):
     """What `POST /usage-events` did with one row it was sent.
 
     `stored` and `duplicate` were accepted (a duplicate is a resend of a row
-    already held). The other three were refused: `invalid` broke the registry,
+    already held). Three were refused: `invalid` broke the registry,
     `too_old` is dated before retention would keep it, `future` is dated more
     than a day ahead. A refused row is dropped by the phone, so these counts
     are the only trace it ever existed.
+
+    `over_budget` was turned away whole, unread, because the day's row budget
+    or the table's storage ceiling was reached (app/config.py). It is not
+    lost: the answer is a 503, and the phone keeps the rows to send later. It
+    is counted under no version, because nothing in the batch was read.
     """
 
     stored = "stored"
@@ -219,6 +224,7 @@ class IntakeOutcome(str, enum.Enum):
     invalid = "invalid"
     too_old = "too_old"
     future = "future"
+    over_budget = "over_budget"
 
 
 class AnalyticsIntake(Base):

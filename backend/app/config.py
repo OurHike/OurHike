@@ -279,6 +279,28 @@ class Settings(BaseSettings):
     # without losing that continuity, and it is never done casually.
     analytics_user_key_secret: str = ""
 
+    # HOW MUCH `POST /usage-events` WILL STORE. The endpoint takes no account,
+    # so without a ceiling anybody could fill this database with made-up rows.
+    # Two bounds, checked before a batch is read (app/routers/analytics.py):
+    # rows stored in one UTC day, read from that day's `stored` count in
+    # `analytics_intake`, and the size of `analytics_events` on disk, indexes
+    # included (`pg_total_relation_size`). Past either, a batch is counted as
+    # `over_budget` and answered 503, and the phone keeps its rows and sends
+    # them later (client/src/lib/usageQueue.ts `sendUsageBatch`) - so a real
+    # day that runs over arrives late rather than going missing.
+    #
+    # @unvalidated, both. The budget is about one and a half times
+    # EVENTING.md §8's estimate of 33,000 rows a day, itself never measured.
+    # The ceiling is half the 500 MB LAUNCH_CHECKLIST.md 4.1 gives the free
+    # plan, so usage rows alone cannot fill the database the rest of the app
+    # lives in. Measured 2026-10-27 on Postgres 16, a mixed batch with half its
+    # rows sealed takes 382 bytes a row, so 250 MB holds about 690,000 rows:
+    # three weeks at §8's estimate, against six months of retention. At that
+    # scale the ceiling binds long before the budget does. What would settle
+    # both: the production plan's real quota, and a season of real daily volume.
+    analytics_daily_row_budget: int = 50_000
+    analytics_storage_ceiling_mb: int = 250
+
     @property
     def mail_allowed(self) -> tuple[str, ...]:
         """The suffix list as `app/core/mail.py` wants it."""

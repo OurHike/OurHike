@@ -17,6 +17,7 @@ import pytest
 from sqlalchemy import text as sql
 
 from app.models.analytics import AnalyticsEvent
+from tests.test_analytics_quality import _rows, _steady
 
 SCRIPT = Path(__file__).resolve().parents[1] / "scripts" / "analytics_quality.py"
 TODAY = date(2026, 11, 20)
@@ -67,6 +68,38 @@ def test_a_finding_is_named_and_its_figure_is_not(script, db_session, tmp_path, 
         assert str(THROWN_AWAY) not in re.sub(r"\d{4}-\d{2}-\d{2}(T[\d:]+Z)?", "", text)
     finding = json.loads(written)["open"][0]
     assert set(finding) == {"key", "check", "scope", "status", "day"}
+
+
+def _verdict_keys(script, tmp_path, today, *extra) -> set[str]:
+    verdict = tmp_path / f"verdict-{today}.json"
+    assert script.main(["--today", today.isoformat(), "--verdict", str(verdict), *extra]) == 0
+    return {finding["key"] for finding in json.loads(verdict.read_text())["open"]}
+
+
+def test_a_statistical_finding_reaches_the_verdict_on_its_second_night_and_the_log_on_its_first(
+    script, db_session, tmp_path, capsys
+):
+    """One odd night costs nobody an email, and late uploads get a night to
+    resolve it - but the log, which nobody is notified by, says it at once."""
+    _steady(db_session, until=TODAY - timedelta(days=2))
+    for back in (2, 1):
+        _rows(db_session, TODAY - timedelta(days=back), {"session": 60, "map_screen_viewed": 40})
+
+    first_night = _verdict_keys(script, tmp_path, TODAY)
+    printed = capsys.readouterr().out
+    second_night = _verdict_keys(script, tmp_path, TODAY + timedelta(days=1))
+
+    assert "plans_made|*" not in first_night
+    assert "plans_made" in printed and "first night" in printed
+    assert "plans_made|*" in second_night
+
+
+def test_a_failed_rollup_reaches_the_verdict_the_same_night(script, tmp_path):
+    assert "rollup_failed|*" in _verdict_keys(script, tmp_path, TODAY, "--rollup-outcome", "failure")
+
+
+def test_a_rollup_that_succeeded_is_not_a_finding(script, tmp_path):
+    assert "rollup_failed|*" not in _verdict_keys(script, tmp_path, TODAY, "--rollup-outcome", "success")
 
 
 def test_checks_that_cannot_run_are_named_by_class_and_their_values_are_not_printed(script, monkeypatch, capsys):

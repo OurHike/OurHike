@@ -2,9 +2,10 @@
 
 `.github/scripts/tracking-issue.js` is what check-deployment.yml,
 check-deployed-app.yml, check-upstream-freshness.yml, smoke-published.yml,
-check-pending-approvals.yml, check-note-anchors.yml and route-disputes.yml all
-call to open, update and close their one issue. Before #678 it was four copies
-of about ninety lines, and this file did not exist.
+check-pending-approvals.yml, check-note-anchors.yml, route-disputes.yml and
+analytics-rollup.yml all call to open, update and close their one issue.
+Before #678 it was four copies of about ninety lines, and this file did not
+exist.
 
 The roster below has grown twice since and been wrong once: check-note-anchors
 (#878) called the shared module correctly and was never added here, so for two

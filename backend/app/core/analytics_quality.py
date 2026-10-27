@@ -10,11 +10,19 @@ public, names checks and never figures.
 WHAT IS CHECKED, AND WHY EACH ONE
 
 1. **Each metric, each day, against the same weekday in the weeks before.**
-   Installs, sign-ins, plans made and completed, map views, sessions,
-   screens, and phones counted for the first time that week. Same weekday
-   because hiking is a weekend activity and a Saturday is not a Tuesday;
-   the median of up to `HISTORY_WEEKS` of them, so one odd week cannot drag
-   the baseline.
+   Installs, sign-ins, plans made and completed, map views, sessions, and
+   phones counted for the first time that week - and sessions and phones per
+   platform, so a whole platform going silent is seen even while the other
+   two carry the total. Same weekday because hiking is a weekend activity and
+   a Saturday is not a Tuesday; the median of up to `HISTORY_WEEKS` of them,
+   so one odd week cannot drag the baseline. **Only a fall is a finding**
+   (`low` or `zero`), because a rise is the season far more often than a
+   fault: on synthetic Poisson counts climbing 6% a week, `judge` called one
+   series at 20 a day high on 7 of 154 nights (measured 2026-10-27), and a
+   night judges seven days of seven series; the review that took `high` out
+   counted it on 51% of nights. Screens are not in this list: a sum of
+   per-session counts swings far more than a count of events, and
+   `pageviews_per_session` below already catches the instrumentation breaking.
 2. **Compared lag for lag.** This app is offline-first: yesterday's count is
    missing everything still on a ridge. Each day is compared with earlier
    days *as they stood at the same age* - rows received within the same number
@@ -22,21 +30,28 @@ WHAT IS CHECKED, AND WHY EACH ONE
    the job runs mid-morning, so today's arrivals are partial and are left out
    on both sides. Without this, every fresh day reads low, every night, and
    the check is noise.
-3. **Each event per session.** A release that stops recording plans shows up
-   here as plans-per-session collapsing, even in a month when traffic is
-   climbing for the season and the plain count looks fine.
+3. **Each event per session**, both directions. A release that stops
+   recording plans shows up here as plans-per-session collapsing, even in a
+   month when traffic is climbing for the season and the plain count looks
+   fine; one that records each plan twice shows as the rate doubling.
 4. **Each release against the others.** The same per-session rates, for one
    app version over a fortnight against every other version: the shape of a
    release that broke one event and nothing else.
 5. **Intake.** Rows the server refused, by version (`analytics_intake`) -
-   the only trace a refused row leaves - and resends.
+   the only trace a refused row leaves - resends, and batches turned away
+   because the day's budget ran out or the rollup had stopped.
 6. **The pipeline.** Rows thrown away for want of a published key, a month
-   left provisional past its close date (the rollup is not running), and
-   closed months still collecting rows (`CLOSE_AFTER_DAYS` is too short).
-7. **The sums that must hold**, on every month in `analytics_monthly`:
-   platforms add up to the total, new + returning + back-again add up to the
-   active phones, session lengths add up to sessions, no club has more phones
-   than the whole app. A failure there is a bug or a lying client, not noise.
+   left provisional past its close date (the rollup is not running), closed
+   months still collecting rows (`CLOSE_AFTER_DAYS` is too short), and a
+   night the rollup itself failed (`scripts/analytics_quality.py
+   --rollup-outcome`).
+7. **The sums that must hold**, on every month still open or closed within
+   `MONTH_JUDGED_DAYS`: platforms add up to the total, new + returning +
+   back-again add up to the active phones, session lengths add up to
+   sessions, no club has more phones than the whole app. A failure there is a
+   bug or a lying client, not noise. A month frozen longer than that is not
+   judged again - its figures cannot change, so re-making its finding every
+   night would only keep the tracking issue open for ever.
 
 MISS RATHER THAN CRY WOLF
 
@@ -45,9 +60,12 @@ below asks for TWO things: an anomaly must be `Z` deviations out AND at least
 `RELATIVE` away from what was expected. At a few events a day the first
 alone fires on noise; at thousands, the second alone fires on a 3% wobble.
 Too little history says `learning`, too few events says `quiet` - honest
-non-answers rather than guesses. All of these numbers are @unvalidated:
-picked, not measured, and what would settle them is a quarter of real data
-and the maintainer's judgement of which findings were worth reading.
+non-answers rather than guesses. And the public tracking issue hears of a
+statistical finding only on its second night (`public_findings`), while a
+sum that does not add up goes there at once. All of these numbers are
+@unvalidated: picked, not measured, and what would settle them is a quarter
+of real data and the maintainer's judgement of which findings were worth
+reading.
 """
 
 from __future__ import annotations
@@ -63,7 +81,7 @@ from sqlalchemy.dialects.postgresql import insert
 from sqlalchemy.orm import Session
 
 from app.core.analytics_rollup import ALL, add_months, closes_on, retention_start
-from app.models.analytics import AnalyticsAnomaly, AnalyticsMonth, AnalyticsMonthly, MonthStatus
+from app.models.analytics import AnalyticsAnomaly, AnalyticsMonth, AnalyticsMonthly, MonthStatus, UsagePlatform
 
 # @unvalidated - see the module docstring for what would settle each.
 Z = 4.0
@@ -72,11 +90,15 @@ MIN_EXPECTED = 10.0
 # Nothing at all is judged on its own terms, because it is far stronger
 # evidence than a dip: with 7 expected, a Poisson count is zero about 0.09% of
 # the time (e^-7), and an outage is exactly a metric falling to nothing. So a
-# zero is called below MIN_EXPECTED - but never where the same weekday has
-# been zero before, which is what a metric that is simply rare looks like.
-# Reasoned from the Poisson tail, not measured; the staged sign-in outage in
-# the demo seed (two days at ~8 expected) is what it was checked against.
+# zero is called below MIN_EXPECTED - but not where more than a quarter of the
+# same weekdays were zero too, which is what a metric that is simply rare
+# looks like. A quarter rather than "never": with "never", one earlier outage
+# on that weekday switched the rule off for the eight weeks it stayed in the
+# history. Reasoned from the Poisson tail, not measured; the staged sign-in
+# outage in the demo seed (two days at ~8 expected) is what it was checked
+# against.
 ZERO_MIN_EXPECTED = 7.0
+ZERO_HISTORY_SHARE = 0.25
 HISTORY_WEEKS = 8
 MIN_HISTORY = 4
 EVALUATE_DAYS = 7
@@ -92,8 +114,16 @@ DUPLICATE_SHARE = 0.2
 MIN_INTAKE_ROWS = 100
 LATE_SHARE = 0.02
 OVERDUE_GRACE_DAYS = 2
+# How long after its close a month's sums are still judged. A fortnight, the
+# same span CLOSE_AFTER_DAYS gives late rows before the close; after it, the
+# month's figures are frozen and its late count is history. @unvalidated, like
+# the rest: what would settle it is how long after a close the maintainer
+# still acts on a finding about that month.
+MONTH_JUDGED_DAYS = 14
 
-# The daily series, by name. Each is a column of `_DAILY` below.
+# Every daily series, by name. Each is a column of `_DAILY` below. Screens
+# (`pageviews`) are loaded for `pageviews_per_session` and drawn by nothing
+# else.
 DAILY_METRICS = (
     "installs",
     "logins",
@@ -105,8 +135,29 @@ DAILY_METRICS = (
     "phones_this_week",
 )
 
+# The series judged on their own count - every daily series but screens (the
+# module docstring says why), and the panel the report draws.
+VOLUME_METRICS = tuple(metric for metric in DAILY_METRICS if metric != "pageviews")
+
+# The same, for each platform alone: enough to see one go silent.
+PLATFORM_METRICS = ("sessions", "phones_this_week")
+PLATFORMS = tuple(platform.value for platform in UsagePlatform)
+
 # Events checked per session, for instrumentation that broke quietly.
 PER_SESSION = ("logins", "plans_made", "plans_completed", "map_views", "pageviews")
+
+# A volume finding is a fall. A ratio finding may go either way.
+FALLS = ("low", "zero")
+EITHER_WAY = ("low", "high", "zero")
+
+# Judged against a noisy expectation, so the public issue waits for a second
+# night before it hears of one. `broken` and `warn` are not estimates.
+STATISTICAL = frozenset(EITHER_WAY)
+
+# What the intake check calls a row that carried no readable version. Not
+# "unknown", which a version string could be: two findings would share one
+# key, and `record` would refuse the night's whole insert.
+NO_VERSION = "(none)"
 
 _DAILY = text(
     """
@@ -122,6 +173,17 @@ _DAILY = text(
     from analytics_events
     where local_date >= :start and local_date <= :end
     group by local_date, received_on
+    """
+)
+
+_DAILY_BY_PLATFORM = text(
+    """
+    select platform, local_date, received_on,
+      count(*) filter (where event = 'session') as sessions,
+      count(*) filter (where week_first) as phones_this_week
+    from analytics_events
+    where local_date >= :start and local_date <= :end
+    group by platform, local_date, received_on
     """
 )
 
@@ -161,6 +223,11 @@ class Finding:
     low: float | None = None
     high: float | None = None
 
+    @property
+    def key(self) -> tuple[date, str, str]:
+        """The row it is stored as - `analytics_anomalies`' primary key, at the columns' widths."""
+        return (self.day, self.check_name[:48], self.scope[:64])
+
 
 @dataclass(frozen=True)
 class Judgement:
@@ -190,7 +257,8 @@ def judge(observed: float, history: list[float], *, scale: float = 1.0) -> tuple
     deviation = max(math.sqrt(max(expected, 1.0)), spread)
     low = max(0.0, min(expected - Z * deviation, expected * (1 - RELATIVE)))
     high = max(expected + Z * deviation, expected * (1 + RELATIVE))
-    if observed == 0 and expected >= ZERO_MIN_EXPECTED and min(history) > 0:
+    zeros = sum(1 for value in history if value == 0)
+    if observed == 0 and expected >= ZERO_MIN_EXPECTED and zeros <= ZERO_HISTORY_SHARE * len(history):
         return "zero", expected, low, high
     if expected < MIN_EXPECTED:
         return "quiet", expected, low, high
@@ -204,13 +272,13 @@ def judge(observed: float, history: list[float], *, scale: float = 1.0) -> tuple
 class Arrivals:
     """Daily counts, kept by the day rows arrived so any day can be read at any age."""
 
-    def __init__(self, rows) -> None:
-        self._by: dict[str, dict[date, list[tuple[date, float]]]] = {metric: defaultdict(list) for metric in DAILY_METRICS}
+    def __init__(self, rows, metrics: tuple[str, ...] = DAILY_METRICS) -> None:
+        self._by: dict[str, dict[date, list[tuple[date, float]]]] = {metric: defaultdict(list) for metric in metrics}
         self.first_day: date | None = None
         for row in rows:
             day, received = row["local_date"], row["received_on"]
             self.first_day = day if self.first_day is None else min(self.first_day, day)
-            for metric in DAILY_METRICS:
+            for metric in metrics:
                 if row[metric]:
                     self._by[metric][day].append((received, float(row[metric])))
 
@@ -225,9 +293,20 @@ class Arrivals:
         return [self.at(metric, past, age) for past in days if self.first_day is not None and past >= self.first_day]
 
 
+def _series_window(today: date) -> dict[str, date]:
+    return {"start": max(retention_start(today), today - timedelta(days=SERIES_DAYS + HISTORY_WEEKS * 7)), "end": today}
+
+
 def load_arrivals(db: Session, today: date) -> Arrivals:
-    start = max(retention_start(today), today - timedelta(days=SERIES_DAYS + HISTORY_WEEKS * 7))
-    return Arrivals(db.execute(_DAILY, {"start": start, "end": today}).mappings())
+    return Arrivals(db.execute(_DAILY, _series_window(today)).mappings())
+
+
+def load_platform_arrivals(db: Session, today: date) -> dict[str, Arrivals]:
+    """`PLATFORM_METRICS` for each platform alone. A platform never seen has no history, so it is `learning`."""
+    rows: dict[str, list] = defaultdict(list)
+    for row in db.execute(_DAILY_BY_PLATFORM, _series_window(today)).mappings():
+        rows[row["platform"]].append(row)
+    return {platform: Arrivals(rows[platform], PLATFORM_METRICS) for platform in PLATFORMS}
 
 
 def completed_age(today: date, day: date) -> int:
@@ -251,13 +330,23 @@ def daily_judgements(arrivals: Arrivals, metric: str, today: date, days: int) ->
     return out
 
 
-def _volume_findings(arrivals: Arrivals, today: date) -> list[Finding]:
+def _volume_findings(
+    arrivals: Arrivals, today: date, *, metrics: tuple[str, ...] = VOLUME_METRICS, scope: str = ALL
+) -> list[Finding]:
     findings = []
-    for metric in DAILY_METRICS:
+    for metric in metrics:
         for item in daily_judgements(arrivals, metric, today, EVALUATE_DAYS):
-            if item.status in ("low", "high", "zero"):
-                findings.append(Finding(item.day, metric, ALL, item.status, item.observed, item.expected, item.low, item.high))
+            if item.status in FALLS:
+                findings.append(Finding(item.day, metric, scope, item.status, item.observed, item.expected, item.low, item.high))
     return findings
+
+
+def _platform_findings(platforms: dict[str, Arrivals], today: date) -> list[Finding]:
+    return [
+        finding
+        for platform, arrivals in sorted(platforms.items())
+        for finding in _volume_findings(arrivals, today, metrics=PLATFORM_METRICS, scope=f"platform:{platform}")
+    ]
 
 
 def _ratio_findings(arrivals: Arrivals, today: date) -> list[Finding]:
@@ -274,7 +363,7 @@ def _ratio_findings(arrivals: Arrivals, today: date) -> list[Finding]:
             rates = [count / base for count, base in zip(past, past_sessions, strict=True) if base > 0]
             observed = arrivals.at(metric, day, age)
             status, expected, low, high = judge(observed, rates, scale=sessions)
-            if status in ("low", "high", "zero"):
+            if status in EITHER_WAY:
                 findings.append(Finding(day, f"{metric}_per_session", ALL, status, observed, expected, low, high))
     return findings
 
@@ -302,6 +391,12 @@ def _version_findings(db: Session, today: date) -> list[Finding]:
     return findings
 
 
+# Batches turned away whole by POST /usage-events (app/routers/analytics.py).
+# Any at all is worth a look: either real traffic outgrew the budget, or the
+# rollup stopped and collection paused behind it.
+_TURNED_AWAY = (("over_budget", "rows_over_budget"), ("paused", "rows_paused"))
+
+
 def _intake_findings(db: Session, today: date) -> list[Finding]:
     rows = db.execute(_INTAKE, {"start": today - timedelta(days=EVALUATE_DAYS), "end": today - timedelta(days=1)})
     days: dict[date, dict[str, dict[str, int]]] = defaultdict(lambda: defaultdict(lambda: defaultdict(int)))
@@ -316,12 +411,15 @@ def _intake_findings(db: Session, today: date) -> list[Finding]:
             bad = sum(outcomes[name] for name in refused)
             total = bad + outcomes["stored"] + outcomes["duplicate"]
             limit = REFUSED_SHARE if version == "*" else REFUSED_SHARE_VERSION
-            scope = ALL if version == "*" else f"version:{version or 'unknown'}"
+            scope = ALL if version == "*" else f"version:{version or NO_VERSION}"
             if bad >= MIN_REFUSED_ROWS and total and bad / total >= limit:
                 findings.append(Finding(day, "rows_refused", scope, "warn", bad / total, limit))
             accepted = outcomes["stored"] + outcomes["duplicate"]
             if version == "*" and accepted >= MIN_INTAKE_ROWS and outcomes["duplicate"] / accepted >= DUPLICATE_SHARE:
                 findings.append(Finding(day, "rows_resent", ALL, "warn", outcomes["duplicate"] / accepted, DUPLICATE_SHARE))
+        for outcome, check in _TURNED_AWAY:
+            if versions["*"][outcome]:
+                findings.append(Finding(day, check, ALL, "warn", float(versions["*"][outcome])))
     return findings
 
 
@@ -335,6 +433,20 @@ def _pipeline_findings(db: Session, today: date) -> list[Finding]:
         if status == MonthStatus.provisional.value and today > closes_on(state.month) + timedelta(days=OVERDUE_GRACE_DAYS):
             findings.append(Finding(state.month, "month_not_closed", ALL, "warn"))
     return findings
+
+
+def frozen_months(db: Session, today: date) -> set[date]:
+    """Months closed more than `MONTH_JUDGED_DAYS` ago: their sums are judged no more.
+
+    A month with no `analytics_months` row is not frozen - nothing says it
+    closed - so a figure written by hand is still checked.
+    """
+    cutoff = today - timedelta(days=MONTH_JUDGED_DAYS)
+    return {
+        state.month
+        for state in db.query(AnalyticsMonth).filter(AnalyticsMonth.closed_at.isnot(None)).all()
+        if getattr(state.status, "value", state.status) == MonthStatus.closed.value and state.closed_at.date() < cutoff
+    }
 
 
 def _cells(db: Session) -> dict[date, dict[tuple[str, str], dict[str, float]]]:
@@ -364,13 +476,19 @@ _SESSION_BUCKETS = ("sessions_under_1m", "sessions_m1_to_5", "sessions_m5_to_20"
 _EPSILON = 1e-6
 
 
-def invariant_findings(db: Session) -> list[Finding]:
-    """The sums that must hold in every month's figures. Exact, so any miss is a finding."""
+def invariant_findings(db: Session, *, today: date | None = None) -> list[Finding]:
+    """The sums that must hold in every month's figures. Exact, so any miss is a finding.
+
+    With `today`, a month frozen longer than `MONTH_JUDGED_DAYS` is skipped,
+    as the nightly run does; without it, every month is judged - which is
+    what a test of the rollup's own arithmetic wants.
+    """
     findings = []
     cells = _cells(db)
+    frozen = frozen_months(db, today) if today is not None else set()
     for month, by_slice in sorted(cells.items()):
         total = by_slice.get((ALL, ALL))
-        if total is None:
+        if total is None or month in frozen:
             continue
         platforms = [values for (club, platform), values in by_slice.items() if club == ALL and platform != ALL]
 
@@ -411,21 +529,31 @@ def invariant_findings(db: Session) -> list[Finding]:
     return findings
 
 
-def run_checks(db: Session, *, today: date) -> list[Finding]:
-    """Every check, for the night of `today`. Writes nothing."""
+def run_checks(db: Session, *, today: date, rollup_failed: bool = False) -> list[Finding]:
+    """Every check, for the night of `today`. Writes nothing.
+
+    `rollup_failed` is the workflow saying tonight's rollup step did not
+    succeed - a fault the tables do not show until its heartbeat is
+    `analytics_rollup_stale_days` old and collection pauses
+    (app/routers/analytics.py).
+    """
     arrivals = load_arrivals(db, today)
+    failed_rollup = [Finding(today, "rollup_failed", ALL, "warn")] if rollup_failed else []
     return [
         *_volume_findings(arrivals, today),
+        *_platform_findings(load_platform_arrivals(db, today), today),
         *_ratio_findings(arrivals, today),
         *_version_findings(db, today),
         *_intake_findings(db, today),
         *_pipeline_findings(db, today),
-        *invariant_findings(db),
+        *failed_rollup,
+        *invariant_findings(db, today=today),
     ]
 
 
-# Checks about a whole month, re-run over every month every night - so
-# tonight's run is the whole truth about them, whatever month they name.
+# Checks about a whole month, re-run over every month still judged every
+# night - so tonight's run is the whole truth about them, whatever month they
+# name, until the month is frozen (`frozen_months`).
 MONTH_CHECKS = (
     "platforms_add_up",
     "growth_split_adds_up",
@@ -443,20 +571,45 @@ def is_month_check(check_name: str) -> bool:
     return check_name.split(":")[0] in MONTH_CHECKS
 
 
+# When two findings share a key - a check name cut to its column's width, or
+# a scope two slices both reach - the one kept is the one worth reading first.
+_SEVERITY = {"broken": 4, "zero": 3, "low": 2, "high": 2, "warn": 1}
+
+
+def one_per_key(findings: list[Finding]) -> list[Finding]:
+    """At most one finding per `analytics_anomalies` key, the most severe.
+
+    Two in one insert would make Postgres refuse the whole statement
+    (`ON CONFLICT DO UPDATE command cannot affect row a second time`), and
+    with it every finding of the night.
+    """
+    kept: dict[tuple[date, str, str], Finding] = {}
+    for finding in findings:
+        held = kept.get(finding.key)
+        if held is None or _SEVERITY.get(finding.status, 0) > _SEVERITY.get(held.status, 0):
+            kept[finding.key] = finding
+    return list(kept.values())
+
+
 def record(db: Session, findings: list[Finding], *, today: date) -> list[Finding]:
     """Store tonight's findings, and return them.
 
     A finding tonight's run no longer makes is resolved, and removed rather
-    than left standing: a month-level check re-judges every month, and the
-    daily checks re-judge the last `EVALUATE_DAYS` days - late rows that
-    filled a gap resolve the "low" they caused. A finding about an older day
-    is history and stays until retention. One seen again keeps the night it
-    first appeared.
+    than left standing: a month-level check re-judges every month not yet
+    frozen, and the daily checks re-judge the last `EVALUATE_DAYS` days -
+    late rows that filled a gap resolve the "low" they caused. A finding
+    about an older day, or a frozen month, is history and stays until
+    retention. One seen again keeps the night it first appeared.
     """
+    findings = one_per_key(findings)
     window_start = today - timedelta(days=EVALUATE_DAYS)
-    tonight = {(finding.day, finding.check_name, finding.scope) for finding in findings}
+    frozen = frozen_months(db, today)
+    tonight = {finding.key for finding in findings}
     for stored in db.query(AnalyticsAnomaly).all():
-        rejudged = is_month_check(stored.check_name) or stored.day >= window_start
+        if is_month_check(stored.check_name):
+            rejudged = stored.day not in frozen
+        else:
+            rejudged = stored.day >= window_start
         if rejudged and (stored.day, stored.check_name, stored.scope) not in tonight:
             db.delete(stored)
     if findings:
@@ -475,7 +628,7 @@ def record(db: Session, findings: list[Finding], *, today: date) -> list[Finding
                     "first_seen_on": today,
                     "last_seen_on": today,
                 }
-                for finding in sorted(findings, key=lambda f: (f.day, f.check_name, f.scope))
+                for finding in sorted(findings, key=lambda f: f.key)
             ]
         )
         db.execute(
@@ -488,3 +641,16 @@ def record(db: Session, findings: list[Finding], *, today: date) -> list[Finding
         )
     db.commit()
     return findings
+
+
+def public_findings(db: Session, findings: list[Finding], *, today: date) -> list[Finding]:
+    """What the public tracking issue may carry tonight: a statistical finding only from its second night.
+
+    A finding judged against a noisy expectation (`STATISTICAL`) is held back
+    the night it first appears, so one odd day costs nobody an email and
+    late uploads get a night to resolve it. A sum that does not add up, or a
+    pipeline fault, is not an estimate and goes in at once. The report shows
+    every finding either way. Reads `first_seen_on`, so call it after `record`.
+    """
+    first_seen = {(row.day, row.check_name, row.scope): row.first_seen_on for row in db.query(AnalyticsAnomaly).all()}
+    return [finding for finding in findings if finding.status not in STATISTICAL or first_seen.get(finding.key, today) < today]

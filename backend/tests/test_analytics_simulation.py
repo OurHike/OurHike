@@ -15,7 +15,8 @@ table says can be checked against it rather than against itself:
     exactly (rows held now less rows frozen at the close);
   - the oldest month's raw rows are deleted six months on and its figures stay;
   - every linked hiker's `active_months` is the months they were really active;
-  - and the nightly sums-that-must-hold find nothing.
+  - the nightly sums-that-must-hold find nothing;
+  - and a month frozen past `MONTH_JUDGED_DAYS` is not judged again.
 
 Seeded: a failure names the seed that reproduces it.
 """
@@ -248,6 +249,19 @@ def _the_sums_that_must_hold_hold_for_every_month(db_session, simulated):
     assert [f for f in quality.invariant_findings(db_session) if f.status == "broken"] == []
 
 
+def _a_frozen_month_says_nothing_on_the_last_night(db_session, simulated):
+    """Reproduced before `frozen_months`: three of these months' late-row
+    warnings were re-made every night, so the tracking issue could never close."""
+    last_night = END + timedelta(days=1)
+    frozen = quality.frozen_months(db_session, last_night)
+    every_month = quality.invariant_findings(db_session)
+    assert any(f.day in frozen for f in every_month), "no frozen month has a finding to re-make, so this proves nothing"
+
+    month_findings = [f for f in quality.run_checks(db_session, today=last_night) if quality.is_month_check(f.check_name)]
+
+    assert [f for f in month_findings if f.day in frozen] == []
+
+
 def _the_simulation_met_the_hard_cases(simulated):
     """Guards the guards: checks that pass because nothing late ever arrived
     would prove nothing about late arrivals."""
@@ -264,7 +278,7 @@ def _the_simulation_met_the_hard_cases(simulated):
 
 
 def test_eight_months_of_phones_add_up_to_what_really_happened(client, db_session, monkeypatch):
-    """One run, the five things it has to get right. One test rather than five
+    """One run, the things it has to get right. One test rather than one each
     so the eight months are simulated once - about twelve seconds."""
     simulated = _simulate(client, db_session, monkeypatch)
 
@@ -274,3 +288,4 @@ def test_eight_months_of_phones_add_up_to_what_really_happened(client, db_sessio
     _the_oldest_month_loses_its_raw_rows_and_keeps_its_figures(db_session, simulated)
     _every_linked_hiker_has_exactly_the_months_they_were_active(db_session, simulated)
     _the_sums_that_must_hold_hold_for_every_month(db_session, simulated)
+    _a_frozen_month_says_nothing_on_the_last_night(db_session, simulated)

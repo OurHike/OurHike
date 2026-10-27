@@ -4,7 +4,7 @@
 // check-pending-approvals.yml, check-note-anchors.yml, route-disputes.yml and
 // analytics-rollup.yml.
 //
-// The last of those is the only one that calls this more than once per run:
+// One of them calls this more than once per run:
 // route-disputes.yml opens ONE ISSUE PER DATA SOURCE, because its recipient
 // is a steward rather than this repository, and each steward wants their own
 // running list. That works because the lookup is label AND title, which was

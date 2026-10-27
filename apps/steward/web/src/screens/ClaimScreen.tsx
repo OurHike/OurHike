@@ -494,7 +494,7 @@ function PhotoSlot({
   /** A photo for this slot waiting on the phone for signal. */
   queued?: QueuedPhoto
   /** For an after photo: the before photo to line up with (the photo-point outline, #1911). */
-  reference?: string
+  reference?: string | null
   disabled: boolean
   onPick: (file: File) => void
 }) {
@@ -522,7 +522,7 @@ function PhotoSlot({
           <span className="pill plain">Waiting for signal</span>
         </div>
       ) : existing ? (
-        <img src={existing.url} alt={label} />
+        <PhotoImage url={existing.url} alt={label} />
       ) : (
         <div className="photo-empty" aria-hidden="true">
           {point === null ? '+' : 'No photo yet'}
@@ -542,8 +542,8 @@ function PhotoSlot({
       </label>
       {reference && !existing && (
         <figure className="photo-reference">
-          <img
-            src={reference}
+          <PhotoImage
+            url={reference}
             alt={`The before photo at point ${point}, to line up with`}
           />
           <figcaption>Stand where this was taken and face the same way.</figcaption>
@@ -695,7 +695,7 @@ function Workspace({
             .filter((p) => p.phase === 'extra')
             .map((p) => (
               <div className="photo-slot" key={p.id}>
-                <img src={p.url} alt="An extra photo" />
+                <PhotoImage url={p.url} alt="An extra photo" />
                 <button
                   type="button"
                   className="button"
@@ -827,10 +827,35 @@ function Workspace({
   )
 }
 
+/**
+ * A photo from the bucket, through its signed link. Asked for with CORS so the
+ * service worker may keep it for use with no signal (vite.config.ts); a link
+ * Storage would not sign shows as not loaded, never as no photo.
+ */
+function PhotoImage({ url, alt }: { url: string | null; alt: string }) {
+  return url ? (
+    <img src={url} alt={alt} crossOrigin="anonymous" />
+  ) : (
+    <div className="photo-empty" role="img" aria-label={`${alt}: not loaded`}>
+      Not loaded. Open the claim again with signal.
+    </div>
+  )
+}
+
 /** A claim seen from outside the crew, or after the work: the photos side by side, and the review when it is waiting. */
 function Record({ claim, api, act }: PartProps) {
   const [note, setNote] = useState('')
   const extras = claim.photos.filter((p) => p.phase === 'extra')
+  if (!claim.full)
+    return (
+      <p className="note" style={{ margin: 0 }}>
+        {claim.state === 'released'
+          ? 'This claim has ended, and the site is open to claim again.'
+          : 'A crew is working on this site.'}{' '}
+        Its photos and report are the crew’s until they submit it; then anyone signed in
+        can review it, and once verified it is public.
+      </p>
+    )
   return (
     <>
       {claim.state === 'submitted' && claim.you_are_crew && (
@@ -855,7 +880,7 @@ function Record({ claim, api, act }: PartProps) {
               return (
                 <figure className="photo-slot" key={phase} style={{ margin: 0 }}>
                   {photo ? (
-                    <img src={photo.url} alt={label} />
+                    <PhotoImage url={photo.url} alt={label} />
                   ) : (
                     <div className="photo-empty">No photo</div>
                   )}
@@ -869,7 +894,7 @@ function Record({ claim, api, act }: PartProps) {
           <div className="photo-row">
             {extras.map((p) => (
               <figure className="photo-slot" key={p.id} style={{ margin: 0 }}>
-                <img src={p.url} alt="An extra photo" />
+                <PhotoImage url={p.url} alt="An extra photo" />
               </figure>
             ))}
           </div>

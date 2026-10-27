@@ -61,6 +61,12 @@ create function steward.photos_per_claim() returns int language sql immutable as
 -- Objects one claim's folder may hold in the bucket: photos replaced or
 -- removed stay until the crew deletes them, so twice the photo cap.
 create function steward.objects_per_claim() returns int language sql immutable as 'select 80';
+-- Photos one account may have uploaded and not yet put on a claim, and may
+-- upload in a day. Together they are what keeps the bucket from being anyone's
+-- file host (the sixth review pass, finding 1): a photo is uploaded and put on
+-- its claim within seconds, and a busy crew day is a few photos per site.
+create function steward.pending_uploads_per_user() returns int language sql immutable as 'select 20';
+create function steward.uploads_per_user_per_day() returns int language sql immutable as 'select 150';
 create function steward.hours_max() returns int language sql immutable as 'select 72';
 create function steward.lists_per_user() returns int language sql immutable as 'select 50';
 create function steward.items_per_list() returns int language sql immutable as 'select 500';
@@ -76,8 +82,11 @@ create function steward.default_weights() returns jsonb language sql immutable a
 create function steward.rims_id_pattern() returns text language sql immutable as $$ select '^[A-Za-z0-9-]{1,64}$' $$;
 -- The phone's id for a photo (web/src/offline.ts newPhotoId).
 create function steward.client_id_pattern() returns text language sql immutable as $$ select '^[A-Za-z0-9_-]{1,64}$' $$;
+-- <claim id>/<uploader's user id>/<the phone's id for the photo>.jpg: the
+-- uploader in the path, so no crew member can write under another's name
+-- (the sixth pass, finding 2).
 create function steward.photo_object_pattern() returns text language sql immutable as
-  $$ select '^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}/[A-Za-z0-9_-]{1,64}\.jpg$' $$;
+  $$ select '^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}/[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}/[A-Za-z0-9_-]{1,64}\.jpg$' $$;
 
 
 -- ---------------------------------------------------------------------------
@@ -191,6 +200,9 @@ create table steward.photo (
 );
 -- One before and one after per photo point; a new one replaces it.
 create unique index photo_one_per_slot on steward.photo (claim_id, phase, point) where point is not null;
+-- An object is one photo's: its name carries the claim, the uploader and the
+-- phone's id, and a phone's id is taken once per claim (photo_receipt).
+create unique index photo_object on steward.photo (object_name);
 
 -- Every photo a claim has received, by the phone's id for it, kept after the
 -- photo is replaced or removed, so a phone sending it again after a lost
@@ -211,7 +223,18 @@ create table steward.hours (
   primary key (claim_id, user_id)
 );
 
+-- Every load's size, so a load is held against the recent ones and not only
+-- the last: halving one load at a time could otherwise empty the list in a
+-- few days (the sixth pass, finding 4).
+create table steward.site_load (
+  id bigint generated always as identity primary key,
+  loaded_at timestamptz not null default now(),
+  sites int not null,
+  workable int not null
+);
+
 alter table steward.site enable row level security;
+alter table steward.site_load enable row level security;
 alter table steward.profile enable row level security;
 alter table steward.site_list enable row level security;
 alter table steward.site_list_item enable row level security;
@@ -261,10 +284,12 @@ $$;
 
 -- A person's text: trimmed, bounded, and free of control characters and the
 -- invisible format characters a name can use to pass for another (bidi
--- overrides, zero-width joiners, private use; the review's finding 10). The
--- old API refused Unicode categories Cc, Cf, Co, Cs and Cn by name; Postgres
--- regular expressions have no category classes, so these are the ranges
--- written out, and unassigned code points (Cn) are not refused.
+-- overrides, zero-width joiners, tags, private use; the review's finding 10).
+-- The old API refused Unicode categories Cc, Cf, Co, Cs and Cn by name;
+-- Postgres regular expressions have no category classes, so
+-- _hidden_characters() is every Cc, Cf and Co range in Unicode 15.1 written
+-- out, and a test holds it to Python's unicodedata. Cs cannot occur in
+-- Postgres text; unassigned code points (Cn) are not refused.
 create function steward._text(label text, value text, max_length int, multiline boolean default false) returns text
 language plpgsql immutable as $$
 declare
@@ -281,12 +306,21 @@ begin
     perform steward._refuse('PT422', label || ' must be at most ' || max_length || ' characters');
   end if;
   checked := case when multiline then regexp_replace(v, E'\r?\n', ' ', 'g') else v end;
-  if checked ~ '[\x01-\x1f\x7f-\x9f­؜᠎​-‏‪-‮⁠-⁯﻿￹-￻-\U000f0000-\U0010ffff]' then
+  if checked ~ steward._hidden_characters() then
     perform steward._refuse('PT422', label || ' must not contain control or invisible formatting characters');
   end if;
   return v;
 end
 $$;
+
+-- In ASCII escapes, so the file shows what it refuses. Adjacent literals on
+-- separate lines are one string in SQL.
+create function steward._hidden_characters() returns text language sql immutable as $re$ select
+  '[\x01-\x1f\x7f-\x9f\u00ad\u0600-\u0605\u061c\u06dd\u070f\u0890-\u0891\u08e2\u180e'
+  '\u200b-\u200f\u202a-\u202e\u2060-\u2064\u2066-\u206f\ufeff\ufff9-\ufffb\ue000-\uf8ff'
+  '\U000110bd\U000110cd\U00013430-\U0001343f\U0001bca0-\U0001bca3\U0001d173-\U0001d17a'
+  '\U000e0001\U000e0020-\U000e007f\U000f0000-\U000ffffd\U00100000-\U0010fffd]'
+$re$;
 
 create function steward._sha256(token text) returns text
 language sql immutable as $$ select encode(sha256(convert_to(token, 'UTF8')), 'hex') $$;
@@ -383,6 +417,13 @@ language sql stable security definer set search_path = '' as $$
   )
 $$;
 
+-- What a caller sees of one claim. Its crew sees all of it, and so does
+-- everyone once the work is verified, anyone who may review it while it is
+-- submitted, and whoever last reviewed it, who saw all of it then and should
+-- still see the verdict they gave. Anyone else sees what the open views show, with `full` false,
+-- so a screen cannot read the empty lists as a claim with no photos and no
+-- report (the sixth pass, finding 3: the notes, the review note and every
+-- photo's address were any signed-in account's).
 create function steward._claim_detail(claim_id uuid, uid uuid) returns jsonb
 language plpgsql stable security definer set search_path = '' as $$
 declare
@@ -390,8 +431,29 @@ declare
   names boolean;
 begin
   select * into c from steward.claim where id = claim_id;
+  -- Fails closed: anything unknown here is the outside view.
+  if not coalesce(c.state = 'verified'
+                  or (uid is not null and steward._is_crew(c.id, uid))
+                  or (uid is not null and c.state = 'submitted' and not steward._was_crew(c.id, uid))
+                  or (uid is not null and c.reviewed_by is not distinct from uid), false) then
+    return steward._claim_summary(c, uid) || jsonb_build_object(
+      'full', false,
+      'started_at', null,
+      'sent_back_at', null,
+      'verified_at', c.verified_at,
+      'released_at', c.released_at,
+      'steps_done', '[]'::jsonb,
+      'notes', null,
+      'review_note', null,
+      'reviewed_by', null,
+      'crew', '[]'::jsonb,
+      'photos', '[]'::jsonb,
+      'you_may_review', false
+    );
+  end if;
   names := steward._shows_names(c, uid);
   return steward._claim_summary(c, uid) || jsonb_build_object(
+    'full', true,
     'started_at', c.started_at,
     'sent_back_at', c.sent_back_at,
     'verified_at', c.verified_at,
@@ -957,55 +1019,127 @@ $$;
 
 
 -- ---------------------------------------------------------------------------
--- Photos. The phone uploads the JPEG to the steward-photos bucket first, at
--- `<claim id>/<its id for the photo>.jpg` (the bucket's insert policy, below,
--- lets only the claim's crew do that while the claim is open), then calls
--- add_photo() to put it on the claim.
+-- Photos. The phone uploads the JPEG to the private steward-photos bucket
+-- first, at `<claim id>/<uploader's user id>/<its id for the photo>.jpg` (the
+-- bucket's insert policy, below, lets only the claim's crew do that, each
+-- under their own id, while the claim is open), then calls add_photo() to put
+-- it on the claim.
 --
 -- The phone redraws every photo before it leaves, which strips the location
 -- a camera writes into it (web/src/photo.ts). With no server in between,
 -- nothing redraws it again: the old API did, against a phone that had been
 -- tampered with (the review's finding 6). What remains is the bucket's own
 -- type and size limits, set below.
+--
+-- The bucket is private, so the policies below are who may read a photo,
+-- and a Storage link to one (a signed URL) is made by someone they let read
+-- it. A link outlives the access it was made with until it expires; Storage
+-- checks only its signature. So these are the limits on what one account can
+-- put where anyone holding a link can fetch it, and not a promise that a
+-- photo stops being reachable the moment a claim closes.
 -- ---------------------------------------------------------------------------
 
--- The bucket's insert policy asks this.
+-- An object's claim, uploader and photo id, from its name in the bucket; all
+-- three null for a name that is not a photo's. The pattern is checked before
+-- any cast, so a stray name makes a policy refuse rather than raise.
+create function steward._photo_object(object_name text, out claim_id uuid, out uploader uuid, out client_id text)
+language sql immutable set search_path = '' as $$
+  select case when object_name ~ steward.photo_object_pattern() then split_part(object_name, '/', 1)::uuid end,
+         case when object_name ~ steward.photo_object_pattern() then split_part(object_name, '/', 2)::uuid end,
+         case when object_name ~ steward.photo_object_pattern() then left(split_part(object_name, '/', 3), -4) end
+$$;
+
+-- Objects this account sent to a claim still being worked that are not on
+-- it yet and never were: no photo uses them and no photo receipt names them.
+-- One left by a claim that has closed stops counting, so a phone that lost
+-- a few answers is not locked out for good.
+create function steward._pending_uploads(uid uuid) returns int
+language sql stable security definer set search_path = '' as $$
+  select count(*)::int
+    from storage.objects o
+    cross join lateral steward._photo_object(o.name) n
+    join steward.claim c on c.id = n.claim_id
+   where o.bucket_id = 'steward-photos' and o.name like '%/' || uid::text || '/%'
+     and n.uploader = uid and steward._working(c.state)
+     and not exists (select from steward.photo p where p.object_name = o.name)
+     and not exists (select from steward.photo_receipt r where r.claim_id = n.claim_id and r.client_id = n.client_id)
+$$;
+
+-- The bucket's insert policy asks this: a crew member of a claim still being
+-- worked and not overdue, writing under their own id, within the claim's
+-- object cap and their own (the sixth pass, findings 1 and 2).
 create function steward.may_upload_photo(object_name text) returns boolean
 language plpgsql stable security definer set search_path = '' as $$
 declare
   uid uuid := auth.uid();
-  claim_id uuid;
+  o record;
 begin
-  if uid is null or coalesce((auth.jwt() ->> 'is_anonymous')::boolean, false)
-     or object_name is null or object_name !~ steward.photo_object_pattern() then
+  if uid is null or coalesce((auth.jwt() ->> 'is_anonymous')::boolean, false) then
     return false;
   end if;
-  claim_id := split_part(object_name, '/', 1)::uuid;
+  select * into o from steward._photo_object(object_name);
+  if o.uploader is distinct from uid then
+    return false;
+  end if;
   return exists (
            select from steward.claim c
-            where c.id = claim_id and steward._working(c.state) and c.due_at >= now()
+            where c.id = o.claim_id and steward._working(c.state) and c.due_at >= now()
               and steward._is_crew(c.id, uid))
-     and (select count(*) from storage.objects o
-           where o.bucket_id = 'steward-photos' and o.name like claim_id::text || '/%') < steward.objects_per_claim();
+     and (select count(*) from storage.objects s
+           where s.bucket_id = 'steward-photos' and s.name like o.claim_id::text || '/%') < steward.objects_per_claim()
+     and steward._pending_uploads(uid) < steward.pending_uploads_per_user()
+     and (select count(*) from storage.objects s
+           where s.bucket_id = 'steward-photos' and s.name like '%/' || uid::text || '/%'
+             and s.created_at > now() - interval '1 day') < steward.uploads_per_user_per_day();
 end
 $$;
 
--- The bucket's delete policy asks this: the crew of an open claim may delete
--- an object no photo on the claim points at (one replaced or removed).
+-- The bucket's delete policy asks this: the crew of a claim still being
+-- worked may delete an object that was put on the claim and that no photo
+-- uses now, because it was replaced or removed. Never one still on its way
+-- to the claim: that is its uploader's, and deleting it would have their
+-- photo refused as not arrived (the sixth pass, finding 2).
 create function steward.may_delete_photo_object(object_name text) returns boolean
 language plpgsql stable security definer set search_path = '' as $$
 declare
   uid uuid := auth.uid();
-  claim_id uuid;
+  o record;
 begin
-  if uid is null or object_name is null or object_name !~ steward.photo_object_pattern() then
+  select * into o from steward._photo_object(object_name);
+  if uid is null or o.claim_id is null then
     return false;
   end if;
-  claim_id := split_part(object_name, '/', 1)::uuid;
   return exists (
            select from steward.claim c
-            where c.id = claim_id and steward._working(c.state) and steward._is_crew(c.id, uid))
+            where c.id = o.claim_id and steward._working(c.state) and steward._is_crew(c.id, uid))
+     and exists (select from steward.photo_receipt r where r.claim_id = o.claim_id and r.client_id = o.client_id)
      and not exists (select from steward.photo p where p.object_name = may_delete_photo_object.object_name);
+end
+$$;
+
+-- The bucket's select policy asks this, signed in or not: who may download
+-- a photo, and so who may make a link to one. A photo on verified work is
+-- open data, like the claim's names. One on a submitted claim is for its
+-- reviewers, who are anyone signed in with an account of their own. The
+-- claim's crew sees its photos in every state. An object no photo uses is
+-- nobody's to read, except as the delete policy needs: Storage reads a row
+-- before it deletes it (the sixth pass, finding 1).
+create function steward.may_read_photo_object(object_name text) returns boolean
+language plpgsql stable security definer set search_path = '' as $$
+declare
+  uid uuid := auth.uid();
+  claim_id uuid;
+  state text;
+begin
+  select c.id, c.state into claim_id, state
+    from steward.photo p join steward.claim c on c.id = p.claim_id
+   where p.object_name = may_read_photo_object.object_name;
+  if claim_id is null then
+    return steward.may_delete_photo_object(object_name);
+  end if;
+  return state = 'verified'
+      or (uid is not null and state = 'submitted' and not coalesce((auth.jwt() ->> 'is_anonymous')::boolean, false))
+      or (uid is not null and steward._is_crew(claim_id, uid));
 end
 $$;
 
@@ -1050,7 +1184,7 @@ begin
     return steward._claim_detail(c.id, uid);
   end if;
   c := steward._crew_claim(p_claim_id, uid);
-  object_path := c.id::text || '/' || p_client_id || '.jpg';
+  object_path := c.id::text || '/' || uid::text || '/' || p_client_id || '.jpg';
   if not exists (select from storage.objects o where o.bucket_id = 'steward-photos' and o.name = object_path) then
     perform steward._refuse('PT422', 'The photo has not arrived. Send it again.');
   end if;
@@ -1072,7 +1206,8 @@ begin
     update steward.claim set state = 'in_progress', started_at = now() where id = c.id;
   end if;
   -- The object the new photo replaced, which no photo uses now: the app
-  -- deletes it, so a retake (someone was in the frame) does not stay public.
+  -- deletes it, so a retake (someone was in the frame) does not stay in the
+  -- bucket for the claim's audience to read once the claim is submitted.
   return steward._claim_detail(c.id, uid) || jsonb_build_object('unused_path', replaced);
 end
 $$;
@@ -1284,25 +1419,36 @@ select w.id, w.club, w.deficit, w.water, w.trail, w.cluster, w.restricted, w.not
 
 -- `p_sites` is sites.json's records; a site is workable when its action is
 -- one a volunteer claims (close_restore or harden), as the old API read it.
--- Refuses a load with fewer than half the sites held now: a truncated or
--- broken file would otherwise empty the list every claim is checked against.
--- `@unvalidated`, the half: ATC's inventory changed by a handful of sites a
--- week while this was built, and nothing has measured a real week.
+-- Refuses a load with fewer than half the sites, or half the workable sites,
+-- of the largest of the last ten loads: a truncated or broken file, or a
+-- scorer that stopped calling sites workable, would otherwise empty the list
+-- every claim is checked against. Measured against the recent largest and
+-- not the last, a run of bad loads cannot walk it down by halves (the sixth
+-- pass, finding 4). `@unvalidated`, the half and the ten: ATC's inventory
+-- changed by a handful of sites a week while this was built, and nothing has
+-- measured a real month of loads.
 create function steward.load_sites(p_sites jsonb) returns int
 language plpgsql security definer set search_path = '' as $$
 declare
   incoming int;
-  held int;
+  incoming_workable int;
+  most int;
+  most_workable int;
 begin
   if jsonb_typeof(p_sites) is distinct from 'array' then
     raise exception 'sites.json is not a list of sites';
   end if;
-  select count(distinct r ->> 'rims_id') into incoming
-    from jsonb_array_elements(p_sites) r
-   where jsonb_typeof(r) = 'object' and (r ->> 'rims_id') ~ steward.rims_id_pattern();
-  select count(*) into held from steward.site;
-  if incoming = 0 or incoming < held / 2 then
-    raise exception 'sites.json names % sites where % are loaded; refusing to replace them', incoming, held;
+  select count(*), count(*) filter (where workable) into incoming, incoming_workable
+    from (select distinct on (r ->> 'rims_id') coalesce(r ->> 'action', '') in ('close_restore', 'harden') as workable
+            from jsonb_array_elements(p_sites) r
+           where jsonb_typeof(r) = 'object' and (r ->> 'rims_id') ~ steward.rims_id_pattern()) arriving;
+  select greatest(coalesce(max(recent.sites), 0), (select count(*) from steward.site)),
+         greatest(coalesce(max(recent.workable), 0), (select count(*) from steward.site where workable))
+    into most, most_workable
+    from (select l.sites, l.workable from steward.site_load l order by l.id desc limit 10) recent;
+  if incoming = 0 or incoming < most / 2 or incoming_workable < most_workable / 2 then
+    raise exception 'sites.json names % sites, % of them workable, where recent loads held up to % and %; refusing to replace them',
+      incoming, incoming_workable, most, most_workable;
   end if;
   with arriving as (
     select distinct on (r ->> 'rims_id')
@@ -1318,6 +1464,8 @@ begin
     returning rims_id
   )
   delete from steward.site s where not exists (select from arriving a where a.rims_id = s.rims_id);
+  insert into steward.site_load (sites, workable) values (incoming, incoming_workable);
+  delete from steward.site_load where id <= (select max(id) from steward.site_load) - 100;
   return incoming;
 end
 $$;
@@ -1327,22 +1475,23 @@ $$;
 -- Photos bucket
 -- ---------------------------------------------------------------------------
 
--- Public, so a photo's address works for anyone; only JPEGs, at most 3 MB,
--- which is what the app sends (2048 px on the long side at quality 0.85 is
--- typically under 1 MB). The Storage service enforces both, not Postgres.
+-- Private: a photo is read through the select policy below, which is what
+-- keeps the bucket from being anyone's free file host on OurHike's project
+-- (the sixth pass, finding 1). Only JPEGs, at most 3 MB, which is what the
+-- app sends (2048 px on the long side at quality 0.85 is typically under
+-- 1 MB). The Storage service enforces both, not Postgres.
 insert into storage.buckets (id, name, public, file_size_limit, allowed_mime_types)
-values ('steward-photos', 'steward-photos', true, 3145728, array['image/jpeg'])
+values ('steward-photos', 'steward-photos', false, 3145728, array['image/jpeg'])
 on conflict (id) do update
   set public = excluded.public, file_size_limit = excluded.file_size_limit, allowed_mime_types = excluded.allowed_mime_types;
 
-create policy "steward: crews upload their claim's photos"
+create policy "steward: crews upload their own photos to their claims"
   on storage.objects for insert to authenticated
   with check (bucket_id = 'steward-photos' and steward.may_upload_photo(name));
 
--- Deleting asks Storage to read the row first, so the crew needs to see it.
-create policy "steward: crews see their open claims' objects"
-  on storage.objects for select to authenticated
-  using (bucket_id = 'steward-photos' and steward.may_delete_photo_object(name));
+create policy "steward: a photo is read by its claim's audience"
+  on storage.objects for select to anon, authenticated
+  using (bucket_id = 'steward-photos' and steward.may_read_photo_object(name));
 
 create policy "steward: crews delete objects no photo uses"
   on storage.objects for delete to authenticated
@@ -1360,7 +1509,7 @@ revoke all on all sequences in schema steward from public, anon, authenticated;
 revoke all on all functions in schema steward from public, anon, authenticated;
 
 grant select on steward.open_claims, steward.open_photos, steward.open_weights to anon, authenticated;
-grant execute on function steward.read_weights(text) to anon, authenticated;
+grant execute on function steward.read_weights(text), steward.may_read_photo_object(text) to anon, authenticated;
 grant execute on function steward.may_upload_photo(text), steward.may_delete_photo_object(text) to authenticated;
 grant execute on function
   steward.me(), steward.set_display_name(text), steward.delete_my_data(),

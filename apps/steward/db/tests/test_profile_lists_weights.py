@@ -2,6 +2,7 @@
 phase 2 behaviour (#1906), now in SQL."""
 
 import sys
+import unicodedata
 from pathlib import Path
 
 import pytest
@@ -25,6 +26,30 @@ def test_a_name_that_is_empty_too_long_or_hides_characters_is_refused(db, name):
     # The review's finding 10: a bidi override lets one name pass for another.
     # (NUL is not here: Postgres text cannot hold it, so it never reaches a function.)
     assert status(db.refused("volunteer", "set_display_name", name)) == "PT422"
+
+
+def test_every_control_format_and_private_use_character_is_hidden_and_nothing_else_is(db):
+    # The sixth pass's finding 5: the class was a hand list of the usual
+    # suspects. Unicode's own categories decide here: Cc, Cf and Co, every
+    # code point but NUL (which Postgres text cannot hold). Measured
+    # 2026-10-27: Python 3.13 (Unicode 15.1) and 3.14 (16.0) both have the
+    # same 137,703 of them, so CI's newer Python asks the same question.
+    every = [chr(c) for c in range(1, 0x110000) if unicodedata.category(chr(c)) in ("Cc", "Cf", "Co")]
+    missed = db.owner(
+        "select to_hex(ascii(c)) from unnest(%s::text[]) c where c !~ steward._hidden_characters()",
+        every,
+    )
+    assert missed == []
+    # And no letter, mark, number, punctuation, symbol or space is caught by a
+    # range drawn too wide.
+    shown = [
+        chr(c) for c in range(0x110000) if unicodedata.category(chr(c))[0] in "LMNPS" or unicodedata.category(chr(c)) == "Zs"
+    ]
+    caught = db.owner(
+        "select to_hex(ascii(c)) from unnest(%s::text[]) c where c ~ steward._hidden_characters()",
+        shown,
+    )
+    assert caught == []
 
 
 # --- Lists -----------------------------------------------------------------------

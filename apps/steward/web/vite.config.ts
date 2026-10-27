@@ -3,6 +3,7 @@ import { defineConfig, loadEnv, type Plugin } from 'vite'
 import react from '@vitejs/plugin-react'
 import { VitePWA } from 'vite-plugin-pwa'
 import { headersFile } from './headers'
+import { PHOTO_CACHE, photoLinkPattern } from './src/photoCache'
 
 /** Writes `_headers` into the build, for Cloudflare Pages (headers.ts says what is in it). */
 function pagesHeaders(env: Record<string, string>): Plugin {
@@ -76,6 +77,26 @@ export default defineConfig(({ mode }) => {
                 cacheName: 'basemap-style',
                 expiration: { maxEntries: 300, maxAgeSeconds: 30 * 24 * 60 * 60 },
                 cacheableResponse: { statuses: [0, 200] },
+              },
+            },
+            {
+              // Claim photos the phone has shown, under the links Storage
+              // signed for them: matched with the token ignored, so the before
+              // photo a crew lines the after photo up with still shows at a
+              // site with no signal, after its link has expired, and a fresh
+              // link to the same photo is not a fresh download. A photo's
+              // address never changes what it holds: its name carries the
+              // phone's own id for it, which a claim takes once. Emptied at
+              // sign-out with the claims saved for offline (src/account.tsx).
+              urlPattern: photoLinkPattern(env.VITE_SUPABASE_URL),
+              handler: 'CacheFirst',
+              options: {
+                cacheName: PHOTO_CACHE,
+                matchOptions: { ignoreSearch: true },
+                expiration: { maxEntries: 200, maxAgeSeconds: 30 * 24 * 60 * 60 },
+                // Asked for with CORS (ClaimScreen's PhotoImage), so a failed
+                // or refused answer is seen and not kept.
+                cacheableResponse: { statuses: [200] },
               },
             },
             {

@@ -429,8 +429,8 @@ directions.
 |---|---|---|
 | Sign-in | The same Supabase project, so an OurHike account works here. A six-digit code by email, typed back: the shared project's email template sends a code, not a link, and `client/src/lib/auth.ts` (#1600) records why asking it for a link fails. A code also needs no redirect address registered with Supabase | Reused: the project's own sign-in; PostgREST checks the token before any steward function runs |
 | Data | A `steward` schema in the same project, under `apps/steward/db/`: tables nothing reaches directly, one Postgres function per action holding its rule, and three open views anyone may read. The app calls the functions through supabase-js. Decided 2026-10-27 in place of a FastAPI service on Render with its own database, which was built, reviewed five times and retired the same day; its tests were carried into the SQL | New |
-| Photos | A public Supabase Storage bucket, `steward-photos`, under `<claim id>/<the phone's id for the photo>.jpg`. Only a claim's crew may upload, only while the claim is open; nothing is overwritten; JPEG only, at most 3 MB. The phone redraws every photo before it leaves, which strips its location. Nothing redraws it again: the retired API did, against a tampered phone (§10) | Pattern new |
-| Open data | The volunteer work as CSV and Parquet beside `sites.json`, written daily from the open views with the public anon key (`steward_analysis/open_data.py`) | New |
+| Photos | A private Supabase Storage bucket, `steward-photos`, under `<claim id>/<uploader's user id>/<the phone's id for the photo>.jpg`. Only a claim's crew may upload, each under their own id, only while the claim is open, at most 20 photos waiting to go on a claim and 150 a day per account; nothing is overwritten; JPEG only, at most 3 MB. A photo is read through a link Storage signs for an hour, by its crew, by anyone signed in while its claim waits for review, and by anyone once verified (§10, the sixth pass). The phone redraws every photo before it leaves, which strips its location. Nothing redraws it again: the retired API did, against a tampered phone (§10) | Pattern new |
+| Open data | The volunteer work as CSV and Parquet beside `sites.json`, written daily from the open views with the public anon key (`steward_analysis/open_data.py`); each verified photo with its path and a link signed for eight days | New |
 | Club sections | Which club owns which mile | Reused: `pipeline/export_club_sections.py`'s output |
 | ArcGIS reading | Paging an ArcGIS layer | Reused: `pipeline/lib/arcgis.py` |
 | Basemap | The map under the sites | Not reused: OpenFreeMap's OpenStreetMap tiles (`tiles.openfreemap.org`), free and keyless at every zoom. OurHike's basemap is a PMTiles file with OurHike's own style and protocol handler, which would have had to be copied in. `@unvalidated`: nobody has checked OpenFreeMap's uptime; if it fails, the table and every site page still work |
@@ -455,7 +455,7 @@ Its CI jobs need their own workflow file, with the folder in its path scope, so
 | Who | Sees |
 |---|---|
 | Anyone, signed out | Every site with its location and scores, the Analysis summary and the Guide; through Supabase's REST API or the daily open files, every claim's site, state and dates, every club's weights history, and, on verified work only, who did it, who verified it, the steps, the hours and the photos |
-| Any signed-in user | Also: lists, any claim's detail and photos, reviews and their own hours. Names on a claim show only to its crew until the work is verified (decided 2026-10-27) |
+| Any signed-in user | Also: lists, reviews, their own hours, and a claim's report and photos once it is submitted, so anyone may review it. Before that a claim's report and photos are its crew's. Names on a claim show only to its crew until the work is verified (decided 2026-10-27) |
 
 Decided 2026-10-27 (opening section). The fallbacks, should ATC or a land manager object:
 
@@ -687,7 +687,7 @@ the same day. What carried over: every rule and every test of it, now SQL functi
 and `apps/steward/db/tests/`, and the whole offline layer, which did not change. What
 did not: the server-side photo redraw (finding 6, N1), the upload limits (N5, the
 fifth pass) and the health check (N3, N6), which have no server to live on. The
-schema needs a pass of its own.
+schema had a pass of its own, the sixth, at the end of this section.
 
 An independent reviewer read phases 0 to 3 and tried to break them against a real
 Postgres and server. Thirteen findings; each fix has a test that fails without it.
@@ -746,6 +746,26 @@ account may have at most 4 photos arriving at once (each holds its body in memor
 and nothing limited them), and the 412 now says what the server knows (the point has
 a newer photo than the phone had seen), not which photo was taken first.
 
+### The sixth pass: the steward schema, 2026-10-27
+
+An independent reviewer read `apps/steward/db/` against the Supabase-direct design.
+Seven findings. Each fix is in the one migration, since none has been applied
+anywhere, and each test was checked by undoing the fix and watching it fail:
+
+| # | Finding | Fix |
+|---|---|---|
+| 1 | The public `steward-photos` bucket on OurHike's production project was free file hosting: any crew member could upload any JPEG and hand out its address | The bucket is private, and its select policy decides who may read a photo or sign a link to one: the claim's crew, anyone signed in while the claim waits for review, and anyone once verified. An object no photo uses is nobody's to read. An account may have 20 uploads waiting to go on a claim and 150 a day. Waiting uploads on a claim that has closed stop counting, so lost answers cannot lock an account out |
+| 2 | A crew member could take, or delete, the object a crewmate's phone was about to upload | The uploader's user id is in the object's name, and an upload goes only under the uploader's own. The crew may delete only an object a photo was replaced or removed out of |
+| 3 | Any signed-in account could read any claim's notes, review note and photo paths | `read_claim` gives the full detail to the crew, to reviewers while submitted, to whoever last reviewed it, and to everyone once verified. Anyone else gets what the open views show, marked `full: false`, so a screen never reads empty lists as no photos |
+| 4 | Each load was held only against the last, so a run of bad loads could halve the sites day by day. The load job installed test tooling beside the loader's login and passed the login on the command line | A load is held against the largest of the last ten, in sites and in workable sites. The job installs psycopg alone, hash-pinned, and the login comes from the environment |
+| 5 | The hidden-character check was a hand list | Every code point Unicode calls Cc, Cf or Co, tested against Python's own tables (3.13 and 3.14 agree, measured) |
+| 6 | Photos were cached for a year, so a retake stayed served | An hour, the life of a link. The service worker keeps photos a phone has shown, so the before photo still lines up the after one with no signal |
+| 7 | `migrate --dry-run` created the schema and its bookkeeping table | A dry run only reads |
+
+Found while fixing 3: a claim nobody had reviewed made the audience check
+null, and the null opened the full view. The tests caught it, and the check
+now fails closed.
+
 ## 11. Still open
 
 Each is the maintainer's: a setting, an account or a decision this build cannot make.
@@ -763,8 +783,15 @@ Each is the maintainer's: a setting, an account or a decision this build cannot 
 - **Email**, for the day-10 and day-13 reminders and for invites by email. Reminders are
   in the app until a provider exists.
 - **How long claim photos are kept**, and a sweep for orphaned objects. Neither exists.
-  The app deletes a photo's object when the photo is retaken or removed; an object
-  uploaded and never put on a claim stays.
+  The app deletes a photo's object when the photo is retaken or removed. An object
+  uploaded and never put on a claim stays, readable by nobody, as does a replaced one
+  once its claim closes. The caps bound how fast they gather: 80 objects a claim, 150
+  uploads an account a day. They do not bound the total.
+- **A signed link outlives the access it was made with.** Storage checks a link's
+  signature, not the policy, so a crew member can sign their claim's photos for as
+  long as they like and share the links. That is at most 80 objects a claim, and the
+  same is true of downloading the photos. Making it impossible would need a server
+  between Storage and the reader.
 
 - **Which Supabase project.** The deploy uses OurHike's production project
   (`SUPABASE_URL`), as §3's "the same project" implies. The sign-in email will carry
@@ -787,9 +814,17 @@ Each is the maintainer's: a setting, an account or a decision this build cannot 
   the fourth: a phone stays signed in with no signal for as long as its stored
   session lasts; a queued photo of a point someone else has photographed since is
   kept as not sent, and **Try again** puts it over theirs. From the move to Supabase:
-  photos are public objects rather than signed links; a load of the sites with fewer
-  than half the sites held is refused; the open files are written daily while ATC's
-  layers are fetched weekly.
+  the open files are written daily while ATC's layers are fetched weekly. From the
+  sixth pass:
+  - photos are private, read through links signed for an hour;
+  - a submitted claim's photos and report are open to any signed-in account, so
+    anyone may review;
+  - a load with under half the sites, or half the workable ones, of the largest of
+    the last ten is refused;
+  - an account may have 20 uploads waiting to go on a claim and 150 a day;
+  - a verified photo's public path carries its uploader's user id. That is a UUID
+    with no name in it, but it links one person's photos across claims, and it
+    outlives `delete_my_data()`.
 - **When peak season ends, by section of the trail**, which decides when each of the
   three years' follow-up visits opens (§6). Follow-ups are not built until it is set.
 

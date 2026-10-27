@@ -60,10 +60,13 @@ def digest(path: Path) -> str:
 
 
 def pending(connection: psycopg.Connection) -> list[Path]:
-    """The files not yet applied. Raises MigrationError if an applied one changed."""
-    with connection.transaction():
-        connection.execute(BOOKKEEPING)
-    applied = dict(connection.execute("select name, sha256 from steward.migration").fetchall())
+    """The files not yet applied. Raises MigrationError if an applied one
+    changed. Reads only: a dry run on a project never migrated leaves it as it
+    was, with no steward schema (the sixth review pass, finding 7)."""
+    if connection.execute("select to_regclass('steward.migration') is null").fetchone()[0]:
+        applied = {}
+    else:
+        applied = dict(connection.execute("select name, sha256 from steward.migration").fetchall())
     for path in files():
         if path.name in applied and applied[path.name] != digest(path):
             raise MigrationError(f"{path.name} was applied with different text; write a new migration instead")
@@ -82,6 +85,8 @@ def migrate(database_url: str, *, dry_run: bool = False) -> list[str]:
         todo = pending(connection)
         if dry_run:
             return [path.name for path in todo]
+        with connection.transaction():
+            connection.execute(BOOKKEEPING)
         for path in todo:
             with connection.transaction():
                 connection.execute(path.read_text())

@@ -1,0 +1,5 @@
+# What the analysis workflow's load-sites job installs to run
+# steward_db.load_sites, and nothing else: it holds the loader's database
+# login, so it runs no test or lint tooling. psycopg at requirements-dev.in's
+# pin, which tests/test_load_sites.py holds equal.
+psycopg[binary]==3.3.6

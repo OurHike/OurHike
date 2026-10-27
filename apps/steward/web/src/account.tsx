@@ -25,6 +25,7 @@ import {
 } from 'react'
 import type { SupabaseClient } from '@supabase/supabase-js'
 import { createApi, type DataClient, type StewardApi } from './api'
+import { PHOTO_CACHE } from './photoCache'
 import { SIGNAL_BACK, clearOffline } from './offline'
 
 const SUPABASE_URL: string = import.meta.env.VITE_SUPABASE_URL ?? ''
@@ -112,13 +113,8 @@ const lazyData: DataClient = {
       upload: async (path, body, options) =>
         await (await data()).storage.from(bucket).upload(path, body, options),
       remove: async (paths) => await (await data()).storage.from(bucket).remove(paths),
-      // Storage's public address for an object, as storage-js builds it; no
-      // request, so it needs no client.
-      getPublicUrl: (path) => ({
-        data: {
-          publicUrl: `${SUPABASE_URL.replace(/\/+$/, '')}/storage/v1/object/public/${bucket}/${path}`,
-        },
-      }),
+      createSignedUrls: async (paths, expiresIn) =>
+        await (await data()).storage.from(bucket).createSignedUrls(paths, expiresIn),
     }),
   },
 }
@@ -301,7 +297,7 @@ export function AccountProvider({ children }: { children: ReactNode }) {
     if (!ACCOUNTS_CONFIGURED) return OFF
     return {
       session,
-      api: session.state === 'signed_in' ? createApi(lazyData) : null,
+      api: session.state === 'signed_in' ? createApi(lazyData, session.userId) : null,
       async sendCode(email) {
         const { error } = await (
           await supabase()
@@ -322,9 +318,11 @@ export function AccountProvider({ children }: { children: ReactNode }) {
         return error ? plain(error.message) : null
       },
       async signOut() {
-        // Saved claims and queued photos are this person's; a shared phone
-        // should not keep them for the next one (src/offline.ts).
+        // Saved claims, queued photos and the photos shown are this person's;
+        // a shared phone should not keep them for the next one
+        // (src/offline.ts, src/photoCache.ts).
         if (session.state === 'signed_in') await clearOffline(session.userId)
+        await globalThis.caches?.delete(PHOTO_CACHE).catch(() => false)
         await endSession((await supabase()).auth, window.localStorage)
         // Said here as well as by supabase-js, which says nothing when it failed.
         setSession({ state: 'signed_out' })

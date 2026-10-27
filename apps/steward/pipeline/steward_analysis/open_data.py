@@ -8,12 +8,19 @@ the project's public anon key, which is exactly what anyone can read, and
 writes each as CSV and as Parquet:
 
     claims    every claim: its site, state and dates; names only on verified work
-    photos    the before and after photos of verified work, with their addresses
+    photos    the before and after photos of verified work, each with its
+              path in the steward-photos bucket and a link to it
     weights   every club's ranking-weight changes
 
 plus manifest.json saying when and how many. Nothing here can read more than
 the public can: the views are the whole of what the anon key reaches
 (apps/steward/db/migrations/0001_steward.sql).
+
+The bucket is private (the SQL review's sixth pass, finding 1), so a photo's
+link is one Storage signs, asked with the same anon key, which the bucket's
+policy lets read a verified claim's photos and nothing else. A link lasts
+LINK_DAYS; the path is the lasting name, and anyone can sign a new link to
+it with the public key, as this does.
 
 SUPABASE_URL and SUPABASE_ANON_KEY name the project. With either unset, or a
 project that does not serve the steward schema yet, this writes nothing and
@@ -26,7 +33,7 @@ import argparse
 import json
 import os
 import sys
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
 
 import duckdb
@@ -36,6 +43,13 @@ import requests
 #: Rows per request. Supabase's API answers at most 1,000 by default.
 PAGE = 1000
 TIMEOUT = 30
+#: How long a photo link in the files lasts. Reasoned, not measured: the job
+#: runs daily, and a week past that keeps a downloaded file's links working
+#: through a week of failed runs.
+LINK_DAYS = 8
+#: Photos per signing request: a bound on the request's size, not a limit
+#: Storage is known to set.
+SIGN_BATCH = 100
 
 #: view -> (file name, order), oldest first so a file reads as a history.
 VIEWS = {
@@ -106,6 +120,25 @@ def read_view(session: requests.Session, url: str, key: str, view: str, order: s
             return rows
 
 
+def sign_photos(session: requests.Session, url: str, key: str, paths: list[str]) -> dict[str, str]:
+    """A link to each photo Storage will sign for the public key; a path it
+    will not sign (a photo since deleted) is left out, not guessed at."""
+    links: dict[str, str] = {}
+    base = f"{url.rstrip('/')}/storage/v1"
+    for start in range(0, len(paths), SIGN_BATCH):
+        response = session.post(
+            f"{base}/object/sign/steward-photos",
+            json={"expiresIn": LINK_DAYS * 24 * 60 * 60, "paths": paths[start : start + SIGN_BATCH]},
+            headers={"apikey": key, "Authorization": f"Bearer {key}"},
+            timeout=TIMEOUT,
+        )
+        response.raise_for_status()
+        for signed in response.json():
+            if signed.get("path") and signed.get("signedURL") and not signed.get("error"):
+                links[signed["path"]] = base + signed["signedURL"]
+    return links
+
+
 def neutralise(value: object) -> object:
     if isinstance(value, str) and value.startswith(FORMULA_START):
         return "'" + value
@@ -128,10 +161,17 @@ def export(url: str, key: str, out: Path, session: requests.Session | None = Non
     for view, (name, _) in VIEWS.items():
         frame = pd.DataFrame(tables[view], columns=VIEW_COLUMNS[view])
         if name == "photos":
-            frame["url"] = [f"{url.rstrip('/')}/storage/v1/object/public/steward-photos/{p}" for p in frame["path"]]
+            links = sign_photos(session, url, key, list(frame["path"]))
+            frame["url"] = [links.get(path) for path in frame["path"]]
         write(frame, out, name)
         counts[name] = len(frame)
-    manifest = {"generated_at": datetime.now(UTC).isoformat(timespec="seconds"), "source": url, "rows": counts}
+    now = datetime.now(UTC)
+    manifest = {
+        "generated_at": now.isoformat(timespec="seconds"),
+        "source": url,
+        "rows": counts,
+        "photo_links_expire_at": (now + timedelta(days=LINK_DAYS)).isoformat(timespec="seconds"),
+    }
     (out / "manifest.json").write_text(json.dumps(manifest, indent=2) + "\n")
     return manifest
 

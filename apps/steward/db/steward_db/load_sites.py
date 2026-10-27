@@ -1,21 +1,26 @@
 """Loads the analysis's sites into steward.site, which every claim is checked
 against and every club's weights are checked against.
 
-    python -m steward_db.load_sites --database-url postgresql://... path/to/sites.json
+    STEWARD_SITES_DATABASE_URL=postgresql://... python -m steward_db.load_sites path/to/sites.json
 
-Run by the weekly analysis job after it scores, logged in as a role that may
-do nothing but call steward.load_sites() (README.md, "The loader's login").
+Run by the daily analysis job after it scores, logged in as a role that may
+do nothing but call steward.load_sites() (README.md, "Give the loader a
+login"). The address is read from the environment, never the command line,
+where it would sit in the process list with its password in it.
 """
 
 from __future__ import annotations
 
 import argparse
 import json
+import os
 import sys
 from pathlib import Path
 
 import psycopg
 from psycopg.types.json import Jsonb
+
+DATABASE_URL = "STEWARD_SITES_DATABASE_URL"
 
 
 def load(database_url: str, sites_json: Path) -> int:
@@ -29,11 +34,14 @@ def load(database_url: str, sites_json: Path) -> int:
 
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
-    parser.add_argument("--database-url", required=True)
     parser.add_argument("sites_json", type=Path)
     args = parser.parse_args(argv)
+    database_url = os.environ.get(DATABASE_URL, "")
+    if not database_url:
+        print(f"stopped: set {DATABASE_URL} to the loader's login", file=sys.stderr)
+        return 1
     try:
-        loaded = load(args.database_url, args.sites_json)
+        loaded = load(database_url, args.sites_json)
     except psycopg.Error as exc:
         print(f"stopped: {exc}", file=sys.stderr)
         return 1

@@ -98,7 +98,7 @@ def db(database_url):
         connection.execute("select steward.load_sites(%s)", (Jsonb(SITES),))
         yield Db(connection)
         connection.execute(
-            "truncate steward.site, steward.profile, steward.site_list, steward.site_list_item, steward.club_weights,"
+            "truncate steward.site, steward.site_load, steward.profile, steward.site_list, steward.site_list_item, steward.club_weights,"
             " steward.claim, steward.claim_member, steward.photo, steward.photo_receipt, steward.hours,"
             " storage.objects, auth.users cascade"
         )
@@ -107,6 +107,11 @@ def db(database_url):
 def uid(name: str) -> str:
     """A stable user id for a test's name for someone."""
     return str(uuid.uuid5(uuid.NAMESPACE_URL, f"steward-test:{name}"))
+
+
+def object_name(who: str, claim_id: str, client_id: str) -> str:
+    """A photo's name in the bucket: its claim, its uploader, the phone's id for it."""
+    return f"{claim_id}/{uid(who)}/{client_id}.jpg"
 
 
 class Refused(Exception):
@@ -153,13 +158,18 @@ class Db:
 
     def upload(self, who: str, claim_id: str, client_id: str = "photo-1") -> str:
         """What Storage does with a photo upload: insert its object row as the uploader."""
-        name = f"{claim_id}/{client_id}.jpg"
+        name = object_name(who, claim_id, client_id)
         with self.acting(who) as connection:
             connection.execute(
                 "insert into storage.objects (bucket_id, name, owner, owner_id) values (%s, %s, %s, %s)",
                 (BUCKET, name, uid(who), uid(who)),
             )
         return name
+
+    def sees(self, who: str | None, name: str, *, anonymous: bool = False) -> bool:
+        """Whether Storage would let `who` download the object, or sign a link to it."""
+        with self.acting(who, anonymous=anonymous) as connection:
+            return connection.execute("select exists (select from storage.objects where name = %s)", (name,)).fetchone()[0]
 
     def owner(self, query: str, *args):
         return self.connection.execute(query, args or None).fetchall()

@@ -1,8 +1,10 @@
 // Campsite Steward's data, read and written in OurHike's Supabase project
 // (apps/steward/db; PLAN.md, decided 2026-10-27: no API server). Every change
 // is a call to one of the `steward` schema's functions, which hold the rules;
-// photos go to its public Storage bucket first and are then put on the claim.
-// The screens see only StewardApi, so they do not know which.
+// photos go to its private Storage bucket first and are then put on the
+// claim, and are shown through links Storage signs for whoever the bucket's
+// policy lets read them. The screens see only StewardApi, so they do not
+// know which.
 
 import type { Weights } from './types'
 
@@ -70,11 +72,19 @@ export interface ClaimPhoto {
   id: string
   phase: PhotoPhase
   point: number | null
-  url: string
+  /** A link Storage signed, good for PHOTO_LINK_SECONDS; null when it would
+   *  not sign one just now, which a screen shows as not loaded, never as no
+   *  photo. */
+  url: string | null
   created_at: string
 }
 
 export interface ClaimDetail extends ClaimSummary {
+  /** False when this account sees only what anyone may: until a claim is
+   *  submitted its photos, report and crew are its crew's (the steward
+   *  schema's _claim_detail). The lists are then empty, which says nothing
+   *  about the claim's own. */
+  full: boolean
   started_at: string | null
   /** After photos older than this do not count toward the next submission. */
   sent_back_at: string | null
@@ -154,7 +164,14 @@ export interface DataClient {
         options: { contentType: string; upsert: boolean; cacheControl: string },
       ): Promise<{ error: StorageFailure | null }>
       remove(paths: string[]): Promise<unknown>
-      getPublicUrl(path: string): { data: { publicUrl: string } }
+      createSignedUrls(
+        paths: string[],
+        expiresIn: number,
+      ): Promise<{
+        data:
+          { path: string | null; signedUrl: string | null; error: string | null }[] | null
+        error: StorageFailure | null
+      }>
     }
   }
 }
@@ -170,6 +187,14 @@ interface StorageFailure {
 
 export const PHOTO_BUCKET = 'steward-photos'
 
+/** How long a photo link lasts, and how long the bucket tells a browser or
+ *  CDN to keep a photo: a retake or a removed photo (someone was in the
+ *  frame) stops being served within the hour (the SQL review's sixth pass,
+ *  finding 6, against the year it was). A reasoned bound, not a measured
+ *  need: nothing here needs a photo cached longer, and the service worker
+ *  keeps the ones a phone has shown for use with no signal (vite.config.ts). */
+export const PHOTO_LINK_SECONDS = 3600
+
 type Raw = Record<string, unknown>
 
 /**
@@ -179,8 +204,11 @@ type Raw = Record<string, unknown>
  * raise SQLSTATE PTnnn, which PostgREST sends as HTTP status nnn, and a
  * request that never got an answer is 0, which offline.isOffline reads as no
  * signal. So the offline queue and every screen work unchanged.
+ *
+ * `userId` is the signed-in account's: a photo is uploaded under it, as the
+ * bucket's insert policy requires.
  */
-export function createApi(client: DataClient): StewardApi {
+export function createApi(client: DataClient, userId: string): StewardApi {
   async function call<T>(fn: string, args: Raw = {}): Promise<T> {
     const { data, error, status } = await client.rpc(fn, args)
     if (error)
@@ -190,15 +218,43 @@ export function createApi(client: DataClient): StewardApi {
 
   const bucket = () => client.storage.from(PHOTO_BUCKET)
 
-  /** A claim as the functions return it, with each photo's public address. */
-  function withUrls(raw: Raw): ClaimDetail {
+  // Links already signed, reused while a quarter of their hour is left: the
+  // same link is the same image to the browser's cache, so a claim opened
+  // again does not download its photos again.
+  const links = new Map<string, { url: string; until: number }>()
+  const REUSE_MS = (PHOTO_LINK_SECONDS * 1000) / 4
+
+  async function sign(paths: string[]): Promise<Map<string, string | null>> {
+    const now = Date.now()
+    const usable = (path: string, margin: number) => {
+      const link = links.get(path)
+      return link && link.until - now > margin ? link.url : null
+    }
+    const wanted = [...new Set(paths)].filter((path) => !usable(path, REUSE_MS))
+    if (wanted.length > 0) {
+      const { data } = await bucket()
+        .createSignedUrls(wanted, PHOTO_LINK_SECONDS)
+        .catch(() => ({ data: null }))
+      for (const signed of data ?? [])
+        if (signed.path && signed.signedUrl)
+          links.set(signed.path, {
+            url: signed.signedUrl,
+            until: now + PHOTO_LINK_SECONDS * 1000,
+          })
+    }
+    return new Map(paths.map((path) => [path, usable(path, 0)]))
+  }
+
+  /** A claim as the functions return it, with a signed link to each photo. */
+  async function withUrls(raw: Raw): Promise<ClaimDetail> {
     const { unused_path: _, ...claim } = raw
     const photos = (claim.photos as (Omit<ClaimPhoto, 'url'> & { path: string })[]) ?? []
+    const urls = await sign(photos.map((photo) => photo.path))
     return {
       ...(claim as unknown as ClaimDetail),
       photos: photos.map(({ path, ...photo }) => ({
         ...photo,
-        url: bucket().getPublicUrl(path).data.publicUrl,
+        url: urls.get(path) ?? null,
       })),
     }
   }
@@ -218,11 +274,15 @@ export function createApi(client: DataClient): StewardApi {
   }
 
   async function upload(claimId: string, clientId: string, photo: Blob): Promise<void> {
-    const { error } = await bucket().upload(`${claimId}/${clientId}.jpg`, photo, {
-      contentType: 'image/jpeg',
-      upsert: false,
-      cacheControl: '31536000',
-    })
+    const { error } = await bucket().upload(
+      `${claimId}/${userId}/${clientId}.jpg`,
+      photo,
+      {
+        contentType: 'image/jpeg',
+        upsert: false,
+        cacheControl: String(PHOTO_LINK_SECONDS),
+      },
+    )
     if (!error) return
     // Already there: an earlier send of this same photo arrived and its
     // answer did not. The id is this photo's alone, so it is this photo.

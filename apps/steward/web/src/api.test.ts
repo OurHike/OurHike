@@ -1,5 +1,11 @@
-import { describe, expect, it } from 'vitest'
-import { ApiError, PHOTO_BUCKET, createApi, type DataClient } from './api'
+import { describe, expect, it, vi } from 'vitest'
+import {
+  ApiError,
+  PHOTO_BUCKET,
+  PHOTO_LINK_SECONDS,
+  createApi,
+  type DataClient,
+} from './api'
 import { isOffline } from './offline'
 
 type Answer = { data?: unknown; error?: { message: string } | null; status?: number }
@@ -10,14 +16,17 @@ type StorageError = {
   statusCode?: string
 }
 
-/** A supabase-js client that records what it is asked and answers from a script. */
+/** A supabase-js client that records what it is asked and answers from a script.
+ *  `unsigned` are paths Storage will not sign; `signing` replaces the whole answer. */
 function recording(
   answers: Record<string, Answer> = {},
   upload: StorageError | null = null,
+  { unsigned = [] as string[], signing = null as null | (() => Promise<never>) } = {},
 ) {
   const calls: { fn: string; args: Record<string, unknown> }[] = []
-  const uploads: { path: string; type: string; upsert: boolean }[] = []
+  const uploads: { path: string; type: string; upsert: boolean; cache: string }[] = []
   const removed: string[][] = []
+  const signed: { paths: string[]; seconds: number }[] = []
   const client: DataClient = {
     rpc: async (fn, args = {}) => {
       calls.push({ fn, args })
@@ -33,21 +42,39 @@ function recording(
         expect(bucket).toBe(PHOTO_BUCKET)
         return {
           upload: async (path, _body, options) => {
-            uploads.push({ path, type: options.contentType, upsert: options.upsert })
+            uploads.push({
+              path,
+              type: options.contentType,
+              upsert: options.upsert,
+              cache: options.cacheControl,
+            })
             return { error: upload }
           },
           remove: async (paths) => {
             removed.push(paths)
             return {}
           },
-          getPublicUrl: (path) => ({
-            data: { publicUrl: `https://p.example/public/${path}` },
-          }),
+          createSignedUrls: async (paths, seconds) => {
+            if (signing) return signing()
+            signed.push({ paths, seconds })
+            return {
+              data: paths.map((path) =>
+                unsigned.includes(path)
+                  ? { path, signedUrl: null, error: 'Either the object does not exist' }
+                  : {
+                      path,
+                      signedUrl: `https://p.example/sign/${path}?token=${signed.length}`,
+                      error: null,
+                    },
+              ),
+              error: null,
+            }
+          },
         }
       },
     },
   }
-  return { api: createApi(client), calls, uploads, removed }
+  return { api: createApi(client, 'user-1'), calls, uploads, removed, signed }
 }
 
 const claimRow = (
@@ -112,16 +139,23 @@ it('a call that never got an answer is no signal, so screens fall back to the ph
 })
 
 describe('photos', () => {
-  it("go to the bucket under the claim and the phone's id for them, then onto the claim", async () => {
+  it("go to the bucket under the claim, the uploader and the phone's id for them, then onto the claim", async () => {
     const { api, calls, uploads } = recording({
-      add_photo: { data: claimRow([{ path: 'claim-1/queued-1.jpg' }]) },
+      add_photo: { data: claimRow([{ path: 'claim-1/user-1/queued-1.jpg' }]) },
     })
     const detail = await api.uploadPhoto('claim-1', 'after', 2, new Blob(['x']), {
       clientId: 'queued-1',
       replaces: 'nothing',
     })
+    // The bucket's insert policy takes a photo only under its uploader's own
+    // id, and caches it for the hour a link lasts (the sixth pass, 2 and 6).
     expect(uploads).toEqual([
-      { path: 'claim-1/queued-1.jpg', type: 'image/jpeg', upsert: false },
+      {
+        path: 'claim-1/user-1/queued-1.jpg',
+        type: 'image/jpeg',
+        upsert: false,
+        cache: String(PHOTO_LINK_SECONDS),
+      },
     ])
     expect(calls).toEqual([
       {
@@ -135,7 +169,49 @@ describe('photos', () => {
         },
       },
     ])
-    expect(detail.photos[0].url).toBe('https://p.example/public/claim-1/queued-1.jpg')
+    expect(detail.photos[0].url).toBe(
+      'https://p.example/sign/claim-1/user-1/queued-1.jpg?token=1',
+    )
+  })
+
+  it('are shown through links Storage signs for an hour, reused while most of it is left', async () => {
+    vi.useFakeTimers()
+    try {
+      const row = claimRow([
+        { path: 'claim-1/user-1/a.jpg' },
+        { path: 'claim-1/user-1/b.jpg' },
+      ])
+      const { api, signed } = recording({ read_claim: { data: row } })
+      const first = await api.claim('claim-1')
+      vi.advanceTimersByTime(30 * 60 * 1000)
+      const again = await api.claim('claim-1')
+      // The same link is the same image to the browser's cache.
+      expect(again.photos.map((p) => p.url)).toEqual(first.photos.map((p) => p.url))
+      vi.advanceTimersByTime(20 * 60 * 1000)
+      const later = await api.claim('claim-1')
+      expect(later.photos[0].url).not.toBe(first.photos[0].url)
+      expect(signed).toEqual([
+        { paths: ['claim-1/user-1/a.jpg', 'claim-1/user-1/b.jpg'], seconds: 3600 },
+        { paths: ['claim-1/user-1/a.jpg', 'claim-1/user-1/b.jpg'], seconds: 3600 },
+      ])
+    } finally {
+      vi.useRealTimers()
+    }
+  })
+
+  it('a photo Storage would not sign is not loaded, and the claim still arrives', async () => {
+    const row = claimRow([
+      { path: 'claim-1/user-1/a.jpg' },
+      { path: 'claim-1/user-1/gone.jpg' },
+    ])
+    const one = await recording({ read_claim: { data: row } }, null, {
+      unsigned: ['claim-1/user-1/gone.jpg'],
+    }).api.claim('claim-1')
+    expect(one.photos.map((p) => p.url === null)).toEqual([false, true])
+    const none = await recording({ read_claim: { data: row } }, null, {
+      signing: () => Promise.reject(new TypeError('Failed to fetch')),
+    }).api.claim('claim-1')
+    expect(none.photos.map((p) => p.url)).toEqual([null, null])
   })
 
   it('already in the bucket is already sent: the claim is still asked to take it', async () => {
@@ -186,7 +262,7 @@ describe('photos', () => {
     )
   })
 
-  it('a retaken or removed photo is deleted from the bucket, so it does not stay public', async () => {
+  it('a retaken or removed photo is deleted from the bucket, so it does not stay readable', async () => {
     const { api, removed } = recording({
       add_photo: { data: claimRow([], { unused_path: 'claim-1/first.jpg' }) },
       remove_photo: { data: claimRow([], { unused_path: 'claim-1/extra.jpg' }) },

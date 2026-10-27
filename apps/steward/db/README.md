@@ -13,11 +13,20 @@ source data"), recorded in [PLAN.md](../PLAN.md)'s decisions table.
     `search_path`;
   - three `open_*` views, which are everything a signed-out reader sees. Names
     appear only on verified work;
-  - the public `steward-photos` bucket and its policies: only a claim's crew
-    uploads to it, only while the claim is open, and nothing is overwritten.
+  - the private `steward-photos` bucket and its policies. Only a claim's crew
+    uploads to it, each under their own user id, while the claim is open,
+    within a per-claim and a per-account cap; nothing is overwritten. A
+    photo is read by its crew, by any signed-in account while its claim
+    waits for review, and by anyone once the work is verified. Reading is
+    what lets someone make a signed link, and a link outlives the access it
+    was made with until it expires.
 - `steward_db/migrate.py` applies the migrations, each once.
 - `steward_db/load_sites.py` is the analysis job's daily load of the scored
-  sites, which every claim and every club's weights are checked against.
+  sites, which every claim and every club's weights are checked against. It
+  refuses a load with under half the sites, or half the workable sites, of
+  the largest of the last ten. That job installs `requirements.txt`, which is
+  psycopg alone and hash-pinned, and reads its login from
+  `STEWARD_SITES_DATABASE_URL`.
 - `tests/` runs the schema on plain Postgres. `tests/supabase_stand_ins.sql`
   stands in for Supabase's `auth` and `storage` schemas.
 
@@ -39,6 +48,13 @@ creates the roles itself there.
   tests went with it.
 - **The bucket's type and size limits.** The Storage service enforces
   `allowed_mime_types` and `file_size_limit`, not Postgres.
+- **What Storage does with the policies.** The tests insert, read and delete
+  `storage.objects` rows as Storage would. Three behaviours come from
+  Supabase's documentation and were not tried against a real project:
+  - a signed link is checked against the select policy when it is made and
+    not after;
+  - a delete needs the select policy too;
+  - a plain upload needs only the insert policy.
 
 ## Setting it up on Supabase (the maintainer's, once)
 
@@ -81,8 +97,19 @@ header `Accept-Profile: steward`:
 | View | Holds |
 |---|---|
 | `open_claims` | Every claim: site, state, dates and crew size; claimer, reviewer, steps and verified hours on verified work only |
-| `open_photos` | The before and after photos of verified work, by their path in `steward-photos` |
+| `open_photos` | The before and after photos of verified work, by their path in `steward-photos`: `<claim id>/<uploader's user id>/<photo id>.jpg` |
 | `open_weights` | Every change to every club's ranking weights, with its changer's name as it was then |
 
+The bucket is private, so a photo is fetched through a link Storage signs:
+`POST /storage/v1/object/sign/steward-photos` with the same key and the
+photo's path. The policy signs any verified claim's photo for anyone.
+
 The same three are written daily as CSV and Parquet to `data/work/` beside
-`sites.json` (`apps/steward/pipeline/steward_analysis/open_data.py`).
+`sites.json` (`apps/steward/pipeline/steward_analysis/open_data.py`). The
+photos file carries a link to each photo, signed for eight days.
+
+A photo's path names its uploader by user id, a random UUID that carries no
+name. It is public on verified work, so it shows which of a claim's photos
+one person took and links that person's photos across claims. It outlives
+`delete_my_data()`, which removes the name the id was shown with. Not
+decided by the maintainer; raised in the pull request.

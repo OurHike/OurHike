@@ -74,13 +74,29 @@ export function fakeApi(): FakeApi {
     crew_size: claim.crew.length,
     you_are_crew: claim.you_are_crew,
   })
-  const detail = (claim: ClaimDetail): ClaimDetail => ({
-    ...claim,
-    crew_size: claim.crew.length,
-    you_may_review: claim.state === 'submitted' && !claim.you_are_crew,
-    photos: [...claim.photos],
-    crew: claim.crew.map((member) => ({ ...member })),
-  })
+  // The steward schema's _claim_detail: all of it for the crew, a reviewer,
+  // whoever reviewed it last and once verified; for anyone else what the
+  // open views show.
+  const reviewedByYou = new Set<string>()
+  const detail = (claim: ClaimDetail): ClaimDetail => {
+    const full =
+      claim.you_are_crew ||
+      claim.state === 'verified' ||
+      claim.state === 'submitted' ||
+      reviewedByYou.has(claim.id)
+    return {
+      ...claim,
+      full,
+      crew_size: claim.crew.length,
+      you_may_review: claim.state === 'submitted' && !claim.you_are_crew,
+      photos: full ? [...claim.photos] : [],
+      crew: full ? claim.crew.map((member) => ({ ...member })) : [],
+      steps_done: full ? claim.steps_done : [],
+      notes: full ? claim.notes : null,
+      review_note: full ? claim.review_note : null,
+      reviewed_by: full ? claim.reviewed_by : null,
+    }
+  }
   const findClaim = (id: string) => {
     const claim = claims.get(id)
     if (!claim) throw new ApiError(404, 'No such claim')
@@ -121,6 +137,7 @@ export function fakeApi(): FakeApi {
       crew: [{ name: claimer, you: youAreCrew, hours: null }],
       photos: [],
       you_may_review: false,
+      full: true,
     }
   }
   // A real object URL in the browser (dev:account's screenshots); under vitest,
@@ -371,6 +388,7 @@ export function fakeApi(): FakeApi {
       }
       claim.reviewed_by = displayName
       claim.review_note = note
+      reviewedByYou.add(claim.id)
       if (verdict === 'verify') {
         claim.state = 'verified'
         claim.verified_at = now()

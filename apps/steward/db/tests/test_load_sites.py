@@ -1,6 +1,7 @@
 """The analysis job's load of the latest sites."""
 
 import json
+from pathlib import Path
 
 import psycopg
 import pytest
@@ -32,6 +33,25 @@ def test_a_load_with_far_fewer_sites_than_are_held_is_refused_and_changes_nothin
     assert len(loaded(db)) == 20
 
 
+def test_a_run_of_loads_cannot_halve_the_sites_one_load_at_a_time(db):
+    # The sixth pass's finding 4: each of these is more than half the last.
+    many = [{"rims_id": f"{n:08d}-3333-3333-3333-333333333333", "club": "C", "action": "harden"} for n in range(20)]
+    db.connection.execute("select steward.load_sites(%s)", (Jsonb(many),))
+    db.connection.execute("select steward.load_sites(%s)", (Jsonb(many[:11]),))
+    with pytest.raises(psycopg.errors.RaiseException, match="refusing to replace"):
+        db.connection.execute("select steward.load_sites(%s)", (Jsonb(many[:6]),))
+    assert len(loaded(db)) == 11
+
+
+def test_a_load_that_suddenly_calls_most_sites_unworkable_is_refused(db):
+    many = [{"rims_id": f"{n:08d}-4444-4444-4444-444444444444", "club": "C", "action": "harden"} for n in range(20)]
+    db.connection.execute("select steward.load_sites(%s)", (Jsonb(many),))
+    left_alone = [{**site, "action": "leave"} for site in many]
+    with pytest.raises(psycopg.errors.RaiseException, match="refusing to replace"):
+        db.connection.execute("select steward.load_sites(%s)", (Jsonb(left_alone),))
+    assert all(loaded(db).values())
+
+
 def test_records_that_are_not_sites_are_skipped_not_loaded(db):
     odd = [*SITES, "not a record", {"rims_id": "<script>"}, {"club": "no id"}]
     db.connection.execute("select steward.load_sites(%s)", (Jsonb(odd),))
@@ -54,3 +74,24 @@ def test_the_command_reads_sites_json_and_sends_only_what_the_load_needs(db, dat
     sites_json.write_text(json.dumps([{**s, "lat": 1.0, "lon": 2.0, "name": "x"} for s in SITES]))
     assert load_sites.load(database_url, sites_json) == len(SITES)
     assert SITE in loaded(db)
+
+
+def test_the_command_takes_the_loaders_login_from_the_environment_only(db, database_url, tmp_path, monkeypatch, capsys):
+    # A --database-url argument would put the password in the runner's process list.
+    sites_json = tmp_path / "sites.json"
+    sites_json.write_text(json.dumps(SITES))
+    monkeypatch.delenv(load_sites.DATABASE_URL, raising=False)
+    assert load_sites.main([str(sites_json)]) == 1
+    assert "STEWARD_SITES_DATABASE_URL" in capsys.readouterr().err
+    with pytest.raises(SystemExit):
+        load_sites.main(["--database-url", database_url, str(sites_json)])
+    monkeypatch.setenv(load_sites.DATABASE_URL, database_url)
+    assert load_sites.main([str(sites_json)]) == 0
+
+
+def test_the_load_jobs_psycopg_is_the_one_the_tests_run():
+    def pin(name):
+        lines = (Path(__file__).parent.parent / name).read_text().splitlines()
+        return [line for line in lines if line.startswith("psycopg")]
+
+    assert pin("requirements.in") == pin("requirements-dev.in")

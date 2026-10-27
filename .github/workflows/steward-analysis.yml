@@ -260,11 +260,13 @@ jobs:
         with:
           python-version: "3.14"
           cache: pip
-          cache-dependency-path: apps/steward/db/requirements-dev.txt
+          cache-dependency-path: apps/steward/db/requirements.txt
 
+      # psycopg alone, hash-pinned: this job holds the loader's login, so it
+      # installs nothing the load does not run.
       - name: Install dependencies
         if: steps.can.outputs.load == 'true'
-        run: pip install -r requirements-dev.txt
+        run: pip install --require-hashes -r requirements.txt
 
       - uses: actions/download-artifact@v8
         if: steps.can.outputs.load == 'true'
@@ -276,5 +278,5 @@ jobs:
       - name: Load
         if: steps.can.outputs.load == 'true'
         env:
-          DATABASE_URL: ${{ secrets.STEWARD_SITES_DATABASE_URL }}
-        run: python -m steward_db.load_sites --database-url "$DATABASE_URL" ../pipeline/data/out/sites.json
+          STEWARD_SITES_DATABASE_URL: ${{ secrets.STEWARD_SITES_DATABASE_URL }}
+        run: python -m steward_db.load_sites ../pipeline/data/out/sites.json

@@ -207,12 +207,16 @@ export async function resumeUsage(): Promise<void> {
 /**
  * The hiker said no to linking: rows recorded under their yes leave without
  * the account. Still counted - "Share usage statistics" is still on, and a
- * no to linking is a no to the account, not to the count.
+ * no to linking is a no to the account, not to the count. The visit still in
+ * progress loses its account too: it is recorded with the account it began
+ * with, so left alone it would end, after the no, carrying the tag of the
+ * account that said it.
  */
 export async function unlinkWaitingRows(): Promise<void> {
   await updateUsage((store) => ({
     ...store,
     rows: store.rows.map((queued) => ({ ...queued, linkedTo: null })),
+    session: store.session === null ? null : { ...store.session, linkedTo: null },
   }))
 }
 

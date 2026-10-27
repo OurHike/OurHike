@@ -297,6 +297,30 @@ describe('the two switches', () => {
     expect((await readUsage()).rows).toEqual([queued('anonymous'), queued('linked')])
   })
 
+  it('unlinks the visit still in progress too, so it cannot end linked to the account that said no', async () => {
+    stored = {
+      ...EMPTY_USAGE,
+      initialized: true,
+      session: {
+        startedAt: 1,
+        lastSeenAt: 2,
+        pageviews: 3,
+        linkedTo: ALICE,
+        signedIn: true,
+      },
+    } satisfies UsageStore
+
+    await unlinkWaitingRows()
+
+    expect((await readUsage()).session).toEqual({
+      startedAt: 1,
+      lastSeenAt: 2,
+      pageviews: 3,
+      linkedTo: null,
+      signedIn: true,
+    })
+  })
+
   it('reads a row queued before rows were bound to an account as unlinked', async () => {
     stored = { ...EMPTY_USAGE, rows: [{ row: row('old'), linked: true }] }
 

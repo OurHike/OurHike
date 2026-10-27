@@ -20,7 +20,8 @@ has a reason to correlate with a caller's own id.
 WHAT IT MUST NEVER PUT IN A LINE. A presigned URL, a bearer token, the R2
 endpoint. `core/photos.py` already keeps that rule. This module logs the
 method, the route path and the status - not the query string, which is where
-a presigned URL would sit, and not any header. Nor the values a failed database
+a presigned URL would sit, and not any header - and the route's template, so an
+id or a token in the path stays out too. Nor the values a failed database
 statement was bound to: `describe_failure` below is how a caller logs a
 database error by its names alone.
 
@@ -171,5 +172,11 @@ class RequestIdMiddleware:
             raise
         finally:
             if status_code == 401 or status_code >= 500:
-                _request_logger.warning("%s %s -> %s", scope.get("method"), scope.get("path"), status_code)
+                # The route's template, never the path the caller sent: a path
+                # can carry a capability (`/nominations/{token}` is a vote that
+                # lasts `TOKEN_DAYS`, 45), and the template is what a reader needs to
+                # find the handler. FastAPI leaves the matched route in the
+                # scope; a request no route matched has none to name.
+                route = getattr(scope.get("route"), "path", None) or "(no route)"
+                _request_logger.warning("%s %s -> %s", scope.get("method"), route, status_code)
             _request_id.reset(token)

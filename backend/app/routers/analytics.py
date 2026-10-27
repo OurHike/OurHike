@@ -28,10 +28,12 @@ whole. Every outcome is counted per day and app version in
 `analytics_intake`, which is the only trace a refused row leaves.
 app/schemas/analytics.py has the rules.
 
-**It writes no IP address and keeps no batch.** No column holds one, and
-nothing here logs the request. A batch is momentarily linkable on the wire -
-nine heartbeats in one request came from one phone - and the claim is only
-that the grouping is never written (EVENTING.md §2).
+**It writes no IP address and keeps no batch.** No column holds one, nothing
+here logs the request, and Uvicorn's access line for this path - which opens
+with the client's address - is dropped before any handler sees it
+(app/core/logs.py `DropUnloggedPaths`). A batch is momentarily linkable on
+the wire - nine heartbeats in one request came from one phone - and the
+claim is only that the grouping is never written (EVENTING.md §2).
 
 **It caps what it stores, and turns a batch away rather than fill the
 database.** Past `analytics_daily_row_budget` rows stored in a UTC day, or

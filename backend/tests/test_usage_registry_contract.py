@@ -4,9 +4,11 @@
 lists - the six events, the session-length buckets, the platforms, the
 reserved "club not recorded" id - and `POST /usage-events` refuses anything
 the backend's half does not name. So a name added on the phone alone does not
-fail loudly: the batch is refused with a 422, the phone drops it as it drops
-every refused batch, and the event is simply never counted. This test is the
-only place that drift would be noticed before a month of numbers went missing.
+fail loudly: each row carrying it is refused, alone, inside a 202 that
+accepts the rest of its batch; the phone drops the refused row, and the only
+trace is a count of `invalid` rows in `analytics_intake`. The event is simply
+never counted. This test is the only place that drift would be noticed before
+a month of numbers went missing.
 
 Read as text for the reason tests/test_preferences_contract.py gives: a list
 restated here would be a third copy to keep in step.

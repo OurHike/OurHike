@@ -34,7 +34,7 @@ Companion to [FEATURE_GATING.md](FEATURE_GATING.md), [IDENTITY_AND_PRIVACY.md](I
 - §6's floor of 25, now applied when a report is built.
 - §7's warning about what engagement numbers mean.
 
-### The six events
+### The six events, and a seventh
 
 `client/src/lib/usageEvents.ts` holds the registry on the phone, and `app/models/analytics.py` `UsageEvent` holds it on the server. `POST /usage-events` refuses any other name.
 
@@ -46,6 +46,7 @@ Companion to [FEATURE_GATING.md](FEATURE_GATING.md), [IDENTITY_AND_PRIVACY.md](I
 | `hike_plan_completed` | a long hike is finished, or a day hike's walk is logged, including a saved route walked again - but not a second log for a day already logged, which changes nothing | `miles`; clubs split by miles where the plan is on the A.T. |
 | `map_screen_viewed` | the map comes into view, once per arrival | club at the map's centre |
 | `session` | a visit is over: the app out of sight for more than 30 minutes, or found unfinished at a launch more than 30 minutes after it was last seen. A relaunch within the 30 minutes - a phone that killed the app, an OAuth redirect reloading the page - continues the same visit | `pageviews` (screens shown), `session_length` in four buckets, the first fix the map held during the visit and its club. The row belongs to whoever the visit began with: signed in or not, linked or not |
+| `support_chosen` *(#1885, a seventh)* | a hiker keeps **$0** in the support ask (`writeZeroChoice` in `client/src/lib/support.ts`, announced through `client/src/lib/supportZeroChosen.ts`). A **paid** level is never sent by a phone: the server writes its row when Stripe confirms the first payment (`backend/app/core/analytics_support.py`) | `support_cents`, the level in cents a year - always 0 from a phone. **Nothing else, and none of the common fields below but the id, date, platform and version**: no fix, no club, every flag false, never linked (below) |
 
 **Common fields on every row:**
 - the phone-minted id
@@ -76,6 +77,14 @@ Companion to [FEATURE_GATING.md](FEATURE_GATING.md), [IDENTITY_AND_PRIVACY.md](I
 - `declined`: the token's account synced "off" (above). Answered 202 with every row refused, so the phone drops them.
 
 **None of measurement is parsed before the first frame.** App renders `client/src/lib/DeferredMeasureUsage.tsx`, which imports the hook behind `import()`; what App must still build eagerly - the props, the plan calls, the link question - was paid for by deferring eight tap-opened surfaces that take no focus (`client/src/screens/deferred.ts` has the measurements and why a surface that takes focus stays eager), and the preferences reconciliation loads on the first sign-in rather than at launch (`client/src/lib/usePreferencesSync.ts`). Moments in the first second, before the chunk arrives, are missed: a screen change, or a plan made that fast. The install is captured eagerly, so a fast Skip on first run still counts.
+
+**A support choice is counted by its level and nothing else** (#1885 — Ask every hiker to choose what they give after day five, $0 included, and pay only on the website; the maintainer's poll of 2026-10-27, "track once for each dollar level, even 0", counted "when paid, $0 when chosen", carrying "the level only"):
+
+- **Once per answer.** A $0 row is queued once, when the hiker keeps $0; the phone asks at most once a year. A paid row is written once per choice: its id is derived from the choice the payment named (or the payment, when it named none), so Stripe resending the confirmation, or a second tab paying for the same choice, writes nothing. A provider move is not counted again.
+- **Level only, enforced on both sides.** The schema refuses a `support_chosen` row from a phone that carries any level but 0, a fix, a club, or any flag (`_level_only` in `backend/app/schemas/analytics.py`); the route never gives one a `user_key` or a seal, even inside a linked batch, and it never reaches the User table. The phone stamps it with no heartbeat flag (`NO_STAMP`), so the hiker's next row is still "first this month". When the queue is full it is kept ahead of the plain rows, because nothing later counts it again.
+- **The switches still rule.** With "Share usage statistics" off the phone records no $0, and an account that synced "off" gets no paid row either. So the monthly figures can read lower than the payments; the money is in `support_charges`, not here.
+- **"Never linked" means no column links it.** A paid row's date and level are copied from a `support_choices` row that names the payer, so whoever reads both tables can match them. It adds nothing that table does not hold, and goes after six months like every raw row.
+- **Rolled up as `support_chosen_<cents>`** on the all-clubs, all-platforms slice only - `support_chosen_0`, `support_chosen_1200` and so on (`_SUPPORT_LEVELS` in `backend/app/core/analytics_rollup.py`, `DEFINITION_VERSION` 2) - and drawn by the report as a table of months by level, each figure under 25 masked alone, with no total column that would give a masked level back.
 
 **What the phone does to keep its own counts right**, the same review: a club share is never 0 (the remainder of rounding goes to the largest club and a sliver past a boundary is no club's - 4.3% of 220,000 synthetic plans had been refused for it); the queue, when full, drops rows that count nothing before a phone's first row of a week or month; switching sharing off and on keeps which periods were counted, so the phone is not new again; the install and the mark that it was counted are one write; and a plan call can never throw into the hiker's own save.
 
@@ -204,7 +213,8 @@ GRANT USAGE ON SCHEMA public TO ourhike_analytics_rollup;
 GRANT SELECT (id, local_date, received_on, event, platform, app_version, user_key,
               week_first, month_first, ever_first, club_firsts, kind_month_first,
               month_returning, signed_in, clubs, miles,
-              pageviews, session_length, has_fix, area_lat, area_lon, seal)
+              pageviews, session_length, has_fix, area_lat, area_lon, seal,
+              support_cents)
   ON public.analytics_events TO ourhike_analytics_rollup;
 GRANT DELETE ON public.analytics_events TO ourhike_analytics_rollup;
 GRANT SELECT, INSERT, UPDATE, DELETE ON public.analytics_months, public.analytics_monthly,

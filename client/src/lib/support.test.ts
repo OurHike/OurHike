@@ -9,6 +9,7 @@ import {
   type SupportSummary,
 } from './support'
 import { NUDGES, nudgeFor } from './supportNudges'
+import { ZERO_CHOSEN } from './supportZeroChosen'
 
 // When the support ask opens, and what the $0 nudge says (#1876, the
 // maintainer's poll of 2026-10-23).
@@ -108,6 +109,19 @@ describe('the $0 answer on this phone', () => {
   it('records the year it covers', () => {
     writeZeroChoice(NOW)
     expect(readLocalChoice()).toMatchObject({ year: 2026 })
+  })
+
+  it('announces itself once, so usage measurement counts it once (lib/supportZeroChosen.ts)', () => {
+    let heard = 0
+    const listener = () => {
+      heard += 1
+    }
+    window.addEventListener(ZERO_CHOSEN, listener)
+
+    writeZeroChoice(NOW)
+
+    window.removeEventListener(ZERO_CHOSEN, listener)
+    expect(heard).toBe(1)
   })
 })
 

@@ -20,6 +20,10 @@
 //   session              a visit, sent when it is over: hidden for longer than
 //                        `SESSION_IDLE_MS`, or found unfinished at the next
 //                        launch because the phone killed the app
+//   support_chosen       a hiker keeping $0 (lib/supportZeroChosen.ts), at
+//                        the level and nothing else - no account, no fix, no
+//                        heartbeat flag. Paid levels are the server's to count,
+//                        when Stripe confirms the payment (#1876)
 //
 // NOTHING IS RECORDED WHILE "Share usage statistics" IS OFF, and turning it
 // off empties the queue - lib/usageQueue.ts `clearUsage`. A row is LINKED to
@@ -35,6 +39,7 @@ import { accountTag } from './accountTag'
 import type { Hike } from './hikes'
 import type { HikePlan } from './plan'
 import { takeFinishedSignIn } from './signInMarker'
+import { ZERO_CHOSEN } from './supportZeroChosen'
 import { traceShell } from './tracePlatform'
 import { mileOnTrail, type TrailIndex } from './trailPosition'
 import type { GeolocationState } from './useGeolocation'
@@ -42,7 +47,9 @@ import {
   type ClubRunLike,
   clubAtTrailMile,
   type HeldFix,
+  LEVEL_ONLY_EVENTS,
   milesByClub,
+  NO_STAMP,
   SESSION_IDLE_MS,
   sessionLength,
   sharesFromMiles,
@@ -210,18 +217,22 @@ export function useUsageMeasurement(input: UsageMeasurementInput): UsageMeasurem
     ): UsageStore => {
       const current = latest.current
       const { at } = stamping
-      const fix =
-        stamping.fix === 'held'
+      // A level-only row carries the level and nothing about the phone, and
+      // moves no heartbeat: it must not be the row that says "first this
+      // month", or the next row would not say it either.
+      const levelOnly = LEVEL_ONLY_EVENTS.includes(event)
+      const fix = levelOnly
+        ? undefined
+        : stamping.fix === 'held'
           ? usableFix(heldFix(current.gps), at)
           : (stamping.fix ?? undefined)
-      const clubs =
-        details.clubs ?? (fix === undefined ? undefined : pointClubs(fix.lon, fix.lat))
-      const { stamp, next } = stampHeartbeat(
-        store.heartbeat,
-        at,
-        Object.keys(clubs ?? {}),
-        event,
-      )
+      const clubs = levelOnly
+        ? undefined
+        : (details.clubs ??
+          (fix === undefined ? undefined : pointClubs(fix.lon, fix.lat)))
+      const { stamp, next } = levelOnly
+        ? { stamp: NO_STAMP, next: store.heartbeat }
+        : stampHeartbeat(store.heartbeat, at, Object.keys(clubs ?? {}), event)
       const row = usageRow({
         id: crypto.randomUUID(),
         event,
@@ -229,15 +240,20 @@ export function useUsageMeasurement(input: UsageMeasurementInput): UsageMeasurem
         platform: traceShell(),
         version: current.version,
         stamp,
-        signedIn: stamping.signedIn ?? current.accountEmail !== null,
+        signedIn: levelOnly
+          ? false
+          : (stamping.signedIn ?? current.accountEmail !== null),
         details: {
           ...details,
           ...(clubs === undefined ? {} : { clubs }),
           ...(fix === undefined ? {} : { fix }),
         },
       })
-      const linkedTo =
-        stamping.linkedTo === undefined ? linkedAccount(current) : stamping.linkedTo
+      const linkedTo = levelOnly
+        ? null
+        : stamping.linkedTo === undefined
+          ? linkedAccount(current)
+          : stamping.linkedTo
       return withRows({ ...store, heartbeat: next }, [{ row, linkedTo }])
     },
     [pointClubs],
@@ -429,6 +445,16 @@ export function useUsageMeasurement(input: UsageMeasurementInput): UsageMeasurem
       clubs: centre === null ? undefined : pointClubs(centre[0], centre[1]),
     })
   }, [input.mapInView, record, pointClubs])
+
+  // --- a $0 support answer ---------------------------------------------------------------
+  // Counted once, when it is given: lib/support.ts `writeZeroChoice` announces
+  // it on this window only. Missed if this chunk has not arrived yet, as a plan
+  // made in the first second is (lib/DeferredMeasureUsage.tsx).
+  useEffect(() => {
+    const onZero = () => void record('support_chosen', { support_cents: 0 })
+    window.addEventListener(ZERO_CHOSEN, onZero)
+    return () => window.removeEventListener(ZERO_CHOSEN, onZero)
+  }, [record])
 
   // --- sign-in -------------------------------------------------------------------------
   // The marker is taken whether or not counting is on: a sign-in finishes

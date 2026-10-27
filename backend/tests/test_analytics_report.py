@@ -235,6 +235,28 @@ def test_returning_phones_are_masked_when_last_month_less_them_is_under_the_floo
     assert october["devices_active"] == 450
 
 
+def test_a_support_level_chosen_by_fewer_than_the_floor_is_masked_and_the_rest_shown():
+    masked, _ = mask_cells(
+        {"2026-10|*|*": {"devices_active": 900, "support_chosen_0": 300, "support_chosen_6000": 4, "support_chosen_1200": 0}}
+    )
+
+    assert masked["2026-10|*|*"]["support_chosen_6000"] is None
+    assert masked["2026-10|*|*"]["support_chosen_0"] == 300
+    assert masked["2026-10|*|*"]["support_chosen_1200"] == 0, "a count of nobody describes nobody"
+
+
+def test_the_report_lists_every_support_level_any_month_holds(db_session):
+    db_session.add(AnalyticsMonth(month=OCTOBER, status=MonthStatus.provisional, definition_version=2))
+    for metric, value in (("devices_active", 400), ("support_chosen_0", 30), ("support_chosen_12000", 3)):
+        db_session.add(AnalyticsMonthly(month=OCTOBER, metric=metric, club="*", platform="*", value=value))
+    db_session.commit()
+
+    data = build_report_data(db_session, environment="Test")
+
+    assert data["support_levels"] == [0, 12000]
+    assert data["cells"]["2026-10|*|*"]["support_chosen_12000"] is None
+
+
 def _month_with_a_small_club(db_session):
     db_session.add(AnalyticsMonth(month=OCTOBER, status=MonthStatus.provisional, definition_version=1))
     for club, devices, miles in (("*", 400, 5000.0), ("NYNJTC", 300, 4300.0), ("PATC", 80, 650.5), ("GMC", 9, 271.75)):

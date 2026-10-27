@@ -40,6 +40,12 @@ the router answers 503 so the provider retries.
 `support_charges`, which a unique key keeps from being counted twice, net of
 refunds (a refund is a negative row, recognised by the payer's provider id).
 
+**A CONFIRMED PAYMENT IS COUNTED ONCE, BY ITS LEVEL**, as a `support_chosen`
+usage event carrying the level and nothing else (app/core/analytics_support.py,
+the maintainer's poll of 2026-10-27). Written when a `started` event is
+applied, in the same transaction, and keyed by the choice so a redelivery or
+a second tab counts nothing twice.
+
 **A PAID RECORD IS KEPT SEVEN YEARS AFTER IT ENDS, THEN DELETED**, once the
 account it belonged to is gone (the maintainer, 2026-10-27). `purge_expired`
 does it a few rows at a time on each webhook delivery, since nothing here
@@ -63,6 +69,7 @@ from sqlalchemy import func, or_
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
+from app.core.analytics_support import count_paid_choice
 from app.core.support_mail import email_founder_payment_note, email_hiker_started, email_hiker_stopped
 from app.core.support_providers import EventKind, ProviderEvent, SupportProvider, provider_for
 from app.core.time import utc_now
@@ -376,6 +383,25 @@ def _unwanted(
     return "unwanted", row
 
 
+def _count_paid(db: Session, provider: SupportProvider, event: ProviderEvent, row: SupportChoice, now: datetime) -> None:
+    """Count a confirmed payment's level once, as a usage event (app/core/analytics_support.py).
+
+    Keyed by the choice the payment named, so a redelivery, or a second tab
+    paying for the same choice, is the same row; by the payment itself when
+    it named none.
+    """
+    count_paid_choice(
+        db,
+        provider=provider.key,
+        choice_ref=event.choice_ref,
+        subscription_ref=event.subscription_ref,
+        cents=event.amount_cents,
+        day=(event.started_at or event.occurred_at or now).date(),
+        today=now.date(),
+        profile_id=row.profile_id,
+    )
+
+
 def apply_event(
     db: Session,
     provider: SupportProvider,
@@ -401,7 +427,10 @@ def apply_event(
         if choice is not None and choice.status == SupportStatus.pending and choice.provider_ref is None:
             row = choice
         elif choice is not None:
-            return _unwanted(db, provider, event, choice, mail_provider=mail_provider, now=now)
+            outcome, row = _unwanted(db, provider, event, choice, mail_provider=mail_provider, now=now)
+            if row is not None:
+                _count_paid(db, provider, event, row, now)
+            return outcome, row
         else:
             row = _new_row(db, provider, event, status=SupportStatus.active, like=None, now=now)
             if row is None:
@@ -415,6 +444,9 @@ def apply_event(
                 "the app. If the payer writes in, cancel it in the provider's dashboard.",
                 mail_provider=mail_provider,
             )
+
+    if event.kind is EventKind.started and not row.replaces_choice_id:
+        _count_paid(db, provider, event, row, now)
 
     if row.last_event_at is not None and event.occurred_at is not None and event.occurred_at < row.last_event_at:
         return "stale", row

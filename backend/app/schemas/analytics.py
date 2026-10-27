@@ -15,7 +15,7 @@ row from a phone whose clock jumped costs that row and not the 199 sent with
 it. Refused rows are counted (`analytics_intake`) - the phone keeps no copy,
 so that count is the only sign a release broke something.
 
-THE TWO THINGS A CLIENT CANNOT DO WITH THIS SCHEMA
+THE THREE THINGS A CLIENT CANNOT DO WITH THIS SCHEMA
 
 - **Name an account.** There is no account field. A row is linked to an
   account only when the batch says `identified` AND carries a valid token,
@@ -24,6 +24,9 @@ THE TWO THINGS A CLIENT CANNOT DO WITH THIS SCHEMA
 - **Send a place as text.** A club is an id from a closed alphabet, and the
   only coordinates are the `fix`, which is sealed on arrival and never stored
   in the clear.
+- **Report a payment.** A `support_chosen` row from a phone says $0 or is
+  refused; a paid level is counted only from Stripe's own confirmation
+  (app/core/analytics_support.py).
 
 The caps are @unvalidated - picked as comfortably above anything the client
 sends, not measured: 200 rows a batch is EVENTING.md §8's outbox cap, 12
@@ -41,7 +44,7 @@ from typing import Annotated, Any
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
-from app.models.analytics import SessionLength, UsageEvent, UsagePlatform
+from app.models.analytics import LEVEL_ONLY_EVENTS, SessionLength, UsageEvent, UsagePlatform
 from app.schemas.common import FiniteFloat
 
 MAX_EVENTS_PER_BATCH = 200
@@ -81,6 +84,13 @@ SHARE_TOLERANCE = 0.02
 
 _PLAN_EVENTS = (UsageEvent.hike_plan_made, UsageEvent.hike_plan_completed)
 
+# The only support level a phone may report: $0, counted when it is chosen.
+# A paid level is counted when Stripe confirms the payment, by the server
+# (app/core/analytics_support.py) - a phone saying "$60" is a claim nobody
+# has paid, so it is refused (the maintainer, poll 2026-10-27: "when paid,
+# $0 when chosen").
+PHONE_SUPPORT_CENTS = 0
+
 
 class FixIn(BaseModel):
     """The phone's GPS fix, as the map already held it. Sealed on arrival."""
@@ -117,6 +127,8 @@ class UsageEventIn(BaseModel):
 
     fix: FixIn | None = None
 
+    support_cents: int | None = Field(default=None, ge=0)
+
     @model_validator(mode="after")
     def _fields_belong_to_their_event(self) -> UsageEventIn:
         """A field on the wrong event is a client bug, and storing it would
@@ -136,6 +148,10 @@ class UsageEventIn(BaseModel):
                 raise ValueError("each club's share is above 0 and at most 1")
             if not math.isclose(sum(self.clubs.values()), 1.0, abs_tol=SHARE_TOLERANCE):
                 raise ValueError("clubs' shares add up to one event")
+        if self.event in LEVEL_ONLY_EVENTS:
+            self._level_only()
+        elif self.support_cents is not None:
+            raise ValueError("support_cents belongs to support_chosen events only")
         if len(set(self.club_firsts)) != len(self.club_firsts):
             raise ValueError("club_firsts names each club once")
         if self.month_returning and not self.month_first:
@@ -146,6 +162,22 @@ class UsageEventIn(BaseModel):
             # would count one phone twice in new + returning + back-again.
             raise ValueError("ever_first is a first-of-the-week and -month row that is not returning")
         return self
+
+    def _level_only(self) -> None:
+        """A support choice carries its level and nothing about who chose it.
+
+        "The level only" (the maintainer, poll 2026-10-27): no fix, no club,
+        no heartbeat flag, not even `signed_in` - a $0 answer beside "this
+        phone's first row ever" or "signed in" says more about the hiker than
+        the count needs. Refused rather than stripped, as everything here is.
+        """
+        if self.support_cents != PHONE_SUPPORT_CENTS:
+            raise ValueError("a phone counts only the $0 answer; a paid level is counted when the payment is confirmed")
+        if self.fix is not None or self.clubs is not None or self.club_firsts:
+            raise ValueError("a support choice carries no position and no club")
+        flags = (self.week_first, self.month_first, self.ever_first, self.kind_month_first, self.month_returning, self.signed_in)
+        if any(flags):
+            raise ValueError("a support choice carries no heartbeat flag and no signed-in flag")
 
 
 class UsageBatchIn(BaseModel):

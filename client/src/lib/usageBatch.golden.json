@@ -108,6 +108,21 @@
       "app_version": "1.4.0",
       "pageviews": 7,
       "session_length": "m5_to_20"
+    },
+    {
+      "id": "00000000-0000-4000-8000-000000000007",
+      "event": "support_chosen",
+      "local_date": "2026-10-27",
+      "platform": "ios",
+      "week_first": false,
+      "month_first": false,
+      "ever_first": false,
+      "club_firsts": [],
+      "kind_month_first": false,
+      "month_returning": false,
+      "signed_in": false,
+      "app_version": "1.4.0",
+      "support_cents": 0
     }
   ]
 }

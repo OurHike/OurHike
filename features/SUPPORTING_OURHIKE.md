@@ -51,7 +51,12 @@ The public reading is [`site/src/pages/support.astro`](../site/src/pages/support
 
 ## 4. Verification, and what is kept
 
-- **A $0 choice stays on the phone** and needs no account.
+- **A $0 choice stays on the phone** and needs no account. While "Share usage statistics" is on, the phone also sends one count that somebody kept $0, and nothing else (below).
+- **Every answer is counted once by its level, $0 included** (the maintainer, 2026-10-27: "track once for each dollar level, even 0"), as a seventh usage event on **#1903 — Count six usage events with the account and fix sealed, check every metric nightly for anomalies, and report it per club**, which this pull request is stacked on and must land after. Decided by poll the same day:
+  - **when:** a paid level when Stripe confirms the first payment, which is a `started` event and so `payment_status: paid` ([`backend/app/core/analytics_support.py`](../backend/app/core/analytics_support.py), called from `apply_event`); $0 when the hiker keeps it (`writeZeroChoice` in [`client/src/lib/support.ts`](../client/src/lib/support.ts)). Not chosen: counting a paid level when it is picked, before anybody has paid.
+  - **what:** the level only - no account, no position, no club, no heartbeat flag. Not chosen: linking it to the account for hikers who said yes to linking.
+  - **once:** a paid row's id is derived from the choice the payment named, so a resent confirmation or a second tab writes nothing, and a provider move is not counted again; a hiker who stops and chooses again is counted at each choice.
+  - **what it is not:** the money. An account that turned usage statistics off is not counted, and a refund does not take a count back, so the monthly `support_chosen_<cents>` figures are choices, and the money stays in `support_charges`. `features/EVENTING.md` §0 has the rest.
 - **A paid choice is verified through a signed-in account.** The email is always the one on the account's token, never one typed into a form.
 - **How a payment meets its choice: by id, never by email** ([`backend/app/core/support.py`](../backend/app/core/support.py)). The first #1885 review found a stranger's cancellation typed with a hiker's address could stop the hiker's choice; the third found the email fallback that survived it still let a stranger's payment land on the hiker's record, block the hiker's own choice, and be cancelled by the hiker's Stop. So there is no email matching at all:
   - by the provider's own id for the payment, wherever it has been seen;

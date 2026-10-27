@@ -28,6 +28,7 @@
 
 import { activeDaysThisYear } from './activeDays'
 import type { SupportSummary } from './api'
+import { ZERO_CHOSEN } from './supportZeroChosen'
 
 /** The fifth distinct day of use in a calendar year. The maintainer's
  *  number, not a measured one. */
@@ -86,7 +87,13 @@ export function readLocalChoice(): LocalChoice | null {
   }
 }
 
-/** Record "$0 this year". The only choice this phone keeps by itself. */
+/**
+ * Record "$0 this year". The only choice this phone keeps by itself.
+ *
+ * Also announces it (`ZERO_CHOSEN`), which is how usage measurement counts a
+ * $0 answer once, when it is given - even when storage refused it, because
+ * the hiker still answered.
+ */
 export function writeZeroChoice(now: Date): void {
   try {
     localStorage.setItem(
@@ -98,6 +105,7 @@ export function writeZeroChoice(now: Date): void {
     // returns next launch. An extra question, never a wrong charge.
   }
   window.dispatchEvent(new Event(CHANGED))
+  window.dispatchEvent(new Event(ZERO_CHOSEN))
 }
 
 export function onLocalChoiceChanged(listener: () => void): () => void {

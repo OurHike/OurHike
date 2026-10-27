@@ -63,7 +63,7 @@ from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
 from app.core import analytics_quality as quality
-from app.core.analytics_rollup import ALL, add_months, closes_on
+from app.core.analytics_rollup import ALL, SUPPORT_METRIC, add_months, closes_on
 from app.core.time import utc_now
 from app.models.analytics import (
     AnalyticsAnomaly,
@@ -110,6 +110,18 @@ FOLLOWERS = {
     "devices_map_view": ("map_views",),
     "hikers_active": ("events_identified",),
 }
+
+# Support choices at each level (`support_chosen_<cents>`, app/core/
+# analytics_rollup.py) are counts of people too - rule 2, each level alone.
+# No total of the levels is published, so a masked level cannot come back by
+# subtraction inside the report. Outside it, the /support/ page publishes the
+# year's count of paying supporters (app/core/support.py `year_total`); its
+# definition differs from these (charges in a year, renewals included, against
+# choices begun in a month), so subtracting one from the other is a rough
+# estimate at best - said here because "rough" is a guess about the data.
+#
+# Phones' $0 rows and paid rows both sit on the all-clubs, all-platforms
+# slice, the only one the rollup writes them to.
 
 # Phones counted last month and not this one, on the all-clubs total:
 # computed here, masked by the same floor, and drawn by the page as it is.
@@ -177,6 +189,8 @@ def mask_cells(cells: dict[str, dict[str, float]]) -> tuple[dict[str, dict[str, 
             elif metric in HIKER_SUBSETS and _small(hikers - count):
                 shown[metric] = None
             elif metric in DEVICE_COUNTS and (_small(count) or _small(people - count)):
+                shown[metric] = None
+            elif metric.startswith(SUPPORT_METRIC) and _small(count):
                 shown[metric] = None
             else:
                 shown[metric] = value
@@ -402,6 +416,7 @@ def build_report_data(db: Session, *, environment: str, months: int = DEFAULT_MO
             "floor": K_FLOOR,
             "months": [],
             "clubs": [],
+            "support_levels": [],
             "cells": {},
             "masked": [],
             "cohorts": [],
@@ -418,6 +433,14 @@ def build_report_data(db: Session, *, environment: str, months: int = DEFAULT_MO
     masked, whole = mask_cells(dict(cells))
 
     clubs = sorted({key.split("|")[1] for key in cells if key.split("|")[1] != ALL})
+    support_levels = sorted(
+        {
+            int(metric[len(SUPPORT_METRIC) :])
+            for values in cells.values()
+            for metric in values
+            if metric.startswith(SUPPORT_METRIC)
+        }
+    )
     last_key = db.query(AnalyticsSealKey.month).order_by(AnalyticsSealKey.month.desc()).first()
 
     return {
@@ -435,6 +458,7 @@ def build_report_data(db: Session, *, environment: str, months: int = DEFAULT_MO
             for state in states
         ],
         "clubs": clubs,
+        "support_levels": support_levels,
         "cells": masked,
         "masked": sorted(whole),
         "cohorts": _cohorts(db, month_list[-1]),

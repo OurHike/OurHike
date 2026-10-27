@@ -43,10 +43,12 @@ from app.core.support_providers import PROVIDERS
 from app.core.support_providers import stripe as stripe_provider
 from app.core.support_providers.stripe import MARKER
 from app.core.time import utc_now
+from app.models.analytics import AnalyticsEvent, UsageEvent
 from app.models.mail import EmailSend, MailPurpose, SuppressionReason
 from app.models.profile import Profile
 from app.models.support import SupportCharge, SupportChoice, SupportEvent, SupportStatus
 from app.routers.support import clear_total_cache
+from tests.factories import make_usage_consent
 from tests.tokens import auth_headers
 
 SECRET = "whsec_test"
@@ -1171,6 +1173,124 @@ def test_a_supporter_on_an_old_provider_can_move_and_the_old_payment_stops_when_
     db_session.expire_all()
     statuses = {row.provider: row.status for row in db_session.query(SupportChoice).all()}
     assert statuses == {"oldpay": SupportStatus.stop_requested, "stripe": SupportStatus.active}
+
+
+# ---- Counted by level, as a usage event (#1876 on #1902) ----
+#
+# The maintainer, poll 2026-10-27: "track once for each dollar level, even 0",
+# a paid level counted when Stripe confirms the payment, carrying the level
+# only. The $0 half is the phone's (tests/test_routers_usage_events.py).
+
+
+def _support_rows(db_session) -> list[AnalyticsEvent]:
+    db_session.expire_all()
+    return db_session.query(AnalyticsEvent).filter(AnalyticsEvent.event == UsageEvent.support_chosen).all()
+
+
+def test_a_confirmed_payment_is_counted_once_at_its_level_and_names_nobody(client, configured, db_session):
+    user_id = str(uuid.uuid4())
+    _paying(client, user_id, amount=6000)
+
+    [row] = _support_rows(db_session)
+    assert row.support_cents == 6000
+    assert row.user_key is None and row.sealed is None and row.has_fix is False
+    assert row.platform.value == "web" and row.clubs is None
+    assert not any((row.week_first, row.month_first, row.ever_first, row.kind_month_first, row.signed_in))
+
+
+def test_a_checkout_not_yet_paid_is_not_counted(client, configured, db_session):
+    choice = _choice_id(_choose(client, str(uuid.uuid4())))
+
+    _deliver(client, _session(choice=choice, paid="unpaid"))
+
+    assert _support_rows(db_session) == []
+
+
+def test_a_redelivered_confirmation_is_counted_once(client, configured, db_session):
+    choice = _choice_id(_choose(client, str(uuid.uuid4())))
+    envelope = _session(choice=choice)
+
+    _deliver(client, envelope)
+    _deliver(client, envelope)
+
+    assert len(_support_rows(db_session)) == 1
+
+
+def test_a_choice_paid_in_two_tabs_is_one_choice_counted_once(client, configured, db_session):
+    choice = _choice_id(_choose(client, str(uuid.uuid4())))
+
+    _deliver(client, _session(choice=choice, sub="sub_first"))
+    assert _deliver(client, _session(choice=choice, sub="sub_second")).json() == {"result": "unwanted"}
+
+    assert len(_support_rows(db_session)) == 1
+
+
+def test_a_payment_whose_choice_was_stopped_before_it_landed_is_still_counted_once(client, configured, db_session):
+    """Stop pressed before Stripe's confirmation: the payment went through, at
+    its level, and is being stopped - one choice, one count."""
+    user_id = str(uuid.uuid4())
+    choice = _choice_id(_choose(client, user_id))
+    _stop(client, user_id)
+
+    assert _deliver(client, _session(choice=choice, amount=1200)).json() == {"result": "unwanted"}
+
+    assert [row.support_cents for row in _support_rows(db_session)] == [1200]
+
+
+def test_two_payments_from_links_that_named_no_choice_are_two_counts(client, configured, db_session):
+    _deliver(client, _session(sub="sub_walk_in_1", amount=12000))
+    _deliver(client, _session(sub="sub_walk_in_2", amount=12000))
+
+    assert sorted(row.support_cents for row in _support_rows(db_session)) == [12000, 12000]
+
+
+def test_a_hiker_who_stops_and_chooses_again_is_counted_at_each_choice(client, configured, db_session, t0):
+    user_id = str(uuid.uuid4())
+    _paying(client, user_id, sub="sub_one", amount=1200)
+    _stop(client, user_id)
+    _deliver(client, _subscription("customer.subscription.deleted", sub="sub_one", status="canceled"))
+
+    choice = _choice_id(_choose(client, user_id, amount_cents=6000))
+    _deliver(client, _session(choice=choice, sub="sub_two", amount=6000))
+
+    assert sorted(row.support_cents for row in _support_rows(db_session)) == [1200, 6000]
+
+
+def test_an_account_that_turned_usage_statistics_off_is_not_counted(client, configured, db_session):
+    """The account's synced "off" wins, as it does at POST /usage-events."""
+    user_id = str(uuid.uuid4())
+    _me(client, user_id)
+    make_usage_consent(db_session, db_session.get(Profile, user_id), enabled=False, linked=None)
+    db_session.commit()
+
+    _paying(client, user_id)
+
+    assert _support_rows(db_session) == []
+    assert db_session.query(SupportChoice).filter(SupportChoice.status == SupportStatus.active).count() == 1
+
+
+def test_a_move_between_providers_is_not_counted_as_a_new_choice(client, configured, monkeypatch, db_session):
+    old = OldPay()
+    monkeypatch.setitem(PROVIDERS, old.key, old)
+    user_id = str(uuid.uuid4())
+    _me(client, user_id)
+    db_session.add(
+        SupportChoice(
+            profile_id=user_id,
+            email="hiker@example.com",
+            provider="oldpay",
+            provider_ref="old-1",
+            amount_cents=6000,
+            status=SupportStatus.active,
+            started_at=utc_now() - timedelta(days=200),
+        )
+    )
+    db_session.commit()
+    choice = _choice_id(_choose(client, user_id))
+
+    _deliver(client, _session(choice=choice))
+
+    assert _support_rows(db_session) == []
 
 
 # ---- Unsubscribing ----

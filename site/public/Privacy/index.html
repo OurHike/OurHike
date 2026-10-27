@@ -355,8 +355,12 @@
       <h3>Supporting OurHike</h3>
       <p>
         OurHike asks every hiker, once a year, to choose what they give:
-        $0, $12, $60 or $120 a year. <strong>A $0 answer stays on your phone</strong>
-        and we never see it. A paid choice needs an account, and then we
+        $0, $12, $60 or $120 a year. <strong>A $0 answer stays on your phone</strong>,
+        and we never learn that it was yours. While usage counts are on, your
+        phone also sends one count saying that somebody chose $0, with the
+        date, the kind of phone and the app version and nothing else — no
+        account, no position (see <a href="#usage-analytics">Usage
+        analytics</a>). A paid choice needs an account, and then we
         keep:
       </p>
       <ul>
@@ -385,6 +389,12 @@
         <li>
           when you were told that a change of payment provider means one
           email from us;
+        </li>
+        <li>
+          one count that somebody chose that amount, made when the payment
+          provider confirms the first payment, with its date and nothing
+          else, kept with the usage counts below for six months. It is not
+          made if your account has usage counts turned off;
         </li>
         <li>
           whether you turned off emails about your support. Every such email
@@ -424,11 +434,12 @@
 
       <h3 id="usage-analytics">Usage analytics</h3>
       <p>
-        OurHike counts six things, so we can see what is used and what
+        OurHike counts seven things, so we can see what is used and what
         helps: opening the app for the first time, signing in,
-        making a hike plan, finishing one, viewing the map, and each visit,
-        with how many screens it showed and roughly how long it lasted. These
-        counts are on unless you turn them off.
+        making a hike plan, finishing one, viewing the map, each visit,
+        with how many screens it showed and roughly how long it lasted, and
+        the amount chosen when you are asked what you would like to give.
+        These counts are on unless you turn them off.
       </p>
       <ul>
         <li>
@@ -470,6 +481,14 @@
           identifies your account goes with them — only the yes-or-no answer
           above, that some account is signed in — but positions are still
           sent while location is on.
+        </li>
+        <li>
+          <strong>A choice of what to give is counted by its amount
+          alone</strong>: it carries no position, no club and none of the
+          yes-or-no answers above, and it is never linked to your account,
+          even if you said yes. Your phone counts $0 when you choose it; our
+          server counts a paid amount when the payment provider confirms the
+          first payment, because only then is it known to have gone through.
         </li>
         <li>
           Counts and positions are kept for the six whole months after the

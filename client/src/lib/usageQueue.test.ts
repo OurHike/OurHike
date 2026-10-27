@@ -101,6 +101,22 @@ describe('withRows', () => {
     expect(after.rows.map((queued) => queued.row.id)).not.toContain('plain-0')
   })
 
+  it('keeps a $0 support answer when the cap drops a row, because no later row counts it again', () => {
+    const answer: QueuedUsageRow = {
+      row: { ...row('support'), event: 'support_chosen', support_cents: 0 },
+      linkedTo: null,
+    }
+    const full = withRows(EMPTY_USAGE, [
+      answer,
+      ...Array.from({ length: MAX_QUEUED - 1 }, (_, i) => queued(`plain-${i}`)),
+    ])
+
+    const after = withRows(full, [queued('newest')])
+
+    expect(after.rows[0].row.id).toBe('support')
+    expect(after.rows.map((queued) => queued.row.id)).not.toContain('plain-0')
+  })
+
   it('takes no rows while "Share usage statistics" is off in the shared store', () => {
     const off = { ...EMPTY_USAGE, off: true }
 

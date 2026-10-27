@@ -24,6 +24,7 @@ import { accessToken, apiFetch, API_CONFIGURED } from './api'
 import {
   FRESH_HEARTBEAT,
   type Heartbeat,
+  LEVEL_ONLY_EVENTS,
   normaliseHeartbeat,
   type QueuedUsageRow,
   type UsageDetails,
@@ -137,9 +138,14 @@ export async function updateUsage(
   return written
 }
 
-/** Whether a row is the one that counts its phone in some period or club. */
-function countsAPhone(row: UsageRow): boolean {
+/**
+ * Whether a row is the one that counts something no later row repeats: its
+ * phone in some period or club, or a support answer, which is counted by its
+ * one row and no other (`LEVEL_ONLY_EVENTS`).
+ */
+function countsAlone(row: UsageRow): boolean {
   return (
+    LEVEL_ONLY_EVENTS.includes(row.event) ||
     row.week_first ||
     row.month_first ||
     row.ever_first ||
@@ -169,7 +175,7 @@ export function withRows(store: UsageStore, rows: readonly QueuedUsageRow[]): Us
   const keep = all.map(() => true)
   for (const pass of [false, true]) {
     for (let index = 0; index < all.length && excess > 0; index += 1) {
-      if (keep[index] && countsAPhone(all[index].row) === pass) {
+      if (keep[index] && countsAlone(all[index].row) === pass) {
         keep[index] = false
         excess -= 1
       }

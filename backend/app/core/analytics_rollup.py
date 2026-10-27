@@ -77,7 +77,7 @@ CLOSE_AFTER_DAYS = 14
 
 # Bumped whenever a metric below changes what it counts. A closed month keeps
 # the version it was closed under.
-DEFINITION_VERSION = 1
+DEFINITION_VERSION = 2
 
 ALL = "*"
 
@@ -198,6 +198,31 @@ _CLUB_DEVICES = text(
     """
 )
 
+# Support choices by level (#1876 on #1902): how many answers a month had at
+# each level, $0 included - "track once for each dollar level, even 0" (the
+# maintainer, 2026-10-27). One row per choice already (a phone's $0 when it
+# was kept, the server's paid row when Stripe confirmed it, app/core/
+# analytics_support.py), so this is a plain count. On the all-clubs,
+# all-platforms slice only: the rows carry no club, and a paid row's platform
+# says where the money was taken, not which app the hiker used.
+_SUPPORT_LEVELS = text(
+    """
+    select support_cents, count(*) as choices
+    from analytics_events
+    where event = 'support_chosen' and support_cents is not null
+      and local_date >= :start and local_date < :end
+    group by support_cents
+    """
+)
+
+SUPPORT_METRIC = "support_chosen_"
+
+
+def support_metric(cents: int) -> str:
+    """`support_chosen_6000`: the month's choices at $60 a year."""
+    return f"{SUPPORT_METRIC}{int(cents)}"
+
+
 # Hikers counted new in a month: by `new_month`, which the User table sets
 # once and never moves (app/models/analytics.py), not by `first_seen_on`,
 # which a late row moves earlier - out of an open month and into a closed
@@ -217,6 +242,8 @@ _MONTH_ROWS = text("select count(*) from analytics_events where local_date >= :s
 # is ignored, so reformatting is free.
 DEFINITION_FINGERPRINTS = {
     1: "9ebd66799cb5fe2b9f62265d661d81642385b1d92b7e9bd07468b392e470d647",
+    # 2: support choices by level (#1876), and `events` now counts them too.
+    2: "57006b29778413b90957c1fbd195e8067ddc34b622dccf1f7a4b40f75e6a7ed8",
 }
 
 
@@ -232,7 +259,7 @@ def definition_fingerprint() -> str:
     # Here, not at the top: the router imports this module.
     from app.routers.analytics import _UPSERT_USER
 
-    queries = (_SLICE_METRICS, _CLUB_METRICS, _CLUB_DEVICES, _HIKERS_NEW, _MONTH_ROWS, _UPSERT_USER)
+    queries = (_SLICE_METRICS, _CLUB_METRICS, _CLUB_DEVICES, _HIKERS_NEW, _MONTH_ROWS, _UPSERT_USER, _SUPPORT_LEVELS)
     normalised = "\n".join(" ".join(str(query).split()) for query in queries)
     normalised += f"\nCLOSE_AFTER_DAYS={CLOSE_AFTER_DAYS}"
     return hashlib.sha256(normalised.encode()).hexdigest()
@@ -255,6 +282,8 @@ def compute_month(db: Session, month: date) -> list[AnalyticsMonthly]:
         platform = values["platform"] or ALL
         if platform == ALL:
             values["hikers_new"] = db.execute(_HIKERS_NEW, bounds).scalar_one()
+            for level in db.execute(_SUPPORT_LEVELS, bounds).mappings():
+                values[support_metric(level["support_cents"])] = level["choices"]
         rows.extend(_metric_rows(month, ALL, platform, values))
 
     by_club: dict[str, dict] = {}

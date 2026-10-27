@@ -1,10 +1,11 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import { renderHook, waitFor } from '@testing-library/react'
+import { cleanup, renderHook, waitFor } from '@testing-library/react'
 import { get, set, update } from 'idb-keyval'
 
 import { accountTag } from './accountTag'
 import { apiFetch } from './api'
 import { noteSignInStarted } from './signInMarker'
+import { writeZeroChoice } from './support'
 import type { TrailIndex } from './trailPosition'
 import type { ClubRunLike } from './usageEvents'
 import { EMPTY_USAGE, readUsage, type UsageStore } from './usageQueue'
@@ -163,6 +164,90 @@ describe('the map coming into view', () => {
 
     await waitFor(async () => expect(await events()).toEqual(['map_screen_viewed']))
     expect((await readUsage()).rows[0].row.clubs).toEqual({ NYNJTC: 1 })
+  })
+})
+
+describe('a $0 support answer', () => {
+  // "Track once for each dollar level, even 0" - the $0 is counted when it is
+  // kept, carrying the level and nothing else (the maintainer, poll
+  // 2026-10-27). Paid levels are the server's, when Stripe confirms them.
+  const located = {
+    gps: {
+      status: 'located',
+      at: { lat: 41.3, lon: -74.1 },
+      accuracyM: 8,
+      fixedAt: new Date(),
+    },
+    trailIndex: {} as TrailIndex,
+  } as Partial<UsageMeasurementInput>
+
+  // Every hook an earlier test rendered is still mounted in this file, each
+  // listening for the $0 - unmounted here so one answer is heard by one hook,
+  // as it is in the app.
+  beforeEach(() => cleanup())
+
+  async function initialised(overrides: Partial<UsageMeasurementInput> = {}) {
+    const hook = renderHook(() =>
+      useUsageMeasurement(
+        input({
+          linked: true,
+          accountEmail: 'alice@example.org',
+          ...located,
+          ...overrides,
+        }),
+      ),
+    )
+    await waitFor(() =>
+      expect((stored as UsageStore | undefined)?.initialized).toBe(true),
+    )
+    return hook
+  }
+
+  it('queues one support_chosen row at $0 when writeZeroChoice runs, carrying nothing about the hiker', async () => {
+    await initialised()
+
+    writeZeroChoice(new Date())
+
+    await waitFor(async () => expect(await events()).toEqual(['support_chosen']))
+    const [queued] = (await readUsage()).rows
+    expect(queued.linkedTo).toBeNull()
+    expect(queued.row).toMatchObject({
+      support_cents: 0,
+      signed_in: false,
+      week_first: false,
+      month_first: false,
+      ever_first: false,
+      kind_month_first: false,
+      month_returning: false,
+      club_firsts: [],
+    })
+    expect(queued.row.fix).toBeUndefined()
+    expect(queued.row.clubs).toBeUndefined()
+  })
+
+  it('moves no heartbeat, so the next row is still the phone’s first of the month', async () => {
+    const { result } = await initialised()
+    writeZeroChoice(new Date())
+    await waitFor(async () => expect(await events()).toEqual(['support_chosen']))
+
+    result.current.planMade({ miles: 5 })
+
+    await waitFor(async () =>
+      expect(await events()).toEqual(['support_chosen', 'hike_plan_made']),
+    )
+    expect((await readUsage()).rows[1].row).toMatchObject({
+      week_first: true,
+      month_first: true,
+    })
+  })
+
+  it('records nothing when the $0 is kept while sharing is off', async () => {
+    renderHook(() => useUsageMeasurement(input({ enabled: false })))
+
+    writeZeroChoice(new Date())
+
+    await new Promise((resolve) => setTimeout(resolve, 20))
+    expect(await events()).toEqual([])
   })
 })
 

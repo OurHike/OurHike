@@ -76,6 +76,37 @@ PUBLIC_EMAIL_DOMAINS = frozenset(
 )
 
 
+def why_domain_proves_nothing(domain: str) -> str | None:
+    """Why an address at `domain` cannot show who runs an organization, or None.
+
+    Three doors take "a verified address at the organization's domain" as the
+    proof of who runs it, and each asked about the domain on its own or not at
+    all (#1909 - A nomination and a claim make a free webmail account the
+    codeowner of any organization name, the seat #1635 closed on POST /clubs).
+    `OrgCreate` below refused both cases. `POST /clubs/nominations` stored
+    whatever domain the hiker's website named, and `claim_org` accepted
+    whatever was stored. So this is the one rule, and all three ask it:
+
+    - **No dot.** A bare top-level domain: a website of `https://com` stored
+      `com`, which every `.com` address holds.
+    - **A public mail provider** (`PUBLIC_EMAIL_DOMAINS` above): anybody can
+      get an address there.
+
+    `domain` is the bare, lowercased hostname the callers already compare
+    addresses against. A public suffix such as `co.uk` has a dot and passes.
+    Closing that needs the Public Suffix List, a new dependency nobody has
+    taken on yet.
+    """
+    if "." not in domain:
+        return f"{domain or 'That'} is a top-level domain, not an organization's own, so every address under it would count."
+    if domain in PUBLIC_EMAIL_DOMAINS:
+        return (
+            f"{domain} is a public email provider, not an organization's own domain - "
+            "anybody can get an address there, so it cannot prove who runs a club."
+        )
+    return None
+
+
 def slugify(name: str) -> str:
     """A candidate slug for `name` - the same shape the migration backfills.
 
@@ -291,12 +322,9 @@ class OrgCreate(BaseModel):
         cleaned = value.strip().lower().removeprefix("https://").removeprefix("http://").strip("/")
         if "." not in cleaned or " " in cleaned:
             raise ValueError("give the bare domain, e.g. ramapotrails.org")
-        if cleaned in PUBLIC_EMAIL_DOMAINS:
-            raise ValueError(
-                f"{cleaned} is a public email provider, not an organization's own domain - "
-                "anybody can get an address there, so it cannot prove who runs a club. "
-                "Give the domain your organization's own website and mail run on."
-            )
+        problem = why_domain_proves_nothing(cleaned)
+        if problem:
+            raise ValueError(f"{problem} Give the domain your organization's own website and mail run on.")
         return cleaned
 
 

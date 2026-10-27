@@ -257,6 +257,35 @@ class TestSubmitting:
         response = client.post("/clubs/nominations", json=a_submission(contacts=[]), headers=auth_headers(hiker.id))
         assert response.status_code == 422
 
+    @pytest.mark.parametrize(
+        ("website", "contact"),
+        [
+            ("https://gmail.com", "mallory@gmail.com"),
+            ("https://www.outlook.com", "mallory@outlook.com"),
+            ("https://com", "a@b.com"),
+        ],
+    )
+    def test_a_website_whose_domain_proves_nothing_is_refused_and_nothing_is_stored(self, client, db_session, website, contact):
+        """#1909 - A nomination and a claim make a free webmail account the
+        codeowner of any organization name, the seat #1635 closed on POST
+        /clubs. The website's domain becomes the club's, and claiming the club
+        takes any verified address there as the proof of who runs it, so a
+        webmail provider or a bare top-level domain would make that proof
+        anybody's. Every contact here is at the domain, so the contact gate
+        alone let all three through."""
+        hiker = make_profile(db_session)
+        contacts = [{"email": contact, "source_page": "x", "proposed_by": "hiker"}]
+        response = client.post(
+            "/clubs/nominations",
+            json=a_submission(website=website, org_name="Appalachian Trail Conservancy", contacts=contacts),
+            headers=auth_headers(hiker.id),
+        )
+
+        assert response.status_code == 422
+        assert "a person has to pick this organization up" in response.json()["detail"]
+        assert db_session.query(Club).count() == 0
+        assert db_session.query(OrgNomination).count() == 0
+
     HOSTILE_ADDRESSES = [
         "javascript:alert(1)",
         "JavaScript:alert(1)",

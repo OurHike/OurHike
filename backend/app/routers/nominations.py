@@ -85,6 +85,7 @@ from app.schemas.nomination import (
     ProposalOut,
     ProposedSource,
 )
+from app.schemas.org import why_domain_proves_nothing
 
 router = APIRouter(tags=["nominations"])
 
@@ -298,6 +299,21 @@ def submit_nomination(
     2026-09-17 condition implemented rather than displayed.
     """
     domain = _domain_of(payload.website)
+
+    # A DOMAIN THAT PROVES NOTHING IS REFUSED BEFORE ANYTHING IS WRITTEN. This
+    # domain becomes the club's, and `claim_org` later takes any verified
+    # address there as the proof of who runs it. A public mail provider or a
+    # bare top-level domain makes that proof true for anybody (#1909 - A
+    # nomination and a claim make a free webmail account the codeowner of any
+    # organization name, the seat #1635 closed on POST /clubs). Such an
+    # organization waits for a person, as the paragraph below already says of
+    # one whose contacts use a personal mail provider.
+    problem = why_domain_proves_nothing(domain)
+    if problem:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail=f"{problem} So it cannot be nominated here; a person has to pick this organization up.",
+        )
 
     # ONLY PEOPLE AT THE ORGANIZATION ARE ASKED (#1635). The contacts are
     # the people who decide whether this organization's data goes on the map,

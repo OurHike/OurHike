@@ -49,6 +49,7 @@ from app.schemas.org import (
     OrgOut,
     OrgSettingsUpdate,
     ScoreboardOut,
+    why_domain_proves_nothing,
 )
 
 router = APIRouter(prefix="/clubs", tags=["clubs"])
@@ -589,6 +590,18 @@ def claim_org(
                 "We do not hold a domain for this organization yet, so there is nothing to check "
                 "your address against. Nominate it instead and a person will pick it up."
             ),
+        )
+    # Before the address check, and so before the freeze below. A stored
+    # domain that proves nothing makes "an address at the org's domain" true
+    # for anybody (#1909 - A nomination and a claim make a free webmail account
+    # the codeowner of any organization name, the seat #1635 closed on
+    # POST /clubs). Checked here as well as where nominations write the
+    # domain, because a row written before that door refused one still has it.
+    problem = why_domain_proves_nothing(club.domain)
+    if problem:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail=f"{problem} An address there cannot show you run this organization, so a person has to pick it up.",
         )
     if not _somebody_holds_the_domain(club.domain, [email]):
         raise HTTPException(

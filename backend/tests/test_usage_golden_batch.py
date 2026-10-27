@@ -25,6 +25,7 @@ from app.core.analytics_rollup import month_start
 from app.core.analytics_seal import month_label, month_public_key, new_secret
 from app.models.analytics import AnalyticsEvent, AnalyticsSealKey
 from app.schemas.analytics import UsageEventIn
+from tests.factories import make_rollup_heartbeat
 
 GOLDEN = Path(__file__).resolve().parents[2] / "client" / "src" / "lib" / "usageBatch.golden.json"
 
@@ -39,11 +40,13 @@ def _golden() -> dict:
 
 
 @pytest.fixture()
-def golden_day(monkeypatch):
+def golden_day(db_session, monkeypatch):
     """Today, for the server, is the day after the golden rows were dated -
-    the one field the file cannot keep current is the date."""
+    the one field the file cannot keep current is the date - and the nightly
+    rollup ran that morning, without which the route collects nothing."""
     day = date.fromisoformat(_golden()["events"][0]["local_date"])
     monkeypatch.setattr("app.routers.analytics.utc_now", lambda: datetime.combine(day + timedelta(days=1), time(12)))
+    make_rollup_heartbeat(db_session, now=datetime.combine(day + timedelta(days=1), time(10, 17)))
     return day
 
 

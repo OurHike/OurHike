@@ -301,6 +301,22 @@ class Settings(BaseSettings):
     analytics_daily_row_budget: int = 50_000
     analytics_storage_ceiling_mb: int = 250
 
+    # NOTHING IS COLLECTED THAT NOTHING WOULD DELETE. Six-month retention is a
+    # promise the nightly rollup keeps (app/core/analytics_rollup.py deletes a
+    # month's raw rows), so `POST /usage-events` reads that job's heartbeat -
+    # the newest `analytics_months.computed_at`, which every run refreshes,
+    # rows or none - and once it is older than this many days, counts each
+    # batch as `paused` and answers 503. The phone keeps the rows, so nothing
+    # is lost while the job is mended; what stops is collection with no delete
+    # behind it.
+    #
+    # Reasoned from the schedule: the job runs once a day
+    # (.github/workflows/analytics-rollup.yml), so three days from the last
+    # good run is two missed nights and a third run that is late, or three
+    # missed nights. @unvalidated as a trade: how late GitHub actually starts
+    # this cron, and how long a broken run goes unnoticed, would settle it.
+    analytics_rollup_stale_days: int = 3
+
     @property
     def mail_allowed(self) -> tuple[str, ...]:
         """The suffix list as `app/core/mail.py` wants it."""

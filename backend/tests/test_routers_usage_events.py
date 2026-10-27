@@ -14,6 +14,8 @@ if it is broken:
     resends it.
   - **It stores no more than its bounds allow** (app/config.py), and a batch
     past them is turned away whole with a 503 the phone answers by keeping it.
+  - **It collects nothing while the six-month delete is not running** - the
+    same 503, read from the nightly rollup's heartbeat.
 """
 
 import uuid
@@ -28,8 +30,8 @@ from app.core import analytics_quality as quality
 from app.core.analytics_rollup import add_months, month_start, retention_start, run
 from app.core.analytics_seal import month_label, month_private_key, month_public_key, new_secret, open_sealed, user_key
 from app.core.time import utc_now
-from app.models.analytics import AnalyticsEvent, AnalyticsIntake, AnalyticsSealKey, AnalyticsUser
-from tests.factories import make_profile
+from app.models.analytics import AnalyticsEvent, AnalyticsIntake, AnalyticsMonth, AnalyticsSealKey, AnalyticsUser
+from tests.factories import make_profile, make_rollup_heartbeat
 from tests.tokens import auth_headers
 
 SERVER_SECRET = "test-only-user-key-secret"
@@ -38,6 +40,13 @@ SERVER_SECRET = "test-only-user-key-secret"
 @pytest.fixture(autouse=True)
 def _user_key_secret(monkeypatch):
     monkeypatch.setattr(settings, "analytics_user_key_secret", SERVER_SECRET)
+
+
+@pytest.fixture(autouse=True)
+def _rollup_has_run(db_session):
+    """The route collects nothing while the six-month delete is not running;
+    every test but the ones about that needs it to look alive."""
+    make_rollup_heartbeat(db_session)
 
 
 @pytest.fixture()
@@ -345,15 +354,55 @@ def test_a_table_past_its_storage_ceiling_turns_every_batch_away(client, db_sess
     assert _intake(db_session) == {("", "over_budget"): 1}
 
 
-def test_a_turned_away_batch_is_told_nothing_about_which_bound_it_met(client, today, monkeypatch):
+def test_with_no_rollup_heartbeat_at_all_every_batch_is_paused(client, db_session, today):
+    """Nothing is collected that nothing would delete at six months."""
+    db_session.query(AnalyticsMonth).delete()
+    db_session.commit()
+
+    response = _post(client, [_event(today), _event(today)])
+
+    assert response.status_code == 503 and response.headers["Retry-After"] == "3600"
+    assert db_session.query(AnalyticsEvent).count() == 0
+    assert _intake(db_session) == {("", "paused"): 2}
+
+
+def test_a_heartbeat_older_than_the_stale_days_pauses_collection(client, db_session, today):
+    stale = utc_now() - timedelta(days=settings.analytics_rollup_stale_days, minutes=1)
+    make_rollup_heartbeat(db_session, now=stale)
+
+    assert _post(client, [_event(today)]).status_code == 503
+    assert _intake(db_session) == {("", "paused"): 1}
+
+
+def test_a_heartbeat_inside_the_stale_days_lets_the_batch_in(client, db_session, today):
+    make_rollup_heartbeat(db_session, now=utc_now() - timedelta(days=settings.analytics_rollup_stale_days, minutes=-60))
+
+    assert _post(client, [_event(today)]).status_code == 202
+
+
+def test_a_batch_both_over_budget_and_paused_is_counted_once_as_over_budget(client, db_session, today, monkeypatch):
+    monkeypatch.setattr(settings, "analytics_storage_ceiling_mb", 0)
+    db_session.query(AnalyticsMonth).delete()
+    db_session.commit()
+
+    _post(client, [_event(today)])
+
+    assert _intake(db_session) == {("", "over_budget"): 1}
+
+
+def test_a_turned_away_batch_is_told_nothing_about_which_bound_it_met(client, db_session, today, monkeypatch):
     monkeypatch.setattr(settings, "analytics_storage_ceiling_mb", 0)
     by_size = _post(client, [_event(today)]).json()
     monkeypatch.setattr(settings, "analytics_storage_ceiling_mb", 250)
     monkeypatch.setattr(settings, "analytics_daily_row_budget", 0)
-
     by_count = _post(client, [_event(today)]).json()
+    monkeypatch.setattr(settings, "analytics_daily_row_budget", 50_000)
+    db_session.query(AnalyticsMonth).delete()
+    db_session.commit()
 
-    assert by_size == by_count
+    by_pause = _post(client, [_event(today)]).json()
+
+    assert by_size == by_count == by_pause
 
 
 def test_a_returning_flag_off_the_months_first_row_is_refused(client, db_session, today):

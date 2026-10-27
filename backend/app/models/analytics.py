@@ -213,10 +213,12 @@ class IntakeOutcome(str, enum.Enum):
     than a day ahead. A refused row is dropped by the phone, so these counts
     are the only trace it ever existed.
 
-    `over_budget` was turned away whole, unread, because the day's row budget
-    or the table's storage ceiling was reached (app/config.py). It is not
-    lost: the answer is a 503, and the phone keeps the rows to send later. It
-    is counted under no version, because nothing in the batch was read.
+    Two more were turned away whole, unread, and counted under no version
+    because nothing in the batch was read: `over_budget` when the day's row
+    budget or the table's storage ceiling was reached, `paused` when the
+    nightly rollup - the job that deletes rows at six months - has not run for
+    `analytics_rollup_stale_days` (app/config.py). Neither is lost: the answer
+    is a 503, and the phone keeps the rows to send later.
     """
 
     stored = "stored"
@@ -225,6 +227,7 @@ class IntakeOutcome(str, enum.Enum):
     too_old = "too_old"
     future = "future"
     over_budget = "over_budget"
+    paused = "paused"
 
 
 class AnalyticsIntake(Base):

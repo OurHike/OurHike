@@ -152,6 +152,7 @@ def upgrade() -> None:
                 "too_old",
                 "future",
                 "over_budget",
+                "paused",
                 name="intakeoutcome",
                 native_enum=False,
                 length=12,

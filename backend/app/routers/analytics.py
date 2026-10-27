@@ -36,6 +36,12 @@ a batch is counted as `over_budget` unread and answered 503 with a
 (client/src/lib/usageQueue.ts `sendUsageBatch`), so a real day that runs over
 arrives late rather than going missing.
 
+**It collects nothing that nothing would delete.** Six-month retention is
+kept by the nightly rollup (app/core/analytics_rollup.py), so when that
+job's heartbeat - the newest `analytics_months.computed_at` - is older than
+`analytics_rollup_stale_days`, every batch is counted as `paused` and turned
+away the same way, until the job runs again.
+
 **What is still NOT built: a limit per sender.** There is no IP to limit by,
 on purpose, and no account. So a flood of fake rows can still skew a day's
 counts, and can use up its budget so that real rows wait for the next day.
@@ -48,7 +54,7 @@ from __future__ import annotations
 import math
 import re
 from collections import Counter, defaultdict
-from datetime import date, timedelta
+from datetime import date, datetime, timedelta
 from typing import Any, NoReturn
 
 from fastapi import APIRouter, Depends, HTTPException, status
@@ -129,25 +135,35 @@ def normalised_shares(clubs: dict[str, float] | None) -> dict[str, float] | None
     return {club: share / total for club, share in clubs.items()}
 
 
-# Read once per batch, before anything in it is: how many rows today has
-# stored, and how large the raw table has grown.
+# Read once per batch, in one round trip, before anything in it is: how many
+# rows today has stored, how large the raw table has grown, and when the
+# nightly rollup last ran.
 _INTAKE_GATE = text(
     """
     select
       (select coalesce(sum(rows), 0) from analytics_intake
         where received_on = :today and outcome = 'stored') as stored_today,
-      pg_total_relation_size('analytics_events') as table_bytes
+      pg_total_relation_size('analytics_events') as table_bytes,
+      (select max(computed_at) from analytics_months) as rollup_ran_at
     """
 )
 
 
-def _over_budget(db: Session, today: date) -> bool:
-    """Whether today's row budget or the table's storage ceiling has been reached (app/config.py)."""
-    gate = db.execute(_INTAKE_GATE, {"today": today}).one()
-    return (
+def _gate_outcome(db: Session, now: datetime) -> IntakeOutcome | None:
+    """Why this batch must be turned away unread, or None to read it.
+
+    The budget first: it is the bound on what a stranger can cost, and it
+    holds whether or not the rollup is running.
+    """
+    gate = db.execute(_INTAKE_GATE, {"today": now.date()}).one()
+    if (
         gate.stored_today >= settings.analytics_daily_row_budget
         or gate.table_bytes >= settings.analytics_storage_ceiling_mb * 1024 * 1024
-    )
+    ):
+        return IntakeOutcome.over_budget
+    if gate.rollup_ran_at is None or gate.rollup_ran_at < now - timedelta(days=settings.analytics_rollup_stale_days):
+        return IntakeOutcome.paused
+    return None
 
 
 def _turn_away(db: Session, today: date, outcome: IntakeOutcome, rows: int) -> NoReturn:
@@ -392,9 +408,11 @@ def receive_usage_events(
     503 only when the batch was turned away whole, before a row was read -
     the one answer that tells the phone to keep it.
     """
-    today = utc_now().date()
-    if _over_budget(db, today):
-        _turn_away(db, today, IntakeOutcome.over_budget, len(payload.events))
+    now = utc_now()
+    today = now.date()
+    turned_away = _gate_outcome(db, now)
+    if turned_away is not None:
+        _turn_away(db, today, turned_away, len(payload.events))
 
     events, outcomes = _sort_rows(payload.events, today)
 

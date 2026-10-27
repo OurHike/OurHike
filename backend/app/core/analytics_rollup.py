@@ -6,7 +6,11 @@ in one transaction:
 
 1. **Recomputes every open month** from its raw rows into `analytics_monthly`,
    replacing what was there. A provisional month is a projection, not a
-   snapshot: recomputing it is how late arrivals get counted.
+   snapshot: recomputing it is how late arrivals get counted. The current
+   month is always among them, rows or none, so every run leaves a fresh
+   `computed_at` - the heartbeat `POST /usage-events` reads, and stops
+   collecting without (app/routers/analytics.py). It cannot close: today is
+   always before `closes_on` of the month it is in.
 2. **Closes each month `CLOSE_AFTER_DAYS` after it ends.** A closed month is
    never recomputed again. Rows that arrive for it afterwards are counted in
    its `events_after_close` metric and nowhere else, so a published number
@@ -291,7 +295,7 @@ def run(db: Session, *, today: date | None = None, now: datetime | None = None) 
     states = {state.month: state for state in db.query(AnalyticsMonth).all()}
     open_months = {month for month, state in states.items() if state.status == MonthStatus.provisional}
 
-    for month in sorted(set(held_months) | open_months):
+    for month in sorted(set(held_months) | open_months | {month_start(today)}):
         state = states.get(month)
         if state is not None and state.status == MonthStatus.closed:
             if state.raw_deleted_at is None:

@@ -325,6 +325,27 @@ def test_a_month_that_never_closed_is_refused_deletion(db_session, monkeypatch):
     assert db_session.query(AnalyticsEvent).count() == 1, "refused means nothing was deleted"
 
 
+def test_a_night_with_no_rows_still_leaves_a_fresh_heartbeat(db_session):
+    """POST /usage-events stops collecting when `computed_at` goes stale, so
+    a run with nothing to count must still say it ran."""
+    night = datetime(2026, 10, 20, 10, 17)
+
+    result = run(db_session, today=night.date(), now=night)
+
+    assert result.recomputed == [OCTOBER]
+    state = db_session.get(AnalyticsMonth, OCTOBER)
+    assert state.computed_at == night and state.status == MonthStatus.provisional
+
+
+def test_the_current_month_is_recomputed_beside_a_closed_one(db_session):
+    _event(db_session, date(2026, 10, 3))
+    run(db_session, today=closes_on(OCTOBER))
+
+    result = run(db_session, today=closes_on(OCTOBER) + timedelta(days=1))
+
+    assert date(2026, 11, 1) in result.recomputed and OCTOBER not in result.recomputed
+
+
 def test_every_month_records_the_definition_it_was_computed_under(db_session):
     _event(db_session, date(2026, 10, 3))
 

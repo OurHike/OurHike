@@ -1,11 +1,18 @@
 """`/preferences` endpoints - the sync target for the client-owned
 `UserPreferences` model (../../../features/IDENTITY_AND_PRIVACY.md).
+
+One preference here is more than a display setting: usage measurement's
+"Link them to my account" (#1902). Saying no, or turning measurement off,
+after having said yes unlinks what was linked - see `_forget_withdrawn_link`.
 """
+
+import logging
 
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
+from app.core.analytics_accounts import LinkedUsageUnreachable, forget_link
 from app.core.auth import get_current_user
 from app.core.orm import commit_and_refresh
 from app.core.time import utc_now
@@ -13,6 +20,8 @@ from app.db.session import get_db
 from app.models.preferences import UserPreferences
 from app.models.profile import Profile
 from app.schemas.preferences import PreferencesIn, PreferencesOut, repair_stored_background
+
+logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/preferences", tags=["preferences"])
 
@@ -58,7 +67,9 @@ def put_my_preferences(
         row = UserPreferences(profile_id=current_user.id, data=_merged(existing=None, incoming=preferences), updated_at=now)
         db.add(row)
     else:
-        row.data = _merged(existing=row.data, incoming=preferences)
+        merged = _merged(existing=row.data, incoming=preferences)
+        _forget_withdrawn_link(db, current_user.id, before=row.data, after=merged)
+        row.data = merged
         row.updated_at = now
 
     try:
@@ -72,10 +83,39 @@ def put_my_preferences(
         row = db.get(UserPreferences, current_user.id)
         if row is None:
             raise
-        row.data = _merged(existing=row.data, incoming=preferences)
+        merged = _merged(existing=row.data, incoming=preferences)
+        _forget_withdrawn_link(db, current_user.id, before=row.data, after=merged)
+        row.data = merged
         row.updated_at = now
         row = commit_and_refresh(db, row)
     return PreferencesOut(**row.data, updated_at=row.updated_at)
+
+
+def _usage_linked(data: dict | None) -> bool:
+    """Whether these preferences agree to usage being linked: a yes, with measurement on."""
+    data = data or {}
+    return data.get("measurement_linked") is True and data.get("measurement_enabled", True) is not False
+
+
+def _forget_withdrawn_link(db: Session, account_id: str, *, before: dict | None, after: dict) -> None:
+    """Unlink this account's usage when this sync takes back a yes it had stored.
+
+    Its User-table rows go and its events lose their key and their sealed
+    blob, in the same transaction as the preference itself
+    (app/core/analytics_accounts.py `forget_link` says why the blob, and the
+    exact fix inside it, go too).
+
+    With no secret configured to find them, the link cannot be forgotten -
+    but the preference is still saved, because it is what stops linking from
+    here on (app/routers/analytics.py reads it). Logged by names only, for
+    whoever restores the secret.
+    """
+    if not _usage_linked(before) or _usage_linked(after):
+        return
+    try:
+        forget_link(db, account_id)
+    except LinkedUsageUnreachable:
+        logger.warning("usage link withdrawn but not forgotten: no analytics user-key secret is configured to find the rows")
 
 
 def _merged(*, existing: dict | None, incoming: PreferencesIn) -> dict:

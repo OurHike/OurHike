@@ -18,14 +18,16 @@ what a public list excludes needs two closures, and a fixture yields one.
 """
 
 import uuid
-from datetime import date, timedelta
+from datetime import date, datetime, timedelta
 
 from app.core.time import utc_now
+from app.models.analytics import AnalyticsMonth, MonthStatus
 from app.models.closure import Closure
 from app.models.club import Club, OrgAdmin, OrgState
 from app.models.maintainer_assignment import MaintainerAssignment
 from app.models.org_registry import OrgPark, OrgSection, OrgTrail
 from app.models.org_role import OrgRole, RoleCategory
+from app.models.preferences import UserPreferences
 from app.models.profile import Profile, Role
 from app.models.work_project import WorkProject
 
@@ -174,3 +176,42 @@ def make_workday(db_session, club, **fields) -> WorkProject:
     db_session.add(project)
     db_session.commit()
     return project
+
+
+def make_usage_consent(db_session, profile, *, enabled: bool = True, linked: bool | None = True) -> UserPreferences:
+    """The two usage-measurement switches, as `profile`'s account last synced them.
+
+    `POST /usage-events` links a row only when the account's own synced
+    preferences say yes (app/routers/analytics.py), so a test about linking
+    needs this as surely as it needs the token. Only these two keys: the route
+    reads nothing else from the blob.
+    """
+    preferences = db_session.get(UserPreferences, profile.id)
+    data = {"measurement_enabled": enabled, "measurement_linked": linked}
+    if preferences is None:
+        preferences = UserPreferences(profile_id=profile.id, data=data)
+        db_session.add(preferences)
+    else:
+        preferences.data = {**preferences.data, **data}
+    db_session.commit()
+    return preferences
+
+
+def make_rollup_heartbeat(db_session, now: datetime | None = None) -> AnalyticsMonth:
+    """The nightly usage rollup, as having just run at `now`.
+
+    `POST /usage-events` turns every batch away while the rollup's newest
+    `analytics_months.computed_at` is stale (app/routers/analytics.py), because
+    retention is a promise only that job keeps. A test about anything else the
+    route does needs the job to look alive; this is that, and nothing more -
+    one provisional month, computed at `now`.
+    """
+    now = now or utc_now()
+    month = now.date().replace(day=1)
+    state = db_session.get(AnalyticsMonth, month)
+    if state is None:
+        state = AnalyticsMonth(month=month, status=MonthStatus.provisional, definition_version=1)
+        db_session.add(state)
+    state.computed_at = now
+    db_session.commit()
+    return state

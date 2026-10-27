@@ -246,6 +246,7 @@ To a non-browser agent such as `curl`, the custom domain can answer with a hidde
 The backend verifies Supabase-issued JWTs. Browsing never needs an account; this is only for contributing.
 
 **4.1** Create a project at supabase.com. Free tier covers 500 MB / 50k monthly active users, comfortably past MVP scale.
+Usage measurement (#1902) shares that 500 MB: six months of its raw rows outgrows the 250 MB it may hold somewhere past 300 phones a day (`features/EVENTING.md` §0, "Operating it"). The maintainer's choice, 2026-10-27, is a paid plan before then, with `analytics_storage_ceiling_mb` raised to match; the nightly usage checks raise `storage_near_ceiling` when it is time. #1923 — Move each closed month's unlinked usage rows out of Postgres into a Parquet file in a private R2 bucket moves that point to roughly 600-1,100 phones a day once built.
 
 **4.2** Project Settings → API. Collect:
 

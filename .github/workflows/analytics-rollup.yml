@@ -1,0 +1,238 @@
+# The nightly usage rollup (#1902, features/EVENTING.md): recompute every open
+# month into analytics_monthly, close each month 14 days after it ends, and
+# delete raw usage events older than six months - refusing to delete any month
+# that has not closed. backend/app/core/analytics_rollup.py is the whole job;
+# backend/scripts/analytics_rollup.py is the command this runs.
+#
+# Then the data-quality checks (backend/app/core/analytics_quality.py): each
+# metric against the same weekday in the weeks before, each event per session,
+# each release against the others, refused rows, and the sums every month's
+# figures must satisfy. Findings go into analytics_anomalies, which the usage
+# report reads. Production also keeps ONE tracking issue open while anything
+# is found, through .github/scripts/tracking-issue.js like every other monitor
+# here - and because issues and logs on this repository are public, the issue
+# and the log name checks, slices and days, and never a figure. A statistical
+# finding reaches the issue on its second night; a sum that does not add up,
+# at once (`public_findings` in analytics_quality.py).
+#
+# THE CHECKS RUN EVEN WHEN THE ROLLUP FAILED, and are told it did
+# (`--rollup-outcome`), which they record as a `rollup_failed` finding: the
+# rollup is the job that deletes usage rows at six months, and the route stops
+# collecting `analytics_rollup_stale_days` after it stops (backend/app/config.py).
+# The job still goes red - the failed step sees to that - and the issue says why.
+#
+# ONE JOB PER DATABASE, AND EACH SKIPS POLITELY WHEN ITS SECRET IS UNSET, the
+# shape schema-drift.yml uses: an unconfigured UA warns rather than turning the
+# Actions tab red every night, and production runs on its own.
+#
+# NO ENVIRONMENT GATE, deliberately, for schema-drift.yml's reason: a
+# scheduled run that waits for a reviewer waits forever. What makes that safe
+# is the credential, not a click - `ourhike_analytics_rollup` (EVENTING.md,
+# "The rollup's role") can read every usage column EXCEPT `sealed`, so a job
+# holding this secret cannot read a position or an account even by accident.
+#
+# A MISSED NIGHT COSTS NOTHING: every run closes every month that is due, not
+# "last month". GitHub runs schedules only from the default branch and turns
+# them off after 60 days of repository inactivity - after a quiet spell, the
+# Actions tab is where to look, and the report's data-health line shows a month
+# still provisional past its close date.
+
+name: Usage rollup
+
+on:
+  schedule:
+    # 10:17 UTC daily: after midnight in every US time zone, so the UTC date
+    # the rollup works from is the same calendar day the hikers just finished.
+    # Off the hour, and clear of the 09:15-09:50 runs, for the reason the
+    # other scheduled workflows give: GitHub queues :00 submissions together.
+    - cron: "17 10 * * *"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: analytics-rollup
+  cancel-in-progress: false
+
+jobs:
+  ua:
+    name: UA
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    # Unused by the rollup, and app/config.py cannot import without them -
+    # placeholders for the reason migrate.yml's UA job gives, which matters
+    # more on a scheduled job: one reading the real SUPABASE_* settings reads
+    # as a second keepalive (.github/tests/test_supabase_keepalive_workflow.py).
+    env:
+      SUPABASE_URL: "https://the-rollup-never-calls-this.invalid"
+      SUPABASE_ANON_KEY: "unused-by-the-rollup"
+    defaults:
+      run:
+        working-directory: backend
+    steps:
+      - name: Is there a UA database to roll up
+        id: can
+        working-directory: .
+        env:
+          CONFIGURED_DATABASE_URL: ${{ secrets.UA_ANALYTICS_DATABASE_URL }}
+        # The secret reaches bash through env, never interpolated into the
+        # script (#660).
+        run: |
+          if [ -z "$CONFIGURED_DATABASE_URL" ]; then
+            echo "::warning::No UA analytics database URL is configured, so nothing was rolled up. See features/EVENTING.md, \"The rollup's role\"."
+            echo "go=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "go=true" >> "$GITHUB_OUTPUT"
+          fi
+
+      - uses: actions/checkout@v7
+        if: steps.can.outputs.go == 'true'
+
+      - uses: actions/setup-python@v7
+        if: steps.can.outputs.go == 'true'
+        with:
+          python-version: "3.14"
+          cache: pip
+          cache-dependency-path: backend/requirements.txt
+
+      - name: Install dependencies
+        if: steps.can.outputs.go == 'true'
+        run: pip install -r requirements.txt
+
+      - name: Roll up UA
+        id: rollup
+        if: steps.can.outputs.go == 'true'
+        env:
+          DATABASE_URL: ${{ secrets.UA_ANALYTICS_DATABASE_URL }}
+        run: python scripts/analytics_rollup.py
+
+      # UA records its findings for the report and opens no issue: its traffic
+      # is people testing, and an alarm about testing is noise. `always()` for
+      # the reason in the header: a failed rollup is itself a finding.
+      - name: Check UA's numbers
+        if: always() && steps.can.outputs.go == 'true'
+        env:
+          DATABASE_URL: ${{ secrets.UA_ANALYTICS_DATABASE_URL }}
+          ROLLUP_OUTCOME: ${{ steps.rollup.outcome }}
+        run: python scripts/analytics_quality.py --rollup-outcome "$ROLLUP_OUTCOME"
+
+  production:
+    name: Production
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    # The one tracking issue below is the only write outside the database.
+    permissions:
+      contents: read
+      issues: write
+    # SUPABASE_* are unused - see the UA job. ISSUE_* name the tracking issue
+    # the last step keeps; the label is this monitor's own.
+    env:
+      SUPABASE_URL: "https://the-rollup-never-calls-this.invalid"
+      SUPABASE_ANON_KEY: "unused-by-the-rollup"
+      ISSUE_TITLE: "Usage numbers look wrong"
+      ISSUE_LABEL: usage-data-health
+    defaults:
+      run:
+        working-directory: backend
+    steps:
+      - name: Is there a production database to roll up
+        id: can
+        working-directory: .
+        env:
+          CONFIGURED_DATABASE_URL: ${{ secrets.PRODUCTION_ANALYTICS_DATABASE_URL }}
+        run: |
+          if [ -z "$CONFIGURED_DATABASE_URL" ]; then
+            echo "::warning::No production analytics database URL is configured, so nothing was rolled up. See features/EVENTING.md, \"The rollup's role\"."
+            echo "go=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "go=true" >> "$GITHUB_OUTPUT"
+          fi
+
+      - uses: actions/checkout@v7
+        if: steps.can.outputs.go == 'true'
+
+      - uses: actions/setup-python@v7
+        if: steps.can.outputs.go == 'true'
+        with:
+          python-version: "3.14"
+          cache: pip
+          cache-dependency-path: backend/requirements.txt
+
+      - name: Install dependencies
+        if: steps.can.outputs.go == 'true'
+        run: pip install -r requirements.txt
+
+      - name: Roll up production
+        id: rollup
+        if: steps.can.outputs.go == 'true'
+        env:
+          DATABASE_URL: ${{ secrets.PRODUCTION_ANALYTICS_DATABASE_URL }}
+        run: python scripts/analytics_rollup.py
+
+      # `always()` for the reason in the header: a failed rollup is itself a
+      # finding, and this is the step that records it.
+      - name: Check production's numbers
+        id: quality
+        if: always() && steps.can.outputs.go == 'true'
+        env:
+          DATABASE_URL: ${{ secrets.PRODUCTION_ANALYTICS_DATABASE_URL }}
+          ROLLUP_OUTCOME: ${{ steps.rollup.outcome }}
+        run: python scripts/analytics_quality.py --verdict quality-verdict.json --rollup-outcome "$ROLLUP_OUTCOME"
+
+      # Only when the checks ran: a run that could not look must not close an
+      # issue about something it never checked (#651's lesson). `always()` so
+      # that a failed rollup, which the checks have just recorded, still
+      # reaches the issue. The verdict holds names, slices and days - no
+      # figures - and the body is built from nothing else, so nothing a count
+      # could reveal reaches a public issue.
+      - name: Open, update, or close the tracking issue
+        if: always() && steps.can.outputs.go == 'true' && steps.quality.outcome == 'success'
+        uses: actions/github-script@v9
+        env:
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+        with:
+          script: |
+            const fs = require('fs')
+            const trackingIssue = require(`${process.env.GITHUB_WORKSPACE}/.github/scripts/tracking-issue.js`)
+            const verdict = JSON.parse(fs.readFileSync('backend/quality-verdict.json', 'utf8'))
+            const open = verdict.open ?? []
+            const keys = [...new Set(open.map(f => f.key))]
+
+            await trackingIssue({github, context, core}, {
+              label: process.env.ISSUE_LABEL,
+              title: process.env.ISSUE_TITLE,
+              checkedAt: verdict.checked_at,
+              keys,
+              healthy: open.length === 0,
+              allClear: `The nightly usage checks found nothing out of the ordinary, as of ${verdict.checked_at}. Closing.`,
+
+              render: (firstSeen, cell) => [
+                `**The nightly usage checks found ${keys.length} thing(s) that look wrong in production's numbers.**`,
+                '',
+                'Names and days only: the figures are in `analytics_anomalies` and in the usage report (`backend/scripts/usage_report.py`), because this repository is public. What each check means is `backend/app/core/analytics_quality.py`.',
+                '',
+                '| check | slice | which way | day | first seen |',
+                '|---|---|---|---|---|',
+                ...open.map(f => `| \`${cell(f.check)}\` | \`${cell(f.scope)}\` | ${cell(f.status)} | ${cell(f.day)} | ${firstSeen[f.key]} |`),
+                '',
+                `Last checked ${verdict.checked_at} · [run](${process.env.RUN_URL})`,
+                '',
+                '---',
+                '_Generated by [Claude Code](https://claude.ai/code)_',
+              ].join('\n'),
+
+              // A check that starts failing while the issue is already open is
+              // news, and a body update notifies nobody - the reason
+              // tracking-issue.js has `announce`. A key already on the issue
+              // stays silent, so a week-long fault still costs one email.
+              announce: (appeared, cell) => {
+                const fresh = [...new Map(open.filter(f => appeared.includes(f.key)).map(f => [f.key, f])).values()]
+                if (!fresh.length) return null
+                return [
+                  fresh.length === 1 ? 'One more check now looks wrong:' : `${fresh.length} more checks now look wrong:`,
+                  '',
+                  ...fresh.map(f => `- \`${cell(f.check)}\` · \`${cell(f.scope)}\` · ${cell(f.status)} · ${cell(f.day)}`),
+                ].join('\n')
+              },
+            })

@@ -24,12 +24,26 @@ const NOOP = () => {}
 beforeEach(() => {
   vi.useFakeTimers()
   vi.mocked(syncPreferences).mockReset().mockResolvedValue(null)
-  vi.mocked(pushPreferencesIfChanged).mockReset().mockResolvedValue(undefined)
+  vi.mocked(pushPreferencesIfChanged).mockReset().mockResolvedValue(null)
 })
 
 afterEach(() => {
   vi.useRealTimers()
 })
+
+/**
+ * The reconciliation is loaded behind import() since #1903 (the launch
+ * budget), once, and shared - so a call it makes lands a few promise turns
+ * after the effect or the timer that asked for it: the import on the first
+ * test, the shared promise's turns after that. Waited on, and counted, never
+ * timed.
+ */
+async function arrived(): Promise<void> {
+  await act(async () => {
+    await vi.dynamicImportSettled()
+    for (let turn = 0; turn < 5; turn += 1) await Promise.resolve()
+  })
+}
 
 function mount(preferences: UserPreferences, signedIn: boolean, onAdopt = NOOP) {
   return renderHook(
@@ -46,27 +60,31 @@ describe('pulling on sign-in', () => {
     expect(syncPreferences).not.toHaveBeenCalled()
   })
 
-  it('reconciles once when the app opens already signed in', () => {
+  it('reconciles once when the app opens already signed in', async () => {
     mount(DEFAULT_PREFERENCES, true)
+    await arrived()
 
     expect(syncPreferences).toHaveBeenCalledOnce()
   })
 
-  it('reconciles when a signed-out hiker signs in', () => {
+  it('reconciles when a signed-out hiker signs in', async () => {
     const view = mount(DEFAULT_PREFERENCES, false)
 
     view.rerender({ prefs: DEFAULT_PREFERENCES, signed: true })
+    await arrived()
 
     expect(syncPreferences).toHaveBeenCalledOnce()
   })
 
-  it('does not reconcile again because a preference changed', () => {
+  it('does not reconcile again because a preference changed', async () => {
     // The pull is a sign-in event. Re-running it per toggle would spend a
     // GET on every tap, and could pull the account's blob back over the
     // change the hiker is in the middle of making.
     const view = mount(DEFAULT_PREFERENCES, true)
+    await arrived()
 
     view.rerender({ prefs: { ...DEFAULT_PREFERENCES, theme: 'dark' }, signed: true })
+    await arrived()
 
     expect(syncPreferences).toHaveBeenCalledOnce()
   })
@@ -77,6 +95,7 @@ describe('pulling on sign-in', () => {
     const onAdopt = vi.fn()
 
     mount(DEFAULT_PREFERENCES, true, onAdopt)
+    await arrived()
     // The promise, not the timer: awaiting an observable effect rather than
     // a duration is what stops this passing on an idle machine and failing
     // in CI.
@@ -91,6 +110,7 @@ describe('pulling on sign-in', () => {
     const onAdopt = vi.fn()
 
     mount(DEFAULT_PREFERENCES, true, onAdopt)
+    await arrived()
     await act(async () => {
       await vi.mocked(syncPreferences).mock.results[0]?.value
     })
@@ -108,6 +128,7 @@ describe('pulling on sign-in', () => {
     const onAdopt = vi.fn()
 
     const view = mount(DEFAULT_PREFERENCES, true, onAdopt)
+    await arrived()
     view.unmount()
     await act(async () => {
       settle({ ...DEFAULT_PREFERENCES, theme: 'dark' })
@@ -127,7 +148,7 @@ describe('pushing on change', () => {
     expect(pushPreferencesIfChanged).not.toHaveBeenCalled()
   })
 
-  it('lets a burst of toggles settle into one push', () => {
+  it('lets a burst of toggles settle into one push', async () => {
     // The legend's category switches are tapped in runs. Four taps must not
     // be four round trips on a connection this app assumes is bad.
     const view = mount(DEFAULT_PREFERENCES, true)
@@ -138,18 +159,19 @@ describe('pushing on change', () => {
     }
     expect(pushPreferencesIfChanged).not.toHaveBeenCalled()
 
-    // Advancing the timer runs the callback synchronously, so the call has
-    // already happened by the time this line is reached - no waiting, and
-    // therefore nothing that can pass on an idle machine and fail on CI.
+    // Advancing the timer runs the callback synchronously; the call itself
+    // lands once the reconciliation's module has, which `arrived` waits on.
     act(() => vi.advanceTimersByTime(PUSH_SETTLE_MS))
+    await arrived()
     expect(pushPreferencesIfChanged).toHaveBeenCalledOnce()
   })
 
-  it('sends the values as they stand when the burst settles, not as they were', () => {
+  it('sends the values as they stand when the burst settles, not as they were', async () => {
     const view = mount(DEFAULT_PREFERENCES, true)
 
     view.rerender({ prefs: { ...DEFAULT_PREFERENCES, theme: 'dark' }, signed: true })
     act(() => vi.advanceTimersByTime(PUSH_SETTLE_MS + 1))
+    await arrived()
 
     expect(pushPreferencesIfChanged).toHaveBeenCalledWith(
       expect.objectContaining({ theme: 'dark' }),

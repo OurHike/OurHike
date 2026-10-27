@@ -15,6 +15,7 @@ from app.core.body_limit import MAX_REQUEST_BODY_BYTES, BodyLimitMiddleware
 from app.core.logs import RequestIdMiddleware, configure_logging
 from app.db.session import check_database, database_host
 from app.routers import (
+    analytics,
     app_failures,
     assist,
     closures,
@@ -156,6 +157,8 @@ app.include_router(closures.router)
 app.include_router(maintainer_assignments.router)
 app.include_router(moderation.router)
 app.include_router(app_failures.router)
+# Usage measurement (#1902, features/EVENTING.md): one write, no reads.
+app.include_router(analytics.router)
 app.include_router(field_notes.router)
 app.include_router(volunteer_hours.router)
 app.include_router(synced_trips.router)

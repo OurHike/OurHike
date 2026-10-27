@@ -224,11 +224,10 @@ refresh, published docs, and lighter phone downloads** adds a second way to prod
 files, and `publish-conditions.yml` chooses between them with one value per environment,
 `PHONE_FILES`:
 
-- **`exporters`** is everything above. Production keeps it until the cutover in **#1811 —
-  Fast follows after PR #1805's dlt → dbt re-platform: the hiker's own download choice, the
-  cutover, and what the port found in today's code**. The cutover is one line
-  (`PRODUCTION_PHONE_FILES`), and so is the rollback; a dispatch picks either with
-  `phone_files`.
+- **`exporters`** is everything above. Production ran it until the cutover of 2026-10-23,
+  **#1880 — Production still builds its notices, closures and hazard areas with the
+  exporters, so 78 organizations' notices reach UA only**. The rollback is one line
+  (`PRODUCTION_PHONE_FILES`); a dispatch picks either path for one run with `phone_files`.
 - **`dbt`** is ELT.md's hourly lane, which UA runs. Per leg: dlt reads OurHike's own rows
   through these same queries (`extract/_shared/ourhike/`), NWS, ATC, NYNJTC, OPRHP's trail
   closures and the work projects into the private raw store, one dlt pipeline per leg

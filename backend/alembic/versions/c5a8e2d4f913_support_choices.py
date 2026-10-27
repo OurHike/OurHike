@@ -1,7 +1,7 @@
 """support choices and support events
 
 Revision ID: c5a8e2d4f913
-Revises: b4d8e1f7a263
+Revises: 897b71ad5fff
 Create Date: 2026-10-23 01:00:00.000000
 
 What a hiker chose to give OurHike, paid choices only (#1876): a $0 answer
@@ -44,7 +44,7 @@ from alembic import op
 
 # revision identifiers, used by Alembic.
 revision: str = "c5a8e2d4f913"
-down_revision: Union[str, Sequence[str], None] = "b4d8e1f7a263"
+down_revision: Union[str, Sequence[str], None] = "897b71ad5fff"
 branch_labels: Union[str, Sequence[str], None] = None
 depends_on: Union[str, Sequence[str], None] = None
 

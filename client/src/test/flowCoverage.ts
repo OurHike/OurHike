@@ -698,6 +698,13 @@ export const FLOW_COVERAGE: Readonly<Record<string, FlowSurface>> = {
     flow: { status: 'covered', spec: 'e2e/settingsRooms.spec.ts' },
   },
   'screens/IdentitySetup.tsx': { step: 'F13 More', flow: { status: 'planned' } },
+  // Driven by the @backend half of e2e/identityRooms.spec.ts, which finishes
+  // an emailed-code sign-in against a stubbed Supabase: the question (#1902)
+  // follows it, and "No thanks" returns the hiker to the map signed in.
+  'screens/UsageLinkQuestion.tsx': {
+    step: 'F13 More',
+    flow: { status: 'covered', spec: 'e2e/identityRooms.spec.ts' },
+  },
   // Reachable in every build since #1572 put the provider list in code:
   // ENABLED_PROVIDERS names email, so SignInPrompt offers it and this screen
   // mounts behind that button. It was 'unit-only' while the deployed set came

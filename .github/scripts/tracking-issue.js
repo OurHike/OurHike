@@ -1,9 +1,10 @@
 // One tracking issue, opened when a monitor goes red and closed when it goes
-// green again. Seven scheduled workflows share this: check-deployment.yml,
+// green again. Eight scheduled workflows share this: check-deployment.yml,
 // check-deployed-app.yml, check-upstream-freshness.yml, smoke-published.yml,
-// check-pending-approvals.yml, check-note-anchors.yml and route-disputes.yml.
+// check-pending-approvals.yml, check-note-anchors.yml, route-disputes.yml and
+// analytics-rollup.yml.
 //
-// The last of those is the only one that calls this more than once per run:
+// One of them calls this more than once per run:
 // route-disputes.yml opens ONE ISSUE PER DATA SOURCE, because its recipient
 // is a steward rather than this repository, and each steward wants their own
 // running list. That works because the lookup is label AND title, which was

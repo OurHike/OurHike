@@ -103,13 +103,16 @@ jobs:
           # workflow and the action are in the list so a change to the gate
           # itself still proves the suite it gates.
           #
-          # The six client modules are here because three suites READ them as
+          # The eight client files are here because five suites READ them as
           # text. tests/test_preferences_contract.py,
           # tests/test_client_report_contract.py and
           # tests/test_client_response_contract.py compare the TypeScript
           # halves of UserPreferences, ReportDraft, the moderation statuses,
           # the photo cap, the closure vocabulary and every response shape
-          # against this backend's schemas and its OpenAPI document. The drift
+          # against this backend's schemas and its OpenAPI document, and
+          # tests/test_usage_registry_contract.py and
+          # tests/test_usage_golden_batch.py compare the usage events the phone
+          # sends with the ones POST /usage-events accepts. The drift
           # they exist to catch is far more likely to arrive in a client-only
           # pull request than in a backend one; scoped out, the guard would run
           # on every change except the change it is for. TESTING.md's rule, in
@@ -133,6 +136,8 @@ jobs:
             client/src/lib/outbox.ts
             client/src/lib/reportPhoto.ts
             client/src/lib/reportStatus.ts
+            client/src/lib/usageBatch.golden.json
+            client/src/lib/usageEvents.ts
             client/src/lib/userPreferences.ts
             .github/workflows/backend-tests.yml
             .github/actions/changed-paths/

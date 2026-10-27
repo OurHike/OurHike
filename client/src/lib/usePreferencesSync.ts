@@ -20,8 +20,22 @@
 // would.
 
 import { useEffect, useRef } from 'react'
-import { pushPreferencesIfChanged, syncPreferences } from './preferencesSync'
 import type { UserPreferences } from './userPreferences'
+
+// The reconciliation itself arrives behind import(), on the first sign-in a
+// launch has: nothing in it draws the first frame, and #1903's consent rules
+// made it 411 bytes the launch budget did not have (features/LAUNCH_BUDGET.md
+// §3). Imported once and shared. A chunk that never arrives syncs nothing,
+// which every caller already treats as an ordinary failed sync - and the
+// next call asks again rather than replaying the failure.
+let loading: Promise<typeof import('./preferencesSync')> | null = null
+function reconciliation(): Promise<typeof import('./preferencesSync')> {
+  loading ??= import('./preferencesSync').catch((error: unknown) => {
+    loading = null
+    throw error
+  })
+  return loading
+}
 
 /**
  * How long a burst of changes is allowed to settle before it is pushed.
@@ -74,11 +88,14 @@ export function usePreferencesSync(
     if (!signedIn) return
     let live = true
 
-    void syncPreferences(latest.current).then((adopted) => {
-      if (!live) return
-      if (adopted !== null) onAdopt(adopted)
-      settled.current?.()
-    })
+    void reconciliation()
+      .then(({ syncPreferences }) => syncPreferences(latest.current))
+      .catch(() => null)
+      .then((adopted) => {
+        if (!live) return
+        if (adopted !== null) onAdopt(adopted)
+        settled.current?.()
+      })
 
     return () => {
       live = false
@@ -94,9 +111,17 @@ export function usePreferencesSync(
     if (!signedIn) return
 
     const timer = setTimeout(() => {
-      void pushPreferencesIfChanged(latest.current).then(() => settled.current?.())
+      void reconciliation()
+        .then(({ pushPreferencesIfChanged }) => pushPreferencesIfChanged(latest.current))
+        .catch(() => null)
+        .then((adopted) => {
+          // A consent answer this device did not give, and the account holds
+          // differently, comes back with the push (lib/preferencesSync.ts).
+          if (adopted !== null) onAdopt(adopted)
+          settled.current?.()
+        })
     }, PUSH_SETTLE_MS)
 
     return () => clearTimeout(timer)
-  }, [preferences, signedIn])
+  }, [preferences, signedIn, onAdopt])
 }

@@ -475,7 +475,7 @@ It mattered because email/password was a real sign-in path here — `VITE_AUTH_P
 
 ### The restore drill
 
-Followed once, 2026-10-27, against a local rehearsal: Postgres 16.15 built to Alembic head with row-level security on, a stand-in `auth` schema, and age 1.1.1. Not yet followed against a real backup. Use a Postgres 17 client: production's dumps are written by `pg_dump` 17, and an older `pg_restore` may refuse the file.
+Followed on 2026-10-27 against a local rehearsal: a Postgres 16.15 database built to Alembic head with row-level security on, a stand-in `auth` schema, and age 1.1.1. It was followed twice: once with Postgres 16's own tools, and once with Postgres 17's from the `postgres:17` image the job uses, restoring into a Postgres 17 database. Not yet followed against a real backup. Use a Postgres 17 client: production's dumps are written by `pg_dump` 17, and an older `pg_restore` may refuse the file.
 
 ```
 age --decrypt --identity ourhike-backups.key --output backup.tar ourhike-<stamp>.tar.age

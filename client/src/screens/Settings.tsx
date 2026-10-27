@@ -960,7 +960,8 @@ export function SafetyPrivacySettings({
           square, 8 to 11 km across in this country - said without a number,
           since a number here would need lib/units.ts to honour miles
           (corrected after #1903's review: the square was in the clear while
-          the note said nothing could be read), "kept six months" is
+          the note said nothing could be read; the corrected wording was
+          approved in the maintainer's poll of 2026-10-27), "kept six months" is
           app/core/analytics_rollup.py, and the running total going with a
           no or a deletion is routers/preferences.py and
           core/account_deletion.py. */}

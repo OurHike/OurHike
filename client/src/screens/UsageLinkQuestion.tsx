@@ -20,8 +20,9 @@
 // TWO SENTENCES HERE WERE CORRECTED after #1903's review found them stronger
 // than the code: "sealed so our servers cannot read it" (the server keeps the
 // 0.1-degree square in the clear, beside the code for a yes) and "everything
-// is deleted after six months" (the running total is not). The maintainer has
-// the corrected wording to approve.
+// is deleted after six months" (the running total is not). The maintainer
+// approved the corrected wording in a poll on 2026-10-27, against before and
+// after frames of this screen and Safety & privacy.
 //
 // Either answer leads back to where the hiker was. Nothing is asked again:
 // the answer is `measurement_linked`, synced, so a second phone does not ask.

@@ -7,11 +7,13 @@ text of a database error, which ends in the values its statement was bound to.
 
 import importlib.util
 from contextlib import contextmanager
-from datetime import date
+from datetime import date, timedelta
 from pathlib import Path
 
 import pytest
 from sqlalchemy import text
+
+from app.core.time import utc_now
 
 SCRIPT = Path(__file__).resolve().parents[1] / "scripts" / "analytics_rollup.py"
 # Distinctive enough that finding it anywhere in the output means it leaked.
@@ -36,6 +38,19 @@ def test_a_run_names_the_months_it_touched(script, capsys):
     assert script.main(["--today", "2026-10-20"]) == 0
 
     assert "Recomputed:               2026-10" in capsys.readouterr().out
+
+
+def test_a_today_after_the_real_utc_date_is_refused_before_anything_runs(script, monkeypatch, capsys):
+    """A future date closes months early and deletes rows retention still owes."""
+
+    def must_not_run(db, **_):
+        raise AssertionError("the rollup ran")
+
+    monkeypatch.setattr(script, "run", must_not_run)
+    tomorrow = utc_now().date() + timedelta(days=1)
+
+    assert script.main(["--today", tomorrow.isoformat()]) == 2
+    assert "Refused" in capsys.readouterr().err
 
 
 def test_a_run_that_fails_is_named_by_its_class_and_its_values_are_not_printed(script, monkeypatch, capsys):

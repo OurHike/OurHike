@@ -339,6 +339,13 @@ class AnalyticsUser(Base):
 
     user_key = Column(String(32), primary_key=True)
     first_seen_on = Column(Date, nullable=False)
+    # The month this hiker counts as new in (`hikers_new`, app/core/
+    # analytics_rollup.py): the month of the earliest row in the batch that
+    # created this row, and never changed after. `first_seen_on` cannot do
+    # that job, because a late row - a second phone, or one that was offline -
+    # moves it earlier, and a hiker counted new in an open month would move
+    # into a closed one and be new in neither.
+    new_month = Column(Date, nullable=False)
     last_seen_on = Column(Date, nullable=False)
     first_platform = Column(Enum(UsagePlatform, native_enum=False, length=8), nullable=False)
     last_platform = Column(Enum(UsagePlatform, native_enum=False, length=8), nullable=False)
@@ -354,7 +361,10 @@ class AnalyticsUser(Base):
     sessions = Column(Integer, nullable=False, default=0)
     pageviews = Column(Integer, nullable=False, default=0)
     active_months = Column(ARRAY(Integer), nullable=False, default=list)
-    updated_at = Column(DateTime, nullable=False, default=utc_now)
+    # The UTC day of the last batch that changed this row. A day, not a time,
+    # for `analytics_events.received_on`'s reason: the time of an upload is
+    # when a hiker found signal.
+    updated_on = Column(Date, nullable=False, default=lambda: utc_now().date())
 
 
 class AnalyticsSealKey(Base):

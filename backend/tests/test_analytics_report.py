@@ -161,6 +161,7 @@ def test_cohorts_hide_a_cohort_smaller_than_the_floor(db_session):
             AnalyticsUser(
                 user_key=f"{index:032d}",
                 first_seen_on=date(2026, 9, 2),
+                new_month=date(2026, 9, 1),
                 last_seen_on=date(2026, 10, 2),
                 first_platform="ios",
                 last_platform="ios",

@@ -2,7 +2,7 @@
 
 Run once a night by .github/workflows/analytics-rollup.yml
 (`scripts/analytics_rollup.py`). Each run does three things, in this order,
-in one transaction:
+in one transaction, and never beside another run (`_ONE_RUN_AT_A_TIME`):
 
 1. **Recomputes every open month** from its raw rows into `analytics_monthly`,
    replacing what was there. A provisional month is a projection, not a
@@ -36,6 +36,10 @@ WHY A MONTH-END SNAPSHOT IS HARDER HERE THAN IT LOOKS, and where each answer is:
 - Which midnight -> the phone's own calendar day (`local_date`).
 - A run that did not happen -> every run closes every month that is due, not
   "last month", so a week of missed runs is caught up by the next one.
+- Two runs at once (a dispatch beside the schedule) -> an advisory lock, so
+  the second reads what the first committed rather than redoing its close.
+- A hiker's first month moving after it closed -> `hikers_new` counts the
+  User table's `new_month`, set once, not `first_seen_on`, which late rows move.
 - A definition that changes -> `DEFINITION_VERSION` on every month, so a
   number is never restated under a definition it was not computed with.
 
@@ -194,25 +198,43 @@ _CLUB_DEVICES = text(
     """
 )
 
-_HIKERS_NEW = text("select count(*) from analytics_users where first_seen_on >= :start and first_seen_on < :end")
+# Hikers counted new in a month: by `new_month`, which the User table sets
+# once and never moves (app/models/analytics.py), not by `first_seen_on`,
+# which a late row moves earlier - out of an open month and into a closed
+# one, so the hiker was new in neither.
+_HIKERS_NEW = text("select count(*) from analytics_users where new_month = :start")
 
 _MONTH_ROWS = text("select count(*) from analytics_events where local_date >= :start and local_date < :end")
 
-# What every stored metric means is the SQL above. Its fingerprint is
-# recorded per DEFINITION_VERSION, and tests/test_analytics_definitions.py
-# recomputes it: SQL that changes without this ledger changing fails there,
-# with the question it is asking - did what a metric counts change? If it
-# did, bump DEFINITION_VERSION and add a line; if only the wording changed,
-# replace the current line. Whitespace is ignored, so reformatting is free.
+# What every stored metric means is the SQL above, the close window that
+# decides which rows a month froze with, and the User-table upsert that
+# `hikers_new` and the milestones come from (app/routers/analytics.py
+# `_UPSERT_USER`). Their fingerprint is recorded per DEFINITION_VERSION, and
+# tests/test_analytics_definitions.py recomputes it: a change to any of them
+# without this ledger changing fails there, with the question it is asking -
+# did what a metric counts change? If it did, bump DEFINITION_VERSION and add
+# a line; if only the wording changed, replace the current line. Whitespace
+# is ignored, so reformatting is free.
 DEFINITION_FINGERPRINTS = {
-    1: "26824331cb73eb4a84a5e28dd090f10e4acf585ca567e58e4ddb262f669607dc",
+    1: "9ebd66799cb5fe2b9f62265d661d81642385b1d92b7e9bd07468b392e470d647",
 }
 
 
 def definition_fingerprint() -> str:
-    """sha256 of every metric query, whitespace collapsed."""
-    queries = (_SLICE_METRICS, _CLUB_METRICS, _CLUB_DEVICES, _HIKERS_NEW)
+    """sha256 of every metric query, `CLOSE_AFTER_DAYS` and the User-table upsert, whitespace collapsed.
+
+    NOT COVERED: `compute_month`'s Python - which slice gets `hikers_new`,
+    how club rows merge. Hashing source text would change with every comment
+    and reformat, and a check that fails on wording gets its hash updated by
+    reflex, which is the failure it exists to prevent. Its behaviour is
+    pinned by tests/test_analytics_rollup.py instead.
+    """
+    # Here, not at the top: the router imports this module.
+    from app.routers.analytics import _UPSERT_USER
+
+    queries = (_SLICE_METRICS, _CLUB_METRICS, _CLUB_DEVICES, _HIKERS_NEW, _MONTH_ROWS, _UPSERT_USER)
     normalised = "\n".join(" ".join(str(query).split()) for query in queries)
+    normalised += f"\nCLOSE_AFTER_DAYS={CLOSE_AFTER_DAYS}"
     return hashlib.sha256(normalised.encode()).hexdigest()
 
 
@@ -282,17 +304,36 @@ def _count_late(db: Session, state: AnalyticsMonth) -> None:
     db.add(AnalyticsMonthly(month=month, metric="events_after_close", club=ALL, platform=ALL, value=float(late)))
 
 
+# One run at a time. Without it, a manual dispatch beside the schedule could
+# read a month as open, wait while the other run closed it, then recompute it
+# from rows that arrived since and close it again under a different number -
+# a published figure moving under its reader (reproduced in
+# tests/test_analytics_rollup.py). Held by the transaction, so the commit or
+# the rollback releases it, and every statement the second run makes after
+# it reads what the first committed. Named the way app/core/assist.py names
+# its own, so the two cannot share a key.
+#
+# Not REPEATABLE READ as well, though one snapshot per run would be
+# tidier: Postgres takes that snapshot at the transaction's first statement,
+# which is this lock - before the wait - so the second run would act on the
+# months as they were before the first one closed them.
+_ONE_RUN_AT_A_TIME = text("select pg_advisory_xact_lock(hashtext('analytics-rollup'))")
+
+
 def run(db: Session, *, today: date | None = None, now: datetime | None = None) -> RollupResult:
     """One night's work. Commits once at the end, or not at all."""
     now = now or utc_now()
     today = today or now.date()
     result = RollupResult()
 
+    db.execute(_ONE_RUN_AT_A_TIME)
     held_months = [
         row[0]
         for row in db.execute(text("select distinct date_trunc('month', local_date)::date from analytics_events order by 1"))
     ]
-    states = {state.month: state for state in db.query(AnalyticsMonth).all()}
+    # `populate_existing`: a session that loaded these rows before the lock
+    # would otherwise hand back its own copies, as they were before the wait.
+    states = {state.month: state for state in db.query(AnalyticsMonth).populate_existing().all()}
     open_months = {month for month, state in states.items() if state.status == MonthStatus.provisional}
 
     for month in sorted(set(held_months) | open_months | {month_start(today)}):

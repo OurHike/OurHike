@@ -6,10 +6,12 @@ close, plans split across clubs by their miles, distinct counts that do not
 add, and a run that happens twice.
 """
 
+import threading
 import uuid
 from datetime import date, datetime, time, timedelta
 
 import pytest
+from sqlalchemy.orm import sessionmaker
 
 from app.core import analytics_rollup
 from app.core.analytics_rollup import ALL, add_months, closes_on, retention_start, run
@@ -169,25 +171,27 @@ def test_each_platform_gets_its_own_slice_and_clubs_are_never_crossed_with_platf
     assert crossed == 0
 
 
-def test_new_hikers_who_said_yes_come_from_the_user_tables_first_seen(db_session):
+def _hiker(key: str, *, first_seen_on: date, new_month: date, active_months: list[int]) -> AnalyticsUser:
+    return AnalyticsUser(
+        user_key=key * 32,
+        first_seen_on=first_seen_on,
+        new_month=new_month,
+        last_seen_on=date(2026, 10, 2),
+        first_platform="ios",
+        last_platform="ios",
+        active_months=active_months,
+    )
+
+
+def test_new_hikers_who_said_yes_are_counted_in_the_month_they_were_first_new(db_session):
+    """By `new_month`, set once. Hiker c's first_seen_on moved into September
+    when a second phone's late row arrived, and c is still October's new
+    hiker - counted by first_seen_on, c was new in neither month."""
     db_session.add_all(
         [
-            AnalyticsUser(
-                user_key="a" * 32,
-                first_seen_on=date(2026, 10, 2),
-                last_seen_on=date(2026, 10, 2),
-                first_platform="ios",
-                last_platform="ios",
-                active_months=[202610],
-            ),
-            AnalyticsUser(
-                user_key="b" * 32,
-                first_seen_on=date(2026, 9, 2),
-                last_seen_on=date(2026, 10, 2),
-                first_platform="ios",
-                last_platform="ios",
-                active_months=[202609, 202610],
-            ),
+            _hiker("a", first_seen_on=date(2026, 10, 2), new_month=OCTOBER, active_months=[202610]),
+            _hiker("b", first_seen_on=date(2026, 9, 2), new_month=date(2026, 9, 1), active_months=[202609, 202610]),
+            _hiker("c", first_seen_on=date(2026, 9, 20), new_month=OCTOBER, active_months=[202609, 202610]),
         ]
     )
     db_session.commit()
@@ -195,7 +199,7 @@ def test_new_hikers_who_said_yes_come_from_the_user_tables_first_seen(db_session
 
     run(db_session, today=date(2026, 10, 20))
 
-    assert _value(db_session, OCTOBER, "hikers_new") == 1
+    assert _value(db_session, OCTOBER, "hikers_new") == 2
 
 
 # --- provisional, then closed ---------------------------------------------------
@@ -256,6 +260,72 @@ def test_a_run_that_missed_weeks_closes_every_month_that_is_due(db_session):
 
     assert _status(db_session, date(2026, 8, 1)) == MonthStatus.closed
     assert _status(db_session, date(2026, 9, 1)) == MonthStatus.closed
+
+
+def test_a_run_beside_another_cannot_close_a_month_the_other_closed(db_engine, db_session, monkeypatch):
+    """Reproduced before the lock: a dispatch beside the schedule read October
+    as open, the scheduled run closed it meanwhile, and the dispatch then
+    recomputed October from a row that had arrived since and closed it again
+    under a different number.
+
+    `held` starts first and is held inside its first month's computation;
+    `other` starts while it is held. With the lock, `other` waits at its first
+    statement and then finds October closed. Without it, both close October.
+    """
+    _event(db_session, date(2026, 10, 3), month_first=True)
+    _event(db_session, date(2026, 10, 4), month_first=True)
+    close_day = closes_on(OCTOBER)
+    sessions = sessionmaker(bind=db_engine)
+    computing, release = threading.Event(), threading.Event()
+    real_compute = analytics_rollup.compute_month
+    held_thread: dict[str, threading.Thread] = {}
+
+    def compute_held_once(db, month):
+        if threading.current_thread() is held_thread["it"] and not computing.is_set():
+            computing.set()
+            release.wait(timeout=20)
+        return real_compute(db, month)
+
+    monkeypatch.setattr(analytics_rollup, "compute_month", compute_held_once)
+    results: dict[str, analytics_rollup.RollupResult] = {}
+
+    def a_run(name: str, at: time) -> None:
+        with sessions() as db:
+            results[name] = run(db, today=close_day, now=datetime.combine(close_day, at))
+
+    held = threading.Thread(target=a_run, args=("held", time(10, 17)))
+    held_thread["it"] = held
+    held.start()
+    assert computing.wait(timeout=20), "the first run never reached its computation"
+    other = threading.Thread(target=a_run, args=("other", time(10, 18)))
+    other.start()
+    other.join(timeout=2)  # without the lock it finishes here; with it, it is waiting
+    _event(db_session, date(2026, 10, 30), received=close_day, month_first=True)  # arrives meanwhile
+    release.set()
+    held.join(timeout=30)
+    other.join(timeout=30)
+
+    assert not held.is_alive() and not other.is_alive()
+    assert [name for name in ("held", "other") if OCTOBER in results[name].closed] == ["held"]
+    assert OCTOBER in results["other"].late_counted
+
+
+def test_a_session_that_read_the_months_before_a_run_reads_them_again(db_engine, db_session):
+    """The lock only helps if what is read after it is what is committed: a
+    session holding October from before another run closed it must not act on
+    its own copy."""
+    _event(db_session, date(2026, 10, 3), month_first=True)
+    run(db_session, today=date(2026, 10, 20))
+    # Held, so the session's weak identity map keeps this copy rather than
+    # letting it be collected and read afresh by accident.
+    october = db_session.get(AnalyticsMonth, OCTOBER)
+    assert october.status == MonthStatus.provisional
+    with sessionmaker(bind=db_engine)() as elsewhere:
+        run(elsewhere, today=closes_on(OCTOBER))
+
+    result = run(db_session, today=closes_on(OCTOBER))
+
+    assert OCTOBER not in result.closed and OCTOBER in result.late_counted
 
 
 def test_running_twice_on_one_day_changes_nothing(db_session):

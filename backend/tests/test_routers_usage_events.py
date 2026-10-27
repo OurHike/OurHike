@@ -30,7 +30,14 @@ from app.core import analytics_quality as quality
 from app.core.analytics_rollup import add_months, month_start, retention_start, run
 from app.core.analytics_seal import month_label, month_private_key, month_public_key, new_secret, open_sealed, user_key
 from app.core.time import utc_now
-from app.models.analytics import AnalyticsEvent, AnalyticsIntake, AnalyticsMonth, AnalyticsSealKey, AnalyticsUser
+from app.models.analytics import (
+    AnalyticsEvent,
+    AnalyticsIntake,
+    AnalyticsMonth,
+    AnalyticsMonthly,
+    AnalyticsSealKey,
+    AnalyticsUser,
+)
 from tests.factories import make_profile, make_rollup_heartbeat
 from tests.tokens import auth_headers
 
@@ -509,6 +516,44 @@ def test_a_late_arrival_moves_a_milestone_earlier_but_never_later(client, db_ses
 
     row = db_session.get(AnalyticsUser, user_key(SERVER_SECRET, hiker.id))
     assert row.first_plan_on == earlier and row.first_seen_on == earlier and row.last_seen_on == today
+
+
+def test_a_hikers_new_month_is_set_by_their_first_batch_and_never_moved(client, db_session, today):
+    hiker = make_profile(db_session)
+    headers = auth_headers(hiker.id)
+    _post(client, [_event(today)], identified=True, headers=headers)
+    last_month = add_months(month_start(today), -1)
+
+    _post(client, [_event(last_month, platform="ios")], identified=True, headers=headers)  # a second phone, late
+
+    row = db_session.get(AnalyticsUser, user_key(SERVER_SECRET, hiker.id))
+    assert row.first_seen_on == last_month, "the milestone does move earlier"
+    assert row.new_month == month_start(today), "the month the hiker was counted new in does not"
+
+
+def test_a_late_row_from_a_second_phone_does_not_take_a_hiker_out_of_hikers_new(client, db_session, today):
+    """Reproduced: the late row moved first_seen_on into last month, and the
+    hiker dropped out of this month's hikers_new - and last month's, frozen
+    or not, never had them."""
+    hiker = make_profile(db_session)
+    headers = auth_headers(hiker.id)
+    _post(client, [_event(today)], identified=True, headers=headers)
+    run(db_session, today=today)
+    assert db_session.get(AnalyticsMonthly, (month_start(today), "hikers_new", "*", "*")).value == 1
+
+    _post(client, [_event(add_months(month_start(today), -1))], identified=True, headers=headers)
+    run(db_session, today=today)
+
+    assert db_session.get(AnalyticsMonthly, (month_start(today), "hikers_new", "*", "*")).value == 1
+
+
+def test_the_user_table_keeps_the_day_it_last_changed_and_not_the_time(client, db_session, today):
+    """A time of upload is when a hiker found signal."""
+    hiker = make_profile(db_session)
+
+    _post(client, [_event(today)], identified=True, headers=auth_headers(hiker.id))
+
+    assert db_session.get(AnalyticsUser, user_key(SERVER_SECRET, hiker.id)).updated_on == today
 
 
 def test_signed_out_rows_never_reach_the_user_table(client, db_session, today):

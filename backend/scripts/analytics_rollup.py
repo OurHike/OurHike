@@ -14,7 +14,10 @@ than deleting numbers nobody froze.
 
 A run that FAILS exits 1 too, and says so by names alone
 (app/core/logs.py `describe_failure`) - never a traceback, whose text can
-carry the values a failed statement was bound to.
+carry the values a failed statement was bound to. And `--today` later than
+the real UTC date is refused with exit 2 before anything runs: the date
+decides which months close and which rows are past retention, so a future
+one would close and delete for real.
 
 Run nightly by .github/workflows/analytics-rollup.yml. Safe to run by hand
 and to run twice: every step is idempotent, and a run that finds nothing to
@@ -46,9 +49,19 @@ def main(argv: list[str] | None = None) -> int:
         "--today",
         type=date.fromisoformat,
         default=None,
-        help="Run as if today were this date (YYYY-MM-DD). For catching up, and for tests.",
+        help="Run as if today were this date (YYYY-MM-DD), never later than the real one. For catching up, and for tests.",
     )
     args = parser.parse_args(argv)
+
+    real_today = utc_now().date()
+    if args.today is not None and args.today > real_today:
+        print(
+            f"Refused: --today {args.today} is after today's UTC date, {real_today}. A run dated ahead "
+            "closes months early and deletes raw rows that retention has not finished with - for real, "
+            "since this is the real database. Nothing was run.",
+            file=sys.stderr,
+        )
+        return 2
 
     try:
         with SessionLocal() as db:

@@ -296,18 +296,22 @@ def _yyyymm(day: date) -> int:
 # LEAST and GREATEST skip nulls, which is exactly the rule for a milestone:
 # the earliest date anybody has seen it, or none yet. The months a hiker was
 # active are a set, kept sorted so a row read with psql reads as a timeline.
+# `new_month` is written by the insert and never by the update: it is the
+# month the rollup counts this hiker new in, and a late row must not move it
+# (app/models/analytics.py says why). Part of DEFINITION_FINGERPRINTS
+# (app/core/analytics_rollup.py), because `hikers_new` is counted from it.
 _UPSERT_USER = text(
     """
     insert into analytics_users as u (
-      user_key, first_seen_on, last_seen_on, first_platform, last_platform,
+      user_key, first_seen_on, new_month, last_seen_on, first_platform, last_platform,
       first_login_on, first_plan_on, first_completion_on,
       logins, plans_made, plans_completed, plan_miles, completed_miles,
-      map_views, sessions, pageviews, active_months, updated_at
+      map_views, sessions, pageviews, active_months, updated_on
     ) values (
-      :user_key, :first_seen_on, :last_seen_on, :first_platform, :last_platform,
+      :user_key, :first_seen_on, :new_month, :last_seen_on, :first_platform, :last_platform,
       :first_login_on, :first_plan_on, :first_completion_on,
       :logins, :plans_made, :plans_completed, :plan_miles, :completed_miles,
-      :map_views, :sessions, :pageviews, cast(:active_months as integer[]), :updated_at
+      :map_views, :sessions, :pageviews, cast(:active_months as integer[]), :updated_on
     )
     on conflict (user_key) do update set
       first_seen_on = least(u.first_seen_on, excluded.first_seen_on),
@@ -330,12 +334,12 @@ _UPSERT_USER = text(
       active_months = (
         select array_agg(distinct m order by m) from unnest(u.active_months || excluded.active_months) as m
       ),
-      updated_at = excluded.updated_at
+      updated_on = excluded.updated_on
     """
 )
 
 
-def _update_users(db: Session, key: str, rows: list[dict]) -> None:
+def _update_users(db: Session, key: str, rows: list[dict], *, today: date) -> None:
     """Fold newly stored rows into this hiker's User-table row.
 
     Only rows the insert actually stored arrive here, so a resend never counts
@@ -366,11 +370,11 @@ def _update_users(db: Session, key: str, rows: list[dict]) -> None:
     earliest = min(rows, key=lambda row: row["local_date"])
     latest = max(rows, key=lambda row: row["local_date"])
     months = sorted({_yyyymm(row["local_date"]) for row in rows})
-    now = utc_now()
 
     values = {
         "user_key": key,
         "first_seen_on": earliest["local_date"],
+        "new_month": month_start(earliest["local_date"]),
         "last_seen_on": latest["local_date"],
         "first_platform": earliest["platform"],
         "last_platform": latest["platform"],
@@ -386,7 +390,7 @@ def _update_users(db: Session, key: str, rows: list[dict]) -> None:
         "sessions": int(counts["sessions"]),
         "pageviews": int(counts["pageviews"]),
         "active_months": months,
-        "updated_at": now,
+        "updated_on": today,
     }
     db.execute(_UPSERT_USER, values)
 
@@ -436,7 +440,7 @@ def receive_usage_events(
             outcome = IntakeOutcome.stored if row["id"] in stored_ids else IntakeOutcome.duplicate
             outcomes[(row["app_version"] or "", outcome)] += 1
         if key is not None and stored_ids:
-            _update_users(db, key, [row for row in rows if row["id"] in stored_ids])
+            _update_users(db, key, [row for row in rows if row["id"] in stored_ids], today=today)
     _count_intake(db, today, outcomes)
     db.commit()
 

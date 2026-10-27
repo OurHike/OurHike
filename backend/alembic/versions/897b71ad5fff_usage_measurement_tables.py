@@ -203,6 +203,7 @@ def upgrade() -> None:
         "analytics_users",
         sa.Column("user_key", sa.String(length=32), nullable=False),
         sa.Column("first_seen_on", sa.Date(), nullable=False),
+        sa.Column("new_month", sa.Date(), nullable=False),
         sa.Column("last_seen_on", sa.Date(), nullable=False),
         sa.Column(
             "first_platform", sa.Enum("ios", "android", "web", name="usageplatform", native_enum=False, length=8), nullable=False
@@ -222,7 +223,7 @@ def upgrade() -> None:
         sa.Column("sessions", sa.Integer(), nullable=False),
         sa.Column("pageviews", sa.Integer(), nullable=False),
         sa.Column("active_months", postgresql.ARRAY(sa.Integer()), nullable=False),
-        sa.Column("updated_at", sa.DateTime(), nullable=False),
+        sa.Column("updated_on", sa.Date(), nullable=False),
         sa.PrimaryKeyConstraint("user_key"),
     )
 

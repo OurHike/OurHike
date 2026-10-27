@@ -46,6 +46,7 @@ def _linked_rows(db_session, profile_id: str) -> str:
             AnalyticsUser(
                 user_key=key,
                 first_seen_on=date(2026, 10, 3),
+                new_month=date(2026, 10, 1),
                 last_seen_on=date(2026, 10, 3),
                 first_platform="ios",
                 last_platform="ios",

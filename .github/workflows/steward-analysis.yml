@@ -7,11 +7,11 @@
 # are plain public static files, locations included, because ATC already
 # publishes the same locations in its own open layer. There is no bucket.
 #
-# Each run does two things with them. It attaches them to itself as the
-# artifact `campsite-steward-data`, always. And it builds the web app
-# (apps/steward/web/, #1904) with the two files in its data/ folder and
-# uploads the lot to Cloudflare Pages, so the app and the analysis it shows
-# are always one deployment and can never disagree. The upload needs the
+# Each run does two things with them, in two jobs. `score` attaches them to
+# the run as the artifact `campsite-steward-data`, and builds the web app
+# (apps/steward/web/, #1904) with the two files in its data/ folder, holding no
+# secret. `deploy`, on main, uploads that build to Cloudflare Pages, so the app
+# and the analysis it shows are always one deployment and can never disagree. The upload needs the
 # STEWARD_PAGES_PROJECT variable naming a Pages project that already exists
 # (wrangler does not create one from CI); until the maintainer creates it,
 # the run skips the upload with a notice and is still green.
@@ -47,6 +47,8 @@ jobs:
         working-directory: apps/steward/pipeline
     steps:
       - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
 
       - uses: actions/setup-python@v7
         with:
@@ -60,9 +62,8 @@ jobs:
       - name: Fetch and score
         run: python -m steward_analysis.build --fetch
 
-      # The two output files only. The raw layers stay on the runner, and
-      # nothing here is handed to another job, so the archive's shape is just
-      # these two names at its root.
+      # The two output files only; the raw layers stay on the runner, so the
+      # archive's shape is just these two names at its root.
       - uses: actions/upload-artifact@v7
         with:
           name: campsite-steward-data
@@ -73,39 +74,19 @@ jobs:
           # Five weekly runs' worth: the newest is the one anybody wants.
           retention-days: 35
 
-      # From main only, so a dispatch on a pull request's branch can never
-      # replace the live app with unreviewed code.
-      - name: Decide whether to publish
-        id: can
-        env:
-          PROJECT: ${{ vars.STEWARD_PAGES_PROJECT }}
-          API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
-          ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
-        run: |
-          if [ "$GITHUB_REF" != "refs/heads/main" ]; then
-            echo "::notice::Not publishing: this run is on $GITHUB_REF, and only main publishes the app."
-            echo "publish=false" >> "$GITHUB_OUTPUT"
-          elif [ -z "$PROJECT" ] || [ -z "$API_TOKEN" ] || [ -z "$ACCOUNT_ID" ]; then
-            echo "::notice::Not publishing: set the STEWARD_PAGES_PROJECT variable to a Cloudflare Pages project that exists (the Cloudflare secrets are OurHike's preview pair). The scored files are in this run's artifact."
-            echo "publish=false" >> "$GITHUB_OUTPUT"
-          else
-            echo "publish=true" >> "$GITHUB_OUTPUT"
-          fi
-
       - uses: actions/setup-node@v7
-        if: steps.can.outputs.publish == 'true'
         with:
           node-version: 24
           cache: npm
           cache-dependency-path: apps/steward/web/package-lock.json
 
-      # Sign-in and lists (#1906) switch on only when STEWARD_API_URL names a
-      # running steward API. Supabase is OurHike's production project, the one
-      # account across both apps that PLAN.md §3 plans; its URL and anon key are
-      # public by design (every browser client carries them). Unset, the app
-      # builds with no accounts and says sign-in is not set up.
+      # Built on every run, so a dispatch on a branch shows the build works even
+      # though only main deploys it. Sign-in and lists (#1906) switch on only
+      # when STEWARD_API_URL names a running steward API. Supabase is OurHike's
+      # production project, the one account across both apps that PLAN.md §3
+      # plans; its URL and anon key are public by design (every browser client
+      # carries them). Unset, the app builds with no accounts and says so.
       - name: Build the app with this run's analysis
-        if: steps.can.outputs.publish == 'true'
         working-directory: apps/steward/web
         env:
           VITE_SUPABASE_URL: ${{ vars.SUPABASE_URL }}
@@ -116,7 +97,58 @@ jobs:
           mkdir -p public/data
           cp ../pipeline/data/out/summary.json ../pipeline/data/out/sites.json public/data/
           npm run build
-          ls -la dist/data
+          ls -la dist dist/data
+
+      - uses: actions/upload-artifact@v7
+        with:
+          name: campsite-steward-site
+          path: apps/steward/web/dist/
+          include-hidden-files: true
+          if-no-files-found: error
+          retention-days: 7
+
+  # THE CLOUDFLARE TOKEN'S JOB AND NOTHING ELSE'S, as pages.yml's docs-host job
+  # says of its own: this installs and builds nothing. It downloads the site the
+  # score job built and uploads it through the SHA-pinned wrangler-action. The
+  # token is "Cloudflare Pages: Edit", which Cloudflare grants account-wide, so
+  # it reaches OurHike's own Pages projects too; until 2026-10-27 it sat in the
+  # job that ran pip install, the ArcGIS fetch, npm ci and vite build (the
+  # adversarial review's finding 5).
+  #
+  # From main only, so a dispatch on a pull request's branch never replaces the
+  # live app with unreviewed code. That condition lives in this file, which a
+  # branch can edit; what would make it hold against an edited copy is a
+  # GitHub environment that only main may deploy to, holding the token, which
+  # is the maintainer's to create (PLAN.md §11).
+  deploy:
+    name: Deploy the app and its scores
+    needs: score
+    if: github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: read
+    steps:
+      - name: Decide whether to publish
+        id: can
+        env:
+          PROJECT: ${{ vars.STEWARD_PAGES_PROJECT }}
+          API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+        run: |
+          if [ -z "$PROJECT" ] || [ -z "$API_TOKEN" ] || [ -z "$ACCOUNT_ID" ]; then
+            echo "::notice::Not publishing: set the STEWARD_PAGES_PROJECT variable to a Cloudflare Pages project that exists (the Cloudflare secrets are OurHike's preview pair). The scored files are in this run's artifact."
+            echo "publish=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "publish=true" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Fetch the site the score job built
+        if: steps.can.outputs.publish == 'true'
+        uses: actions/download-artifact@v8
+        with:
+          name: campsite-steward-site
+          path: site
 
       - name: Publish to Cloudflare Pages
         if: steps.can.outputs.publish == 'true'
@@ -125,7 +157,7 @@ jobs:
           apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
           command: >-
-            pages deploy apps/steward/web/dist
+            pages deploy site
             --project-name=${{ vars.STEWARD_PAGES_PROJECT }}
             --branch=main
             --commit-dirty=true

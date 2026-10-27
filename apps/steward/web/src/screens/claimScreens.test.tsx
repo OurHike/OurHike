@@ -163,6 +163,28 @@ describe('Reviewing', () => {
   })
 })
 
+describe('Rejecting', () => {
+  it('releases the site, with the reason shown on the claim', async () => {
+    const api = fakeApi()
+    const id = await api.seedSubmittedByOther('example-0004')
+    render(
+      withAccount(
+        fakeAccount(SIGNED_IN, api),
+        <ClaimScreen id={id} sites={fixtureSites} prepare={prepare} />,
+      ),
+    )
+    await userEvent.type(
+      await screen.findByLabelText(/Note to the crew/),
+      'These are photos of a car park',
+    )
+    await userEvent.click(
+      screen.getByRole('button', { name: 'Reject: the work was not done' }),
+    )
+    expect(await screen.findByText(/^Rejected by/)).toBeInTheDocument()
+    expect(await api.claimForSite('example-0004')).toBeNull()
+  })
+})
+
 describe('Joining and your work', () => {
   it('an invite link joins the crew and opens the claim', async () => {
     const owner = fakeApi()

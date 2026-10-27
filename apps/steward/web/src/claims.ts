@@ -35,8 +35,17 @@ export function reminder(
 
 export const PHOTO_POINTS = [1, 2] as const
 
+/** The photo at a point, counting an after photo only if it was taken since
+ *  the last send-back, as the API does: a crew sent back must retake its afters. */
 export function photoAt(claim: ClaimDetail, phase: 'before' | 'after', point: number) {
-  return claim.photos.find((p) => p.phase === phase && p.point === point) ?? null
+  return (
+    claim.photos.find(
+      (p) =>
+        p.phase === phase &&
+        p.point === point &&
+        !(phase === 'after' && claim.sent_back_at && p.created_at <= claim.sent_back_at),
+    ) ?? null
+  )
 }
 
 /** The photos a submission still needs, in words. */

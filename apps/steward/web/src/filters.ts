@@ -106,9 +106,16 @@ const CSV_COLUMNS: [string, (s: Site) => string | number | null][] = [
   ['land_unit', (s) => s.land_unit.name],
 ]
 
+/** A cell a spreadsheet would run as a formula starts with one of these. Site
+ *  names come from ATC's layer, and two real ones ("-1.5 tent") already open as
+ *  formulas; one starting "=HYPERLINK(" would be worse (the adversarial review's
+ *  finding 12, 2026-10-27). A leading apostrophe makes the cell plain text. */
+const FORMULA_START = /^[=+\-@\t\r]/
+
 function csvCell(value: string | number | null): string {
   if (value === null) return ''
-  const text = String(value)
+  let text = String(value)
+  if (typeof value === 'string' && FORMULA_START.test(text)) text = `'${text}`
   return /[",\n]/.test(text) ? `"${text.replaceAll('"', '""')}"` : text
 }
 

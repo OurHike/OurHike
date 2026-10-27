@@ -95,9 +95,15 @@ export function ClaimScreen({ id, sites, prepare = prepareForUpload }: Props) {
           {problem}
         </p>
       )}
+      {claim.state === 'released' && claim.review_note && (
+        <p className="note" style={{ margin: 0 }}>
+          <b>Rejected by {claim.reviewed_by ?? 'a reviewer'}:</b> “{claim.review_note}”
+        </p>
+      )}
       {claim.review_note && claim.state === 'in_progress' && (
         <p className="note" style={{ margin: 0 }}>
           <b>Sent back by {claim.reviewed_by ?? 'a reviewer'}:</b> “{claim.review_note}”
+          Retake the after photos, then submit again.
         </p>
       )}
       {claim.you_are_crew && isWorking(claim) ? (
@@ -589,7 +595,9 @@ function Record({ claim, api, act }: PartProps) {
             hours.
           </p>
           <div className="field">
-            <label htmlFor="review-note">Note to the crew (needed to send it back)</label>
+            <label htmlFor="review-note">
+              Note to the crew (needed to send back or reject)
+            </label>
             <textarea
               id="review-note"
               rows={2}
@@ -618,7 +626,21 @@ function Record({ claim, api, act }: PartProps) {
             >
               Send back
             </button>
+            <button
+              type="button"
+              className="button"
+              style={{ marginLeft: 'auto' }}
+              disabled={!note.trim()}
+              onClick={() => void act(() => api.review(claim.id, 'reject', note.trim()))}
+            >
+              Reject: the work was not done
+            </button>
           </div>
+          <p className="muted" style={{ margin: 0, fontSize: 13 }}>
+            Send back when it is nearly there: the crew retakes the after photos. Reject
+            when the photos do not show this site restored: the site opens for someone
+            else and no hours count.
+          </p>
         </section>
       )}
       {claim.state === 'verified' && (

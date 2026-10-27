@@ -108,7 +108,8 @@ function SignedIn() {
             className="note"
             style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}
           >
-            Your lists will be deleted. Weights you changed stay in the clubs' histories,
+            Your name, lists and hours are deleted, and this account cannot be used here
+            again. Weights you changed and claims you worked on stay in their histories,
             without your name.
             <button
               type="button"

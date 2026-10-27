@@ -28,3 +28,29 @@ it('missingPhotos names every before and after a submission still needs', () => 
     'after photo at point 2',
   ])
 })
+
+it('after a send-back, an after photo taken before it no longer counts', () => {
+  const claim = {
+    sent_back_at: '2026-10-27T12:00:00.000Z',
+    photos: [1, 2].flatMap((point) => [
+      {
+        id: `b${point}`,
+        phase: 'before',
+        point,
+        url: '',
+        created_at: '2026-10-27T10:00:00.000Z',
+      },
+      {
+        id: `a${point}`,
+        phase: 'after',
+        point,
+        url: '',
+        created_at: '2026-10-27T11:00:00.000Z',
+      },
+    ]),
+  } as unknown as ClaimDetail
+  expect(missingPhotos(claim)).toEqual([
+    'after photo at point 1',
+    'after photo at point 2',
+  ])
+})

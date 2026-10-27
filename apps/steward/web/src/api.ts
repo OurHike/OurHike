@@ -50,6 +50,7 @@ export interface ClubWeights {
 
 export type ClaimState = 'claimed' | 'in_progress' | 'submitted' | 'verified' | 'released'
 export type PhotoPhase = 'before' | 'after' | 'extra'
+export type Verdict = 'verify' | 'send_back' | 'reject'
 
 export interface ClaimSummary {
   id: string
@@ -73,6 +74,8 @@ export interface ClaimPhoto {
 
 export interface ClaimDetail extends ClaimSummary {
   started_at: string | null
+  /** After photos older than this do not count toward the next submission. */
+  sent_back_at: string | null
   verified_at: string | null
   released_at: string | null
   steps_done: string[]
@@ -124,11 +127,7 @@ export interface StewardApi {
   logHours(id: string, hours: number): Promise<ClaimDetail>
   submit(id: string, stepsDone: string[], notes: string | null): Promise<ClaimDetail>
   reviews(): Promise<ClaimSummary[]>
-  review(
-    id: string,
-    verdict: 'verify' | 'send_back',
-    note: string | null,
-  ): Promise<ClaimDetail>
+  review(id: string, verdict: Verdict, note: string | null): Promise<ClaimDetail>
   myHours(): Promise<HoursTotals>
 }
 

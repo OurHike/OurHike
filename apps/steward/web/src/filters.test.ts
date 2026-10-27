@@ -83,3 +83,12 @@ it('toCsv quotes a cell holding a comma or a quote, and writes a missing value a
   expect(row).toContain('"Rock, ""the"" ledge"')
   expect(row.split(',')[9]).toBe('')
 })
+
+it('toCsv makes a text cell that starts like a formula plain text, and leaves numbers alone', () => {
+  const formula = toCsv([
+    { ...fixtureSites[0], name: '=HYPERLINK("http://x","y")', mile: -1.5 },
+  ])
+  expect(formula).toContain(`"'=HYPERLINK(""http://x"",""y"")"`)
+  expect(formula).toContain(',-1.5,')
+  expect(toCsv([{ ...fixtureSites[0], name: '-1.5 tent' }])).toContain(",'-1.5 tent,")
+})

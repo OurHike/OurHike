@@ -110,6 +110,7 @@ export function fakeApi(): FakeApi {
       crew_size: 1,
       you_are_crew: youAreCrew,
       started_at: null,
+      sent_back_at: null,
       verified_at: null,
       released_at: null,
       steps_done: [],
@@ -354,18 +355,22 @@ export function fakeApi(): FakeApi {
       const claim = findClaim(id)
       if (claim.you_are_crew)
         throw new ApiError(403, 'Someone off the crew has to review this')
-      if (verdict === 'send_back' && !note) {
-        throw new ApiError(422, 'Say what needs doing when sending a submission back')
+      if (verdict !== 'verify' && !note) {
+        throw new ApiError(422, 'Say what is missing when sending back or rejecting')
       }
       claim.reviewed_by = displayName
       claim.review_note = note
       if (verdict === 'verify') {
         claim.state = 'verified'
         claim.verified_at = now()
-      } else {
+      } else if (verdict === 'send_back') {
         claim.state = 'in_progress'
+        claim.sent_back_at = now()
         claim.submitted_at = null
         claim.due_at = new Date(Date.parse(now()) + 7 * DAY_MS).toISOString()
+      } else {
+        claim.state = 'released'
+        claim.released_at = now()
       }
       return detail(claim)
     },

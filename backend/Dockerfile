@@ -47,4 +47,9 @@ USER ourhike
 ENV PORT=8000
 EXPOSE 8000
 
-CMD ["sh", "-c", "uvicorn app.main:app --host 0.0.0.0 --port ${PORT}"]
+# --no-access-log: uvicorn's access log writes every raw path, and a path can
+# carry a capability. GET /nominations/{token} is a vote that lasts TOKEN_DAYS
+# (45). app/core/logs.py already logs each 401 and 5xx, by route template and
+# with a request id. What goes is a line for each request that succeeded. The
+# maintainer chose this by poll on 2026-10-27, while standing the backend up.
+CMD ["sh", "-c", "uvicorn app.main:app --host 0.0.0.0 --port ${PORT} --no-access-log"]

@@ -60,7 +60,8 @@ had excluded.
 
 **Render's free tier**, specifically:
 
-- **$0**, and no card.
+- **$0** inside the free allowances, and no card needed to start. One is on file by the
+  maintainer's choice of 2026-10-27; "What a stranger can do to the free tier" says why.
 - **No configuration file.** A Dockerfile is all it needs, and `backend/Dockerfile` is
   already host-agnostic — it reads `PORT` from the environment for exactly this reason.
 - **No CLI.** Deploys happen on push, from the connected repository. `flyctl` was never
@@ -100,10 +101,12 @@ something below:
   it moves to Starter and UA stays free.
 - **5 GB of outbound bandwidth a month on the Hobby workspace, then $0.15/GB.** With no
   card on file, going past it suspends every free service for the rest of the month
-  rather than billing. That is the behaviour
+  rather than billing. That was the ceiling
   [#395 — Put a ceiling on the bill before the app is public](https://github.com/OurHike/OurHike/issues/395)
-  wants, and it is why the next section exists: as wired before it, the hikers' own reads
-  would reach this limit.
+  first chose. The maintainer then chose a card (poll, 2026-10-27), so past 5 GB is
+  billed instead; "What a stranger can do to the free tier" says what that trades. Either
+  way it is why the next section exists: as wired before it, the hikers' own reads would
+  reach this limit.
 - **The pre-deploy command is for paid instances only.** That settles one of the two
   remedies the migration-skew section below weighs: on the free tier there is no deploy
   hook, so the ordering discipline is the remedy for as long as the service is free.
@@ -181,19 +184,22 @@ hostname, so it names the API's paths rather than all of them: a rule over every
 also count `data.ourhike.org`, where every hiker's map downloads come from. Many addresses
 at once still get through.
 
-**What reaching it costs depends on one setting, and the choice is the maintainer's.**
-- **No card on file:** Render suspends every free service for the rest of the month
-  (`render.com/docs/free`). Hikers keep the map, and the published baseline still carries
-  the closures already verified. But reports wait in outboxes, and no new closure can be
-  verified, so `conditions/closures.json` gains nothing until the next month. On the
-  safety read, that is the cost.
-- **A card on file:** the same stranger costs $0.15 per GB past the first 5. That is
-  arithmetic, not a forecast: 100 GB is $15, and the total is bounded only by their
-  patience. Render's spend controls for bandwidth have not been read here.
+**What reaching it costs depends on one setting: a card on Render. The maintainer chose
+the card, by poll on 2026-10-27.**
+- **No card on file** (not chosen): Render spins the workspace's services down until the
+  next month (`render.com/docs/outbound-bandwidth`). Hikers keep the map, and the published
+  baseline still carries the closures already verified. But reports wait in outboxes, and
+  no new closure can be verified, so `conditions/closures.json` gains nothing until the
+  next month. On the safety read, that is the cost.
+- **A card on file** (chosen): the same stranger costs $0.15 per GB past the first 5. That
+  is arithmetic, not a forecast: 100 GB is $15, and the total is bounded only by their
+  patience. Render's bandwidth page names no spend limit and no alert (read 2026-10-27).
 
-Either way, the daily check sees it within a day, on **#738 — Deployed app reachability**:
-`/health` failing, and the edge check reporting what it reached. Billing alerts are
-**#395 — Put a ceiling on the bill before the app is public**.
+**With the card, nothing in this repository notices.** The API stays up, so `/health` and
+the edge check in **#738 — Deployed app reachability** stay green while the bill grows. The
+workspace's Billing page in Render is where it shows, and LAUNCH_CHECKLIST.md §6 step 8
+asks for a weekly look there until an alert exists. That alert belongs to **#395 — Put a
+ceiling on the bill before the app is public**.
 
 ## Which build is serving, and why the release order depends on it
 

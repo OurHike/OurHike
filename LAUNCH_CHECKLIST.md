@@ -461,7 +461,7 @@ What is left is account work, in this order. Secrets never pass through a sessio
    | Auto-Deploy | on every commit to `main` | |
    | PR Previews | Off | Render copies the service's environment into a preview, "database connection information" included (render.com/docs/service-previews, read 2026-10-27), so a preview of an unmerged branch would run against the production database. |
 
-   Leave the card off until you have made step 8's choice. With no card, going past the free 5 GB of outbound bandwidth suspends the service for the rest of the month instead of billing for it (backend/HOSTING.md; #395 — Put a ceiling on the bill before the app is public).
+   Add a card. The maintainer chose billing over suspension by poll on 2026-10-27. With a card on file, outbound bandwidth past the free 5 GB is billed at $0.15 a GB rather than spinning the service down for the rest of the month (render.com/docs/outbound-bandwidth, read 2026-10-27; backend/HOSTING.md; #395 — Put a ceiling on the bill before the app is public).
 
 2. **Set the environment** in the service's **Environment** tab. Never committed, never baked into the image:
    ```
@@ -549,7 +549,7 @@ What is left is account work, in this order. Secrets never pass through a sessio
    ```
    This answer says which of two things Cloudflare does with a signed-in read, which its docs do not settle. A `cf-cache-status` of `HIT` means it served the stored anonymous copy: nothing private leaks, because the anonymous copy holds less, but a reporter's own queued report is missing from their app for up to 300 s. Anything else means signed-in reads pass straight through to Render, and the API's own `private, no-store` is on the answer. backend/HOSTING.md says what each costs. A healthy `/health` beside a 500 on `/closures` reading `UndefinedTable: relation "closures" does not exist` means the database behind `DATABASE_URL` is not the migrated one.
 
-8. **Keep the bill bounded**, which is #395 — Put a ceiling on the bill before the app is public: Supabase's spend cap on, and decide whether Render gets a card. Without one, a stranger who spends the free 5 GB suspends the API until the next month; with one, the same stranger costs $0.15 a GB. backend/HOSTING.md, "What a stranger can do to the free tier", is that choice in full.
+8. **Keep the bill bounded**, which is #395 — Put a ceiling on the bill before the app is public: Supabase's spend cap on. Render's bandwidth has no cap once the card is on (step 1). Its bandwidth page names no spend limit and no alert, only the service's **Metrics → Outbound Bandwidth** graph and the workspace's **Billing** page (render.com/docs/outbound-bandwidth, read 2026-10-27). So look at the Billing page weekly until #395 has an alert that does it for you. backend/HOSTING.md, "What a stranger can do to the free tier", says what the card trades.
 
 **Expect a cold start.** The service sleeps after 15 minutes idle, and Render says the first request after that takes about a minute. Cloudflare waits up to 100 seconds for an origin, so a cold start fits; a request that takes longer is answered 524, and a report caught by it goes back in the outbox. Every remaining caller tolerates the wait — reports wait in the outbox, moderation is a person at a desk, and closures do not come from here at all any more — with one visible exception: opening a report photo after a quiet period will wait.
 

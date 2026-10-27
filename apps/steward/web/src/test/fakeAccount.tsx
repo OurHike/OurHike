@@ -36,6 +36,7 @@ export type FakeApi = StewardApi & {
 
 export function fakeApi(): FakeApi {
   const calls: string[] = []
+  const clientIds = new Set<string>()
   let displayName: string | null = null
   const lists = new Map<string, ListDetail>()
   const shares = new Map<string, string>()
@@ -302,8 +303,11 @@ export function fakeApi(): FakeApi {
       }
       return summary(claim)
     },
-    async uploadPhoto(id, phase, point, photo) {
+    async uploadPhoto(id, phase, point, photo, clientId) {
+      // As the API does: a photo already stored under this id is not stored again.
+      if (clientId && clientIds.has(`${id}/${clientId}`)) return detail(crewClaim(id))
       const claim = crewClaim(id)
+      if (clientId) clientIds.add(`${id}/${clientId}`)
       claim.photos = claim.photos.filter(
         (p) => point === null || !(p.phase === phase && p.point === point),
       )

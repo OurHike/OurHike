@@ -3,6 +3,9 @@
 from __future__ import annotations
 
 import re
+import threading
+import time
+from collections.abc import Callable
 
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
@@ -39,15 +42,12 @@ def create_app(
     #: None when this deployment has no photo bucket: uploads then answer 503.
     app.state.photos = photos if photos is not None else settings.photo_storage()
 
-    # Its own pool of one connection with short timeouts, so health checks
-    # never queue for a connection a real request needs, and a flood of them
-    # (the one route that needs no sign-in and touches the database) gets fast
-    # 503s rather than the main pool (the re-check's N6).
+    # Its own pool of one connection, so health checks never queue for a
+    # connection a real request needs (the re-check's N6).
     health_engine = make_engine(settings.database_url, pool_size=1, max_overflow=0, pool_timeout=2, pool_recycle=300)
     expected_schema = schema_head()
 
-    @app.get("/health")
-    def health() -> JSONResponse:
+    def check_database() -> tuple[int, str]:
         """Up means the database answers and its schema is the one this code
         expects. A deployment that fell back to the localhost default reported
         healthy while every request failed (the review's finding 13); so did one
@@ -57,13 +57,17 @@ def create_app(
             with health_engine.connect() as connection:
                 version = connection.execute(text("select version_num from alembic_version")).scalar()
         except SQLAlchemyError:
-            return JSONResponse({"status": "database unreachable"}, status_code=503)
+            return 503, "database unreachable"
         if version != expected_schema:
-            return JSONResponse(
-                {"status": f"database schema is at {version}, this code needs {expected_schema}: run the migrations"},
-                status_code=503,
-            )
-        return JSONResponse({"status": "ok"})
+            return 503, f"database schema is at {version}, this code needs {expected_schema}: run the migrations"
+        return 200, "ok"
+
+    health_check = CachedCheck(check_database, seconds=limits.HEALTH_CHECK_SECONDS)
+
+    @app.get("/health")
+    def health() -> JSONResponse:
+        code, words = health_check()
+        return JSONResponse({"status": words}, status_code=code)
 
     app.include_router(me.router)
     app.include_router(lists.router)
@@ -88,6 +92,47 @@ def create_app(
         max_age=600,
     )
     return app
+
+
+class CachedCheck:
+    """One check at a time, and its answer reused for `seconds`.
+
+    /health is the one route that needs no sign-in and touches the database.
+    Checked on every probe, an unauthenticated flood of them answered 105 of
+    600 with 503 (the adversarial review's third pass, 2026-10-27): a probe
+    that waited past the health pool's timeout for the one connection was
+    counted as the database being down, which is what makes a host pull or
+    restart an instance. Now a probe that arrives while a check is running
+    gets the last answer at once rather than waiting, so a 503 here means the
+    database itself did not answer.
+    """
+
+    def __init__(self, check: Callable[[], tuple[int, str]], *, seconds: float, clock: Callable[[], float] = time.monotonic):
+        self._check = check
+        self._seconds = seconds
+        self._clock = clock
+        self._lock = threading.Lock()
+        self._answer: tuple[int, str] | None = None
+        self._at = 0.0
+
+    def __call__(self) -> tuple[int, str]:
+        answer = self._answer
+        if answer is not None and self._clock() - self._at < self._seconds:
+            return answer
+        if answer is None:
+            # The very first probes, with no answer yet to give, wait for the first check.
+            self._lock.acquire()
+        elif not self._lock.acquire(blocking=False):
+            # Someone else is checking: the last answer, not a place in a queue.
+            return answer
+        try:
+            if self._answer is not None and self._clock() - self._at < self._seconds:
+                return self._answer
+            self._answer = self._check()
+            self._at = self._clock()
+            return self._answer
+        finally:
+            self._lock.release()
 
 
 def __getattr__(name: str) -> FastAPI:

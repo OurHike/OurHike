@@ -1,3 +1,4 @@
+import uuid
 from datetime import UTC, datetime, timedelta
 from io import BytesIO
 
@@ -7,7 +8,8 @@ from PIL import Image
 from sqlalchemy import update
 
 from steward_api import limits
-from steward_api.models import Claim
+from steward_api.models import Claim, StewardUser
+from steward_api.routes.claims import _store_photo
 
 JPEG = image("JPEG")
 PNG = image("PNG")
@@ -168,10 +170,10 @@ def test_every_photo_is_redrawn_as_a_jpeg_with_no_metadata_at_all(client, app, u
     assert not {"exif", "xmp", "XML:com.adobe.xmp", "icc_profile"} & set(kept.info)
 
 
-def test_a_large_photo_is_shrunk_to_the_long_side_limit(client, app, monkeypatch):
+def test_a_photo_at_the_long_side_limit_is_kept_at_its_size(client, app, monkeypatch):
     monkeypatch.setattr(limits, "PHOTO_LONG_SIDE", 32)
     claim_id = claim(client)
-    photo(client, claim_id, "before", 1, body=image("JPEG", size=(128, 96)))
+    assert photo(client, claim_id, "before", 1, body=image("JPEG", size=(32, 24))).status_code == 201
     assert stored(app).size == (32, 24)
 
 
@@ -196,10 +198,13 @@ def test_a_photo_that_is_not_one_of_the_accepted_kinds_is_refused(client, app, p
     assert app.state.photos.objects == {}
 
 
-def test_a_photo_claiming_more_pixels_than_any_camera_is_refused_unread(client, app, monkeypatch):
-    monkeypatch.setattr(limits, "PHOTO_MAX_PIXELS", 1000)
+@pytest.mark.parametrize("size", [(33, 1), (1, 33), (33, 33)], ids=["too-wide", "too-tall", "both"])
+def test_a_photo_with_any_side_past_the_long_side_is_refused_unread(client, app, monkeypatch, size):
+    # Each side, not width x height: the third pass got a 1 x 4,194,304 px PNG
+    # past a 2048 x 2048 pixel budget, and it cost 140 MB to decode.
+    monkeypatch.setattr(limits, "PHOTO_LONG_SIDE", 32)
     claim_id = claim(client)
-    assert photo(client, claim_id, "before", 1, body=image("PNG", size=(100, 100))).status_code == 415
+    assert photo(client, claim_id, "before", 1, body=image("PNG", size=size)).status_code == 415
     assert app.state.photos.objects == {}
 
 
@@ -371,4 +376,93 @@ def test_deleting_an_account_releases_the_claims_it_was_working_on_and_its_hours
     assert client.delete("/me", headers=bearer("claimer")).status_code == 204
     detail = client.get(f"/claims/{claim_id}", headers=bearer("anyone")).json()
     assert detail["state"] == "released" and detail["claimer"] is None
-    assert [m["hours"] for m in detail["crew"]] == [None]
+    assert detail["crew"] == [] and detail["crew_size"] == 0
+
+
+def join(client, claim_id, who, inviter="claimer"):
+    token = client.post(f"/claims/{claim_id}/invite", headers=bearer(inviter)).json()["token"]
+    response = client.post("/claims/join", json={"token": token}, headers=bearer(who))
+    assert response.status_code == 200, response.text
+
+
+def test_deleting_your_data_takes_you_off_every_crew_but_never_onto_its_reviewers(client):
+    # The third pass, on N7: crew places on other people's open claims
+    # survived a delete, so the "empty" account could still upload to a
+    # friend's claim (201) and listed it among its claims.
+    claim_id = claim(client)
+    join(client, claim_id, "leaver")
+    assert client.delete("/me", headers=bearer("leaver")).status_code == 204
+
+    assert photo(client, claim_id, "before", 1, who="leaver").status_code == 403
+    assert client.get("/claims/mine", headers=bearer("leaver")).json() == []
+    detail = client.get(f"/claims/{claim_id}", headers=bearer("claimer")).json()
+    assert [m["you"] for m in detail["crew"]] == [True] and detail["crew_size"] == 1
+
+    photograph(client, claim_id)
+    client.post(f"/claims/{claim_id}/submit", json={"steps_done": [], "notes": None}, headers=bearer("claimer"))
+    assert client.get(f"/claims/{claim_id}", headers=bearer("leaver")).json()["you_may_review"] is False
+    assert claim_id not in [c["id"] for c in client.get("/reviews", headers=bearer("leaver")).json()]
+    verdict = {"verdict": "verify", "note": None}
+    assert client.post(f"/claims/{claim_id}/review", json=verdict, headers=bearer("leaver")).status_code == 403
+
+
+def test_someone_who_left_by_deleting_their_data_can_be_invited_back(client):
+    claim_id = claim(client)
+    join(client, claim_id, "leaver")
+    client.delete("/me", headers=bearer("leaver"))
+    join(client, claim_id, "leaver")
+    assert photo(client, claim_id, "before", 1, who="leaver").status_code == 201
+    assert [c["id"] for c in client.get("/claims/mine", headers=bearer("leaver")).json()] == [claim_id]
+
+
+# --- A photo sent twice -------------------------------------------------------------
+
+
+def sent(client, claim_id, phase, point=None, client_id="0001761550000000-000001-abc123", who="claimer"):
+    params = {"phase": phase, "client_id": client_id} | ({"point": point} if point is not None else {})
+    return client.post(
+        f"/claims/{claim_id}/photos", params=params, content=JPEG, headers={**bearer(who), "Content-Type": "image/jpeg"}
+    )
+
+
+def test_a_queued_photo_sent_again_after_a_lost_answer_is_stored_once(client, app):
+    # The third pass's P2: the phone could not tell a lost answer from a lost
+    # upload, so it sent again, and extras piled up toward the cap.
+    claim_id = claim(client)
+    assert sent(client, claim_id, "extra").status_code == 201
+    again = sent(client, claim_id, "extra")
+    assert again.status_code == 200
+    assert len(again.json()["photos"]) == 1 and len(app.state.photos.objects) == 1
+    assert sent(client, claim_id, "extra", client_id="another-photo").status_code == 201
+
+
+def test_a_photo_sent_again_after_the_claim_was_submitted_is_answered_not_refused(client):
+    # It arrived before the submit; the phone should hear that it is there,
+    # not keep it as refused.
+    claim_id = claim(client)
+    assert sent(client, claim_id, "before", 1, client_id="before-1").status_code == 201
+    photo(client, claim_id, "before", 2)
+    for point in limits.PHOTO_POINTS:
+        photo(client, claim_id, "after", point)
+    client.post(f"/claims/{claim_id}/submit", json={"steps_done": [], "notes": None}, headers=bearer("claimer"))
+    assert sent(client, claim_id, "before", 1, client_id="before-1").status_code == 200
+    # Only the crew hears it: anyone else is refused as before.
+    assert sent(client, claim_id, "before", 1, client_id="before-1", who="stranger").status_code == 403
+
+
+def test_two_copies_of_one_queued_photo_racing_in_store_one(client, app):
+    # Both pass the first check before either is stored; the second is caught
+    # under the claim's row lock and its object removed.
+    claim_id = uuid.UUID(claim(client))
+    with app.state.sessionmaker() as db:
+        user = db.get(StewardUser, "claimer")
+    first = _store_photo(app, app.state.photos, user, claim_id, "extra", None, "racing", JPEG)
+    second = _store_photo(app, app.state.photos, user, claim_id, "extra", None, "racing", JPEG)
+    assert len(first.photos) == len(second.photos) == 1
+    assert len(app.state.photos.objects) == 1
+
+
+@pytest.mark.parametrize("bad", ["", "a b", "x" * 65, "../../etc", "é"])
+def test_a_client_id_that_is_not_a_plain_token_is_refused(client, bad):
+    claim_id = claim(client)
+    assert sent(client, claim_id, "extra", client_id=bad).status_code == 422

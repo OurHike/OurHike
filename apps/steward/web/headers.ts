@@ -5,6 +5,8 @@
 // basemap, the Supabase project, and the steward API.
 
 export const BASEMAP_ORIGIN = 'https://tiles.openfreemap.org'
+/** Google Fonts: the stylesheet, and the font files it points at. */
+export const FONT_ORIGINS = ['https://fonts.googleapis.com', 'https://fonts.gstatic.com']
 /** Where a signed R2 URL points: the account's S3 endpoint, whichever account it is. */
 export const PHOTO_ORIGIN = 'https://*.r2.cloudflarestorage.com'
 
@@ -28,6 +30,11 @@ export function contentSecurityPolicy(env: {
   const connect = [
     "'self'",
     BASEMAP_ORIGIN,
+    // The service worker is served under this policy too, and fetches the
+    // fonts to cache them: without these it could not, and the installed app
+    // never had its fonts offline (the adversarial review's third pass, P5,
+    // seen in Chromium, 2026-10-27).
+    ...FONT_ORIGINS,
     originOf(env.supabaseUrl),
     originOf(env.apiUrl),
   ]

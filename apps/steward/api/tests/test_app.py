@@ -2,7 +2,7 @@ import httpx
 import pytest
 from alembic.autogenerate import compare_metadata
 from alembic.migration import MigrationContext
-from conftest import ORIGIN, bearer
+from conftest import ANALYSIS, ORIGIN, bearer
 from sqlalchemy import create_engine, text
 
 from steward_api import limits
@@ -14,9 +14,17 @@ def test_health_answers_without_sign_in_and_checks_the_database(client):
     assert client.get("/health").json() == {"status": "ok"}
 
 
-def test_health_is_503_when_the_database_schema_is_behind_this_code(client, app):
+def test_health_is_503_when_the_database_schema_is_behind_this_code(settings, monkeypatch):
     # The re-check's N3: code shipped before its migration answered healthy
-    # while every signed-in request was a 500.
+    # while every signed-in request was a 500. No reuse of an answer here, so
+    # the schema's change shows on the very next probe.
+    from fastapi.testclient import TestClient
+
+    from steward_api.main import create_app
+
+    monkeypatch.setattr(limits, "HEALTH_CHECK_SECONDS", 0)
+    app = create_app(settings, analysis=AnalysisDirectory.fixed(ANALYSIS))
+    client = TestClient(app)
     with app.state.engine.begin() as connection:
         head = connection.execute(text("select version_num from alembic_version")).scalar()
         connection.execute(text("update alembic_version set version_num = '0002'"))
@@ -27,6 +35,61 @@ def test_health_is_503_when_the_database_schema_is_behind_this_code(client, app)
         with app.state.engine.begin() as connection:
             connection.execute(text("update alembic_version set version_num = :v"), {"v": head})
     assert client.get("/health").status_code == 200
+
+
+class TestCachedCheck:
+    """main.CachedCheck: the third pass's N6, an unauthenticated flood of
+    /health probes answered 105 of 600 with 503 while the database was fine."""
+
+    def test_reuses_its_answer_for_the_period_and_checks_again_after(self):
+        from steward_api.main import CachedCheck
+
+        now = [100.0]
+        checks = []
+        cached = CachedCheck(lambda: checks.append(1) or (200, "ok"), seconds=5, clock=lambda: now[0])
+        assert [cached() for _ in range(50)] == [(200, "ok")] * 50
+        assert len(checks) == 1
+        now[0] += 5
+        cached()
+        assert len(checks) == 2
+
+    def test_a_probe_during_a_slow_check_gets_the_last_answer_without_waiting(self):
+        import threading
+
+        from steward_api.main import CachedCheck
+
+        now = [100.0]
+        release = threading.Event()
+        answers = iter([(200, "ok"), (503, "database unreachable")])
+
+        def check():
+            answer = next(answers)
+            if answer[0] == 503:
+                release.wait(5)
+            return answer
+
+        cached = CachedCheck(check, seconds=5, clock=lambda: now[0])
+        assert cached() == (200, "ok")
+        now[0] += 10
+        slow = threading.Thread(target=cached)
+        slow.start()
+        while not cached._lock.locked():
+            pass
+        # The slow check holds the lock; this probe neither waits nor counts as down.
+        assert cached() == (200, "ok")
+        release.set()
+        slow.join()
+        assert cached() == (503, "database unreachable")
+
+    def test_a_flood_of_probes_through_the_app_costs_one_query_and_never_a_503(self, app):
+        from concurrent.futures import ThreadPoolExecutor
+
+        from fastapi.testclient import TestClient
+
+        client = TestClient(app)
+        with ThreadPoolExecutor(max_workers=50) as pool:
+            codes = list(pool.map(lambda _: client.get("/health").status_code, range(300)))
+        assert set(codes) == {200}
 
 
 def test_health_is_503_when_the_database_does_not_answer(database_url):

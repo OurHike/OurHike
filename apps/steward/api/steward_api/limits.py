@@ -66,14 +66,13 @@ PHOTO_POINTS = (1, 2)
 #: One photo as it arrives, after the phone has re-encoded it (2048 px on the
 #: long side at JPEG quality 0.85 is typically under 1 MB).
 PHOTO_MAX_BYTES = 3 * 1024 * 1024
-#: The server re-encodes every photo to this long side, as the phone does.
+#: The longest side, in pixels, of a photo the API accepts. Reasoned: the app
+#: redraws every photo to at most this on its long side before sending
+#: (web/src/photo.ts), so nothing it sends is larger, and a camera original is
+#: refused unread. Each side, not width x height: the re-check's N1 measured a
+#: 15 KB PNG of 1 x 4,194,304 px, inside a 2048 x 2048 pixel budget, costing
+#: 140 MB to decode; 60 MP had cost 687 MB before any cap at all.
 PHOTO_LONG_SIDE = 2048
-#: Pixels a photo may claim before it is decoded. Reasoned: the app redraws
-#: every photo to at most PHOTO_LONG_SIDE on its long side before sending, so
-#: nothing it sends is over 2048 x 2048 (4.2 MP). A camera original is refused
-#: unread; 60 MP was allowed until the review's re-check (N1) showed one such
-#: upload costing 687 MB to decode.
-PHOTO_MAX_PIXELS = 2048 * 2048
 #: Seconds a photo's upload may go without a byte arriving, and in all. Idle
 #: rather than only a total, so a weak trailhead signal that keeps trickling
 #: still gets its photo through (the re-check's N5), while a stalled one is
@@ -81,6 +80,9 @@ PHOTO_MAX_PIXELS = 2048 * 2048
 PHOTO_IDLE_SECONDS = 20
 PHOTO_READ_SECONDS = 300
 PHOTOS_PER_CLAIM = 40
+#: The phone's id for a queued photo (web/src/offline.ts nextId): letters,
+#: digits, - and _, so it can sit in a query string unescaped.
+CLIENT_ID_PATTERN = r"^[A-Za-z0-9_-]{1,64}$"
 #: Hours one person logs on one claim, across all their visits to it.
 HOURS_MAX = 72
 
@@ -88,3 +90,10 @@ NOTES_MAX = 1000
 REVIEW_NOTE_MAX = 500
 STEP_MAX = 120
 STEPS_MAX = 20
+
+#: How long /health reuses its last database check (main.CachedCheck).
+#: `@unvalidated`: short enough that a database that goes away shows within a
+#: few seconds, long enough that a flood of probes costs one query per period.
+#: Render's own probe interval and failure count, which would settle it, have
+#: not been read from its documentation here.
+HEALTH_CHECK_SECONDS = 5

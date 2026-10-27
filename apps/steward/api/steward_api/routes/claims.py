@@ -36,7 +36,7 @@ import secrets
 import uuid
 from datetime import UTC, datetime, timedelta
 
-from fastapi import APIRouter, Depends, FastAPI, HTTPException, Path, Query, Request, status
+from fastapi import APIRouter, Depends, FastAPI, HTTPException, Path, Query, Request, Response, status
 from fastapi.concurrency import run_in_threadpool
 from sqlalchemy import func, select, update
 from sqlalchemy.exc import IntegrityError
@@ -95,6 +95,13 @@ def _names(db: Session, ids: set[str]) -> dict[str, str | None]:
 
 
 def _crew_ids(claim: Claim) -> set[str]:
+    """The crew as it is now: who may work on the claim, and who is listed."""
+    return {member.user_id for member in claim.members if member.left_at is None}
+
+
+def _ever_crew_ids(claim: Claim) -> set[str]:
+    """Everyone who has been on the crew, including places left by deleting
+    one's data: none of them may review the claim."""
     return {member.user_id for member in claim.members}
 
 
@@ -107,7 +114,7 @@ def _summary(claim: Claim, user: StewardUser, names: dict[str, str | None]) -> C
         due_at=claim.due_at,
         submitted_at=claim.submitted_at,
         claimer=names.get(claim.claimer_id) if claim.claimer_id else None,
-        crew_size=len(claim.members),
+        crew_size=len(_crew_ids(claim)),
         you_are_crew=user.id in _crew_ids(claim),
     )
 
@@ -137,9 +144,13 @@ def _detail(claim: Claim, user: StewardUser, db: Session, store: PhotoStore | No
         notes=claim.notes,
         review_note=claim.review_note,
         reviewed_by=claim.reviewed_by_name,
-        crew=[CrewMember(name=names.get(m.user_id), you=m.user_id == user.id, hours=hours.get(m.user_id)) for m in claim.members],
+        crew=[
+            CrewMember(name=names.get(m.user_id), you=m.user_id == user.id, hours=hours.get(m.user_id))
+            for m in claim.members
+            if m.left_at is None
+        ],
         photos=photos,
-        you_may_review=claim.state == "submitted" and user.id not in crew,
+        you_may_review=claim.state == "submitted" and user.id not in _ever_crew_ids(claim),
     )
 
 
@@ -205,11 +216,13 @@ def claim_sites(
             f"You rejected the last claim on {', '.join(sorted(set(rejected)))}, so someone else gets the next "
             f"{limits.REJECTER_WAIT_DAYS} days to claim it",
         )
+    # Places left by deleting one's data do not count: that account starts
+    # empty (routes/me.delete_me), as a second address would anyway.
     held_by_you = db.scalar(
         select(func.count())
         .select_from(Claim)
         .join(ClaimMember, ClaimMember.claim_id == Claim.id)
-        .where(ClaimMember.user_id == user.id, Claim.state.in_(HOLDING_STATES))
+        .where(ClaimMember.user_id == user.id, ClaimMember.left_at.is_(None), Claim.state.in_(HOLDING_STATES))
     )
     if (held_by_you or 0) + len(sites) > limits.LIVE_CLAIMS_PER_USER:
         raise HTTPException(
@@ -257,7 +270,7 @@ def my_claims(user: StewardUser = Depends(current_user), db: Session = Depends(g
     claims = db.scalars(
         select(Claim)
         .join(ClaimMember, ClaimMember.claim_id == Claim.id)
-        .where(ClaimMember.user_id == user.id)
+        .where(ClaimMember.user_id == user.id, ClaimMember.left_at.is_(None))
         .order_by(Claim.claimed_at.desc())
         .limit(100)
     ).all()
@@ -310,9 +323,14 @@ def join(body: JoinClaim, user: StewardUser = Depends(current_user), db: Session
     if claim is None or claim.state not in WORKING_STATES:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "This invite is not valid any more. Ask the crew for a new one.")
     if user.id not in _crew_ids(claim):
-        if len(claim.members) >= limits.CREW_MAX:
+        if len(_crew_ids(claim)) >= limits.CREW_MAX:
             raise HTTPException(status.HTTP_409_CONFLICT, f"This crew is full at {limits.CREW_MAX}")
-        claim.members.append(ClaimMember(user_id=user.id))
+        left = next((m for m in claim.members if m.user_id == user.id), None)
+        if left is not None:
+            # Someone who deleted their data and was invited back.
+            left.left_at = None
+        else:
+            claim.members.append(ClaimMember(user_id=user.id))
         try:
             db.commit()
         except IntegrityError:
@@ -328,13 +346,21 @@ def join(body: JoinClaim, user: StewardUser = Depends(current_user), db: Session
 async def upload_photo(
     claim_id: uuid.UUID,
     request: Request,
+    response: Response,
     phase: str = Query(pattern="^(before|after|extra)$"),
     point: int | None = Query(default=None),
+    client_id: str | None = Query(default=None, pattern=limits.CLIENT_ID_PATTERN),
     user: StewardUser = Depends(current_user),
 ) -> ClaimDetail:
     """The photo is the raw request body. One before and one after per photo
     point (a new one replaces the old), and any number of extras up to the cap.
     The first before photo moves a claim from claimed to in progress.
+
+    `client_id` is the phone's own id for a photo it queued with no signal.
+    A photo already on the claim under that id is not stored again: the
+    answer is the claim as it stands, with 200 rather than 201. Without it, a
+    response lost after the photo was stored sent the photo a second time,
+    and extras piled up toward the cap (the third pass's P2, 2026-10-27).
 
     In this order, each step holding nothing the next does not need (the
     adversarial review's finding 1, 2026-10-27): the caller is checked against
@@ -348,7 +374,7 @@ async def upload_photo(
         raise HTTPException(
             status.HTTP_422_UNPROCESSABLE_CONTENT, "A before or after photo needs photo point 1 or 2; an extra needs none"
         )
-    await run_in_threadpool(_check_upload, request.app, user, claim_id)
+    already = await run_in_threadpool(_check_upload, request.app, store, user, claim_id, client_id)
     body = bytearray()
     try:
         async with asyncio.timeout(limits.PHOTO_READ_SECONDS):
@@ -365,19 +391,39 @@ async def upload_photo(
         raise HTTPException(
             status.HTTP_408_REQUEST_TIMEOUT, "The photo took too long to arrive. Try again with a better signal."
         ) from exc
+    if already is not None:
+        # Read in full all the same, so the phone gets its answer on a
+        # connection that finished cleanly rather than one cut off mid-send.
+        response.status_code = status.HTTP_200_OK
+        return already
     try:
         jpeg = await run_in_threadpool(reencode, bytes(body))
     except UnusablePhoto as exc:
         raise HTTPException(status.HTTP_415_UNSUPPORTED_MEDIA_TYPE, str(exc)) from exc
-    return await run_in_threadpool(_store_photo, request.app, store, user, claim_id, phase, point, jpeg)
+    return await run_in_threadpool(_store_photo, request.app, store, user, claim_id, phase, point, client_id, jpeg)
 
 
-def _check_upload(app: FastAPI, user: StewardUser, claim_id: uuid.UUID) -> None:
+def _sent_before(claim: Claim, user: StewardUser, client_id: str | None) -> bool:
+    """This crew member's phone already delivered this photo. Asked before the
+    claim's state: a photo that arrived before the claim was submitted is
+    still there afterwards, and the phone should hear that, not a refusal."""
+    return client_id is not None and user.id in _crew_ids(claim) and any(photo.client_id == client_id for photo in claim.photos)
+
+
+def _check_upload(
+    app: FastAPI, store: PhotoStore, user: StewardUser, claim_id: uuid.UUID, client_id: str | None
+) -> ClaimDetail | None:
+    """Refuses an upload that could not be kept, before its body is read.
+    Returns the claim instead when this photo is already on it."""
     with app.state.sessionmaker() as db:
         release_overdue(db)
+        claim = _claim(db, claim_id)
+        if _sent_before(claim, user, client_id):
+            return _detail(claim, user, db, store)
         claim = _crew_claim(db, claim_id, user)
         if len(claim.photos) >= limits.PHOTOS_PER_CLAIM:
             raise HTTPException(status.HTTP_409_CONFLICT, f"A claim holds at most {limits.PHOTOS_PER_CLAIM} photos")
+        return None
 
 
 def _store_photo(
@@ -387,6 +433,7 @@ def _store_photo(
     claim_id: uuid.UUID,
     phase: str,
     point: int | None,
+    client_id: str | None,
     jpeg: bytes,
 ) -> ClaimDetail:
     photo_id = uuid.uuid4()
@@ -401,6 +448,11 @@ def _store_photo(
         try:
             release_overdue(db)
             claim = db.get(Claim, claim_id, with_for_update=True)
+            if claim is not None and _sent_before(claim, user, client_id):
+                # The same queued photo, sent twice at once: the first one in keeps its place.
+                db.rollback()
+                store.delete(key)
+                return _detail(_claim(db, claim_id), user, db, store)
             if claim is None or user.id not in _crew_ids(claim) or claim.state not in WORKING_STATES:
                 raise HTTPException(status.HTTP_409_CONFLICT, "This claim changed while the photo was being sent")
             if len(claim.photos) >= limits.PHOTOS_PER_CLAIM:
@@ -410,7 +462,15 @@ def _store_photo(
                 claim.photos.remove(old)
             db.flush()
             claim.photos.append(
-                Photo(id=photo_id, phase=phase, point=point, content_type="image/jpeg", size_bytes=len(jpeg), uploaded_by=user.id)
+                Photo(
+                    id=photo_id,
+                    phase=phase,
+                    point=point,
+                    content_type="image/jpeg",
+                    size_bytes=len(jpeg),
+                    uploaded_by=user.id,
+                    client_id=client_id,
+                )
             )
             if phase == "before" and claim.state == "claimed":
                 claim.state = "in_progress"
@@ -526,9 +586,9 @@ def waiting_for_review(user: StewardUser = Depends(current_user), db: Session = 
 def review(
     claim_id: uuid.UUID, body: Review, request: Request, user: StewardUser = Depends(current_user), db: Session = Depends(get_db)
 ) -> ClaimDetail:
-    """Never by anyone who is or was on the crew: deleting an account keeps its
-    crew places (models.StewardUser.deleted_at), so leaving does not make a
-    person eligible to verify their own work.
+    """Never by anyone who is or was on the crew: deleting your data marks your
+    crew places left rather than removing them (models.ClaimMember), so
+    leaving does not make a person eligible to verify their own work.
 
     - verify: confirms the crew's hours;
     - send back: needs a note; the crew gets back the time they had left when
@@ -541,7 +601,7 @@ def review(
     claim = db.get(Claim, claim_id, with_for_update=True)
     if claim is None:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "No such claim")
-    if user.id in _crew_ids(claim):
+    if user.id in _ever_crew_ids(claim):
         raise HTTPException(status.HTTP_403_FORBIDDEN, "Someone off the crew has to review this")
     if claim.state != "submitted":
         raise HTTPException(status.HTTP_409_CONFLICT, "Only a submitted claim can be reviewed")

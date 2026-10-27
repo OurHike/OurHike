@@ -16,13 +16,20 @@ import { SignInForm } from '../components/SignInForm'
 import { siteName } from '../format'
 import { BEFORE_YOU_GO, SOURCES, planFor } from '../guide'
 import {
+  discardPhoto,
+  dropWaiting,
   flushPhotos,
   isOffline,
+  newPhotoId,
+  onOfflineChange,
   queuePhoto,
   queuedBlob,
   queuedPhotos,
+  refusedPhotos,
+  retryPhoto,
   saveClaim,
   savedClaim,
+  waitingPhotos,
   type QueuedPhoto,
 } from '../offline'
 import { prepareForUpload } from '../photo'
@@ -40,17 +47,21 @@ interface Props {
 
 /** One claim: the crew's workspace while it is open, and the reviewer's view once submitted. */
 export function ClaimScreen({ id, sites, prepare = prepareForUpload }: Props) {
-  const { api } = useAccount()
+  const { api, session } = useAccount()
+  const userId = session.state === 'signed_in' ? session.userId : ''
   const [claim, setClaim] = useState<ClaimDetail | null>(null)
   const [problem, setProblem] = useState<string | null>(null)
   /** When the claim on screen is the copy kept on this phone, the time it was kept. */
   const [savedAt, setSavedAt] = useState<string | null>(null)
 
-  const show = useCallback((found: ClaimDetail) => {
-    setClaim(found)
-    setSavedAt(null)
-    void saveClaim(found)
-  }, [])
+  const show = useCallback(
+    (found: ClaimDetail) => {
+      setClaim(found)
+      setSavedAt(null)
+      void saveClaim(userId, found)
+    },
+    [userId],
+  )
 
   useEffect(() => {
     if (!api) return
@@ -59,7 +70,7 @@ export function ClaimScreen({ id, sites, prepare = prepareForUpload }: Props) {
       (found) => live && show(found),
       async (error: Error) => {
         if (!live) return
-        const kept = isOffline(error) ? await savedClaim(id) : null
+        const kept = isOffline(error) ? await savedClaim(userId, id) : null
         if (!live) return
         if (kept) {
           setClaim(kept.claim)
@@ -76,7 +87,7 @@ export function ClaimScreen({ id, sites, prepare = prepareForUpload }: Props) {
     return () => {
       live = false
     }
-  }, [api, id, show])
+  }, [api, id, show, userId])
 
   const act = useCallback(
     async (step: () => Promise<ClaimDetail>) => {
@@ -153,12 +164,161 @@ export function ClaimScreen({ id, sites, prepare = prepareForUpload }: Props) {
         </p>
       )}
       {claim.you_are_crew && isWorking(claim) ? (
-        <Workspace claim={claim} site={site} api={api} act={act} prepare={prepare} />
+        <Workspace
+          claim={claim}
+          site={site}
+          api={api}
+          act={act}
+          prepare={prepare}
+          userId={userId}
+        />
       ) : (
         <Record claim={claim} site={site} api={api} act={act} />
       )}
+      <NotSent claimId={claim.id} userId={userId} api={api} act={act} />
     </>
   )
+}
+
+/** This account's photos for this claim kept on the phone, as they are now. */
+function useKept(userId: string, claimId: string): QueuedPhoto[] {
+  const [kept, setKept] = useState<QueuedPhoto[]>([])
+  useEffect(() => {
+    let live = true
+    const read = () =>
+      void queuedPhotos(userId, claimId).then((found) => live && setKept(found))
+    read()
+    const stop = onOfflineChange(read)
+    return () => {
+      live = false
+      stop()
+    }
+  }, [userId, claimId])
+  return kept
+}
+
+const slotName = (photo: QueuedPhoto) =>
+  photo.point === null
+    ? 'An extra photo'
+    : `${photo.phase === 'before' ? 'Before' : 'After'}, point ${photo.point}`
+
+/**
+ * Photos the API refused, kept on the phone until their owner decides: shown
+ * whatever state the claim is in, since the usual reason is that it closed
+ * (ran out, was submitted or released) while the phone had no signal.
+ */
+function NotSent({
+  claimId,
+  userId,
+  api,
+  act,
+}: {
+  claimId: string
+  userId: string
+  api: StewardApi
+  act: (step: () => Promise<ClaimDetail>) => Promise<void>
+}) {
+  const refused = refusedPhotos(useKept(userId, claimId))
+  if (refused.length === 0) return null
+  const again = async (photo: QueuedPhoto) => {
+    await retryPhoto(photo)
+    const result = await flushPhotos(api, userId, claimId)
+    if (result.sent) await act(() => api.claim(claimId))
+  }
+  return (
+    <section
+      className="note"
+      aria-labelledby="not-sent"
+      style={{ display: 'flex', flexDirection: 'column', gap: 10 }}
+    >
+      <h2 id="not-sent" className="eyebrow">
+        Not sent · kept on this phone
+      </h2>
+      <p style={{ margin: 0 }}>
+        The server did not take{' '}
+        {refused.length === 1 ? 'this photo' : `these ${refused.length} photos`}. They
+        stay on this phone until you save a copy or discard them.
+      </p>
+      {refused.map((photo) => (
+        <NotSentPhoto
+          key={photo.id}
+          photo={photo}
+          onRetry={() => void again(photo)}
+          onDiscard={() => void discardPhoto(photo)}
+        />
+      ))}
+    </section>
+  )
+}
+
+function NotSentPhoto({
+  photo,
+  onRetry,
+  onDiscard,
+}: {
+  photo: QueuedPhoto
+  onRetry: () => void
+  onDiscard: () => void
+}) {
+  const url = useObjectUrl(photo)
+  const label = slotName(photo)
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+      <div style={{ display: 'flex', gap: 12, alignItems: 'flex-start' }}>
+        {url ? (
+          <img
+            src={url}
+            alt={`${label}, not sent`}
+            style={{ width: 96, borderRadius: 8, flex: 'none' }}
+          />
+        ) : (
+          <div className="photo-empty" style={{ width: 96, flex: 'none' }} />
+        )}
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 4, minWidth: 0 }}>
+          <b>{label}</b>
+          <span className="muted">
+            Taken {when.format(new Date(photo.queuedAt))}. {photo.refused?.reason}
+          </span>
+        </div>
+      </div>
+      <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+        <button type="button" className="button" onClick={onRetry}>
+          Try again
+        </button>
+        {url && (
+          <a
+            className="button"
+            href={url}
+            download={`campsite-steward-${photo.phase}${photo.point ?? ''}-${photo.queuedAt.slice(0, 10)}.jpg`}
+          >
+            Save a copy
+          </a>
+        )}
+        <button type="button" className="button" onClick={onDiscard}>
+          Discard
+        </button>
+      </div>
+    </div>
+  )
+}
+
+/** An object URL for a kept photo, made once per photo and revoked when it goes. */
+function useObjectUrl(photo: QueuedPhoto | undefined): string | null {
+  const url = useMemo(() => {
+    if (!photo) return null
+    try {
+      return URL.createObjectURL(queuedBlob(photo))
+    } catch {
+      return null
+    }
+  }, [photo])
+  useEffect(
+    () => () => {
+      if (url) URL.revokeObjectURL(url)
+    },
+    [url],
+  )
+  return url
 }
 
 interface PartProps {
@@ -337,21 +497,7 @@ function PhotoSlot({
   disabled: boolean
   onPick: (file: File) => void
 }) {
-  // An object URL for the waiting photo, made once per photo and revoked when it goes.
-  const queuedUrl = useMemo(() => {
-    if (!queued) return null
-    try {
-      return URL.createObjectURL(queuedBlob(queued))
-    } catch {
-      return null
-    }
-  }, [queued])
-  useEffect(
-    () => () => {
-      if (queuedUrl) URL.revokeObjectURL(queuedUrl)
-    },
-    [queuedUrl],
-  )
+  const queuedUrl = useObjectUrl(queued)
   const existing =
     point === null ? null : photoAt(claim, phase as 'before' | 'after', point)
   const label =
@@ -412,14 +558,15 @@ function Workspace({
   api,
   act,
   prepare,
-}: PartProps & { prepare: (photo: Blob) => Promise<Blob> }) {
+  userId,
+}: PartProps & { prepare: (photo: Blob) => Promise<Blob>; userId: string }) {
   const [ticks, setTicks] = useState<number[]>(() => loadTicks(claim.id))
   const [steps, setSteps] = useState<string[]>(claim.steps_done)
   const [notes, setNotes] = useState(claim.notes ?? '')
   const you = claim.crew.find((m) => m.you)
   const [hours, setHours] = useState(you?.hours ? String(you.hours) : '')
   const [busy, setBusy] = useState(false)
-  const [queued, setQueued] = useState<QueuedPhoto[]>([])
+  const queued = waitingPhotos(useKept(userId, claim.id))
   const [notice, setNotice] = useState<string | null>(null)
   const ready = ticks.length === BEFORE_YOU_GO.length || claim.photos.length > 0
   const missing = missingPhotos(claim)
@@ -427,23 +574,21 @@ function Workspace({
 
   // Photos taken with no signal wait in queue (src/offline.ts) and go when
   // the phone is back online, or when this screen next opens with signal.
+  // flushPhotos runs one send at a time, however many of these ask at once.
   const send = useCallback(async () => {
-    const result = await flushPhotos(api, claim.id)
-    setQueued(await queuedPhotos(claim.id))
+    const result = await flushPhotos(api, userId, claim.id)
     if (result.refused.length) {
       setNotice(
-        `${result.refused.length} saved photo${result.refused.length === 1 ? ' was' : 's were'} not accepted: ${result.refused[0].reason}`,
+        `${result.refused.length} saved photo${result.refused.length === 1 ? ' was' : 's were'} not accepted: ${result.refused[0].refused?.reason ?? ''} ${result.refused.length === 1 ? 'It is' : 'They are'} kept on this phone, below.`,
       )
     }
     if (result.sent) await act(() => api.claim(claim.id))
-  }, [api, claim.id, act])
+  }, [api, userId, claim.id, act])
 
   useEffect(() => {
     let live = true
-    void queuedPhotos(claim.id).then((found) => {
-      if (!live) return
-      setQueued(found)
-      if (found.length && navigator.onLine !== false) void send()
+    void queuedPhotos(userId, claim.id).then((found) => {
+      if (live && waitingPhotos(found).length && navigator.onLine !== false) void send()
     })
     const online = () => void send()
     window.addEventListener('online', online)
@@ -451,19 +596,22 @@ function Workspace({
       live = false
       window.removeEventListener('online', online)
     }
-  }, [claim.id, send])
+  }, [userId, claim.id, send])
 
   const upload = async (phase: PhotoPhase, point: number | null, file: File) => {
     setBusy(true)
     const photo = await prepare(file)
     try {
+      const id = newPhotoId()
       await act(async () => {
         try {
-          return await api.uploadPhoto(claim.id, phase, point, photo)
+          const updated = await api.uploadPhoto(claim.id, phase, point, photo, id)
+          // Any older photo of this slot still waiting would replace this one.
+          await dropWaiting(userId, claim.id, phase, point)
+          return updated
         } catch (error) {
           if (!isOffline(error)) throw error
-          await queuePhoto({ claimId: claim.id, phase, point, photo })
-          setQueued(await queuedPhotos(claim.id))
+          await queuePhoto({ id, userId, claimId: claim.id, phase, point, photo })
           setNotice(
             'No signal: the photo is saved on this phone and will be sent when there is signal.',
           )

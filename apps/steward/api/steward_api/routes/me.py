@@ -6,7 +6,7 @@ from sqlalchemy.orm import Session
 
 from steward_api.auth import current_user
 from steward_api.db import get_db
-from steward_api.models import Claim, ClubWeights, Hours, SiteList, StewardUser
+from steward_api.models import Claim, ClaimMember, ClubWeights, Hours, SiteList, StewardUser
 from steward_api.routes.claims import WORKING_STATES
 from steward_api.schemas import Me, MeUpdate
 
@@ -29,20 +29,26 @@ def update_me(body: MeUpdate, user: StewardUser = Depends(current_user), db: Ses
 def delete_me(user: StewardUser = Depends(current_user), db: Session = Depends(get_db)) -> None:
     """Deletes what this API holds that is the caller's own: their name (here
     and on every history entry it was copied to), their lists and their hours.
-    Claims they were working on go back to Open.
+    Claims they were working on go back to Open, and they leave every crew
+    they were on.
 
     What stays, without a name: the claims and weights changes they made, which
-    are other people's history too, and their crew places, which keep them from
-    ever reviewing work they were part of. The account row stays, marked, so
-    those rows still point at it: deleting the row let the same sign-in return
-    as a stranger the moment after (the adversarial review's finding 3,
-    2026-10-27). Signing in again starts an empty account (auth.current_user).
+    are other people's history too, and their crew places, marked left
+    (models.ClaimMember), which give no access but keep them from ever
+    reviewing work they were part of. The account row stays, marked, so those
+    rows still point at it: deleting the row let the same sign-in return as a
+    stranger the moment after (the adversarial review's finding 3,
+    2026-10-27). Signing in again starts an empty account (auth.current_user):
+    no lists, no hours, no claims and no crew places.
 
     The Supabase account itself is OurHike's, and is not touched here."""
     db.execute(
         update(Claim)
         .where(Claim.claimer_id == user.id, Claim.state.in_(WORKING_STATES))
         .values(state="released", released_at=func.now(), invite_token_sha256=None)
+    )
+    db.execute(
+        update(ClaimMember).where(ClaimMember.user_id == user.id, ClaimMember.left_at.is_(None)).values(left_at=func.now())
     )
     db.execute(update(ClubWeights).where(ClubWeights.changed_by == user.id).values(changed_by_name=None))
     db.execute(update(Claim).where(Claim.reviewed_by == user.id).values(reviewed_by_name=None))

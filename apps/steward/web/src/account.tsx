@@ -64,14 +64,57 @@ export function useAccount(): Account {
 
 let client: Promise<SupabaseClient> | null = null
 
+/** Where supabase-js keeps the session in localStorage: named, so endSession
+ *  can remove it when supabase-js does not. */
+export const AUTH_STORAGE_KEY = 'campsite-steward-auth'
+
 /** Loaded on first use, so a visitor who never signs in never downloads it. */
 function supabase(): Promise<SupabaseClient> {
   client ??= import('@supabase/supabase-js').then(({ createClient }) =>
     createClient(SUPABASE_URL, SUPABASE_ANON_KEY, {
-      auth: { persistSession: true, autoRefreshToken: true, detectSessionInUrl: false },
+      auth: {
+        persistSession: true,
+        autoRefreshToken: true,
+        detectSessionInUrl: false,
+        storageKey: AUTH_STORAGE_KEY,
+      },
     }),
   )
   return client
+}
+
+/**
+ * Signs this browser out, signal or none.
+ *
+ * Only this browser ('local'): the Supabase project is OurHike's, and the
+ * default ('global') would also sign the person out of OurHike, on every
+ * device they use it on.
+ *
+ * supabase-js removes the stored session only once it has told Supabase. With
+ * an expired access token and no signal it cannot refresh, returns an error,
+ * and leaves the session and its refresh token where they were, so the next
+ * person to pick up a shared phone was signed in as the last one when signal
+ * came back (the adversarial review's third pass, P3, 2026-10-27, against
+ * supabase-js 2.118). On any error, the session is removed here instead.
+ */
+export async function endSession(
+  auth: { signOut(options: { scope: 'local' }): Promise<{ error: unknown }> },
+  storage: Pick<Storage, 'removeItem'>,
+): Promise<void> {
+  let failed: boolean
+  try {
+    failed = Boolean((await auth.signOut({ scope: 'local' })).error)
+  } catch {
+    failed = true
+  }
+  if (!failed) return
+  for (const suffix of ['', '-code-verifier', '-user']) {
+    try {
+      storage.removeItem(AUTH_STORAGE_KEY + suffix)
+    } catch {
+      // Storage refused: nothing more this page can do.
+    }
+  }
 }
 
 /** Supabase's messages are for developers; these are for a volunteer. */
@@ -148,8 +191,10 @@ export function AccountProvider({ children }: { children: ReactNode }) {
       async signOut() {
         // Saved claims and queued photos are this person's; a shared phone
         // should not keep them for the next one (src/offline.ts).
-        await clearOffline()
-        await (await supabase()).auth.signOut()
+        if (session.state === 'signed_in') await clearOffline(session.userId)
+        await endSession((await supabase()).auth, window.localStorage)
+        // Said here as well as by supabase-js, which says nothing when it failed.
+        setSession({ state: 'signed_out' })
       },
     }
   }, [session])

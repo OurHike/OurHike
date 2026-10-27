@@ -5,7 +5,8 @@ weekly analysis job, the read-only web app, and sign-in, lists, club weights and
 claims with the API behind them. The API has no host, database or photo bucket yet
 (§11). Phase 4's first part is built too: the app installs, opens with no signal and
 queues photos (#1911); follow-up visits wait on a decision (§11). An adversarial review
-on 2026-10-27 proved thirteen findings and, re-checking the fixes, seven more; all are
+on 2026-10-27 proved thirteen findings; re-checking the fixes, seven more; and a third
+pass, two fixes that held only in part and six problems in the offline layer. All are
 fixed (§10). This file began as the
 deliverable of **#1899 — Plan Campsite Steward, a separate app that ranks the A.T.
 campsites needing restoration and lets volunteers claim them**, written 2026-10-24 to
@@ -694,13 +695,26 @@ Re-checking the fixes, the reviewer closed eleven of the thirteen outright, and 
 
 | # | Finding | Fix |
 |---|---|---|
-| N1 | One upload declaring 60 megapixels cost 687 MB to decode | The pixel cap is what the app sends (2048 × 2048), read from the header; JPEGs decode at that size; two photos decode at once at most |
+| N1 | One upload declaring 60 megapixels cost 687 MB to decode | Each side is capped at what the app sends (2048 px), read from the header; two photos decode at once at most (a cap on width × height came first, and the third pass got past it) |
 | N2 | A reviewer could reject a finished claim and claim the site straight after | Whoever rejects may not claim that site for 30 days |
 | N3 | Code ahead of its migration answered healthy while signed-in requests failed | Health compares the database's schema with the code's |
 | N4 | One unexpected error stopped the site list ever reloading | The refresh always finishes |
 | N5 | A photo had 60 s in all, which a weak signal could not meet | 20 s without a byte, or 300 s in all |
-| N6 | Health checks shared the database pool with real requests | Their own pool of one |
-| N7 | A stolen token could lock an account out for good by deleting its data | A deleted account comes back empty on its next sign-in |
+| N6 | Health checks shared the database pool with real requests | Their own pool of one, one check at a time, the answer reused for 5 s (the pool alone still let a flood of probes read as an outage) |
+| N7 | A stolen token could lock an account out for good by deleting its data | A deleted account comes back empty on its next sign-in, with its crew places marked left (they had stayed live) |
+
+The third pass checked those seven and attacked phase 4's offline layer. Five of the
+seven held; N1, N6 and N7 above carry what it took to close the other two and N7's
+note. In the offline layer:
+
+| # | Finding | Fix |
+|---|---|---|
+| P1 | A photo the API refused was deleted from the phone, so photos taken on a claim that ran out while there was no signal were lost | Refused photos are kept, marked, with **Try again**, **Save a copy** and **Discard**; nothing leaves the phone unless its owner discards it or signs out after a warning |
+| P2 | Three triggers could send one queued photo at once, and a lost answer sent it again | One send at a time; each photo carries its queue id and the API stores it once (migration 0004); a newer photo of a slot replaces an older one still waiting |
+| P3 | Signing out with no signal and an expired token left the session stored; the next account inherited the queue | Sign-out removes the session itself when supabase-js cannot; everything kept offline is stored under its account |
+| P4 | A new version took over an open page and removed files it still had to load | The new version waits; the page offers **Reload now** |
+| P5 | The service worker's own CSP blocked its fonts cache | The font hosts are in `connect-src`; in Chromium the cache now fills |
+| P6 | Storage could be evicted; reviewers' claims were kept; the basemap style was cached for a month | Persistent storage requested when a photo is queued; only claims you are crew on are kept; the style and TileJSON are revalidated, and only dated tiles are cache-first |
 
 ## 11. Still open
 
@@ -728,8 +742,15 @@ Each is the maintainer's: a setting, an account or a decision this build cannot 
 - **Calls this build made that a poll did not:** a reviewer may reject, which releases
   the site, and may not claim it for 30 days (added after review finding 2 and the
   re-check's N2); a send-back gives the crew the time it had left, at least 7 days; one
-  account holds at most 10 sites; deleting your data keeps your crew places and
-  weights changes, without your name, and a later sign-in starts an empty account.
+  account holds at most 10 sites; deleting your data keeps your weights changes and
+  your crew places (marked left, so they give no access), without your name, and a
+  later sign-in starts an empty account. From the third pass: signing out signs out
+  this browser only, not every device (the Supabase project is OurHike's, so the
+  default would sign the person out of OurHike too); a photo the API refuses stays on
+  the phone until its owner decides; a session that ends without a sign-out leaves
+  that account's offline data on the phone, unseen by the next account, rather than
+  deleting photos nobody else has; the API refuses a photo over 2048 px on either
+  side rather than shrinking it; a new version waits for the person to reload.
 - **When peak season ends, by section of the trail**, which decides when each of the
   three years' follow-up visits opens (§6). Follow-ups are not built until it is set.
 

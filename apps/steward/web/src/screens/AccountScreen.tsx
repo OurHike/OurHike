@@ -1,6 +1,7 @@
 import { useEffect, useState, type FormEvent } from 'react'
 import { useAccount } from '../account'
 import { SignInForm } from '../components/SignInForm'
+import { onOfflineChange, queuedPhotos } from '../offline'
 
 export function AccountScreen() {
   const account = useAccount()
@@ -27,6 +28,23 @@ function SignedIn() {
   const [saved, setSaved] = useState<string | null>(null)
   const [problem, setProblem] = useState<string | null>(null)
   const [confirmDelete, setConfirmDelete] = useState(false)
+  const [confirmSignOut, setConfirmSignOut] = useState(false)
+  const userId = session.state === 'signed_in' ? session.userId : null
+  // Photos on this phone that signing out would delete (src/offline.ts).
+  const [kept, setKept] = useState(0)
+
+  useEffect(() => {
+    if (!userId) return
+    let live = true
+    const read = () =>
+      void queuedPhotos(userId).then((found) => live && setKept(found.length))
+    read()
+    const stop = onOfflineChange(read)
+    return () => {
+      live = false
+      stop()
+    }
+  }, [userId])
 
   useEffect(() => {
     if (!api) return
@@ -95,8 +113,45 @@ function SignedIn() {
           {problem}
         </p>
       )}
+      {kept > 0 && !confirmSignOut && (
+        <p className="muted" style={{ margin: 0 }}>
+          {keptLine(kept)} <a href="#/work">Your work</a> lists your claims; each
+          one&rsquo;s page sends what is waiting, or keeps what was not taken for you to
+          save.
+        </p>
+      )}
+      {confirmSignOut && (
+        <p
+          className="note"
+          role="alert"
+          style={{
+            margin: 0,
+            display: 'flex',
+            gap: 8,
+            flexWrap: 'wrap',
+            alignItems: 'center',
+          }}
+        >
+          {keptLine(kept)} Signing out deletes {kept === 1 ? 'it' : 'them'} from this
+          phone.
+          <button type="button" className="button primary" onClick={() => void signOut()}>
+            Sign out and delete {kept === 1 ? 'it' : 'them'}
+          </button>
+          <button
+            type="button"
+            className="button"
+            onClick={() => setConfirmSignOut(false)}
+          >
+            Stay signed in
+          </button>
+        </p>
+      )}
       <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
-        <button type="button" className="button" onClick={() => void signOut()}>
+        <button
+          type="button"
+          className="button"
+          onClick={() => (kept > 0 ? setConfirmSignOut(true) : void signOut())}
+        >
           Sign out
         </button>
         {!confirmDelete ? (
@@ -108,9 +163,10 @@ function SignedIn() {
             className="note"
             style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}
           >
-            Your name, lists and hours are deleted, and you are signed out. Weights you
-            changed and claims you worked on stay in their histories, without your name.
-            Signing in again starts an empty account.
+            Your name, lists and hours are deleted, you leave every crew you are on, and
+            you are signed out. Weights you changed and claims you worked on stay in their
+            histories, without your name. Signing in again starts an empty account.
+            {kept > 0 && ` ${keptLine(kept)} They are deleted from this phone too.`}
             <button
               type="button"
               className="button primary"
@@ -131,3 +187,6 @@ function SignedIn() {
     </>
   )
 }
+
+const keptLine = (kept: number) =>
+  `${kept} photo${kept === 1 ? '' : 's'} on this phone ${kept === 1 ? 'has' : 'have'} not been sent.`

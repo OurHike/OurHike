@@ -31,13 +31,16 @@ export default defineConfig(({ mode }) => {
       react(),
       pagesHeaders(env),
       // Installable, and opens with no signal (#1911), on the plan OurHike's
-      // client uses (client/vite.config.ts): generateSW, updating itself.
+      // client uses (client/vite.config.ts): generateSW.
       VitePWA({
-        // Safe to swap automatically because the worker holds only files that
-        // ship together; a claim saved for offline and the photos waiting for
-        // signal are in IndexedDB (src/offline.ts), which an update leaves alone.
-        registerType: 'autoUpdate',
-        injectRegister: 'script-defer',
+        // A new version waits until the page offers a reload and the person
+        // takes it (src/update.ts, which also registers the worker): swapped in
+        // under an open page, it removed files that page still had to load
+        // (the adversarial review's third pass, P4). A claim saved for offline
+        // and the photos waiting for signal are in IndexedDB (src/offline.ts),
+        // which an update leaves alone either way.
+        registerType: 'prompt',
+        injectRegister: false,
         workbox: {
           cleanupOutdatedCaches: true,
           // The app and this week's analysis: they are one deployment
@@ -52,12 +55,29 @@ export default defineConfig(({ mode }) => {
             {
               // Basemap tiles the phone has already shown: a site's
               // surroundings stay drawn after the signal goes. Capped, and
-              // only what was viewed; nothing is downloaded in bulk.
-              urlPattern: /^https:\/\/tiles\.openfreemap\.org\//,
+              // only what was viewed; nothing is downloaded in bulk. Only
+              // tiles that never change at their address: vector tiles sit
+              // under a dated planet build (/planet/20261025_080012_pt/ on
+              // 2026-10-27) and the Natural Earth raster never changes.
+              urlPattern:
+                /^https:\/\/tiles\.openfreemap\.org\/(planet\/[^/]+\/\d+\/\d+\/\d+\.pbf|natural_earth\/)/,
               handler: 'CacheFirst',
               options: {
                 cacheName: 'basemap',
                 expiration: { maxEntries: 3000, maxAgeSeconds: 30 * 24 * 60 * 60 },
+                cacheableResponse: { statuses: [0, 200] },
+              },
+            },
+            {
+              // The style, the TileJSON naming this week's planet build, the
+              // sprites and the glyphs: kept for offline, but checked again
+              // whenever there is signal, since a cached TileJSON would hold
+              // the map to an old build for a month (the third pass, P6).
+              urlPattern: /^https:\/\/tiles\.openfreemap\.org\//,
+              handler: 'StaleWhileRevalidate',
+              options: {
+                cacheName: 'basemap-style',
+                expiration: { maxEntries: 300, maxAgeSeconds: 30 * 24 * 60 * 60 },
                 cacheableResponse: { statuses: [0, 200] },
               },
             },

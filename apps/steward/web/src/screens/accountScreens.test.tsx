@@ -2,6 +2,7 @@ import { render, screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { describe, expect, it, vi } from 'vitest'
 import { fixtureSites, fixtureSummary } from '../fixtures'
+import { clearOffline, queuePhoto } from '../offline'
 import {
   SIGNED_IN,
   SIGNED_OUT,
@@ -52,6 +53,41 @@ describe('AccountScreen', () => {
     expect(await screen.findByRole('alert')).toHaveTextContent(
       'That code is wrong or has expired.',
     )
+  })
+
+  it('signs out at once when nothing is waiting on the phone', async () => {
+    const account = fakeAccount(SIGNED_IN)
+    render(withAccount(account, <AccountScreen />))
+    await userEvent.click(await screen.findByRole('button', { name: 'Sign out' }))
+    expect(account.sent).toEqual(['sign out'])
+  })
+
+  it('says what signing out would delete when photos are waiting, and signs out only when told', async () => {
+    // Signing out deletes this account's photos from the phone (src/offline.ts);
+    // a photo nobody has seen go is the third pass's P1 all over again.
+    await queuePhoto({
+      userId: 'user-1',
+      claimId: 'c',
+      phase: 'after',
+      point: 1,
+      photo: new Blob(['x'], { type: 'image/jpeg' }),
+    })
+    const account = fakeAccount(SIGNED_IN)
+    render(withAccount(account, <AccountScreen />))
+    expect(
+      await screen.findByText(/1 photo on this phone has not been sent/),
+    ).toBeInTheDocument()
+    await userEvent.click(screen.getByRole('button', { name: 'Sign out' }))
+    expect(screen.getByRole('alert')).toHaveTextContent(
+      '1 photo on this phone has not been sent. Signing out deletes it from this phone.',
+    )
+    expect(account.sent).toEqual([])
+    await userEvent.click(screen.getByRole('button', { name: 'Stay signed in' }))
+    expect(account.sent).toEqual([])
+    await userEvent.click(screen.getByRole('button', { name: 'Sign out' }))
+    await userEvent.click(screen.getByRole('button', { name: 'Sign out and delete it' }))
+    expect(account.sent).toEqual(['sign out'])
+    await clearOffline('user-1')
   })
 
   it('saves the name others see', async () => {

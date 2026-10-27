@@ -3,8 +3,11 @@
 // Drawn onto a canvas and encoded again as JPEG. That does two things: it
 // shrinks a 12-megapixel original to at most PHOTO_LONG_SIDE pixels, under the
 // API's 3 MB cap, and it drops the EXIF block, which is where a phone keeps the
-// GPS position it was taken at, the time, and the device. The API refuses a
-// JPEG that still carries EXIF, so this step is not optional.
+// GPS position it was taken at, the time, and the device, before the photo
+// crosses the network. The API redraws whatever arrives again anyway
+// (api/steward_api/photos.py), and refuses a photo with either side longer
+// than its own limits.PHOTO_LONG_SIDE, so this step is not optional and the
+// two numbers must stay equal.
 
 /** `@unvalidated`: enough to see debris and trampled ground on a phone screen;
  *  a reviewer comparing before and after is what would say if it is too little. */

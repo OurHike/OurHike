@@ -1,3 +1,4 @@
+import { useEffect, useState } from 'react'
 import { useAccount } from './account'
 import { useStewardData, type StewardData } from './data'
 import { useRoute, type Route } from './route'
@@ -11,6 +12,7 @@ import { SharedScreen } from './screens/SharedScreen'
 import { SitePage } from './screens/SitePage'
 import { SitesScreen } from './screens/SitesScreen'
 import { WorkScreen } from './screens/WorkScreen'
+import { watchForUpdates } from './update'
 
 const NAV: { href: string; label: string; screens: Route['screen'][] }[] = [
   { href: '#/', label: 'Sites', screens: ['sites', 'site'] },
@@ -53,6 +55,8 @@ export function App({ load }: { load?: () => Promise<StewardData> }) {
   const route = useRoute()
   const loaded = useStewardData(load)
   const { session } = useAccount()
+  const [update, setUpdate] = useState<(() => void) | null>(null)
+  useEffect(() => watchForUpdates((apply) => setUpdate(() => apply)), [])
   return (
     <>
       <header className="top">
@@ -104,6 +108,25 @@ export function App({ load }: { load?: () => Promise<StewardData> }) {
         </div>
       </header>
       <main className="page">
+        {update && (
+          <p
+            className="note"
+            role="status"
+            style={{
+              margin: 0,
+              display: 'flex',
+              gap: 8,
+              flexWrap: 'wrap',
+              alignItems: 'center',
+            }}
+          >
+            A new version of Campsite Steward is ready. Anything you have not saved on
+            this screen goes when it reloads.
+            <button type="button" className="button primary" onClick={update}>
+              Reload now
+            </button>
+          </p>
+        )}
         {route.screen === 'guide' ? (
           <GuideScreen />
         ) : loaded.state === 'loading' ? (

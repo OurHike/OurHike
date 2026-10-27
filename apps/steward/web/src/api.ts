@@ -117,11 +117,14 @@ export interface StewardApi {
   releaseClaim(id: string): Promise<ClaimDetail>
   invite(id: string): Promise<{ token: string }>
   joinClaim(token: string): Promise<ClaimSummary>
+  /** `clientId` is the phone's own id for a queued photo (src/offline.ts): the
+   *  API stores a photo once however many times it is sent under one id. */
   uploadPhoto(
     id: string,
     phase: PhotoPhase,
     point: number | null,
     photo: Blob,
+    clientId?: string,
   ): Promise<ClaimDetail>
   deletePhoto(id: string, photoId: string): Promise<ClaimDetail>
   logHours(id: string, hours: number): Promise<ClaimDetail>
@@ -205,10 +208,10 @@ export function createApi(
     releaseClaim: (id) => call('POST', `${claimPath(id)}/release`),
     invite: (id) => call('POST', `${claimPath(id)}/invite`),
     joinClaim: (token) => call('POST', '/claims/join', { token }),
-    uploadPhoto: (id, phase, point, photo) =>
+    uploadPhoto: (id, phase, point, photo, clientId) =>
       call(
         'POST',
-        `${claimPath(id)}/photos?phase=${phase}${point === null ? '' : `&point=${point}`}`,
+        `${claimPath(id)}/photos?phase=${phase}${point === null ? '' : `&point=${point}`}${clientId ? `&client_id=${encodeURIComponent(clientId)}` : ''}`,
         photo,
       ),
     deletePhoto: (id, photoId) =>

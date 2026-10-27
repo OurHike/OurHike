@@ -2,7 +2,8 @@ import { render, screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { act } from '@testing-library/react'
-import { clearOffline, queuedPhotos, saveClaim } from '../offline'
+import { ApiError } from '../api'
+import { clearOffline, queuedPhotos, refusedPhotos, saveClaim } from '../offline'
 import { fixtureSites } from '../fixtures'
 import {
   SIGNED_IN,
@@ -27,8 +28,10 @@ const picture = () => new File(['pixels'], 'IMG_0001.HEIC', { type: 'image/heic'
 afterEach(async () => {
   window.location.hash = ''
   window.localStorage.clear()
-  await clearOffline()
+  await clearOffline(ME)
 })
+
+const ME = SIGNED_IN.state === 'signed_in' ? SIGNED_IN.userId : ''
 
 describe('Claiming from a site page', () => {
   it('asks a signed-out visitor to sign in to claim', () => {
@@ -230,7 +233,7 @@ describe('With no signal', () => {
   it('opens a claim this phone saved, and says it is the saved copy', async () => {
     const api = fakeApi()
     const [made] = await api.claimSites(['example-0004'])
-    await saveClaim(await api.claim(made.id))
+    await saveClaim(ME, await api.claim(made.id))
     const offline = {
       ...api,
       claim: vi.fn(async () => Promise.reject(new TypeError('Failed to fetch'))),
@@ -289,17 +292,72 @@ describe('With no signal', () => {
       await screen.findByText(/1 photo waiting on this phone for signal/),
     ).toBeInTheDocument()
     expect(screen.getByText('Waiting for signal')).toBeInTheDocument()
-    expect(await queuedPhotos(made.id)).toHaveLength(1)
+    expect(await queuedPhotos(ME, made.id)).toHaveLength(1)
 
     signal = true
     await act(async () => {
       window.dispatchEvent(new Event('online'))
     })
-    await waitFor(async () => expect(await queuedPhotos(made.id)).toHaveLength(0))
+    await waitFor(async () => expect(await queuedPhotos(ME, made.id)).toHaveLength(0))
     await waitFor(() =>
       expect(screen.queryByText(/waiting on this phone/)).not.toBeInTheDocument(),
     )
     expect(api.calls).toContain('photo before 1 image/jpeg')
+  })
+
+  it('keeps photos the claim no longer takes, and lets their owner save, retry or discard each', async () => {
+    // The third pass's P1: the claim ran out while the phone had no signal,
+    // and the photos waiting for it were deleted when the signal came back.
+    const api = fakeApi()
+    const [made] = await api.claimSites(['example-0004'])
+    let answer: 'none' | 'released' = 'none'
+    const closing = {
+      ...api,
+      uploadPhoto: vi.fn(async () =>
+        Promise.reject(
+          answer === 'none'
+            ? new TypeError('Failed to fetch')
+            : new ApiError(409, 'This claim is released, so that cannot be done now'),
+        ),
+      ),
+    }
+    render(
+      withAccount(
+        fakeAccount(SIGNED_IN, closing),
+        <ClaimScreen id={made.id} sites={fixtureSites} prepare={prepare} />,
+      ),
+    )
+    await screen.findByRole('region', { name: 'Time left' })
+    for (const box of screen.getAllByRole('checkbox').slice(0, 6))
+      await userEvent.click(box)
+    await userEvent.upload(screen.getByLabelText('After, point 1'), picture())
+    await screen.findByText(/1 photo waiting on this phone for signal/)
+
+    answer = 'released'
+    await act(async () => {
+      window.dispatchEvent(new Event('online'))
+    })
+    const kept = await screen.findByRole('region', { name: /Not sent/ })
+    expect(within(kept).getByText('After, point 1')).toBeInTheDocument()
+    expect(within(kept).getByText(/This claim is released/)).toBeInTheDocument()
+    expect(refusedPhotos(await queuedPhotos(ME, made.id))).toHaveLength(1)
+
+    await userEvent.click(within(kept).getByRole('button', { name: 'Try again' }))
+    await waitFor(() => expect(closing.uploadPhoto).toHaveBeenCalledTimes(3))
+    expect(await queuedPhotos(ME, made.id)).toHaveLength(1)
+
+    await userEvent.click(
+      within(await screen.findByRole('region', { name: /Not sent/ })).getByRole(
+        'button',
+        {
+          name: 'Discard',
+        },
+      ),
+    )
+    await waitFor(() =>
+      expect(screen.queryByRole('region', { name: /Not sent/ })).not.toBeInTheDocument(),
+    )
+    expect(await queuedPhotos(ME, made.id)).toEqual([])
   })
 
   it('shows the before photo under an empty after slot, to line up with', async () => {

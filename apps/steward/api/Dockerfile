@@ -15,6 +15,12 @@ COPY alembic.ini .
 
 RUN useradd --system --no-create-home --shell /usr/sbin/nologin steward
 ENV PYTHONDONTWRITEBYTECODE=1
+# glibc keeps memory a thread freed in that thread's own arena, and photos are
+# re-encoded on the threadpool's threads. Eight 2048 x 2048 photos at once
+# (photos.reencode, two decoding at a time) raised the process by 137 MB, and
+# by 71 MB with two arenas: measured 2026-10-27 in the build sandbox, not on
+# the host, after the adversarial review's third pass found the same effect.
+ENV MALLOC_ARENA_MAX=2
 USER steward
 
 ENV PORT=8000

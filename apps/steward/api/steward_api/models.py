@@ -157,13 +157,20 @@ class Claim(Base):
 
 
 class ClaimMember(Base):
-    """The crew, the claimer included."""
+    """The crew, the claimer included.
+
+    A place is never deleted. Deleting your data sets left_at instead: a left
+    place gives no access and is not listed, but still keeps its holder from
+    reviewing that claim (routes/claims.review). Before the third pass it
+    stayed live, so an account that had deleted its data could still upload
+    to a friend's claim and saw it in its claims (2026-10-27)."""
 
     __tablename__ = "claim_member"
 
     claim_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("claim.id", ondelete="CASCADE"), primary_key=True)
     user_id: Mapped[str] = mapped_column(ForeignKey("steward_user.id", ondelete="CASCADE"), primary_key=True, index=True)
     joined_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+    left_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
 
 
 class Photo(Base):
@@ -177,6 +184,7 @@ class Photo(Base):
         CheckConstraint("(phase = 'extra') = (point is null)", name="ck_photo_point_only_on_points"),
         # One before and one after per photo point; a new one replaces it.
         Index("uq_photo_point", "claim_id", "phase", "point", unique=True, postgresql_where=text("point is not null")),
+        Index("uq_photo_client_id", "claim_id", "client_id", unique=True, postgresql_where=text("client_id is not null")),
     )
 
     id: Mapped[uuid.UUID] = mapped_column(Uuid, primary_key=True, default=uuid.uuid4)
@@ -186,6 +194,9 @@ class Photo(Base):
     content_type: Mapped[str] = mapped_column(String(20))
     size_bytes: Mapped[int] = mapped_column(Integer)
     uploaded_by: Mapped[str | None] = mapped_column(ForeignKey("steward_user.id", ondelete="SET NULL"))
+    #: The phone's own id for a photo it queued with no signal, so sending it
+    #: again after a lost response stores nothing new (the third pass's P2).
+    client_id: Mapped[str | None] = mapped_column(String(64))
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
 
 

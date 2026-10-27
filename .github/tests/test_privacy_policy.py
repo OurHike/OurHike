@@ -165,6 +165,20 @@ def test_it_says_how_long_usage_counts_are_kept(policy: str):
     assert "six whole months" in policy
 
 
+def test_it_says_a_count_tells_whether_an_account_is_signed_in(policy: str):
+    """Every usage row says whether an account is signed in on the phone
+    (#1902's identity work, 2026-10-27) - never which, but a hiker who said no
+    to linking is still told that much goes. The field is read out of the
+    row's own type, so dropping it from the row fails here and says which
+    sentence of the policy to take out with it."""
+    events = (CLIENT_LIB / "usageEvents.ts").read_text(encoding="utf-8")
+    assert re.search(r"^\s+signed_in: boolean$", events, re.MULTILINE), (
+        "usage rows no longer carry signed_in: take the signed-in sentence out of the policy too"
+    )
+    assert "whether an account is signed" in " ".join(policy.split())
+    assert "never which account" in policy
+
+
 def test_it_carries_a_date(policy: str):
     """A policy with no date cannot be reasoned about - "we'll update the date
     at the top" is a promise this file makes about itself."""

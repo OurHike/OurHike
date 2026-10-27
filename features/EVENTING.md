@@ -47,9 +47,49 @@ Companion to [FEATURE_GATING.md](FEATURE_GATING.md), [IDENTITY_AND_PRIVACY.md](I
 - the phone's calendar date
 - the platform and the app version
 - the heartbeat flags (`week_first`, `month_first`, `ever_first`), and `club_firsts`, the same "first time this month" answer per club (§2)
+- three more answers the phone works out about itself, added on 2026-10-27 when the maintainer asked how signed-in and signed-out hikers are told apart (below): `kind_month_first` (its first event of this kind this month), `month_returning` (on its first row of the month: it was counted last month too) and `signed_in` (an account is signed in on it - never which)
 - the phone's GPS fix, but only one the map already holds that is under 10 minutes old and within 100 m. Measurement never turns location on.
 
-**Linked rows** come from a hiker who said yes and sent a valid token. They also get a `user_key` (HMAC-SHA256 of the account id under `ANALYTICS_USER_KEY_SECRET`), and the account id goes into the seal beside the fix.
+**Linked rows** come from a hiker who said yes and sent a valid token. They also get a `user_key` (HMAC-SHA256 of the account id under `ANALYTICS_USER_KEY_SECRET`), and the account id goes into the seal beside the fix. A queued row remembers which account recorded it (`client/src/lib/accountTag.ts`) and goes linked only while that same account is signed in with its yes standing, so one hiker's rows never leave with another's token; a sign-out or a no sends what is waiting unlinked rather than dropping it.
+
+**The server refuses rows one at a time.** A row that breaks the registry, or is dated before retention or more than a day ahead, is refused alone; before 2026-10-27 one such row cost every row in its batch, since the phone drops a refused batch. Every row's outcome is counted per day and app version in `analytics_intake` (stored, duplicate, invalid, too old, future), which is the only trace a refused row leaves.
+
+**None of measurement is parsed before the first frame.** App renders `client/src/lib/DeferredMeasureUsage.tsx`, which imports the hook behind `import()`; what App must still build eagerly - the props, the plan calls, the link question - was paid for by deferring four tap-opened surfaces (`client/src/screens/deferred.ts` has the measurements). Moments in the first second, before the chunk arrives, are missed: a screen change, or a plan made that fast. The install is captured eagerly, so a fast Skip on first run still counts.
+
+### Who is who: signed out, signed in, linked
+
+The maintainer's question of 2026-10-27, answered as built. **There is no device id and no anonymous id**: a phone is never told apart from another phone by anything it sends. What a report can say comes from three states and from what each phone answers about itself.
+
+| The phone is | What its rows carry about who | What a report can count |
+|---|---|---|
+| **Signed out** | nothing - and `signed_in: false` | phones (active, new, returning, back again, and per thing done), by the phones' own answers |
+| **Signed in, not linked** (said no, or not asked yet) | nothing about the account - `signed_in: true` | the same, and what share of phones are signed in |
+| **Signed in and linked** (said yes) | `user_key`, a keyed hash of the account; the account id sealed | all of the above, plus hikers: who came back, planned and finished, across months and phones, from the User table |
+
+So the **phone** is the unit for everyone, and the **hiker** is the unit only for those who said yes - two numbers the report never adds together. A hiker with two phones is two phones and one hiker. A phone's rows before a hiker linked are not joined to the rows after; nothing could join them without an identifier. **Growth accounting for every phone** - new, returning from last month, back after a gap, lost since last month - comes from `ever_first` and `month_returning` on each phone's first row of the month, and adds up exactly to the month's active phones (checked nightly, below).
+
+What this does not give, said rather than discovered: **retention by install cohort for phones that never linked** (month-over-month return is there; "of the phones installed in March, how many are here in July" is not), and **a journey across sessions for an unlinked phone**. Both need either an identifier or an install-month field on rows, and both cost something §1 was written to avoid: for a small population, an install month plus platform and version makes most phones unique, and their rows linkable across months with the 0.1° square beside them. That trade is on the maintainer's list for 2026-10-28, not decided here.
+
+### Keeping the numbers honest over time
+
+Eventing data goes wrong quietly - a field renamed, a call dropped in a refactor, a flag that fires twice - and the count just comes in low or high. Each of these fails a test first:
+
+- **The heartbeat, over histories a real phone records** (`client/src/lib/usageHeartbeat.test.ts`): 400 seeded histories with sessions recorded after later rows and clocks stepping both ways; every week, month, club-month and kind-month counted exactly once. It found the bug it was written for: the heartbeat remembered only the last week and month, so a visit across Sunday midnight or a month end counted the phone twice in both (on synthetic histories with clock steps off, 1,458 of 2,243 phone-months; the real rate was never measured). It keeps sets of counted periods now.
+- **The golden batch** (`client/src/lib/usageBatch.golden.test.ts` and `backend/tests/test_usage_golden_batch.py`): one row of every event with every field, built by the phone's code into a checked-in file the server must store field for field. A rename on either side fails one of them.
+- **What a metric means is fingerprinted** (`DEFINITION_FINGERPRINTS`, `backend/tests/test_analytics_definitions.py`): changing the metric SQL without recording it under a `DEFINITION_VERSION` fails.
+- **Eight months of phones through the real route and the real nightly rollup** (`backend/tests/test_analytics_simulation.py`): installs, churn, linked accounts, and offline trips long enough to upload after a month closed; every closed month's phones, new, returning and back-again equal the simulation's own truth as of the close, closed months never move, late rows are counted exactly, the oldest month's raw rows go and its figures stay. It found that "late rows" were counted from `received_on > closed_on`, which missed rows arriving later on the close day itself; the count is now rows held less rows frozen.
+- **The wiring, in a real browser** (`client/e2e/usageCensus.spec.ts`): one install for a fresh first run, one visit closed on relaunch, no sign-in for a restored session, one map view per arrival, nothing kept once sharing is off, and the batch as actually sent - unlinked, no token.
+- **The sums that must hold**, nightly on real data (next section).
+
+### Data quality: what is checked every night
+
+`backend/app/core/analytics_quality.py`, after the rollup, from the same workflow:
+
+- **Each metric each day** - installs, sign-ins, plans made and completed, map views, visits, screens, phones first this week - against the median of the same weekday over up to eight weeks, **compared lag for lag**: a day is judged against earlier days as they stood after the same number of whole days of uploads, so a fresh day short of its offline phones does not read low every night.
+- **An anomaly needs two things**: 4 deviations out *and* 50% away from expected - so it neither fires on noise at 20 a day nor on a 3% wobble at 10,000. **A fall to nothing is judged on its own**: zero where at least 7 were expected and the same weekday has never been zero (a Poisson chance under 0.1%). Too little history says `learning`, too few events `quiet`. Every threshold is `@unvalidated`; what settles them is a quarter of real data and the maintainer's judgement of which findings were worth reading.
+- **Each event per visit**, so instrumentation that broke shows even while the season lifts traffic; **each release against the others**, the shape of a release that stopped recording one event; **refused and resent rows** from `analytics_intake`; **rows thrown away for want of a key**; **a month left provisional past its close**; **closed months still collecting rows** (`CLOSE_AFTER_DAYS` too short); and **the sums every month must satisfy** - platforms add up to the whole, new + returning + back again = active, session lengths add up to sessions, no club above the whole app.
+- Findings go into `analytics_anomalies` and resolve themselves when a later night no longer makes them. **Production keeps one tracking issue** while any is open (`.github/scripts/tracking-issue.js`). This repository is public, so the issue and the job's log name checks, slices and days and **never a figure** (`backend/tests/test_analytics_quality_script.py`); the figures are in the table and the report.
+- **Checked against a staged incident** on the demo seed: release 1.5.0 refusing plan rows from 2026-10-12 was found by the per-release check and the intake check, and a two-day sign-in outage by the zero rule, with nothing else firing across 56 days of eight metrics.
 
 ### Encrypted and masked: what the server can and cannot read
 
@@ -100,9 +140,11 @@ It sends a closed-alphabet id, never a name. `_unrecorded` stands for the 38.5 A
 - From, To and Club filters
 - active devices by month, a by-club table, plans and completions, platforms and session length
 - retention by first month, from the User table
+- every phone by what it did (viewed the map, planned, completed), beside the same funnel for hikers who said yes; where each month's phones came from (new, returning, back again, lost); the share signed in
 - a data-health panel: what was linked, what was thrown away for want of a key, what arrived after its month closed, and how far ahead keys are published
+- a data-quality panel: each metric's days as a **share** of what was expected, never a count, with the band where a day is still ordinary, and every finding of the last sixty days
 
-**Every figure describing fewer than 25 people is absent from the file**, not hidden by its script. One hidden club or platform takes the next-smallest with it, so the hidden one cannot be had by subtraction (`app/core/analytics_report.py`). The script refuses to write inside the repository.
+**Every figure describing fewer than 25 people is absent from the file**, not hidden by its script. One hidden club or platform takes the next-smallest with it, so the hidden one cannot be had by subtraction (`app/core/analytics_report.py`). A count of phones or hikers inside a shown cell is masked below 25 too, and so is one whose complement in the cell is below 25 - of 900 phones, "880 viewed the map" says 20 did not. New, returning and back-again phones add up to the cell's active phones, so one of them masked masks all three. The script refuses to write inside the repository.
 
 ### Operating it
 
@@ -120,12 +162,14 @@ CREATE ROLE ourhike_analytics_rollup LOGIN PASSWORD '<generated>';
 GRANT CONNECT ON DATABASE postgres TO ourhike_analytics_rollup;
 GRANT USAGE ON SCHEMA public TO ourhike_analytics_rollup;
 GRANT SELECT (id, local_date, received_on, event, platform, app_version, user_key,
-              week_first, month_first, ever_first, club_firsts, clubs, miles,
+              week_first, month_first, ever_first, club_firsts, kind_month_first,
+              month_returning, signed_in, clubs, miles,
               pageviews, session_length, has_fix, area_lat, area_lon, seal)
   ON public.analytics_events TO ourhike_analytics_rollup;
 GRANT DELETE ON public.analytics_events TO ourhike_analytics_rollup;
-GRANT SELECT, INSERT, UPDATE, DELETE ON public.analytics_months, public.analytics_monthly
-  TO ourhike_analytics_rollup;
+GRANT SELECT, INSERT, UPDATE, DELETE ON public.analytics_months, public.analytics_monthly,
+  public.analytics_anomalies TO ourhike_analytics_rollup;
+GRANT SELECT, DELETE ON public.analytics_intake TO ourhike_analytics_rollup;
 GRANT SELECT ON public.analytics_users, public.analytics_seal_keys TO ourhike_analytics_rollup;
 -- RLS is on with no policies for every analytics table (migration 897b71ad5fff), so the
 -- role needs one per table it touches:
@@ -134,6 +178,8 @@ CREATE POLICY rollup_months ON public.analytics_months FOR ALL TO ourhike_analyt
 CREATE POLICY rollup_monthly ON public.analytics_monthly FOR ALL TO ourhike_analytics_rollup USING (true);
 CREATE POLICY rollup_users ON public.analytics_users FOR SELECT TO ourhike_analytics_rollup USING (true);
 CREATE POLICY rollup_keys ON public.analytics_seal_keys FOR SELECT TO ourhike_analytics_rollup USING (true);
+CREATE POLICY rollup_intake ON public.analytics_intake FOR ALL TO ourhike_analytics_rollup USING (true);
+CREATE POLICY rollup_anomalies ON public.analytics_anomalies FOR ALL TO ourhike_analytics_rollup USING (true);
 ```
 
 The same role can build the report. It cannot run `open`, by design; that needs the owner's URL.
@@ -147,6 +193,8 @@ The same role can build the report. It cannot run `open`, by design; that needs 
 - **Only A.T. miles get a club.** A day hike or any plan on another trail is counted by its length with no club. Its club would be the organization that publishes that trail, which the app does not yet look up. A map view or session off the A.T. corridor (more than 3 miles from its centreline, `MAX_OFF_TRAIL_MILES`) has no club either.
 - **Hikers already signed in when this ships are not asked** the link question until their next sign-in. The question is asked only after a sign-in the app started, so it never interrupts a launch. Until then they are counted unlinked, and can link from Safety & privacy.
 - **The App Store and Play privacy declarations** have to list precise location and usage data before a store build ships this. That is store-console work outside this repository.
+- **No identifier for an unlinked phone**, so no install-cohort retention and no cross-session journey for phones that never link (above, "Who is who"). That is the maintainer's call.
+- **A refused row's reason is not stored**, only its kind (`invalid`, `too_old`, `future`) and the version that sent it. Finding which field broke means reproducing the release.
 - **Nobody with a licence to say so has reviewed this design**, §9's caveat, which applies with more force now that it holds an identifier and a position.
 
 Two docs, one subject, split on a line worth stating up front: **FEATURE_GATING.md owns the gate — what a hiker sees. This doc owns the measurement — what we learn from it.** That doc's §6 sketched a starting event taxonomy and then deferred its own fourth open question, "how to minimize the privacy footprint of the event taxonomy above while still preserving useful experiment signal … not assumed safe by default." This is that pass, and the answer changed the taxonomy rather than trimming it.

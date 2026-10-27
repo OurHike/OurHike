@@ -7,22 +7,28 @@ Three commands, run by the maintainer on their own machine and never by CI:
         manager and nowhere else - not a file, not a CI secret, not the
         backend's environment. Nothing in this repository stores it.
 
-    OURHIKE_ANALYTICS_SECRET=... DATABASE_URL=... python scripts/analytics_keys.py publish --from 2026-11 --months 24
-        Derives each month's key pair from the secret and the month's name, and
-        writes only the PUBLIC half into `analytics_seal_keys`. Until a month
-        has one, `POST /usage-events` seals nothing for that month - it throws
-        the fix and the account id away and stores the row as `no_key`. So
-        publish well ahead, and the report's data-health line says when the
-        published months are running out.
+    DATABASE_URL=... python scripts/analytics_keys.py publish --from 2026-11 --months 24
+        Asks for the secret at a hidden prompt, derives each month's key pair
+        from it and the month's name, and writes only the PUBLIC half into
+        `analytics_seal_keys`. Until a month has one, `POST /usage-events`
+        seals nothing for that month - it throws the fix and the account id
+        away and stores the row as `no_key`. So publish well ahead, and the
+        report's data-health line says when the published months are
+        running out.
 
-    OURHIKE_ANALYTICS_SECRET=... DATABASE_URL=... python scripts/analytics_keys.py open \\
+    DATABASE_URL=... python scripts/analytics_keys.py open \\
             --month 2026-10 --by "Your name" --reason "why, in a sentence" \\
-            (--event-id ID | --user-key KEY | --whole-month) --out opened.csv
-        Writes an `analytics_openings` row naming you, the month, what was
-        asked for and why, COMMITS IT, and only then opens the rows and
-        writes them to the CSV file you named. It never prints a position or an
-        account to the terminal, because a terminal's scrollback is a copy
-        nobody remembers making.
+            (--event-id ID | --user-key KEY | --whole-month) --out ~/opened.csv
+        Asks for the secret at a hidden prompt, writes an `analytics_openings`
+        row naming you, the month, what was asked for and why, COMMITS IT,
+        and only then opens the rows and writes them to the CSV file you
+        named - a new file, readable by you alone, outside this repository.
+        It never prints a position or an account to the terminal, because a
+        terminal's scrollback is a copy nobody remembers making.
+
+THE SECRET IS ONLY EVER TYPED, OR PASTED, AT THE PROMPT. Not passed in a
+variable on the command line, which shell history keeps - the copy of the
+secret nobody remembers making, as scrollback is for the rows.
 
 Opening needs a connection that can read `sealed`. The rollup's role cannot,
 deliberately (features/EVENTING.md, the role's grants), so this runs with the
@@ -63,7 +69,10 @@ from app.core.time import utc_now  # noqa: E402
 from app.db.session import SessionLocal  # noqa: E402
 from app.models.analytics import AnalyticsEvent, AnalyticsOpening, AnalyticsSealKey  # noqa: E402
 
-SECRET_VARIABLE = "OURHIKE_ANALYTICS_SECRET"
+# Opened rows are positions and accounts: never written inside this
+# repository, where a commit would publish them for good (CONTRIBUTING.md,
+# "Data does not go in commits") - scripts/usage_report.py's refusal, here.
+REPOSITORY = Path(__file__).resolve().parents[2]
 
 
 class KeysError(RuntimeError):
@@ -85,8 +94,16 @@ def decode_secret(text: str) -> bytes:
 
 
 def _read_secret() -> bytes:
-    text = os.environ.get(SECRET_VARIABLE) or getpass.getpass("Analytics secret (input hidden): ")
-    return decode_secret(text)
+    """The secret, from a hidden prompt and nowhere else (the module docstring says why)."""
+    return decode_secret(getpass.getpass("Analytics secret (input hidden): "))
+
+
+def _refuse_out(out: Path) -> None:
+    """Refuse, before anything is recorded, a place the opened rows must not go."""
+    if out.resolve().is_relative_to(REPOSITORY):
+        raise KeysError(f"{out} is inside the repository. Opened rows are positions and accounts; write them elsewhere.")
+    if out.exists():
+        raise KeysError(f"{out} already exists. Opened rows are never written over a file; name a new one.")
 
 
 def _month(text: str) -> date:
@@ -138,9 +155,17 @@ def open_rows(
     key: str | None,
     out: Path,
 ) -> int:
-    """Record the opening, commit the record, then open and write the rows."""
+    """Record the opening, commit the record, then open and write the rows.
+
+    The file is created new, readable and writable by its owner alone
+    (`O_EXCL`, mode 0600), so an opening can neither replace a file nor be
+    read by another account on the machine. A file that appears between the
+    check below and the write is refused there too, after the record - which
+    is the record doing its job.
+    """
     if not reason.strip() or not opened_by.strip():
         raise KeysError("an opening needs a name and a reason; that is the whole of the record")
+    _refuse_out(out)
     selector = f"event {event_id}" if event_id else f"user_key {key}" if key else "whole month"
 
     opening = AnalyticsOpening(opened_by=opened_by.strip(), reason=reason.strip(), month=month, selector=selector)
@@ -160,7 +185,8 @@ def open_rows(
     label = month_label(month)
     private = month_private_key(secret, label)
     opened = 0
-    with out.open("w", newline="", encoding="utf-8") as handle:
+    descriptor = os.open(out, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600)
+    with os.fdopen(descriptor, "w", newline="", encoding="utf-8") as handle:
         writer = csv.writer(handle)
         writer.writerow(["id", "local_date", "event", "user_key", "account", "lat", "lon", "accuracy_m"])
         for event in query.order_by(AnalyticsEvent.local_date, AnalyticsEvent.id).all():
@@ -206,7 +232,9 @@ def main(argv: list[str] | None = None) -> int:
     which.add_argument("--event-id")
     which.add_argument("--user-key")
     which.add_argument("--whole-month", action="store_true")
-    open_parser.add_argument("--out", type=Path, required=True, help="The CSV file to write. Never stdout.")
+    open_parser.add_argument(
+        "--out", type=Path, required=True, help="A new CSV file to write, outside this repository. Never stdout."
+    )
 
     args = parser.parse_args(argv)
 
@@ -215,7 +243,7 @@ def main(argv: list[str] | None = None) -> int:
             print(encode_secret(new_secret()))
             print(
                 "Put this in your password manager now. It is printed once, stored nowhere, and "
-                f"read back from {SECRET_VARIABLE} or a hidden prompt by `publish` and `open`.",
+                "asked for again at a hidden prompt by `publish` and `open`.",
                 file=sys.stderr,
             )
             return 0

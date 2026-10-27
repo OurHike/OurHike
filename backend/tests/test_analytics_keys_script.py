@@ -142,6 +142,67 @@ def test_an_opening_needs_a_reason(db_session, keys, tmp_path):
         )
 
 
+def _open_into(db_session, keys, out: Path) -> int:
+    return keys.open_rows(
+        db_session,
+        new_secret(),
+        month=OCTOBER,
+        opened_by="Test Maintainer",
+        reason="checking where the file may go",
+        event_id=None,
+        key=None,
+        out=out,
+    )
+
+
+def test_an_out_path_inside_the_repository_is_refused_before_anything_is_recorded(db_session, keys):
+    inside = Path(__file__).resolve().parents[2] / "opened.csv"
+
+    with pytest.raises(keys.KeysError):
+        _open_into(db_session, keys, inside)
+
+    assert not inside.exists()
+    assert db_session.query(AnalyticsOpening).count() == 0
+
+
+def test_an_existing_file_is_never_written_over(db_session, keys, tmp_path):
+    out = tmp_path / "opened.csv"
+    out.write_text("somebody's own notes\n")
+
+    with pytest.raises(keys.KeysError):
+        _open_into(db_session, keys, out)
+
+    assert out.read_text() == "somebody's own notes\n"
+    assert db_session.query(AnalyticsOpening).count() == 0
+
+
+def test_the_opened_file_is_readable_by_its_owner_alone(db_session, keys, tmp_path):
+    out = tmp_path / "opened.csv"
+
+    _open_into(db_session, keys, out)
+
+    assert out.stat().st_mode & 0o777 == 0o600
+
+
+def test_the_command_refuses_an_out_inside_the_repository(db_session, keys, monkeypatch):
+    monkeypatch.setattr(keys.getpass, "getpass", lambda prompt: keys.encode_secret(new_secret()))
+    inside = Path(__file__).resolve().parents[2] / "opened.csv"
+    argv = ["open", "--month", "2026-10", "--by", "Test", "--reason", "a test", "--whole-month", "--out", str(inside)]
+
+    assert keys.main(argv) == 2
+    assert not inside.exists()
+
+
+def test_the_secret_is_read_at_the_hidden_prompt_and_never_from_the_environment(keys, monkeypatch):
+    """A secret in a variable on the command line is a secret in shell history."""
+    typed, exported = new_secret(), new_secret()
+    monkeypatch.setenv("OURHIKE_ANALYTICS_SECRET", keys.encode_secret(exported))
+    monkeypatch.setattr(keys.getpass, "getpass", lambda prompt: keys.encode_secret(typed))
+
+    assert keys._read_secret() == typed
+    assert "OURHIKE_ANALYTICS_SECRET=" not in keys.__doc__
+
+
 def test_the_wrong_secret_opens_nothing(db_session, keys, tmp_path):
     _sealed_event(db_session, new_secret(), {"lat": 41.3, "lon": -74.2})
     out = tmp_path / "opened.csv"

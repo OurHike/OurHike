@@ -1,14 +1,15 @@
 # Campsite Steward — build plan
 
 **Status: phases 0 and 1 built; phases 2 and 3 built but not deployed** (§9): the
-weekly analysis job, the read-only web app, and sign-in, lists, club weights and
-claims with the API behind them. The API has no host, database or photo bucket yet
-(§11). Phase 4's first part is built too: the app installs, opens with no signal and
-queues photos (#1911); follow-up visits wait on a decision (§11). An adversarial review
-on 2026-10-27 proved thirteen findings; re-checking the fixes, seven more; a third
-pass, two fixes that held only in part and six problems in the offline layer; and a
-fourth, that offline stopped working an hour after the signal went, and three smaller
-problems. All are fixed, and a fifth pass found those fixes held (§10). This file began as the
+analysis job, the read-only web app, and sign-in, lists, club weights and claims. Since
+2026-10-27 those live in a `steward` schema in OurHike's Supabase project, which the app
+talks to directly: there is no API server (decided by poll; the decisions table). The
+schema is written and tested but not yet applied to the project (§11). Phase 4's first
+part is built too: the app installs, opens with no signal and queues photos (#1911);
+follow-up visits wait on a decision (§11). Five adversarial review passes on 2026-10-27
+proved 33 problems in the Python API and the offline layer, all fixed, and their tests
+were carried into the SQL (§10); the SQL itself has not yet had a pass of its own. This
+file began as the
 deliverable of **#1899 — Plan Campsite Steward, a separate app that ranks the A.T.
 campsites needing restoration and lets volunteers claim them**, written 2026-10-24 to
 2026-10-26 from a planning session with the maintainer: a first-pass analysis, then
@@ -97,6 +98,8 @@ so that the next reader knows they were considered, not so that they get argued 
 | 2026-10-27 | Where the scored files live, first answer | A private Cloudflare R2 bucket of the app's own (replaced the same day, next row) | A private Google Drive folder; run by hand for now |
 | 2026-10-27 | Where the scored files live, revisited ("the data is open… can't we just keep this simple?") | Two public static files, `summary.json` and `sites.json`, served beside the app, locations included. No bucket, no secrets. Anyone can see the map without signing in; sign-in is for claims, lists, reviews and weights | Scores only, with locations read live from ATC's layer; keep the private R2 bucket |
 | 2026-10-27 | How often the job re-scores | Weekly | Monthly; only when ATC's layer changes |
+| 2026-10-27 | Where volunteers' claims, photos, reviews, hours, lists and weights live ("this really is meant to be open source data… is there a simpler solution that would involve Supabase Postgres?"), by poll with a diagram of the three options | No API server: the app talks to OurHike's Supabase project directly. A `steward` schema holds the tables; Postgres functions hold the rules; row-level security says who may write; anyone may read what is public; photos go to a public Supabase Storage bucket; the volunteer work is also published as open files beside `sites.json` | Keep the Python API and move its tables into OurHike's Supabase Postgres; keep the API and its own database as built |
+| 2026-10-27 | Who is named on a claim in the open data | Nobody, until the work is verified: before that, the public sees that a site is claimed and when it is due, not who will be out there. The crew sees its own names throughout | Only volunteers who opt in; always named |
 | 2026-10-26 | How a follow-up visitor finds a hidden site | The site page adds coordinates and a bearing (for example, "leave the A.T. at mile 12.4, walk 40 ft west, bearing 270°"), and photo point 1 keeps its own position | Mile and offset only; step-by-step directions from parking |
 
 ---
@@ -424,9 +427,10 @@ directions.
 
 | Part | What it is | Reused from OurHike, or new |
 |---|---|---|
-| Sign-in | The same Supabase project, so an OurHike account works here. A six-digit code by email, typed back: the shared project's email template sends a code, not a link, and `client/src/lib/auth.ts` (#1600) records why asking it for a link fails. A code also needs no redirect address registered with Supabase | Reused: `backend/app/core/auth.py`'s token check, copied into `apps/steward/api/steward_api/auth.py` because the two deploy separately |
-| API | A FastAPI service under `apps/steward/api/`, with its own Postgres database. Built in phase 2 (#1906) for lists, share links and weights; claims, invites, submissions, reviews and hours come in phase 3. Its Dockerfile is `backend/Dockerfile`'s shape, so it runs on Render beside OurHike's API (`backend/HOSTING.md` chose Render's free tier). Not deployed: the database is §11's first open item | New |
-| Photos | A private R2 bucket of the app's own (`STEWARD_R2_*`), keyed by claim and photo id and read through 10-minute signed URLs, following `backend/app/core/photos.py`. Every photo is redrawn as a plain JPEG twice: on the phone, which strips its location before it is sent, and on the server, which keeps only pixels whatever arrives | Pattern reused, own bucket |
+| Sign-in | The same Supabase project, so an OurHike account works here. A six-digit code by email, typed back: the shared project's email template sends a code, not a link, and `client/src/lib/auth.ts` (#1600) records why asking it for a link fails. A code also needs no redirect address registered with Supabase | Reused: the project's own sign-in; PostgREST checks the token before any steward function runs |
+| Data | A `steward` schema in the same project, under `apps/steward/db/`: tables nothing reaches directly, one Postgres function per action holding its rule, and three open views anyone may read. The app calls the functions through supabase-js. Decided 2026-10-27 in place of a FastAPI service on Render with its own database, which was built, reviewed five times and retired the same day; its tests were carried into the SQL | New |
+| Photos | A public Supabase Storage bucket, `steward-photos`, under `<claim id>/<the phone's id for the photo>.jpg`. Only a claim's crew may upload, only while the claim is open; nothing is overwritten; JPEG only, at most 3 MB. The phone redraws every photo before it leaves, which strips its location. Nothing redraws it again: the retired API did, against a tampered phone (§10) | Pattern new |
+| Open data | The volunteer work as CSV and Parquet beside `sites.json`, written daily from the open views with the public anon key (`steward_analysis/open_data.py`) | New |
 | Club sections | Which club owns which mile | Reused: `pipeline/export_club_sections.py`'s output |
 | ArcGIS reading | Paging an ArcGIS layer | Reused: `pipeline/lib/arcgis.py` |
 | Basemap | The map under the sites | Not reused: OpenFreeMap's OpenStreetMap tiles (`tiles.openfreemap.org`), free and keyless at every zoom. OurHike's basemap is a PMTiles file with OurHike's own style and protocol handler, which would have had to be copied in. `@unvalidated`: nobody has checked OpenFreeMap's uptime; if it fails, the table and every site page still work |
@@ -450,8 +454,8 @@ Its CI jobs need their own workflow file, with the folder in its path scope, so
 
 | Who | Sees |
 |---|---|
-| Anyone, signed out | Every site with its location and scores, the Analysis summary and the Guide |
-| Any signed-in user | Also: lists, claims, reviews, hours, and the club weights with their history |
+| Anyone, signed out | Every site with its location and scores, the Analysis summary and the Guide; through Supabase's REST API or the daily open files, every claim's site, state and dates, every club's weights history, and, on verified work only, who did it, who verified it, the steps, the hours and the photos |
+| Any signed-in user | Also: lists, any claim's detail and photos, reviews and their own hours. Names on a claim show only to its crew until the work is verified (decided 2026-10-27) |
 
 Decided 2026-10-27 (opening section). The fallbacks, should ATC or a land manager object:
 
@@ -633,7 +637,7 @@ returns excerpts; their quotes are near-verbatim.
 |---|---|---|---|
 | 0 | Analysis job | **Built, #1901:** the scoring job, its tests and CI, `summary.json` and `sites.json`, and the weekly run that attaches them to itself until the app can serve them | 1–2 weeks |
 | 1 | Read-only app | **Built, #1904:** the dashboard with club, mile-range, tier, action and crew filters, the map and CSV export; the site page with directions, the indicator bars and the plan; the Analysis screen; the guide. Deployed by the weekly job | 2–3 weeks |
-| 2 | Sign-in and lists | **Built, not deployed, #1906:** email-code sign-in; lists and share links; club weights with history and restore, re-ranking the dashboard through each site's `need_parts`; the API with 52 tests on Postgres. The web app switches accounts on when `STEWARD_API_URL` is set | 2 weeks |
+| 2 | Sign-in and lists | **Built, not deployed, #1906:** email-code sign-in; lists and share links; club weights with history and restore, re-ranking the dashboard through each site's `need_parts`. Behind them, the `steward` schema in `apps/steward/db/`, tested on Postgres. The web app switches accounts on when the Supabase variables are set | 2 weeks |
 | 3 | Claims | **Built, not deployed, #1910:** claims of one site or a cluster, the 14-day clock (reminders in the app; email needs a provider), before you go, crew invite links, photo points and extras, submit, review (verify, send back, or reject), hours | 3–4 weeks |
 | 4 | Field-ready | **First part built, #1911:** installable, opens with no signal (the app and this week's analysis precached together), claims saved on the phone, photos queued until there is signal, the before photo shown to line up the after. CSV export came with phase 1. **Not built:** follow-up visits | 2–3 weeks |
 
@@ -677,6 +681,13 @@ below are where the evidence is thinnest.
 ---
 
 ### The adversarial review, 2026-10-27
+
+These five passes were made against the Python API that the move to Supabase retired
+the same day. What carried over: every rule and every test of it, now SQL functions
+and `apps/steward/db/tests/`, and the whole offline layer, which did not change. What
+did not: the server-side photo redraw (finding 6, N1), the upload limits (N5, the
+fifth pass) and the health check (N3, N6), which have no server to live on. The
+schema needs a pass of its own.
 
 An independent reviewer read phases 0 to 3 and tried to break them against a real
 Postgres and server. Thirteen findings; each fix has a test that fails without it.
@@ -739,18 +750,21 @@ a newer photo than the phone had seen), not which photo was taken first.
 
 Each is the maintainer's: a setting, an account or a decision this build cannot make.
 
-- **A host and database for the API.** Render runs OurHike's API (`backend/HOSTING.md`),
-  and the steward image is built the same way. The database is open: a schema in
-  OurHike's Supabase Postgres, a separate Supabase project, or Render's own Postgres.
-  Until it exists, the app is built without accounts.
-- **A private R2 bucket for claim photos**, with `STEWARD_R2_*` credentials and
-  `STEWARD_R2_WRITE_ENABLED`. Until then, uploads answer that storage is not set up.
+- **The steward schema on Supabase** (`apps/steward/db/README.md`, three steps): add
+  `steward` to the exposed schemas, apply `migrations/` with `steward_db.migrate`, and
+  give the site loader a login in `STEWARD_SITES_DATABASE_URL`. Until then, signing in
+  works but every list, weights or claim call fails, and no site can be claimed.
+- **Whether Supabase's `postgres` role bypasses row-level security**, which the photo
+  functions rely on to read `storage.objects`. Assumed, and checked by the migration
+  runner before it changes anything.
 - **The Cloudflare Pages project** named by `STEWARD_PAGES_PROJECT`, and a GitHub
   environment that only `main` may deploy to, holding the Cloudflare token, so the
   deploy job's "main only" holds even against an edited workflow.
 - **Email**, for the day-10 and day-13 reminders and for invites by email. Reminders are
   in the app until a provider exists.
 - **How long claim photos are kept**, and a sweep for orphaned objects. Neither exists.
+  The app deletes a photo's object when the photo is retaken or removed; an object
+  uploaded and never put on a claim stays.
 
 - **Which Supabase project.** The deploy uses OurHike's production project
   (`SUPABASE_URL`), as §3's "the same project" implies. The sign-in email will carry
@@ -772,7 +786,10 @@ Each is the maintainer's: a setting, an account or a decision this build cannot 
   side rather than shrinking it; a new version waits for the person to reload. From
   the fourth: a phone stays signed in with no signal for as long as its stored
   session lasts; a queued photo of a point someone else has photographed since is
-  kept as not sent, and **Try again** puts it over theirs.
+  kept as not sent, and **Try again** puts it over theirs. From the move to Supabase:
+  photos are public objects rather than signed links; a load of the sites with fewer
+  than half the sites held is refused; the open files are written daily while ATC's
+  layers are fetched weekly.
 - **When peak season ends, by section of the trail**, which decides when each of the
   three years' follow-up visits opens (§6). Follow-ups are not built until it is set.
 

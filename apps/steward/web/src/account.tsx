@@ -1,4 +1,4 @@
-// Signing in, and the API that comes with it (#1906).
+// Signing in, and the steward data that comes with it (#1906).
 //
 // Sign-in is OurHike's Supabase project (apps/steward/PLAN.md §3), by the same
 // door OurHike's client uses: a six-digit code by email, typed back. Not a link:
@@ -6,9 +6,10 @@
 // (#1600) records why asking it for a link fails. A code also means this site
 // needs no redirect address registered with Supabase.
 //
-// Three build-time settings, all public: the project's URL and anon key (what
-// every browser client is given) and the steward API's address. A build missing
-// any of them has no accounts at all, and says so, rather than offering a
+// Two build-time settings, both public: the project's URL and anon key (what
+// every browser client is given). The data is in the same project, in its
+// `steward` schema (apps/steward/db), so there is no other address. A build
+// missing either has no accounts at all, and says so, rather than offering a
 // sign-in that cannot finish.
 //
 // Everything a screen needs goes through AccountContext, so tests hand screens
@@ -23,15 +24,13 @@ import {
   type ReactNode,
 } from 'react'
 import type { SupabaseClient } from '@supabase/supabase-js'
-import { createApi, type StewardApi } from './api'
+import { createApi, type DataClient, type StewardApi } from './api'
 import { SIGNAL_BACK, clearOffline } from './offline'
 
 const SUPABASE_URL: string = import.meta.env.VITE_SUPABASE_URL ?? ''
 const SUPABASE_ANON_KEY: string = import.meta.env.VITE_SUPABASE_ANON_KEY ?? ''
-const API_URL: string = import.meta.env.VITE_STEWARD_API_URL ?? ''
 
-export const ACCOUNTS_CONFIGURED =
-  SUPABASE_URL !== '' && SUPABASE_ANON_KEY !== '' && API_URL !== ''
+export const ACCOUNTS_CONFIGURED = SUPABASE_URL !== '' && SUPABASE_ANON_KEY !== ''
 
 export type Session =
   | { state: 'off' }
@@ -83,6 +82,46 @@ function supabase(): Promise<SupabaseClient> {
   return client
 }
 
+/**
+ * A second client, for the `steward` schema and the photo bucket only.
+ *
+ * Its token comes from accessToken() below rather than from supabase-js's own
+ * session read, which with no signal and an expired token waits about 25 s
+ * and then sends the request as nobody (auth-js 2.118). accessToken() answers
+ * at once with no network, and throws what fetch throws with no connection,
+ * which a screen and the photo queue read as no signal.
+ */
+function loadData() {
+  return import('@supabase/supabase-js').then(({ createClient }) =>
+    createClient(SUPABASE_URL, SUPABASE_ANON_KEY, {
+      accessToken: async () => accessToken((await supabase()).auth, window.localStorage),
+      db: { schema: 'steward' },
+    }),
+  )
+}
+
+let dataClient: ReturnType<typeof loadData> | null = null
+
+const data = () => (dataClient ??= loadData())
+
+/** The data client, loaded on its first call. */
+const lazyData: DataClient = {
+  rpc: async (fn, args) => await (await data()).rpc(fn, args),
+  storage: {
+    from: (bucket) => ({
+      upload: async (path, body, options) =>
+        await (await data()).storage.from(bucket).upload(path, body, options),
+      remove: async (paths) => await (await data()).storage.from(bucket).remove(paths),
+      // Storage's public address for an object, as storage-js builds it; no
+      // request, so it needs no client.
+      getPublicUrl: (path) => ({
+        data: {
+          publicUrl: `${SUPABASE_URL.replace(/\/+$/, '')}/storage/v1/object/public/${bucket}/${path}`,
+        },
+      }),
+    }),
+  },
+}
 /**
  * The account of the session supabase-js keeps in storage, read directly.
  *
@@ -260,10 +299,9 @@ export function AccountProvider({ children }: { children: ReactNode }) {
 
   const account = useMemo<Account>(() => {
     if (!ACCOUNTS_CONFIGURED) return OFF
-    const token = async () => accessToken((await supabase()).auth, window.localStorage)
     return {
       session,
-      api: session.state === 'signed_in' ? createApi(API_URL, token) : null,
+      api: session.state === 'signed_in' ? createApi(lazyData) : null,
       async sendCode(email) {
         const { error } = await (
           await supabase()

@@ -2,13 +2,12 @@
 // into the build as `_headers` (vite.config.ts). The app signs people in and
 // holds their access token in the browser, so the policy allows scripts from
 // this site alone and network calls to exactly the hosts the app uses: the
-// basemap, the Supabase project, and the steward API.
+// basemap, the fonts and the Supabase project, which holds the steward data
+// and its photos (apps/steward/db).
 
 export const BASEMAP_ORIGIN = 'https://tiles.openfreemap.org'
 /** Google Fonts: the stylesheet, and the font files it points at. */
 export const FONT_ORIGINS = ['https://fonts.googleapis.com', 'https://fonts.gstatic.com']
-/** Where a signed R2 URL points: the account's S3 endpoint, whichever account it is. */
-export const PHOTO_ORIGIN = 'https://*.r2.cloudflarestorage.com'
 
 /** The origin of an http(s) URL, or null for an empty or unusable one. */
 export function originOf(url: string | undefined): string | null {
@@ -23,10 +22,8 @@ export function originOf(url: string | undefined): string | null {
   }
 }
 
-export function contentSecurityPolicy(env: {
-  supabaseUrl?: string
-  apiUrl?: string
-}): string {
+export function contentSecurityPolicy(env: { supabaseUrl?: string }): string {
+  const supabase = originOf(env.supabaseUrl)
   const connect = [
     "'self'",
     BASEMAP_ORIGIN,
@@ -35,8 +32,7 @@ export function contentSecurityPolicy(env: {
     // never had its fonts offline (the adversarial review's third pass, P5,
     // seen in Chromium, 2026-10-27).
     ...FONT_ORIGINS,
-    originOf(env.supabaseUrl),
-    originOf(env.apiUrl),
+    supabase,
   ]
   return [
     "default-src 'self'",
@@ -44,8 +40,10 @@ export function contentSecurityPolicy(env: {
     // React and MapLibre set element styles; the fonts' stylesheet is Google's.
     "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com",
     'font-src https://fonts.gstatic.com',
-    // Claim photos are read through short-lived signed URLs on R2's S3 host (#1910).
-    `img-src 'self' data: blob: ${BASEMAP_ORIGIN} ${PHOTO_ORIGIN}`,
+    // Claim photos are public objects in the project's Storage (#1910).
+    ['img-src', "'self'", 'data:', 'blob:', BASEMAP_ORIGIN, supabase]
+      .filter(Boolean)
+      .join(' '),
     `connect-src ${connect.filter(Boolean).join(' ')}`,
     // MapLibre's worker is a file Vite emits, so 'self'; blob: for its fallback.
     "worker-src 'self' blob:",
@@ -56,7 +54,7 @@ export function contentSecurityPolicy(env: {
   ].join('; ')
 }
 
-export function headersFile(env: { supabaseUrl?: string; apiUrl?: string }): string {
+export function headersFile(env: { supabaseUrl?: string }): string {
   return [
     '/*',
     `  Content-Security-Policy: ${contentSecurityPolicy(env)}`,

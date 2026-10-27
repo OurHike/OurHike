@@ -1,87 +1,201 @@
-import { expect, it, vi } from 'vitest'
-import { ApiError, createApi } from './api'
+import { describe, expect, it } from 'vitest'
+import { ApiError, PHOTO_BUCKET, createApi, type DataClient } from './api'
 import { isOffline } from './offline'
 
-function respond(status: number, body?: unknown) {
-  return new Response(body === undefined ? null : JSON.stringify(body), { status })
+type Answer = { data?: unknown; error?: { message: string } | null; status?: number }
+type StorageError = {
+  name?: string
+  message: string
+  status?: number
+  statusCode?: string
 }
 
-it('createApi sends the access token and JSON, and escapes ids in the path', async () => {
-  const fetchImpl = vi.fn(async () => respond(204))
-  const api = createApi('https://api.example/', async () => 'access-token', fetchImpl)
-  await api.addToList('list/1', 'site 2')
-  const [url, init] = fetchImpl.mock.calls[0] as unknown as [string, RequestInit]
-  expect(url).toBe('https://api.example/lists/list%2F1/items/site%202')
-  expect(init.method).toBe('PUT')
-  expect((init.headers as Record<string, string>).Authorization).toBe(
-    'Bearer access-token',
-  )
-})
-
-it("createApi turns the API's error detail into the message a screen shows", async () => {
-  const api = createApi(
-    'https://api.example',
-    async () => 't',
-    async () => respond(409, { detail: 'A list holds at most 500 sites' }),
-  )
-  await expect(api.addToList('l', 's')).rejects.toEqual(
-    new ApiError(409, 'A list holds at most 500 sites'),
-  )
-})
-
-it('createApi sends nothing without a token, rather than an anonymous request', async () => {
-  const fetchImpl = vi.fn()
-  const api = createApi('https://api.example', async () => null, fetchImpl)
-  await expect(api.lists()).rejects.toBeInstanceOf(ApiError)
-  expect(fetchImpl).not.toHaveBeenCalled()
-})
-
-it('createApi puts a share token in the POST body, never in the URL', async () => {
-  const fetchImpl = vi.fn(async () =>
-    respond(200, { name: 'x', owner: null, rims_ids: [], updated_at: '' }),
-  )
-  const api = createApi('https://api.example', async () => 't', fetchImpl)
-  await api.openShared('secret-token-value')
-  const [url, init] = fetchImpl.mock.calls[0] as unknown as [string, RequestInit]
-  expect(url).not.toContain('secret-token-value')
-  expect(init.body).toBe(JSON.stringify({ token: 'secret-token-value' }))
-})
-
-it('createApi sends a photo as the raw body with its own type', async () => {
-  const fetchImpl = vi.fn(async () => respond(201, {}))
-  const api = createApi('https://api.example', async () => 't', fetchImpl)
-  const photo = new Blob(['jpeg bytes'], { type: 'image/jpeg' })
-  await api.uploadPhoto('claim-1', 'before', 1, photo)
-  const [url, init] = fetchImpl.mock.calls[0] as unknown as [string, RequestInit]
-  expect(url).toBe('https://api.example/claims/claim-1/photos?phase=before&point=1')
-  expect((init.headers as Record<string, string>)['Content-Type']).toBe('image/jpeg')
-  expect(init.body).toBe(photo)
-})
-
-it("createApi sends a queued photo's id and the slot it was taken over", async () => {
-  const fetchImpl = vi.fn(async () => respond(201, {}))
-  const api = createApi('https://api.example', async () => 't', fetchImpl)
-  await api.uploadPhoto('claim-1', 'after', 2, new Blob(['x']), {
-    clientId: '0001761550000000-000001-abc123',
-    replaces: 'nothing',
-  })
-  const [url] = fetchImpl.mock.calls[0] as unknown as [string]
-  expect(url).toBe(
-    'https://api.example/claims/claim-1/photos?phase=after&point=2&client_id=0001761550000000-000001-abc123&replaces=nothing',
-  )
-})
-
-it('a sign-in that cannot be renewed for lack of signal reaches a screen as no signal, so it falls back to what the phone kept', async () => {
-  // The fourth pass's A: it reached the screen as 401, "Sign in first."
-  const fetchImpl = vi.fn()
-  const api = createApi(
-    'https://api.example',
-    async () => {
-      throw new TypeError('No signal to renew the sign-in.')
+/** A supabase-js client that records what it is asked and answers from a script. */
+function recording(
+  answers: Record<string, Answer> = {},
+  upload: StorageError | null = null,
+) {
+  const calls: { fn: string; args: Record<string, unknown> }[] = []
+  const uploads: { path: string; type: string; upsert: boolean }[] = []
+  const removed: string[][] = []
+  const client: DataClient = {
+    rpc: async (fn, args = {}) => {
+      calls.push({ fn, args })
+      const answer = answers[fn] ?? {}
+      return {
+        data: answer.data ?? null,
+        error: answer.error ?? null,
+        status: answer.status ?? 200,
+      }
     },
-    fetchImpl,
+    storage: {
+      from: (bucket) => {
+        expect(bucket).toBe(PHOTO_BUCKET)
+        return {
+          upload: async (path, _body, options) => {
+            uploads.push({ path, type: options.contentType, upsert: options.upsert })
+            return { error: upload }
+          },
+          remove: async (paths) => {
+            removed.push(paths)
+            return {}
+          },
+          getPublicUrl: (path) => ({
+            data: { publicUrl: `https://p.example/public/${path}` },
+          }),
+        }
+      },
+    },
+  }
+  return { api: createApi(client), calls, uploads, removed }
+}
+
+const claimRow = (
+  photos: { path: string }[] = [],
+  extra: Record<string, unknown> = {},
+) => ({
+  id: 'claim-1',
+  photos: photos.map((p, i) => ({
+    id: `photo-${i}`,
+    phase: 'extra',
+    point: null,
+    created_at: '',
+    ...p,
+  })),
+  ...extra,
+})
+
+it('each call is the steward function of that name, with its arguments named', async () => {
+  const { api, calls } = recording()
+  await api.claimSites(['site-a', 'site-b'])
+  await api.addToList('list-1', 'site-a')
+  await api.changeWeights(
+    'Example Trail Club',
+    { deficit: 50, water: 24, trail: 6, cluster: 8, restricted: 10 },
+    'Water first',
   )
+  await api.openShared('a-share-token-value')
+  expect(calls).toEqual([
+    { fn: 'claim_sites', args: { p_rims_ids: ['site-a', 'site-b'] } },
+    { fn: 'add_to_list', args: { p_id: 'list-1', p_rims_id: 'site-a' } },
+    {
+      fn: 'change_weights',
+      args: {
+        p_club: 'Example Trail Club',
+        p_deficit: 50,
+        p_water: 24,
+        p_trail: 6,
+        p_cluster: 8,
+        p_restricted: 10,
+        p_note: 'Water first',
+      },
+    },
+    { fn: 'open_shared_list', args: { p_token: 'a-share-token-value' } },
+  ])
+})
+
+it("a function's refusal reaches the screen as its status and its own sentence", async () => {
+  const { api } = recording({
+    claim_sites: { error: { message: 'Already claimed: site-a' }, status: 409 },
+  })
+  await expect(api.claimSites(['site-a'])).rejects.toEqual(
+    new ApiError(409, 'Already claimed: site-a'),
+  )
+})
+
+it('a call that never got an answer is no signal, so screens fall back to the phone', async () => {
+  const { api } = recording({
+    read_claim: { error: { message: 'TypeError: Failed to fetch' }, status: 0 },
+  })
   const failure = await api.claim('claim-1').catch((error: unknown) => error)
   expect(isOffline(failure)).toBe(true)
-  expect(fetchImpl).not.toHaveBeenCalled()
+})
+
+describe('photos', () => {
+  it("go to the bucket under the claim and the phone's id for them, then onto the claim", async () => {
+    const { api, calls, uploads } = recording({
+      add_photo: { data: claimRow([{ path: 'claim-1/queued-1.jpg' }]) },
+    })
+    const detail = await api.uploadPhoto('claim-1', 'after', 2, new Blob(['x']), {
+      clientId: 'queued-1',
+      replaces: 'nothing',
+    })
+    expect(uploads).toEqual([
+      { path: 'claim-1/queued-1.jpg', type: 'image/jpeg', upsert: false },
+    ])
+    expect(calls).toEqual([
+      {
+        fn: 'add_photo',
+        args: {
+          p_claim_id: 'claim-1',
+          p_phase: 'after',
+          p_point: 2,
+          p_client_id: 'queued-1',
+          p_replaces: 'nothing',
+        },
+      },
+    ])
+    expect(detail.photos[0].url).toBe('https://p.example/public/claim-1/queued-1.jpg')
+  })
+
+  it('already in the bucket is already sent: the claim is still asked to take it', async () => {
+    // An earlier send arrived and its answer did not; the id is this photo's alone.
+    const { api, calls } = recording(
+      { add_photo: { data: claimRow() } },
+      {
+        name: 'StorageApiError',
+        message: 'The resource already exists',
+        status: 409,
+        statusCode: '409',
+      },
+    )
+    await api.uploadPhoto('claim-1', 'extra', null, new Blob(['x']), {
+      clientId: 'again',
+    })
+    expect(calls.map((c) => c.fn)).toEqual(['add_photo'])
+  })
+
+  it('an upload that never got an answer is no signal, and nothing is put on the claim', async () => {
+    const { api, calls } = recording(
+      {},
+      { name: 'StorageUnknownError', message: 'Failed to fetch' },
+    )
+    const failure = await api
+      .uploadPhoto('claim-1', 'extra', null, new Blob(['x']), { clientId: 'offline' })
+      .catch((error: unknown) => error)
+    expect(isOffline(failure)).toBe(true)
+    expect(calls).toEqual([])
+  })
+
+  it('an upload the bucket refuses is refused, with a sentence a volunteer can act on', async () => {
+    const { api } = recording(
+      {},
+      {
+        name: 'StorageApiError',
+        message: 'new row violates row-level security policy',
+        status: 403,
+      },
+    )
+    await expect(
+      api.uploadPhoto('claim-1', 'extra', null, new Blob(['x']), { clientId: 'late' }),
+    ).rejects.toEqual(
+      new ApiError(
+        403,
+        'This photo could not be stored for this claim. It may have closed.',
+      ),
+    )
+  })
+
+  it('a retaken or removed photo is deleted from the bucket, so it does not stay public', async () => {
+    const { api, removed } = recording({
+      add_photo: { data: claimRow([], { unused_path: 'claim-1/first.jpg' }) },
+      remove_photo: { data: claimRow([], { unused_path: 'claim-1/extra.jpg' }) },
+    })
+    const retaken = await api.uploadPhoto('claim-1', 'before', 1, new Blob(['x']), {
+      clientId: 'retake',
+    })
+    await api.deletePhoto('claim-1', 'photo-0')
+    expect(removed).toEqual([['claim-1/first.jpg'], ['claim-1/extra.jpg']])
+    expect('unused_path' in retaken).toBe(false)
+  })
 })

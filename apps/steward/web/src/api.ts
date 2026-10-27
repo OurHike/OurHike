@@ -1,6 +1,8 @@
-// The steward API (apps/steward/api/): lists, share links and club weights (#1906),
-// and claims, crews, photos and reviews (#1910).
-// Every call carries the signed-in person's Supabase access token.
+// Campsite Steward's data, read and written in OurHike's Supabase project
+// (apps/steward/db; PLAN.md, decided 2026-10-27: no API server). Every change
+// is a call to one of the `steward` schema's functions, which hold the rules;
+// photos go to its public Storage bucket first and are then put on the claim.
+// The screens see only StewardApi, so they do not know which.
 
 import type { Weights } from './types'
 
@@ -117,11 +119,12 @@ export interface StewardApi {
   releaseClaim(id: string): Promise<ClaimDetail>
   invite(id: string): Promise<{ token: string }>
   joinClaim(token: string): Promise<ClaimSummary>
-  /** `clientId` is the phone's own id for the photo (src/offline.ts): the API
-   *  stores a photo once however many times it is sent under one id.
-   *  `replaces`, for a queued before or after photo, is the id of the photo
-   *  in its slot when it was taken, or 'nothing': if someone has photographed
-   *  the point since, the API answers 412 rather than put this one over theirs. */
+  /** `clientId` is the phone's own id for the photo (src/offline.ts): it names
+   *  the photo's object in the bucket, and the claim takes a photo once
+   *  however many times it is sent under one id. `replaces`, for a queued
+   *  before or after photo, is the id of the photo in its slot when it was
+   *  taken, or 'nothing': if someone has photographed the point since, the
+   *  answer is 412 rather than this one put over theirs. */
   uploadPhoto(
     id: string,
     phase: PhotoPhase,
@@ -137,95 +140,170 @@ export interface StewardApi {
   myHours(): Promise<HoursTotals>
 }
 
-/** What the API's error body says, as a sentence a person can read. */
-async function errorMessage(response: Response): Promise<string> {
-  try {
-    const body = (await response.json()) as { detail?: unknown }
-    if (typeof body.detail === 'string') return body.detail
-    if (Array.isArray(body.detail)) return 'Some of what was entered is not allowed.'
-  } catch {
-    // not JSON: fall through
+/** As much of a supabase-js client as this uses: functions and the photo bucket. */
+export interface DataClient {
+  rpc(
+    fn: string,
+    args?: Record<string, unknown>,
+  ): PromiseLike<{ data: unknown; error: { message: string } | null; status: number }>
+  storage: {
+    from(bucket: string): {
+      upload(
+        path: string,
+        body: Blob,
+        options: { contentType: string; upsert: boolean; cacheControl: string },
+      ): Promise<{ error: StorageFailure | null }>
+      remove(paths: string[]): Promise<unknown>
+      getPublicUrl(path: string): { data: { publicUrl: string } }
+    }
   }
-  return `The server answered ${response.status}.`
 }
 
-export function createApi(
-  baseUrl: string,
-  token: () => Promise<string | null>,
-  fetchImpl: typeof fetch = (...args) => fetch(...args),
-): StewardApi {
-  const root = baseUrl.replace(/\/+$/, '')
+/** storage-js's errors: StorageApiError carries the HTTP status;
+ *  StorageUnknownError is a request that never got an answer. */
+interface StorageFailure {
+  name?: string
+  message: string
+  status?: number
+  statusCode?: string
+}
 
-  async function call<T>(method: string, path: string, body?: unknown): Promise<T> {
-    const access = await token()
-    if (!access) throw new ApiError(401, 'Sign in first.')
-    // A photo goes as the raw body with its own type; everything else as JSON.
-    const raw = body instanceof Blob
-    const response = await fetchImpl(`${root}${path}`, {
-      method,
-      headers: {
-        Authorization: `Bearer ${access}`,
-        ...(body === undefined
-          ? {}
-          : {
-              'Content-Type': raw
-                ? body.type || 'application/octet-stream'
-                : 'application/json',
-            }),
-      },
-      body: body === undefined ? undefined : raw ? body : JSON.stringify(body),
-    })
-    if (!response.ok) throw new ApiError(response.status, await errorMessage(response))
-    return (response.status === 204 ? undefined : await response.json()) as T
+export const PHOTO_BUCKET = 'steward-photos'
+
+type Raw = Record<string, unknown>
+
+/**
+ * The steward API over a supabase-js client whose schema is `steward`.
+ *
+ * Statuses mean what they meant when this was an HTTP API: the functions
+ * raise SQLSTATE PTnnn, which PostgREST sends as HTTP status nnn, and a
+ * request that never got an answer is 0, which offline.isOffline reads as no
+ * signal. So the offline queue and every screen work unchanged.
+ */
+export function createApi(client: DataClient): StewardApi {
+  async function call<T>(fn: string, args: Raw = {}): Promise<T> {
+    const { data, error, status } = await client.rpc(fn, args)
+    if (error)
+      throw new ApiError(status, error.message || `The server answered ${status}.`)
+    return data as T
   }
 
-  const listPath = (id: string) => `/lists/${encodeURIComponent(id)}`
-  const claimPath = (id: string) => `/claims/${encodeURIComponent(id)}`
-  const itemPath = (id: string, rimsId: string) =>
-    `${listPath(id)}/items/${encodeURIComponent(rimsId)}`
+  const bucket = () => client.storage.from(PHOTO_BUCKET)
+
+  /** A claim as the functions return it, with each photo's public address. */
+  function withUrls(raw: Raw): ClaimDetail {
+    const { unused_path: _, ...claim } = raw
+    const photos = (claim.photos as (Omit<ClaimPhoto, 'url'> & { path: string })[]) ?? []
+    return {
+      ...(claim as unknown as ClaimDetail),
+      photos: photos.map(({ path, ...photo }) => ({
+        ...photo,
+        url: bucket().getPublicUrl(path).data.publicUrl,
+      })),
+    }
+  }
+
+  /** Calls a claim function, and deletes the object it says no photo uses
+   *  now. Best effort: an object left behind is only an orphan in the bucket. */
+  async function claimCall(fn: string, args: Raw): Promise<ClaimDetail> {
+    const raw = await call<Raw>(fn, args)
+    if (typeof raw.unused_path === 'string') {
+      try {
+        await bucket().remove([raw.unused_path])
+      } catch {
+        // Kept for the sweep PLAN.md §11 names.
+      }
+    }
+    return withUrls(raw)
+  }
+
+  async function upload(claimId: string, clientId: string, photo: Blob): Promise<void> {
+    const { error } = await bucket().upload(`${claimId}/${clientId}.jpg`, photo, {
+      contentType: 'image/jpeg',
+      upsert: false,
+      cacheControl: '31536000',
+    })
+    if (!error) return
+    // Already there: an earlier send of this same photo arrived and its
+    // answer did not. The id is this photo's alone, so it is this photo.
+    if (
+      error.status === 409 ||
+      error.statusCode === '409' ||
+      /already exists|duplicate/i.test(error.message)
+    )
+      return
+    if (error.name === 'StorageUnknownError' || error.status === undefined)
+      throw new ApiError(0, error.message)
+    throw new ApiError(
+      error.status,
+      error.status === 413
+        ? 'That photo is too large'
+        : error.status === 403 || error.status === 400
+          ? 'This photo could not be stored for this claim. It may have closed.'
+          : error.message,
+    )
+  }
 
   return {
-    me: () => call('GET', '/me'),
-    setDisplayName: (name) => call('PATCH', '/me', { display_name: name }),
-    deleteMe: () => call('DELETE', '/me'),
-    lists: () => call('GET', '/lists'),
-    list: (id) => call('GET', listPath(id)),
+    me: () => call('me'),
+    setDisplayName: (name) => call('set_display_name', { p_name: name }),
+    deleteMe: () => call('delete_my_data'),
+    lists: () => call('my_lists'),
+    list: (id) => call('read_list', { p_id: id }),
     createList: (name, rimsIds = []) =>
-      call('POST', '/lists', { name, rims_ids: rimsIds }),
-    renameList: (id, name) => call('PATCH', listPath(id), { name }),
-    deleteList: (id) => call('DELETE', listPath(id)),
-    addToList: (id, rimsId) => call('PUT', itemPath(id, rimsId)),
-    removeFromList: (id, rimsId) => call('DELETE', itemPath(id, rimsId)),
-    share: (id) => call('POST', `${listPath(id)}/share`),
-    unshare: (id) => call('DELETE', `${listPath(id)}/share`),
-    openShared: (token) => call('POST', '/shared', { token }),
-    weights: (club) => call('GET', `/weights?club=${encodeURIComponent(club)}`),
+      call('create_list', { p_name: name, p_rims_ids: rimsIds }),
+    renameList: (id, name) => call('rename_list', { p_id: id, p_name: name }),
+    deleteList: (id) => call('delete_list', { p_id: id }),
+    addToList: (id, rimsId) => call('add_to_list', { p_id: id, p_rims_id: rimsId }),
+    removeFromList: (id, rimsId) =>
+      call('remove_from_list', { p_id: id, p_rims_id: rimsId }),
+    share: (id) => call('share_list', { p_id: id }),
+    unshare: (id) => call('unshare_list', { p_id: id }),
+    openShared: (token) => call('open_shared_list', { p_token: token }),
+    weights: (club) => call('read_weights', { p_club: club }),
     changeWeights: (club, weights, note) =>
-      call('POST', '/weights', { club, ...weights, note }),
+      call('change_weights', {
+        p_club: club,
+        p_deficit: weights.deficit,
+        p_water: weights.water,
+        p_trail: weights.trail,
+        p_cluster: weights.cluster,
+        p_restricted: weights.restricted,
+        p_note: note,
+      }),
     restoreWeights: (entryId, note) =>
-      call('POST', `/weights/${encodeURIComponent(String(entryId))}/restore`, { note }),
-    claimSites: (rimsIds) => call('POST', '/claims', { rims_ids: rimsIds }),
-    claimForSite: (rimsId) => call('GET', `/claims/site/${encodeURIComponent(rimsId)}`),
-    myClaims: () => call('GET', '/claims/mine'),
-    claim: (id) => call('GET', claimPath(id)),
-    releaseClaim: (id) => call('POST', `${claimPath(id)}/release`),
-    invite: (id) => call('POST', `${claimPath(id)}/invite`),
-    joinClaim: (token) => call('POST', '/claims/join', { token }),
-    uploadPhoto: (id, phase, point, photo, send = {}) => {
-      const query = new URLSearchParams({ phase })
-      if (point !== null) query.set('point', String(point))
-      if (send.clientId) query.set('client_id', send.clientId)
-      if (send.replaces) query.set('replaces', send.replaces)
-      return call('POST', `${claimPath(id)}/photos?${query}`, photo)
+      call('restore_weights', { p_entry_id: entryId, p_note: note }),
+    claimSites: (rimsIds) => call('claim_sites', { p_rims_ids: rimsIds }),
+    claimForSite: (rimsId) => call('claim_for_site', { p_rims_id: rimsId }),
+    myClaims: () => call('my_claims'),
+    claim: async (id) => withUrls(await call<Raw>('read_claim', { p_id: id })),
+    releaseClaim: (id) => claimCall('release_claim', { p_id: id }),
+    invite: (id) => call('make_invite', { p_id: id }),
+    joinClaim: (token) => call('join_claim', { p_token: token }),
+    uploadPhoto: async (id, phase, point, photo, send = {}) => {
+      const clientId = send.clientId ?? newClientId()
+      await upload(id, clientId, photo)
+      return claimCall('add_photo', {
+        p_claim_id: id,
+        p_phase: phase,
+        p_point: point,
+        p_client_id: clientId,
+        p_replaces: send.replaces ?? null,
+      })
     },
     deletePhoto: (id, photoId) =>
-      call('DELETE', `${claimPath(id)}/photos/${encodeURIComponent(photoId)}`),
-    logHours: (id, hours) => call('PUT', `${claimPath(id)}/hours`, { hours }),
+      claimCall('remove_photo', { p_claim_id: id, p_photo_id: photoId }),
+    logHours: (id, hours) => claimCall('log_hours', { p_claim_id: id, p_hours: hours }),
     submit: (id, stepsDone, notes) =>
-      call('POST', `${claimPath(id)}/submit`, { steps_done: stepsDone, notes }),
-    reviews: () => call('GET', '/reviews'),
+      claimCall('submit_claim', { p_id: id, p_steps_done: stepsDone, p_notes: notes }),
+    reviews: () => call('reviews'),
     review: (id, verdict, note) =>
-      call('POST', `${claimPath(id)}/review`, { verdict, note }),
-    myHours: () => call('GET', '/hours/mine'),
+      claimCall('review_claim', { p_id: id, p_verdict: verdict, p_note: note }),
+    myHours: () => call('my_hours'),
   }
+}
+
+/** For a photo sent with no id of its own (src/offline.ts gives every photo one). */
+function newClientId(): string {
+  return `${Date.now()}-${Math.random().toString(36).slice(2, 10)}`
 }

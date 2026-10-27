@@ -46,8 +46,8 @@ WORKFLOWS = {
     "steward": (".github/workflows/steward-tests.yml", "steward"),
     # ...and its web app (#1904), the second job in the same workflow.
     "steward-web": (".github/workflows/steward-tests.yml", "steward-web"),
-    # ...and its API (#1906), the third.
-    "steward-api": (".github/workflows/steward-tests.yml", "steward-api"),
+    # ...and its database schema (#1906, #1910), the third.
+    "steward-db": (".github/workflows/steward-tests.yml", "steward-db"),
 }
 
 

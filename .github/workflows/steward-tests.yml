@@ -10,8 +10,10 @@
 #
 # Three jobs, one per part of the app: `steward` is the analysis job's Python
 # suite, `steward-web` the web app in apps/steward/web/ (#1904), and
-# `steward-api` the API in apps/steward/api/ (#1906), against a Postgres
-# service as backend-tests.yml's suite is. No test suite touches the network
+# `steward-db` the `steward` schema in apps/steward/db/ (#1906, #1910): its
+# migrations, row-level security and functions, against a Postgres service as
+# backend-tests.yml's suite is, with stand-ins for Supabase's auth and
+# storage schemas. No test suite touches the network
 # (each conftest; the web tests run on the invented sites in src/fixtures.ts),
 # and nothing here reads a secret or publishes anything. Publishing is
 # steward-analysis.yml's.
@@ -130,16 +132,18 @@ jobs:
         if: steps.scope.outputs.run == 'true'
         run: npm run build
 
-  steward-api:
-    name: Campsite Steward API tests
+  steward-db:
+    name: Campsite Steward database tests
     runs-on: ubuntu-latest
     defaults:
       run:
-        working-directory: apps/steward/api
+        working-directory: apps/steward/db
     services:
       postgres:
         image: postgres:17
         env:
+          # The image makes this login a superuser, so the suite creates the
+          # roles a Supabase project has (anon, authenticated) itself.
           POSTGRES_USER: ourhike
           POSTGRES_PASSWORD: ourhike
           POSTGRES_DB: steward_test
@@ -151,22 +155,22 @@ jobs:
           --health-timeout 5s
           --health-retries 5
     env:
-      STEWARD_TEST_DATABASE_URL: postgresql+psycopg://ourhike:ourhike@localhost:5432/steward_test
+      STEWARD_TEST_DATABASE_URL: postgresql://ourhike:ourhike@localhost:5432/steward_test
     steps:
       - uses: actions/checkout@v7
 
       - id: scope
         uses: ./.github/actions/changed-paths
         with:
-          # tests/test_weights.py reads the analysis job's rules.py, to hold the
-          # API's weight names and defaults equal to the job's, so the rules
-          # file is in scope. The requirements are compiled against backend's
-          # and the pipeline's, as requirements.in and requirements-dev.in say.
+          # Two tests read the analysis package: one holds the schema's
+          # default weights equal to rules.py's, one holds the open views'
+          # columns equal to what open_data.py writes. The requirements are
+          # compiled against the pipeline's, as requirements-dev.in says.
           paths: >-
-            apps/steward/api/
+            apps/steward/db/
             apps/steward/pipeline/steward_analysis/rules.py
+            apps/steward/pipeline/steward_analysis/open_data.py
             apps/steward/pipeline/requirements-dev.txt
-            backend/requirements-dev.txt
             .github/workflows/steward-tests.yml
             .github/actions/changed-paths/
 
@@ -175,7 +179,7 @@ jobs:
         with:
           python-version: "3.14"
           cache: pip
-          cache-dependency-path: apps/steward/api/requirements-dev.txt
+          cache-dependency-path: apps/steward/db/requirements-dev.txt
 
       - name: Install dependencies
         if: steps.scope.outputs.run == 'true'

@@ -1,0 +1,9 @@
+# Campsite Steward's database (apps/steward/db): the migration runner, the
+# site loader and their tests. psycopg at backend/'s version, and pytest and
+# ruff at the steward analysis suite's, compiled against both, so one
+# interpreter runs every suite in a session.
+# backend/requirements-dev.txt's psycopg; backend pins a newer ruff than the
+# steward suites, so it is not a constraints file here.
+psycopg[binary]==3.3.6
+pytest
+ruff

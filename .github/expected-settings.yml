@@ -330,15 +330,18 @@ settings:
       it is set; it has to name a project that already exists, because
       wrangler does not create one from CI.
 
-  STEWARD_API_URL:
-    where: variable
+  STEWARD_SITES_DATABASE_URL:
+    where: secret
     required: false
     why: >-
-      Where Campsite Steward's API (apps/steward/api/, #1906) runs, built into
-      the steward web app by steward-analysis.yml. Unset, the app is built with
-      no sign-in, lists or club weights, and says sign-in is not set up; the
-      map and the analysis are unaffected. A variable because it is a public
-      address every browser calls.
+      A Postgres login for Campsite Steward's site load (#1906): a role that is
+      a member of steward_loader and so may call steward.load_sites() and
+      nothing else (apps/steward/db/README.md). steward-analysis.yml's
+      load-sites job, on main only, gives it each run's sites.json, which is
+      what every claim and every club's weights are checked against. Session
+      pooler (port 5432), for the reason UA_MIGRATION_DATABASE_URL gives.
+      Optional because the job skips the load with a notice until it is set;
+      until then no site can be claimed.
 
   UA_MIGRATION_DATABASE_URL:
     where: secret

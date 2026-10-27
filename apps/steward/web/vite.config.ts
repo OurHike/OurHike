@@ -13,10 +13,7 @@ function pagesHeaders(env: Record<string, string>): Plugin {
       this.emitFile({
         type: 'asset',
         fileName: '_headers',
-        source: headersFile({
-          supabaseUrl: env.VITE_SUPABASE_URL,
-          apiUrl: env.VITE_STEWARD_API_URL,
-        }),
+        source: headersFile({ supabaseUrl: env.VITE_SUPABASE_URL }),
       })
     },
   }

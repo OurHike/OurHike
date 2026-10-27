@@ -1,6 +1,0 @@
-# The runtime pins as compiled (against backend/), plus the two dev tools at
-# the versions the steward analysis suite uses (apps/steward/pipeline/), so
-# both steward suites format and lint with one ruff in a session.
--r requirements.txt
-pytest
-ruff

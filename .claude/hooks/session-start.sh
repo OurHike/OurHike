@@ -116,6 +116,11 @@ echo "[session-start] local postgres for the backend"
 # database, and a hook that aborts here would take them down too.
 bash backend/scripts/local-postgres.sh || \
   echo "[session-start] WARNING: no local postgres - backend tests will not run"
+# Campsite Steward's schema grants to the roles a Supabase project has (anon,
+# authenticated); its tests need them, and the backend's login may not create
+# roles. Not fatal, for the same reason.
+bash apps/steward/db/scripts/local-roles.sh || \
+  echo "[session-start] WARNING: no Supabase roles - steward-db tests will not run"
 
 echo "[session-start] repository-settings test deps"
 # Through the same helper as the other two: this suite pins PyYAML, which is
@@ -126,9 +131,9 @@ pip_install_pinned .github/tests/requirements-dev.txt
 echo "[session-start] campsite steward deps"
 # apps/steward/pipeline/ (#1901). Its requirements are compiled against
 # pipeline/requirements-dev.txt, so this adds pandas and changes nothing the
-# pipeline suite already pinned. apps/steward/api/ (#1906) is compiled against
-# backend's runtime pins and the pipeline's tools, so it adds nothing new.
-pip_install_pinned apps/steward/api/requirements-dev.txt
+# pipeline suite already pinned. apps/steward/db/ (#1906) pins backend's psycopg
+# and the pipeline's tools, so it adds nothing new.
+pip_install_pinned apps/steward/db/requirements-dev.txt
 pip_install_pinned apps/steward/pipeline/requirements-dev.txt
 
 echo "[session-start] seeding the duckdb spatial extension"

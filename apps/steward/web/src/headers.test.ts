@@ -1,14 +1,11 @@
 import { expect, it } from 'vitest'
 import { contentSecurityPolicy, headersFile, originOf } from '../headers'
 
-it('the policy lets the page call only the basemap, the fonts, the Supabase project and the steward API', () => {
-  const csp = contentSecurityPolicy({
-    supabaseUrl: 'https://abc.supabase.co',
-    apiUrl: 'https://steward-api.example/v1/',
-  })
+it('the policy lets the page call only the basemap, the fonts and the Supabase project', () => {
+  const csp = contentSecurityPolicy({ supabaseUrl: 'https://abc.supabase.co/' })
   const connect = csp.split('; ').find((d) => d.startsWith('connect-src'))
   expect(connect).toBe(
-    "connect-src 'self' https://tiles.openfreemap.org https://fonts.googleapis.com https://fonts.gstatic.com https://abc.supabase.co https://steward-api.example",
+    "connect-src 'self' https://tiles.openfreemap.org https://fonts.googleapis.com https://fonts.gstatic.com https://abc.supabase.co",
   )
   expect(csp).toContain("script-src 'self'")
   expect(csp).not.toMatch(/script-src[^;]*unsafe/)
@@ -44,11 +41,13 @@ it('the headers file applies to every path', () => {
   expect(headersFile({}).split('\n')[0]).toBe('/*')
 })
 
-it('the policy lets claim photos load from signed R2 URLs and nowhere else new', () => {
-  const img = contentSecurityPolicy({})
-    .split('; ')
-    .find((d) => d.startsWith('img-src'))
-  expect(img).toBe(
-    "img-src 'self' data: blob: https://tiles.openfreemap.org https://*.r2.cloudflarestorage.com",
+it("the policy lets claim photos load from the project's Storage and nowhere else new", () => {
+  const img = (url?: string) =>
+    contentSecurityPolicy({ supabaseUrl: url })
+      .split('; ')
+      .find((d) => d.startsWith('img-src'))
+  expect(img('https://abc.supabase.co')).toBe(
+    "img-src 'self' data: blob: https://tiles.openfreemap.org https://abc.supabase.co",
   )
+  expect(img()).toBe("img-src 'self' data: blob: https://tiles.openfreemap.org")
 })

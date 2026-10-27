@@ -193,7 +193,7 @@ scope_for_suite_workflows() {
 # every PR" is "run it whenever anything changed", and the suite is cheap
 # enough to carry that.
 
-suite_names=(client backend pipeline dbt steward steward-web steward-api settings)
+suite_names=(client backend pipeline dbt steward steward-web steward-db settings)
 
 scope_for_suite() {
   scope_for_suite_workflows "$1"
@@ -445,9 +445,9 @@ if selected_has steward; then
   step "steward ruff check"    "$PY" -m ruff check apps/steward/pipeline
   step "steward ruff format"   "$PY" -m ruff format --check apps/steward/pipeline
 fi
-if selected_has steward-api; then
-  step "steward-api ruff check"   "$PY" -m ruff check apps/steward/api
-  step "steward-api ruff format"  "$PY" -m ruff format --check apps/steward/api
+if selected_has steward-db; then
+  step "steward-db ruff check"   "$PY" -m ruff check apps/steward/db
+  step "steward-db ruff format"  "$PY" -m ruff format --check apps/steward/db
 fi
 if selected_has settings; then
   step "settings ruff check"   "$PY" -m ruff check .github/tests
@@ -479,10 +479,12 @@ if selected_has steward; then
   # About a second of tests, so no xdist workers and no coverage report.
   step "steward tests"  env -C apps/steward/pipeline "$PY" -m pytest -q
 fi
-if selected_has steward-api; then
+if selected_has steward-db; then
   # Against the local Postgres backend/scripts/local-postgres.sh starts, in a
   # steward_test database the suite creates; STEWARD_TEST_DATABASE_URL overrides.
-  step "steward-api tests"  env -C apps/steward/api "$PY" -m pytest -q
+  # Supabase's roles come from apps/steward/db/scripts/local-roles.sh, which the
+  # session-start hook runs.
+  step "steward-db tests"  env -C apps/steward/db "$PY" -m pytest -q
 fi
 if selected_has steward-web; then
   # `run`, not `exec`, for the reason CLIENT_TEST's note gives: the script has

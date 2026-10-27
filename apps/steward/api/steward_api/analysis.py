@@ -82,7 +82,9 @@ def fetch_analysis(url: str, transport: httpx.BaseTransport | None = None) -> An
                     if len(body) > MAX_SITES_BYTES:
                         raise AnalysisUnavailable("sites.json is larger than any the job writes")
         return parse_sites(httpx.Response(200, content=bytes(body)).json())
-    except (httpx.HTTPError, ValueError) as exc:
+    except AnalysisUnavailable:
+        raise
+    except Exception as exc:  # noqa: BLE001 - a deeply nested file raises RecursionError, not ValueError
         raise AnalysisUnavailable(f"could not read the analysis from {url}: {exc}") from exc
 
 
@@ -119,14 +121,19 @@ class AnalysisDirectory:
                     raise AnalysisUnavailable("the analysis is not loaded yet")
                 return self._data
             self._refreshing = True
+        # Whatever the load does, the flag comes down: an exception this did not
+        # expect used to leave it up for good, so nothing ever loaded again
+        # (the re-check's N4).
         try:
             data = self._load()
-        except AnalysisUnavailable:
+        except Exception as exc:  # noqa: BLE001
             with self._lock:
                 self._failed_at = self._clock()
                 self._refreshing = False
                 if self._data is None:
-                    raise
+                    if isinstance(exc, AnalysisUnavailable):
+                        raise
+                    raise AnalysisUnavailable(str(exc)) from exc
                 return self._data
         with self._lock:
             self._data = data

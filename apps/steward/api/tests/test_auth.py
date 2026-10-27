@@ -74,18 +74,23 @@ def test_deleting_the_account_removes_its_lists_and_name_and_keeps_its_weights_c
     assert len(history) == 1 and history[0]["changed_by"] is None and history[0]["deficit"] == 50
 
 
-def test_a_deleted_account_cannot_come_back_as_a_fresh_one_with_the_same_sign_in(client, monkeypatch):
-    # The review's finding 3: deleting the row let the same token return at
-    # once as a stranger, free of its weights cap.
+def test_a_deleted_account_comes_back_empty_but_not_free_of_its_history(client, monkeypatch):
+    # The review's finding 3: deleting the row let the same sign-in return as a
+    # stranger with a fresh weights cap. The row is kept, so the cap still counts
+    # the changes it made. The re-check's N7: it may come back, empty, rather
+    # than be locked out for good, which a stolen token could do to anyone.
     from steward_api import limits
 
     monkeypatch.setattr(limits, "WEIGHT_CHANGES_PER_DAY", 1)
     change = {"club": "Example Trail Club", "deficit": 50, "water": 12, "trail": 6, "cluster": 8, "restricted": 10}
+    client.patch("/me", json={"display_name": "Leaver"}, headers=bearer("leaver"))
+    client.post("/lists", json={"name": "Mine"}, headers=bearer("leaver"))
     assert client.post("/weights", json=change, headers=bearer("leaver")).status_code == 201
     assert client.delete("/me", headers=bearer("leaver")).status_code == 204
-    again = client.post("/weights", json={**change, "deficit": 51}, headers=bearer("leaver"))
-    assert again.status_code == 401 and "deleted" in again.json()["detail"]
-    assert client.get("/lists", headers=bearer("leaver")).status_code == 401
+
+    assert client.get("/me", headers=bearer("leaver")).json() == {"display_name": None}
+    assert client.get("/lists", headers=bearer("leaver")).json() == []
+    assert client.post("/weights", json={**change, "deficit": 51}, headers=bearer("leaver")).status_code == 429
 
 
 def test_an_anonymous_supabase_user_is_refused(client):

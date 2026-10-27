@@ -108,9 +108,9 @@ function SignedIn() {
             className="note"
             style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}
           >
-            Your name, lists and hours are deleted, and this account cannot be used here
-            again. Weights you changed and claims you worked on stay in their histories,
-            without your name.
+            Your name, lists and hours are deleted, and you are signed out. Weights you
+            changed and claims you worked on stay in their histories, without your name.
+            Signing in again starts an empty account.
             <button
               type="button"
               className="button primary"

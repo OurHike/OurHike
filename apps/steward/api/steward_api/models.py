@@ -28,10 +28,13 @@ class StewardUser(Base):
     id: Mapped[str] = mapped_column(String(64), primary_key=True)
     display_name: Mapped[str | None] = mapped_column(String(limits.DISPLAY_NAME_MAX))
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
-    #: Set when the person deletes their Campsite Steward data. The row stays as
-    #: a tombstone and the id is refused from then on: deleting the row let the
-    #: same token come straight back as a stranger, free of its weights cap and
-    #: able to review its own claim (the review's finding 3, 2026-10-27).
+    #: When the person last deleted their Campsite Steward data. The row is kept
+    #: rather than deleted: deleting it let the same sign-in come straight back
+    #: as a stranger, free of its weights cap and able to review its own claim
+    #: (the review's finding 3, 2026-10-27). What stops that is the rows that
+    #: point here (crew places, weights changes), so the person may come back,
+    #: as an empty account; locking them out for good only let a stolen token
+    #: do lasting harm (the re-check's N7).
     deleted_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
 
 
@@ -141,6 +144,10 @@ class Claim(Base):
     #: When a reviewer last sent it back. After photos older than this do not
     #: count toward the next submission, so a crew cannot resubmit unchanged.
     sent_back_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    #: Who rejected it, if a reviewer did. That account may not claim the site
+    #: for limits.REJECTER_WAIT_DAYS, so a reject cannot be a way to take a
+    #: crew's finished site (the re-check's N2).
+    rejected_by: Mapped[str | None] = mapped_column(ForeignKey("steward_user.id", ondelete="SET NULL"))
     #: SHA-256 of the crew invite token, as for list share links.
     invite_token_sha256: Mapped[str | None] = mapped_column(String(64), unique=True)
 

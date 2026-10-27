@@ -3,7 +3,7 @@ import pytest
 from alembic.autogenerate import compare_metadata
 from alembic.migration import MigrationContext
 from conftest import ORIGIN, bearer
-from sqlalchemy import create_engine
+from sqlalchemy import create_engine, text
 
 from steward_api import limits
 from steward_api.analysis import Analysis, AnalysisDirectory, AnalysisUnavailable, fetch_analysis, parse_sites
@@ -12,6 +12,21 @@ from steward_api.models import Base
 
 def test_health_answers_without_sign_in_and_checks_the_database(client):
     assert client.get("/health").json() == {"status": "ok"}
+
+
+def test_health_is_503_when_the_database_schema_is_behind_this_code(client, app):
+    # The re-check's N3: code shipped before its migration answered healthy
+    # while every signed-in request was a 500.
+    with app.state.engine.begin() as connection:
+        head = connection.execute(text("select version_num from alembic_version")).scalar()
+        connection.execute(text("update alembic_version set version_num = '0002'"))
+    try:
+        response = client.get("/health")
+        assert response.status_code == 503 and "run the migrations" in response.json()["status"]
+    finally:
+        with app.state.engine.begin() as connection:
+            connection.execute(text("update alembic_version set version_num = :v"), {"v": head})
+    assert client.get("/health").status_code == 200
 
 
 def test_health_is_503_when_the_database_does_not_answer(database_url):
@@ -121,6 +136,31 @@ def test_the_directory_keeps_its_last_good_copy_and_does_not_retry_at_once_after
     now[0] = 10_000 + 61
     directory.current()
     assert len(loads) == 3
+
+
+def test_an_unexpected_error_while_loading_does_not_stop_later_loads():
+    # The re-check's N4: anything but AnalysisUnavailable left the refresh flag
+    # up for good, so nothing loaded again until a restart.
+    now = [0.0]
+    loads = []
+
+    def load():
+        loads.append(now[0])
+        if len(loads) == 1:
+            raise RecursionError("maximum recursion depth exceeded")
+        return parse_sites(SITES)
+
+    directory = AnalysisDirectory(load, clock=lambda: now[0])
+    with pytest.raises(AnalysisUnavailable):
+        directory.current()
+    now[0] = 61
+    assert directory.current().sites == {"a", "b", "c"}
+
+
+def test_a_deeply_nested_sites_file_is_unavailable_not_a_crash():
+    nested = "[" * 100_000 + "]" * 100_000
+    with pytest.raises(AnalysisUnavailable):
+        fetch_analysis("https://data.example/sites.json", _transport(content=nested.encode()))
 
 
 def test_an_unset_sites_url_refuses_rather_than_accepting_anything():

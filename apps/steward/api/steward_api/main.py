@@ -15,7 +15,7 @@ from steward_api.analysis import AnalysisDirectory
 from steward_api.auth import TokenVerifier
 from steward_api.body_limit import BodyLimitMiddleware
 from steward_api.config import Settings
-from steward_api.db import make_engine, make_sessionmaker
+from steward_api.db import make_engine, make_sessionmaker, schema_head
 from steward_api.photos import PhotoStore
 from steward_api.routes import claims, lists, me, weights
 
@@ -39,16 +39,30 @@ def create_app(
     #: None when this deployment has no photo bucket: uploads then answer 503.
     app.state.photos = photos if photos is not None else settings.photo_storage()
 
+    # Its own pool of one connection with short timeouts, so health checks
+    # never queue for a connection a real request needs, and a flood of them
+    # (the one route that needs no sign-in and touches the database) gets fast
+    # 503s rather than the main pool (the re-check's N6).
+    health_engine = make_engine(settings.database_url, pool_size=1, max_overflow=0, pool_timeout=2, pool_recycle=300)
+    expected_schema = schema_head()
+
     @app.get("/health")
     def health() -> JSONResponse:
-        """Up means the database answers: a deployment that fell back to the
-        localhost default would otherwise report healthy while every real
-        request failed (the review's finding 13)."""
+        """Up means the database answers and its schema is the one this code
+        expects. A deployment that fell back to the localhost default reported
+        healthy while every request failed (the review's finding 13); so did one
+        whose migrations had not run, while every signed-in request was a 500
+        reading a column that was not there yet (the re-check's N3)."""
         try:
-            with engine.connect() as connection:
-                connection.execute(text("select 1"))
+            with health_engine.connect() as connection:
+                version = connection.execute(text("select version_num from alembic_version")).scalar()
         except SQLAlchemyError:
             return JSONResponse({"status": "database unreachable"}, status_code=503)
+        if version != expected_schema:
+            return JSONResponse(
+                {"status": f"database schema is at {version}, this code needs {expected_schema}: run the migrations"},
+                status_code=503,
+            )
         return JSONResponse({"status": "ok"})
 
     app.include_router(me.router)

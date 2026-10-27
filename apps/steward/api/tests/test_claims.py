@@ -271,11 +271,12 @@ def test_nobody_on_the_crew_can_review_their_own_submission(client):
 
 
 def test_deleting_an_account_does_not_make_its_own_work_reviewable_by_it(client):
-    # The review's finding 3: DELETE /me, then the same token verified its own claim.
+    # The review's finding 3: DELETE /me, then the same token verified its own
+    # claim. The crew place is kept, so the returning account is still crew.
     claim_id = submitted(client)
     assert client.delete("/me", headers=bearer("claimer")).status_code == 204
     response = client.post(f"/claims/{claim_id}/review", json={"verdict": "verify"}, headers=bearer("claimer"))
-    assert response.status_code == 401
+    assert response.status_code == 403
     assert client.get(f"/claims/{claim_id}", headers=bearer("anyone")).json()["state"] == "submitted"
 
 
@@ -338,6 +339,24 @@ def test_rejecting_releases_the_site_and_counts_no_hours(client):
     assert rejected["state"] == "released"
     assert client.get(f"/claims/site/{SITE}", headers=bearer("anyone")).json() is None
     assert client.get("/hours/mine", headers=bearer("claimer")).json()["verified"] == 0
+
+
+def test_whoever_rejects_a_claim_cannot_claim_that_site_for_a_while_and_others_can(client):
+    # The re-check's N2: reject, then claim the same site in the next request.
+    claim_id = submitted(client)
+    client.post(f"/claims/{claim_id}/review", json={"verdict": "reject", "note": "Not this site"}, headers=bearer("rejecter"))
+    taken = client.post("/claims", json={"rims_ids": [SITE]}, headers=bearer("rejecter"))
+    assert taken.status_code == 409 and str(limits.REJECTER_WAIT_DAYS) in taken.json()["detail"]
+    claim(client, who="somebody-else")
+
+
+def test_a_photo_larger_than_the_app_ever_sends_is_refused_unread(client, app):
+    # The re-check's N1: a 60 MP header was allowed, and decoding it cost 687 MB.
+    claim_id = claim(client)
+    too_big = image("PNG", size=(2049, 2048))
+    assert photo(client, claim_id, "before", 1, body=too_big).status_code == 415
+    assert app.state.photos.objects == {}
+    assert photo(client, claim_id, "before", 1, body=image("JPEG", size=(2048, 1536))).status_code == 201
 
 
 def test_hours_are_in_half_hours_and_bounded(client):

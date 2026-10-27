@@ -13,8 +13,9 @@ exactly, because each line of it is a fix with a reason there:
   cannot turn every request into an outbound call (backend's #1754);
 - a JWKS that cannot be fetched is a 503, not a 401.
 
-Two refusals of its own: an anonymous Supabase user, and an account whose
-data was deleted here (a tombstone, models.StewardUser.deleted_at).
+One refusal of its own: an anonymous Supabase user. An account whose data
+was deleted comes back empty (models.StewardUser.deleted_at says why that
+is safe).
 """
 
 from __future__ import annotations
@@ -143,10 +144,10 @@ def current_user(
         if user is None:
             raise HTTPException(status.HTTP_500_INTERNAL_SERVER_ERROR, "Could not create the account row")
     if user.deleted_at is not None:
-        raise HTTPException(
-            status.HTTP_401_UNAUTHORIZED,
-            "This account's Campsite Steward data was deleted, so it cannot be used here again",
-        )
+        # Back after deleting their data: an empty account again. Their kept
+        # crew places and weights changes still count, so this is no way round
+        # the review rules or the daily cap (models.StewardUser.deleted_at).
+        user.deleted_at = None
     # End the read's transaction, which returns its connection to the pool.
     # Without this the connection stayed checked out for the rest of the
     # request, including the seconds a photo takes to arrive: fifteen slow

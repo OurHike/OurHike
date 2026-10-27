@@ -192,6 +192,19 @@ def claim_sites(
         )
     release_overdue(db)
     lock_user(db, user.id)
+    rejected = db.scalars(
+        select(Claim.rims_id).where(
+            Claim.rims_id.in_(sites),
+            Claim.rejected_by == user.id,
+            Claim.released_at > _now() - timedelta(days=limits.REJECTER_WAIT_DAYS),
+        )
+    ).all()
+    if rejected:
+        raise HTTPException(
+            status.HTTP_409_CONFLICT,
+            f"You rejected the last claim on {', '.join(sorted(set(rejected)))}, so someone else gets the next "
+            f"{limits.REJECTER_WAIT_DAYS} days to claim it",
+        )
     held_by_you = db.scalar(
         select(func.count())
         .select_from(Claim)
@@ -326,7 +339,8 @@ async def upload_photo(
     In this order, each step holding nothing the next does not need (the
     adversarial review's finding 1, 2026-10-27): the caller is checked against
     the claim before a byte of body is read; the body is read with no database
-    connection held and a deadline; it is re-encoded in a worker thread; it is
+    connection held, cut off after PHOTO_IDLE_SECONDS without a byte or
+    PHOTO_READ_SECONDS in all; it is re-encoded in a worker thread; it is
     written to R2 outside any transaction; and only then is the row written,
     after checking the claim again, since it may have changed meanwhile."""
     store = _store(request)
@@ -338,7 +352,12 @@ async def upload_photo(
     body = bytearray()
     try:
         async with asyncio.timeout(limits.PHOTO_READ_SECONDS):
-            async for chunk in request.stream():
+            chunks = request.stream().__aiter__()
+            while True:
+                try:
+                    chunk = await asyncio.wait_for(chunks.__anext__(), limits.PHOTO_IDLE_SECONDS)
+                except StopAsyncIteration:
+                    break
                 body.extend(chunk)
                 if len(body) > limits.PHOTO_MAX_BYTES:
                     raise HTTPException(status.HTTP_413_CONTENT_TOO_LARGE, "That photo is too large")
@@ -516,7 +535,8 @@ def review(
       they submitted, and at least limits.SEND_BACK_DAYS, so one reviewer
       cannot shorten a crew's clock by sending it back (the review's finding 9);
       the after photos must be retaken;
-    - reject: needs a note; the site is released and the hours are not counted.
+    - reject: needs a note; the site is released and the hours are not counted,
+      and the reviewer may not claim it for limits.REJECTER_WAIT_DAYS.
     """
     claim = db.get(Claim, claim_id, with_for_update=True)
     if claim is None:
@@ -545,6 +565,7 @@ def review(
     else:
         claim.state = "released"
         claim.released_at = now
+        claim.rejected_by = user.id
         claim.invite_token_sha256 = None
     db.commit()
     return _detail(claim, user, db, request.app.state.photos)

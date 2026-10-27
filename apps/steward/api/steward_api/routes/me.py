@@ -33,10 +33,10 @@ def delete_me(user: StewardUser = Depends(current_user), db: Session = Depends(g
 
     What stays, without a name: the claims and weights changes they made, which
     are other people's history too, and their crew places, which keep them from
-    ever reviewing work they were part of. The account row stays as a
-    tombstone and this sign-in is refused from then on (auth.current_user).
-    Deleting the row instead let the same token return as a new account the
-    moment after (the adversarial review's finding 3, 2026-10-27).
+    ever reviewing work they were part of. The account row stays, marked, so
+    those rows still point at it: deleting the row let the same sign-in return
+    as a stranger the moment after (the adversarial review's finding 3,
+    2026-10-27). Signing in again starts an empty account (auth.current_user).
 
     The Supabase account itself is OurHike's, and is not touched here."""
     db.execute(

@@ -45,6 +45,10 @@ MAX_BODY_BYTES = 16 * 1024
 #: weeks (PLAN.md §6, `@unvalidated` there: how many claims are released
 #: unfinished, by season, would settle it).
 CLAIM_DAYS = 14
+#: Days an account that rejected a claim must wait before claiming that site.
+#: `@unvalidated`: long enough that rejecting cannot be a quick way to take a
+#: site; what would settle it is how often rejects happen at all.
+REJECTER_WAIT_DAYS = 30
 #: How long a crew gets after a reviewer sends a submission back. Picked:
 #: PLAN.md stops the clock at Submitted and says nothing about restarting it.
 SEND_BACK_DAYS = 7
@@ -64,12 +68,18 @@ PHOTO_POINTS = (1, 2)
 PHOTO_MAX_BYTES = 3 * 1024 * 1024
 #: The server re-encodes every photo to this long side, as the phone does.
 PHOTO_LONG_SIDE = 2048
-#: Pixels a photo may claim before it is decoded: a 50-megapixel phone is the
-#: largest ordinary camera; a header claiming more is refused unread.
-PHOTO_MAX_PIXELS = 60_000_000
-#: Seconds to receive one photo's body. A slow upload past this is cut off
-#: rather than allowed to hold a worker (the review's finding 1).
-PHOTO_READ_SECONDS = 60
+#: Pixels a photo may claim before it is decoded. Reasoned: the app redraws
+#: every photo to at most PHOTO_LONG_SIDE on its long side before sending, so
+#: nothing it sends is over 2048 x 2048 (4.2 MP). A camera original is refused
+#: unread; 60 MP was allowed until the review's re-check (N1) showed one such
+#: upload costing 687 MB to decode.
+PHOTO_MAX_PIXELS = 2048 * 2048
+#: Seconds a photo's upload may go without a byte arriving, and in all. Idle
+#: rather than only a total, so a weak trailhead signal that keeps trickling
+#: still gets its photo through (the re-check's N5), while a stalled one is
+#: cut off. `@unvalidated`, both: nobody has timed an upload on the trail.
+PHOTO_IDLE_SECONDS = 20
+PHOTO_READ_SECONDS = 300
 PHOTOS_PER_CLAIM = 40
 #: Hours one person logs on one claim, across all their visits to it.
 HOURS_MAX = 72

@@ -3,6 +3,7 @@
     raw/csi.json          every CSI row's attributes (CSI_FIELDS only), plus the layer's metadata
     raw/parking.geojson   ATC's parking points
     raw/padus.geojson     the PAD-US polygons containing at least one CSI site
+    raw/centerline.geojson  ATC's A.T. centerline, simplified to about 5 m
 
 The raw directory is under the gitignored data/ (apps/steward/pipeline/.gitignore).
 It holds 2,411 user-created campsite locations, so it never goes in a commit,
@@ -163,6 +164,36 @@ def fetch_padus(fetcher: Fetcher, points: list[tuple[float, float]]) -> dict:
     return {"type": "FeatureCollection", "features": list(by_id.values())}
 
 
+def fetch_centerline(fetcher: Fetcher) -> dict:
+    """ATC's centerline as GeoJSON, paged by offset and checked against the layer's own count."""
+    query = f"{sources.CENTERLINE_LAYER}/query"
+    expected = fetcher.request("GET", query, params={"where": "1=1", "returnCountOnly": "true", "f": "json"})["count"]
+    features: list[dict] = []
+    while len(features) < expected:
+        page = fetcher.request(
+            "GET",
+            query,
+            params={
+                "where": "1=1",
+                "outFields": "OBJECTID",
+                "returnGeometry": "true",
+                "maxAllowableOffset": sources.CENTERLINE_SIMPLIFY_DEG,
+                "outSR": 4326,
+                "orderByFields": "OBJECTID",
+                "resultOffset": len(features),
+                "resultRecordCount": PAGE_SIZE,
+                "f": "geojson",
+            },
+        )
+        batch = page.get("features", [])
+        if not batch:
+            break
+        features.extend(batch)
+    if len(features) != expected:
+        raise RuntimeError(f"centerline reported {expected} segments and {len(features)} came back; refusing a partial trail")
+    return {"type": "FeatureCollection", "features": features}
+
+
 def fetch_all(raw_dir: Path, fetcher: Fetcher | None = None) -> None:
     fetcher = fetcher or Fetcher()
     raw_dir.mkdir(parents=True, exist_ok=True)
@@ -171,3 +202,4 @@ def fetch_all(raw_dir: Path, fetcher: Fetcher | None = None) -> None:
     (raw_dir / "parking.geojson").write_text(json.dumps(fetch_parking(fetcher)))
     points = [(r["Longitude"], r["Latitude"]) for r in csi["rows"] if r.get("Longitude") is not None]
     (raw_dir / "padus.geojson").write_text(json.dumps(fetch_padus(fetcher, points)))
+    (raw_dir / "centerline.geojson").write_text(json.dumps(fetch_centerline(fetcher)))

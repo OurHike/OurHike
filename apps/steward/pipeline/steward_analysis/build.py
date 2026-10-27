@@ -49,15 +49,38 @@ RULE_FIELDS = (
 )
 
 
+#: Directions from the trail are given only when the job's own distance agrees
+#: with ATC's `Proximity_AT_ft` to within this many feet, or within half of
+#: ATC's figure for a site far from the trail. Measured 2026-10-27: the two
+#: agree to a median of 12 ft, and 3,414 of 3,442 sites within 50 ft. All 28
+#: of the rest are in Georgia, where ATC puts the site on or beside the trail
+#: and ATC's centerline has no trail for miles (up to 24,770 ft), as if it were
+#: measured from a trail that layer leaves out. Directions that would send a
+#: volunteer miles the wrong way are worse than none, so those sites get none.
+#: `@unvalidated`: 100 ft was picked to sit clear of the 50 ft that covers
+#: nearly every site; what would settle it is learning which trail ATC measured
+#: those Georgia sites against.
+TRAIL_AGREEMENT_FT = 100
+
+
+def _trail_agrees(found: dict | None, atc_ft) -> bool:
+    if found is None or atc_ft is None or pd.isna(atc_ft):
+        return False
+    return abs(found["ft"] - float(atc_ft)) <= max(TRAIL_AGREEMENT_FT, 0.5 * float(atc_ft))
+
+
 class SchemaError(RuntimeError):
     pass
 
 
-def load_raw(raw_dir: Path) -> tuple[dict, dict, dict]:
+def load_raw(raw_dir: Path) -> tuple[dict, dict, dict, dict]:
     csi = json.loads((raw_dir / "csi.json").read_text())
     parking = json.loads((raw_dir / "parking.geojson").read_text())
     padus = json.loads((raw_dir / "padus.geojson").read_text())
-    return csi, parking, padus
+    # Optional, so a raw directory fetched before the centerline was added still scores.
+    centerline_path = raw_dir / "centerline.geojson"
+    centerline = json.loads(centerline_path.read_text()) if centerline_path.exists() else {"features": []}
+    return csi, parking, padus, centerline
 
 
 def check_schema(rows: list[dict]) -> None:
@@ -69,7 +92,13 @@ def check_schema(rows: list[dict]) -> None:
         raise SchemaError(f"the CSI layer no longer has {missing}; the rules in rules.py read them")
 
 
-def score(csi_rows: list[dict], parking: dict, padus: dict, camping_rules: dict[str, bool] | None = None) -> pd.DataFrame:
+def score(
+    csi_rows: list[dict],
+    parking: dict,
+    padus: dict,
+    camping_rules: dict[str, bool] | None = None,
+    centerline: dict | None = None,
+) -> pd.DataFrame:
     """One row per CSI site with a location, carrying every derived column.
 
     `camping_rules` maps a PAD-US unit name to whether a REVIEWED rule restricts
@@ -104,6 +133,10 @@ def score(csi_rows: list[dict], parking: dict, padus: dict, camping_rules: dict[
     else:
         df["parking_name"] = None
         df["parking_mi"] = None
+
+    found = spatial.from_trail(df["Latitude"], df["Longitude"], (centerline or {}).get("features", []))
+    df["from_trail"] = [f if _trail_agrees(f, atc_ft) else None for f, atc_ft in zip(found, df["Proximity_AT_ft"])]
+    df["from_trail_withheld"] = [f is not None and kept is None for f, kept in zip(found, df["from_trail"])]
 
     units = [spatial.most_specific(u) for u in spatial.land_units(df["Latitude"], df["Longitude"], padus.get("features", []))]
     df["unit_manager"] = [u.get("Mang_Name") if u else None for u in units]
@@ -215,6 +248,11 @@ def summarize(df: pd.DataFrame, data_last_edit_ms: int | None, skipped_no_locati
         "sites_by_type": pairs("SELECT nullif(Site_Type, '') AS t, count(*) FROM sites GROUP BY t ORDER BY 2 DESC"),
         "actions": pairs("SELECT action, count(*) FROM sites GROUP BY action ORDER BY 2 DESC"),
         "priority_by_crew": [dict(zip(("tier", "one_person", "team", "crew", "total"), row)) for row in by_tier],
+        "from_trail": {
+            "given": int(df["from_trail"].notna().sum()),
+            "withheld_disagreeing_with_atc": int(df["from_trail_withheld"].sum()),
+            "agreement_ft": TRAIL_AGREEMENT_FT,
+        },
         "complexes": {
             "join_ft": COMPLEX_JOIN_FT,
             "count": complexes[0],
@@ -289,6 +327,9 @@ def site_records(df: pd.DataFrame) -> list[dict]:
                 "complex_id": row["complex_id"],
                 "complex_size": int(row["complex_size"]),
                 "nearest_parking": {"name": _none(row["parking_name"]), "mi": _num(row["parking_mi"], 2)},
+                # Where to leave the A.T. and which way to walk: the nearest point on ATC's
+                # centerline, the distance from it and the bearing from it to the site.
+                "from_trail": _trail(row["from_trail"]),
                 "land_unit": {
                     "manager": _none(row["unit_manager"]),
                     "designation": _none(row["unit_designation"]),
@@ -307,6 +348,18 @@ def site_records(df: pd.DataFrame) -> list[dict]:
             }
         )
     return out
+
+
+def _trail(found: dict | None) -> dict | None:
+    if not found:
+        return None
+    return {
+        "lat": round(found["lat"], 5),
+        "lon": round(found["lon"], 5),
+        "ft": round(found["ft"]),
+        "bearing_deg": round(found["bearing_deg"]),
+        "toward": found["toward"],
+    }
 
 
 def _plain(value):
@@ -329,9 +382,9 @@ def run(data_dir: Path, fetch: bool = False) -> dict:
         from steward_analysis.fetch import fetch_all
 
         fetch_all(raw_dir)
-    csi, parking, padus = load_raw(raw_dir)
+    csi, parking, padus, centerline = load_raw(raw_dir)
     check_schema(csi["rows"])
-    df = score(csi["rows"], parking, padus)
+    df = score(csi["rows"], parking, padus, centerline=centerline)
     skipped = len(csi["rows"]) - len(df)
     summary = summarize(df, csi.get("data_last_edit_ms"), skipped)
     write_outputs(out_dir, summary, site_records(df))

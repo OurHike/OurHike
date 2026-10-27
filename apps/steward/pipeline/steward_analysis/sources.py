@@ -58,6 +58,13 @@ PADUS_FIELDS = ("OBJECTID", "Mang_Name", "Mang_Type", "Des_Tp", "Unit_Nm", "Stat
 PARKING_LAYER = "https://services1.arcgis.com/fBc8EJBxQRMcHlei/arcgis/rest/services/ANST_Facilities/FeatureServer/2"
 PARKING_FIELDS = ("OBJECTID", "Name", "Status")
 
+#: ATC's A.T. centerline (3,028 segments on 2026-10-27), read so a site page can
+#: say where to leave the trail and which way to walk (decided 2026-10-26).
+#: Simplified on the server to CENTERLINE_SIMPLIFY_DEG, about 5 m, which brought
+#: the first 2,000 segments to 1.1 MB (measured 2026-10-27).
+CENTERLINE_LAYER = "https://services1.arcgis.com/fBc8EJBxQRMcHlei/arcgis/rest/services/ANST_Centerline/FeatureServer/0"
+CENTERLINE_SIMPLIFY_DEG = 0.00005
+
 #: Who this job says it is. Its own product token rather than OurHike's
 #: `OurHike-pipeline`, because this is not OurHike's pipeline and an operator
 #: reading a log should be able to tell the two apart.

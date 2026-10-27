@@ -110,3 +110,75 @@ def most_specific(units: list[dict]) -> dict | None:
         return None
     rank = {des: i for i, des in enumerate(DESIGNATION_ORDER)}
     return min(units, key=lambda u: rank.get(u.get("Des_Tp"), len(rank)))
+
+
+#: How far around a site to look for trail, in degrees (about 4 miles of
+#: latitude). The farthest CSI site from the A.T. was 15,661 ft, about 3 miles,
+#: on 2026-10-24; a site with no trail inside this box falls back to the
+#: nearest line anywhere.
+TRAIL_SEARCH_DEG = 0.06
+
+#: Eight compass points, clockwise from north, for "walk 40 ft west".
+COMPASS = ("N", "NE", "E", "SE", "S", "SW", "W", "NW")
+
+
+def bearing_deg(from_lat, from_lon, to_lat, to_lon) -> float:
+    """The initial great-circle bearing from one point to another, 0-360 clockwise from north."""
+    p1, p2 = math.radians(from_lat), math.radians(to_lat)
+    dl = math.radians(to_lon - from_lon)
+    x = math.sin(dl) * math.cos(p2)
+    y = math.cos(p1) * math.sin(p2) - math.sin(p1) * math.cos(p2) * math.cos(dl)
+    return (math.degrees(math.atan2(x, y)) + 360) % 360
+
+
+def compass(bearing: float) -> str:
+    return COMPASS[int((bearing + 22.5) // 45) % 8]
+
+
+def _segments(geometry) -> list[np.ndarray]:
+    """Each part of a LineString or MultiLineString as an (n, 2) array of lon, lat."""
+    parts = geometry.geoms if hasattr(geometry, "geoms") else [geometry]
+    return [np.asarray(part.coords)[:, :2] for part in parts if len(part.coords) >= 2]
+
+
+def from_trail(lats, lons, trail_features: list[dict]) -> list[dict | None]:
+    """For each site, the nearest point on the trail, how far it is in feet, and the bearing from it to the site.
+
+    The nearest point is found in a flat frame centred on each site (longitude
+    scaled by the cosine of the site's latitude), which is exact enough over the
+    few thousand feet involved and needs no projection library. The distance and
+    bearing are then measured on the sphere. None for every site when there is
+    no trail to measure from.
+    """
+    geoms = [shape(f["geometry"]) for f in trail_features if f.get("geometry")]
+    if not geoms:
+        return [None] * len(lats)
+    tree = STRtree(geoms)
+    out: list[dict | None] = []
+    for lat, lon in zip(lats, lons):
+        lat, lon = float(lat), float(lon)
+        site = Point(lon, lat)
+        candidates = tree.query(site.buffer(TRAIL_SEARCH_DEG))
+        if len(candidates) == 0:
+            candidates = [tree.nearest(site)]
+        scale = math.cos(math.radians(lat))
+        best = None
+        for index in candidates:
+            for coords in _segments(geoms[int(index)]):
+                # Local frame: the site at the origin, units of degrees of latitude.
+                xy = np.column_stack(((coords[:, 0] - lon) * scale, coords[:, 1] - lat))
+                a, b = xy[:-1], xy[1:]
+                d = b - a
+                length2 = (d**2).sum(axis=1)
+                t = np.clip(np.where(length2 > 0, -(a * d).sum(axis=1) / np.where(length2 > 0, length2, 1), 0), 0, 1)
+                closest = a + d * t[:, None]
+                dist2 = (closest**2).sum(axis=1)
+                i = int(dist2.argmin())
+                if best is None or dist2[i] < best[0]:
+                    best = (dist2[i], closest[i])
+        x, y = best[1]
+        trail_lat, trail_lon = lat + y, lon + x / scale
+        feet = float(feet_between(trail_lat, trail_lon, lat, lon))
+        bearing = bearing_deg(trail_lat, trail_lon, lat, lon)
+        out.append({"lat": trail_lat, "lon": trail_lon, "ft": feet, "bearing_deg": bearing, "toward": compass(bearing)})
+    return out

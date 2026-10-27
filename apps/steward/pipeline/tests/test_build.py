@@ -5,7 +5,7 @@ from __future__ import annotations
 import json
 
 import pytest
-from conftest import csi_row, point, square, write_raw
+from conftest import FEET_PER_DEG, csi_row, point, square, write_raw
 
 from steward_analysis import build, rules
 
@@ -58,7 +58,14 @@ def invented_layer() -> tuple[list[dict], list[dict], list[dict]]:
 @pytest.fixture
 def built(tmp_path):
     rows, parking, padus = invented_layer()
-    write_raw(tmp_path / "raw", rows, parking, padus)
+    # A trail running north-south 120 ft west of every invented site, matching csi_row's
+    # default Proximity_AT_ft, so the job's distance and ATC's agree.
+    trail = {
+        "type": "Feature",
+        "geometry": {"type": "LineString", "coordinates": [[-120 / FEET_PER_DEG, -0.01], [-120 / FEET_PER_DEG, 0.2]]},
+        "properties": {},
+    }
+    write_raw(tmp_path / "raw", rows, parking, padus, centerline=[trail])
     summary = build.run(tmp_path)
     sites = json.loads((tmp_path / "out" / "sites.json").read_text())
     return rows, json.loads((tmp_path / "out" / "summary.json").read_text()), summary, sites
@@ -116,6 +123,21 @@ def test_actions_crews_and_complexes_come_out_as_the_rules_say(built):
     assert by_id["rims-0005"]["action"] == rules.ADOPT_NOTE and by_id["rims-0005"]["tier"] is None
     assert (by_id["rims-0006"]["action"], by_id["rims-0006"]["need"]) == (rules.MONITOR_RECOVERY, 0)
     assert by_id["rims-0007"]["action"] == rules.UNKNOWN
+
+
+def test_each_site_says_where_to_leave_the_trail_and_which_way_to_walk(built):
+    _, _, _, sites = built
+    first = next(s for s in sites if s["rims_id"] == "rims-0001")
+    assert first["from_trail"]["toward"] == "E"
+    assert first["from_trail"]["ft"] == pytest.approx(120, abs=2)
+
+
+def test_a_raw_directory_without_the_centerline_still_scores_with_no_bearing(tmp_path):
+    rows, parking, padus = invented_layer()
+    write_raw(tmp_path / "raw", rows, parking, padus)
+    build.run(tmp_path)
+    sites = json.loads((tmp_path / "out" / "sites.json").read_text())
+    assert all(s["from_trail"] is None for s in sites)
 
 
 def test_nearest_parking_and_land_unit_are_named_on_each_site(built):
@@ -180,3 +202,20 @@ def test_a_layer_that_lost_a_field_is_refused_before_scoring():
     del rows[0]["Proximity_Water_ft"]
     with pytest.raises(build.SchemaError, match="Proximity_Water_ft"):
         build.check_schema(rows)
+
+
+def test_directions_are_withheld_where_the_centerline_disagrees_with_atcs_own_distance(tmp_path):
+    """The Georgia case: ATC says the site is beside the trail, and the centerline has none for miles."""
+    rows, parking, padus = invented_layer()
+    for row in rows:
+        row["Proximity_AT_ft"] = 20.0
+    far_trail = {
+        "type": "Feature",
+        "geometry": {"type": "LineString", "coordinates": [[-20000 / FEET_PER_DEG, -0.01], [-20000 / FEET_PER_DEG, 0.2]]},
+        "properties": {},
+    }
+    write_raw(tmp_path / "raw", rows, parking, padus, centerline=[far_trail])
+    summary = build.run(tmp_path)
+    sites = json.loads((tmp_path / "out" / "sites.json").read_text())
+    assert all(s["from_trail"] is None for s in sites)
+    assert summary["from_trail"]["withheld_disagreeing_with_atc"] == 8

@@ -125,3 +125,31 @@ def test_padus_polygons_are_kept_once_however_many_batches_find_them(monkeypatch
     routes = {urlsplit(sources.PADUS_LAYER).path + "/query": lambda kwargs: FakeResponse(200, {"features": [polygon]})}
     got = fetch.fetch_padus(fetch.Fetcher(FakeSession(routes)), [(0.0, 0.0), (0.1, 0.1), (0.2, 0.2)])
     assert [f["properties"]["OBJECTID"] for f in got["features"]] == [7]
+
+
+CENTERLINE_PATH = urlsplit(sources.CENTERLINE_LAYER).path
+
+
+def test_the_centerline_is_read_in_pages_until_the_count_is_met(monkeypatch):
+    monkeypatch.setattr(fetch, "PAGE_SIZE", 2)
+    segments = [{"type": "Feature", "geometry": None, "properties": {"OBJECTID": i}} for i in range(5)]
+
+    def page(kwargs):
+        params = kwargs["params"]
+        if params.get("returnCountOnly"):
+            return FakeResponse(200, {"count": 5})
+        start = params["resultOffset"]
+        return FakeResponse(200, {"type": "FeatureCollection", "features": segments[start : start + params["resultRecordCount"]]})
+
+    got = fetch.fetch_centerline(fetch.Fetcher(FakeSession({f"{CENTERLINE_PATH}/query": page})))
+    assert [f["properties"]["OBJECTID"] for f in got["features"]] == [0, 1, 2, 3, 4]
+
+
+def test_a_centerline_that_returns_less_than_it_counts_is_refused():
+    def page(kwargs):
+        if kwargs["params"].get("returnCountOnly"):
+            return FakeResponse(200, {"count": 3})
+        return FakeResponse(200, {"features": []})
+
+    with pytest.raises(RuntimeError, match="refusing a partial trail"):
+        fetch.fetch_centerline(fetch.Fetcher(FakeSession({f"{CENTERLINE_PATH}/query": page})))

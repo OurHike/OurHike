@@ -94,9 +94,16 @@ def point(north_ft: float, east_ft: float, **props) -> dict:
 
 
 def write_raw(
-    raw_dir: Path, rows: list[dict], parking: list[dict], padus: list[dict], edited_ms: int | None = 1787239681299
+    raw_dir: Path,
+    rows: list[dict],
+    parking: list[dict],
+    padus: list[dict],
+    edited_ms: int | None = 1787239681299,
+    centerline: list[dict] | None = None,
 ) -> None:
     raw_dir.mkdir(parents=True, exist_ok=True)
     (raw_dir / "csi.json").write_text(json.dumps({"layer": sources.CSI_LAYER, "data_last_edit_ms": edited_ms, "rows": rows}))
     (raw_dir / "parking.geojson").write_text(json.dumps({"type": "FeatureCollection", "features": parking}))
     (raw_dir / "padus.geojson").write_text(json.dumps({"type": "FeatureCollection", "features": padus}))
+    if centerline is not None:
+        (raw_dir / "centerline.geojson").write_text(json.dumps({"type": "FeatureCollection", "features": centerline}))

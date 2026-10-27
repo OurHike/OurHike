@@ -69,3 +69,52 @@ def test_land_units_finds_every_polygon_around_a_site_and_most_specific_prefers_
     assert spatial.most_specific(found[0])["Unit_Nm"] == "Example Wilderness"
     assert [u["Des_Tp"] for u in found[1]] == ["NF"]
     assert found[2] == [] and spatial.most_specific(found[2]) is None
+
+
+@pytest.mark.parametrize(
+    ("to_lat", "to_lon", "expected", "word"),
+    [(1, 0, 0, "N"), (0, 1, 90, "E"), (-1, 0, 180, "S"), (0, -1, 270, "W"), (1, 1, 45, "NE")],
+)
+def test_bearing_and_compass_point(to_lat, to_lon, expected, word):
+    bearing = spatial.bearing_deg(0, 0, to_lat / 1000, to_lon / 1000)
+    assert bearing == pytest.approx(expected, abs=0.5)
+    assert spatial.compass(bearing) == word
+
+
+def north_south_trail(east_ft: float, from_ft: float = -5000, to_ft: float = 5000) -> dict:
+    return {
+        "type": "Feature",
+        "geometry": {
+            "type": "LineString",
+            "coordinates": [[east_ft / FEET_PER_DEG, from_ft / FEET_PER_DEG], [east_ft / FEET_PER_DEG, to_ft / FEET_PER_DEG]],
+        },
+        "properties": {},
+    }
+
+
+def test_from_trail_finds_where_to_leave_the_trail_and_which_way_to_walk():
+    # The trail runs north-south 300 ft west of the site, so the walk is 300 ft due east.
+    found = spatial.from_trail([1000 / FEET_PER_DEG], [0.0], [north_south_trail(-300)])[0]
+    assert found["toward"] == "E"
+    assert found["bearing_deg"] == pytest.approx(90, abs=1)
+    assert found["ft"] == pytest.approx(300, rel=0.01)
+    assert found["lat"] == pytest.approx(1000 / FEET_PER_DEG, abs=1e-7)
+
+
+def test_from_trail_takes_the_end_of_a_segment_when_the_site_is_past_it():
+    # The trail stops 500 ft south of the site, so the nearest point is its end and the walk is north.
+    found = spatial.from_trail([0.0], [0.0], [north_south_trail(0, -5000, -500)])[0]
+    assert found["toward"] == "N"
+    assert found["ft"] == pytest.approx(500, rel=0.01)
+
+
+def test_from_trail_reads_every_part_of_a_multilinestring():
+    near = north_south_trail(200)["geometry"]["coordinates"]
+    far = north_south_trail(-3000)["geometry"]["coordinates"]
+    multi = {"type": "Feature", "geometry": {"type": "MultiLineString", "coordinates": [far, near]}, "properties": {}}
+    found = spatial.from_trail([0.0], [0.0], [multi])[0]
+    assert found["toward"] == "W" and found["ft"] == pytest.approx(200, rel=0.01)
+
+
+def test_from_trail_is_none_without_a_trail():
+    assert spatial.from_trail([0.0, 1.0], [0.0, 1.0], []) == [None, None]

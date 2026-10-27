@@ -7,7 +7,7 @@ import { apiFetch } from './api'
 import { noteSignInStarted } from './signInMarker'
 import type { TrailIndex } from './trailPosition'
 import type { ClubRunLike } from './usageEvents'
-import { readUsage, type UsageStore } from './usageQueue'
+import { EMPTY_USAGE, readUsage, type UsageStore } from './usageQueue'
 import { type UsageMeasurementInput, useUsageMeasurement } from './useUsageMeasurement'
 
 // The moments usage measurement records (#1902). Each test is one of them
@@ -51,6 +51,7 @@ const RUNS: ClubRunLike[] = [
 function input(overrides: Partial<UsageMeasurementInput> = {}): UsageMeasurementInput {
   return {
     ready: true,
+    consentSettled: true,
     enabled: true,
     linked: null,
     accountEmail: null,
@@ -206,6 +207,45 @@ describe('plans', () => {
     await waitFor(async () => expect((await readUsage()).rows[0]?.linkedTo).toBeNull())
     expect(await events()).toEqual(['hike_plan_made'])
   })
+
+  it('unlinks what is waiting when the answer turns from yes, even with nobody signed in', async () => {
+    const { result, rerender } = renderHook(
+      (props: UsageMeasurementInput) => useUsageMeasurement(props),
+      { initialProps: input({ linked: true, accountEmail: 'alice@example.org' }) },
+    )
+    result.current.planMade({ miles: 4 })
+    await waitFor(async () =>
+      expect((await readUsage()).rows[0]?.linkedTo).toBe(accountTag('alice@example.org')),
+    )
+
+    // Signed out: the row must not keep the tag of the account that left.
+    rerender(input({ linked: true, accountEmail: null }))
+
+    await waitFor(async () => expect((await readUsage()).rows[0]?.linkedTo).toBeNull())
+  })
+
+  it('records nothing once another tab switches sharing off, though this tab still holds on', async () => {
+    const { result } = renderHook(() => useUsageMeasurement(input()))
+    await waitFor(() => expect((stored as UsageStore | undefined)?.session).toBeTruthy())
+
+    // The other tab's switch, as it reaches the store they share.
+    stored = { ...(stored as UsageStore), rows: [], off: true }
+    result.current.planMade({ miles: 4 })
+
+    await new Promise((resolve) => setTimeout(resolve, 20))
+    expect(await events()).toEqual([])
+  })
+
+  it('never throws into the hiker’s own save when a plan cannot be read', () => {
+    const { result } = renderHook(() => useUsageMeasurement(input()))
+    const unreadable = {
+      get fromMile(): number {
+        throw new Error('no extent')
+      },
+    }
+
+    expect(() => result.current.planMade(unreadable)).not.toThrow()
+  })
 })
 
 describe('sending', () => {
@@ -248,5 +288,99 @@ describe('sending', () => {
     await waitFor(() =>
       expect(apiFetch).toHaveBeenCalledWith('/usage-events', expect.anything()),
     )
+  })
+
+  it('sends nothing for a signed-in launch until the account’s answers have arrived', async () => {
+    const { result, rerender } = renderHook(
+      (props: UsageMeasurementInput) => useUsageMeasurement(props),
+      {
+        initialProps: input({
+          online: true,
+          accountEmail: 'alice@example.org',
+          consentSettled: false,
+        }),
+      },
+    )
+    result.current.planMade({ miles: 3 })
+    await waitFor(async () => expect(await events()).toContain('hike_plan_made'))
+    await new Promise((resolve) => setTimeout(resolve, 20))
+    expect(apiFetch).not.toHaveBeenCalled()
+
+    rerender(
+      input({ online: true, accountEmail: 'alice@example.org', consentSettled: true }),
+    )
+
+    await waitFor(() =>
+      expect(apiFetch).toHaveBeenCalledWith('/usage-events', expect.anything()),
+    )
+  })
+})
+
+describe('visits', () => {
+  it('continues a visit last seen within the idle gap when the app is launched again', async () => {
+    const now = Date.now()
+    stored = {
+      ...EMPTY_USAGE,
+      initialized: true,
+      session: { startedAt: now - 60_000, lastSeenAt: now - 30_000, pageviews: 3 },
+    }
+
+    renderHook(() => useUsageMeasurement(input()))
+
+    await waitFor(() => expect((stored as UsageStore).session?.pageviews).toBe(4))
+    expect(await events()).toEqual([])
+    expect((stored as UsageStore).session?.startedAt).toBe(now - 60_000)
+  })
+
+  it('ends a visit as the hiker it belonged to, not as whoever signed in since', async () => {
+    const now = Date.now()
+    stored = {
+      ...EMPTY_USAGE,
+      initialized: true,
+      session: {
+        startedAt: now - 3 * 60 * 60_000,
+        lastSeenAt: now - 2 * 60 * 60_000,
+        pageviews: 2,
+        linkedTo: null,
+        signedIn: false,
+      },
+    }
+
+    renderHook(() =>
+      useUsageMeasurement(input({ linked: true, accountEmail: 'alice@example.org' })),
+    )
+
+    await waitFor(async () => expect(await events()).toContain('session'))
+    const visit = (await readUsage()).rows.find(
+      (queued) => queued.row.event === 'session',
+    )
+    expect(visit?.linkedTo).toBeNull()
+    expect(visit?.row.signed_in).toBe(false)
+  })
+
+  it('keeps the fix the map held during the visit for the visit’s row, with its club', async () => {
+    const located: UsageMeasurementInput['gps'] = {
+      status: 'located',
+      at: { lon: -74.1, lat: 41.3 },
+      accuracyFeet: 39,
+      accuracyM: 12,
+      fixedAt: new Date(),
+    }
+    const { rerender } = renderHook(
+      (props: UsageMeasurementInput) => useUsageMeasurement(props),
+      { initialProps: input({ trailIndex: {} as TrailIndex }) },
+    )
+    await waitFor(() => expect((stored as UsageStore | undefined)?.session).toBeTruthy())
+
+    rerender(
+      input({
+        trailIndex: {} as TrailIndex,
+        gps: located,
+        screen: 'map',
+      }),
+    )
+
+    await waitFor(() => expect((stored as UsageStore).session?.fix).toBeDefined())
+    expect((stored as UsageStore).session?.clubs).toEqual({ NYNJTC: 1 })
   })
 })

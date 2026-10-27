@@ -1,12 +1,16 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { get, set, update } from 'idb-keyval'
 
+import { accessToken, apiFetch } from './api'
+import { accountTag } from './accountTag'
 import {
   clearUsage,
   EMPTY_USAGE,
   flushUsage,
   MAX_QUEUED,
   readUsage,
+  resumeUsage,
+  sendUsageBatch,
   type SendResult,
   unlinkWaitingRows,
   type UsageStore,
@@ -79,6 +83,29 @@ describe('withRows', () => {
     expect(after.rows[0].row.id).toBe('old-1')
     expect(after.rows.at(-1)?.row.id).toBe('newest')
   })
+
+  it("keeps a phone's first row of the month when the cap drops a row, so a long stretch offline does not lose the phone from the month", () => {
+    const first: QueuedUsageRow = {
+      row: { ...row('month-first'), week_first: true, month_first: true },
+      linkedTo: null,
+    }
+    const full = withRows(EMPTY_USAGE, [
+      first,
+      ...Array.from({ length: MAX_QUEUED - 1 }, (_, i) => queued(`plain-${i}`)),
+    ])
+
+    const after = withRows(full, [queued('newest')])
+
+    expect(after.rows).toHaveLength(MAX_QUEUED)
+    expect(after.rows[0].row.id).toBe('month-first')
+    expect(after.rows.map((queued) => queued.row.id)).not.toContain('plain-0')
+  })
+
+  it('takes no rows while "Share usage statistics" is off in the shared store', () => {
+    const off = { ...EMPTY_USAGE, off: true }
+
+    expect(withRows(off, [queued('a')]).rows).toEqual([])
+  })
 })
 
 describe('flushUsage', () => {
@@ -88,8 +115,8 @@ describe('flushUsage', () => {
 
     await flushUsage(send, ALICE)
 
-    expect(send).toHaveBeenCalledWith([row('a')], false)
-    expect(send).toHaveBeenCalledWith([row('b')], true)
+    expect(send).toHaveBeenCalledWith([row('a')], null)
+    expect(send).toHaveBeenCalledWith([row('b')], ALICE)
     expect((await readUsage()).rows).toEqual([])
   })
 
@@ -101,8 +128,8 @@ describe('flushUsage', () => {
 
     await flushUsage(send, BOB)
 
-    expect(send).toHaveBeenCalledWith([row('alice-1')], false)
-    expect(send).toHaveBeenCalledWith([row('bob-1')], true)
+    expect(send).toHaveBeenCalledWith([row('alice-1')], null)
+    expect(send).toHaveBeenCalledWith([row('bob-1')], BOB)
   })
 
   it('sends rows recorded before a sign-out without any account, rather than losing them', async () => {
@@ -112,7 +139,7 @@ describe('flushUsage', () => {
     await flushUsage(send, null)
 
     expect(send).toHaveBeenCalledTimes(1)
-    expect(send).toHaveBeenCalledWith([row('a')], false)
+    expect(send).toHaveBeenCalledWith([row('a')], null)
   })
 
   it('drops a refused batch rather than retrying it for ever', async () => {
@@ -141,6 +168,88 @@ describe('flushUsage', () => {
 
     expect(send).toHaveBeenCalledTimes(1)
   })
+
+  it('stops between batches when sharing is switched off during the first, so the linked batch never leaves', async () => {
+    await seed([queued('a'), queued('b', ALICE)])
+    let release: () => void = () => {}
+    const send = vi.fn(
+      (): Promise<SendResult> =>
+        new Promise((resolve) => {
+          release = () => resolve('sent')
+        }),
+    )
+
+    const flushing = flushUsage(send, ALICE)
+    await vi.waitFor(() => expect(send).toHaveBeenCalledTimes(1))
+    await clearUsage()
+    release()
+    await flushing
+
+    expect(send).toHaveBeenCalledTimes(1)
+    expect(send).toHaveBeenCalledWith([row('a')], null)
+  })
+
+  it('sends a row unlinked when the hiker said no while the first batch was on its way', async () => {
+    await seed([queued('a'), queued('b', ALICE)])
+    let release: () => void = () => {}
+    const send = vi.fn(
+      (): Promise<SendResult> =>
+        new Promise((resolve) => {
+          release = () => resolve('sent')
+        }),
+    )
+
+    const flushing = flushUsage(send, ALICE)
+    await vi.waitFor(() => expect(send).toHaveBeenCalledTimes(1))
+    await unlinkWaitingRows()
+    release()
+    await vi.waitFor(() => expect(send).toHaveBeenCalledTimes(2))
+    release()
+    await flushing
+
+    expect(send).toHaveBeenLastCalledWith([row('b')], null)
+  })
+
+  it('offers each row once per flush even when the store will not let a sent batch be removed', async () => {
+    await seed([queued('a')])
+    vi.mocked(update).mockImplementation(async () => {
+      throw new Error('quota')
+    })
+    const send = vi.fn(async (): Promise<SendResult> => 'sent')
+
+    await flushUsage(send)
+
+    expect(send).toHaveBeenCalledTimes(1)
+  })
+})
+
+describe('sendUsageBatch', () => {
+  function tokenFor(email: string): string {
+    const payload = btoa(JSON.stringify({ email })).replace(/=+$/, '')
+    return `header.${payload}.signature`
+  }
+
+  it("attaches the session's token only when it belongs to the account the rows were recorded under", async () => {
+    vi.mocked(accessToken).mockResolvedValueOnce(tokenFor('bob@example.org'))
+    vi.mocked(apiFetch).mockResolvedValueOnce(new Response(null, { status: 202 }))
+
+    await sendUsageBatch([row('a')], accountTag('alice@example.org'))
+
+    const init = vi.mocked(apiFetch).mock.calls.at(-1)?.[1] as RequestInit
+    expect(init.headers).not.toHaveProperty('Authorization')
+    expect(JSON.parse(init.body as string)).toMatchObject({ identified: false })
+  })
+
+  it('attaches it when the session is the same account', async () => {
+    vi.mocked(accessToken).mockResolvedValueOnce(tokenFor('Alice@Example.org'))
+    vi.mocked(apiFetch).mockResolvedValueOnce(new Response(null, { status: 202 }))
+
+    await sendUsageBatch([row('a')], accountTag('alice@example.org'))
+
+    const init = vi.mocked(apiFetch).mock.calls.at(-1)?.[1] as RequestInit
+    expect(init.headers).toHaveProperty('Authorization')
+    expect(JSON.parse(init.body as string)).toMatchObject({ identified: true })
+  })
 })
 
 describe('the two switches', () => {
@@ -152,6 +261,32 @@ describe('the two switches', () => {
     const after = await readUsage()
     expect(after.rows).toEqual([])
     expect(after.initialized).toBe(true)
+    expect(after.off).toBe(true)
+  })
+
+  it('keeps which weeks and months were counted when switched off, so off and on again is not a new phone, and forgets the clubs', async () => {
+    stored = {
+      ...EMPTY_USAGE,
+      initialized: true,
+      heartbeat: {
+        weeks: ['2026-W44'],
+        months: ['2026-10'],
+        ever: true,
+        clubs: { '2026-10': ['NYNJTC'] },
+        kinds: { '2026-10': ['session'] },
+      },
+    }
+
+    await clearUsage()
+    await resumeUsage()
+
+    const after = await readUsage()
+    expect(after.off).toBe(false)
+    expect(after.heartbeat.ever).toBe(true)
+    expect(after.heartbeat.weeks).toEqual(['2026-W44'])
+    expect(after.heartbeat.months).toEqual(['2026-10'])
+    expect(after.heartbeat.kinds).toEqual({ '2026-10': ['session'] })
+    expect(after.heartbeat.clubs).toEqual({})
   })
 
   it('unlinks rows recorded under a yes when the hiker says no, and still counts them', async () => {

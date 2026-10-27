@@ -43,9 +43,9 @@
       "signed_in": true,
       "app_version": "1.4.0",
       "clubs": {
-        "NYNJTC": 0.6667,
         "AMC-NY": 0.2667,
-        "_unrecorded": 0.0666
+        "_unrecorded": 0.0667,
+        "NYNJTC": 0.6666
       },
       "miles": 30,
       "fix": {

@@ -45,8 +45,38 @@ function count(events: string[], event: string): number {
   return events.filter((name) => name === event).length
 }
 
+/** Moves the visit in progress `minutes` into the past, as if the phone had
+ *  been put away that long - the idle gap is half an hour
+ *  (lib/usageEvents.ts `SESSION_IDLE_MS`), and a test does not wait it out. */
+function ageVisit(page: Page, minutes: number): Promise<void> {
+  return page.evaluate(
+    (ms) =>
+      new Promise<void>((resolve, reject) => {
+        const open = indexedDB.open('keyval-store')
+        open.onerror = () => reject(open.error)
+        open.onsuccess = () => {
+          const store = open.result
+            .transaction('keyval', 'readwrite')
+            .objectStore('keyval')
+          const read = store.get('ourhike:usage')
+          read.onsuccess = () => {
+            const usage = read.result
+            if (usage?.session) {
+              usage.session.startedAt -= ms
+              usage.session.lastSeenAt -= ms
+            }
+            const write = store.put(usage, 'ourhike:usage')
+            write.onsuccess = () => resolve()
+            write.onerror = () => reject(write.error)
+          }
+        }
+      }),
+    minutes * 60_000,
+  )
+}
+
 test.describe('usage measurement, counted end to end', () => {
-  test('a fresh install that skips first run is counted once, and its relaunch closes one visit', async ({
+  test('a fresh install that skips first run is counted once, and a relaunch continues its visit until the idle gap has passed', async ({
     page,
   }) => {
     await page.goto('/')
@@ -56,11 +86,19 @@ test.describe('usage measurement, counted end to end', () => {
       .poll(async () => count(await queuedEvents(page), 'app_installed'))
       .toBe(1)
 
+    // Back within half an hour: the same visit, not a second one (#1903's
+    // review - a killed app or an OAuth redirect counted two).
     await page.reload()
     await expect(page.getByRole('tab', { name: 'Today', selected: true })).toBeVisible()
+    await expect.poll(async () => (await queuedEvents(page)).length).toBeGreaterThan(0)
+    expect(count(await queuedEvents(page), 'session')).toBe(0)
 
-    // The visit the first launch left open is ended at the second, dated the
-    // day it began - and nothing about a relaunch is a new install or a sign-in.
+    // Back after longer: the visit the last launch left open is ended at this
+    // one, dated the day it began - and nothing about a relaunch is a new
+    // install or a sign-in.
+    await ageVisit(page, 45)
+    await page.reload()
+    await expect(page.getByRole('tab', { name: 'Today', selected: true })).toBeVisible()
     await expect.poll(async () => count(await queuedEvents(page), 'session')).toBe(1)
     const events = await queuedEvents(page)
     expect(count(events, 'app_installed')).toBe(1)
@@ -132,23 +170,30 @@ test.describe('usage measurement, as sent', { tag: '@backend' }, () => {
     await page.goto('/')
     await page.getByRole('button', { name: 'Skip — take me to the map' }).click()
     await expect(page.getByRole('tab', { name: 'Today', selected: true })).toBeVisible()
-    await expect
-      .poll(async () => count(await queuedEvents(page), 'app_installed'))
-      .toBe(1)
 
     // Signal lost and found - the moment a queue that has been waiting sends.
+    // The install may already have left with the launch's own send; either
+    // way it is what was SENT that is judged, not the queue in between.
     await setBackendSignal(page, context, backend, { on: false })
     await setBackendSignal(page, context, backend, { on: true })
 
     const sent = () => backend.seen.filter((request) => request.path === '/usage-events')
-    await expect.poll(() => sent().length, { timeout: 15_000 }).toBeGreaterThan(0)
-    const [first] = sent()
-    const body = first.body as { identified: boolean; events: Array<{ event: string }> }
+    const bodies = () =>
+      sent().map(
+        (request) =>
+          request.body as { identified: boolean; events: Array<{ event: string }> },
+      )
+    const installsSent = () =>
+      bodies()
+        .flatMap((body) => body.events)
+        .filter((row) => row.event === 'app_installed').length
+    await expect.poll(installsSent, { timeout: 15_000 }).toBe(1)
     // Signed out: no yes to link, and nothing about an account in the rows.
-    expect(body.identified).toBe(false)
-    expect(tokens[0]).toBeUndefined()
-    expect(body.events.map((row) => row.event)).toContain('app_installed')
-    expect(JSON.stringify(body)).not.toMatch(/account|user_id|email/)
+    for (const body of bodies()) {
+      expect(body.identified).toBe(false)
+      expect(JSON.stringify(body)).not.toMatch(/account|user_id|email/)
+    }
+    expect(tokens.every((token) => token === undefined)).toBe(true)
     await expect
       .poll(async () => count(await queuedEvents(page), 'app_installed'))
       .toBe(0)

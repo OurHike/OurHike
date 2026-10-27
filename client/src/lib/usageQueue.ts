@@ -17,14 +17,16 @@
 // that row and not the 199 sent with it - and the server counts what it
 // refused, which is how a release that breaks a row shows up at all.
 
-import { get, set, update } from 'idb-keyval'
+import { get, update } from 'idb-keyval'
 
+import { accountTag } from './accountTag'
 import { accessToken, apiFetch, API_CONFIGURED } from './api'
 import {
   FRESH_HEARTBEAT,
   type Heartbeat,
   normaliseHeartbeat,
   type QueuedUsageRow,
+  type UsageDetails,
   type UsageRow,
 } from './usageEvents'
 
@@ -41,6 +43,22 @@ export interface PendingSession {
   startedAt: number
   lastSeenAt: number
   pageviews: number
+  /**
+   * Who the visit belonged to, as it began: the account a row may be linked
+   * to and whether one was signed in. Read when the visit ENDS, which can be
+   * a launch later and after a sign-in or out - and a signed-out visit must
+   * not come out linked because somebody signed in before it was sent.
+   */
+  linkedTo?: string | null
+  signedIn?: boolean
+  /**
+   * The first fix the map held during the visit that measurement may use,
+   * and the club under it. A fix checked at the visit's end against the
+   * moment it began reads as one from the future and is dropped, which left
+   * every visit row without a club (#1903's review).
+   */
+  fix?: UsageDetails['fix']
+  clubs?: Record<string, number>
 }
 
 export interface UsageStore {
@@ -52,6 +70,13 @@ export interface UsageStore {
    * `app_installed` sent, or the install found to predate measurement.
    */
   initialized: boolean
+  /**
+   * "Share usage statistics" was switched off, and has not been switched back
+   * on, IN THE STORE every tab shares. A second tab still holding "on" in its
+   * own state records nothing while this is set, and a flush stops at it -
+   * the switch does not depend on every open copy of the app having heard.
+   */
+  off: boolean
 }
 
 export const EMPTY_USAGE: UsageStore = {
@@ -59,6 +84,7 @@ export const EMPTY_USAGE: UsageStore = {
   heartbeat: FRESH_HEARTBEAT,
   session: null,
   initialized: false,
+  off: false,
 }
 
 function queuedRow(raw: unknown): QueuedUsageRow | null {
@@ -83,6 +109,7 @@ function normalise(raw: unknown): UsageStore {
     heartbeat: normaliseHeartbeat(store.heartbeat),
     session: (store.session as PendingSession | null | undefined) ?? null,
     initialized: store.initialized === true,
+    off: store.off === true,
   }
 }
 
@@ -110,26 +137,71 @@ export async function updateUsage(
   return written
 }
 
-/** Add rows, keeping the newest `MAX_QUEUED`. */
-export function withRows(store: UsageStore, rows: readonly QueuedUsageRow[]): UsageStore {
-  const all = [...store.rows, ...rows]
-  return {
-    ...store,
-    rows: all.length > MAX_QUEUED ? all.slice(all.length - MAX_QUEUED) : all,
-  }
+/** Whether a row is the one that counts its phone in some period or club. */
+function countsAPhone(row: UsageRow): boolean {
+  return (
+    row.week_first ||
+    row.month_first ||
+    row.ever_first ||
+    row.kind_month_first === true ||
+    // A row queued by an older build may predate the field.
+    (Array.isArray(row.club_firsts) && row.club_firsts.length > 0)
+  )
 }
 
 /**
- * Measurement switched off: everything waiting goes, and the heartbeat with
- * it. "Off means collection stops" (EVENTING.md §9) - rows recorded before the
+ * Add rows, keeping `MAX_QUEUED` - and when some must go, the oldest rows
+ * that count nothing go first.
+ *
+ * Oldest-first alone dropped exactly the wrong rows on a long stretch without
+ * signal: a phone's first row of a week, a month or a club is its OLDEST, and
+ * the heartbeat has already marked that period counted, so losing the row
+ * lost the phone from the period entirely (#1903's review). A visit or a map
+ * view after it in the same period counts nothing the first row did not.
+ * Rows recorded while the switch is off are refused here, whichever tab
+ * recorded them.
+ */
+export function withRows(store: UsageStore, rows: readonly QueuedUsageRow[]): UsageStore {
+  if (store.off) return store
+  const all = [...store.rows, ...rows]
+  let excess = all.length - MAX_QUEUED
+  if (excess <= 0) return { ...store, rows: all }
+  const keep = all.map(() => true)
+  for (const pass of [false, true]) {
+    for (let index = 0; index < all.length && excess > 0; index += 1) {
+      if (keep[index] && countsAPhone(all[index].row) === pass) {
+        keep[index] = false
+        excess -= 1
+      }
+    }
+  }
+  return { ...store, rows: all.filter((_, index) => keep[index]) }
+}
+
+/**
+ * Measurement switched off: everything waiting goes, the visit in progress
+ * with it, and nothing is recorded or sent until it is switched back on.
+ * "Off means collection stops" (EVENTING.md §9) - rows recorded before the
  * switch was turned are not quietly sent afterwards.
+ *
+ * WHICH PERIODS WERE ALREADY COUNTED STAYS - the weeks, months and kinds, and
+ * whether this install ever counted. Clearing them made a phone switched off
+ * and on again count as a new phone, a second time in the same week and
+ * month (#1903's review). The clubs it was counted in go: they say where the
+ * hiker has been, and nothing needs them once their month's rows are gone.
  */
 export async function clearUsage(): Promise<void> {
-  try {
-    await set(USAGE_KEY, { ...EMPTY_USAGE, initialized: true })
-  } catch {
-    // Nothing more to do: an unwritable store sends nothing either.
-  }
+  await updateUsage((store) => ({
+    ...EMPTY_USAGE,
+    heartbeat: { ...store.heartbeat, clubs: {} },
+    initialized: true,
+    off: true,
+  }))
+}
+
+/** Measurement switched back on: recording and sending resume. */
+export async function resumeUsage(): Promise<void> {
+  await updateUsage((store) => (store.off ? { ...store, off: false } : store))
 }
 
 /**
@@ -146,6 +218,24 @@ export async function unlinkWaitingRows(): Promise<void> {
 
 export type SendResult = 'sent' | 'refused' | 'later'
 
+/**
+ * The account a session token belongs to, as lib/accountTag.ts tags it, or
+ * null. Read from the token's own payload - Supabase puts the address in its
+ * `email` claim - so a token is matched to the account it was issued for and
+ * not to whoever the app believes is signed in. Nothing is verified here; the
+ * server does that. This only decides whether to attach the token at all.
+ */
+function tokenAccount(token: string): string | null {
+  try {
+    const part = token.split('.')[1]
+    const json = atob(part.replace(/-/g, '+').replace(/_/g, '/'))
+    const email = (JSON.parse(json) as { email?: unknown }).email
+    return typeof email === 'string' && email !== '' ? accountTag(email) : null
+  } catch {
+    return null
+  }
+}
+
 /** The HTTP status an error carries, if any - lib/api.ts's ApiError has one. */
 function statusOf(error: unknown): number | null {
   const status = (error as { status?: unknown } | null)?.status
@@ -153,8 +243,12 @@ function statusOf(error: unknown): number | null {
 }
 
 /**
- * One batch to `POST /usage-events`. A linked batch carries the token; no
- * other does.
+ * One batch to `POST /usage-events`. A linked batch carries the token - and
+ * only when the session's token belongs to `account`, the account the rows
+ * were recorded under; otherwise the batch goes without one. The check is
+ * here, at the moment of sending, because a session can change between a
+ * flush starting and its second batch leaving (another tab signing somebody
+ * else in): one hiker's rows must never leave with another's token.
  *
  * NOTHING HERE MAY THROW, the whole body inside the `try` and the catch
  * reading `status` rather than `instanceof ApiError`. A count is the last
@@ -165,11 +259,12 @@ function statusOf(error: unknown): number | null {
  */
 export async function sendUsageBatch(
   rows: UsageRow[],
-  linked: boolean,
+  account: string | null,
 ): Promise<SendResult> {
   try {
     if (!API_CONFIGURED) return 'later'
-    const token = linked ? await accessToken() : null
+    const session = account === null ? null : await accessToken()
+    const token = session !== null && tokenAccount(session) === account ? session : null
     await apiFetch('/usage-events', {
       method: 'POST',
       credentials: 'omit',
@@ -209,22 +304,35 @@ export function flushUsage(
   inFlight = (async () => {
     let gone = 0
     try {
-      const { rows } = await readUsage()
       const linkable = (queued: QueuedUsageRow) =>
         linkedAccount !== null && queued.linkedTo === linkedAccount
+      // Each row is offered once per flush, so a store that refuses the write
+      // removing a sent batch cannot turn this into a loop resending it.
+      const offered = new Set<string>()
+      // THE STORE IS READ AGAIN BEFORE EVERY BATCH, not once at the start. A
+      // batch on one bar of signal takes seconds, and the switch turned off,
+      // or a no to linking, during the first must reach the second: off stops
+      // the flush, and a row unlinked meanwhile leaves without the account.
       for (const linked of [false, true]) {
-        const waiting = rows.filter((queued) => linkable(queued) === linked)
-        for (let start = 0; start < waiting.length; start += BATCH_SIZE) {
-          const batch = waiting.slice(start, start + BATCH_SIZE)
+        for (;;) {
+          const store = await readUsage()
+          if (store.off) return gone
+          const batch = store.rows
+            .filter(
+              (queued) => !offered.has(queued.row.id) && linkable(queued) === linked,
+            )
+            .slice(0, BATCH_SIZE)
+          if (batch.length === 0) break
+          for (const queued of batch) offered.add(queued.row.id)
           const result = await send(
             batch.map((queued) => queued.row),
-            linked,
+            linked ? linkedAccount : null,
           )
           if (result === 'later') return gone
           const ids = new Set(batch.map((queued) => queued.row.id))
-          await updateUsage((store) => ({
-            ...store,
-            rows: store.rows.filter((queued) => !ids.has(queued.row.id)),
+          await updateUsage((current) => ({
+            ...current,
+            rows: current.rows.filter((queued) => !ids.has(queued.row.id)),
           }))
           gone += batch.length
         }

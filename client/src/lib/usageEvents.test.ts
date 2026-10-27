@@ -233,6 +233,32 @@ describe('clubs', () => {
   it('gives a plan on no club’s trail no clubs at all', () => {
     expect(sharesFromMiles({})).toBeUndefined()
   })
+
+  it('never sends a share of zero for a plan ending a sliver past a club boundary, which the server would refuse', () => {
+    // #1903's review: 480.1 to 512.3000000001 on the A.T. came out
+    // {GATC: 1, NYNJTC: 0}, and the row was refused and dropped.
+    const shares = sharesFromMiles({ GATC: 32.2, NYNJTC: 1e-10 }) ?? {}
+
+    expect(shares).toEqual({ GATC: 1 })
+  })
+
+  it('keeps every share above zero and summing to one across many clubs and uneven miles', () => {
+    let seed = 1902
+    const random = () => {
+      seed = (seed * 16807) % 2147483647
+      return seed / 2147483647
+    }
+    for (let plan = 0; plan < 2_000; plan += 1) {
+      const miles: Record<string, number> = {}
+      const clubs = 2 + Math.floor(random() * 11)
+      for (let club = 0; club < clubs; club += 1)
+        miles[`C${club}`] = club === 0 ? random() * 0.3 : random() * 40
+      const shares = sharesFromMiles(miles) ?? {}
+      const values = Object.values(shares)
+      expect(values.every((share) => share > 0 && share <= 1)).toBe(true)
+      expect(values.reduce((sum, share) => sum + share, 0)).toBeCloseTo(1, 6)
+    }
+  })
 })
 
 describe('usageRow', () => {
@@ -294,7 +320,11 @@ describe('usageRow', () => {
 
   it('leaves out a version string the server would refuse rather than losing the batch', () => {
     expect(usageVersion('1.4.0')).toBe('1.4.0')
+    expect(usageVersion('1.5.0-rc.1')).toBe('1.5.0-rc.1')
     expect(usageVersion('1.4.0 (beta; Pixel 8)')).toBeUndefined()
+    expect(usageVersion('unknown')).toBeUndefined()
+    expect(usageVersion('www.ourhike-security-update.com')).toBeUndefined()
+    expect(usageVersion('1.4.0\n')).toBeUndefined()
   })
 
   it('reads the date off the phone’s own calendar', () => {

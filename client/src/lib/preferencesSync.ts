@@ -31,6 +31,8 @@
 import { fetchSyncedPreferences, pushPreferences, type SyncedPreferences } from './api'
 import {
   adoptPreferences,
+  CONSENT_KEYS,
+  type ConsentKey,
   normalisePreferences,
   preferencesSyncState,
   recordPreferencesPush,
@@ -70,7 +72,7 @@ export type SyncPlan = 'push' | 'pull' | 'idle'
  */
 export function planPreferencesSync(
   remoteUpdatedAt: string | null,
-  state: PreferencesSyncState,
+  state: Pick<PreferencesSyncState, 'dirty' | 'syncedAt'>,
 ): SyncPlan {
   if (remoteUpdatedAt === null) return 'push'
   if (state.syncedAt === null) return 'pull'
@@ -84,6 +86,45 @@ export function planPreferencesSync(
 function adoptable(remote: SyncedPreferences): UserPreferences {
   const { updated_at: _updatedAt, ...blob } = remote
   return normalisePreferences(blob)
+}
+
+/**
+ * What a push may carry: every preference, and a consent answer only when it
+ * was given on this device (`PreferencesSyncState.consentTouched`). A key left
+ * out keeps the account's value - the router merges with `exclude_unset`.
+ * Creating the account's row is the exception: there is no answer there to
+ * keep, and leaving one out would write the default "on" in its place.
+ */
+function forPush(
+  local: UserPreferences,
+  touched: readonly ConsentKey[],
+  creating: boolean,
+): UserPreferences {
+  const blob: Partial<UserPreferences> = { ...local }
+  if (!creating)
+    for (const key of CONSENT_KEYS) if (!touched.includes(key)) delete blob[key]
+  return blob as UserPreferences
+}
+
+/**
+ * Push, then take the account's word for every consent answer this device did
+ * not give. Returns what to adopt, or null when nothing on screen changes.
+ */
+async function pushAndSettle(
+  local: UserPreferences,
+  state: PreferencesSyncState,
+  creating: boolean,
+): Promise<UserPreferences | null> {
+  const pushed = await pushPreferences(forPush(local, state.consentTouched, creating))
+  await recordPreferencesPush(pushed.updated_at)
+  const account = adoptable(pushed)
+  const theirs = CONSENT_KEYS.filter(
+    (key) => !state.consentTouched.includes(key) && account[key] !== local[key],
+  )
+  if (creating || theirs.length === 0) return null
+  const settled: UserPreferences = { ...local }
+  for (const key of theirs) Object.assign(settled, { [key]: account[key] })
+  return adoptPreferences(settled, pushed.updated_at)
 }
 
 /**
@@ -173,11 +214,21 @@ export async function syncPreferences(
       // 'push' for a missing row - but the compiler does not know the rule,
       // and asserting it here would be a claim rather than a check.
       if (remote === null) return null
-      return await adoptPreferences(adoptable(remote), remote.updated_at)
+      // The account wins, except for a consent answer given on this device
+      // since the last sync: that is the hiker's newest word, and it goes up.
+      const merged: UserPreferences = adoptable(remote)
+      for (const key of state.consentTouched) Object.assign(merged, { [key]: local[key] })
+      const adopted = await adoptPreferences(merged, remote.updated_at)
+      if (state.consentTouched.length > 0) {
+        const pushed = await pushPreferences(
+          forPush(adopted, state.consentTouched, false),
+        )
+        await recordPreferencesPush(pushed.updated_at)
+      }
+      return adopted
     }
 
-    const pushed = await pushPreferences(local)
-    await recordPreferencesPush(pushed.updated_at)
+    return await pushAndSettle(local, state, remote === null)
   } catch (error) {
     if (!isOrdinarySilence(error)) reportSyncFailure(error)
   }
@@ -196,18 +247,24 @@ export async function syncPreferences(
  * because `savePreferences` is what sets it and this must not be able to
  * disagree with it.
  */
-export async function pushPreferencesIfChanged(local: UserPreferences): Promise<void> {
+export async function pushPreferencesIfChanged(
+  local: UserPreferences,
+): Promise<UserPreferences | null> {
   const state = await preferencesSyncState()
-  if (!state.dirty) return
+  // Never before this device's first reconciliation: that is `syncPreferences`'
+  // job, and its rule is that a first sign-in ADOPTS the account. A change
+  // made before it, pushed by this timer, could beat the pull and write a
+  // fresh install's defaults over the account (#1903's review).
+  if (!state.dirty || state.syncedAt === null) return null
 
   try {
-    const pushed = await pushPreferences(local)
-    await recordPreferencesPush(pushed.updated_at)
+    return await pushAndSettle(local, state, false)
   } catch (error) {
     // Still dirty either way, deliberately. The next launch or the next
     // change tries again, which is what makes an offline stretch cost
     // nothing - and what makes a schema mismatch retry rather than lose the
     // hiker's setting while somebody fixes it.
     if (!isOrdinarySilence(error)) reportSyncFailure(error)
+    return null
   }
 }

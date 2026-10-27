@@ -49,6 +49,7 @@ import {
   stampHeartbeat,
   type UsageDetails,
   type UsageEventName,
+  type UsageFix,
   usableFix,
   usageRow,
 } from './usageEvents'
@@ -58,6 +59,7 @@ import {
   flushUsage,
   type PendingSession,
   readUsage,
+  resumeUsage,
   unlinkWaitingRows,
   updateUsage,
   type UsageStore,
@@ -68,8 +70,17 @@ import {
 export const FLUSH_EVERY_MS = 5 * 60 * 1000
 
 export interface UsageMeasurementInput {
-  /** Preferences have loaded, so `enabled` and `linked` are the hiker's own. */
+  /** The stored preferences have been READ, so `enabled` and `linked` are the
+   *  hiker's own - not the defaults a failed or slow read leaves in place. */
   ready: boolean
+  /**
+   * Signed out, or the account's preferences have been reconciled once this
+   * launch. Nothing is SENT before: a phone launching with "on" would
+   * otherwise send what is waiting a moment before the pull that brings the
+   * "off" given on another phone (#1903's review). Recording does not wait -
+   * an "off" that arrives empties the queue.
+   */
+  consentSettled: boolean
   /** "Share usage statistics". */
   enabled: boolean
   /** "Link them to my account": null until the hiker has answered. */
@@ -158,6 +169,18 @@ function linkedAccount(input: UsageMeasurementInput): string | null {
     : null
 }
 
+/** How a row is stamped, where it differs from "now, as things stand". */
+interface Stamping {
+  /** The moment the row describes. */
+  at: Date
+  /** The fix to send: the map's, if it may be used for `at`; one captured
+   *  earlier; or none. */
+  fix: 'held' | UsageFix | null
+  /** Who the row belongs to, when that was settled earlier than now. */
+  linkedTo?: string | null
+  signedIn?: boolean
+}
+
 export function useUsageMeasurement(input: UsageMeasurementInput): UsageMeasurement {
   // Read through a ref by every callback below, so a handler App created once
   // still records with the hiker's current answers and the newest fix.
@@ -177,48 +200,70 @@ export function useUsageMeasurement(input: UsageMeasurementInput): UsageMeasurem
     [],
   )
 
-  /** Stamp and queue one row. `at` is the moment it describes. */
-  const record = useCallback(
-    async (
+  /** One row, stamped into `store` - the heartbeat moves with it, in one write. */
+  const stampInto = useCallback(
+    (
+      store: UsageStore,
       event: UsageEventName,
       details: UsageDetails,
-      at: Date = new Date(),
-      withFix = true,
-    ) => {
+      stamping: Stamping,
+    ): UsageStore => {
       const current = latest.current
-      if (!current.ready || !current.enabled) return
-      const fix = withFix ? usableFix(heldFix(current.gps), at) : undefined
+      const { at } = stamping
+      const fix =
+        stamping.fix === 'held'
+          ? usableFix(heldFix(current.gps), at)
+          : (stamping.fix ?? undefined)
       const clubs =
         details.clubs ?? (fix === undefined ? undefined : pointClubs(fix.lon, fix.lat))
-      const linkedTo = linkedAccount(current)
-      await updateUsage((store) => {
-        const { stamp, next } = stampHeartbeat(
-          store.heartbeat,
-          at,
-          Object.keys(clubs ?? {}),
-          event,
-        )
-        const row = usageRow({
-          id: crypto.randomUUID(),
-          event,
-          now: at,
-          platform: traceShell(),
-          version: current.version,
-          stamp,
-          signedIn: current.accountEmail !== null,
-          details: {
-            ...details,
-            ...(clubs === undefined ? {} : { clubs }),
-            ...(fix === undefined ? {} : { fix }),
-          },
-        })
-        return withRows({ ...store, heartbeat: next }, [{ row, linkedTo }])
+      const { stamp, next } = stampHeartbeat(
+        store.heartbeat,
+        at,
+        Object.keys(clubs ?? {}),
+        event,
+      )
+      const row = usageRow({
+        id: crypto.randomUUID(),
+        event,
+        now: at,
+        platform: traceShell(),
+        version: current.version,
+        stamp,
+        signedIn: stamping.signedIn ?? current.accountEmail !== null,
+        details: {
+          ...details,
+          ...(clubs === undefined ? {} : { clubs }),
+          ...(fix === undefined ? {} : { fix }),
+        },
       })
+      const linkedTo =
+        stamping.linkedTo === undefined ? linkedAccount(current) : stamping.linkedTo
+      return withRows({ ...store, heartbeat: next }, [{ row, linkedTo }])
     },
     [pointClubs],
   )
 
-  /** The row for a visit that is over, dated the day it started. */
+  /** Stamp and queue one row - nothing while the switch is off, in any tab. */
+  const record = useCallback(
+    async (
+      event: UsageEventName,
+      details: UsageDetails,
+      stamping: Stamping = { at: new Date(), fix: 'held' },
+    ) => {
+      const current = latest.current
+      if (!current.ready || !current.enabled) return
+      await updateUsage((store) =>
+        store.off ? store : stampInto(store, event, details, stamping),
+      )
+    },
+    [stampInto],
+  )
+
+  /**
+   * The row for a visit that is over, dated the day it started, and belonging
+   * to whoever the visit belonged to as it began - a signed-out visit ended
+   * after a sign-in is still signed out (#1903's review).
+   */
   const endSession = useCallback(
     async (session: PendingSession) => {
       await record(
@@ -228,13 +273,51 @@ export function useUsageMeasurement(input: UsageMeasurementInput): UsageMeasurem
           session_length: sessionLength(
             Math.max(0, session.lastSeenAt - session.startedAt),
           ),
+          ...(session.clubs === undefined ? {} : { clubs: session.clubs }),
         },
-        new Date(session.startedAt),
-        // The fix must describe the visit: one taken after it ended does not.
-        Date.now() - session.lastSeenAt <= SESSION_IDLE_MS,
+        {
+          at: new Date(session.startedAt),
+          fix: session.fix ?? null,
+          linkedTo: session.linkedTo ?? null,
+          signedIn: session.signedIn ?? false,
+        },
       )
     },
     [record],
+  )
+
+  /** A visit starting now, owned by whoever is here now. */
+  const newSession = useCallback((now: number): PendingSession => {
+    const current = latest.current
+    return {
+      startedAt: now,
+      lastSeenAt: now,
+      pageviews: 1,
+      linkedTo: linkedAccount(current),
+      signedIn: current.accountEmail !== null,
+    }
+  }, [])
+
+  /**
+   * The visit, seen again now: its last moment moves, and the first fix the
+   * map holds during it is kept for its row. Checked against NOW, when the
+   * fix is fresh - checked at the visit's end against its start, a fix taken
+   * during it read as one from the future and every visit went without one.
+   */
+  const touchSession = useCallback(
+    (session: PendingSession, now: number, pageviews = 0): PendingSession => {
+      const seen = {
+        ...session,
+        lastSeenAt: now,
+        pageviews: session.pageviews + pageviews,
+      }
+      if (seen.fix !== undefined) return seen
+      const fix = usableFix(heldFix(latest.current.gps), new Date(now))
+      if (fix === undefined) return seen
+      const clubs = pointClubs(fix.lon, fix.lat)
+      return { ...seen, fix, ...(clubs === undefined ? {} : { clubs }) }
+    },
+    [pointClubs],
   )
 
   // --- first launch, and the visit in progress -----------------------------------
@@ -243,28 +326,42 @@ export function useUsageMeasurement(input: UsageMeasurementInput): UsageMeasurem
     if (!input.ready || !input.enabled || started.current) return
     started.current = true
     void (async () => {
-      const store: UsageStore = await readUsage()
-      if (!store.initialized) {
+      const now = Date.now()
+      // ONE WRITE for the install and the mark that it was counted, so a phone
+      // killed between them, or a second tab launching at the same moment,
+      // cannot count one install twice (#1903's review).
+      const store: UsageStore = await updateUsage((current) => {
+        if (current.initialized || current.off) return current
         if (latest.current.newInstall)
-          await record('app_installed', {}, new Date(), false)
+          return {
+            ...stampInto(current, 'app_installed', {}, { at: new Date(now), fix: null }),
+            initialized: true,
+          }
         // An install that finished first run before measurement existed is not
         // a new device either: its first event must not say `ever_first`.
-        await updateUsage((current) => ({
+        return {
           ...current,
           initialized: true,
-          heartbeat: latest.current.newInstall
-            ? current.heartbeat
-            : { ...current.heartbeat, ever: true },
-        }))
+          heartbeat: { ...current.heartbeat, ever: true },
+        }
+      })
+      // A RELAUNCH WITHIN THE IDLE GAP CONTINUES THE VISIT, the rule the
+      // visibility path below already keeps: a phone that kills the app, an
+      // OAuth redirect reloading the page and a return from the organization
+      // console each counted a second visit before #1903's review.
+      const session = store.session
+      if (session !== null && now - session.lastSeenAt <= SESSION_IDLE_MS) {
+        await updateUsage((current) =>
+          current.session === null
+            ? current
+            : { ...current, session: touchSession(current.session, now, 1) },
+        )
+        return
       }
-      if (store.session !== null) await endSession(store.session)
-      const now = Date.now()
-      await updateUsage((current) => ({
-        ...current,
-        session: { startedAt: now, lastSeenAt: now, pageviews: 1 },
-      }))
+      if (session !== null) await endSession(session)
+      await updateUsage((current) => ({ ...current, session: newSession(now) }))
     })()
-  }, [input.ready, input.enabled, record, endSession])
+  }, [input.ready, input.enabled, stampInto, endSession, newSession, touchSession])
 
   useEffect(() => {
     const onVisibility = () => {
@@ -275,7 +372,7 @@ export function useUsageMeasurement(input: UsageMeasurementInput): UsageMeasurem
           await updateUsage((store) =>
             store.session === null
               ? store
-              : { ...store, session: { ...store.session, lastSeenAt: now } },
+              : { ...store, session: touchSession(store.session, now) },
           )
           // SENT ON THE WAY OUT, not only every five minutes: a phone that
           // opens the app once for two minutes and uninstalls it otherwise
@@ -283,8 +380,8 @@ export function useUsageMeasurement(input: UsageMeasurementInput): UsageMeasurem
           // are exactly the ones a count must not lose. A send cut short by
           // the app closing loses nothing - a row leaves the queue only once
           // the server has answered for it.
-          const { online, reportsWaiting } = latest.current
-          if (online && reportsWaiting === 0)
+          const { online, reportsWaiting, consentSettled } = latest.current
+          if (online && reportsWaiting === 0 && consentSettled)
             void flushUsage(undefined, linkedAccount(latest.current))
           return
         }
@@ -293,20 +390,17 @@ export function useUsageMeasurement(input: UsageMeasurementInput): UsageMeasurem
           await updateUsage((store) =>
             store.session === null
               ? store
-              : { ...store, session: { ...store.session, lastSeenAt: now } },
+              : { ...store, session: touchSession(store.session, now) },
           )
           return
         }
         if (session !== null) await endSession(session)
-        await updateUsage((store) => ({
-          ...store,
-          session: { startedAt: now, lastSeenAt: now, pageviews: 1 },
-        }))
+        await updateUsage((store) => ({ ...store, session: newSession(now) }))
       })()
     }
     document.addEventListener('visibilitychange', onVisibility)
     return () => document.removeEventListener('visibilitychange', onVisibility)
-  }, [endSession])
+  }, [endSession, newSession, touchSession])
 
   // --- pageviews ---------------------------------------------------------------------
   const lastScreen = useRef<string | null>(null)
@@ -319,16 +413,9 @@ export function useUsageMeasurement(input: UsageMeasurementInput): UsageMeasurem
     void updateUsage((store) =>
       store.session === null
         ? store
-        : {
-            ...store,
-            session: {
-              ...store.session,
-              pageviews: store.session.pageviews + 1,
-              lastSeenAt: now,
-            },
-          },
+        : { ...store, session: touchSession(store.session, now, 1) },
     )
-  }, [input.screen, input.ready, input.enabled])
+  }, [input.screen, input.ready, input.enabled, touchSession])
 
   // --- the map coming into view --------------------------------------------------------
   const mapWasInView = useRef(false)
@@ -356,27 +443,38 @@ export function useUsageMeasurement(input: UsageMeasurementInput): UsageMeasurem
   }, [signedIn, input.ready, record])
 
   // --- the two switches ------------------------------------------------------------------
+  // Off empties the queue and marks the shared store off; on - switched on,
+  // or this launch starting with it on - marks it on again.
   useEffect(() => {
-    if (input.ready && !input.enabled) {
+    if (!input.ready) return
+    if (input.enabled) {
+      void resumeUsage()
+    } else {
       started.current = false
       void clearUsage()
     }
   }, [input.ready, input.enabled])
 
-  // A no said while signed in unlinks what is still waiting. A sign-out needs
-  // nothing here: rows recorded under the account that left no longer match
-  // whoever is signed in, so they go without an account by themselves.
+  // A no, a sign-out, or the account that said yes going away: what is still
+  // waiting leaves without an account, and carries no tag of one either. A row
+  // waiting with the tag of an account that left would go linked if that
+  // account came back - deleted and registered again with the same address -
+  // and says on the phone which account it was (#1903's review).
   const linkedNow = linkedAccount(input)
   const wasLinked = useRef(linkedNow)
   useEffect(() => {
-    if (wasLinked.current !== null && linkedNow === null && signedIn && input.ready)
+    if (wasLinked.current !== null && linkedNow === null && input.ready)
       void unlinkWaitingRows()
     wasLinked.current = linkedNow
-  }, [linkedNow, signedIn, input.ready])
+  }, [linkedNow, input.ready])
 
   // --- sending, after the hiker's own work ----------------------------------------------
   const canSend =
-    input.ready && input.enabled && input.online && input.reportsWaiting === 0
+    input.ready &&
+    input.enabled &&
+    input.consentSettled &&
+    input.online &&
+    input.reportsWaiting === 0
   useEffect(() => {
     if (!canSend) return
     // The account that matters is the one signed in when the batch leaves.
@@ -388,13 +486,19 @@ export function useUsageMeasurement(input: UsageMeasurementInput): UsageMeasurem
     return () => window.clearInterval(timer)
   }, [canSend])
 
-  return useMemo(
-    () => ({
-      planMade: (source: PlanSource) =>
-        void record('hike_plan_made', planDetails(source, latest.current.clubRuns)),
-      planCompleted: (source: PlanSource) =>
-        void record('hike_plan_completed', planDetails(source, latest.current.clubRuns)),
-    }),
-    [record],
-  )
+  // App calls these inside the hiker's own save, before it writes: nothing a
+  // count does may throw there and cancel what the hiker asked for.
+  return useMemo(() => {
+    const plan = (event: UsageEventName, source: PlanSource) => {
+      try {
+        void record(event, planDetails(source, latest.current.clubRuns)).catch(() => {})
+      } catch {
+        // A plan this cannot read is a plan not counted.
+      }
+    }
+    return {
+      planMade: (source: PlanSource) => plan('hike_plan_made', source),
+      planCompleted: (source: PlanSource) => plan('hike_plan_completed', source),
+    }
+  }, [record])
 }

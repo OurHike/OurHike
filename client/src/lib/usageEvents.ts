@@ -437,40 +437,63 @@ export function milesByClub(
 }
 
 /**
+ * A piece of a plan too small to be any club's share: a sliver past a club
+ * boundary, from floating point or a plan ending a few feet over the line.
+ * 0.01 mi is about 50 ft, under the 0.1 mi a plan's miles are rounded to.
+ * Reasoned rather than measured.
+ */
+const SLIVER_MILES = 0.01
+
+/**
  * Club shares from miles: each club's miles over the total, summing to one.
  *
- * Rounded to four places and the last club given the remainder, so the shares
- * sum to exactly one however the miles divide - the server allows a little
- * slack (app/schemas/analytics.py `SHARE_TOLERANCE`) and this does not lean on it.
+ * Rounded to four places, with the LARGEST club given the remainder, so the
+ * shares sum to exactly one however the miles divide - the server allows a
+ * little slack (app/schemas/analytics.py `SHARE_TOLERANCE`) and this does not
+ * lean on it. The remainder went to the smallest club until #1903's review
+ * found it could round to 0 or below, which the server refuses (`0 < share`)
+ * and the phone then drops - 4.3% of 220,000 synthetic plans of 2 to 12
+ * clubs. A sliver and any piece that would round to nothing are left out, and
+ * the largest club's remainder is at least its own share less eleven halves
+ * of 0.0001, so it is never near zero.
  */
 export function sharesFromMiles(
   miles: Record<string, number>,
 ): Record<string, number> | undefined {
-  const entries = Object.entries(miles).filter(([, value]) => value > 0)
-  const total = entries.reduce((sum, [, value]) => sum + value, 0)
-  if (entries.length === 0 || !(total > 0)) return undefined
+  const positive = Object.entries(miles).filter(([, value]) => value > 0)
+  const total = positive.reduce((sum, [, value]) => sum + value, 0)
+  if (!(total > 0)) return undefined
+  const entries = positive.filter(
+    ([, value]) => value >= SLIVER_MILES && value / total >= 0.0001,
+  )
+  if (entries.length === 0) return undefined
   entries.sort(([, a], [, b]) => b - a)
   const kept = entries.slice(0, 12)
   const keptTotal = kept.reduce((sum, [, value]) => sum + value, 0)
   const shares: Record<string, number> = {}
   let assigned = 0
-  kept.forEach(([club, value], index) => {
-    if (index === kept.length - 1) {
-      shares[club] = Math.round((1 - assigned) * 10_000) / 10_000
-    } else {
-      const share = Math.round((value / keptTotal) * 10_000) / 10_000
-      shares[club] = share
-      assigned += share
-    }
+  kept.slice(1).forEach(([club, value]) => {
+    const share = Math.round((value / keptTotal) * 10_000) / 10_000
+    shares[club] = share
+    assigned += share
   })
+  shares[kept[0][0]] = Math.round((1 - assigned) * 10_000) / 10_000
   return shares
 }
 
 // --- the row ---------------------------------------------------------------------------
 
-/** The version string the server accepts, or none. */
+/**
+ * The version string the server accepts, or none: a release number, with an
+ * optional pre-release tag - app/schemas/analytics.py `VERSION_PATTERN`, which
+ * #1903's review narrowed from any short word after "www.example.org" came
+ * through as a version and onto a public issue. A build that cannot name its
+ * release (`unknown`, lib/buildInfo.ts) sends none rather than a refused row.
+ */
 export function usageVersion(version: string): string | undefined {
-  return /^[0-9A-Za-z][0-9A-Za-z.+_-]{0,39}$/.test(version) ? version : undefined
+  return /^[0-9]{1,4}\.[0-9]{1,4}\.[0-9]{1,4}(?:-[0-9A-Za-z.]{1,24})?$/.test(version)
+    ? version
+    : undefined
 }
 
 export interface UsageDetails {

@@ -32,6 +32,7 @@ beforeEach(() => {
 function input(overrides: Partial<UsageMeasurementInput> = {}): UsageMeasurementInput {
   return {
     ready: true,
+    consentSettled: true,
     enabled: true,
     linked: null,
     accountEmail: null,

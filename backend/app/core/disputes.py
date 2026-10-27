@@ -31,7 +31,13 @@ An upstream republish does not clear it: nothing in this module reads the
 POI export at all, which is what makes that true by construction rather than
 by discipline. ATC re-publishing its shelters layer says nothing about
 whether the spring is there, and treating a rebuild as evidence would
-quietly erase every dispute on a schedule.
+quietly erase every dispute on a schedule. The router does read one thing
+derived from the export, each waypoint's mile (`waypoint_miles`), to decide
+whose note carries a maintainer's weight (#1917 - A maintainer's note
+settles a water dispute anywhere on the trail, because the covering check
+reads the mile the note's author typed, not where the waypoint is). A
+republish can change which maintainer covers a waypoint, and never what any
+note says.
 
 WHY A THRESHOLD IS ACCEPTABLE HERE AT ALL
 
@@ -94,7 +100,8 @@ class DisputeInput:
     #: True for `not_found`; False for any observation that says the place is
     #: there. A note with no observation at all is neither and is not passed.
     disputes: bool
-    #: Whether this reporter's maintainer assignment covers the note's mile.
+    #: Whether this reporter's maintainer assignment covers the waypoint's
+    #: mile, as `waypoint_miles` has it, never the mile written on the note.
     #: One of these outweighs the count in both directions - a maintainer is
     #: the person who would know.
     maintainer: bool = False

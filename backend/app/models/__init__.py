@@ -74,6 +74,7 @@ from app.models.synced_hike import SyncedActiveHike, SyncedHike
 from app.models.synced_trip import SyncedPlannedHike, SyncedTrip
 from app.models.trail_challenge import ChallengeEntry, ChallengeTag, ClubChallenge, TagHow
 from app.models.volunteer_hours import HoursActivity, HoursState, VolunteerHoursRecord
+from app.models.waypoint_mile import WaypointMile
 from app.models.work_project import (
     ProjectSource,
     ProjectStatus,
@@ -84,6 +85,7 @@ from app.models.work_project import (
 )
 
 __all__ = [
+    "WaypointMile",
     "RegistrySignoff",
     "AssistUsage",
     "AppFailure",

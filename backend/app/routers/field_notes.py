@@ -41,6 +41,7 @@ from app.models.club import Club
 from app.models.field_note import FieldNote, NoteFlag, Observation
 from app.models.maintainer_assignment import MaintainerAssignment
 from app.models.profile import MODERATOR_ROLES, Profile
+from app.models.waypoint_mile import WaypointMile
 from app.routers.reports import read_capped_body
 from app.schemas.dispute import DisputeOut
 from app.schemas.field_note import (
@@ -324,12 +325,28 @@ def list_disputes(db: Session = Depends(get_db)) -> list[DisputeOut]:
         .all()
     )
 
-    def covers(reporter_id: str, mile: float | None) -> bool:
-        """Whether this reporter looks after the stretch this note is on.
+    # WHERE EACH WAYPOINT IS, not where its notes say they were written
+    # (#1917 - A maintainer's note settles a water dispute anywhere on the
+    # trail, because the covering check reads the mile the note's author
+    # typed, not where the waypoint is). A note's `mile` is whatever the
+    # author's client sent, so covering used to be a claim a maintainer could
+    # make about any waypoint by typing a mile inside their own stretch.
+    # `waypoint_miles` is loaded from the published export instead
+    # (`load_waypoint_miles.py`).
+    poi_ids = {note.poi_id for note in notes}
+    waypoint_mile = (
+        dict(db.query(WaypointMile.poi_id, WaypointMile.mile).filter(WaypointMile.poi_id.in_(poi_ids)).all()) if poi_ids else {}
+    )
 
-        A note with no mile cannot be covered by anybody: an assignment is a
-        range along the centerline, and treating "no mile" as covered would
-        hand every maintainer a veto over every unplaced note in the country.
+    def covers(reporter_id: str, mile: float | None) -> bool:
+        """Whether this reporter looks after the stretch this waypoint is on.
+
+        A waypoint with no known mile cannot be covered by anybody: an
+        assignment is a range along the centerline, and treating "no mile" as
+        covered would hand every maintainer a veto over every unplaced
+        waypoint in the country. Its notes count as anybody's, so it goes into
+        dispute on two people's `not_found` and comes out on two people's
+        confirmations (`app/core/disputes.py`).
         """
         if mile is None:
             return False
@@ -345,7 +362,7 @@ def list_disputes(db: Session = Depends(get_db)) -> list[DisputeOut]:
                 reporter_id=note.reporter_id,
                 observed_at=note.observed_at,
                 disputes=note.observation is Observation.not_found,
-                maintainer=covers(note.reporter_id, note.mile),
+                maintainer=covers(note.reporter_id, waypoint_mile.get(note.poi_id)),
             )
         )
 

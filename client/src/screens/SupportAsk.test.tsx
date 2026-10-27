@@ -13,8 +13,8 @@ const PENDING: SupportSummary = {
   status: 'pending',
   amount_cents: 1000,
   cadence: 'year',
-  provider: 'buymeacoffee',
-  provider_label: 'Buy Me a Coffee',
+  provider: 'stripe',
+  provider_label: 'Stripe',
   email: 'hiker@example.com',
   chosen_at: '2026-10-23T12:00:00Z',
   started_at: null,
@@ -38,7 +38,7 @@ function setup(over: Partial<Parameters<typeof SupportAsk>[0]> = {}) {
     navigate: vi.fn(),
     choose: vi.fn().mockResolvedValue({
       support: PENDING,
-      checkout_url: 'https://buymeacoffee.com/ourhike/membership',
+      checkout_url: 'https://buy.stripe.com/test_ten?client_reference_id=choice-1',
       emailed: false,
     }),
     ...over,
@@ -98,9 +98,7 @@ describe('the day-5 ask', () => {
     await userEvent.click(screen.getByRole('radio', { name: /^\$10 a year/ }))
     await userEvent.click(screen.getByRole('button', { name: 'Continue' }))
     await userEvent.click(screen.getByRole('checkbox', { name: /yearly accounting/ }))
-    await userEvent.click(
-      screen.getByRole('button', { name: 'Continue to Buy Me a Coffee' }),
-    )
+    await userEvent.click(screen.getByRole('button', { name: 'Continue to payment' }))
 
     expect(props.choose).toHaveBeenCalledWith({
       amount_cents: 1000,
@@ -109,7 +107,7 @@ describe('the day-5 ask', () => {
     })
     expect(props.onChosen).toHaveBeenCalledWith(PENDING)
     expect(props.navigate).toHaveBeenCalledWith(
-      'https://buymeacoffee.com/ourhike/membership',
+      'https://buy.stripe.com/test_ten?client_reference_id=choice-1',
     )
   })
 
@@ -123,21 +121,17 @@ describe('the day-5 ask', () => {
     })
     await userEvent.click(screen.getByRole('radio', { name: /^\$10 a year/ }))
     await userEvent.click(screen.getByRole('button', { name: 'Continue' }))
-    await userEvent.click(
-      screen.getByRole('button', { name: 'Continue to Buy Me a Coffee' }),
-    )
+    await userEvent.click(screen.getByRole('button', { name: 'Continue to payment' }))
 
     expect(props.navigate).not.toHaveBeenCalled()
     expect(await screen.findByRole('alert')).toHaveTextContent(/nothing was charged/)
   })
 
-  it('names the payment provider on the website pay button and nowhere else', async () => {
+  it('names no payment provider on the website either', async () => {
     setup()
     await userEvent.click(screen.getByRole('radio', { name: /^\$10 a year/ }))
     await userEvent.click(screen.getByRole('button', { name: 'Continue' }))
-    expect(screen.getAllByText(/Buy Me a Coffee/)).toEqual([
-      screen.getByRole('button', { name: 'Continue to Buy Me a Coffee' }),
-    ])
+    expect(screen.queryByText(/Stripe|Buy Me a Coffee/)).not.toBeInTheDocument()
   })
 
   it('in the store apps, never names a checkout: the setup link goes by email', async () => {
@@ -147,11 +141,11 @@ describe('the day-5 ask', () => {
         .fn()
         .mockResolvedValue({ support: PENDING, checkout_url: null, emailed: true }),
     })
-    expect(screen.queryByText(/Buy Me a Coffee/)).not.toBeInTheDocument()
+    expect(screen.queryByText(/Stripe|Buy Me a Coffee/)).not.toBeInTheDocument()
 
     await userEvent.click(screen.getByRole('radio', { name: /^\$100 a year/ }))
     await userEvent.click(screen.getByRole('button', { name: 'Continue' }))
-    expect(screen.queryByText(/Buy Me a Coffee/)).not.toBeInTheDocument()
+    expect(screen.queryByText(/Stripe|Buy Me a Coffee/)).not.toBeInTheDocument()
     await userEvent.click(
       screen.getByRole('button', { name: 'Email me how to set it up' }),
     )
@@ -179,9 +173,7 @@ describe('the day-5 ask', () => {
     setup({ choose: vi.fn().mockRejectedValue(new Error('offline')) })
     await userEvent.click(screen.getByRole('radio', { name: /^\$1 a year/ }))
     await userEvent.click(screen.getByRole('button', { name: 'Continue' }))
-    await userEvent.click(
-      screen.getByRole('button', { name: 'Continue to Buy Me a Coffee' }),
-    )
+    await userEvent.click(screen.getByRole('button', { name: 'Continue to payment' }))
 
     expect(await screen.findByRole('alert')).toHaveTextContent(/nothing was charged/)
   })

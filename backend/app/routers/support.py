@@ -178,7 +178,7 @@ def stop_support(
 
     A pending choice has nothing to cancel and is `stopped` at once. A payment
     still charging becomes `stop_requested`, and whoever cancels it is asked -
-    the provider's API, or for Buy Me a Coffee an email to the founder.
+    Stripe's API, or an email to the founder when that cannot be reached.
     Idempotent: a second press asks only where the first did not reach
     anybody. Nothing running and nothing waiting is 404.
     """
@@ -221,7 +221,7 @@ def support_total(response: Response, db: Session = Depends(get_db)) -> SupportT
     now = utc_now()
     cached = _total_cache.get(now.year)
     if cached is None or now - cached[0] >= TOTAL_CACHE_FOR:
-        cents, supporters = year_total(db, now.year, now=now)
+        cents, supporters = year_total(db, now.year)
         cached = (now, SupportTotalOut(year=now.year, total_cents=cents, supporters=supporters))
         _total_cache[now.year] = cached
     response.headers["Cache-Control"] = f"public, max-age={int(TOTAL_CACHE_FOR.total_seconds())}"

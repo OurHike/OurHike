@@ -1603,8 +1603,9 @@ export async function deleteAccount(): Promise<DeletionReceipt> {
  * - `paused`: the provider says it exists and is not charging.
  * - `cancel_scheduled`: no more charges; it ends at `period_end`.
  * - `stop_requested`: the hiker pressed Stop and the provider has not yet
- *   said it ended. For a provider with no cancel API (Buy Me a Coffee) the
- *   founder cancels by hand, and the hiker is emailed when it is done.
+ *   said it ended. The backend asks Stripe to stop renewing (or the founder,
+ *   by email, if Stripe cannot be reached), and the hiker is emailed when it
+ *   is done.
  * - `stopped`: ended - or a pending choice cleared, with nothing charged.
  */
 export type SupportStatus =

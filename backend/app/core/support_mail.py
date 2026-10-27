@@ -7,8 +7,9 @@ asked for (app/models/mail.py's rule for `MailPurpose`):
   it up". The one place a payment link reaches a store-app hiker: Apple's
   3.1.3 allows "communications outside of the app", and its 3.1.1(a) does not
   allow the link inside one outside the US.
-- **the cancel request**, to the founder, when a provider has no cancel API
-  (Buy Me a Coffee) and a person has to do it.
+- **the cancel request**, to the founder, when the provider's cancel API
+  cannot be reached (no key configured, or Stripe refused) and a person has
+  to do it.
 - **the stopped notice**, to the hiker, once the provider says the payment
   their Stop asked about has ended - the second half of what the Stop screen
   promises ("we email you when it's done").
@@ -149,7 +150,7 @@ def send_setup_link(
     amount = dollars(choice.amount_cents, choice.currency)
     body = (
         f"You chose to give OurHike {amount} a {choice.cadence.value}. Thank you.\n\n"
-        f"Set it up on {provider_label}, using this same email address so the app can tell it's you:\n"
+        f"Set it up here, on {provider_label}'s secure payment page:\n"
         f"{checkout_url}\n\n"
         "Stopping is two taps in the app: More → Your support → Stop. We cancel it for you.\n\n"
         "Not tax-deductible: OurHike isn't a nonprofit yet.\n"

@@ -9,7 +9,7 @@
 //     working, and nothing anywhere is locked by not paying.
 //   - $0 stays on this phone and needs no account. A paid choice is
 //     verified through a signed-in account: the backend matches the payment
-//     provider's signed webhooks to it (Buy Me a Coffee's, for now).
+//     provider's signed webhooks to it (Stripe's, since 2026-10-27).
 //   - Picking $0 brings one more screen, at most once a year: a nudge
 //     toward $1 or $10 in a hiker-trash voice, with a line that rotates
 //     (lib/supportNudges.ts). "Keep it at $0" stays on that screen and

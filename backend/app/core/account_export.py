@@ -187,7 +187,7 @@ def build_export(db: Session, profile: Profile) -> dict[str, Any]:
         ),
         "volunteer_hours": _rows(db, VolunteerHoursRecord, VolunteerHoursRecord.user_id == profile_id),
         # What they chose to give OurHike (#1876): amounts, dates, the email
-        # Buy Me a Coffee knows them by, and the provider's ids - theirs to
+        # the payment was matched by, and the provider's ids - theirs to
         # see, and what they would need to chase a charge themselves.
         "what_you_give_ourhike": _rows(db, SupportChoice, SupportChoice.profile_id == profile_id),
         # What the payment provider told us about it, as stored: the

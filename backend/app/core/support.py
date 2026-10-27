@@ -2,8 +2,9 @@
 
 The decisions are the maintainer's, by poll from 2026-10-23, and
 features/SUPPORTING_OURHIKE.md is their one home. Everything provider-shaped
-lives behind app/core/support_providers/ - this module never reads a Buy Me a
-Coffee field name, and a second provider is a module there, not a change here.
+lives behind app/core/support_providers/ - this module never reads a Stripe
+field name, and a second provider is a module there, not a change here (the
+Buy Me a Coffee to Stripe swap of 2026-10-27 was exactly that).
 
 What this module is for, and the rules the #1885 adversarial review made it
 keep:
@@ -17,8 +18,8 @@ the hiker's pending choice, and a stranger's $1 could become the hiker's
 record. An `updated`, `paused` or `ended` for an id nobody has seen is
 acknowledged and left alone.
 
-**A LATE EVENT NEVER UNDOES A LATER ONE.** Deliveries are retried for up to an
-hour (Buy Me a Coffee's spec) and may arrive in any order, so each row keeps
+**A LATE EVENT NEVER UNDOES A LATER ONE.** Deliveries are retried and may
+arrive in any order (Stripe says so outright), so each row keeps
 the time of the newest event it took (`last_event_at`) and drops anything
 older. And `stopped` is final for a provider id: a retried "updated" written
 before the cancellation cannot bring a stopped payment back to life. A new
@@ -27,8 +28,12 @@ payment is a new id, and so a new row.
 **EVERY EVENT IS KEPT** in `support_events`, with what was done about it, so
 the order and the outcome can be read back - including an event whose
 handling raised, which is stored as `failed` and still acknowledged, because
-a provider that keeps getting errors switches the webhook off (Buy Me a
-Coffee: after ten in a row) and then nothing is recorded at all.
+a provider that keeps getting errors eventually disables the endpoint, and
+then nothing is recorded at all.
+
+**THE TOTAL IS READ FROM CHARGES.** Every `charged` event is money that
+arrived, kept once by its event id (a provider's retry carries the same id),
+and `year_total` sums them. Nothing is inferred from start dates.
 
 **A STOP IS RECORDED AT ONCE AND RETRIED UNTIL SOMEBODY IS TOLD.** For a
 provider with no cancel API the request is an email to the founder; a row
@@ -212,6 +217,23 @@ def apply_event(
 ) -> tuple[str, SupportChoice | None]:
     """Apply one normalised event. Returns (outcome, row). Does not commit."""
     now = now or utc_now()
+    if event.kind is EventKind.charged:
+        # Money arrived. Counted once per provider event id, and never a
+        # change of state - a charge can arrive before the payment it belongs
+        # to is known here, and still counts.
+        if event.event_id and (
+            db.query(SupportEvent)
+            .filter(
+                SupportEvent.provider == provider.key,
+                SupportEvent.event_id == event.event_id,
+                SupportEvent.outcome == "charged",
+            )
+            .first()
+            is not None
+        ):
+            return "duplicate", None
+        return "charged", _match(db, provider, event)
+
     row = _match(db, provider, event)
     if row is None:
         if event.kind not in (EventKind.started, EventKind.updated):
@@ -250,8 +272,8 @@ def apply_event(
     else:
         row.status = SupportStatus.active
     if was == SupportStatus.stop_requested and row.status in (SupportStatus.active, SupportStatus.paused):
-        # The founder has not got to it yet: a renewal's `updated` must not
-        # quietly undo the hiker's Stop.
+        # The cancellation has not landed yet: an `updated` sent before it
+        # must not quietly undo the hiker's Stop.
         row.status = SupportStatus.stop_requested
 
     if was == SupportStatus.stop_requested and row.status in (SupportStatus.stopped, SupportStatus.cancel_scheduled):
@@ -371,52 +393,35 @@ def retry_stop_requests(
     return sum(1 for row in rows if row.stop_notified_at is not None)
 
 
-def year_total(db: Session, year: int, now: datetime | None = None) -> tuple[int, int]:
+def year_total(db: Session, year: int) -> tuple[int, int]:
     """(cents, supporters) given in `year`, in dollars, before fees.
 
-    **Reasoned from start dates, not read from payouts.** Nothing Buy Me a
-    Coffee sends reports each renewal charge, so a yearly payment is counted
-    once in the year it started and once in every later year whose
-    anniversary has passed before it ended. A refunded or failed charge, or a
-    paused membership's skipped one, would make this high and nothing here
-    can see one - which is why the page calls it "given", reads it live, and
-    never rounds it up.
+    **Read from charges, not reasoned.** The sum of every `charged` event
+    that landed in the year - each one money a provider says arrived - and
+    the number of distinct payments they came from.
 
-    Only `TOTAL_CURRENCY`: an amount in another currency is left out rather
-    than converted at a rate nobody here can stand behind.
+    A refund is not subtracted: no refund event is handled yet, so a refunded
+    charge keeps the total high until one is. Only `TOTAL_CURRENCY` is
+    summed: an amount in another currency is left out rather than converted
+    at a rate nobody here can stand behind.
     """
-    now = now or utc_now()
-    total = 0
-    supporters = 0
-    rows = (
-        db.query(SupportChoice)
+    charges = (
+        db.query(SupportEvent)
         .filter(
-            SupportChoice.started_at.isnot(None),
-            SupportChoice.amount_cents > 0,
-            SupportChoice.currency == TOTAL_CURRENCY,
+            SupportEvent.kind == EventKind.charged.value,
+            SupportEvent.outcome == "charged",
+            SupportEvent.occurred_at >= datetime(year, 1, 1),
+            SupportEvent.occurred_at < datetime(year + 1, 1, 1),
         )
         .all()
     )
-    for row in rows:
-        step_months = 12 if row.cadence == SupportCadence.year else 1
-        charges = 0
-        k = 0
-        while True:
-            months = row.started_at.month - 1 + k * step_months
-            try:
-                charge = row.started_at.replace(year=row.started_at.year + months // 12, month=months % 12 + 1)
-            except ValueError:
-                # The 29th-31st of a short month: the provider bills on the
-                # last day, and the last day is in the same year either way.
-                charge = row.started_at.replace(year=row.started_at.year + months // 12, month=months % 12 + 1, day=28)
-            # A payment ending exactly on an anniversary is not charged on it:
-            # `cancel_scheduled` stores the period's end, which is that date.
-            if charge > now or (row.ended_at is not None and charge >= row.ended_at) or charge.year > year:
-                break
-            if charge.year == year:
-                charges += 1
-            k += 1
-        if charges:
-            total += charges * row.amount_cents
-            supporters += 1
-    return total, supporters
+    total = 0
+    payments: set[str] = set()
+    for charge in charges:
+        payload = charge.payload or {}
+        cents = payload.get("amount_cents")
+        if payload.get("currency") != TOTAL_CURRENCY or isinstance(cents, bool) or not isinstance(cents, int):
+            continue
+        total += cents
+        payments.add(str(payload.get("subscription") or charge.choice_id or charge.id))
+    return total, len(payments)

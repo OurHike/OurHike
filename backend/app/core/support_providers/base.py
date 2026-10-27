@@ -1,13 +1,15 @@
 """The seam between OurHike's support record and whoever takes the money (#1876).
 
-The maintainer's plan has more than one payment provider in it: Buy Me a
-Coffee now, Open Source Collective next, a nonprofit's own processor later
+The maintainer's plan has more than one payment provider in it: Stripe now,
+Open Source Collective next, a nonprofit's own processor later
 (features/SUPPORTING_OURHIKE.md §2). The adversarial review of #1885 found
-Buy Me a Coffee assumed in every layer - its event names and payload shapes
-in the state machine, its settings read in the router, its name in the
-founder's email - so a second provider would have been a rewrite. This file
-is the answer: what a provider must do, in OurHike's words rather than any
-provider's, and nothing else.
+the first provider (Buy Me a Coffee) assumed in every layer - its event names
+and payload shapes in the state machine, its settings read in the router, its
+name in the founder's email - so a second provider would have been a rewrite.
+This file is the answer: what a provider must do, in OurHike's words rather
+than any provider's, and nothing else. It was proved the same week: the
+maintainer replaced Buy Me a Coffee with Stripe (2026-10-27), and the swap was
+one module.
 
 A PROVIDER DOES FOUR THINGS and owns everything provider-shaped about them:
 
@@ -24,7 +26,7 @@ A PROVIDER DOES FOUR THINGS and owns everything provider-shaped about them:
   dropped here, before anything is stored.
 - **request_cancel** - start stopping one hiker's recurring payment: an API
   call where the provider has one, an email to the founder where it does not
-  (Buy Me a Coffee). True when the request reached something that will act.
+  or the call fails. True when the request reached something that will act.
 
 The state machine, the matching of a payment to a choice, the guard against
 late retries, the event log and the published total live in
@@ -54,12 +56,15 @@ class EventKind(str, enum.Enum):
     - `paused`: it exists and is not charging, by the member's or the
       creator's hand.
     - `ended`: it will charge no more.
+    - `charged`: money actually arrived - one charge, which the published
+      total sums. It never changes a row's state.
     """
 
     started = "started"
     updated = "updated"
     paused = "paused"
     ended = "ended"
+    charged = "charged"
 
 
 @dataclass(frozen=True)
@@ -76,8 +81,8 @@ class ProviderEvent:
     # The provider's id for the recurring payment, and for the person.
     subscription_ref: str | None = None
     customer_ref: str | None = None
-    # The card processor's id behind it, when the provider passes it on
-    # (Buy Me a Coffee sends Stripe's subscription id).
+    # The card processor's id behind it, when the provider is not the card
+    # processor itself and passes it on. None for Stripe, which is both.
     psp_ref: str | None = None
     # The level or plan the supporter picked on the provider's page.
     plan_ref: str | None = None

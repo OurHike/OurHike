@@ -19,11 +19,11 @@ The public reading is [`site/src/pages/support.astro`](../site/src/pages/support
 
 | Stage | Holder | What the research found (read 2026-10-23) |
 |---|---|---|
-| **Now** | Buy Me a Coffee, under the founder's personal tax status, which covers any tax. **Limited to $100,000 a year**; the running total is published, with no automatic cut-off (poll). | Fees: 5% platform, Stripe 2.9% + 30¢, 0.5% on subscription payments, 0.5% on payouts, +1% on international cards (Buy Me a Coffee's help article "How to calculate charges on your payment"). Not tax-deductible for the giver: "Gifts to individuals are not deductible" (IRS Topic 506). |
+| **Now** | Stripe, under the founder's personal tax status, which covers any tax. **Limited to $100,000 a year**; the running total is published, with no automatic cut-off (poll). Stripe replaced Buy Me a Coffee before launch (the maintainer, 2026-10-27): it carries OurHike's choice id through checkout, cancels by API, reports each renewal, and has no 5% platform fee. | Fees (read 2026-10-27): cards 2.9% + 30¢, Billing 0.7% of recurring volume, +1.5% on international cards and +1% more with a currency conversion (stripe.com/pricing, stripe.com/billing/pricing; older pages still say 0.8%). Not tax-deductible for the giver: "Gifts to individuals are not deductible" (IRS Topic 506). |
 | **Next** | Open Source Collective as fiscal host — chosen over a 501(c)(3) sponsor and over going straight to a nonprofit (poll). | A 501(c)(6), so still not deductible; a "fixed 10% host fee" plus processor fees. **It will not pay "donations to unrelated causes or organizations" or "gifts or grant-style payments"**, so it cannot pass money to clubs (docs.oscollective.org). Open Collective Foundation, the 501(c)(3) host, ended fiscal sponsorship on 2024-09-30. |
 | **Later** | OurHike's own nonprofit. | Where money can reach clubs. Not researched further. |
 
-**Not decided here, and worth a tax professional before the page goes live:** whether this is a hobby or a business (Schedule C) for the founder. Buy Me a Coffee says income there "is subject to income tax", and the IRS says to report income whether or not a Form 1099-K arrives. Publication 17 (2025) says "Hobby expenses… can no longer be deducted", so under hobby treatment tax would be owed on money spent entirely on OurHike. The 1099-K threshold is back to over $20,000 and over 200 transactions (IRS IR-2025-107); that release does not name the tax years.
+**Not decided here, and worth a tax professional before the page goes live:** whether this is a hobby or a business (Schedule C) for the founder. The IRS says to report income whether or not a Form 1099-K arrives. Publication 17 (2025) says "Hobby expenses… can no longer be deducted", so under hobby treatment tax would be owed on money spent entirely on OurHike. The 1099-K threshold is back to over $20,000 and over 200 transactions (IRS IR-2025-107); that release does not name the tax years.
 
 ## 3. The ask
 
@@ -50,36 +50,38 @@ The public reading is [`site/src/pages/support.astro`](../site/src/pages/support
 - **A $0 choice stays on the phone** and needs no account.
 - **A paid choice is verified through a signed-in account.** The email is always the one on the account's token, never one typed into a form.
 - **How a payment meets its choice** ([`backend/app/core/support.py`](../backend/app/core/support.py)). Tightened after the #1885 adversarial review found the first version matched any event by email, so a stranger's cancellation typed with a hiker's address could stop the hiker's choice:
+  - by OurHike's own choice id, which the tier's Stripe Payment Link carries as `client_reference_id` and Stripe hands back on `checkout.session.completed` — only onto a choice still `pending`;
   - by the provider's own id for the payment, wherever it has been seen;
   - otherwise, only for a **started** event, by email onto a `pending` choice for the **same amount**, on the **same provider**, chosen no later than the payment began (plus `EMAIL_MATCH_SKEW`, ten minutes, `@unvalidated`);
   - a payment that matches nothing is kept unattached, so the total is honest, and attached to the account whose **verified** email it carries the next time that account opens Your support. That is also how a supporter who paid on the provider's page gets a Stop button.
 - **Order and repeats.** Each row keeps the time of the newest event it took and drops anything older, and `stopped` is final for a provider id. A retried "updated" that arrives after the cancellation cannot bring the payment back.
-- **Every event is kept** in `support_events` with what was done about it. A provider's module drops the supporter's display name, their note, a cancellation reason and the email before anything is stored. An event whose handling raised is stored as `failed` and still answered 200, because Buy Me a Coffee switches a webhook off after ten failures in a row and then nothing is recorded at all.
+- **Every event is kept** in `support_events` with what was done about it. The provider's module keeps a short named list of fields, never the payer's name, address, card or email. An event whose handling raised is stored as `failed` and still answered 200, because a provider eventually disables an endpoint that keeps failing and then nothing is recorded at all.
+- **A webhook is believed only with Stripe's signature** (`Stripe-Signature`: HMAC-SHA256 of `<timestamp>.<body>` under the endpoint's secret), and only inside Stripe's five-minute replay window. A live key believes only live events; a `_test_` key believes test events, which is how UA runs on Stripe's test mode.
 - **Collected at the start** ("grab the right info from the get-go", poll) — model: [`backend/app/models/support.py`](../backend/app/models/support.py):
   - the email; the wording version shown (`terms_version`), the path (`delivery`) and when, which is the consent record for the stated term that a provider move means **one** email;
   - an **opt-in** yearly accounting email, off unless ticked, with when it was ticked;
   - the amount chosen beside the amount the provider reports, the currency, the cadence, the start and the renewal date (`period_end`);
-  - the provider's ids: the payment, the person, the level, and the card processor's subscription behind it (Stripe's, for Buy Me a Coffee).
-  - **@unvalidated:** whether Stripe's id lets a move skip the re-confirm. Buy Me a Coffee says it uses "Stripe Standard Connect", which would put the subscriptions in the creator's own Stripe account, and nobody has checked. Stripe's own import guide copies customers but "Subscription data isn't copied".
-- **The published total** (`GET /support/total`) is **reasoned from start dates, not read from payouts.** Nothing Buy Me a Coffee sends reports a renewal charge, so a refund, a failed card or a paused membership's skipped charge would make the total high. It counts US dollars only (another currency is left out rather than converted), and is computed at most once an hour per server.
+  - the provider's ids: the subscription, the customer, and the tier's Payment Link or price.
+  - **@unvalidated:** whether a Stripe customer id lets a later move skip the re-confirm. Stripe's own import guide copies customers but "Subscription data isn't copied".
+- **The published total** (`GET /support/total`) is **read from charges**: the sum of every `invoice.paid` Stripe reports in the year, each counted once by its event id (Stripe resends the same id on a retry), from the event log. A charge counts even when it arrives before the checkout it belongs to, which Stripe does not promise to order. It counts US dollars only (another currency is left out rather than converted), and is computed at most once an hour per server. **A refund is not subtracted yet** — no refund event is handled — so a refunded charge keeps the total high.
 
 ## 5. No payment inside the app
 
-- **The website app** (ourhike.org/app, today's product) sends a paid choice on to Buy Me a Coffee's checkout.
+- **The website app** (ourhike.org/app, today's product) sends a paid choice on to the tier's Stripe Payment Link. Its button reads "Continue to payment" (the maintainer's choice, 2026-10-27): Stripe's checkout shows OurHike's name, not Stripe's.
 - **The iOS and Android apps** show the same four choices, still required (the maintainer, verbatim: "No Pyament in apps - but every hiker should be forced to choose an amount").
-  - A paid answer is "Email me how to set it up". The payment link travels only by email, and no screen in a store app names Buy Me a Coffee.
+  - A paid answer is "Email me how to set it up". The payment link travels only by email — a Payment Link never expires, so the email can sit unread — and no screen in a store app names a payment provider.
   - Apple's guidelines (rev. 2026-10-16): 3.1.1(a) bars "buttons, external links, or other calls to action" to non-in-app purchase outside the US. 3.1.3 allows "communications outside of the app".
   - Google Play's Payments policy bars leading users "to a payment method other than Google Play's billing system". Google delisted WireGuard in 2019 over a donate link.
   - Neither store app is published yet (ROADMAP Phase 3).
 
 ## 6. Stop
 
-- **More → Your support → Stop: one tap and one confirm, no reason asked.** We cancel it for the hiker. Chosen over sending them through Buy Me a Coffee's own cancel, which is about eight steps after logging in there (its help article).
+- **More → Your support → Stop: one tap and one confirm, no reason asked.** We cancel it for the hiker, rather than sending them through a payment provider's account pages (frame A, poll 2026-10-23; Buy Me a Coffee's own cancel was about eight steps).
 - **A choice nobody paid for** (`pending`, nothing confirmed) has nothing to cancel, so Stop clears it at once and the hiker can choose again. The first version marked it `stop_requested` and then refused every new choice.
-- **A payment still charging** becomes `stop_requested`, and whoever cancels it is asked. Buy Me a Coffee has no cancel API, so that is an email to `SUPPORT_NOTIFY_ADDRESS` to cancel it by hand the same day.
-  - The email lists every other record under the same address that is not stopped. A provider names a supporter only by an email anybody can type, and the founder cancelling by hand is the one point a person can see both and pick the right one.
+- **A payment still charging** becomes `stop_requested`, and the backend asks Stripe to stop it renewing (`cancel_at_period_end`), keeping the year already paid for. The key it uses is a restricted one with Subscriptions: Write only.
+  - When Stripe cannot be reached (no key, or Stripe refuses), the founder is emailed at `SUPPORT_NOTIFY_ADDRESS` to cancel by hand instead. That email lists every other record under the same address that is not stopped, so a person can see a stranger's payment beside the hiker's and pick the right one.
   - A request that does not go stays queued (`stop_notified_at` empty) and is asked again by the next Stop press, the hiker's next look at the page, and every webhook delivery.
-  - The provider's cancellation event then marks it `stopped`, and **the hiker is emailed that it is done**.
+  - Stripe's `customer.subscription.updated` then marks it `cancel_scheduled` (no more charges, ends at the period's end), and **the hiker is emailed that it is done**. `customer.subscription.deleted` at the end marks it `stopped`.
   - The screen says exactly that, rather than claiming a cancellation that has not happened.
 - **What the page offers is the server's answer.** `GET /support/me` carries `supporting`, `can_stop` and `can_choose`, so the app keeps no copy of the state machine. The states are `pending`, `active`, `paused`, `cancel_scheduled` (no more charges, ends at `period_end`), `stop_requested` and `stopped`.
 - **Deleting an account** deletes a choice nobody paid for, and asks for the same stop on anything still charging, because the deleted account can no longer reach the button. A paid record stays as the money record. See [`account_deletion.py`](../backend/app/core/account_deletion.py).
@@ -89,23 +91,23 @@ The public reading is [`site/src/pages/support.astro`](../site/src/pages/support
 
 | Where | Setting | What it does when empty |
 |---|---|---|
-| Backend host | `SUPPORT_PROVIDER` — where new choices go; default `buymeacoffee` | — (an unknown name answers 503 "not switched on") |
-| Backend host | `BUYMEACOFFEE_CHECKOUT_URL` — the page's membership URL, https only | the website path answers 503 "not switched on" |
-| Backend host | `BUYMEACOFFEE_WEBHOOK_SECRET` — shown on the webhook's page in Buy Me a Coffee | every webhook delivery is refused (503) |
-| Backend host | `BUYMEACOFFEE_LEVEL_IDS` — the membership levels that are OurHike support, comma-separated | every level on the page is believed |
-| Backend host | `SUPPORT_NOTIFY_ADDRESS` — where Stop requests go | Stop is recorded and the hiker told, and the request waits in the retry queue |
+| Backend host | `SUPPORT_PROVIDER` — where new choices go; default `stripe` | — (an unknown name answers 503 "not switched on") |
+| Backend host | `STRIPE_PAYMENT_LINKS` — one Payment Link per tier, `100=https://buy.stripe.com/…,1000=…,10000=…` | a choice answers 503 "not switched on" |
+| Backend host | `STRIPE_WEBHOOK_SECRET` — the endpoint's signing secret (`whsec_…`) | every webhook delivery is refused (503) |
+| Backend host | `STRIPE_SECRET_KEY` — a **restricted** key, Subscriptions: Write only | Stop emails the founder to cancel by hand instead |
+| Backend host | `SUPPORT_NOTIFY_ADDRESS` — where Stop requests go when Stripe cannot be reached | with no key either, the request waits in the retry queue |
 | Backend host | `API_PUBLIC_URL` — this API's own https address | support emails' unsubscribe link points at the app's Your support page, which stops payments but not mail |
 | Backend host | `MAIL_ENABLED` and SES | no support email sends |
-| Buy Me a Coffee | three **yearly** membership levels at $1, $10 and $100, and a webhook pointed at `<API>/support/webhooks/buymeacoffee` | — |
+| Stripe | one product with three **yearly** prices at $1, $10 and $100, a Payment Link for each, and a webhook endpoint at `<API>/support/webhooks/stripe` sending `checkout.session.completed`, `customer.subscription.updated`, `customer.subscription.paused`, `customer.subscription.resumed`, `customer.subscription.deleted` and `invoice.paid` | — |
 | GitHub variables | `API_BASE_URL` | the app's ask stays dormant, and the site's total reads "Not available" |
 
-**The provider seam.** Everything provider-shaped lives in [`backend/app/core/support_providers/`](../backend/app/core/support_providers/): a provider owns its checkout link, how its webhook is verified, how its events become OurHike's four kinds (`started`, `updated`, `paused`, `ended`), and how a cancel is requested (an API call, or an email to a person). The state machine, matching, ordering, the event log and the total do not change per provider, and the app's copy says "payment page" rather than a name. Two exceptions, both on the website only: Your support shows `provider_label` from the server, and the pay button keeps "Continue to Buy Me a Coffee" by the maintainer's choice (2026-10-27), so moving provider means changing that one string in `SupportAsk.tsx`. The store apps name no provider anywhere. Adding Open Source Collective is a module beside `buymeacoffee.py` and one line in the registry.
+**The provider seam.** Everything provider-shaped lives in [`backend/app/core/support_providers/`](../backend/app/core/support_providers/): a provider owns its checkout link, how its webhook is verified, how its events become OurHike's five kinds (`started`, `updated`, `paused`, `ended`, `charged`), and how a cancel is requested (an API call, or an email to a person). The state machine, matching, ordering, the event log and the total do not change per provider, and the app's copy names none: it says "payment page", and only the website's Your support shows `provider_label` from the server. The seam was proved before launch: Buy Me a Coffee was replaced by Stripe (2026-10-27) as one module swapped. Adding Open Source Collective is a module beside `stripe.py` and one line in the registry.
 
 **Moving a supporter.** Change `SUPPORT_PROVIDER`; every registered provider keeps receiving its own webhooks. A supporter still paying through the old one may choose again (their old payment no longer blocks a choice), the new choice records which one it replaces, and when the new payment starts the old one is asked to stop exactly as the hiker's own Stop would.
 
 ## 8. Open, and who settles it
 
 - **The tax treatment** in §2 — a tax professional, for the founder.
-- **What `membership.paused` means for a yearly supporter.** It is recorded as `paused`, still counts as supporting (the hiker made a choice), and is counted in the total as if it charged; the first real event settles which of those is wrong.
-- **Whether a renewal arrives as `membership.updated`.** If it does, the total could read real charges rather than infer them from start dates.
+- **What a paused subscription means for a yearly supporter.** It is recorded as `paused` and still counts as supporting (the hiker made a choice); nothing OurHike offers pauses one, so it would come from the Stripe dashboard.
+- **Refunds.** No refund event is handled, so a refunded charge stays in the published total until one is.
 - **`PENDING_GRACE_DAYS` = 30** — how long an uncompleted paid choice silences the ask. `@unvalidated`; real completion times would settle it.

@@ -26,10 +26,12 @@
 //
 // THE COMMITMENTS ARE THE FOUNDER'S, DATED. Every line in "Where the money
 // goes" and "How it is held" is the maintainer's own decision, 2026-10-23.
-// The fee figures are Buy Me a Coffee's published rates (help article "How
-// to calculate charges on your payment", read 2026-10-23: 5% platform, Stripe
-// 2.9% + 30c, 0.5% subscription, 0.5% payout) with the arithmetic done here;
-// international cards pay 1% more and the table does not show it.
+// The fee figures are Stripe's published US rates (stripe.com/pricing and
+// stripe.com/billing/pricing, read 2026-10-27: cards 2.9% + 30c, Billing 0.7%
+// of recurring volume) with the arithmetic done here. Stripe replaced Buy Me a
+// Coffee by the maintainer's choice that day, which also removed Buy Me a
+// Coffee's 5%. International cards pay 1.5% more (and 1% more again with a
+// currency conversion), and the table does not show it.
 //
 // THE RUNNING TOTAL IS LIVE OR IT IS ABSENT. The maintainer chose to publish
 // the year's total rather than cut anything off at the $100,000 line. It is
@@ -50,12 +52,12 @@ const history =
 const episode =
   'https://podcasts.rrchnm.org/show/the-green-tunnel/changemakers/'
 
-// Per yearly payment: 5% platform + 2.9% + 30c card + 0.5% subscription +
-// 0.5% payout. Rounded to the cent, which is what a hiker sees.
+// Per yearly payment: 2.9% + 30c card + 0.7% Billing. Rounded to the cent,
+// which is what a hiker sees.
 const fees = [
-  { tier: '$1', fee: '$0.39', kept: '$0.61' },
-  { tier: '$10', fee: '$1.19', kept: '$8.81' },
-  { tier: '$100', fee: '$9.20', kept: '$90.80' },
+  { tier: '$1', fee: '$0.34', kept: '$0.66' },
+  { tier: '$10', fee: '$0.66', kept: '$9.34' },
+  { tier: '$100', fee: '$3.90', kept: '$96.10' },
 ]
 ---
 
@@ -139,15 +141,15 @@ const fees = [
         </li>
         <li>
           <strong>A paid choice is set up on the web, never in the app.</strong>
-          It goes through Buy Me a Coffee, so no app store takes a cut. You
+          It goes through Stripe, the card processor, so no app store takes a cut. You
           sign in to OurHike so the app knows on every device you use. In the
           iPhone and Android apps the link comes by email, because those stores
           do not allow it in the app.
         </li>
         <li>
           <strong>Stopping is one tap.</strong> More → Your support → Stop. We
-          cancel it for you the same day; you never have to find your way
-          through somebody else's account page.
+          cancel it for you, and you never have to find your way through
+          somebody else's account page.
         </li>
       </ol>
       <div class="fees prose">
@@ -172,9 +174,8 @@ const fees = [
           </tbody>
         </table>
         <p class="note">
-          Buy Me a Coffee's published rates: 5% to the platform, 2.9% + 30¢ to
-          the card processor, and 0.5% each on subscription payments and
-          payouts. Cards issued outside the US pay 1% more.
+          Stripe's published rates: 2.9% + 30¢ for the card, and 0.7% for
+          handling a yearly payment. Cards issued outside the US pay 1.5% more.
         </p>
       </div>
     </section>
@@ -217,7 +218,7 @@ const fees = [
         <li>
           <span class="stage">Now</span>
           <div>
-            <strong>Buy Me a Coffee, under the founder's own tax status.</strong>
+            <strong>Stripe, under the founder's own tax status.</strong>
             The founder pays any tax on it personally. Support is not
             tax-deductible, because OurHike is not a nonprofit yet. This stage
             is limited to $100,000 a year, and the running total is published

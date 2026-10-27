@@ -15,8 +15,8 @@ THE LIFE OF A ROW
   paused            the provider says it exists and is not charging
   cancel_scheduled  the provider says it ends at `period_end`; no more charges
   stop_requested    the hiker pressed Stop and the provider has not yet said
-                    it ended - for a provider with no cancel API (Buy Me a
-                    Coffee) the founder cancels by hand
+                    it ended - asked through Stripe's API, or the founder
+                    by email when the API cannot be reached
   stopped           ended; also how a Stop on a never-paid `pending` choice
                     lands at once, since there is nothing to cancel
 
@@ -28,9 +28,9 @@ new one starts.
 
 WHY THE EMAIL IS STORED HERE, when core/auth.py's `get_current_email` says
 "Nothing stores it". Supabase owns the address for signing in, and that rule
-stands for signing in. Here it is how a provider names the supporter (Buy Me
-a Coffee's webhook carries `supporter_email`), so matching a payment to an
-account needs a copy on this side; and the maintainer chose to keep it so
+stands for signing in. Here it is the fallback for matching a payment to a
+choice when the provider loses OurHike's choice id (a payer who edits the
+link), the address the stopped notice goes to, and the maintainer chose to keep it so
 one email can move a supporter if OurHike changes provider. It is always the
 verified address on the hiker's token or the one a signed provider event
 carried, never one typed into a form.
@@ -40,10 +40,11 @@ maintainer's brief), and why each:
 
 - `provider`, `provider_ref`, `customer_ref`, `psp_ref`, `plan_ref`: the
   provider's ids for the recurring payment, the person, the card processor's
-  subscription behind it (Stripe's, for Buy Me a Coffee), and the level.
-  Whether Stripe's id lets a move skip the supporter re-confirming is
-  UNVERIFIED: Stripe's import guide copies customers but "Subscription data
-  isn't copied" (docs.stripe.com, read by the #1885 review, 2026-10-26).
+  subscription behind it (empty for Stripe, which is its own processor), and
+  the tier's price or link. Whether a Stripe customer id lets a later move
+  skip the supporter re-confirming is UNVERIFIED: Stripe's import guide
+  copies customers but "Subscription data isn't copied" (docs.stripe.com,
+  read by the #1885 review, 2026-10-26).
 - `chosen_amount_cents` (what the hiker agreed to) beside `amount_cents`
   (what the provider reports), `currency`, `cadence`, `period_end` (the real
   renewal anniversary) and `started_at`: enough to recreate the same amount
@@ -165,8 +166,8 @@ class SupportEvent(Base):
     `outcome` is what core/support did with it, in a word - including
     `failed`, which is how an event that raised while being applied is kept
     rather than lost: the webhook still answers 200 so the provider does not
-    disable it (Buy Me a Coffee turns a webhook off after ten consecutive
-    failures), and this row is where somebody finds it to replay.
+    disable an endpoint that keeps failing, and this row is where somebody
+    finds it to replay. `charged` rows are what the published total sums.
     """
 
     __tablename__ = "support_events"

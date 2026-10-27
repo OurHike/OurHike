@@ -2,12 +2,10 @@
 //
 // STOP IS ONE TAP AND ONE CONFIRM, and then it is our job. The maintainer
 // chose "we stop it for you" (frame A, poll 2026-10-23) over sending a
-// hiker into Buy Me a Coffee's own cancel, which is about eight steps after
-// logging in there (its help article, read 2026-10-23). Buy Me a Coffee
-// publishes no cancel API that the same search found, so the backend marks
-// the request and the founder cancels by hand; the page says exactly that
-// rather than claiming a cancellation that has not happened yet, and the
-// backend emails the hiker once the provider confirms it ended.
+// hiker into the payment provider's own account pages. The backend asks
+// Stripe to stop renewing (or the founder, by email, if Stripe cannot be
+// reached), and emails the hiker once Stripe confirms it; until then the page
+// says it is being cancelled rather than claiming it already is.
 //
 // WHAT THE PAGE OFFERS IS THE SERVER'S ANSWER: `can_stop` and `can_choose`
 // on SupportSummary, so this file keeps no copy of the state machine (the
@@ -175,9 +173,9 @@ export function YourSupport({
         <div className="your-support__card">
           <p className="your-support__amount">Stop requested</p>
           <p className="your-support__meta">
-            {day(server.stop_requested_at)}. We cancel it for you the same day and email
-            you when it&rsquo;s done. If a charge lands after today, reply to that email
-            and we refund it.
+            {day(server.stop_requested_at)}. We&rsquo;re cancelling it for you, and we
+            email you when it&rsquo;s done. If a charge lands after today, reply to that
+            email and we refund it.
           </p>
         </div>
       ) : server !== null && server.status === 'stopped' ? (

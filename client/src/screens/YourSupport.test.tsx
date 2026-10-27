@@ -12,8 +12,8 @@ const ACTIVE: SupportSummary = {
   status: 'active',
   amount_cents: 1000,
   cadence: 'year',
-  provider: 'buymeacoffee',
-  provider_label: 'Buy Me a Coffee',
+  provider: 'stripe',
+  provider_label: 'Stripe',
   email: 'hiker@example.com',
   chosen_at: '2026-10-20T12:00:00Z',
   started_at: '2026-10-21T12:00:00Z',
@@ -79,7 +79,7 @@ describe('Your support', () => {
         can_stop: false,
       },
     })
-    expect(screen.getByText(/We cancel it for you the same day/)).toBeInTheDocument()
+    expect(screen.getByText(/cancelling it for you/)).toBeInTheDocument()
     expect(screen.queryByText(/cancelled it/)).not.toBeInTheDocument()
   })
 
@@ -93,10 +93,10 @@ describe('Your support', () => {
 
   it('names the payment provider on the website and never in the store apps', () => {
     setup()
-    expect(screen.getByText(/via Buy Me a Coffee/)).toBeInTheDocument()
+    expect(screen.getByText(/via Stripe/)).toBeInTheDocument()
     cleanup()
     setup({ native: true })
-    expect(screen.queryByText(/Buy Me a Coffee/)).not.toBeInTheDocument()
+    expect(screen.queryByText(/Stripe/)).not.toBeInTheDocument()
   })
 
   it('says a cleared choice that was never paid needed no cancelling', () => {

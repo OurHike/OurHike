@@ -108,8 +108,8 @@ def _furnish(db, profile_id: str, *, hours_state=HoursState.claimed) -> None:
         SupportChoice(
             profile_id=profile_id,
             email=f"{profile_id}@example.com",
-            provider="buymeacoffee",
-            provider_ref=f"membership-{profile_id}",
+            provider="stripe",
+            provider_ref=f"sub_{profile_id[:8]}",
             amount_cents=1000,
             status=SupportStatus.active,
             started_at=dt.datetime(2026, 10, 1),
@@ -391,7 +391,7 @@ def test_a_support_choice_nobody_paid_for_is_deleted_not_kept(db_session, hiker)
         SupportChoice(
             profile_id=hiker.id,
             email="unpaid@example.com",
-            provider="buymeacoffee",
+            provider="stripe",
             amount_cents=10000,
             status=SupportStatus.pending,
             chosen_at=dt.datetime(2026, 10, 20),

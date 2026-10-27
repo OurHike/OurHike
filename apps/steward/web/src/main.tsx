@@ -29,6 +29,7 @@ if (import.meta.env.VITE_STEWARD_FAKE_ACCOUNT === '1') {
       )
       await api.claimSites(['example-0004'])
       await api.seedSubmittedByOther('example-0005', 'Ridge Runner')
+      await api.seedWorkedByOther('example-0006', 'Blaze Orange')
       render(withAccount(fakeAccount(SIGNED_IN, api), <App />))
     },
   )

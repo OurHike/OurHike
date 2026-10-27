@@ -63,7 +63,7 @@ describe('Claiming from a site page', () => {
     ])
   })
 
-  it('shows who holds a site someone else claimed', async () => {
+  it('shows a site someone else claimed as held, without their name until the work is verified', async () => {
     const api = fakeApi()
     await api.seedSubmittedByOther('example-0004', 'Ridge Runner')
     render(
@@ -73,8 +73,9 @@ describe('Claiming from a site page', () => {
       ),
     )
     expect(
-      await screen.findByText(/by Ridge Runner, and waiting for someone off the crew/),
+      await screen.findByText(/by a volunteer, and waiting for someone off the crew/),
     ).toBeInTheDocument()
+    expect(screen.queryByText(/Ridge Runner/)).not.toBeInTheDocument()
   })
 })
 
@@ -134,6 +135,27 @@ describe('The claim workspace', () => {
     await openClaim()
     await userEvent.click(screen.getByRole('button', { name: 'Invite someone' }))
     expect(await screen.findByText(/#\/join\//)).toBeInTheDocument()
+  })
+})
+
+describe('A claim seen from outside its crew', () => {
+  it('says its photos and report are the crew’s until submitted, not that it has none', async () => {
+    const api = fakeApi()
+    const id = await api.seedWorkedByOther('example-0004')
+    render(
+      withAccount(
+        fakeAccount(SIGNED_IN, api),
+        <ClaimScreen id={id} sites={fixtureSites} prepare={prepare} />,
+      ),
+    )
+    expect(
+      await screen.findByText(
+        /Its photos and report are the crew’s until they submit it/,
+      ),
+    ).toBeInTheDocument()
+    expect(screen.queryByText('No photo')).not.toBeInTheDocument()
+    expect(screen.queryByText('No steps ticked.')).not.toBeInTheDocument()
+    expect(screen.queryByRole('img')).not.toBeInTheDocument()
   })
 })
 

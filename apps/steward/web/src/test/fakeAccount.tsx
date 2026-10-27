@@ -32,6 +32,8 @@ export type FakeApi = StewardApi & {
   calls: string[]
   /** A claim someone else made and submitted, waiting for a reviewer. */
   seedSubmittedByOther(rimsId: string, name?: string): Promise<string>
+  /** A claim someone else is working on, photos taken, not yet submitted. */
+  seedWorkedByOther(rimsId: string, name?: string): Promise<string>
 }
 
 export function fakeApi(): FakeApi {
@@ -63,6 +65,10 @@ export function fakeApi(): FakeApi {
   }
   const claims = new Map<string, ClaimDetail>()
   const invites = new Map<string, string>()
+  // The steward schema's _shows_names: names on a claim are its crew's until
+  // the work is verified (decided 2026-10-27).
+  const showsNames = (claim: ClaimDetail) =>
+    claim.you_are_crew || claim.state === 'verified'
   const summary = (claim: ClaimDetail): ClaimSummary => ({
     id: claim.id,
     rims_id: claim.rims_id,
@@ -70,7 +76,7 @@ export function fakeApi(): FakeApi {
     claimed_at: claim.claimed_at,
     due_at: claim.due_at,
     submitted_at: claim.submitted_at,
-    claimer: claim.claimer,
+    claimer: showsNames(claim) ? claim.claimer : null,
     crew_size: claim.crew.length,
     you_are_crew: claim.you_are_crew,
   })
@@ -84,13 +90,17 @@ export function fakeApi(): FakeApi {
       claim.state === 'verified' ||
       claim.state === 'submitted' ||
       reviewedByYou.has(claim.id)
+    const names = showsNames(claim)
     return {
       ...claim,
       full,
+      claimer: names ? claim.claimer : null,
       crew_size: claim.crew.length,
       you_may_review: claim.state === 'submitted' && !claim.you_are_crew,
       photos: full ? [...claim.photos] : [],
-      crew: full ? claim.crew.map((member) => ({ ...member })) : [],
+      crew: full
+        ? claim.crew.map((member) => ({ ...member, name: names ? member.name : null }))
+        : [],
       steps_done: full ? claim.steps_done : [],
       notes: full ? claim.notes : null,
       review_note: full ? claim.review_note : null,
@@ -242,6 +252,13 @@ export function fakeApi(): FakeApi {
       }
       history.set(club, [entry, ...(history.get(club) ?? [])])
       return view(club)
+    },
+    async seedWorkedByOther(rimsId, name = 'Another volunteer') {
+      const id = await this.seedSubmittedByOther(rimsId, name)
+      const claim = findClaim(id)
+      claim.state = 'in_progress'
+      claim.submitted_at = null
+      return id
     },
     async seedSubmittedByOther(rimsId, name = 'Another volunteer') {
       const claim = newClaim(rimsId, name, false)

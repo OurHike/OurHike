@@ -303,10 +303,17 @@ export function fakeApi(): FakeApi {
       }
       return summary(claim)
     },
-    async uploadPhoto(id, phase, point, photo, clientId) {
-      // As the API does: a photo already stored under this id is not stored again.
+    async uploadPhoto(id, phase, point, photo, { clientId, replaces } = {}) {
+      // As the API does: a photo received under this id before is not stored
+      // again, and a queued photo is not put over a slot that changed since.
       if (clientId && clientIds.has(`${id}/${clientId}`)) return detail(crewClaim(id))
       const claim = crewClaim(id)
+      const current = claim.photos.find((p) => p.phase === phase && p.point === point)
+      if (replaces && point !== null && replaces !== (current?.id ?? 'nothing'))
+        throw new ApiError(
+          412,
+          'Someone photographed this point again after this photo was taken, so it was not put over theirs',
+        )
       if (clientId) clientIds.add(`${id}/${clientId}`)
       claim.photos = claim.photos.filter(
         (p) => point === null || !(p.phase === phase && p.point === point),

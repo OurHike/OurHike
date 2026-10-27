@@ -5,9 +5,10 @@ weekly analysis job, the read-only web app, and sign-in, lists, club weights and
 claims with the API behind them. The API has no host, database or photo bucket yet
 (§11). Phase 4's first part is built too: the app installs, opens with no signal and
 queues photos (#1911); follow-up visits wait on a decision (§11). An adversarial review
-on 2026-10-27 proved thirteen findings; re-checking the fixes, seven more; and a third
-pass, two fixes that held only in part and six problems in the offline layer. All are
-fixed (§10). This file began as the
+on 2026-10-27 proved thirteen findings; re-checking the fixes, seven more; a third
+pass, two fixes that held only in part and six problems in the offline layer; and a
+fourth, that offline stopped working an hour after the signal went, and three smaller
+problems. All are fixed (§10). This file began as the
 deliverable of **#1899 — Plan Campsite Steward, a separate app that ranks the A.T.
 campsites needing restoration and lets volunteers claim them**, written 2026-10-24 to
 2026-10-26 from a planning session with the maintainer: a first-pass analysis, then
@@ -716,6 +717,18 @@ note. In the offline layer:
 | P5 | The service worker's own CSP blocked its fonts cache | The font hosts are in `connect-src`; in Chromium the cache now fills |
 | P6 | Storage could be evicted; reviewers' claims were kept; the basemap style was cached for a month | Persistent storage requested when a photo is queued; only claims you are crew on are kept; the style and TileJSON are revalidated, and only dated tiles are cache-first |
 
+The fourth pass found the third's fixes held, P2's in part, and four new problems:
+
+| # | Finding | Fix |
+|---|---|---|
+| A | About an hour after the signal went, the sign-in token expired and supabase-js answered "no session": the volunteer was shown as signed out, saved claims would not open and photos were not queued | A session supabase-js still keeps stored is a person still signed in; a request that cannot renew it is "no signal", so the claim opens from the phone and photos queue. supabase-js retries a renewal for 25 s with no signal (measured), so a request waits 5 s at most, and none with no network at all |
+| B | Deleting your data reset how many sites you held, while your submitted claims still held theirs | Your own claims count whether or not your place on them is marked left |
+| C | A replay of a photo since replaced or removed put it back; an older queued photo could land over a newer one from another crew phone | Receipts for every photo id a claim has received (migration 0004); a queued photo says what was in its slot when it was taken, and the API refuses it with 412 if that has changed. Phones' clocks are not compared |
+| D | 0004's backfill cannot see accounts that deleted their data and came back under 0003 | Recorded in the migration; no deployment has run 0003 |
+
+It also moved the decode limit (N1) from a lock inside the worker thread to a limiter
+taken before one, so photos waiting to decode hold no thread another request needs.
+
 ## 11. Still open
 
 Each is the maintainer's: a setting, an account or a decision this build cannot make.
@@ -750,7 +763,10 @@ Each is the maintainer's: a setting, an account or a decision this build cannot 
   the phone until its owner decides; a session that ends without a sign-out leaves
   that account's offline data on the phone, unseen by the next account, rather than
   deleting photos nobody else has; the API refuses a photo over 2048 px on either
-  side rather than shrinking it; a new version waits for the person to reload.
+  side rather than shrinking it; a new version waits for the person to reload. From
+  the fourth: a phone stays signed in with no signal for as long as its stored
+  session lasts; a queued photo of a point someone else has photographed since is
+  kept as not sent, and **Try again** puts it over theirs.
 - **When peak season ends, by section of the trail**, which decides when each of the
   three years' follow-up visits opens (§6). Follow-ups are not built until it is set.
 

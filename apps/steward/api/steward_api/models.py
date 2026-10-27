@@ -184,7 +184,6 @@ class Photo(Base):
         CheckConstraint("(phase = 'extra') = (point is null)", name="ck_photo_point_only_on_points"),
         # One before and one after per photo point; a new one replaces it.
         Index("uq_photo_point", "claim_id", "phase", "point", unique=True, postgresql_where=text("point is not null")),
-        Index("uq_photo_client_id", "claim_id", "client_id", unique=True, postgresql_where=text("client_id is not null")),
     )
 
     id: Mapped[uuid.UUID] = mapped_column(Uuid, primary_key=True, default=uuid.uuid4)
@@ -194,10 +193,23 @@ class Photo(Base):
     content_type: Mapped[str] = mapped_column(String(20))
     size_bytes: Mapped[int] = mapped_column(Integer)
     uploaded_by: Mapped[str | None] = mapped_column(ForeignKey("steward_user.id", ondelete="SET NULL"))
-    #: The phone's own id for a photo it queued with no signal, so sending it
-    #: again after a lost response stores nothing new (the third pass's P2).
-    client_id: Mapped[str | None] = mapped_column(String(64))
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+
+
+class PhotoReceipt(Base):
+    """Every photo a phone has delivered to a claim, by the phone's own id for
+    it (web/src/offline.ts newPhotoId), kept after the photo is replaced or
+    removed. A photo sent again under an id already here is not stored again:
+    sending again is what a phone does when an answer was lost (the third
+    pass's P2). Kept on its own rather than on the photo row, because a replay
+    of a photo since replaced brought it back over the newer one (the fourth
+    pass's C, 2026-10-27)."""
+
+    __tablename__ = "photo_receipt"
+
+    claim_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("claim.id", ondelete="CASCADE"), primary_key=True)
+    client_id: Mapped[str] = mapped_column(String(64), primary_key=True)
+    received_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
 
 
 class Hours(Base):

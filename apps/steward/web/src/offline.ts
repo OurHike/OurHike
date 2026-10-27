@@ -42,6 +42,9 @@ function changed(): void {
   window.dispatchEvent(new Event(CHANGED))
 }
 
+/** Fired when the sign-in is renewed after failing for lack of signal (account.tsx). */
+export const SIGNAL_BACK = 'campsite-steward-signal-back'
+
 export function onOfflineChange(listener: () => void): () => void {
   window.addEventListener(CHANGED, listener)
   return () => window.removeEventListener(CHANGED, listener)
@@ -71,6 +74,11 @@ export interface QueuedPhoto {
   bytes: ArrayBuffer
   type: string
   queuedAt: string
+  /** For a before or after photo: the id of the photo in its slot when this
+   *  one was taken, or 'nothing'. Sent with it, so a slot someone has
+   *  photographed since is not overwritten by an older photo (the API
+   *  answers 412, and the photo is kept as refused). */
+  replaces?: string
   /** Set when the API refused it: it is no longer sent, only kept. */
   refused?: Refusal
 }
@@ -136,6 +144,8 @@ export async function queuePhoto(item: {
   claimId: string
   phase: PhotoPhase
   point: number | null
+  /** What was in the slot when it was taken (QueuedPhoto.replaces). */
+  replaces?: string
   photo: Blob
 }): Promise<QueuedPhoto> {
   const queued: QueuedPhoto = {
@@ -144,6 +154,7 @@ export async function queuePhoto(item: {
     claimId: item.claimId,
     phase: item.phase,
     point: item.point,
+    ...(item.replaces && item.point !== null ? { replaces: item.replaces } : {}),
     bytes: await item.photo.arrayBuffer(),
     type: item.photo.type || 'image/jpeg',
     queuedAt: new Date().toISOString(),
@@ -201,9 +212,11 @@ export async function queuedPhotos(
 export const waitingPhotos = (photos: QueuedPhoto[]) => photos.filter((p) => !p.refused)
 export const refusedPhotos = (photos: QueuedPhoto[]) => photos.filter((p) => p.refused)
 
-/** A refused photo goes back in the queue, for its owner's "Try again". */
+/** A refused photo goes back in the queue, for its owner's "Try again": sent
+ *  as it is this time, over a newer photo of its point if there is one,
+ *  since its owner has seen why it was refused. */
 export async function retryPhoto(queued: QueuedPhoto): Promise<void> {
-  const { refused: _, ...waiting } = queued
+  const { refused: _, replaces: __, ...waiting } = queued
   await set(photoKey(queued.userId, queued.id), waiting, db())
   changed()
 }
@@ -279,7 +292,10 @@ async function flushNow(
           queued.phase,
           queued.point,
           queuedBlob(queued),
-          queued.id,
+          {
+            clientId: queued.id,
+            replaces: queued.replaces,
+          },
         )
         await del(photoKey(userId, queued.id), db())
         result.sent += 1

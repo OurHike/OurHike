@@ -4,6 +4,7 @@ from io import BytesIO
 
 import pytest
 from conftest import NEIGHBOUR, SCORES_WELL, SITE, bearer, image
+from fastapi.testclient import TestClient
 from PIL import Image
 from sqlalchemy import update
 
@@ -418,8 +419,12 @@ def test_someone_who_left_by_deleting_their_data_can_be_invited_back(client):
 # --- A photo sent twice -------------------------------------------------------------
 
 
-def sent(client, claim_id, phase, point=None, client_id="0001761550000000-000001-abc123", who="claimer"):
-    params = {"phase": phase, "client_id": client_id} | ({"point": point} if point is not None else {})
+def sent(client, claim_id, phase, point=None, client_id="0001761550000000-000001-abc123", who="claimer", replaces=None):
+    params = (
+        {"phase": phase, "client_id": client_id}
+        | ({"point": point} if point is not None else {})
+        | ({"replaces": replaces} if replaces is not None else {})
+    )
     return client.post(
         f"/claims/{claim_id}/photos", params=params, content=JPEG, headers={**bearer(who), "Content-Type": "image/jpeg"}
     )
@@ -456,13 +461,121 @@ def test_two_copies_of_one_queued_photo_racing_in_store_one(client, app):
     claim_id = uuid.UUID(claim(client))
     with app.state.sessionmaker() as db:
         user = db.get(StewardUser, "claimer")
-    first = _store_photo(app, app.state.photos, user, claim_id, "extra", None, "racing", JPEG)
-    second = _store_photo(app, app.state.photos, user, claim_id, "extra", None, "racing", JPEG)
+    first = _store_photo(app, app.state.photos, user, claim_id, "extra", None, "racing", None, JPEG)
+    second = _store_photo(app, app.state.photos, user, claim_id, "extra", None, "racing", None, JPEG)
     assert len(first.photos) == len(second.photos) == 1
     assert len(app.state.photos.objects) == 1
+
+
+def test_a_replay_of_a_photo_since_replaced_does_not_put_it_back(client):
+    # The fourth pass's C: the receipt went with the photo's row, so a replay
+    # of X after a newer Y took its slot was stored again, over Y.
+    claim_id = claim(client)
+    assert sent(client, claim_id, "before", 1, client_id="photo-x").status_code == 201
+    newer = sent(client, claim_id, "before", 1, client_id="photo-y").json()["photos"][0]["id"]
+    replay = sent(client, claim_id, "before", 1, client_id="photo-x")
+    assert replay.status_code == 200
+    assert [p["id"] for p in replay.json()["photos"]] == [newer]
+
+
+def test_a_replay_of_a_removed_extra_does_not_bring_it_back(client):
+    claim_id = claim(client)
+    extra = sent(client, claim_id, "extra", client_id="extra-x").json()["photos"][0]["id"]
+    client.delete(f"/claims/{claim_id}/photos/{extra}", headers=bearer("claimer"))
+    replay = sent(client, claim_id, "extra", client_id="extra-x")
+    assert replay.status_code == 200 and replay.json()["photos"] == []
+
+
+def test_a_queued_photo_taken_before_its_point_was_photographed_again_is_refused_not_put_over(client, app):
+    # Another crew phone delivered a newer photo of the point while this one
+    # waited for signal. Clocks are not compared: the phone says what was in
+    # the slot when it took the photo.
+    claim_id = claim(client)
+    join(client, claim_id, "friend")
+    friends = sent(client, claim_id, "after", 1, client_id="friend-photo", who="friend").json()["photos"][0]["id"]
+    stale = sent(client, claim_id, "after", 1, client_id="my-old-photo", replaces="nothing")
+    assert stale.status_code == 412
+    detail = client.get(f"/claims/{claim_id}", headers=bearer("claimer")).json()
+    assert [p["id"] for p in detail["photos"]] == [friends]
+    assert len(app.state.photos.objects) == 1
+
+    taken_over_it = sent(client, claim_id, "after", 1, client_id="my-new-photo", replaces=friends)
+    assert taken_over_it.status_code == 201
+    assert [p["id"] for p in taken_over_it.json()["photos"]] != [friends]
+
+
+def test_deleting_your_data_does_not_reset_how_many_sites_you_hold(client, monkeypatch):
+    # The fourth pass's B: claim to the cap, submit, delete your data, claim
+    # to the cap again, while the submitted claims still hold their sites.
+    monkeypatch.setattr(limits, "LIVE_CLAIMS_PER_USER", 1)
+    submitted(client, who="hoarder", site=SITE)
+    assert client.delete("/me", headers=bearer("hoarder")).status_code == 204
+    again = client.post("/claims", json={"rims_ids": [NEIGHBOUR]}, headers=bearer("hoarder"))
+    assert again.status_code == 409 and "at most 1" in again.json()["detail"]
+
+
+def test_a_crew_place_left_on_someone_elses_claim_does_not_count_against_you(client, monkeypatch):
+    monkeypatch.setattr(limits, "LIVE_CLAIMS_PER_USER", 1)
+    claim_id = claim(client)
+    join(client, claim_id, "leaver")
+    client.delete("/me", headers=bearer("leaver"))
+    assert client.post("/claims", json={"rims_ids": [NEIGHBOUR]}, headers=bearer("leaver")).status_code == 201
 
 
 @pytest.mark.parametrize("bad", ["", "a b", "x" * 65, "../../etc", "é"])
 def test_a_client_id_that_is_not_a_plain_token_is_refused(client, bad):
     claim_id = claim(client)
     assert sent(client, claim_id, "extra", client_id=bad).status_code == 422
+
+
+@pytest.mark.parametrize("bad", ["something", "1234", "../nothing"])
+def test_replaces_is_a_photo_id_or_nothing(client, bad):
+    claim_id = claim(client)
+    assert sent(client, claim_id, "before", 1, replaces=bad).status_code == 422
+
+
+def test_no_more_photos_decode_at_once_than_the_limit(app, monkeypatch):
+    # The fourth pass, reasoned: with the lock inside the worker thread,
+    # uploads waiting to decode each held a thread every other route shares.
+    # The limiter is now taken before the thread; this checks it limits.
+    import asyncio
+    import threading
+    import time
+
+    import httpx
+
+    from steward_api.routes import claims as claims_routes
+
+    running, most = [0], [0]
+    lock = threading.Lock()
+
+    def slow(body):
+        with lock:
+            running[0] += 1
+            most[0] = max(most[0], running[0])
+        time.sleep(0.2)
+        with lock:
+            running[0] -= 1
+        return JPEG
+
+    monkeypatch.setattr(claims_routes, "reencode", slow)
+    claim_id = claim(TestClient(app))
+
+    async def upload_six():
+        transport = httpx.ASGITransport(app=app)
+        async with httpx.AsyncClient(transport=transport, base_url="http://test") as http:
+            return await asyncio.gather(
+                *(
+                    http.post(
+                        f"/claims/{claim_id}/photos",
+                        params={"phase": "extra"},
+                        content=JPEG,
+                        headers={**bearer("claimer"), "Content-Type": "image/jpeg"},
+                    )
+                    for _ in range(6)
+                )
+            )
+
+    responses = asyncio.run(upload_six())
+    assert [r.status_code for r in responses] == [201] * 6
+    assert most[0] == limits.REENCODE_AT_ONCE

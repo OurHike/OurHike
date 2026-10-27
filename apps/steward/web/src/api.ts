@@ -117,14 +117,17 @@ export interface StewardApi {
   releaseClaim(id: string): Promise<ClaimDetail>
   invite(id: string): Promise<{ token: string }>
   joinClaim(token: string): Promise<ClaimSummary>
-  /** `clientId` is the phone's own id for a queued photo (src/offline.ts): the
-   *  API stores a photo once however many times it is sent under one id. */
+  /** `clientId` is the phone's own id for the photo (src/offline.ts): the API
+   *  stores a photo once however many times it is sent under one id.
+   *  `replaces`, for a queued before or after photo, is the id of the photo
+   *  in its slot when it was taken, or 'nothing': if someone has photographed
+   *  the point since, the API answers 412 rather than put this one over theirs. */
   uploadPhoto(
     id: string,
     phase: PhotoPhase,
     point: number | null,
     photo: Blob,
-    clientId?: string,
+    send?: { clientId?: string; replaces?: string },
   ): Promise<ClaimDetail>
   deletePhoto(id: string, photoId: string): Promise<ClaimDetail>
   logHours(id: string, hours: number): Promise<ClaimDetail>
@@ -208,12 +211,13 @@ export function createApi(
     releaseClaim: (id) => call('POST', `${claimPath(id)}/release`),
     invite: (id) => call('POST', `${claimPath(id)}/invite`),
     joinClaim: (token) => call('POST', '/claims/join', { token }),
-    uploadPhoto: (id, phase, point, photo, clientId) =>
-      call(
-        'POST',
-        `${claimPath(id)}/photos?phase=${phase}${point === null ? '' : `&point=${point}`}${clientId ? `&client_id=${encodeURIComponent(clientId)}` : ''}`,
-        photo,
-      ),
+    uploadPhoto: (id, phase, point, photo, send = {}) => {
+      const query = new URLSearchParams({ phase })
+      if (point !== null) query.set('point', String(point))
+      if (send.clientId) query.set('client_id', send.clientId)
+      if (send.replaces) query.set('replaces', send.replaces)
+      return call('POST', `${claimPath(id)}/photos?${query}`, photo)
+    },
     deletePhoto: (id, photoId) =>
       call('DELETE', `${claimPath(id)}/photos/${encodeURIComponent(photoId)}`),
     logHours: (id, hours) => call('PUT', `${claimPath(id)}/hours`, { hours }),

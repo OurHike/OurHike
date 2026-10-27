@@ -94,7 +94,7 @@ describe('flushPhotos', () => {
       'photo before 1 image/jpeg',
       'photo after 1 image/jpeg',
     ])
-    expect(upload.mock.calls[0][4]).toBe(first.id)
+    expect(upload.mock.calls[0][4]?.clientId).toBe(first.id)
     expect(await queuedPhotos(ME)).toEqual([])
   })
 
@@ -282,7 +282,7 @@ it('a photo sent straight away whose answer was lost keeps the id it was first s
   const api = fakeApi()
   const [claim] = await api.claimSites(['example-0004'])
   const id = newPhotoId()
-  await api.uploadPhoto(claim.id, 'extra', null, jpeg(), id)
+  await api.uploadPhoto(claim.id, 'extra', null, jpeg(), { clientId: id })
   await queuePhoto({
     id,
     userId: ME,
@@ -293,6 +293,30 @@ it('a photo sent straight away whose answer was lost keeps the id it was first s
   })
   await flushPhotos(api, ME)
   expect((await api.claim(claim.id)).photos).toHaveLength(1)
+})
+
+it('keeps a queued photo of a point someone photographed since, and Try again sends it over theirs', async () => {
+  // The fourth pass's C: an older photo queued on one crew phone, delivered
+  // after a newer one from another, replaced the newer.
+  const api = fakeApi()
+  const [claim] = await api.claimSites(['example-0004'])
+  await queuePhoto({
+    userId: ME,
+    claimId: claim.id,
+    phase: 'after',
+    point: 1,
+    replaces: 'nothing',
+    photo: jpeg(),
+  })
+  const theirs = (await api.uploadPhoto(claim.id, 'after', 1, jpeg())).photos[0].id
+
+  const result = await flushPhotos(api, ME)
+  expect(result.refused.map((p) => p.refused?.status)).toEqual([412])
+  expect((await api.claim(claim.id)).photos.map((p) => p.id)).toEqual([theirs])
+
+  await retryPhoto((await queuedPhotos(ME))[0])
+  expect((await flushPhotos(api, ME)).sent).toBe(1)
+  expect((await api.claim(claim.id)).photos.map((p) => p.id)).not.toEqual([theirs])
 })
 
 describe('one slot, one photo', () => {

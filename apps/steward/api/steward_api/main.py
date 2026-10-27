@@ -7,6 +7,7 @@ import threading
 import time
 from collections.abc import Callable
 
+import anyio
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
@@ -41,6 +42,11 @@ def create_app(
     app.state.analysis = analysis or AnalysisDirectory.from_url(settings.sites_url)
     #: None when this deployment has no photo bucket: uploads then answer 503.
     app.state.photos = photos if photos is not None else settings.photo_storage()
+    #: Photos decoded at once (photos.reencode). Taken before a worker thread
+    #: is, so photos waiting their turn hold none: with a lock inside the
+    #: thread instead, a slow decode backed up into every other route (the
+    #: adversarial review's fourth pass, reasoned).
+    app.state.reencoding = anyio.CapacityLimiter(limits.REENCODE_AT_ONCE)
 
     # Its own pool of one connection, so health checks never queue for a
     # connection a real request needs (the re-check's N6).

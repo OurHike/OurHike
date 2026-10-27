@@ -80,9 +80,17 @@ PHOTO_LONG_SIDE = 2048
 PHOTO_IDLE_SECONDS = 20
 PHOTO_READ_SECONDS = 300
 PHOTOS_PER_CLAIM = 40
-#: The phone's id for a queued photo (web/src/offline.ts nextId): letters,
+#: The phone's id for a photo (web/src/offline.ts newPhotoId): letters,
 #: digits, - and _, so it can sit in a query string unescaped.
 CLIENT_ID_PATTERN = r"^[A-Za-z0-9_-]{1,64}$"
+#: What a queued photo's `replaces` may say: a photo id, or that its slot was empty.
+REPLACES_PATTERN = r"^(nothing|[0-9a-fA-F-]{36})$"
+#: Photos decoded at once, process-wide (main.create_app's limiter). Each holds
+#: its decoded pixels while it runs (about 13 MB at the size cap); the rest
+#: wait without holding a worker thread. `@unvalidated`: two keeps a second
+#: photo from waiting behind the first on a small instance; nothing has
+#: measured the instance.
+REENCODE_AT_ONCE = 2
 #: Hours one person logs on one claim, across all their visits to it.
 HOURS_MAX = 72
 

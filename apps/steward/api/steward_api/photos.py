@@ -19,7 +19,6 @@ write steward photos into OurHike's buckets.
 from __future__ import annotations
 
 import logging
-import threading
 import uuid
 from functools import cached_property
 from io import BytesIO
@@ -123,13 +122,6 @@ class UnusablePhoto(ValueError):
     pass
 
 
-#: How many photos are re-encoded at once, process-wide. Each holds its decoded
-#: pixels while it runs (up to about 13 MB at the size cap); the rest wait.
-#: `@unvalidated`: two keeps a second photo from waiting behind the first on
-#: a small instance; nothing has measured the instance.
-_REENCODING = threading.BoundedSemaphore(2)
-
-
 def reencode(body: bytes) -> bytes:
     """The photo decoded and drawn again as a plain JPEG: upright, and carrying
     no metadata at all, because only pixels are copied into a fresh image.
@@ -146,28 +138,28 @@ def reencode(body: bytes) -> bytes:
     687 MB; four at once took 2.7 GB. A cap on width x height then let a
     1 x 4,194,304 px PNG through at 140 MB (the third pass). So: each side
     is capped at what the app itself sends (limits.PHOTO_LONG_SIDE), checked
-    from the header before decoding, and at most two photos decode at once.
-    The allocator's own share is the Dockerfile's MALLOC_ARENA_MAX.
+    from the header before decoding, and the caller decodes at most
+    limits.REENCODE_AT_ONCE at a time (routes/claims.upload_photo). The
+    allocator's own share is the Dockerfile's MALLOC_ARENA_MAX.
 
     Raises UnusablePhoto for anything Pillow cannot read as a JPEG, PNG or WebP,
     or with a side longer than the cap.
     """
     from PIL import Image, ImageOps, UnidentifiedImageError
 
-    with _REENCODING:
-        try:
-            with Image.open(BytesIO(body), formats=["JPEG", "PNG", "WEBP"]) as image:
-                # Checked from the header, before a pixel is decoded: the size a
-                # decompression bomb claims is the size it would take.
-                if max(image.width, image.height) > limits.PHOTO_LONG_SIDE:
-                    raise UnusablePhoto("That photo is larger than the app sends. Upload it from the app.")
-                upright = ImageOps.exif_transpose(image).convert("RGB")
-                clean = Image.new("RGB", upright.size)
-                clean.paste(upright)
-                out = BytesIO()
-                clean.save(out, "JPEG", quality=85, optimize=True)
-                return out.getvalue()
-        except UnusablePhoto:
-            raise
-        except (UnidentifiedImageError, OSError, ValueError, Image.DecompressionBombError) as exc:
-            raise UnusablePhoto("That file is not a photo this app can read") from exc
+    try:
+        with Image.open(BytesIO(body), formats=["JPEG", "PNG", "WEBP"]) as image:
+            # Checked from the header, before a pixel is decoded: the size a
+            # decompression bomb claims is the size it would take.
+            if max(image.width, image.height) > limits.PHOTO_LONG_SIDE:
+                raise UnusablePhoto("That photo is larger than the app sends. Upload it from the app.")
+            upright = ImageOps.exif_transpose(image).convert("RGB")
+            clean = Image.new("RGB", upright.size)
+            clean.paste(upright)
+            out = BytesIO()
+            clean.save(out, "JPEG", quality=85, optimize=True)
+            return out.getvalue()
+    except UnusablePhoto:
+        raise
+    except (UnidentifiedImageError, OSError, ValueError, Image.DecompressionBombError) as exc:
+        raise UnusablePhoto("That file is not a photo this app can read") from exc

@@ -24,7 +24,7 @@ import {
 } from 'react'
 import type { SupabaseClient } from '@supabase/supabase-js'
 import { createApi, type StewardApi } from './api'
-import { clearOffline } from './offline'
+import { SIGNAL_BACK, clearOffline } from './offline'
 
 const SUPABASE_URL: string = import.meta.env.VITE_SUPABASE_URL ?? ''
 const SUPABASE_ANON_KEY: string = import.meta.env.VITE_SUPABASE_ANON_KEY ?? ''
@@ -84,6 +84,97 @@ function supabase(): Promise<SupabaseClient> {
 }
 
 /**
+ * The account of the session supabase-js keeps in storage, read directly.
+ *
+ * supabase-js answers "no session" once the access token has expired and it
+ * cannot reach Supabase to renew it, though it keeps the session stored: it
+ * removes a stored session only when Supabase refuses it, or when this
+ * browser signs out (auth-js 2.118, GoTrueClient's refresh: a retryable fetch
+ * error leaves it in place). So a session still stored is a person still
+ * signed in, whose sign-in waits for signal. Before the adversarial review's
+ * fourth pass (A, 2026-10-27), that person was shown as signed out about an
+ * hour after the signal went: their saved claims would not open and new
+ * photos were not queued, which is the whole of what offline is for.
+ */
+export function storedUser(
+  storage: Pick<Storage, 'getItem'>,
+): { id: string; email: string | null } | null {
+  const stored = storedSession(storage)
+  return stored ? { id: stored.userId, email: stored.email } : null
+}
+
+function storedSession(
+  storage: Pick<Storage, 'getItem'>,
+): { userId: string; email: string | null; expiresAt: number } | null {
+  try {
+    const raw = storage.getItem(AUTH_STORAGE_KEY)
+    if (!raw) return null
+    const parsed = JSON.parse(raw) as {
+      expires_at?: unknown
+      user?: { id?: unknown; email?: unknown }
+    }
+    const user = parsed.user
+    if (typeof user?.id !== 'string') return null
+    return {
+      userId: user.id,
+      email: typeof user.email === 'string' ? user.email : null,
+      expiresAt: typeof parsed.expires_at === 'number' ? parsed.expires_at : 0,
+    }
+  } catch {
+    return null
+  }
+}
+
+/** How long a request waits for supabase-js to renew an expired sign-in
+ *  before counting as no signal. supabase-js itself retries for about 25 s
+ *  (measured 2026-10-27: 25.4 s and eight attempts, auth-js 2.118, every
+ *  request failing), and a photo taken on the trail should be queued well
+ *  before that. `@unvalidated`: a renewal with signal takes one round trip,
+ *  which nobody has timed on a weak trailhead signal. */
+export const RENEW_WAIT_MS = 5000
+
+/**
+ * The access token for the API, or null when nobody is signed in.
+ *
+ * With a session stored that cannot be renewed for lack of signal, a
+ * TypeError, which is what fetch throws with no connection: offline.isOffline
+ * reads it as no signal, so a claim opens from its saved copy and a photo is
+ * queued, rather than the volunteer being told to sign in on the trail. With
+ * no network at all, supabase-js is not asked; with some, it gets
+ * RENEW_WAIT_MS to renew, and carries on renewing after that.
+ */
+export async function accessToken(
+  auth: { getSession(): Promise<{ data: { session: { access_token: string } | null } }> },
+  storage: Pick<Storage, 'getItem'>,
+  waitMs = RENEW_WAIT_MS,
+): Promise<string | null> {
+  const stored = storedSession(storage)
+  const expired = stored !== null && stored.expiresAt * 1000 <= Date.now()
+  const noSignal = () => new TypeError('No signal to renew the sign-in.')
+  if (expired && navigator.onLine === false) throw noSignal()
+  let timer: ReturnType<typeof setTimeout> | undefined
+  const stalled = new Promise<'stalled'>((resolve) => {
+    timer = setTimeout(() => resolve('stalled'), waitMs)
+  })
+  const answer = await Promise.race([auth.getSession(), stalled])
+  clearTimeout(timer)
+  if (answer === 'stalled') throw noSignal()
+  if (answer.data.session) return answer.data.session.access_token
+  if (storedSession(storage)) throw noSignal()
+  return null
+}
+
+/** Who is signed in: the session supabase-js gives, or else the one it keeps stored. */
+function sessionOf(user: { id: string; email?: string } | null | undefined): Session {
+  const who = user
+    ? { id: user.id, email: user.email ?? null }
+    : storedUser(window.localStorage)
+  return who
+    ? { state: 'signed_in', userId: who.id, email: who.email }
+    : { state: 'signed_out' }
+}
+
+/**
  * Signs this browser out, signal or none.
  *
  * Only this browser ('local'): the Supabase project is OurHike's, and the
@@ -102,10 +193,15 @@ export async function endSession(
   storage: Pick<Storage, 'removeItem'>,
 ): Promise<void> {
   let failed: boolean
-  try {
-    failed = Boolean((await auth.signOut({ scope: 'local' })).error)
-  } catch {
+  if (navigator.onLine === false) {
+    // supabase-js would spend about 25 s retrying before it gave up.
     failed = true
+  } else {
+    try {
+      failed = Boolean((await auth.signOut({ scope: 'local' })).error)
+    } catch {
+      failed = true
+    }
   }
   if (!failed) return
   for (const suffix of ['', '-code-verifier', '-user']) {
@@ -127,9 +223,16 @@ function plain(message: string): string {
 }
 
 export function AccountProvider({ children }: { children: ReactNode }) {
-  const [session, setSession] = useState<Session>(
-    ACCOUNTS_CONFIGURED ? { state: 'loading' } : { state: 'off' },
-  )
+  // The stored account straight away, when there is one: supabase-js can take
+  // 25 s to say anything with no signal (RENEW_WAIT_MS), and the phone is
+  // signed in all along.
+  const [session, setSession] = useState<Session>(() => {
+    if (!ACCOUNTS_CONFIGURED) return { state: 'off' }
+    const who = storedUser(window.localStorage)
+    return who
+      ? { state: 'signed_in', userId: who.id, email: who.email }
+      : { state: 'loading' }
+  })
 
   useEffect(() => {
     if (!ACCOUNTS_CONFIGURED) return
@@ -138,21 +241,14 @@ export function AccountProvider({ children }: { children: ReactNode }) {
     void supabase().then((sb) => {
       if (!live) return
       void sb.auth.getSession().then(({ data }) => {
-        if (!live) return
-        const user = data.session?.user
-        setSession(
-          user
-            ? { state: 'signed_in', userId: user.id, email: user.email ?? null }
-            : { state: 'signed_out' },
-        )
+        if (live) setSession(sessionOf(data.session?.user))
       })
-      const { data } = sb.auth.onAuthStateChange((_event, next) => {
-        const user = next?.user
+      const { data } = sb.auth.onAuthStateChange((event, next) => {
         setSession(
-          user
-            ? { state: 'signed_in', userId: user.id, email: user.email ?? null }
-            : { state: 'signed_out' },
+          event === 'SIGNED_OUT' ? { state: 'signed_out' } : sessionOf(next?.user),
         )
+        // A renewed sign-in means the signal is back: photos waiting can go.
+        if (event === 'TOKEN_REFRESHED') window.dispatchEvent(new Event(SIGNAL_BACK))
       })
       unsubscribe = () => data.subscription.unsubscribe()
     })
@@ -164,8 +260,7 @@ export function AccountProvider({ children }: { children: ReactNode }) {
 
   const account = useMemo<Account>(() => {
     if (!ACCOUNTS_CONFIGURED) return OFF
-    const token = async () =>
-      (await (await supabase()).auth.getSession()).data.session?.access_token ?? null
+    const token = async () => accessToken((await supabase()).auth, window.localStorage)
     return {
       session,
       api: session.state === 'signed_in' ? createApi(API_URL, token) : null,

@@ -27,6 +27,7 @@ import {
   queuedPhotos,
   refusedPhotos,
   retryPhoto,
+  SIGNAL_BACK,
   saveClaim,
   savedClaim,
   waitingPhotos,
@@ -590,11 +591,15 @@ function Workspace({
     void queuedPhotos(userId, claim.id).then((found) => {
       if (live && waitingPhotos(found).length && navigator.onLine !== false) void send()
     })
+    // The browser's online event, and a sign-in renewed after the signal came
+    // back, which is the surer sign of the two that the API can be reached.
     const online = () => void send()
     window.addEventListener('online', online)
+    window.addEventListener(SIGNAL_BACK, online)
     return () => {
       live = false
       window.removeEventListener('online', online)
+      window.removeEventListener(SIGNAL_BACK, online)
     }
   }, [userId, claim.id, send])
 
@@ -605,13 +610,28 @@ function Workspace({
       const id = newPhotoId()
       await act(async () => {
         try {
-          const updated = await api.uploadPhoto(claim.id, phase, point, photo, id)
+          const updated = await api.uploadPhoto(claim.id, phase, point, photo, {
+            clientId: id,
+          })
           // Any older photo of this slot still waiting would replace this one.
           await dropWaiting(userId, claim.id, phase, point)
           return updated
         } catch (error) {
           if (!isOffline(error)) throw error
-          await queuePhoto({ id, userId, claimId: claim.id, phase, point, photo })
+          // What the slot held as this phone last saw it: if someone else
+          // photographs the point before this is sent, theirs is kept.
+          const replaces =
+            claim.photos.find((p) => p.phase === phase && p.point === point)?.id ??
+            'nothing'
+          await queuePhoto({
+            id,
+            userId,
+            claimId: claim.id,
+            phase,
+            point,
+            photo,
+            replaces,
+          })
           setNotice(
             'No signal: the photo is saved on this phone and will be sent when there is signal.',
           )

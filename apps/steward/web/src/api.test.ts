@@ -1,5 +1,6 @@
 import { expect, it, vi } from 'vitest'
 import { ApiError, createApi } from './api'
+import { isOffline } from './offline'
 
 function respond(status: number, body?: unknown) {
   return new Response(body === undefined ? null : JSON.stringify(body), { status })
@@ -55,4 +56,32 @@ it('createApi sends a photo as the raw body with its own type', async () => {
   expect(url).toBe('https://api.example/claims/claim-1/photos?phase=before&point=1')
   expect((init.headers as Record<string, string>)['Content-Type']).toBe('image/jpeg')
   expect(init.body).toBe(photo)
+})
+
+it("createApi sends a queued photo's id and the slot it was taken over", async () => {
+  const fetchImpl = vi.fn(async () => respond(201, {}))
+  const api = createApi('https://api.example', async () => 't', fetchImpl)
+  await api.uploadPhoto('claim-1', 'after', 2, new Blob(['x']), {
+    clientId: '0001761550000000-000001-abc123',
+    replaces: 'nothing',
+  })
+  const [url] = fetchImpl.mock.calls[0] as unknown as [string]
+  expect(url).toBe(
+    'https://api.example/claims/claim-1/photos?phase=after&point=2&client_id=0001761550000000-000001-abc123&replaces=nothing',
+  )
+})
+
+it('a sign-in that cannot be renewed for lack of signal reaches a screen as no signal, so it falls back to what the phone kept', async () => {
+  // The fourth pass's A: it reached the screen as 401, "Sign in first."
+  const fetchImpl = vi.fn()
+  const api = createApi(
+    'https://api.example',
+    async () => {
+      throw new TypeError('No signal to renew the sign-in.')
+    },
+    fetchImpl,
+  )
+  const failure = await api.claim('claim-1').catch((error: unknown) => error)
+  expect(isOffline(failure)).toBe(true)
+  expect(fetchImpl).not.toHaveBeenCalled()
 })

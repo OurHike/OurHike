@@ -36,9 +36,10 @@ import secrets
 import uuid
 from datetime import UTC, datetime, timedelta
 
+import anyio
 from fastapi import APIRouter, Depends, FastAPI, HTTPException, Path, Query, Request, Response, status
 from fastapi.concurrency import run_in_threadpool
-from sqlalchemy import func, select, update
+from sqlalchemy import func, or_, select, update
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
@@ -47,7 +48,7 @@ from steward_api.analysis import AnalysisUnavailable
 from steward_api.auth import current_user
 from steward_api.db import get_db
 from steward_api.locks import lock_user
-from steward_api.models import HOLDING_STATES, Claim, ClaimMember, Hours, Photo, StewardUser
+from steward_api.models import HOLDING_STATES, Claim, ClaimMember, Hours, Photo, PhotoReceipt, StewardUser
 from steward_api.photos import NOT_SET_UP, PhotoStorageUnavailable, PhotoStore, UnusablePhoto, photo_key, reencode
 from steward_api.schemas import (
     ClaimCreate,
@@ -216,13 +217,20 @@ def claim_sites(
             f"You rejected the last claim on {', '.join(sorted(set(rejected)))}, so someone else gets the next "
             f"{limits.REJECTER_WAIT_DAYS} days to claim it",
         )
-    # Places left by deleting one's data do not count: that account starts
-    # empty (routes/me.delete_me), as a second address would anyway.
+    # A place left by deleting one's data still counts on a claim this account
+    # made: its submitted claims hold their sites until reviewed. Counting
+    # only live places let one sign-in hold 10 sites, delete its data, claim
+    # 10 more, and repeat (the fourth pass's B, 2026-10-27). Other crews' claims
+    # it left do not count: it is no longer on them.
     held_by_you = db.scalar(
         select(func.count())
         .select_from(Claim)
         .join(ClaimMember, ClaimMember.claim_id == Claim.id)
-        .where(ClaimMember.user_id == user.id, ClaimMember.left_at.is_(None), Claim.state.in_(HOLDING_STATES))
+        .where(
+            ClaimMember.user_id == user.id,
+            or_(ClaimMember.left_at.is_(None), Claim.claimer_id == user.id),
+            Claim.state.in_(HOLDING_STATES),
+        )
     )
     if (held_by_you or 0) + len(sites) > limits.LIVE_CLAIMS_PER_USER:
         raise HTTPException(
@@ -350,17 +358,25 @@ async def upload_photo(
     phase: str = Query(pattern="^(before|after|extra)$"),
     point: int | None = Query(default=None),
     client_id: str | None = Query(default=None, pattern=limits.CLIENT_ID_PATTERN),
+    replaces: str | None = Query(default=None, pattern=limits.REPLACES_PATTERN),
     user: StewardUser = Depends(current_user),
 ) -> ClaimDetail:
     """The photo is the raw request body. One before and one after per photo
     point (a new one replaces the old), and any number of extras up to the cap.
     The first before photo moves a claim from claimed to in progress.
 
-    `client_id` is the phone's own id for a photo it queued with no signal.
-    A photo already on the claim under that id is not stored again: the
-    answer is the claim as it stands, with 200 rather than 201. Without it, a
-    response lost after the photo was stored sent the photo a second time,
-    and extras piled up toward the cap (the third pass's P2, 2026-10-27).
+    `client_id` is the phone's own id for the photo. A photo this claim has
+    received under that id before is not stored again, even if it has since
+    been replaced or removed: the answer is the claim as it stands, with 200
+    rather than 201 (models.PhotoReceipt; the third pass's P2 and the fourth
+    pass's C, 2026-10-27).
+
+    `replaces`, for a before or after photo the phone queued with no signal:
+    the id of the photo that was in its slot when it was taken, or
+    `nothing`. If the slot holds anything else now, someone photographed that
+    point again in the meantime, and the older photo is refused with 412
+    rather than put over the newer one; the phone keeps it. Phones' clocks
+    are not trusted to say which photo is newer.
 
     In this order, each step holding nothing the next does not need (the
     adversarial review's finding 1, 2026-10-27): the caller is checked against
@@ -374,7 +390,7 @@ async def upload_photo(
         raise HTTPException(
             status.HTTP_422_UNPROCESSABLE_CONTENT, "A before or after photo needs photo point 1 or 2; an extra needs none"
         )
-    already = await run_in_threadpool(_check_upload, request.app, store, user, claim_id, client_id)
+    already = await run_in_threadpool(_check_upload, request.app, store, user, claim_id, client_id, phase, point, replaces)
     body = bytearray()
     try:
         async with asyncio.timeout(limits.PHOTO_READ_SECONDS):
@@ -397,32 +413,54 @@ async def upload_photo(
         response.status_code = status.HTTP_200_OK
         return already
     try:
-        jpeg = await run_in_threadpool(reencode, bytes(body))
+        # The limiter is taken before a worker thread is, so photos waiting
+        # their turn to decode hold no thread another request needs.
+        jpeg = await anyio.to_thread.run_sync(reencode, bytes(body), limiter=request.app.state.reencoding)
     except UnusablePhoto as exc:
         raise HTTPException(status.HTTP_415_UNSUPPORTED_MEDIA_TYPE, str(exc)) from exc
-    return await run_in_threadpool(_store_photo, request.app, store, user, claim_id, phase, point, client_id, jpeg)
+    return await run_in_threadpool(_store_photo, request.app, store, user, claim_id, phase, point, client_id, replaces, jpeg)
 
 
-def _sent_before(claim: Claim, user: StewardUser, client_id: str | None) -> bool:
+def _sent_before(db: Session, claim: Claim, user: StewardUser, client_id: str | None) -> bool:
     """This crew member's phone already delivered this photo. Asked before the
     claim's state: a photo that arrived before the claim was submitted is
     still there afterwards, and the phone should hear that, not a refusal."""
-    return client_id is not None and user.id in _crew_ids(claim) and any(photo.client_id == client_id for photo in claim.photos)
+    return client_id is not None and user.id in _crew_ids(claim) and db.get(PhotoReceipt, (claim.id, client_id)) is not None
+
+
+def _check_slot(claim: Claim, phase: str, point: int | None, replaces: str | None) -> None:
+    """Refuses a before or after photo taken over a slot that has changed since."""
+    if replaces is None or point is None:
+        return
+    current = next((p for p in claim.photos if p.phase == phase and p.point == point), None)
+    if replaces != (str(current.id) if current else "nothing"):
+        raise HTTPException(
+            status.HTTP_412_PRECONDITION_FAILED,
+            "Someone photographed this point again after this photo was taken, so it was not put over theirs",
+        )
 
 
 def _check_upload(
-    app: FastAPI, store: PhotoStore, user: StewardUser, claim_id: uuid.UUID, client_id: str | None
+    app: FastAPI,
+    store: PhotoStore,
+    user: StewardUser,
+    claim_id: uuid.UUID,
+    client_id: str | None,
+    phase: str,
+    point: int | None,
+    replaces: str | None,
 ) -> ClaimDetail | None:
     """Refuses an upload that could not be kept, before its body is read.
     Returns the claim instead when this photo is already on it."""
     with app.state.sessionmaker() as db:
         release_overdue(db)
         claim = _claim(db, claim_id)
-        if _sent_before(claim, user, client_id):
+        if _sent_before(db, claim, user, client_id):
             return _detail(claim, user, db, store)
         claim = _crew_claim(db, claim_id, user)
         if len(claim.photos) >= limits.PHOTOS_PER_CLAIM:
             raise HTTPException(status.HTTP_409_CONFLICT, f"A claim holds at most {limits.PHOTOS_PER_CLAIM} photos")
+        _check_slot(claim, phase, point, replaces)
         return None
 
 
@@ -434,6 +472,7 @@ def _store_photo(
     phase: str,
     point: int | None,
     client_id: str | None,
+    replaces: str | None,
     jpeg: bytes,
 ) -> ClaimDetail:
     photo_id = uuid.uuid4()
@@ -448,7 +487,7 @@ def _store_photo(
         try:
             release_overdue(db)
             claim = db.get(Claim, claim_id, with_for_update=True)
-            if claim is not None and _sent_before(claim, user, client_id):
+            if claim is not None and _sent_before(db, claim, user, client_id):
                 # The same queued photo, sent twice at once: the first one in keeps its place.
                 db.rollback()
                 store.delete(key)
@@ -457,6 +496,7 @@ def _store_photo(
                 raise HTTPException(status.HTTP_409_CONFLICT, "This claim changed while the photo was being sent")
             if len(claim.photos) >= limits.PHOTOS_PER_CLAIM:
                 raise HTTPException(status.HTTP_409_CONFLICT, f"A claim holds at most {limits.PHOTOS_PER_CLAIM} photos")
+            _check_slot(claim, phase, point, replaces)
             replaced = [p for p in claim.photos if point is not None and p.phase == phase and p.point == point]
             for old in replaced:
                 claim.photos.remove(old)
@@ -469,9 +509,10 @@ def _store_photo(
                     content_type="image/jpeg",
                     size_bytes=len(jpeg),
                     uploaded_by=user.id,
-                    client_id=client_id,
                 )
             )
+            if client_id is not None:
+                db.add(PhotoReceipt(claim_id=claim_id, client_id=client_id))
             if phase == "before" and claim.state == "claimed":
                 claim.state = "in_progress"
                 claim.started_at = _now()

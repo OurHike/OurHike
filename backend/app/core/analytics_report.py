@@ -113,6 +113,43 @@ FOLLOWERS = {
     "hikers_active": ("events_identified",),
 }
 
+# Counts of events, not of people. An event count under the floor was made by
+# fewer than the floor, so it is masked whatever cell it is in - which is
+# what masks a club's plans, completions, sign-ins and map views at all: a
+# club cell has no count of phones per kind of event for `FOLLOWERS` to read,
+# so "GATC: 1 plan, 12.5 miles" was one hiker's plan, printed, and the
+# whole-app figure masked beside it could be read back from it (#1903's
+# second review). The data-health counts are events too.
+EVENT_COUNTS = frozenset(
+    {
+        "installs",
+        "logins",
+        "plans_made",
+        "plans_completed",
+        "map_views",
+        "sessions",
+        "pageviews",
+        "sessions_under_1m",
+        "sessions_m1_to_5",
+        "sessions_m5_to_20",
+        "sessions_over_20m",
+        "events",
+        "events_identified",
+        "fixes",
+        "unsealed_no_key",
+        "events_after_close",
+    }
+)
+# What an event count carries with it, masked whenever it is.
+EVENT_FOLLOWERS = {
+    "plans_made": ("plan_miles",),
+    "plans_completed": ("completed_miles",),
+    "sessions": ("pageviews",),
+}
+# `sessions` splits exactly into these: one masked part could be had from the
+# rest, as "2 visits over 20 minutes" was from the web cell's other three.
+SESSION_PARTS = ("sessions_under_1m", "sessions_m1_to_5", "sessions_m5_to_20", "sessions_over_20m")
+
 # Phones counted last month and not this one, on the all-clubs total:
 # computed here, masked by the same floor, and drawn by the page as it is.
 LOST = "devices_lost"
@@ -180,6 +217,8 @@ def mask_cells(cells: dict[str, dict[str, float]]) -> tuple[dict[str, dict[str, 
                 shown[metric] = None
             elif metric in DEVICE_COUNTS and (_small(count) or _small(people - count)):
                 shown[metric] = None
+            elif metric in EVENT_COUNTS and _small(count):
+                shown[metric] = None
             else:
                 shown[metric] = value
         masked[key] = shown
@@ -232,10 +271,11 @@ def mask_cells(cells: dict[str, dict[str, float]]) -> tuple[dict[str, dict[str, 
         for key, shown in masked.items():
             if key in whole:
                 continue
-            if any(part in shown and shown[part] is None for part in GROWTH_PARTS):
-                for part in GROWTH_PARTS:
-                    hide(key, part)
-            for people, events in FOLLOWERS.items():
+            for parts in (GROWTH_PARTS, SESSION_PARTS):
+                if any(part in shown and shown[part] is None for part in parts):
+                    for part in parts:
+                        hide(key, part)
+            for people, events in (*FOLLOWERS.items(), *EVENT_FOLLOWERS.items()):
                 if people in shown and shown[people] is None:
                     for event in events:
                         hide(key, event)

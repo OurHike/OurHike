@@ -32,6 +32,22 @@ def report_script():
     return module
 
 
+def test_a_clubs_plans_under_the_floor_are_masked_with_their_miles_though_the_club_has_enough_phones():
+    """A club cell counts no phones per kind of event, so `FOLLOWERS` cannot
+    reach its plans: "1 plan, 12.5 miles" was one hiker's (#1903's second review)."""
+    masked, _ = mask_cells({"2026-10|GATC|*": {"devices_active": 30, "plans_made": 1.0, "plan_miles": 12.5, "map_views": 40}})
+
+    assert masked["2026-10|GATC|*"] == {"devices_active": 30, "plans_made": None, "plan_miles": None, "map_views": 40}
+
+
+def test_one_session_length_under_the_floor_masks_all_four_since_they_add_up_to_the_visits():
+    lengths = {"sessions_under_1m": 10, "sessions_m1_to_5": 9, "sessions_m5_to_20": 5, "sessions_over_20m": 2}
+    masked, _ = mask_cells({"2026-10|*|web": {"devices_active": 26, "sessions": 26, **lengths}})
+
+    assert all(masked["2026-10|*|web"][part] is None for part in lengths)
+    assert masked["2026-10|*|web"]["sessions"] == 26
+
+
 def test_a_cell_describing_fewer_than_the_floor_is_masked_whole():
     masked, whole = mask_cells({"2026-10|GMC|*": {"devices_active": K_FLOOR - 1, "plans_made": 3.5, "map_views": 40}})
 
@@ -40,9 +56,16 @@ def test_a_cell_describing_fewer_than_the_floor_is_masked_whole():
 
 
 def test_a_cell_at_the_floor_is_shown():
-    masked, whole = mask_cells({"2026-10|*|*": {"devices_active": K_FLOOR, "plans_made": 4}})
+    masked, whole = mask_cells({"2026-10|*|*": {"devices_active": K_FLOOR, "map_views": 40}})
 
-    assert masked["2026-10|*|*"]["plans_made"] == 4 and not whole
+    assert masked["2026-10|*|*"]["map_views"] == 40 and not whole
+
+
+def test_an_event_count_under_the_floor_is_masked_in_a_shown_cell():
+    """Four plans were made by four people at most, whatever the cell's size."""
+    masked, _ = mask_cells({"2026-10|*|*": {"devices_active": K_FLOOR, "plans_made": 4}})
+
+    assert masked["2026-10|*|*"]["plans_made"] is None
 
 
 def test_a_small_count_of_hikers_who_said_yes_is_masked_inside_a_shown_cell():

@@ -1,8 +1,10 @@
 # Campsite Steward — build plan
 
-**Status: phases 0 and 1 built, phase 2 built but not deployed** (§9): the weekly
-analysis job, the read-only web app, and sign-in, lists and club weights with the API
-behind them. The API has no host or database yet (§11). Phases 3 and 4 are not started. This file began as the
+**Status: phases 0 and 1 built; phases 2 and 3 built but not deployed** (§9): the
+weekly analysis job, the read-only web app, and sign-in, lists, club weights and
+claims with the API behind them. The API has no host, database or photo bucket yet
+(§11). An adversarial review of all of it on 2026-10-27 proved thirteen findings,
+all fixed (§10). Phase 4 is not started. This file began as the
 deliverable of **#1899 — Plan Campsite Steward, a separate app that ranks the A.T.
 campsites needing restoration and lets volunteers claim them**, written 2026-10-24 to
 2026-10-26 from a planning session with the maintainer: a first-pass analysis, then
@@ -420,7 +422,7 @@ directions.
 |---|---|---|
 | Sign-in | The same Supabase project, so an OurHike account works here. A six-digit code by email, typed back: the shared project's email template sends a code, not a link, and `client/src/lib/auth.ts` (#1600) records why asking it for a link fails. A code also needs no redirect address registered with Supabase | Reused: `backend/app/core/auth.py`'s token check, copied into `apps/steward/api/steward_api/auth.py` because the two deploy separately |
 | API | A FastAPI service under `apps/steward/api/`, with its own Postgres database. Built in phase 2 (#1906) for lists, share links and weights; claims, invites, submissions, reviews and hours come in phase 3. Its Dockerfile is `backend/Dockerfile`'s shape, so it runs on Render beside OurHike's API (`backend/HOSTING.md` chose Render's free tier). Not deployed: the database is §11's first open item | New |
-| Photos | R2, keyed by the record id, following the pattern in `backend/app/core/photos.py` | Pattern reused, own bucket |
+| Photos | A private R2 bucket of the app's own (`STEWARD_R2_*`), keyed by claim and photo id and read through 10-minute signed URLs, following `backend/app/core/photos.py`. Every photo is redrawn as a plain JPEG twice: on the phone, which strips its location before it is sent, and on the server, which keeps only pixels whatever arrives | Pattern reused, own bucket |
 | Club sections | Which club owns which mile | Reused: `pipeline/export_club_sections.py`'s output |
 | ArcGIS reading | Paging an ArcGIS layer | Reused: `pipeline/lib/arcgis.py` |
 | Basemap | The map under the sites | Not reused: OpenFreeMap's OpenStreetMap tiles (`tiles.openfreemap.org`), free and keyless at every zoom. OurHike's basemap is a PMTiles file with OurHike's own style and protocol handler, which would have had to be copied in. `@unvalidated`: nobody has checked OpenFreeMap's uptime; if it fails, the table and every site page still work |
@@ -628,7 +630,7 @@ returns excerpts; their quotes are near-verbatim.
 | 0 | Analysis job | **Built, #1901:** the scoring job, its tests and CI, `summary.json` and `sites.json`, and the weekly run that attaches them to itself until the app can serve them | 1–2 weeks |
 | 1 | Read-only app | **Built, #1904:** the dashboard with club, mile-range, tier, action and crew filters, the map and CSV export; the site page with directions, the indicator bars and the plan; the Analysis screen; the guide. Deployed by the weekly job | 2–3 weeks |
 | 2 | Sign-in and lists | **Built, not deployed, #1906:** email-code sign-in; lists and share links; club weights with history and restore, re-ranking the dashboard through each site's `need_parts`; the API with 52 tests on Postgres. The web app switches accounts on when `STEWARD_API_URL` is set | 2 weeks |
-| 3 | Claims | Claims, the 14-day clock and reminders, before you go, invites, photo points and extras, review, hours | 3–4 weeks |
+| 3 | Claims | **Built, not deployed, #1910:** claims of one site or a cluster, the 14-day clock (reminders in the app; email needs a provider), before you go, crew invite links, photo points and extras, submit, review (verify, send back, or reject), hours | 3–4 weeks |
 | 4 | Field-ready | Offline for claimed sites, the photo-point outline, follow-up visits, CSV export | 2–3 weeks |
 
 `@unvalidated`: the sizes assume one developer working with an agent. Nobody has
@@ -670,16 +672,49 @@ below are where the evidence is thinnest.
 
 ---
 
+### The adversarial review, 2026-10-27
+
+An independent reviewer read phases 0 to 3 and tried to break them against a real
+Postgres and server. Thirteen findings; each fix has a test that fails without it.
+The commits name each finding by number:
+
+| # | Finding | Fix |
+|---|---|---|
+| 1 | Fifteen slow photo uploads held every database connection; other requests failed | Sign-in ends its transaction; an upload is checked before its body is read, read with a deadline, and stored outside any transaction |
+| 2 | One account held 30 sites by submitting junk, and claimed sites that do not exist | The hold limit counts submitted claims; only sites `sites.json` says need work can be claimed; a send-back needs new after photos; a reviewer can reject, which releases the site |
+| 3 | Deleting an account let the same sign-in return as a stranger, able to verify its own claim | The account row stays as a tombstone and that sign-in is refused |
+| 4 | A failing club list was refetched by every request | Back off for a minute and serve the last good copy |
+| 5 | The Cloudflare token sat in the job that installs and builds | A token-only deploy job |
+| 6 | A byte search for EXIF was passed four ways | The server redraws every photo from its pixels |
+| 7–13 | A client per signed URL; races past every cap; a send-back that shortened the clock; history that changed with a rename; a 500 on a huge id; CSV formulas; health that did not check the database | Fixed each; see the commits |
+
 ## 11. Still open
 
-- **Where the steward API's database lives.** The API is built and tested but has no
-  database: a schema in OurHike's Supabase Postgres, a separate Supabase project, or
-  Render's own Postgres. Until one exists, the app is built without accounts.
+Each is the maintainer's: a setting, an account or a decision this build cannot make.
+
+- **A host and database for the API.** Render runs OurHike's API (`backend/HOSTING.md`),
+  and the steward image is built the same way. The database is open: a schema in
+  OurHike's Supabase Postgres, a separate Supabase project, or Render's own Postgres.
+  Until it exists, the app is built without accounts.
+- **A private R2 bucket for claim photos**, with `STEWARD_R2_*` credentials and
+  `STEWARD_R2_WRITE_ENABLED`. Until then, uploads answer that storage is not set up.
+- **The Cloudflare Pages project** named by `STEWARD_PAGES_PROJECT`, and a GitHub
+  environment that only `main` may deploy to, holding the Cloudflare token, so the
+  deploy job's "main only" holds even against an edited workflow.
+- **Email**, for the day-10 and day-13 reminders and for invites by email. Reminders are
+  in the app until a provider exists.
+- **How long claim photos are kept**, and a sweep for orphaned objects. Neither exists.
+
 - **Which Supabase project.** The deploy uses OurHike's production project
   (`SUPABASE_URL`), as §3's "the same project" implies. The sign-in email will carry
   OurHike's template and name.
 - **A privacy statement for this app.** It holds a Supabase user id, a chosen display
-  name, lists, and weights changes. OurHike's privacy policy does not cover a second app.
+  name, lists, weights changes, claims, crew places, hours and photos. OurHike's privacy
+  policy does not cover a second app.
+- **Calls this build made that a poll did not:** a reviewer may reject, which releases
+  the site (added after review finding 2); a send-back gives the crew the time it had
+  left, at least 7 days; one account holds at most 10 sites; a deleted account cannot
+  be used here again.
 
 - Who transcribes the camping rules (decided: the session, reviewed by the maintainer)
   and when. It blocks the "+10 restricted" weight, not phase 0.

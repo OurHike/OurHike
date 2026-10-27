@@ -53,14 +53,12 @@ import { TabBar } from './chrome/TabBar'
 import { ErrorBoundary, ScreenFailed } from './chrome/ErrorBoundary'
 import { useNavigator, topOf } from './lib/navigator'
 import { TABS, type TabId } from './chrome/tabs'
-import { BailSheet } from './chrome/BailSheet'
 import { formatBytes } from './lib/formatBytes'
 import { nightsBehind } from './lib/nightsBehind'
 import type { StopFacts } from './screens/Today'
 import { usePlaces } from './lib/usePlaces'
 import { defaultPlaceCamera, type DefaultPlace } from './lib/defaultPlace'
 import type { Place } from './lib/places'
-import { PlaceSheet } from './chrome/PlaceSheet'
 import {
   hikingDetailOptions,
   noDetailOptions,
@@ -108,6 +106,8 @@ import {
   AccountPanel,
   HikePickSheet,
   AddDayHikeSheet,
+  BailSheet,
+  PlaceSheet,
   TripList,
   Volunteer,
   VolunteerHours,

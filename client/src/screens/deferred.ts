@@ -156,6 +156,23 @@ export const AddDayHikeSheet = screen(
   () => import('../chrome/AddDayHikeSheet').then((m) => m.AddDayHikeSheet),
   'AddDayHikeSheet',
 )
+// The bail sheet (a half-built plan, and a tap that would leave it) and
+// "Where you hike" from More → You - deferred for the same budget when CI's
+// preview build, which inlines five VITE_ variables a plain build leaves
+// out, measured the four above at 245,782 bytes, 22 over the line, against
+// 245,516 locally (ced035f4). With these two as well: 245,050 on a plain
+// build, against `main`'s 245,489 at aad6cd17 the same hour. Add the 266
+// bytes the preview's variables added to this branch and `main`'s own
+// preview build reads about 245,755, five under the line (reasoned, not
+// built) - so the next shell change to land there trips it whatever it does.
+export const BailSheet = screen(
+  () => import('../chrome/BailSheet').then((m) => m.BailSheet),
+  'BailSheet',
+)
+export const PlaceSheet = screen(
+  () => import('../chrome/PlaceSheet').then((m) => m.PlaceSheet),
+  'PlaceSheet',
+)
 export const AppFailureReport = screen(
   () => import('./AppFailureReport').then((m) => m.AppFailureReport),
   'AppFailureReport',

@@ -1,0 +1,135 @@
+# The nightly usage rollup (#1902, features/EVENTING.md): recompute every open
+# month into analytics_monthly, close each month 14 days after it ends, and
+# delete raw usage events older than six months - refusing to delete any month
+# that has not closed. backend/app/core/analytics_rollup.py is the whole job;
+# backend/scripts/analytics_rollup.py is the command this runs.
+#
+# ONE JOB PER DATABASE, AND EACH SKIPS POLITELY WHEN ITS SECRET IS UNSET, the
+# shape schema-drift.yml uses: an unconfigured UA warns rather than turning the
+# Actions tab red every night, and production runs on its own.
+#
+# NO ENVIRONMENT GATE, deliberately, for schema-drift.yml's reason: a
+# scheduled run that waits for a reviewer waits forever. What makes that safe
+# is the credential, not a click - `ourhike_analytics_rollup` (EVENTING.md,
+# "The rollup's role") can read every usage column EXCEPT `sealed`, so a job
+# holding this secret cannot read a position or an account even by accident.
+#
+# A MISSED NIGHT COSTS NOTHING: every run closes every month that is due, not
+# "last month". GitHub runs schedules only from the default branch and turns
+# them off after 60 days of repository inactivity - after a quiet spell, the
+# Actions tab is where to look, and the report's data-health line shows a month
+# still provisional past its close date.
+
+name: Usage rollup
+
+on:
+  schedule:
+    # 10:17 UTC daily: after midnight in every US time zone, so the UTC date
+    # the rollup works from is the same calendar day the hikers just finished.
+    # Off the hour, and clear of the 09:15-09:50 runs, for the reason the
+    # other scheduled workflows give: GitHub queues :00 submissions together.
+    - cron: "17 10 * * *"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: analytics-rollup
+  cancel-in-progress: false
+
+jobs:
+  ua:
+    name: UA
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    # Unused by the rollup, and app/config.py cannot import without them -
+    # placeholders for the reason migrate.yml's UA job gives, which matters
+    # more on a scheduled job: one reading the real SUPABASE_* settings reads
+    # as a second keepalive (.github/tests/test_supabase_keepalive_workflow.py).
+    env:
+      SUPABASE_URL: "https://the-rollup-never-calls-this.invalid"
+      SUPABASE_ANON_KEY: "unused-by-the-rollup"
+    defaults:
+      run:
+        working-directory: backend
+    steps:
+      - name: Is there a UA database to roll up
+        id: can
+        working-directory: .
+        env:
+          CONFIGURED_DATABASE_URL: ${{ secrets.UA_ANALYTICS_DATABASE_URL }}
+        # The secret reaches bash through env, never interpolated into the
+        # script (#660).
+        run: |
+          if [ -z "$CONFIGURED_DATABASE_URL" ]; then
+            echo "::warning::No UA analytics database URL is configured, so nothing was rolled up. See features/EVENTING.md, \"The rollup's role\"."
+            echo "go=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "go=true" >> "$GITHUB_OUTPUT"
+          fi
+
+      - uses: actions/checkout@v7
+        if: steps.can.outputs.go == 'true'
+
+      - uses: actions/setup-python@v7
+        if: steps.can.outputs.go == 'true'
+        with:
+          python-version: "3.14"
+          cache: pip
+          cache-dependency-path: backend/requirements.txt
+
+      - name: Install dependencies
+        if: steps.can.outputs.go == 'true'
+        run: pip install -r requirements.txt
+
+      - name: Roll up UA
+        if: steps.can.outputs.go == 'true'
+        env:
+          DATABASE_URL: ${{ secrets.UA_ANALYTICS_DATABASE_URL }}
+        run: python scripts/analytics_rollup.py
+
+  production:
+    name: Production
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    # Unused - see the UA job.
+    env:
+      SUPABASE_URL: "https://the-rollup-never-calls-this.invalid"
+      SUPABASE_ANON_KEY: "unused-by-the-rollup"
+    defaults:
+      run:
+        working-directory: backend
+    steps:
+      - name: Is there a production database to roll up
+        id: can
+        working-directory: .
+        env:
+          CONFIGURED_DATABASE_URL: ${{ secrets.PRODUCTION_ANALYTICS_DATABASE_URL }}
+        run: |
+          if [ -z "$CONFIGURED_DATABASE_URL" ]; then
+            echo "::warning::No production analytics database URL is configured, so nothing was rolled up. See features/EVENTING.md, \"The rollup's role\"."
+            echo "go=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "go=true" >> "$GITHUB_OUTPUT"
+          fi
+
+      - uses: actions/checkout@v7
+        if: steps.can.outputs.go == 'true'
+
+      - uses: actions/setup-python@v7
+        if: steps.can.outputs.go == 'true'
+        with:
+          python-version: "3.14"
+          cache: pip
+          cache-dependency-path: backend/requirements.txt
+
+      - name: Install dependencies
+        if: steps.can.outputs.go == 'true'
+        run: pip install -r requirements.txt
+
+      - name: Roll up production
+        if: steps.can.outputs.go == 'true'
+        env:
+          DATABASE_URL: ${{ secrets.PRODUCTION_ANALYTICS_DATABASE_URL }}
+        run: python scripts/analytics_rollup.py

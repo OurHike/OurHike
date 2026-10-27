@@ -63,7 +63,10 @@ from dataclasses import dataclass, field
 
 from sqlalchemy.orm import Session
 
+from app.config import settings
+from app.core.analytics_seal import user_key
 from app.core.time import utc_now
+from app.models.analytics import AnalyticsEvent, AnalyticsUser
 from app.models.app_failure import AppFailure
 from app.models.closure import Closure, ClosureApproval
 from app.models.club import Club, OrgAdmin
@@ -132,6 +135,10 @@ class DeletionSummary:
     #: Challenges (#1780) - see the reasoning at each query in `delete_account`.
     challenge_tags_deleted: int = 0
     challenge_entries_deleted: int = 0
+    #: Usage measurement (#1902): the events this account linked by saying
+    #: yes. Its User-table row goes with them and is not counted separately -
+    #: it is the same events, summed.
+    usage_events_deleted: int = 0
     contributions_kept: dict[str, int] = field(default_factory=dict)
 
 
@@ -261,6 +268,20 @@ def delete_account(db: Session, profile: Profile, now=None) -> DeletionSummary:
     # club's, and nothing here pretends otherwise.
     challenge_entries = db.query(ChallengeEntry).filter(ChallengeEntry.user_id == profile_id).delete(synchronize_session=False)
 
+    # USAGE MEASUREMENT (#1902). The events this account linked by saying yes
+    # are found by recomputing the key they were stored under, and go with the
+    # User-table row summing them: both were only ever about this hiker, and a
+    # monthly figure already closed from them is a count that names nobody, so
+    # nothing anybody relies on moves. Events sent before the yes, or after a
+    # no, carry no key and name nobody - there is nothing of theirs to find
+    # among them, which is the point of rows like that. With no key secret
+    # configured, no event was ever linked and there is nothing to find either.
+    usage_events = 0
+    if settings.analytics_user_key_secret:
+        key = user_key(settings.analytics_user_key_secret, profile_id)
+        usage_events = db.query(AnalyticsEvent).filter(AnalyticsEvent.user_key == key).delete(synchronize_session=False)
+        db.query(AnalyticsUser).filter(AnalyticsUser.user_key == key).delete(synchronize_session=False)
+
     # --- Organization rows that NAME them and belong to the organization.
     # Every one of these columns is nullable, so the link can be forgotten
     # while the row goes on being the organization's - the same thing
@@ -353,6 +374,7 @@ def delete_account(db: Session, profile: Profile, now=None) -> DeletionSummary:
         org_rows_unlinked=unlinked,
         challenge_tags_deleted=challenge_tags,
         challenge_entries_deleted=challenge_entries,
+        usage_events_deleted=usage_events,
         contributions_kept={name: count for name, count in kept.items() if count},
     )
 

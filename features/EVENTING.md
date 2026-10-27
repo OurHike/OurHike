@@ -1,6 +1,151 @@
-# OurHike — Eventing & Measurement (Feature Design Draft v1)
+# OurHike — Eventing & Measurement (v2, built for six events 2026-10-27)
 
-Companion to [FEATURE_GATING.md](FEATURE_GATING.md), [IDENTITY_AND_PRIVACY.md](IDENTITY_AND_PRIVACY.md), [TECHNICAL_ARCHITECTURE.md](../TECHNICAL_ARCHITECTURE.md) and [OurHikeValues.md](../OurHikeValues.md). **v2.** Nothing here ships in v1 and nothing here blocks launch.
+Companion to [FEATURE_GATING.md](FEATURE_GATING.md), [IDENTITY_AND_PRIVACY.md](IDENTITY_AND_PRIVACY.md), [TECHNICAL_ARCHITECTURE.md](../TECHNICAL_ARCHITECTURE.md) and [OurHikeValues.md](../OurHikeValues.md).
+
+**Read §0 first.** It is what is built. §1 to §12 are the design this document opened with on 2026-08-09, kept in place, with their section numbers unchanged because a dozen files cite them by number. Each section now says whether it still holds. Two of its rules were reversed on purpose, and §0 says which ones, by whom, and what the reversal costs.
+
+---
+
+## 0. What was decided on 2026-10-27, and what it changed
+
+**#1902 — Count six usage events with a sealed account id and GPS fix, keep them six months, close each month into a table, and report them per club** is the build. The maintainer asked for it on 2026-10-26 and settled it in three polls on 2026-10-27, each answered against a drawn page. The issue records every option, the ones taken and the ones declined. In short:
+
+| Decision | Chosen | Declined |
+|---|---|---|
+| How an event holds the user and their position | **Encrypted and masked.** The account id and the exact GPS fix are sealed. Reports read a keyed hash of the account, a 0.1° square and a club. | A one-way pseudonym plus a coarse area only, with no exact fix anywhere. Or this document's original design: no identifier and no geography (#870). |
+| Which position | **Where the phone is**: the GPS fix the map already holds | Where the map is looking |
+| How the sealing works | **Write-only**: the backend holds public keys and cannot open what it wrote. Each month's key is **derived from one secret plus the month's name**: "not perfect, but a little better". | Independent monthly keys shredded at six months. Sending a fix only near a trail, rounded to ~110 m. Sending a position only on rows from hikers who opted in. |
+| Consent | **Split.** Counts are on by default, with an off switch. Linking the account is asked once after sign-in. | Everything on by default. Everything off until asked. |
+| Clubs | **The club whose trail the event is about.** A plan is split across clubs by its miles in each. | Only where the hiker stands. Only from hikers who opted in. |
+| Small numbers | **"<25" everywhere, masked when the report is built.** "Don't mess with the data." | Exact numbers in the maintainer's copy. A floor of 10. |
+| The dashboard | **A Python script writing one branded HTML file**, filterable by dates and club | A screen in the app. SQL views only. |
+
+**What this reverses: §1's rules 1 and 2** — "No identifier is sent" and "No geography, ever" — for the six events below. The reason those rules existed has not changed. **#252 — Remove `reporter_id` from the public report serialisation** removed exactly this pair, a stable account id next to a position and a date, from a public API. This build stores the pair, behind a seal the server cannot open. The pair is now as safe as the maintainer's secret, and no safer. §6's "what is never collected" list and the [Privacy Policy](../site/public/Privacy/index.html) now say so plainly.
+
+**What is still true from below:**
+- §1 rules 3 and 4: no free text, no time finer than a date, and measurement never competes with a queued report.
+- §2's heartbeat, which is how hikers who said no are still counted exactly.
+- §5's experiments, unbuilt.
+- §6's floor of 25, now applied when a report is built.
+- §7's warning about what engagement numbers mean.
+
+### The six events
+
+`client/src/lib/usageEvents.ts` holds the registry on the phone, and `app/models/analytics.py` `UsageEvent` holds it on the server. `POST /usage-events` refuses any other name.
+
+| Event | Sent when | What it may carry besides the common fields |
+|---|---|---|
+| `app_installed` | the first launch of an install, as the app can see it. A store install is counted by the stores; a reinstall or cleared storage counts again here | — |
+| `user_login` | a sign-in completes | club at the fix |
+| `hike_plan_made` | a long hike, a section, a day hike or a saved route is newly planned | `miles`, clubs split by miles |
+| `hike_plan_completed` | a long hike is finished, or a day hike's walk is logged | `miles`, clubs split by miles |
+| `map_screen_viewed` | the map comes into view, once per arrival | club at the map's centre |
+| `session` | a visit ends: the app hidden, or 30 minutes idle | `pageviews` (screens shown), `session_length` in four buckets, club at the fix |
+
+**Common fields on every row:**
+- the phone-minted id
+- the phone's calendar date
+- the platform and the app version
+- the heartbeat flags (`week_first`, `month_first`, `ever_first`), and `club_firsts`, the same "first time this month" answer per club (§2)
+- the phone's GPS fix, but only one the map already holds that is under 10 minutes old and within 100 m. Measurement never turns location on.
+
+**Linked rows** come from a hiker who said yes and sent a valid token. They also get a `user_key` (HMAC-SHA256 of the account id under `ANALYTICS_USER_KEY_SECRET`), and the account id goes into the seal beside the fix.
+
+### Encrypted and masked: what the server can and cannot read
+
+- **Sealed** (`analytics_events.sealed`): the account id and the exact fix. The backend seals to the month's public key from `analytics_seal_keys` and holds no private key at all (`app/core/analytics_seal.py`). If no key is published for the month, both are thrown away and the row says `no_key`. Nothing is ever kept in the clear to be sealed later.
+- **Masked, readable by reports**: `user_key`, the fix's 0.1° square (about 11 × 8 km at 41° N, by its south-west corner), and the clubs.
+- **Never written**: the IP address (no column could hold it), the time of day, free text, the account id in the clear.
+- **Opening a sealed row** is `backend/scripts/analytics_keys.py open`, run by the maintainer on their own machine with the secret from their password manager. It writes an `analytics_openings` row naming who, which month, what was asked for and why, commits that row *before* it decrypts anything, and writes the rows to a CSV file, never to the terminal.
+- **The month in the key** means an opening for October derives October's key and no other month's. It is **not shredding**: the secret derives any month's key again. A sealed position stops being readable only when its row is deleted. A database backup taken before that delete stays readable with the secret until the backup itself expires.
+
+### Retention and the monthly close
+
+`app/core/analytics_rollup.py`, run nightly by `.github/workflows/analytics-rollup.yml`:
+
+- **Kept six months**, counted in whole months. The current month and the six before it are held, so a row lives between six and seven months.
+- **Each month is recomputed** into `analytics_monthly` while open, and **closed 14 days after it ends**.
+- **Closed months are frozen.** Late arrivals after the close are counted in `events_after_close` and change nothing else.
+- **A month's raw rows are deleted only after it has closed.** The run fails rather than delete numbers nobody froze.
+
+The month-end snapshot problems the strategy page listed, and where each answer lives, are in that module's docstring. The ones that shape the data:
+- **Distinct counts do not add up across months.** Each month freezes its own, and `analytics_users.active_months` answers uniques across months after the raw rows are gone.
+- **"As of month end" stocks** are milestone *dates* on the User table rather than a snapshot, so any "as of" is a `WHERE` clause.
+- **The month is the phone's calendar**, not UTC's.
+
+**`CLOSE_AFTER_DAYS = 14` is @unvalidated.** It is §2's "most recent fortnight is provisional", reasoned and not measured. `events_after_close` is the measurement that will settle it.
+
+### The User table
+
+`analytics_users` holds one row per hiker who said yes:
+- first and last seen, with their platforms
+- the dates of their first sign-in, first plan and first completion
+- lifetime counts and miles
+- `active_months`
+
+It is updated at ingest, so a resend never counts twice. It is kept until the account is deleted (`app/core/account_deletion.py` deletes it with the linked events), and the export hands the hiker the plain half of their events. **It has no location column, and must not get one**: a per-hiker home area kept for the life of an account would be #252's pair without even the six-month limit.
+
+### Clubs
+
+The phone works out the club, from data it already holds:
+- `clubAtMile` in `client/src/lib/clubSections.ts` for an A.T. mile
+- the publishing organization for other trails
+
+It sends a closed-alphabet id, never a name. `_unrecorded` stands for the 38.5 A.T. miles whose club ATC's own centreline does not name; it is distinct from "not on a trail". A plan's share in each club is its miles there over its total miles. Plans and miles add up across clubs. Hikers do not, and should not: one hiker can plan in two clubs.
+
+### The report
+
+`backend/scripts/usage_report.py` writes one self-contained HTML file in OurHike's style:
+- the logo lockup, a pine header and paper body
+- From, To and Club filters
+- active devices by month, a by-club table, plans and completions, platforms and session length
+- retention by first month, from the User table
+- a data-health panel: what was linked, what was thrown away for want of a key, what arrived after its month closed, and how far ahead keys are published
+
+**Every figure describing fewer than 25 people is absent from the file**, not hidden by its script. One hidden club or platform takes the next-smallest with it, so the hidden one cannot be had by subtraction (`app/core/analytics_report.py`). The script refuses to write inside the repository.
+
+### Operating it
+
+1. **Make the secret, once:** `python backend/scripts/analytics_keys.py new-secret`. It goes into the maintainer's password manager and nowhere else.
+2. **Publish the public keys ahead of time:** `OURHIKE_ANALYTICS_SECRET=… DATABASE_URL=<owner URL> python backend/scripts/analytics_keys.py publish --from 2026-11 --months 24`, once per database (UA and production). The report warns when fewer than three months are left.
+3. **Set `ANALYTICS_USER_KEY_SECRET`** on the backend's host, a long random string different from the secret above. Unset, nothing is ever linked to an account, and that is a valid deployment.
+4. **Create the rollup's role and set its secrets.** Run the SQL below, then set `PRODUCTION_ANALYTICS_DATABASE_URL` and `UA_ANALYTICS_DATABASE_URL` (`.github/expected-settings.yml`). The username is tenant-qualified, exactly as the conditions reader's is.
+
+### The rollup's role
+
+It can read every usage column **except** `sealed`, delete raw rows, and write the monthly tables. So the one scheduled job holding a production credential for usage data cannot read a position or an account even by mistake:
+
+```sql
+CREATE ROLE ourhike_analytics_rollup LOGIN PASSWORD '<generated>';
+GRANT CONNECT ON DATABASE postgres TO ourhike_analytics_rollup;
+GRANT USAGE ON SCHEMA public TO ourhike_analytics_rollup;
+GRANT SELECT (id, local_date, received_on, event, platform, app_version, user_key,
+              week_first, month_first, ever_first, club_firsts, clubs, miles,
+              pageviews, session_length, has_fix, area_lat, area_lon, seal)
+  ON public.analytics_events TO ourhike_analytics_rollup;
+GRANT DELETE ON public.analytics_events TO ourhike_analytics_rollup;
+GRANT SELECT, INSERT, UPDATE, DELETE ON public.analytics_months, public.analytics_monthly
+  TO ourhike_analytics_rollup;
+GRANT SELECT ON public.analytics_users, public.analytics_seal_keys TO ourhike_analytics_rollup;
+-- RLS is on with no policies for every analytics table (migration 897b71ad5fff), so the
+-- role needs one per table it touches:
+CREATE POLICY rollup_events ON public.analytics_events FOR ALL TO ourhike_analytics_rollup USING (true);
+CREATE POLICY rollup_months ON public.analytics_months FOR ALL TO ourhike_analytics_rollup USING (true);
+CREATE POLICY rollup_monthly ON public.analytics_monthly FOR ALL TO ourhike_analytics_rollup USING (true);
+CREATE POLICY rollup_users ON public.analytics_users FOR SELECT TO ourhike_analytics_rollup USING (true);
+CREATE POLICY rollup_keys ON public.analytics_seal_keys FOR SELECT TO ourhike_analytics_rollup USING (true);
+```
+
+The same role can build the report. It cannot run `open`, by design; that needs the owner's URL.
+
+### What this build does not do, said rather than discovered
+
+- **No rate limiting on `POST /usage-events`**, the same gap the app-failure route names. Fake events could skew the counts; they could not reach anybody's data.
+- **Positions are collected from anywhere, including homes.** That is the trail-only package declined in poll 2. A home is the place that names a person fastest, which is why opening a sealed row is logged.
+- **Positions are collected from hikers who said no to linking**, sealed and without an account. That is the yes-only package declined in poll 2. The question after sign-in says "either way" for this reason.
+- **Clubs are shown by their ids** (`NYNJTC`, `GATC`). The report has no names table.
+- **The App Store and Play privacy declarations** have to list precise location and usage data before a store build ships this. That is store-console work outside this repository.
+- **Nobody with a licence to say so has reviewed this design**, §9's caveat, which applies with more force now that it holds an identifier and a position.
 
 Two docs, one subject, split on a line worth stating up front: **FEATURE_GATING.md owns the gate — what a hiker sees. This doc owns the measurement — what we learn from it.** That doc's §6 sketched a starting event taxonomy and then deferred its own fourth open question, "how to minimize the privacy footprint of the event taxonomy above while still preserving useful experiment signal … not assumed safe by default." This is that pass, and the answer changed the taxonomy rather than trimming it.
 
@@ -19,7 +164,9 @@ So the design starts from the hard version of the question: **what can be measur
 Four rules, and everything below is a consequence of them:
 
 1. **No identifier is sent — not an account id, not a device id, not a session id, not a rotating pseudonym.** Deduplication happens on the device, which is the only party that already knows its own history and therefore the only one that learns nothing new by doing it.
+   *Reversed for hikers who say yes, 2026-10-27 (§0, #1902): their rows carry a keyed hash of the account, and the account id sealed. Rows from everyone else still carry no identifier, and the deduplication described here is what counts them.*
 2. **No geography, ever.** No coordinates, no mile, no segment id, no POI id, no region. This is the #252 half of the pair, and on a trail app it is the more dangerous half.
+   *Reversed, 2026-10-27 (§0, #1902): every usage event carries the phone's fix, sealed, plus a readable 0.1° square and a club. The sentence about which half is more dangerous is still true, and is why the fix is sealed rather than stored.*
 3. **No free text, and no timestamp finer than a date.** Date, not time; a bounded enum from a reviewed registry, never a string a hiker typed.
 4. **Nothing measurement-related may compete with a hiker's queued report** — not for storage, not for bandwidth, not for the sync that gets a blowdown to a moderator. Measurement is the first thing dropped and the last thing sent.
 
@@ -104,6 +251,8 @@ But some of it *does* reach the server, and those things must not be sent twice:
 
 Counting these from the records that already exist is more accurate (it survives an opt-out and a dropped queue), cheaper, and smaller — and every event not sent is a payload not carrying anything. The rule: **the client instruments only what no server-side record can answer.**
 
+*2026-10-27 (§0): `user_login` is sent by the client anyway. A sign-in is a record in Supabase Auth, not in this backend, and reading Auth's tables needs a service-role key `app/config.py` does not hold, the gap `app/core/account_deletion.py` already names. Until that changes, the client is the only party that can answer "how many sign-ins".
+
 ## 5. Experiments, and the identifier they turn out not to need
 
 [FEATURE_GATING.md](FEATURE_GATING.md) already settles the mechanism: variants are evaluated locally from a cached manifest, synchronously, with a hardcoded fallback, so a hiker on a ridge is never waiting on a flag service. Nothing here changes that. What this section settles is how the result gets measured.
@@ -139,6 +288,8 @@ Worth a list, because "we are careful" is not a specification and the absent thi
 
 Location of any kind, at any resolution · mile or segment or POI id · report contents, drafts, or anything a hiker typed · search terms · account id, email, or trail name · device id, install id, advertising id · IP address (see §8) · cookies · user-agent strings · session replay or screen recording · anything from a third-party SDK, because there are none · timestamps finer than a date · unbounded numbers where a bucket does.
 
+*2026-10-27 (§0): location and the account id moved off this list for usage events. Both are collected, sealed so the server cannot read them, and masked in everything a report reads. Everything else here still stands, IP address and time of day included.*
+
 **And one on the output side: no published or stored cell below k = 25 devices.** A count of three is a description of three people, especially when it is broken down by club. Suppression is at the query layer, applied to every breakdown, so that the interesting-looking slice nobody thought about is covered too. Whether 25 is right for a beta whose chapters may not reach it is §11's problem, not a reason to omit the floor.
 
 ## 7. What the numbers are allowed to mean
@@ -153,6 +304,8 @@ Two rules keep the numbers honest:
 The failure this is guarding against is not a wrong number. It is the ordinary one where a metric goes up, everybody is pleased, and nobody notices it went up because the app got worse in a way that made people look at it more.
 
 ## 8. Where it lands
+
+*Superseded by §0, 2026-10-27. What was built: `POST /usage-events` writes `analytics_events`, kept six months rather than 35 days. A nightly rollup closes months into `analytics_monthly` rather than days into `event_daily`. The "weekly summary read by a person" became a generated HTML report. The diagram and the volume arithmetic below are the first design's, kept for the reasoning.*
 
 ```
 [Client]  in-memory during the day; one summarised batch appended to the existing outbox
@@ -181,6 +334,8 @@ The failure this is guarding against is not a wrong number. It is the ordinary o
 
 ## 9. Consent, disclosure, and the off switch
 
+*Answered 2026-10-27 (§0), in the direction this section's own rule pointed: **identifier ⇒ consent.** Counts are on by default with an off switch ("Share usage statistics", Settings → Safety & privacy). Linking the account is asked once, after sign-in ("Link your usage to your account?"), and changeable on the same screen. A position is sent on default-on rows too, because the maintainer declined to make it consent-only. The question after sign-in says so ("either way"), and so does the Privacy Policy.*
+
 The site's Privacy Policy already made the promise this has to keep: "We don't currently run any analytics… We're likely to add some limited, aggregated analytics in the future… we'll update this page when it happens rather than after the fact." **The page is updated in the same change that ships the first event, not after** — and the design above was shaped so the update can be short and true: no identifiers, no location, no free text, dates not times, nothing shared with anyone, nothing sold, no third parties.
 
 - **Default on for everything in §2 and §3**, which carry no identifier and no location. Off in one tap in Settings, and off means collection stops, not that it is anonymised harder.
@@ -189,6 +344,8 @@ The site's Privacy Policy already made the promise this has to keep: "We don't c
 - **What the shape is aiming at, without claiming it has arrived:** the audience-measurement exemptions European regulators grant to first-party, non-tracking, aggregate measurement (CNIL's is the clearest) describe roughly this design. Data with no identifier is largely outside GDPR's subject matter, but ePrivacy governs *storing anything on a device* regardless — and §2's dedupe needs a local counter. Nobody with a licence to say so has reviewed this. Somebody should before it ships to a general audience, and the design is deliberately the version most likely to survive that review.
 
 ## 10. Data model
+
+*Superseded by what was built (§0, 2026-10-27): `analytics_events`, `analytics_months`, `analytics_monthly`, `analytics_users`, `analytics_seal_keys` and `analytics_openings` (backend/app/models/analytics.py). On the phone, the heartbeat state below lives in `client/src/lib/usageEvents.ts`, and the switches are `measurement_enabled` and `measurement_linked` on `UserPreferences`. The sketch below is the first design's.*
 
 ```
 # Client, IndexedDB — alongside the existing outbox, never ahead of it
@@ -217,6 +374,8 @@ event_daily               indefinite; what the weekly summary reads
 
 ## 11. Phased rollout
 
+*Phase A was built in a different shape on 2026-10-27 (§0, #1902). The heartbeat, the ingest route with its rejection tests, the retention job, the k floor, the Settings switch and the Privacy Policy update all shipped, alongside six events carrying a sealed identifier and position that this phase did not have. Phases B to D are unbuilt.*
+
 Ordered so the privacy machinery exists before the data does, which is the opposite of how this usually goes.
 
 **Phase A — the heartbeat, and nothing else.** §2's four booleans, the ingest route with its rejection tests, the retention job, the k floor, the Settings switch, and the Privacy Policy update. Answers DAU/WAU/MAU and new-device counts, which is the stated minimum, and proves the collection path with a payload that could not leak anything if it tried.
@@ -236,8 +395,8 @@ Ordered so the privacy machinery exists before the data does, which is the oppos
 
 ## Open questions (for you, not decided here)
 
-- **Default on or default off.** §9 recommends on for a payload with no identifier and no location, because opt-in measurement at this scale returns a sample too small and too skewed to act on — which is collection with the privacy cost and none of the benefit. It is still a values call rather than a technical one, and [OurHikeValues.md](../OurHikeValues.md) #1 could be read either way.
-- **k = 25 against a beta that may not reach it.** A chapter with nine active devices produces nothing but suppressed cells, and the temptation will be to lower the floor for exactly the breakdown that most needs it. Better answer is probably to compare clubs only on the aggregate and accept that per-chapter evidence arrives later, but that is worth deciding before the first person wants a number.
+- ~~**Default on or default off.**~~ **Answered 2026-10-27 (§0): split** — counts on by default, linking the account asked once. §9 recommended on for a payload with no identifier and no location, because opt-in measurement at this scale returns a sample too small and too skewed to act on — which is collection with the privacy cost and none of the benefit. It is still a values call rather than a technical one, and [OurHikeValues.md](../OurHikeValues.md) #1 could be read either way.
+- ~~**k = 25 against a beta that may not reach it.**~~ **Answered 2026-10-27 (§0): 25 everywhere, "<25" shown, masked when a report is built.** A chapter with nine active devices produces nothing but suppressed cells, and the temptation will be to lower the floor for exactly the breakdown that most needs it. Better answer is probably to compare clubs only on the aggregate and accept that per-chapter evidence arrives later, but that is worth deciding before the first person wants a number.
 - **What counts as "active" on an iOS PWA**, where the app can be resumed by the OS without a hiker touching it. §2's definition is right; whether it is implementable there is a question for whoever writes it, and getting it wrong inflates DAU permanently and invisibly.
-- **Whether `club_id` may appear on aggregate rows at all.** FEATURE_GATING.md's per-chapter targeting wants the comparison; a club is also a place, and a place is the thing rule 2 keeps out. Aggregate-only plus the k floor is the proposed compromise, not a settled one.
-- **Who reads the weekly summary, and what happens when nobody has for a month.** A metric nobody looks at is a privacy cost with no benefit on the other side of the ledger, and the honest response to that state is to switch the collection off, not to let it accumulate against a future that might want it. Worth agreeing in advance who notices.
+- ~~**Whether `club_id` may appear on aggregate rows at all.**~~ **Answered 2026-10-27 (§0): yes, on raw rows and aggregates alike, as the club whose trail the event is about.** FEATURE_GATING.md's per-chapter targeting wants the comparison; a club is also a place, and a place is the thing rule 2 keeps out. Aggregate-only plus the k floor is the proposed compromise, not a settled one.
+- **Who reads the report, and what happens when nobody has for a month.** Still open: the report is generated by hand (§0), so nothing notices when nobody runs it. A metric nobody looks at is a privacy cost with no benefit on the other side of the ledger, and the honest response to that state is to switch the collection off, not to let it accumulate against a future that might want it. Worth agreeing in advance who notices.

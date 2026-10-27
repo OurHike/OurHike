@@ -52,8 +52,11 @@ from typing import Any
 from sqlalchemy import inspect
 from sqlalchemy.orm import Session
 
+from app.config import settings
+from app.core.analytics_seal import user_key
 from app.core.photos import poi_photo_key
 from app.core.time import utc_now
+from app.models.analytics import AnalyticsEvent, AnalyticsUser
 from app.models.app_failure import AppFailure
 from app.models.closure import Closure, ClosureApproval
 from app.models.club import Club, OrgAdmin
@@ -90,6 +93,31 @@ NOT_INCLUDED: tuple[str, ...] = (
     "Your sign-in details. Your email address, password and any linked Google or "
     "Apple account are held by Supabase Auth, not by OurHike, and are not ours to "
     "put in this file.",
+    "The exact positions and the account id inside your usage events. They were "
+    "sealed with a key no OurHike server holds, so the server that built this file "
+    "cannot read them to put them here. They are deleted with the events, six months "
+    "after the month they were recorded, or now if you delete your account.",
+)
+
+# The usage-event columns a hiker's file carries (#1902): every plain column,
+# and not `sealed`. The sealed blob is their own account id and fix, but it is
+# ciphertext this server cannot open, and a file of bytes nobody can read is
+# not an answer to "what do you hold about me" - the sentence above is.
+_USAGE_EVENT_COLUMNS: tuple[str, ...] = (
+    "id",
+    "local_date",
+    "received_on",
+    "event",
+    "platform",
+    "app_version",
+    "clubs",
+    "miles",
+    "pageviews",
+    "session_length",
+    "has_fix",
+    "area_lat",
+    "area_lon",
+    "seal",
 )
 
 
@@ -124,6 +152,23 @@ def _rows(db: Session, model: Any, condition: Any) -> list[dict[str, Any]]:
     return [_row(instance) for instance in db.query(model).filter(condition).all()]
 
 
+def _usage(db: Session, profile_id: str) -> tuple[list[dict[str, Any]], dict[str, Any] | None]:
+    """The usage events this account linked by saying yes, and their User-table row.
+
+    Found by recomputing the key they were stored under. With no key secret
+    configured nothing was ever linked, and both answers are empty.
+    """
+    if not settings.analytics_user_key_secret:
+        return [], None
+    key = user_key(settings.analytics_user_key_secret, profile_id)
+    events = db.query(AnalyticsEvent).filter(AnalyticsEvent.user_key == key).order_by(AnalyticsEvent.local_date).all()
+    summary = db.get(AnalyticsUser, key)
+    return (
+        [{column: _plain(getattr(event, column)) for column in _USAGE_EVENT_COLUMNS} for event in events],
+        _row(summary) if summary is not None else None,
+    )
+
+
 def build_export(db: Session, profile: Profile) -> dict[str, Any]:
     """The whole archive for one account.
 
@@ -140,6 +185,7 @@ def build_export(db: Session, profile: Profile) -> dict[str, Any]:
     active_hike = db.get(SyncedActiveHike, profile_id)
 
     photos = db.query(PoiPhoto).filter(PoiPhoto.contributor_id == profile_id).all()
+    usage_events, usage_summary = _usage(db, profile_id)
 
     return {
         "exported_at": _plain(utc_now()),
@@ -187,6 +233,12 @@ def build_export(db: Session, profile: Profile) -> dict[str, Any]:
         "volunteer_hours": _rows(db, VolunteerHoursRecord, VolunteerHoursRecord.user_id == profile_id),
         "trail_sections_you_maintain": _rows(db, MaintainerAssignment, MaintainerAssignment.maintainer_id == profile_id),
         "app_problems_you_reported": _rows(db, AppFailure, AppFailure.reporter_id == profile_id),
+        # Usage measurement (#1902): only what was linked to this account
+        # after the hiker said yes. Events from before, or after a no, carry
+        # no key and cannot be told apart from anybody else's - which is what
+        # they were sent for.
+        "usage_events_linked_to_you": usage_events,
+        "your_usage_summary": usage_summary,
         # Challenges (#1780). The tags are what the phone sent - item, time,
         # `gps` or `hand` - and never a position, because none was sent
         # (features/CHALLENGES.md principle 6). The entries are the one thing

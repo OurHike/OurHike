@@ -109,6 +109,7 @@ def delete_my_account(
         app_failure_reports_unlinked=summary.app_failures_unlinked,
         challenge_tags_deleted=summary.challenge_tags_deleted,
         challenge_entries_deleted=summary.challenge_entries_deleted,
+        usage_events_deleted=summary.usage_events_deleted,
         kept=summary.contributions_kept,
     )
 

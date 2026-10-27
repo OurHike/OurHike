@@ -68,6 +68,18 @@ KEEPALIVE_TABLES: tuple[str, ...] = (
     # deferring to this sweep. e5b2f7c1a903 locked the table; this is what
     # notices if that lock ever comes undone in a live project.
     "alembic_version",
+    # Usage measurement (#1902, features/EVENTING.md §0). `analytics_events`
+    # holds every hiker's account id and GPS fix, sealed, beside a keyed hash
+    # of the account - readable with the anon key, that would be the
+    # identifier-next-to-a-place pair #252 removed, served to anyone. The
+    # other five are the monthly figures, the User table, the public keys and
+    # the record of every opening.
+    "analytics_events",
+    "analytics_monthly",
+    "analytics_months",
+    "analytics_openings",
+    "analytics_seal_keys",
+    "analytics_users",
     # The app-failure inbox (#848). It carries a contact detail somebody gave
     # while shaken, so of every table here it is the one where "readable with
     # the anon key" would be worst.

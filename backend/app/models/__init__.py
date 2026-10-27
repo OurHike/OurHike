@@ -9,6 +9,19 @@ app/db/base.py's own docstring warning that a model must be "imported
 somewhere reachable from here... before autogenerate will see it."
 """
 
+from app.models.analytics import (
+    AnalyticsEvent,
+    AnalyticsMonth,
+    AnalyticsMonthly,
+    AnalyticsOpening,
+    AnalyticsSealKey,
+    AnalyticsUser,
+    MonthStatus,
+    SealState,
+    SessionLength,
+    UsageEvent,
+    UsagePlatform,
+)
 from app.models.app_failure import AppFailure, Harm
 from app.models.assist import AssistUsage
 from app.models.closure import (
@@ -84,6 +97,17 @@ from app.models.work_project import (
 )
 
 __all__ = [
+    "AnalyticsEvent",
+    "AnalyticsMonth",
+    "AnalyticsMonthly",
+    "AnalyticsOpening",
+    "AnalyticsSealKey",
+    "AnalyticsUser",
+    "MonthStatus",
+    "SealState",
+    "SessionLength",
+    "UsageEvent",
+    "UsagePlatform",
     "RegistrySignoff",
     "AssistUsage",
     "AppFailure",

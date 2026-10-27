@@ -264,6 +264,21 @@ class Settings(BaseSettings):
     # vendor library rather than two.
     ses_region: str = "us-east-1"
 
+    # USAGE MEASUREMENT (#1902, features/EVENTING.md). The key the account id
+    # is hashed under before a usage event is stored, so a report reads
+    # `user_key` and never an account (app/core/analytics_seal.py).
+    #
+    # EMPTY MEANS NO ROW IS EVER LINKED TO AN ACCOUNT, and that is a valid
+    # deployment rather than a broken one: every event is stored as if the
+    # hiker had said no, the counts still work, and the User table stays
+    # empty. The same posture as `nominate_challenge_secret` - refuse the
+    # feature rather than run it with a guessable key.
+    #
+    # Rotating it re-keys every hiker: their old rows and their User-table row
+    # stop matching their new events. EVENTING.md says how a rotation is done
+    # without losing that continuity, and it is never done casually.
+    analytics_user_key_secret: str = ""
+
     @property
     def mail_allowed(self) -> tuple[str, ...]:
         """The suffix list as `app/core/mail.py` wants it."""

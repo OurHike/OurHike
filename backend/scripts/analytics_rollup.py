@@ -4,7 +4,9 @@
 
 What a run does, and why in that order, is app/core/analytics_rollup.py's
 docstring. This file is the command around it: it prints what was done as
-counts and month names - never a row - and exits 1 when a month past
+month names - never a row, and never a count, because Actions logs on this
+repository are public and a month's row count is its traffic - and exits 1
+when a month past
 retention was refused deletion because it had not closed. `run` closes every
 due month before it deletes anything, so that refusal should be unreachable;
 it is the guard for the day somebody reorders the steps or stretches the close
@@ -51,8 +53,8 @@ def main(argv: list[str] | None = None) -> int:
     print(f"Recomputed:               {_months(result.recomputed)}")
     print(f"Closed this run:          {_months(result.closed)}")
     print(f"Late rows counted for:    {_months(result.late_counted)}")
-    for month, count in sorted(result.deleted.items()):
-        print(f"Deleted {count} raw rows for {month:%Y-%m} (past retention, closed)")
+    for month in sorted(result.deleted):
+        print(f"Deleted the raw rows for {month:%Y-%m} (past retention, closed)")
     print(f"Raw rows are kept from {retention_start(today):%Y-%m-%d}.")
     if result.recomputed:
         latest = max(result.recomputed)

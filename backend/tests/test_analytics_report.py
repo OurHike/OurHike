@@ -47,6 +47,38 @@ def test_a_small_count_of_hikers_who_said_yes_is_masked_inside_a_shown_cell():
     assert masked["2026-10|*|*"]["map_views"] == 3000
 
 
+def test_a_small_count_of_phones_inside_a_shown_cell_is_masked():
+    masked, _ = mask_cells({"2026-10|*|*": {"devices_active": 900, "devices_plan_completed": 9, "devices_plan_made": 300}})
+
+    assert masked["2026-10|*|*"]["devices_plan_completed"] is None
+    assert masked["2026-10|*|*"]["devices_plan_made"] == 300
+
+
+def test_a_count_whose_complement_is_small_is_masked_too():
+    """Of 900 phones, "880 viewed the map" says 20 did not."""
+    masked, _ = mask_cells(
+        {"2026-10|*|*": {"devices_active": 900, "devices_map_view": 880, "hikers_active": 40, "plan_hikers": 31}}
+    )
+
+    assert masked["2026-10|*|*"]["devices_map_view"] is None
+    assert masked["2026-10|*|*"]["plan_hikers"] is None, "40 linked hikers, 31 planned: 9 did not"
+    assert masked["2026-10|*|*"]["hikers_active"] == 40
+
+
+def test_one_masked_part_of_the_growth_split_masks_all_three():
+    """New + returning + back-again = active, so two shown parts give the third."""
+    cell = {"devices_active": 400, "devices_new": 12, "devices_returning": 300, "devices_back": 88}
+
+    masked, _ = mask_cells({"2026-10|*|*": cell})
+
+    assert [masked["2026-10|*|*"][part] for part in ("devices_new", "devices_returning", "devices_back")] == [
+        None,
+        None,
+        None,
+    ]
+    assert masked["2026-10|*|*"]["devices_active"] == 400
+
+
 def test_a_count_of_nobody_stays_zero():
     masked, _ = mask_cells({"2026-10|*|*": {"devices_active": 900, "plan_hikers": 0}})
 

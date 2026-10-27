@@ -7,13 +7,22 @@ add, and a run that happens twice.
 """
 
 import uuid
-from datetime import date, datetime, timedelta
+from datetime import date, datetime, time, timedelta
 
 import pytest
 
 from app.core import analytics_rollup
 from app.core.analytics_rollup import ALL, add_months, closes_on, retention_start, run
-from app.models.analytics import AnalyticsEvent, AnalyticsMonth, AnalyticsMonthly, AnalyticsUser, MonthStatus
+from app.models.analytics import (
+    AnalyticsAnomaly,
+    AnalyticsEvent,
+    AnalyticsIntake,
+    AnalyticsMonth,
+    AnalyticsMonthly,
+    AnalyticsUser,
+    IntakeOutcome,
+    MonthStatus,
+)
 
 OCTOBER = date(2026, 10, 1)
 
@@ -55,6 +64,51 @@ def test_active_devices_come_from_the_phones_own_first_of_the_month_answer(db_se
 
     assert _value(db_session, OCTOBER, "devices_active") == 2
     assert _value(db_session, OCTOBER, "devices_new") == 1
+
+
+def test_every_active_device_is_new_returning_or_back_again(db_session):
+    """Growth accounting for every phone, from two answers each phone gives
+    about itself - no identifier, and the three parts add up to the whole."""
+    _event(db_session, date(2026, 10, 2), month_first=True, ever_first=True)  # new
+    _event(db_session, date(2026, 10, 3), month_first=True, month_returning=True)  # here in September too
+    _event(db_session, date(2026, 10, 4), month_first=True, month_returning=True)
+    _event(db_session, date(2026, 10, 5), month_first=True)  # here before, but not in September
+    _event(db_session, date(2026, 10, 6), month_returning=False)  # not a month_first row: counts nowhere
+
+    run(db_session, today=date(2026, 10, 20))
+
+    parts = [_value(db_session, OCTOBER, metric) for metric in ("devices_new", "devices_returning", "devices_back")]
+    assert parts == [1, 2, 1]
+    assert sum(parts) == _value(db_session, OCTOBER, "devices_active") == 4
+
+
+def test_phones_that_did_each_thing_come_from_their_first_of_that_kind_this_month(db_session):
+    """The funnel for every phone, not only for hikers who linked an account."""
+    _event(db_session, date(2026, 10, 2), event="map_screen_viewed", kind_month_first=True, month_first=True)
+    _event(db_session, date(2026, 10, 2), event="map_screen_viewed")
+    _event(db_session, date(2026, 10, 3), event="hike_plan_made", kind_month_first=True, miles=4.0)
+    _event(db_session, date(2026, 10, 9), event="hike_plan_made", miles=6.0)
+    _event(db_session, date(2026, 10, 9), event="map_screen_viewed", kind_month_first=True, month_first=True)
+    _event(db_session, date(2026, 10, 9), event="user_login", kind_month_first=True)
+
+    run(db_session, today=date(2026, 10, 20))
+
+    assert _value(db_session, OCTOBER, "devices_map_view") == 2
+    assert _value(db_session, OCTOBER, "devices_plan_made") == 1
+    assert _value(db_session, OCTOBER, "plans_made") == 2, "events still count every plan"
+    assert _value(db_session, OCTOBER, "devices_plan_completed") == 0
+    assert _value(db_session, OCTOBER, "devices_login") == 1
+
+
+def test_signed_in_phones_are_counted_by_their_first_row_of_the_month(db_session):
+    _event(db_session, date(2026, 10, 2), month_first=True, signed_in=True)
+    _event(db_session, date(2026, 10, 3), month_first=True, signed_in=False)
+    _event(db_session, date(2026, 10, 4), month_first=False, signed_in=True)
+
+    run(db_session, today=date(2026, 10, 20))
+
+    assert _value(db_session, OCTOBER, "devices_signed_in") == 1
+    assert _value(db_session, OCTOBER, "devices_active") == 2
 
 
 def test_hikers_who_said_yes_are_counted_once_however_many_events(db_session):
@@ -178,6 +232,22 @@ def test_a_closed_month_does_not_move_and_says_what_it_missed(db_session):
     assert _value(db_session, OCTOBER, "events_after_close") == 1
 
 
+def test_a_row_arriving_on_the_close_day_after_the_run_is_counted_late(db_session):
+    """The close is a run at 10:17 UTC and `received_on` is a date. Counting
+    "received after the close day" missed every row that came in later that
+    same day: in neither the frozen month nor the late count."""
+    close_day = closes_on(OCTOBER)
+    _event(db_session, date(2026, 10, 3), month_first=True)
+    run(db_session, today=close_day, now=datetime.combine(close_day, time(10, 17)))
+    _event(db_session, date(2026, 10, 30), received=close_day)  # that afternoon
+
+    next_day = close_day + timedelta(days=1)
+    run(db_session, today=next_day, now=datetime.combine(next_day, time(10, 17)))
+
+    assert _value(db_session, OCTOBER, "events_after_close") == 1
+    assert _value(db_session, OCTOBER, "events") == 1, "the frozen count did not move"
+
+
 def test_a_run_that_missed_weeks_closes_every_month_that_is_due(db_session):
     _event(db_session, date(2026, 8, 3))
     _event(db_session, date(2026, 9, 3))
@@ -224,6 +294,22 @@ def test_the_current_month_and_the_six_before_it_are_kept(db_session):
     run(db_session, today=date(2026, 11, 3))
 
     assert db_session.query(AnalyticsEvent).count() == 2
+
+
+def test_intake_counts_and_findings_go_with_the_raw_rows(db_session):
+    today = date(2027, 6, 15)
+    cutoff = retention_start(today)
+    for day in (cutoff - timedelta(days=1), cutoff):
+        db_session.add(AnalyticsIntake(received_on=day, app_version="", outcome=IntakeOutcome.stored, rows=3))
+        db_session.add(
+            AnalyticsAnomaly(day=day, check_name="sessions", scope=ALL, status="low", first_seen_on=day, last_seen_on=day)
+        )
+    db_session.commit()
+
+    run(db_session, today=today)
+
+    assert [row.received_on for row in db_session.query(AnalyticsIntake).all()] == [cutoff]
+    assert [row.day for row in db_session.query(AnalyticsAnomaly).all()] == [cutoff]
 
 
 def test_a_month_that_never_closed_is_refused_deletion(db_session, monkeypatch):

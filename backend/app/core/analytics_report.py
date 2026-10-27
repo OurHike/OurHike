@@ -19,9 +19,14 @@ Three rules, each a way a small number would otherwise describe people:
    month's figures for one club, or one platform, all describe the same few
    people, so a club-month with 9 active devices shows no plans, miles or
    map views either.
-2. **A count of hikers who said yes is masked below `K_FLOOR`**, even in a
-   cell that is otherwise shown - 900 devices and 12 of them linked is a cell
-   whose "12" describes twelve people.
+2. **A count of people inside a shown cell is masked below `K_FLOOR`** -
+   hikers who said yes, and phones that did one thing (made a plan, came
+   back, are signed in) - since 900 devices and 12 of them linked is a cell
+   whose "12" describes twelve people. **So is one whose complement is below
+   it**: of 900 phones, "880 viewed the map" says 20 did not, as surely as if
+   the 20 were printed. New, returning and back-again phones add up to the
+   cell's active phones exactly, so when any one of the three is masked, all
+   three are.
 3. **Complementary suppression.** When exactly one club (or one platform)
    is masked in a month and the all-clubs total is shown, the next-smallest
    is masked too, so the hidden one cannot be had by subtraction. Club
@@ -54,8 +59,26 @@ K_FLOOR = 25
 # own "first this month" answers, overall, per platform and per club.
 PEOPLE = "devices_active"
 
-# Counts of hikers who said yes - rule 2.
+# Counts of hikers who said yes - rule 2. All but the first are subsets of
+# `hikers_active`, so their complements in it are masked too.
 HIKER_COUNTS = frozenset({"hikers_active", "hikers_new", "login_hikers", "plan_hikers", "completion_hikers", "map_view_hikers"})
+HIKER_SUBSETS = HIKER_COUNTS - {"hikers_active"}
+
+# Counts of phones inside a cell - rule 2 again, each a subset of PEOPLE.
+DEVICE_COUNTS = frozenset(
+    {
+        "devices_new",
+        "devices_returning",
+        "devices_back",
+        "devices_signed_in",
+        "devices_login",
+        "devices_plan_made",
+        "devices_plan_completed",
+        "devices_map_view",
+    }
+)
+# PEOPLE splits exactly into these: one masked part could be had from the rest.
+GROWTH_PARTS = ("devices_new", "devices_returning", "devices_back")
 
 # How far back a report reaches by default. Monthly figures are kept
 # indefinitely; two years is what one page can draw legibly.
@@ -80,16 +103,32 @@ def mask_cells(cells: dict[str, dict[str, float]]) -> tuple[dict[str, dict[str, 
     masked: dict[str, dict[str, float | None]] = {}
     whole: set[str] = set()
 
+    def small(count: float) -> bool:
+        return 0 < count < K_FLOOR
+
     for key, metrics in cells.items():
         people = metrics.get(PEOPLE, 0) or 0
         if people < K_FLOOR:
             masked[key] = {metric: None for metric in metrics}
             whole.add(key)
             continue
-        masked[key] = {
-            metric: (None if metric in HIKER_COUNTS and 0 < (value or 0) < K_FLOOR else value)
-            for metric, value in metrics.items()
-        }
+        hikers = metrics.get("hikers_active", 0) or 0
+        shown: dict[str, float | None] = {}
+        for metric, value in metrics.items():
+            count = value or 0
+            if metric in HIKER_COUNTS and small(count):
+                shown[metric] = None
+            elif metric in HIKER_SUBSETS and small(hikers - count):
+                shown[metric] = None
+            elif metric in DEVICE_COUNTS and (small(count) or small(people - count)):
+                shown[metric] = None
+            else:
+                shown[metric] = value
+        if any(part in shown and shown[part] is None for part in GROWTH_PARTS):
+            for part in GROWTH_PARTS:
+                if part in shown:
+                    shown[part] = None
+        masked[key] = shown
 
     # Rule 3: within each month, across clubs and across platforms.
     groups: dict[tuple[str, str], list[str]] = defaultdict(list)

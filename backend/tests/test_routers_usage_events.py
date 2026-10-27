@@ -235,6 +235,8 @@ def test_no_column_could_hold_an_ip_address():
         {"fix": {"lat": 91, "lon": 0}},
         {"fix": {"lat": 41.3, "lon": -74.2, "label": "home"}},
         {"app_version": "1.2.3 (beta; Pixel 8)"},
+        {"event": "session", "pageviews": 3},
+        {"ever_first": True},
     ],
     ids=[
         "an-unregistered-event",
@@ -249,6 +251,8 @@ def test_no_column_could_hold_an_ip_address():
         "a-latitude-off-the-planet",
         "a-labelled-fix",
         "a-version-string-with-spaces",
+        "a-session-without-its-length",
+        "first-ever-off-the-months-first-row",
     ],
 )
 def test_a_row_outside_the_registry_is_refused_alone(client, db_session, today, fields):
@@ -341,7 +345,7 @@ def test_the_user_table_sums_a_hikers_events_once(client, db_session, today):
     batch = [
         _event(last_month, event="user_login", platform="ios"),
         _event(today, event="hike_plan_made", miles=10.0),
-        _event(today, event="session", pageviews=5),
+        _event(today, event="session", pageviews=5, session_length="m1_to_5"),
     ]
     _post(client, batch, identified=True, headers=headers)
     _post(client, batch, identified=True, headers=headers)  # a resend
@@ -372,7 +376,7 @@ def test_a_late_arrival_moves_a_milestone_earlier_but_never_later(client, db_ses
 
 
 def test_signed_out_rows_never_reach_the_user_table(client, db_session, today):
-    _post(client, [_event(today), _event(today, event="session", pageviews=2)])
+    _post(client, [_event(today), _event(today, event="session", pageviews=2, session_length="under_1m")])
 
     assert db_session.query(AnalyticsUser).count() == 0
 

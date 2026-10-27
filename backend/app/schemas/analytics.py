@@ -111,6 +111,10 @@ class UsageEventIn(BaseModel):
         make a metric mean two things. Refused by name."""
         if self.event is not UsageEvent.session and (self.pageviews is not None or self.session_length is not None):
             raise ValueError("pageviews and session_length belong to session events only")
+        if self.event is UsageEvent.session and (self.pageviews is None or self.session_length is None):
+            # The phone always sends both; a session without its length would
+            # make "session lengths add up to sessions" false for every month.
+            raise ValueError("a session carries its pageviews and its length")
         if self.event not in _PLAN_EVENTS and self.miles is not None:
             raise ValueError("miles belongs to hike plan events only")
         if self.clubs is not None:
@@ -124,6 +128,11 @@ class UsageEventIn(BaseModel):
             raise ValueError("club_firsts names each club once")
         if self.month_returning and not self.month_first:
             raise ValueError("month_returning rides on the month's first row only")
+        if self.ever_first and not (self.month_first and self.week_first) or (self.ever_first and self.month_returning):
+            # A phone's first row ever is its first of the week and the month,
+            # and cannot have been here last month. A row claiming otherwise
+            # would count one phone twice in new + returning + back-again.
+            raise ValueError("ever_first is a first-of-the-week and -month row that is not returning")
         return self
 
 

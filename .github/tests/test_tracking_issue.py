@@ -364,7 +364,7 @@ def test_a_newline_in_upstream_text_cannot_break_the_table():
 
 
 def test_every_monitor_uses_the_shared_module():
-    """Guard against an eighth copy appearing, or one of these seven quietly
+    """Guard against a ninth copy appearing, or one of these eight quietly
     growing its own again."""
     workflows = REPO_ROOT / ".github" / "workflows"
     missing = [
@@ -377,6 +377,7 @@ def test_every_monitor_uses_the_shared_module():
             "check-pending-approvals.yml",
             "check-note-anchors.yml",
             "route-disputes.yml",
+            "analytics-rollup.yml",
         )
         if "scripts/tracking-issue.js" not in (workflows / name).read_text(encoding="utf-8")
     ]

@@ -11,10 +11,14 @@ in one transaction:
    never recomputed again. Rows that arrive for it afterwards are counted in
    its `events_after_close` metric and nowhere else, so a published number
    does not move under a reader - it says how much it is missing instead.
+   That count is the month's rows now less the rows it was closed with, not
+   "received after the close day": `received_on` is a date and the close is a
+   run at 10:17 UTC, so rows arriving later that same day were in neither.
 3. **Deletes the raw rows of every month older than `RETENTION_MONTHS`**, and
    refuses to delete a month that has not closed. A month deleted before it
    closed would be numbers gone for good, so the job fails loudly instead and
-   the month waits for a run that can close it first.
+   the month waits for a run that can close it first. The intake counts and
+   data-quality findings for days before the same line go with them.
 
 WHY A MONTH-END SNAPSHOT IS HARDER HERE THAN IT LOOKS, and where each answer is:
 
@@ -38,6 +42,7 @@ runtime though. Dont mess with the data" (poll 2026-10-27).
 
 from __future__ import annotations
 
+import hashlib
 from collections.abc import Iterable
 from dataclasses import dataclass, field
 from datetime import date, datetime, timedelta
@@ -46,7 +51,7 @@ from sqlalchemy import text
 from sqlalchemy.orm import Session
 
 from app.core.time import utc_now
-from app.models.analytics import AnalyticsMonth, AnalyticsMonthly, MonthStatus
+from app.models.analytics import AnalyticsAnomaly, AnalyticsIntake, AnalyticsMonth, AnalyticsMonthly, MonthStatus
 
 # "Event Metrics should only be stored for 6 months" - the maintainer's
 # request of 2026-10-26. Counted in whole months: the current month and the
@@ -106,7 +111,14 @@ _SLICE_METRICS = text(
     select
       platform,
       count(*) filter (where month_first) as devices_active,
-      count(*) filter (where ever_first) as devices_new,
+      count(*) filter (where month_first and ever_first) as devices_new,
+      count(*) filter (where month_first and month_returning) as devices_returning,
+      count(*) filter (where month_first and not ever_first and not month_returning) as devices_back,
+      count(*) filter (where month_first and signed_in) as devices_signed_in,
+      count(*) filter (where kind_month_first and event = 'user_login') as devices_login,
+      count(*) filter (where kind_month_first and event = 'hike_plan_made') as devices_plan_made,
+      count(*) filter (where kind_month_first and event = 'hike_plan_completed') as devices_plan_completed,
+      count(*) filter (where kind_month_first and event = 'map_screen_viewed') as devices_map_view,
       count(distinct user_key) as hikers_active,
       count(*) filter (where event = 'app_installed') as installs,
       count(*) filter (where event = 'user_login') as logins,
@@ -180,12 +192,24 @@ _CLUB_DEVICES = text(
 
 _HIKERS_NEW = text("select count(*) from analytics_users where first_seen_on >= :start and first_seen_on < :end")
 
-_EVENTS_AFTER_CLOSE = text(
-    """
-    select count(*) from analytics_events
-    where local_date >= :start and local_date < :end and received_on > :closed_on
-    """
-)
+_MONTH_ROWS = text("select count(*) from analytics_events where local_date >= :start and local_date < :end")
+
+# What every stored metric means is the SQL above. Its fingerprint is
+# recorded per DEFINITION_VERSION, and tests/test_analytics_definitions.py
+# recomputes it: SQL that changes without this ledger changing fails there,
+# with the question it is asking - did what a metric counts change? If it
+# did, bump DEFINITION_VERSION and add a line; if only the wording changed,
+# replace the current line. Whitespace is ignored, so reformatting is free.
+DEFINITION_FINGERPRINTS = {
+    1: "26824331cb73eb4a84a5e28dd090f10e4acf585ca567e58e4ddb262f669607dc",
+}
+
+
+def definition_fingerprint() -> str:
+    """sha256 of every metric query, whitespace collapsed."""
+    queries = (_SLICE_METRICS, _CLUB_METRICS, _CLUB_DEVICES, _HIKERS_NEW)
+    normalised = "\n".join(" ".join(str(query).split()) for query in queries)
+    return hashlib.sha256(normalised.encode()).hexdigest()
 
 
 def _metric_rows(month: date, club: str, platform: str, values: dict) -> Iterable[AnalyticsMonthly]:
@@ -225,12 +249,26 @@ def _replace_month(db: Session, month: date, rows: list[AnalyticsMonthly]) -> No
 
 
 def _count_late(db: Session, state: AnalyticsMonth) -> None:
-    """Refresh a closed month's `events_after_close`, the only number it still moves."""
+    """Refresh a closed month's `events_after_close`, the only number it still moves.
+
+    Rows held now less the rows the month was closed with (its frozen
+    `events`). Exact while nothing is deleted from a closed month; account
+    deletion removes a hiker's rows, and the count then reads low by those -
+    never high, so it cannot invent lateness.
+    """
     month = state.month
-    late = db.execute(
-        _EVENTS_AFTER_CLOSE,
-        {"start": month, "end": add_months(month, 1), "closed_on": state.closed_at.date()},
-    ).scalar_one()
+    held = db.execute(_MONTH_ROWS, {"start": month, "end": add_months(month, 1)}).scalar_one()
+    frozen = (
+        db.query(AnalyticsMonthly.value)
+        .filter(
+            AnalyticsMonthly.month == month,
+            AnalyticsMonthly.metric == "events",
+            AnalyticsMonthly.club == ALL,
+            AnalyticsMonthly.platform == ALL,
+        )
+        .scalar()
+    )
+    late = max(0, held - int(frozen or 0))
     db.query(AnalyticsMonthly).filter(
         AnalyticsMonthly.month == month,
         AnalyticsMonthly.metric == "events_after_close",
@@ -288,6 +326,9 @@ def run(db: Session, *, today: date | None = None, now: datetime | None = None) 
         ).rowcount
         state.raw_deleted_at = now
         result.deleted[month] = deleted
+
+    db.query(AnalyticsIntake).filter(AnalyticsIntake.received_on < cutoff).delete(synchronize_session=False)
+    db.query(AnalyticsAnomaly).filter(AnalyticsAnomaly.day < cutoff).delete(synchronize_session=False)
 
     db.commit()
     return result

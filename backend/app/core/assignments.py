@@ -60,10 +60,13 @@ def stood_behind() -> ColumnElement[bool]:
       no `confirmed_by`, and every console write since #1635 carries one or
       the other (`routers/org_roles.py`; `test_org_console_authz.py` pins
       the sync case, the one that used to write neither).
-    - **An admin confirmed it at an organization a maintainer wrote**, which
-      is a club row with no `created_by` - the loader's clubs, and
-      `pipeline/sources.json`'s. `register_org`, `claim_org` and nominating
-      all set `created_by`, so no self-service path produces one.
+    - **An admin confirmed it at an organization a maintainer wrote**:
+      `Club.maintainer_written`, set by the loader and by nothing
+      self-service. It used to be read off `created_by` being null, and
+      account deletion nulls `created_by`, so a registrant deleting their own
+      account made their organization "maintainer-written" (#1913 - Deleting
+      the registrant's account turns a self-registered organization into a
+      maintainer-written one, and lets an accomplice keep an admin seat).
 
     **Never an unconfirmed proposal**, which is a supervisor's suggestion
     waiting for an admin and was being counted as if it were the answer.
@@ -81,7 +84,7 @@ def stood_behind() -> ColumnElement[bool]:
     )
     confirmed_at_a_maintainer_written_org = and_(
         MaintainerAssignment.confirmed_at.isnot(None),
-        Club.created_by.is_(None),
+        Club.maintainer_written.is_(True),
     )
     return or_(loaded_from_a_file, confirmed_at_a_maintainer_written_org)
 

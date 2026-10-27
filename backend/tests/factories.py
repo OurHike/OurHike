@@ -81,6 +81,10 @@ def make_org(db_session, slug="ramapo-trail-conference", **fields) -> Club:
             "name": "Ramapo Trail Conference",
             "domain": "ramapotrails.org",
             "state": OrgState.unclaimed,
+            # A maintainer's row, which is what every org this factory
+            # stands for is. A test about a self-registered org passes False,
+            # or registers one through `POST /clubs`.
+            "maintainer_written": True,
             **fields,
         },
     )

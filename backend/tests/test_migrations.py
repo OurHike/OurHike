@@ -369,3 +369,31 @@ def test_the_challenge_entry_backfill_names_the_owner_and_freezes_the_tags(migra
         )
     assert {"club_id", "hand_item_ids", "untagged_item_ids"}.isdisjoint(columns)
     assert foreign_keys == []
+
+
+def test_the_maintainer_written_backfill_keeps_what_created_by_meant(migration_engine):
+    """c3a9e5d27f18 adds `clubs.maintainer_written` and fills it once from the
+    reading every caller used until then, `created_by IS NULL` (#1913 -
+    Deleting the registrant's account turns a self-registered organization
+    into a maintainer-written one, and lets an accomplice keep an admin seat).
+    A club nobody registered was a maintainer's; one a person registered was
+    not. Rows after the upgrade default to false, which a maintainer's path
+    has to change."""
+    config = _alembic_config()
+    command.upgrade(config, "b4d8e1f7a263")
+    with migration_engine.begin() as connection:
+        connection.execute(sqlalchemy.text("insert into profiles (id, role, created_at) values ('person-1', 'hiker', now())"))
+        connection.execute(
+            sqlalchemy.text(
+                "insert into clubs (id, name, created_by) values "
+                "('loaded', 'Loaded Club', null), "
+                "('registered', 'Registered Club', 'person-1')"
+            )
+        )
+
+    command.upgrade(config, "head")
+
+    with migration_engine.begin() as connection:
+        connection.execute(sqlalchemy.text("insert into clubs (id, name) values ('after', 'After the upgrade')"))
+        flags = dict(connection.execute(sqlalchemy.text("select id, maintainer_written from clubs")).tuples().all())
+    assert flags == {"loaded": True, "registered": False, "after": False}

@@ -82,9 +82,13 @@ create function steward.default_weights() returns jsonb language sql immutable a
 create function steward.rims_id_pattern() returns text language sql immutable as $$ select '^[A-Za-z0-9-]{1,64}$' $$;
 -- The phone's id for a photo (web/src/offline.ts newPhotoId).
 create function steward.client_id_pattern() returns text language sql immutable as $$ select '^[A-Za-z0-9_-]{1,64}$' $$;
--- <claim id>/<uploader's user id>/<the phone's id for the photo>.jpg: the
--- uploader in the path, so no crew member can write under another's name
--- (the sixth pass, finding 2).
+-- <claim id>/<the uploader's folder on that claim>/<the phone's id for the
+-- photo>.jpg. The folder is a random id a crew member gets on joining a claim
+-- (claim_member.folder), so no crew member can write under a crewmate's
+-- (the sixth pass, finding 2), and it names nobody outside that claim. It
+-- was the uploader's user id, which is their OurHike account's too, and which
+-- every reviewer of a submitted claim saw while the crew's names were hidden
+-- (the sixth pass's re-check).
 create function steward.photo_object_pattern() returns text language sql immutable as
   $$ select '^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}/[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}/[A-Za-z0-9_-]{1,64}\.jpg$' $$;
 
@@ -183,6 +187,8 @@ create table steward.claim_member (
   -- is not listed, but still bars its holder from reviewing the claim (the
   -- review's third pass, N7).
   left_at timestamptz,
+  -- Their folder in the steward-photos bucket for this claim.
+  folder uuid not null default gen_random_uuid(),
   primary key (claim_id, user_id)
 );
 create index claim_member_user on steward.claim_member (user_id);
@@ -223,9 +229,9 @@ create table steward.hours (
   primary key (claim_id, user_id)
 );
 
--- Every load's size, so a load is held against the recent ones and not only
--- the last: halving one load at a time could otherwise empty the list in a
--- few days (the sixth pass, finding 4).
+-- Every load's size for 90 days, so a load is held against the month's
+-- largest and not only the last: halving one load at a time could otherwise
+-- empty the list in a few days (the sixth pass, finding 4).
 create table steward.site_load (
   id bigint generated always as identity primary key,
   loaded_at timestamptz not null default now(),
@@ -309,17 +315,34 @@ begin
   if checked ~ steward._hidden_characters() then
     perform steward._refuse('PT422', label || ' must not contain control or invisible formatting characters');
   end if;
+  -- Spaces of every width and variation selectors alone draw nothing.
+  if regexp_replace(checked, steward._blank_characters(), '', 'g') = '' then
+    perform steward._refuse('PT422', label || ' must not be empty');
+  end if;
   return v;
 end
 $$;
 
--- In ASCII escapes, so the file shows what it refuses. Adjacent literals on
--- separate lines are one string in SQL.
+-- What draws nothing but is allowed beside something that does: every space
+-- separator (Zs) and the variation selectors.
+create function steward._blank_characters() returns text language sql immutable as $re$ select
+  '[\x20\u00a0\u1680\u2000-\u200a\u202f\u205f\u3000\u180b-\u180d\u180f\ufe00-\ufe0f\U000e0100-\U000e01ef]'
+$re$;
+
+-- Every code point Unicode calls a control (Cc), format (Cf) or private-use
+-- (Co) character, and every Default_Ignorable_Code_Point (Unicode 15.1's
+-- DerivedCoreProperties.txt) but the variation selectors, which give emoji
+-- their colour (U+2764 U+FE0F is a red heart) and Mongolian its letter
+-- forms, plus U+2800, the braille blank. Fillers like U+3164 draw nothing, so
+-- a name of them reads as no name (the re-check). In ASCII escapes, so the
+-- file shows what it refuses. Adjacent literals on separate lines are one
+-- string in SQL.
 create function steward._hidden_characters() returns text language sql immutable as $re$ select
-  '[\x01-\x1f\x7f-\x9f\u00ad\u0600-\u0605\u061c\u06dd\u070f\u0890-\u0891\u08e2\u180e'
-  '\u200b-\u200f\u202a-\u202e\u2060-\u2064\u2066-\u206f\ufeff\ufff9-\ufffb\ue000-\uf8ff'
-  '\U000110bd\U000110cd\U00013430-\U0001343f\U0001bca0-\U0001bca3\U0001d173-\U0001d17a'
-  '\U000e0001\U000e0020-\U000e007f\U000f0000-\U000ffffd\U00100000-\U0010fffd]'
+  '[\x01-\x1f\x7f-\x9f\u00ad\u034f\u0600-\u0605\u061c\u06dd\u070f\u0890-\u0891\u08e2'
+  '\u115f-\u1160\u17b4-\u17b5\u180e\u200b-\u200f\u202a-\u202e\u2060-\u206f\u2800\u3164'
+  '\ue000-\uf8ff\ufeff\uffa0\ufff0-\ufffb\U000110bd\U000110cd\U00013430-\U0001343f'
+  '\U0001bca0-\U0001bca3\U0001d173-\U0001d17a\U000e0000-\U000e00ff\U000e01f0-\U000e0fff'
+  '\U000f0000-\U000ffffd\U00100000-\U0010fffd]'
 $re$;
 
 create function steward._sha256(token text) returns text
@@ -419,8 +442,10 @@ $$;
 
 -- What a caller sees of one claim. Its crew sees all of it, and so does
 -- everyone once the work is verified, anyone who may review it while it is
--- submitted, and whoever last reviewed it, who saw all of it then and should
--- still see the verdict they gave. Anyone else sees what the open views show, with `full` false,
+-- submitted, and whoever rejected it, which closed it, so they still see the
+-- verdict they gave and nothing they had not seen. Not whoever sent it back:
+-- any account may, and kept the view of the crew's next round of work (the
+-- re-check). Anyone else sees what the open views show, with `full` false,
 -- so a screen cannot read the empty lists as a claim with no photos and no
 -- report (the sixth pass, finding 3: the notes, the review note and every
 -- photo's address were any signed-in account's).
@@ -435,7 +460,7 @@ begin
   if not coalesce(c.state = 'verified'
                   or (uid is not null and steward._is_crew(c.id, uid))
                   or (uid is not null and c.state = 'submitted' and not steward._was_crew(c.id, uid))
-                  or (uid is not null and c.reviewed_by is not distinct from uid), false) then
+                  or (uid is not null and c.state = 'released' and c.rejected_by is not distinct from uid), false) then
     return steward._claim_summary(c, uid) || jsonb_build_object(
       'full', false,
       'started_at', null,
@@ -1020,10 +1045,10 @@ $$;
 
 -- ---------------------------------------------------------------------------
 -- Photos. The phone uploads the JPEG to the private steward-photos bucket
--- first, at `<claim id>/<uploader's user id>/<its id for the photo>.jpg` (the
--- bucket's insert policy, below, lets only the claim's crew do that, each
--- under their own id, while the claim is open), then calls add_photo() to put
--- it on the claim.
+-- first, at `<claim id>/<their folder on the claim>/<its id for the photo>.jpg`
+-- (photo_folder() names the folder; the bucket's insert policy, below, lets
+-- only the claim's crew upload, each into their own folder, while the claim
+-- is open), then calls add_photo() to put it on the claim.
 --
 -- The phone redraws every photo before it leaves, which strips the location
 -- a camera writes into it (web/src/photo.ts). With no server in between,
@@ -1039,35 +1064,57 @@ $$;
 -- photo stops being reachable the moment a claim closes.
 -- ---------------------------------------------------------------------------
 
--- An object's claim, uploader and photo id, from its name in the bucket; all
+-- An object's claim, folder and photo id, from its name in the bucket; all
 -- three null for a name that is not a photo's. The pattern is checked before
 -- any cast, so a stray name makes a policy refuse rather than raise.
-create function steward._photo_object(object_name text, out claim_id uuid, out uploader uuid, out client_id text)
+create function steward._photo_object(object_name text, out claim_id uuid, out folder uuid, out client_id text)
 language sql immutable set search_path = '' as $$
   select case when object_name ~ steward.photo_object_pattern() then split_part(object_name, '/', 1)::uuid end,
          case when object_name ~ steward.photo_object_pattern() then split_part(object_name, '/', 2)::uuid end,
          case when object_name ~ steward.photo_object_pattern() then left(split_part(object_name, '/', 3), -4) end
 $$;
 
--- Objects this account sent to a claim still being worked that are not on
--- it yet and never were: no photo uses them and no photo receipt names them.
--- One left by a claim that has closed stops counting, so a phone that lost
--- a few answers is not locked out for good.
+-- This account's objects in its folders on claims still being worked that
+-- are not on their claim yet and never were: no photo uses them and no
+-- photo receipt names them. One left by a claim that has closed stops
+-- counting, so a phone that lost a few answers is not locked out for good.
 create function steward._pending_uploads(uid uuid) returns int
 language sql stable security definer set search_path = '' as $$
   select count(*)::int
-    from storage.objects o
+    from steward.claim_member m
+    join steward.claim c on c.id = m.claim_id and steward._working(c.state)
+    join storage.objects o
+      on o.bucket_id = 'steward-photos' and o.name like m.claim_id::text || '/' || m.folder::text || '/%'
     cross join lateral steward._photo_object(o.name) n
-    join steward.claim c on c.id = n.claim_id
-   where o.bucket_id = 'steward-photos' and o.name like '%/' || uid::text || '/%'
-     and n.uploader = uid and steward._working(c.state)
+   where m.user_id = uid
      and not exists (select from steward.photo p where p.object_name = o.name)
      and not exists (select from steward.photo_receipt r where r.claim_id = n.claim_id and r.client_id = n.client_id)
 $$;
 
+-- What this account has uploaded in the last day, to any claim.
+create function steward._uploads_today(uid uuid) returns int
+language sql stable security definer set search_path = '' as $$
+  select count(*)::int
+    from steward.claim_member m
+    join storage.objects o
+      on o.bucket_id = 'steward-photos' and o.name like m.claim_id::text || '/' || m.folder::text || '/%'
+   where m.user_id = uid and o.created_at > now() - interval '1 day'
+$$;
+
 -- The bucket's insert policy asks this: a crew member of a claim still being
--- worked and not overdue, writing under their own id, within the claim's
+-- worked and not overdue, writing into their own folder, within the claim's
 -- object cap and their own (the sixth pass, findings 1 and 2).
+--
+-- The caps count, then Storage inserts, so uploads whose last steps overlap
+-- all see the same count (the re-check's new problem 1). A lock here cannot
+-- close that: Storage asks this policy in a savepoint it rolls back before
+-- writing the row as its own role (supabase/storage, src/storage/uploader.ts,
+-- completeUpload, read 2026-10-27), and a lock taken in a savepoint is
+-- released at the rollback (measured on Postgres 16, 2026-10-27). Reasoned,
+-- not measured against Storage: Storage sends the bytes before that last
+-- transaction, which is a few queries long, so only uploads finishing at
+-- the same moment slip past a cap together, at most as many as Storage has
+-- database connections, and every count after them includes them.
 create function steward.may_upload_photo(object_name text) returns boolean
 language plpgsql stable security definer set search_path = '' as $$
 declare
@@ -1078,19 +1125,34 @@ begin
     return false;
   end if;
   select * into o from steward._photo_object(object_name);
-  if o.uploader is distinct from uid then
-    return false;
-  end if;
-  return exists (
-           select from steward.claim c
-            where c.id = o.claim_id and steward._working(c.state) and c.due_at >= now()
-              and steward._is_crew(c.id, uid))
+  return o.claim_id is not null
+     and exists (
+           select from steward.claim_member m join steward.claim c on c.id = m.claim_id
+            where m.claim_id = o.claim_id and m.user_id = uid and m.folder = o.folder and m.left_at is null
+              and steward._working(c.state) and c.due_at >= now())
      and (select count(*) from storage.objects s
            where s.bucket_id = 'steward-photos' and s.name like o.claim_id::text || '/%') < steward.objects_per_claim()
      and steward._pending_uploads(uid) < steward.pending_uploads_per_user()
-     and (select count(*) from storage.objects s
-           where s.bucket_id = 'steward-photos' and s.name like '%/' || uid::text || '/%'
-             and s.created_at > now() - interval '1 day') < steward.uploads_per_user_per_day();
+     and steward._uploads_today(uid) < steward.uploads_per_user_per_day();
+end
+$$;
+
+-- The phone asks this before an upload: the caller's folder on the claim, for
+-- any crew member, whatever the claim's state. A photo sent again after the
+-- claim was submitted then finds its object already there and goes on to
+-- add_photo(), which answers it.
+create function steward.photo_folder(p_claim_id uuid) returns text
+language plpgsql security definer set search_path = '' as $$
+declare
+  uid uuid := steward._caller();
+  found_folder uuid;
+begin
+  select m.folder into found_folder
+    from steward.claim_member m where m.claim_id = p_claim_id and m.user_id = uid and m.left_at is null;
+  if found_folder is null then
+    perform steward._refuse('PT403', 'Only this claim''s crew can do that');
+  end if;
+  return found_folder::text;
 end
 $$;
 
@@ -1184,7 +1246,9 @@ begin
     return steward._claim_detail(c.id, uid);
   end if;
   c := steward._crew_claim(p_claim_id, uid);
-  object_path := c.id::text || '/' || uid::text || '/' || p_client_id || '.jpg';
+  object_path := c.id::text || '/'
+              || (select m.folder::text from steward.claim_member m where m.claim_id = c.id and m.user_id = uid)
+              || '/' || p_client_id || '.jpg';
   if not exists (select from storage.objects o where o.bucket_id = 'steward-photos' and o.name = object_path) then
     perform steward._refuse('PT422', 'The photo has not arrived. Send it again.');
   end if;
@@ -1420,13 +1484,15 @@ select w.id, w.club, w.deficit, w.water, w.trail, w.cluster, w.restricted, w.not
 -- `p_sites` is sites.json's records; a site is workable when its action is
 -- one a volunteer claims (close_restore or harden), as the old API read it.
 -- Refuses a load with fewer than half the sites, or half the workable sites,
--- of the largest of the last ten loads: a truncated or broken file, or a
+-- of the largest load of the last 30 days: a truncated or broken file, or a
 -- scorer that stopped calling sites workable, would otherwise empty the list
--- every claim is checked against. Measured against the recent largest and
--- not the last, a run of bad loads cannot walk it down by halves (the sixth
--- pass, finding 4). `@unvalidated`, the half and the ten: ATC's inventory
--- changed by a handful of sites a week while this was built, and nothing has
--- measured a real month of loads.
+-- every claim is checked against. Measured against the largest in a window
+-- of time, not of loads, so no run of loads walks it down by halves, however
+-- fast (the sixth pass, finding 4, and its re-check: 120 calls in a second
+-- took 3,442 sites to 1 against a window of the last ten loads). A leaked
+-- loader login can halve the list once a month at most. `@unvalidated`, the
+-- half and the 30 days: ATC's inventory changed by a handful of sites a week
+-- while this was built, and nothing has measured a real month of loads.
 create function steward.load_sites(p_sites jsonb) returns int
 language plpgsql security definer set search_path = '' as $$
 declare
@@ -1445,7 +1511,7 @@ begin
   select greatest(coalesce(max(recent.sites), 0), (select count(*) from steward.site)),
          greatest(coalesce(max(recent.workable), 0), (select count(*) from steward.site where workable))
     into most, most_workable
-    from (select l.sites, l.workable from steward.site_load l order by l.id desc limit 10) recent;
+    from (select l.sites, l.workable from steward.site_load l where l.loaded_at > now() - interval '30 days') recent;
   if incoming = 0 or incoming < most / 2 or incoming_workable < most_workable / 2 then
     raise exception 'sites.json names % sites, % of them workable, where recent loads held up to % and %; refusing to replace them',
       incoming, incoming_workable, most, most_workable;
@@ -1465,7 +1531,8 @@ begin
   )
   delete from steward.site s where not exists (select from arriving a where a.rims_id = s.rims_id);
   insert into steward.site_load (sites, workable) values (incoming, incoming_workable);
-  delete from steward.site_load where id <= (select max(id) from steward.site_load) - 100;
+  -- By age, not count: a count would let a burst of loads push the largest out.
+  delete from steward.site_load where loaded_at < now() - interval '90 days';
   return incoming;
 end
 $$;
@@ -1519,7 +1586,7 @@ grant execute on function
   steward.change_weights(text, int, int, int, int, int, text), steward.restore_weights(bigint, text),
   steward.claim_sites(text[]), steward.claim_for_site(text), steward.my_claims(), steward.read_claim(uuid),
   steward.release_claim(uuid), steward.make_invite(uuid), steward.join_claim(text),
-  steward.add_photo(uuid, text, int, text, text), steward.remove_photo(uuid, uuid),
+  steward.photo_folder(uuid), steward.add_photo(uuid, text, int, text, text), steward.remove_photo(uuid, uuid),
   steward.log_hours(uuid, numeric), steward.submit_claim(uuid, text[], text), steward.reviews(),
   steward.review_claim(uuid, text, text), steward.my_hours()
   to authenticated;

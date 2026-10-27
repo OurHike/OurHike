@@ -429,7 +429,7 @@ directions.
 |---|---|---|
 | Sign-in | The same Supabase project, so an OurHike account works here. A six-digit code by email, typed back: the shared project's email template sends a code, not a link, and `client/src/lib/auth.ts` (#1600) records why asking it for a link fails. A code also needs no redirect address registered with Supabase | Reused: the project's own sign-in; PostgREST checks the token before any steward function runs |
 | Data | A `steward` schema in the same project, under `apps/steward/db/`: tables nothing reaches directly, one Postgres function per action holding its rule, and three open views anyone may read. The app calls the functions through supabase-js. Decided 2026-10-27 in place of a FastAPI service on Render with its own database, which was built, reviewed five times and retired the same day; its tests were carried into the SQL | New |
-| Photos | A private Supabase Storage bucket, `steward-photos`, under `<claim id>/<uploader's user id>/<the phone's id for the photo>.jpg`. Only a claim's crew may upload, each under their own id, only while the claim is open, at most 20 photos waiting to go on a claim and 150 a day per account; nothing is overwritten; JPEG only, at most 3 MB. A photo is read through a link Storage signs for an hour, by its crew, by anyone signed in while its claim waits for review, and by anyone once verified (§10, the sixth pass). The phone redraws every photo before it leaves, which strips its location. Nothing redraws it again: the retired API did, against a tampered phone (§10) | Pattern new |
+| Photos | A private Supabase Storage bucket, `steward-photos`, under `<claim id>/<the uploader's folder on the claim>/<the phone's id for the photo>.jpg`, the folder a random id each crew member gets on joining. Only a claim's crew may upload, each into their own folder, only while the claim is open, at most 20 photos waiting to go on a claim and 150 a day per account; nothing is overwritten; JPEG only, at most 3 MB. A photo is read through a link Storage signs for an hour, by its crew, by anyone signed in while its claim waits for review, and by anyone once verified (§10, the sixth pass). The phone redraws every photo before it leaves, which strips its location. Nothing redraws it again: the retired API did, against a tampered phone (§10) | Pattern new |
 | Open data | The volunteer work as CSV and Parquet beside `sites.json`, written daily from the open views with the public anon key (`steward_analysis/open_data.py`); each verified photo with its path and a link signed for eight days | New |
 | Club sections | Which club owns which mile | Reused: `pipeline/export_club_sections.py`'s output |
 | ArcGIS reading | Paging an ArcGIS layer | Reused: `pipeline/lib/arcgis.py` |
@@ -755,9 +755,9 @@ anywhere, and each test was checked by undoing the fix and watching it fail:
 | # | Finding | Fix |
 |---|---|---|
 | 1 | The public `steward-photos` bucket on OurHike's production project was free file hosting: any crew member could upload any JPEG and hand out its address | The bucket is private, and its select policy decides who may read a photo or sign a link to one: the claim's crew, anyone signed in while the claim waits for review, and anyone once verified. An object no photo uses is nobody's to read. An account may have 20 uploads waiting to go on a claim and 150 a day. Waiting uploads on a claim that has closed stop counting, so lost answers cannot lock an account out |
-| 2 | A crew member could take, or delete, the object a crewmate's phone was about to upload | The uploader's user id is in the object's name, and an upload goes only under the uploader's own. The crew may delete only an object a photo was replaced or removed out of |
+| 2 | A crew member could take, or delete, the object a crewmate's phone was about to upload | The uploader's folder on the claim, a random id, is in the object's name, and an upload goes only into the uploader's own. The crew may delete only an object a photo was replaced or removed out of |
 | 3 | Any signed-in account could read any claim's notes, review note and photo paths | `read_claim` gives the full detail to the crew, to reviewers while submitted, to whoever last reviewed it, and to everyone once verified. Anyone else gets what the open views show, marked `full: false`, so a screen never reads empty lists as no photos |
-| 4 | Each load was held only against the last, so a run of bad loads could halve the sites day by day. The load job installed test tooling beside the loader's login and passed the login on the command line | A load is held against the largest of the last ten, in sites and in workable sites. The job installs psycopg alone, hash-pinned, and the login comes from the environment |
+| 4 | Each load was held only against the last, so a run of bad loads could halve the sites day by day. The load job installed test tooling beside the loader's login and passed the login on the command line | A load is held against the largest of the last 30 days, in sites and in workable sites. The job installs psycopg alone, hash-pinned, and the login comes from the environment |
 | 5 | The hidden-character check was a hand list | Every code point Unicode calls Cc, Cf or Co, tested against Python's own tables (3.13 and 3.14 agree, measured) |
 | 6 | Photos were cached for a year, so a retake stayed served | An hour, the life of a link. The service worker keeps photos a phone has shown, so the before photo still lines up the after one with no signal |
 | 7 | `migrate --dry-run` created the schema and its bookkeeping table | A dry run only reads |
@@ -765,6 +765,30 @@ anywhere, and each test was checked by undoing the fix and watching it fail:
 Found while fixing 3: a claim nobody had reviewed made the audience check
 null, and the null opened the full view. The tests caught it, and the check
 now fails closed.
+
+The reviewer re-checked those fixes and found four of the seven still open in part,
+each proved against the suite's own database:
+
+| Re-check | Fix |
+|---|---|
+| Anyone could send a claim back and keep the full view of the crew's next round of work | Only whoever rejected a claim, which closes it, keeps the full view |
+| Photo paths carried each crew member's user id, their OurHike account id, to every reviewer while their names were hidden | A random folder per crew member per claim (`claim_member.folder`, named by `photo_folder()`), which links nothing across claims |
+| 120 loads in a second walked the sites from 3,442 to 1 against a window of ten loads | The window is the last 30 days of loads, and old loads are dropped by age, so no burst pushes the month's largest out |
+| U+3164, U+034F and U+2800 make a name that draws nothing | Every default-ignorable code point is refused but the variation selectors, and text of only spaces and selectors is refused as empty |
+| Parallel uploads pass the per-account caps together | Not closable from a policy (below) |
+| Two accounts and a fake verify publish 40 uploads a claim, which anyone may link to for years | Who may review is the maintainer's call (§11) |
+
+**The cap race.** The caps count and then Storage writes. A lock cannot serialise
+that, for two reasons:
+- Storage asks the insert policy in a savepoint that it rolls back, and then writes
+  the row as its own role (`supabase/storage`, `src/storage/uploader.ts`,
+  `completeUpload`, read 2026-10-27).
+- A lock taken in a savepoint is released at the rollback (measured on Postgres 16).
+
+The bound is reasoned, not measured against Storage. Storage moves the bytes before
+that final transaction, and the transaction is a few queries long. So only uploads
+finishing at the same moment pass a cap together, at most as many as Storage has
+database connections, and every count after them includes them.
 
 ## 11. Still open
 
@@ -788,10 +812,17 @@ Each is the maintainer's: a setting, an account or a decision this build cannot 
   once its claim closes. The caps bound how fast they gather: 80 objects a claim, 150
   uploads an account a day. They do not bound the total.
 - **A signed link outlives the access it was made with.** Storage checks a link's
-  signature, not the policy, so a crew member can sign their claim's photos for as
-  long as they like and share the links. That is at most 80 objects a claim, and the
-  same is true of downloading the photos. Making it impossible would need a server
-  between Storage and the reader.
+  signature, not the policy, and takes its lifetime from whoever asks. So a crew
+  member can sign their claim's photos for years and share the links (at most 80
+  objects a claim), and anyone can do the same for a verified claim's photos.
+- **Who may review.** Today anyone signed in may verify a claim off their own crew.
+  Two accounts can therefore publish any 40 JPEG-typed uploads a claim: one claims
+  and uploads, the other verifies, and the photos are open data that anyone can link
+  to for years. Club-approved reviewers would close it. Proved by the re-check;
+  on the morning page.
+- **Each upload counts the uploader's objects in the bucket.** One such count took
+  83 ms over 50,000 objects, as a sequential scan (measured by the re-check). The
+  count grows with the bucket, and orphans are never swept.
 
 - **Which Supabase project.** The deploy uses OurHike's production project
   (`SUPABASE_URL`), as §3's "the same project" implies. The sign-in email will carry
@@ -819,12 +850,14 @@ Each is the maintainer's: a setting, an account or a decision this build cannot 
   - photos are private, read through links signed for an hour;
   - a submitted claim's photos and report are open to any signed-in account, so
     anyone may review;
-  - a load with under half the sites, or half the workable ones, of the largest of
-    the last ten is refused;
+  - a load with under half the sites, or half the workable ones, of the largest load
+    of the last 30 days is refused;
   - an account may have 20 uploads waiting to go on a claim and 150 a day;
-  - a verified photo's public path carries its uploader's user id. That is a UUID
-    with no name in it, but it links one person's photos across claims, and it
-    outlives `delete_my_data()`.
+  - a photo's path carries a random folder per crew member per claim, not their
+    account id;
+  - a name of default-ignorable characters, or of only spaces and variation
+    selectors, is refused. An emoji's colour selector beside a visible character
+    is allowed.
 - **When peak season ends, by section of the trail**, which decides when each of the
   three years' follow-up visits opens (§6). Follow-ups are not built until it is set.
 

@@ -109,11 +109,6 @@ def uid(name: str) -> str:
     return str(uuid.uuid5(uuid.NAMESPACE_URL, f"steward-test:{name}"))
 
 
-def object_name(who: str, claim_id: str, client_id: str) -> str:
-    """A photo's name in the bucket: its claim, its uploader, the phone's id for it."""
-    return f"{claim_id}/{uid(who)}/{client_id}.jpg"
-
-
 class Refused(Exception):
     pass
 
@@ -158,13 +153,25 @@ class Db:
 
     def upload(self, who: str, claim_id: str, client_id: str = "photo-1") -> str:
         """What Storage does with a photo upload: insert its object row as the uploader."""
-        name = object_name(who, claim_id, client_id)
+        name = self.object_name(who, claim_id, client_id)
         with self.acting(who) as connection:
             connection.execute(
                 "insert into storage.objects (bucket_id, name, owner, owner_id) values (%s, %s, %s, %s)",
                 (BUCKET, name, uid(who), uid(who)),
             )
         return name
+
+    def folder(self, who: str, claim_id: str) -> str:
+        """`who`'s folder on the claim in the bucket; for someone off the crew,
+        one made up, which the bucket refuses."""
+        found = self.connection.execute(
+            "select folder::text from steward.claim_member where claim_id = %s and user_id = %s", (claim_id, uid(who))
+        ).fetchone()
+        return found[0] if found else str(uuid.uuid5(uuid.NAMESPACE_URL, f"steward-test-folder:{who}:{claim_id}"))
+
+    def object_name(self, who: str, claim_id: str, client_id: str) -> str:
+        """A photo's name in the bucket: its claim, its uploader's folder, the phone's id for it."""
+        return f"{claim_id}/{self.folder(who, claim_id)}/{client_id}.jpg"
 
     def sees(self, who: str | None, name: str, *, anonymous: bool = False) -> bool:
         """Whether Storage would let `who` download the object, or sign a link to it."""

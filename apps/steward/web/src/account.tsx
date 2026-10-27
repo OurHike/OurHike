@@ -297,7 +297,7 @@ export function AccountProvider({ children }: { children: ReactNode }) {
     if (!ACCOUNTS_CONFIGURED) return OFF
     return {
       session,
-      api: session.state === 'signed_in' ? createApi(lazyData, session.userId) : null,
+      api: session.state === 'signed_in' ? createApi(lazyData) : null,
       async sendCode(email) {
         const { error } = await (
           await supabase()

@@ -6,7 +6,7 @@ from decimal import Decimal
 
 import psycopg
 import pytest
-from conftest import BUCKET, NEIGHBOUR, SCORES_WELL, SITE, object_name, status, uid
+from conftest import BUCKET, NEIGHBOUR, SCORES_WELL, SITE, status, uid
 
 
 def claim(db, who="claimer", sites=(SITE,)):
@@ -153,12 +153,12 @@ def test_the_first_before_photo_starts_the_work_and_a_new_photo_replaces_the_old
     first = photo(db, claim_id, "before", 1, client_id="first")
     assert first["state"] == "in_progress" and first["started_at"] is not None
     again = photo(db, claim_id, "before", 1, client_id="retake")
-    assert [p["path"] for p in again["photos"]] == [object_name("claimer", claim_id, "retake")]
+    assert [p["path"] for p in again["photos"]] == [db.object_name("claimer", claim_id, "retake")]
     # Named, so the app deletes it: a retake should not leave the first readable.
-    assert again["unused_path"] == object_name("claimer", claim_id, "first")
+    assert again["unused_path"] == db.object_name("claimer", claim_id, "first")
     with db.acting("claimer") as connection:
         connection.execute("delete from storage.objects where name = %s", (again["unused_path"],))
-    assert db.owner("select name from storage.objects") == [(object_name("claimer", claim_id, "retake"),)]
+    assert db.owner("select name from storage.objects") == [(db.object_name("claimer", claim_id, "retake"),)]
 
 
 def test_a_photo_must_have_arrived_in_storage_before_it_goes_on_the_claim(db):
@@ -186,21 +186,49 @@ def test_a_photo_with_a_bad_slot_or_id_is_refused(db, phase, point, client_id):
         "{other}/{me}/photo.jpg",
         "{claim}/photo.jpg",
         "{claim}/{crewmate}/photo.jpg",
+        "{claim}/{my_user_id}/photo.jpg",
     ],
-    ids=["not-jpg", "nested", "dot-dot", "not-a-claim", "other-claim", "no-uploader", "crewmates-folder"],
+    ids=["not-jpg", "nested", "dot-dot", "not-a-claim", "other-claim", "no-folder", "crewmates-folder", "user-id-folder"],
 )
-def test_the_bucket_takes_only_a_crews_jpeg_under_its_claim_and_its_uploaders_own_id(db, name):
+def test_the_bucket_takes_only_a_crews_jpeg_in_the_uploaders_own_folder_on_the_claim(db, name):
     # The sixth pass's finding 2: with no uploader in the name, any crew member
     # could take the name a crewmate's phone was about to upload under.
     claim_id = claim(db)
     join(db, claim_id, "crewmate")
     other = claim(db, "someone-else", (NEIGHBOUR,))
+    names = {
+        "claim": claim_id,
+        "other": other,
+        "me": db.folder("claimer", claim_id),
+        "crewmate": db.folder("crewmate", claim_id),
+        "my_user_id": uid("claimer"),
+    }
     with pytest.raises(psycopg.errors.InsufficientPrivilege):
         with db.acting("claimer") as connection:
             connection.execute(
                 "insert into storage.objects (bucket_id, name, owner_id) values (%s, %s, %s)",
-                (BUCKET, name.format(claim=claim_id, other=other, me=uid("claimer"), crewmate=uid("crewmate")), uid("claimer")),
+                (BUCKET, name.format(**names), uid("claimer")),
             )
+
+
+def test_a_photos_address_names_no_account_and_links_no_two_claims(db):
+    # The re-check: the user id in the path was the person's OurHike account id,
+    # shown to every reviewer of a submitted claim while their name was hidden.
+    first = claim(db)
+    second = claim(db, sites=(NEIGHBOUR,))
+    paths = [photo(db, claim_id, "extra", client_id="a")["photos"][0]["path"] for claim_id in (first, second)]
+    assert all(uid("claimer") not in path for path in paths)
+    assert paths[0].split("/")[1] != paths[1].split("/")[1]
+    assert db.call("claimer", "photo_folder", first) == paths[0].split("/")[1]
+
+
+def test_only_the_crew_is_told_its_folder_on_a_claim(db):
+    claim_id = claim(db)
+    assert status(db.refused("stranger", "photo_folder", claim_id)) == "PT403"
+    photograph(db, claim_id)
+    db.call("claimer", "submit_claim", claim_id, [], None)
+    # Still answered once submitted, so a photo sent again finds its object.
+    assert db.call("claimer", "photo_folder", claim_id) == db.folder("claimer", claim_id)
 
 
 def test_nothing_can_be_uploaded_to_a_claim_that_is_no_longer_open(db):
@@ -234,9 +262,9 @@ def test_the_crew_may_delete_an_object_a_photo_was_replaced_out_of_and_nothing_e
     db.upload("crewmate", claim_id, "in-flight")
     with db.acting("claimer") as connection:
         gone = connection.execute("delete from storage.objects where bucket_id = %s returning name", (BUCKET,)).fetchall()
-    assert gone == [(object_name("claimer", claim_id, "replaced"),)]
+    assert gone == [(db.object_name("claimer", claim_id, "replaced"),)]
     assert sorted(db.owner("select name from storage.objects")) == sorted(
-        [(object_name("claimer", claim_id, "kept"),), (object_name("crewmate", claim_id, "in-flight"),)]
+        [(db.object_name("claimer", claim_id, "kept"),), (db.object_name("crewmate", claim_id, "in-flight"),)]
     )
     assert db.call("crewmate", "add_photo", claim_id, "extra", None, "in-flight", None)["photos"]
 
@@ -257,7 +285,7 @@ def test_a_crew_member_cannot_put_a_crewmates_upload_on_the_claim_as_their_own(d
 def test_a_photo_is_its_crews_until_submitted_then_reviewers_then_everyones_once_verified(db):
     claim_id = claim(db)
     photograph(db, claim_id)
-    before = object_name("claimer", claim_id, "before-1-claimer")
+    before = db.object_name("claimer", claim_id, "before-1-claimer")
     assert db.sees("claimer", before)
     assert not db.sees("stranger", before) and not db.sees(None, before)
     db.call("claimer", "submit_claim", claim_id, [], None)
@@ -273,7 +301,7 @@ def test_an_object_no_photo_uses_is_nobodys_to_read_not_even_its_uploaders(db):
     assert not db.sees("claimer", pending)
     photo(db, claim_id, "before", 1, client_id="replaced")
     photo(db, claim_id, "before", 1, client_id="kept")
-    freed = object_name("claimer", claim_id, "replaced")
+    freed = db.object_name("claimer", claim_id, "replaced")
     # Readable only so the crew can delete it, and only while the claim is worked.
     assert db.sees("claimer", freed) and not db.sees("stranger", freed)
     db.call("claimer", "release_claim", claim_id)
@@ -299,15 +327,17 @@ def test_uploads_left_waiting_on_a_claim_that_closed_do_not_lock_the_account_out
 
 
 def test_an_account_may_upload_150_photos_a_day(db):
+    # Earlier uploads, to a claim since released, so only the day's cap is near.
+    released = claim(db, sites=(NEIGHBOUR,))
+    folder = db.folder("claimer", released)
+    db.call("claimer", "release_claim", released)
     claim_id = claim(db)
-    # Earlier uploads, under a claim since gone so only the day's cap is near.
-    elsewhere = "00000000-0000-0000-0000-000000000000"
     for prefix, age in (("yesterday", "25 hours"), ("today", "1 hour")):
         db.connection.execute(
             "insert into storage.objects (bucket_id, name, created_at)"
             " select %s, %s || '/' || %s || '/' || %s || '-' || n || '.jpg', now() - %s::interval"
             " from generate_series(1, 149) n",
-            (BUCKET, elsewhere, uid("claimer"), prefix, age),
+            (BUCKET, released, folder, prefix, age),
         )
     db.upload("claimer", claim_id, "the-150th")
     with pytest.raises(psycopg.errors.InsufficientPrivilege):
@@ -550,10 +580,17 @@ def test_a_claims_report_and_photos_are_its_crews_then_its_reviewers_then_everyo
     reviewer_view = db.call("reviewer", "read_claim", claim_id)
     assert reviewer_view["full"] is True and reviewer_view["notes"] == "Brushed in the path"
     assert reviewer_view["you_may_review"] is True and len(reviewer_view["photos"]) == 4
+    # The re-check: anyone may send a claim back, so doing it must not keep
+    # them a view of the crew's next round of work.
     sent_back = db.call("reviewer", "review_claim", claim_id, "send_back", "The after photo at point 2 is blurred")
-    assert sent_back["full"] is True and sent_back["review_note"] == "The after photo at point 2 is blurred"
+    assert sent_back["full"] is False and sent_back["notes"] is None
     assert db.call("stranger", "read_claim", claim_id)["review_note"] is None
     assert db.call("claimer", "read_claim", claim_id)["review_note"] == "The after photo at point 2 is blurred"
+    photograph(db, claim_id, phases=("after",), tag="-again")
+    db.call("claimer", "submit_claim", claim_id, [], "Retaken")
+    # Rejecting closes the claim; whoever did it still sees the verdict they gave.
+    rejected = db.call("second-reviewer", "review_claim", claim_id, "reject", "Not this site")
+    assert rejected["full"] is True and rejected["review_note"] == "Not this site"
 
 
 def test_the_open_views_show_an_overdue_claim_as_released_and_only_verified_photos(db):

@@ -204,11 +204,8 @@ type Raw = Record<string, unknown>
  * raise SQLSTATE PTnnn, which PostgREST sends as HTTP status nnn, and a
  * request that never got an answer is 0, which offline.isOffline reads as no
  * signal. So the offline queue and every screen work unchanged.
- *
- * `userId` is the signed-in account's: a photo is uploaded under it, as the
- * bucket's insert policy requires.
  */
-export function createApi(client: DataClient, userId: string): StewardApi {
+export function createApi(client: DataClient): StewardApi {
   async function call<T>(fn: string, args: Raw = {}): Promise<T> {
     const { data, error, status } = await client.rpc(fn, args)
     if (error)
@@ -273,9 +270,23 @@ export function createApi(client: DataClient, userId: string): StewardApi {
     return withUrls(raw)
   }
 
+  // This account's folder on each claim in the bucket: a random id the claim
+  // gave it, which the insert policy requires and which names nobody.
+  const folders = new Map<string, Promise<string>>()
+  function folder(claimId: string): Promise<string> {
+    let found = folders.get(claimId)
+    if (!found) {
+      found = call<string>('photo_folder', { p_claim_id: claimId })
+      // Asked again next time, not remembered, if this one failed.
+      found.catch(() => folders.delete(claimId))
+      folders.set(claimId, found)
+    }
+    return found
+  }
+
   async function upload(claimId: string, clientId: string, photo: Blob): Promise<void> {
     const { error } = await bucket().upload(
-      `${claimId}/${userId}/${clientId}.jpg`,
+      `${claimId}/${await folder(claimId)}/${clientId}.jpg`,
       photo,
       {
         contentType: 'image/jpeg',

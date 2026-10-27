@@ -43,6 +43,21 @@ def test_a_run_of_loads_cannot_halve_the_sites_one_load_at_a_time(db):
     assert len(loaded(db)) == 11
 
 
+def test_no_burst_of_loads_walks_the_list_down_or_pushes_the_months_largest_out(db):
+    # The re-check: against the last ten loads, 120 calls in a second took
+    # 3,442 sites to 1. The floor is now the month's largest load.
+    many = [{"rims_id": f"{n:08d}-5555-5555-5555-555555555555", "club": "C", "action": "harden"} for n in range(40)]
+    db.connection.execute("select steward.load_sites(%s)", (Jsonb(many),))
+    for _ in range(150):
+        db.connection.execute("select steward.load_sites(%s)", (Jsonb(many[:20]),))
+    with pytest.raises(psycopg.errors.RaiseException, match="refusing to replace"):
+        db.connection.execute("select steward.load_sites(%s)", (Jsonb(many[:19]),))
+    # A month on, the largest is the recent ones.
+    db.connection.execute("update steward.site_load set loaded_at = now() - interval '31 days' where sites = 40")
+    db.connection.execute("select steward.load_sites(%s)", (Jsonb(many[:10]),))
+    assert len(loaded(db)) == 10
+
+
 def test_a_load_that_suddenly_calls_most_sites_unworkable_is_refused(db):
     many = [{"rims_id": f"{n:08d}-4444-4444-4444-444444444444", "club": "C", "action": "harden"} for n in range(20)]
     db.connection.execute("select steward.load_sites(%s)", (Jsonb(many),))

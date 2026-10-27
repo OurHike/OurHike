@@ -81,15 +81,15 @@ export function fakeApi(): FakeApi {
     you_are_crew: claim.you_are_crew,
   })
   // The steward schema's _claim_detail: all of it for the crew, a reviewer,
-  // whoever reviewed it last and once verified; for anyone else what the
-  // open views show.
-  const reviewedByYou = new Set<string>()
+  // whoever rejected it and once verified; for anyone else what the open
+  // views show.
+  const rejectedByYou = new Set<string>()
   const detail = (claim: ClaimDetail): ClaimDetail => {
     const full =
       claim.you_are_crew ||
       claim.state === 'verified' ||
       claim.state === 'submitted' ||
-      reviewedByYou.has(claim.id)
+      (claim.state === 'released' && rejectedByYou.has(claim.id))
     const names = showsNames(claim)
     return {
       ...claim,
@@ -405,7 +405,7 @@ export function fakeApi(): FakeApi {
       }
       claim.reviewed_by = displayName
       claim.review_note = note
-      reviewedByYou.add(claim.id)
+      if (verdict === 'reject') rejectedByYou.add(claim.id)
       if (verdict === 'verify') {
         claim.state = 'verified'
         claim.verified_at = now()

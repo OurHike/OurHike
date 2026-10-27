@@ -28,28 +28,60 @@ def test_a_name_that_is_empty_too_long_or_hides_characters_is_refused(db, name):
     assert status(db.refused("volunteer", "set_display_name", name)) == "PT422"
 
 
-def test_every_control_format_and_private_use_character_is_hidden_and_nothing_else_is(db):
+# Unicode 15.1's Default_Ignorable_Code_Point ranges (DerivedCoreProperties.txt,
+# fetched 2026-10-27). Python's unicodedata has no such property.
+DEFAULT_IGNORABLE = [
+    (0x00AD, 0x00AD), (0x034F, 0x034F), (0x061C, 0x061C), (0x115F, 0x1160), (0x17B4, 0x17B5),
+    (0x180B, 0x180D), (0x180E, 0x180E), (0x180F, 0x180F), (0x200B, 0x200F), (0x202A, 0x202E),
+    (0x2060, 0x2064), (0x2065, 0x2065), (0x2066, 0x206F), (0x3164, 0x3164), (0xFE00, 0xFE0F),
+    (0xFEFF, 0xFEFF), (0xFFA0, 0xFFA0), (0xFFF0, 0xFFF8), (0x1BCA0, 0x1BCA3), (0x1D173, 0x1D17A),
+    (0xE0000, 0xE0000), (0xE0001, 0xE0001), (0xE0002, 0xE001F), (0xE0020, 0xE007F), (0xE0080, 0xE00FF),
+    (0xE0100, 0xE01EF), (0xE01F0, 0xE0FFF),
+]  # fmt: skip
+#: Allowed beside a visible character: they give emoji colour and Mongolian its letter forms.
+VARIATION_SELECTORS = {*range(0x180B, 0x180E), 0x180F, *range(0xFE00, 0xFE10), *range(0xE0100, 0xE01F0)}
+IGNORABLE = {c for a, b in DEFAULT_IGNORABLE for c in range(a, b + 1)} - VARIATION_SELECTORS
+
+
+def test_every_control_format_private_use_and_ignorable_character_is_hidden_and_nothing_else_is(db):
     # The sixth pass's finding 5: the class was a hand list of the usual
-    # suspects. Unicode's own categories decide here: Cc, Cf and Co, every
-    # code point but NUL (which Postgres text cannot hold). Measured
-    # 2026-10-27: Python 3.13 (Unicode 15.1) and 3.14 (16.0) both have the
-    # same 137,703 of them, so CI's newer Python asks the same question.
-    every = [chr(c) for c in range(1, 0x110000) if unicodedata.category(chr(c)) in ("Cc", "Cf", "Co")]
+    # suspects. Unicode's own data decides here: categories Cc, Cf and Co,
+    # every code point but NUL (which Postgres text cannot hold), and the
+    # default-ignorable code points, which draw nothing (the re-check found
+    # U+3164 and U+034F accepted). Measured 2026-10-27: Python 3.13 (Unicode
+    # 15.1) and 3.14 (16.0) have the same 137,703 Cc, Cf and Co, so CI's newer
+    # Python asks the same question.
+    every = {c for c in range(1, 0x110000) if unicodedata.category(chr(c)) in ("Cc", "Cf", "Co")} | IGNORABLE | {0x2800}
     missed = db.owner(
         "select to_hex(ascii(c)) from unnest(%s::text[]) c where c !~ steward._hidden_characters()",
-        every,
+        [chr(c) for c in sorted(every)],
     )
     assert missed == []
     # And no letter, mark, number, punctuation, symbol or space is caught by a
     # range drawn too wide.
     shown = [
-        chr(c) for c in range(0x110000) if unicodedata.category(chr(c))[0] in "LMNPS" or unicodedata.category(chr(c)) == "Zs"
+        chr(c)
+        for c in range(0x110000)
+        if c not in every and (unicodedata.category(chr(c))[0] in "LMNPS" or unicodedata.category(chr(c)) == "Zs")
     ]
     caught = db.owner(
         "select to_hex(ascii(c)) from unnest(%s::text[]) c where c ~ steward._hidden_characters()",
         shown,
     )
     assert caught == []
+
+
+@pytest.mark.parametrize(
+    "name",
+    ["\u2800", "\u3164", "\u3000\u2003", "\u00a0", "\ufe0f"],
+    ids=["braille-blank", "hangul-filler", "wide-spaces", "no-break-space", "variation-selector"],
+)
+def test_a_name_that_draws_nothing_is_refused(db, name):
+    assert status(db.refused("volunteer", "set_display_name", name)) == "PT422"
+
+
+def test_an_emoji_with_its_colour_selector_is_a_name(db):
+    assert db.call("volunteer", "set_display_name", "Trail \u2764\ufe0f")["display_name"] == "Trail \u2764\ufe0f"
 
 
 # --- Lists -----------------------------------------------------------------------

@@ -30,7 +30,7 @@ function recording(
   const client: DataClient = {
     rpc: async (fn, args = {}) => {
       calls.push({ fn, args })
-      const answer = answers[fn] ?? {}
+      const answer = answers[fn] ?? (fn === 'photo_folder' ? { data: 'folder-1' } : {})
       return {
         data: answer.data ?? null,
         error: answer.error ?? null,
@@ -74,7 +74,7 @@ function recording(
       },
     },
   }
-  return { api: createApi(client, 'user-1'), calls, uploads, removed, signed }
+  return { api: createApi(client), calls, uploads, removed, signed }
 }
 
 const claimRow = (
@@ -139,25 +139,27 @@ it('a call that never got an answer is no signal, so screens fall back to the ph
 })
 
 describe('photos', () => {
-  it("go to the bucket under the claim, the uploader and the phone's id for them, then onto the claim", async () => {
+  it("go to the bucket under the claim, the uploader's folder on it and the phone's id for them, then onto the claim", async () => {
     const { api, calls, uploads } = recording({
-      add_photo: { data: claimRow([{ path: 'claim-1/user-1/queued-1.jpg' }]) },
+      add_photo: { data: claimRow([{ path: 'claim-1/folder-1/queued-1.jpg' }]) },
     })
     const detail = await api.uploadPhoto('claim-1', 'after', 2, new Blob(['x']), {
       clientId: 'queued-1',
       replaces: 'nothing',
     })
-    // The bucket's insert policy takes a photo only under its uploader's own
-    // id, and caches it for the hour a link lasts (the sixth pass, 2 and 6).
+    // The bucket's insert policy takes a photo only in its uploader's own
+    // folder on the claim, a random id that names nobody, and caches it for
+    // the hour a link lasts (the sixth pass, 2 and 6, and its re-check).
     expect(uploads).toEqual([
       {
-        path: 'claim-1/user-1/queued-1.jpg',
+        path: 'claim-1/folder-1/queued-1.jpg',
         type: 'image/jpeg',
         upsert: false,
         cache: String(PHOTO_LINK_SECONDS),
       },
     ])
     expect(calls).toEqual([
+      { fn: 'photo_folder', args: { p_claim_id: 'claim-1' } },
       {
         fn: 'add_photo',
         args: {
@@ -170,16 +172,41 @@ describe('photos', () => {
       },
     ])
     expect(detail.photos[0].url).toBe(
-      'https://p.example/sign/claim-1/user-1/queued-1.jpg?token=1',
+      'https://p.example/sign/claim-1/folder-1/queued-1.jpg?token=1',
     )
+  })
+
+  it('ask for the folder once a claim, and again only after the asking failed', async () => {
+    let failing = true
+    const { api, calls } = recording({ add_photo: { data: claimRow() } })
+    const real = calls.push.bind(calls)
+    calls.push = (...entries) => {
+      if (failing && entries[0].fn === 'photo_folder') {
+        failing = false
+        real(...entries)
+        throw new TypeError('Failed to fetch')
+      }
+      return real(...entries)
+    }
+    const send = (clientId: string) =>
+      api.uploadPhoto('claim-1', 'extra', null, new Blob(['x']), { clientId })
+    await expect(send('a')).rejects.toThrow()
+    await send('b')
+    await send('c')
+    expect(calls.map((c) => c.fn)).toEqual([
+      'photo_folder',
+      'photo_folder',
+      'add_photo',
+      'add_photo',
+    ])
   })
 
   it('are shown through links Storage signs for an hour, reused while most of it is left', async () => {
     vi.useFakeTimers()
     try {
       const row = claimRow([
-        { path: 'claim-1/user-1/a.jpg' },
-        { path: 'claim-1/user-1/b.jpg' },
+        { path: 'claim-1/folder-1/a.jpg' },
+        { path: 'claim-1/folder-1/b.jpg' },
       ])
       const { api, signed } = recording({ read_claim: { data: row } })
       const first = await api.claim('claim-1')
@@ -191,8 +218,8 @@ describe('photos', () => {
       const later = await api.claim('claim-1')
       expect(later.photos[0].url).not.toBe(first.photos[0].url)
       expect(signed).toEqual([
-        { paths: ['claim-1/user-1/a.jpg', 'claim-1/user-1/b.jpg'], seconds: 3600 },
-        { paths: ['claim-1/user-1/a.jpg', 'claim-1/user-1/b.jpg'], seconds: 3600 },
+        { paths: ['claim-1/folder-1/a.jpg', 'claim-1/folder-1/b.jpg'], seconds: 3600 },
+        { paths: ['claim-1/folder-1/a.jpg', 'claim-1/folder-1/b.jpg'], seconds: 3600 },
       ])
     } finally {
       vi.useRealTimers()
@@ -201,11 +228,11 @@ describe('photos', () => {
 
   it('a photo Storage would not sign is not loaded, and the claim still arrives', async () => {
     const row = claimRow([
-      { path: 'claim-1/user-1/a.jpg' },
-      { path: 'claim-1/user-1/gone.jpg' },
+      { path: 'claim-1/folder-1/a.jpg' },
+      { path: 'claim-1/folder-1/gone.jpg' },
     ])
     const one = await recording({ read_claim: { data: row } }, null, {
-      unsigned: ['claim-1/user-1/gone.jpg'],
+      unsigned: ['claim-1/folder-1/gone.jpg'],
     }).api.claim('claim-1')
     expect(one.photos.map((p) => p.url === null)).toEqual([false, true])
     const none = await recording({ read_claim: { data: row } }, null, {
@@ -228,7 +255,7 @@ describe('photos', () => {
     await api.uploadPhoto('claim-1', 'extra', null, new Blob(['x']), {
       clientId: 'again',
     })
-    expect(calls.map((c) => c.fn)).toEqual(['add_photo'])
+    expect(calls.map((c) => c.fn)).toEqual(['photo_folder', 'add_photo'])
   })
 
   it('an upload that never got an answer is no signal, and nothing is put on the claim', async () => {
@@ -240,7 +267,7 @@ describe('photos', () => {
       .uploadPhoto('claim-1', 'extra', null, new Blob(['x']), { clientId: 'offline' })
       .catch((error: unknown) => error)
     expect(isOffline(failure)).toBe(true)
-    expect(calls).toEqual([])
+    expect(calls.map((c) => c.fn)).toEqual(['photo_folder'])
   })
 
   it('an upload the bucket refuses is refused, with a sentence a volunteer can act on', async () => {

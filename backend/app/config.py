@@ -311,7 +311,9 @@ class Settings(BaseSettings):
     # roughly where six months of rows outgrow 250 MB at 6 to 11 rows a phone
     # a day - raising this ceiling to the new plan's room. The nightly checks
     # warn at `STORAGE_WARN_SHARE` of it (app/core/analytics_quality.py), so
-    # the move is prompted before a batch is turned away.
+    # the move is prompted before a batch is turned away. Poll 5 the same day:
+    # a closed month's unlinked rows move to Parquet in a private R2 bucket
+    # (#1923), which moves that point to about 600-1,100 phones a day once built.
     analytics_daily_row_budget: int = 50_000
     analytics_storage_ceiling_mb: int = 250
 

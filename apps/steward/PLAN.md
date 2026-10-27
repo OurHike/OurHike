@@ -3,8 +3,10 @@
 **Status: phases 0 and 1 built; phases 2 and 3 built but not deployed** (§9): the
 weekly analysis job, the read-only web app, and sign-in, lists, club weights and
 claims with the API behind them. The API has no host, database or photo bucket yet
-(§11). An adversarial review of all of it on 2026-10-27 proved thirteen findings,
-all fixed (§10). Phase 4 is not started. This file began as the
+(§11). Phase 4's first part is built too: the app installs, opens with no signal and
+queues photos (#1911); follow-up visits wait on a decision (§11). An adversarial review
+on 2026-10-27 proved thirteen findings and, re-checking the fixes, seven more; all are
+fixed (§10). This file began as the
 deliverable of **#1899 — Plan Campsite Steward, a separate app that ranks the A.T.
 campsites needing restoration and lets volunteers claim them**, written 2026-10-24 to
 2026-10-26 from a planning session with the maintainer: a first-pass analysis, then
@@ -631,7 +633,7 @@ returns excerpts; their quotes are near-verbatim.
 | 1 | Read-only app | **Built, #1904:** the dashboard with club, mile-range, tier, action and crew filters, the map and CSV export; the site page with directions, the indicator bars and the plan; the Analysis screen; the guide. Deployed by the weekly job | 2–3 weeks |
 | 2 | Sign-in and lists | **Built, not deployed, #1906:** email-code sign-in; lists and share links; club weights with history and restore, re-ranking the dashboard through each site's `need_parts`; the API with 52 tests on Postgres. The web app switches accounts on when `STEWARD_API_URL` is set | 2 weeks |
 | 3 | Claims | **Built, not deployed, #1910:** claims of one site or a cluster, the 14-day clock (reminders in the app; email needs a provider), before you go, crew invite links, photo points and extras, submit, review (verify, send back, or reject), hours | 3–4 weeks |
-| 4 | Field-ready | Offline for claimed sites, the photo-point outline, follow-up visits, CSV export | 2–3 weeks |
+| 4 | Field-ready | **First part built, #1911:** installable, opens with no signal (the app and this week's analysis precached together), claims saved on the phone, photos queued until there is signal, the before photo shown to line up the after. CSV export came with phase 1. **Not built:** follow-up visits | 2–3 weeks |
 
 `@unvalidated`: the sizes assume one developer working with an agent. Nobody has
 measured them. Each phase gets its own issue once this plan is merged; this file does not
@@ -688,6 +690,18 @@ The commits name each finding by number:
 | 6 | A byte search for EXIF was passed four ways | The server redraws every photo from its pixels |
 | 7–13 | A client per signed URL; races past every cap; a send-back that shortened the clock; history that changed with a rename; a 500 on a huge id; CSV formulas; health that did not check the database | Fixed each; see the commits |
 
+Re-checking the fixes, the reviewer closed eleven of the thirteen outright, and found seven new problems:
+
+| # | Finding | Fix |
+|---|---|---|
+| N1 | One upload declaring 60 megapixels cost 687 MB to decode | The pixel cap is what the app sends (2048 × 2048), read from the header; JPEGs decode at that size; two photos decode at once at most |
+| N2 | A reviewer could reject a finished claim and claim the site straight after | Whoever rejects may not claim that site for 30 days |
+| N3 | Code ahead of its migration answered healthy while signed-in requests failed | Health compares the database's schema with the code's |
+| N4 | One unexpected error stopped the site list ever reloading | The refresh always finishes |
+| N5 | A photo had 60 s in all, which a weak signal could not meet | 20 s without a byte, or 300 s in all |
+| N6 | Health checks shared the database pool with real requests | Their own pool of one |
+| N7 | A stolen token could lock an account out for good by deleting its data | A deleted account comes back empty on its next sign-in |
+
 ## 11. Still open
 
 Each is the maintainer's: a setting, an account or a decision this build cannot make.
@@ -712,9 +726,12 @@ Each is the maintainer's: a setting, an account or a decision this build cannot 
   name, lists, weights changes, claims, crew places, hours and photos. OurHike's privacy
   policy does not cover a second app.
 - **Calls this build made that a poll did not:** a reviewer may reject, which releases
-  the site (added after review finding 2); a send-back gives the crew the time it had
-  left, at least 7 days; one account holds at most 10 sites; a deleted account cannot
-  be used here again.
+  the site, and may not claim it for 30 days (added after review finding 2 and the
+  re-check's N2); a send-back gives the crew the time it had left, at least 7 days; one
+  account holds at most 10 sites; deleting your data keeps your crew places and
+  weights changes, without your name, and a later sign-in starts an empty account.
+- **When peak season ends, by section of the trail**, which decides when each of the
+  three years' follow-up visits opens (§6). Follow-ups are not built until it is set.
 
 - Who transcribes the camping rules (decided: the session, reviewed by the maintainer)
   and when. It blocks the "+10 restricted" weight, not phase 0.

@@ -219,6 +219,10 @@ class IntakeOutcome(str, enum.Enum):
     nightly rollup - the job that deletes rows at six months - has not run for
     `analytics_rollup_stale_days` (app/config.py). Neither is lost: the answer
     is a 503, and the phone keeps the rows to send later.
+
+    `declined` came with the token of an account that has synced
+    "Share usage statistics" off: nothing in the batch is stored, and the
+    phone is told every row was refused, so it drops them.
     """
 
     stored = "stored"
@@ -228,6 +232,7 @@ class IntakeOutcome(str, enum.Enum):
     future = "future"
     over_budget = "over_budget"
     paused = "paused"
+    declined = "declined"
 
 
 class AnalyticsIntake(Base):

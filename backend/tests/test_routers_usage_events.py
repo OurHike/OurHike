@@ -38,7 +38,7 @@ from app.models.analytics import (
     AnalyticsSealKey,
     AnalyticsUser,
 )
-from tests.factories import make_profile, make_rollup_heartbeat
+from tests.factories import make_profile, make_rollup_heartbeat, make_usage_consent
 from tests.tokens import auth_headers
 
 SERVER_SECRET = "test-only-user-key-secret"
@@ -69,6 +69,14 @@ def seal_secret(db_session, today):
         db_session.add(AnalyticsSealKey(month=month, public_key=month_public_key(secret, month_label(month))))
     db_session.commit()
     return secret
+
+
+def _hiker_who_said_yes(db_session):
+    """An account whose synced preferences agree to linking - the third thing,
+    beside the batch's yes and a valid token, that a linked row needs."""
+    hiker = make_profile(db_session)
+    make_usage_consent(db_session, hiker, enabled=True, linked=True)
+    return hiker
 
 
 def _event(today, **fields):
@@ -123,7 +131,7 @@ def test_resending_a_batch_stores_nothing_twice(client, db_session, today):
 
 
 def test_a_hiker_who_said_yes_is_linked_by_their_key(client, db_session, today):
-    hiker = make_profile(db_session)
+    hiker = _hiker_who_said_yes(db_session)
     event = _event(today)
 
     _post(client, [event], identified=True, headers=auth_headers(hiker.id))
@@ -132,7 +140,7 @@ def test_a_hiker_who_said_yes_is_linked_by_their_key(client, db_session, today):
 
 
 def test_a_token_without_a_yes_links_nothing(client, db_session, today):
-    hiker = make_profile(db_session)
+    hiker = _hiker_who_said_yes(db_session)
     event = _event(today)
 
     _post(client, [event], identified=False, headers=auth_headers(hiker.id))
@@ -157,9 +165,46 @@ def test_a_yes_with_an_unusable_token_links_nothing(client, db_session, today):
     assert db_session.get(AnalyticsEvent, event["id"]).user_key is None
 
 
+def test_an_account_that_never_synced_a_yes_is_stored_unlinked_whatever_the_phone_says(client, db_session, today):
+    """The phone's `identified` is one phone's word; the account's synced
+    `measurement_linked` is the hiker's, and it reads as no until it is a yes."""
+    hiker = make_profile(db_session)
+    event = _event(today)
+
+    _post(client, [event], identified=True, headers=auth_headers(hiker.id))
+
+    assert db_session.get(AnalyticsEvent, event["id"]).user_key is None
+
+
+def test_an_account_that_synced_no_is_stored_unlinked_whatever_the_phone_says(client, db_session, today):
+    hiker = make_profile(db_session)
+    make_usage_consent(db_session, hiker, enabled=True, linked=False)
+    event = _event(today)
+
+    _post(client, [event], identified=True, headers=auth_headers(hiker.id))
+
+    assert db_session.get(AnalyticsEvent, event["id"]).user_key is None
+    assert db_session.query(AnalyticsUser).count() == 0
+
+
+@pytest.mark.parametrize("identified", [True, False])
+def test_a_batch_from_an_account_that_turned_measurement_off_stores_nothing(client, db_session, today, identified):
+    """A second phone that never heard the hiker turn measurement off does
+    not get to measure them: the batch is counted as declined and dropped."""
+    hiker = make_profile(db_session)
+    make_usage_consent(db_session, hiker, enabled=False, linked=True)
+
+    response = _post(client, [_event(today), _event(today)], identified=identified, headers=auth_headers(hiker.id))
+
+    assert response.status_code == 202
+    assert response.json() == {"accepted": 0, "duplicates": 0, "refused": 2}, "refused, so the phone drops the rows"
+    assert db_session.query(AnalyticsEvent).count() == 0
+    assert _intake(db_session) == {("", "declined"): 2}
+
+
 def test_with_no_server_secret_nothing_is_ever_linked(client, db_session, today, monkeypatch):
     monkeypatch.setattr(settings, "analytics_user_key_secret", "")
-    hiker = make_profile(db_session)
+    hiker = _hiker_who_said_yes(db_session)
     event = _event(today)
 
     _post(client, [event], identified=True, headers=auth_headers(hiker.id))
@@ -172,7 +217,7 @@ def test_with_no_server_secret_nothing_is_ever_linked(client, db_session, today,
 
 
 def test_a_fix_is_sealed_and_opens_to_exactly_what_the_phone_sent(client, db_session, today, seal_secret):
-    hiker = make_profile(db_session)
+    hiker = _hiker_who_said_yes(db_session)
     event = _event(today, fix={"lat": 41.29871, "lon": -74.18810, "accuracy_m": 12.0})
 
     _post(client, [event], identified=True, headers=auth_headers(hiker.id))
@@ -194,7 +239,7 @@ def test_the_plain_square_is_the_fixs_south_west_corner(client, db_session, toda
 
 
 def test_no_plain_column_holds_the_account_or_the_exact_fix(client, db_session, today, seal_secret):
-    hiker = make_profile(db_session)
+    hiker = _hiker_who_said_yes(db_session)
     event = _event(today, fix={"lat": 41.29871, "lon": -74.18810})
 
     _post(client, [event], identified=True, headers=auth_headers(hiker.id))
@@ -208,7 +253,7 @@ def test_no_plain_column_holds_the_account_or_the_exact_fix(client, db_session, 
 def test_without_a_published_key_the_fix_and_account_are_thrown_away(client, db_session, today):
     """Never kept in the clear to be sealed later: the row says `no_key` and
     holds neither, not even the square."""
-    hiker = make_profile(db_session)
+    hiker = _hiker_who_said_yes(db_session)
     event = _event(today, fix={"lat": 41.29871, "lon": -74.18810})
 
     _post(client, [event], identified=True, headers=auth_headers(hiker.id))
@@ -482,7 +527,7 @@ def test_the_same_id_twice_in_one_batch_is_stored_once(client, db_session, today
 
 
 def test_the_user_table_sums_a_hikers_events_once(client, db_session, today):
-    hiker = make_profile(db_session)
+    hiker = _hiker_who_said_yes(db_session)
     headers = auth_headers(hiker.id)
     last_month = add_months(month_start(today), -1)
     batch = [
@@ -505,7 +550,7 @@ def test_the_user_table_sums_a_hikers_events_once(client, db_session, today):
 
 
 def test_a_late_arrival_moves_a_milestone_earlier_but_never_later(client, db_session, today):
-    hiker = make_profile(db_session)
+    hiker = _hiker_who_said_yes(db_session)
     headers = auth_headers(hiker.id)
     _post(client, [_event(today, event="hike_plan_made", miles=3.0)], identified=True, headers=headers)
     earlier = today - timedelta(days=3)
@@ -519,7 +564,7 @@ def test_a_late_arrival_moves_a_milestone_earlier_but_never_later(client, db_ses
 
 
 def test_a_hikers_new_month_is_set_by_their_first_batch_and_never_moved(client, db_session, today):
-    hiker = make_profile(db_session)
+    hiker = _hiker_who_said_yes(db_session)
     headers = auth_headers(hiker.id)
     _post(client, [_event(today)], identified=True, headers=headers)
     last_month = add_months(month_start(today), -1)
@@ -535,7 +580,7 @@ def test_a_late_row_from_a_second_phone_does_not_take_a_hiker_out_of_hikers_new(
     """Reproduced: the late row moved first_seen_on into last month, and the
     hiker dropped out of this month's hikers_new - and last month's, frozen
     or not, never had them."""
-    hiker = make_profile(db_session)
+    hiker = _hiker_who_said_yes(db_session)
     headers = auth_headers(hiker.id)
     _post(client, [_event(today)], identified=True, headers=headers)
     run(db_session, today=today)
@@ -549,7 +594,7 @@ def test_a_late_row_from_a_second_phone_does_not_take_a_hiker_out_of_hikers_new(
 
 def test_the_user_table_keeps_the_day_it_last_changed_and_not_the_time(client, db_session, today):
     """A time of upload is when a hiker found signal."""
-    hiker = make_profile(db_session)
+    hiker = _hiker_who_said_yes(db_session)
 
     _post(client, [_event(today)], identified=True, headers=auth_headers(hiker.id))
 
@@ -568,7 +613,7 @@ def test_there_is_no_way_to_read_events_back(client):
 
 def test_a_second_batch_in_the_same_month_adds_no_second_month(client, db_session, today):
     """`active_months` is a set, kept sorted."""
-    hiker = make_profile(db_session)
+    hiker = _hiker_who_said_yes(db_session)
     headers = auth_headers(hiker.id)
 
     _post(client, [_event(today)], identified=True, headers=headers)

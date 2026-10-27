@@ -33,7 +33,7 @@ from app.core import analytics_quality as quality
 from app.core.analytics_rollup import ALL, add_months, closes_on, month_start, retention_start, run
 from app.core.analytics_seal import user_key
 from app.models.analytics import AnalyticsEvent, AnalyticsMonthly, AnalyticsUser
-from tests.factories import make_profile
+from tests.factories import make_profile, make_usage_consent
 from tests.tokens import auth_headers
 
 START = date(2026, 1, 1)
@@ -101,6 +101,9 @@ def _simulate(client, db_session, monkeypatch) -> dict:
     for _ in range(36):
         installed = START + timedelta(days=random_.randint(0, 150))
         profile = make_profile(db_session) if random_.random() < 0.35 else None
+        if profile is not None:
+            # The yes, synced, without which the route links nothing.
+            make_usage_consent(db_session, profile)
         phones.append(
             Phone(
                 installed=installed,

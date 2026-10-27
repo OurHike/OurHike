@@ -27,6 +27,7 @@ from app.models.club import Club, OrgAdmin, OrgState
 from app.models.maintainer_assignment import MaintainerAssignment
 from app.models.org_registry import OrgPark, OrgSection, OrgTrail
 from app.models.org_role import OrgRole, RoleCategory
+from app.models.preferences import UserPreferences
 from app.models.profile import Profile, Role
 from app.models.work_project import WorkProject
 
@@ -175,6 +176,25 @@ def make_workday(db_session, club, **fields) -> WorkProject:
     db_session.add(project)
     db_session.commit()
     return project
+
+
+def make_usage_consent(db_session, profile, *, enabled: bool = True, linked: bool | None = True) -> UserPreferences:
+    """The two usage-measurement switches, as `profile`'s account last synced them.
+
+    `POST /usage-events` links a row only when the account's own synced
+    preferences say yes (app/routers/analytics.py), so a test about linking
+    needs this as surely as it needs the token. Only these two keys: the route
+    reads nothing else from the blob.
+    """
+    preferences = db_session.get(UserPreferences, profile.id)
+    data = {"measurement_enabled": enabled, "measurement_linked": linked}
+    if preferences is None:
+        preferences = UserPreferences(profile_id=profile.id, data=data)
+        db_session.add(preferences)
+    else:
+        preferences.data = {**preferences.data, **data}
+    db_session.commit()
+    return preferences
 
 
 def make_rollup_heartbeat(db_session, now: datetime | None = None) -> AnalyticsMonth:

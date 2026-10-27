@@ -52,8 +52,7 @@ from typing import Any
 from sqlalchemy import inspect
 from sqlalchemy.orm import Session
 
-from app.config import settings
-from app.core.analytics_seal import user_key
+from app.core.analytics_accounts import LinkedUsageUnreachable, keys_or_refuse
 from app.core.photos import poi_photo_key
 from app.core.time import utc_now
 from app.models.analytics import AnalyticsEvent, AnalyticsUser
@@ -99,26 +98,23 @@ NOT_INCLUDED: tuple[str, ...] = (
     "after the month they were recorded, or now if you delete your account.",
 )
 
-# The usage-event columns a hiker's file carries (#1902): every plain column,
-# and not `sealed`. The sealed blob is their own account id and fix, but it is
-# ciphertext this server cannot open, and a file of bytes nobody can read is
-# not an answer to "what do you hold about me" - the sentence above is.
-_USAGE_EVENT_COLUMNS: tuple[str, ...] = (
-    "id",
-    "local_date",
-    "received_on",
-    "event",
-    "platform",
-    "app_version",
-    "clubs",
-    "miles",
-    "pageviews",
-    "session_length",
-    "has_fix",
-    "area_lat",
-    "area_lon",
-    "seal",
+# Added to the list above only when it is true: linked usage rows exist, and
+# this server has no secret to recompute the key that finds the hiker's among
+# them (app/core/analytics_accounts.py). The export does not fail for it -
+# everything else is still theirs to take - but it does not pretend the
+# section below is complete either.
+USAGE_NOT_LOOKED_UP = (
+    "Any usage counts linked to your account. The server that built this file does not hold the "
+    "key needed to find them, so they could not be looked up; they are still deleted six months "
+    "after the month they were recorded."
 )
+
+# The one usage-event column a hiker's file leaves out (#1902). The sealed
+# blob is their own account id and fix, but it is ciphertext this server
+# cannot open, and a file of bytes nobody can read is not an answer to "what
+# do you hold about me" - NOT_INCLUDED's sentence is. Every other column goes
+# in, read off the table so a column added tomorrow is in tomorrow's file.
+_USAGE_EVENT_LEFT_OUT = frozenset({"sealed"})
 
 
 def _plain(value: Any) -> Any:
@@ -152,21 +148,28 @@ def _rows(db: Session, model: Any, condition: Any) -> list[dict[str, Any]]:
     return [_row(instance) for instance in db.query(model).filter(condition).all()]
 
 
-def _usage(db: Session, profile_id: str) -> tuple[list[dict[str, Any]], dict[str, Any] | None]:
-    """The usage events this account linked by saying yes, and their User-table row.
+def _usage(db: Session, profile_id: str) -> tuple[list[dict[str, Any]], list[dict[str, Any]], bool]:
+    """The usage events this account linked by saying yes, its User-table rows, and whether it could look.
 
-    Found by recomputing the key they were stored under. With no key secret
-    configured nothing was ever linked, and both answers are empty.
+    Found by recomputing the key they were stored under, with every secret it
+    could have been made with - so a list of User-table rows, one per secret
+    the account was keyed under, and almost always one. The third answer is
+    False when linked rows exist and no secret is configured to find this
+    account's; the archive then says so.
     """
-    if not settings.analytics_user_key_secret:
-        return [], None
-    key = user_key(settings.analytics_user_key_secret, profile_id)
-    events = db.query(AnalyticsEvent).filter(AnalyticsEvent.user_key == key).order_by(AnalyticsEvent.local_date).all()
-    summary = db.get(AnalyticsUser, key)
-    return (
-        [{column: _plain(getattr(event, column)) for column in _USAGE_EVENT_COLUMNS} for event in events],
-        _row(summary) if summary is not None else None,
+    try:
+        keys = keys_or_refuse(db, profile_id)
+    except LinkedUsageUnreachable:
+        return [], [], False
+    columns = [column.key for column in inspect(AnalyticsEvent).mapper.columns if column.key not in _USAGE_EVENT_LEFT_OUT]
+    events = (
+        db.query(AnalyticsEvent)
+        .filter(AnalyticsEvent.user_key.in_(keys))
+        .order_by(AnalyticsEvent.local_date, AnalyticsEvent.id)
+        .all()
     )
+    summaries = [_row(summary) for key in keys if (summary := db.get(AnalyticsUser, key)) is not None]
+    return [{column: _plain(getattr(event, column)) for column in columns} for event in events], summaries, True
 
 
 def build_export(db: Session, profile: Profile) -> dict[str, Any]:
@@ -185,12 +188,12 @@ def build_export(db: Session, profile: Profile) -> dict[str, Any]:
     active_hike = db.get(SyncedActiveHike, profile_id)
 
     photos = db.query(PoiPhoto).filter(PoiPhoto.contributor_id == profile_id).all()
-    usage_events, usage_summary = _usage(db, profile_id)
+    usage_events, usage_summaries, usage_looked_up = _usage(db, profile_id)
 
     return {
         "exported_at": _plain(utc_now()),
         "exported_for": profile_id,
-        "what_this_file_does_not_contain": list(NOT_INCLUDED),
+        "what_this_file_does_not_contain": [*NOT_INCLUDED, *(() if usage_looked_up else (USAGE_NOT_LOOKED_UP,))],
         "your_account": _row(profile),
         "preferences": _row(preferences) if preferences is not None else None,
         "trips": _rows(db, SyncedTrip, SyncedTrip.profile_id == profile_id),
@@ -238,7 +241,7 @@ def build_export(db: Session, profile: Profile) -> dict[str, Any]:
         # no key and cannot be told apart from anybody else's - which is what
         # they were sent for.
         "usage_events_linked_to_you": usage_events,
-        "your_usage_summary": usage_summary,
+        "your_usage_summaries": usage_summaries,
         # Challenges (#1780). The tags are what the phone sent - item, time,
         # `gps` or `hand` - and never a position, because none was sent
         # (features/CHALLENGES.md principle 6). The entries are the one thing

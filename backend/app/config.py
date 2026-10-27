@@ -274,10 +274,20 @@ class Settings(BaseSettings):
     # empty. The same posture as `nominate_challenge_secret` - refuse the
     # feature rather than run it with a guessable key.
     #
-    # Rotating it re-keys every hiker: their old rows and their User-table row
-    # stop matching their new events. EVENTING.md says how a rotation is done
-    # without losing that continuity, and it is never done casually.
+    # ROTATING IT: put the new secret here and move the old one into
+    # `analytics_user_key_previous_secrets` below - never drop an old secret
+    # while any row stored under it exists. New events are keyed under the
+    # new secret only, so a hiker's old rows and their old User-table row stop
+    # matching their new events (the User table then holds two rows for one
+    # hiker); account deletion, the export and unlinking find the old ones
+    # through the previous list. Raw rows go within seven months, but a
+    # User-table row lasts until its account is deleted, so in practice an
+    # old secret stays on the list for good.
     analytics_user_key_secret: str = ""
+    # Every secret the key above was made with before, comma-separated (a
+    # secret holding a comma cannot go on this list). Never used to key a new
+    # row - only to find old ones (app/core/analytics_accounts.py).
+    analytics_user_key_previous_secrets: str = ""
 
     # HOW MUCH `POST /usage-events` WILL STORE. The endpoint takes no account,
     # so without a ceiling anybody could fill this database with made-up rows.
@@ -316,6 +326,17 @@ class Settings(BaseSettings):
     # missed nights. @unvalidated as a trade: how late GitHub actually starts
     # this cron, and how long a broken run goes unnoticed, would settle it.
     analytics_rollup_stale_days: int = 3
+
+    @property
+    def analytics_user_key_secrets(self) -> tuple[str, ...]:
+        """The current user-key secret, then every previous one: empty ones skipped, none twice.
+
+        The current one exactly as set, because that is how app/routers/
+        analytics.py keys a row with it; the previous ones trimmed of the
+        spaces a comma-separated list collects.
+        """
+        previous = (part.strip() for part in self.analytics_user_key_previous_secrets.split(","))
+        return tuple(dict.fromkeys(secret for secret in (self.analytics_user_key_secret, *previous) if secret))
 
     @property
     def mail_allowed(self) -> tuple[str, ...]:

@@ -63,8 +63,7 @@ from dataclasses import dataclass, field
 
 from sqlalchemy.orm import Session
 
-from app.config import settings
-from app.core.analytics_seal import user_key
+from app.core.analytics_accounts import keys_or_refuse
 from app.core.time import utc_now
 from app.models.analytics import AnalyticsEvent, AnalyticsUser
 from app.models.app_failure import AppFailure
@@ -136,8 +135,8 @@ class DeletionSummary:
     challenge_tags_deleted: int = 0
     challenge_entries_deleted: int = 0
     #: Usage measurement (#1902): the events this account linked by saying
-    #: yes. Its User-table row goes with them and is not counted separately -
-    #: it is the same events, summed.
+    #: yes. Its User-table rows go with them and are not counted separately -
+    #: they are the same events, summed.
     usage_events_deleted: int = 0
     contributions_kept: dict[str, int] = field(default_factory=dict)
 
@@ -173,9 +172,16 @@ def delete_account(db: Session, profile: Profile, now=None) -> DeletionSummary:
 
     Returns the counts rather than a bare success, so the endpoint can hand a
     hiker a receipt naming what went.
+
+    Raises `LinkedUsageUnreachable` (app/core/analytics_accounts.py), before
+    it deletes anything, when linked usage rows exist and no secret is
+    configured to find this account's among them: a receipt saying its usage
+    went, while it stayed linked in the table, is the one answer worse than
+    refusing.
     """
     now = now or utc_now()
     profile_id = profile.id
+    usage_keys = keys_or_refuse(db, profile_id)
 
     # --- The rows that were only ever theirs. These go outright. ---
 
@@ -269,18 +275,19 @@ def delete_account(db: Session, profile: Profile, now=None) -> DeletionSummary:
     challenge_entries = db.query(ChallengeEntry).filter(ChallengeEntry.user_id == profile_id).delete(synchronize_session=False)
 
     # USAGE MEASUREMENT (#1902). The events this account linked by saying yes
-    # are found by recomputing the key they were stored under, and go with the
-    # User-table row summing them: both were only ever about this hiker, and a
+    # are found by recomputing the key they were stored under - under every
+    # secret it was ever made with, current and previous - and go with the
+    # User-table rows summing them: both were only ever about this hiker, and a
     # monthly figure already closed from them is a count that names nobody, so
     # nothing anybody relies on moves. Events sent before the yes, or after a
     # no, carry no key and name nobody - there is nothing of theirs to find
-    # among them, which is the point of rows like that. With no key secret
-    # configured, no event was ever linked and there is nothing to find either.
+    # among them, which is the point of rows like that. The keys were found
+    # before anything above was deleted, so a deployment that cannot find them
+    # refuses the whole deletion (see `delete_account`).
     usage_events = 0
-    if settings.analytics_user_key_secret:
-        key = user_key(settings.analytics_user_key_secret, profile_id)
-        usage_events = db.query(AnalyticsEvent).filter(AnalyticsEvent.user_key == key).delete(synchronize_session=False)
-        db.query(AnalyticsUser).filter(AnalyticsUser.user_key == key).delete(synchronize_session=False)
+    if usage_keys:
+        usage_events = db.query(AnalyticsEvent).filter(AnalyticsEvent.user_key.in_(usage_keys)).delete(synchronize_session=False)
+        db.query(AnalyticsUser).filter(AnalyticsUser.user_key.in_(usage_keys)).delete(synchronize_session=False)
 
     # --- Organization rows that NAME them and belong to the organization.
     # Every one of these columns is nullable, so the link can be forgotten

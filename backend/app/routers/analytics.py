@@ -6,8 +6,13 @@ for what each column means. Each of these is a decision, not an oversight:
 **It takes no account, and a token alone links nothing.** Counts are on by
 default for everyone (the "split" consent, poll 2026-10-27), so a batch with
 no token is ordinary. A row is linked to an account only when the batch says
-`identified` - the hiker said yes - AND carries a valid token, and the account
-then comes from the token, never from the body.
+`identified` - the hiker said yes - AND carries a valid token AND the
+account's own synced preferences say yes (`measurement_linked`), and the
+account then comes from the token, never from the body. **A no the account
+has synced wins over what any one phone sends**: with `measurement_enabled`
+off, a batch carrying that account's token is counted as `declined` and
+nothing in it is stored - a second phone that never heard the hiker turn
+measurement off does not get to measure them.
 
 **It seals what it cannot read back.** The account id and the GPS fix go into
 `sealed` under the month's public key (app/core/analytics_seal.py). If no key
@@ -77,6 +82,7 @@ from app.models.analytics import (
     SealState,
     UsageEvent,
 )
+from app.models.preferences import UserPreferences
 from app.models.profile import Profile
 from app.schemas.analytics import VERSION_BODY, UsageBatchAck, UsageBatchIn, UsageEventIn
 
@@ -164,6 +170,20 @@ def _gate_outcome(db: Session, now: datetime) -> IntakeOutcome | None:
     if gate.rollup_ran_at is None or gate.rollup_ran_at < now - timedelta(days=settings.analytics_rollup_stale_days):
         return IntakeOutcome.paused
     return None
+
+
+def _synced_consent(db: Session, account: Profile | None) -> tuple[bool, bool]:
+    """(measurement on, linking agreed) as the token's account last synced them to `/preferences/me`.
+
+    No token: on, and not linked - there is no account to ask, and counts are
+    on by default. A token whose account never synced: the same, because
+    `measurement_linked` reads as no until it is a stored yes.
+    """
+    if account is None:
+        return True, False
+    stored = db.get(UserPreferences, account.id)
+    data = stored.data if stored is not None and isinstance(stored.data, dict) else {}
+    return data.get("measurement_enabled", True) is not False, data.get("measurement_linked") is True
 
 
 def _turn_away(db: Session, today: date, outcome: IntakeOutcome, rows: int) -> NoReturn:
@@ -418,9 +438,17 @@ def receive_usage_events(
     if turned_away is not None:
         _turn_away(db, today, turned_away, len(payload.events))
 
+    enabled, said_yes = _synced_consent(db, current_user)
+    if not enabled:
+        # Counted, so a phone ignoring the switch shows up somewhere, and
+        # acknowledged as refused, so it drops the rows rather than resend them.
+        _count_intake(db, today, Counter({("", IntakeOutcome.declined): len(payload.events)}))
+        db.commit()
+        return UsageBatchAck(accepted=0, duplicates=0, refused=len(payload.events))
+
     events, outcomes = _sort_rows(payload.events, today)
 
-    linked = payload.identified and current_user is not None and bool(settings.analytics_user_key_secret)
+    linked = payload.identified and said_yes and current_user is not None and bool(settings.analytics_user_key_secret)
     key = user_key(settings.analytics_user_key_secret, current_user.id) if linked else None
     account_id = current_user.id if linked else None
 

@@ -8,6 +8,7 @@ from sqlalchemy.orm import Session
 
 from app.core.account_deletion import delete_account
 from app.core.account_export import build_export
+from app.core.analytics_accounts import LinkedUsageUnreachable
 from app.core.auth import get_current_github_login, get_current_user
 from app.core.logs import describe_failure
 from app.db.session import get_db
@@ -79,8 +80,23 @@ def delete_my_account(
     204 was considered and refused for exactly that: an empty body is the
     honest answer only if there is nothing the hiker needs to know, and here
     there is.
+
+    503 WHEN THE USAGE IT LINKED CANNOT BE FOUND. Linked usage rows exist and
+    no secret is configured to recompute this account's key
+    (app/core/analytics_accounts.py): deleting the rest would hand the hiker
+    a receipt while their usage stayed linked. Nothing is changed, and the
+    answer is the same words as the 500 below, because the same thing is true.
     """
-    summary = delete_account(db, current_user)
+    try:
+        summary = delete_account(db, current_user)
+    except LinkedUsageUnreachable:
+        db.rollback()
+        # Names only, like the 500 below: no account id, no key.
+        logger.error("account deletion refused: linked usage rows exist and no analytics user-key secret is configured")
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="The account was not deleted. Nothing was changed.",
+        ) from None
     try:
         db.commit()
     except Exception as failure:

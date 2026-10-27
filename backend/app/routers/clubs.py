@@ -27,7 +27,7 @@ from sqlalchemy import func
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
-from app.core.auth import get_current_email, get_current_user
+from app.core.auth import get_current_email, get_current_user, get_current_user_optional
 from app.core.org_access import OrgAccess, club_by_slug, org_access, require_org_admin, resolve_access
 from app.core.orm import commit_and_refresh
 from app.core.time import utc_now
@@ -37,7 +37,7 @@ from app.models.club import Club, OrgAdmin, OrgState, VerifiedBy
 from app.models.maintainer_assignment import MaintainerAssignment
 from app.models.org_registry import OrgPark, OrgSection, OrgTrail
 from app.models.org_role import RoleInvite
-from app.models.profile import Profile
+from app.models.profile import MODERATOR_ROLES, Profile
 from app.models.trail_challenge import ChallengeEntry, ClubChallenge
 from app.models.volunteer_hours import HoursState, VolunteerHoursRecord
 from app.schemas.org import (
@@ -54,16 +54,24 @@ from app.schemas.org import (
 router = APIRouter(prefix="/clubs", tags=["clubs"])
 
 
-def _with_admins(db: Session, club: Club) -> OrgOut:
-    """One org plus its seats, which is how every screen reads it.
+def _with_admins(db: Session, club: Club, viewer: Profile | None) -> OrgOut:
+    """One org plus its seats, as `viewer` may read them. None is anonymous.
 
     Assembled here rather than by a relationship because `Club` deliberately
     declares none: the models in this backend are plain tables, and a lazy
     relationship is a query that fires somewhere nobody expected it.
+
+    Every seat's holder and decline reason go to moderators and to this org's
+    approved admins (`OrgAdminOut.for_viewer` says why). "Approved admin" is
+    `resolve_access`'s rule, an `approved_at`, read off the seats already
+    loaded here rather than queried again.
     """
     admins = db.query(OrgAdmin).filter(OrgAdmin.club_id == club.id).order_by(OrgAdmin.invited_at).all()
+    sees_every_seat = viewer is not None and (
+        viewer.role in MODERATOR_ROLES or any(admin.person_id == viewer.id and admin.approved_at is not None for admin in admins)
+    )
     out = OrgOut.model_validate(club)
-    out.admins = [OrgAdminOut.model_validate(admin) for admin in admins]
+    out.admins = [OrgAdminOut.for_viewer(admin, viewer, sees_every_seat=sees_every_seat) for admin in admins]
     return out
 
 
@@ -143,7 +151,10 @@ def _somebody_holds_the_domain(domain: str, addresses: list[str | None]) -> bool
 
 
 @router.get("", response_model=list[OrgOut])
-def list_orgs(db: Session = Depends(get_db)) -> list[OrgOut]:
+def list_orgs(
+    db: Session = Depends(get_db),
+    viewer: Profile | None = Depends(get_current_user_optional),
+) -> list[OrgOut]:
     """Every organization anyone may look at.
 
     Public, and no account needed - the same posture as every other browsing
@@ -157,15 +168,19 @@ def list_orgs(db: Session = Depends(get_db)) -> list[OrgOut]:
     # stranger typed. `unclaimed` stays - see `OrgState`, where the two are
     # distinguished.
     clubs = db.query(Club).filter(Club.state.notin_([OrgState.deleted, OrgState.pending])).order_by(Club.name).all()
-    return [_with_admins(db, club) for club in clubs]
+    return [_with_admins(db, club, viewer) for club in clubs]
 
 
 @router.get("/{slug}", response_model=OrgOut)
-def read_org(slug: str, db: Session = Depends(get_db)) -> OrgOut:
+def read_org(
+    slug: str,
+    db: Session = Depends(get_db),
+    viewer: Profile | None = Depends(get_current_user_optional),
+) -> OrgOut:
     """One organization. Public: what an org publishes about itself is public
     by construction - that is what registering is. The roster, the hours and
     the unpublished registry are other resources with their own gates."""
-    return _with_admins(db, club_by_slug(db, slug))
+    return _with_admins(db, club_by_slug(db, slug), viewer)
 
 
 @router.get("/{slug}/scoreboard", response_model=ScoreboardOut)
@@ -385,7 +400,7 @@ def register_org(
             )
         )
     db.commit()
-    return _with_admins(db, club)
+    return _with_admins(db, club, current_user)
 
 
 @router.post("/{slug}/admins", response_model=OrgOut, status_code=status.HTTP_201_CREATED)
@@ -427,7 +442,7 @@ def invite_admin(
             )
         )
         db.commit()
-    return _with_admins(db, access.club)
+    return _with_admins(db, access.club, current_user)
 
 
 def _an_admin_offered_it(db: Session, club: Club, seat: OrgAdmin) -> bool:
@@ -507,7 +522,7 @@ def approve_seat(
         club.verified_by = VerifiedBy.email
         _revoke_the_registrants_unverified_seat(db, club, verified_by=current_user.id)
     db.commit()
-    return _with_admins(db, club)
+    return _with_admins(db, club, current_user)
 
 
 @router.post("/{slug}/admins/{admin_id}/decline", response_model=OrgOut)
@@ -540,7 +555,7 @@ def decline_seat(
     seat.decline_reason = payload.reason
     seat.approved_at = None
     db.commit()
-    return _with_admins(db, club)
+    return _with_admins(db, club, current_user)
 
 
 @router.post("/{slug}/claim", response_model=OrgOut)
@@ -630,7 +645,7 @@ def claim_org(
         )
     )
     db.commit()
-    return _with_admins(db, club)
+    return _with_admins(db, club, current_user)
 
 
 @router.patch("/{slug}", response_model=OrgOut)
@@ -638,6 +653,7 @@ def update_org(
     slug: str,
     payload: OrgSettingsUpdate,
     access: OrgAccess = Depends(require_org_admin),
+    current_user: Profile = Depends(get_current_user),
     db: Session = Depends(get_db),
 ) -> OrgOut:
     """Change the organization's own details.
@@ -649,7 +665,7 @@ def update_org(
     for field, value in payload.model_dump(exclude_unset=True).items():
         setattr(access.club, field, value)
     db.commit()
-    return _with_admins(db, access.club)
+    return _with_admins(db, access.club, current_user)
 
 
 @router.delete("/{slug}", status_code=status.HTTP_204_NO_CONTENT)

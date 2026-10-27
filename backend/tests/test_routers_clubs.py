@@ -21,6 +21,7 @@ import pytest
 from app.core.time import utc_now
 from app.models.club import Club, OrgAdmin, OrgState, VerifiedBy
 from app.models.org_role import RoleInvite
+from app.models.profile import Role
 from app.models.volunteer_hours import HoursActivity, VolunteerHoursRecord
 from tests.factories import make_admin, make_org, make_profile
 from tests.tokens import auth_headers
@@ -822,3 +823,65 @@ def test_a_challenge_publishers_org_id_is_not_a_slug_a_stranger_may_register(cli
 
     assert response.status_code == 409
     assert db_session.query(Club).filter(Club.slug == "atc").one_or_none() is None
+
+
+# --- whose seat it is, and why they declined (#1914) ---------------------------
+
+
+def _a_seat_declined_with_a_reason(client) -> tuple[str, str]:
+    """The review's reproduction for #1914 (GET /clubs publishes every admin's
+    account id and decline reason to anyone, and an account id is all it takes
+    to write into that person's private thanks inbox): a founder, and a
+    colleague who signs in, finds the seat waiting for them and declines it
+    with a reason meant for their own organization. Returns both account ids."""
+    founder, colleague = str(uuid.uuid4()), str(uuid.uuid4())
+    registered = _register(
+        client,
+        founder,
+        email="chair@ramapotrails.org",
+        admins=[{"email": "sec@ramapotrails.org", "title": "Secretary"}],
+    )
+    assert registered.status_code == 201, registered.text
+    colleague_headers = auth_headers(colleague, email="sec@ramapotrails.org")
+    assert client.get("/clubs/ramapo-trail-conference/access", headers=colleague_headers).status_code == 200
+    # The colleague finds their own seat by their own id, which they are shown.
+    seats = client.get("/clubs/ramapo-trail-conference", headers=colleague_headers).json()["admins"]
+    mine = next(seat for seat in seats if seat["person_id"] == colleague)
+    declined = client.post(
+        f"/clubs/ramapo-trail-conference/admins/{mine['id']}/decline",
+        json={"reason": "Personal: I am stepping back for a while"},
+        headers=colleague_headers,
+    )
+    assert declined.status_code == 200, declined.text
+    return founder, colleague
+
+
+@pytest.mark.parametrize("path", ["/clubs/ramapo-trail-conference", "/clubs"])
+def test_nobody_outside_the_organization_reads_a_seats_holder_or_decline_reason(client, path):
+    _a_seat_declined_with_a_reason(client)
+
+    for headers in ({}, auth_headers(str(uuid.uuid4()))):  # anonymous, then a stranger signed in
+        body = client.get(path, headers=headers).json()
+        seats = body["admins"] if path != "/clubs" else body[0]["admins"]
+        assert len(seats) == 2, "the seats are still listed, with their titles and dates"
+        assert {seat["person_id"] for seat in seats} == {None}
+        assert {seat["decline_reason"] for seat in seats} == {None}
+
+
+def test_an_approved_admin_and_a_moderator_read_every_seat(client, db_session):
+    founder, colleague = _a_seat_declined_with_a_reason(client)
+    moderator = make_profile(db_session, Role.maintainer).id
+
+    for viewer in (founder, moderator):
+        seats = client.get("/clubs/ramapo-trail-conference", headers=auth_headers(viewer)).json()["admins"]
+        assert {seat["person_id"] for seat in seats} == {founder, colleague}
+        assert "stepping back" in next(seat["decline_reason"] for seat in seats if seat["person_id"] == colleague)
+
+
+def test_a_seat_holder_who_is_not_an_approved_admin_reads_only_their_own_seat(client):
+    founder, colleague = _a_seat_declined_with_a_reason(client)
+
+    seats = client.get("/clubs/ramapo-trail-conference", headers=auth_headers(colleague)).json()["admins"]
+
+    assert {seat["person_id"] for seat in seats} == {colleague, None}
+    assert founder not in {seat["person_id"] for seat in seats}

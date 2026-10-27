@@ -153,7 +153,8 @@ def _credit_for(db: Session, payload: ReportCreate, authored: datetime) -> tuple
     the request and stored.
 
     So the rule is: **what the hiker named wins, and what they left blank is
-    resolved.** Someone who knows the name is the case SAYING_THANKS.md's
+    resolved** - where "named" means a person the trail record stands behind
+    (#1914, the paragraph in the body below). Someone who knows the name is the case SAYING_THANKS.md's
     "optionally tagging the maintainer responsible" exists for, and a lookup
     must not overrule them. The two fields resolve independently - naming a
     club without a person is the ordinary way to thank a stretch.
@@ -189,6 +190,16 @@ def _credit_for(db: Session, payload: ReportCreate, authored: datetime) -> tuple
         return None, None
 
     named_maintainer, named_club = payload.maintainer_id, payload.club_id
+    # A NAMED PERSON COUNTS ONLY IF THE TRAIL RECORD STANDS BEHIND THEM (#1914 -
+    # GET /clubs publishes every admin's account id and decline reason to
+    # anyone, and an account id is all it takes to write into that person's
+    # private thanks inbox). "What the hiker named wins" delivered a thanks to
+    # any account id at all, and thanks never reach the moderation queue. The
+    # maintainer's rule, by poll on 2026-10-27: a name counts only if
+    # `stood_behind()` believes one of that person's assignments. Anyone else
+    # is dropped, and the thanks resolves by location, as a blank name does.
+    if named_maintainer is not None and not _the_record_stands_behind(db, named_maintainer):
+        named_maintainer = None
     if named_maintainer is not None and named_club is not None:
         return named_maintainer, named_club
 
@@ -219,6 +230,22 @@ def _credit_for(db: Session, payload: ReportCreate, authored: datetime) -> tuple
         named_maintainer or (maintainers.pop() if len(maintainers) == 1 else None),
         named_club or (clubs.pop() if len(clubs) == 1 else None),
     )
+
+
+def _the_record_stands_behind(db: Session, person_id: str) -> bool:
+    """Whether any of `person_id`'s assignments is one a hiker-facing read believes.
+
+    Any date, not only the authored one: a thanks written in June for June's
+    maintainer still reaches them after a July handover, which is the reason
+    `_credit_for` resolves by the authored date in the first place.
+    """
+    believed = (
+        db.query(MaintainerAssignment.id)
+        .join(Club, Club.id == MaintainerAssignment.club_id)
+        .filter(MaintainerAssignment.maintainer_id == person_id, stood_behind())
+        .first()
+    )
+    return believed is not None
 
 
 @router.post("", response_model=ReportOut, status_code=status.HTTP_201_CREATED)

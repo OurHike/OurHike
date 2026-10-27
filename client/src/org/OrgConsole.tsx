@@ -528,7 +528,11 @@ export function OrgConsole({
               org={org}
               registry={data.registry}
               confirmed={
-                new Set(org.admins.filter((s) => s.approved_at).map((s) => s.person_id))
+                new Set(
+                  org.admins.flatMap((s) =>
+                    s.approved_at && s.person_id ? [s.person_id] : [],
+                  ),
+                )
               }
               personId={null}
               approvalsRequired={3}

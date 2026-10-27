@@ -242,6 +242,8 @@ def test_a_thanks_never_appears_in_the_public_report_list(client):
 def test_a_thanks_can_name_the_maintainer_it_is_for(client, db_session):
     club = _club(db_session)
     pat = _maintainer(db_session)
+    # A maintainer the trail record stands behind (#1914): a name counts only then.
+    _assign(db_session, maintainer=pat, club=club, start=1, end=5, frm=date(2026, 1, 1))
     payload = dict(_THANKS, maintainer_id=pat.id, club_id=club.id)
 
     body = client.post("/reports", json=payload, headers=auth_headers(str(uuid.uuid4()))).json()
@@ -383,6 +385,9 @@ def test_a_hiker_who_knows_the_name_is_not_overruled_by_the_lookup(client, db_se
     pat = _maintainer(db_session, "Pat")
     sam = _maintainer(db_session, "Sam")
     _assign(db_session, maintainer=sam, club=club, start=1000, end=1100, frm=_JUNE)
+    # Pat looks after another stretch, so the record stands behind the name
+    # (#1914); the lookup at mile 1043 would have said Sam.
+    _assign(db_session, maintainer=pat, club=club, start=2000, end=2100, frm=_JUNE)
 
     body = _thanks_at(client, 1043, _JUNE, maintainer_id=pat.id)
 
@@ -544,13 +549,34 @@ def test_a_thanks_written_on_the_last_day_of_an_assignment_is_still_theirs(clien
     assert [row["id"] for row in _inbox(client, pat.id)] == [filed["id"]]
 
 
-def test_a_named_maintainer_with_no_assignment_still_gets_it(client, db_session):
-    """Being tagged by name stands alone - a maintainer between sections, or
-    one whose club has not been loaded into the table yet."""
+def test_a_maintainer_between_sections_still_gets_a_thanks_by_name(client, db_session):
+    """Any assignment the record stands behind counts, past ones included: Pat
+    handed the stretch on in May and is between sections now."""
+    club = _club(db_session)
     pat = _maintainer(db_session)
+    _assign(db_session, maintainer=pat, club=club, start=1, end=5, frm=date(2026, 1, 1), to=date(2026, 5, 31))
+
     filed = _thanks_at(client, 1043, _JUNE, maintainer_id=pat.id)
 
     assert [row["id"] for row in _inbox(client, pat.id)] == [filed["id"]]
+
+
+def test_a_name_the_record_does_not_stand_behind_reaches_nobodys_inbox(client, db_session):
+    """#1914 - GET /clubs publishes every admin's account id and decline
+    reason to anyone, and an account id is all it takes to write into that
+    person's private thanks inbox.
+
+    Being tagged by name used to stand alone: any account id a hiker sent got
+    the thanks, and a thanks never passes a moderator. The maintainer's rule
+    (poll, 2026-10-27) is that a name counts only if `stood_behind()` believes
+    one of that person's assignments. What it costs: a maintainer whose club
+    has not been loaded yet is no longer reachable by name. The thanks is
+    still kept, and resolves by location like an unnamed one."""
+    stranger = make_profile(db_session).id
+    filed = _thanks_at(client, 1043, _JUNE, maintainer_id=stranger, note="I know where you hike.")
+
+    assert filed["maintainer_id"] is None
+    assert _inbox(client, stranger) == []
 
 
 def test_a_dismissed_thanks_leaves_every_inbox_it_was_delivered_to(client, db_session):

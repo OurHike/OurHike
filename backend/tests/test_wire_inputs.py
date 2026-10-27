@@ -132,7 +132,15 @@ def _assign(db, *, maintainer, club, start, end):
     return assignment
 
 
-def test_a_thanks_naming_a_nonexistent_maintainer_is_a_422_naming_the_field(client):
+def test_a_thanks_naming_an_id_nobody_stands_behind_is_credited_by_location(client):
+    """It used to be a 422 naming the field, because the id reached the
+    foreign key. Since #1914 (GET /clubs publishes every admin's account id
+    and decline reason to anyone, and an account id is all it takes to write
+    into that person's private thanks inbox) a name counts only when the trail
+    record stands behind it, so an unknown id is dropped before the insert,
+    the same as any account that is not a maintainer. That also takes away a
+    way to ask "does this account id exist?", since 422 and 201 used to
+    answer it."""
     response = client.post(
         "/reports",
         json={
@@ -143,8 +151,8 @@ def test_a_thanks_naming_a_nonexistent_maintainer_is_a_422_naming_the_field(clie
         headers=auth_headers(str(uuid.uuid4())),
     )
 
-    assert response.status_code == 422, "a bad foreign key is the caller's error, not a 500"
-    assert "maintainer_id" in response.json()["detail"]
+    assert response.status_code == 201
+    assert response.json()["maintainer_id"] is None
 
 
 def test_a_named_maintainers_thanks_never_borrows_another_clubs_credit(client, db_session):

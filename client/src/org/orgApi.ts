@@ -93,13 +93,28 @@ async function readCsv(path: string): Promise<string> {
 
 export interface OrgAdmin {
   id: string
-  person_id: string
+  /** Null unless this viewer may know whose seat it is: the org's approved
+   *  admins and moderators see every seat's holder, and a seat's own holder
+   *  sees theirs. An account id was the key to that person's private thanks
+   *  inbox (#1914), so the public read carries none. */
+  person_id: string | null
   title: string | null
   is_codeowner: boolean
   invited_at: string
   approved_at: string | null
   declined_at: string | null
+  /** Null on the same terms as `person_id`. */
   decline_reason: string | null
+}
+
+/** What a screen calls a seat: its holder's name when this viewer may know
+ *  whose seat it is, its title when not (`OrgAdmin.person_id`). */
+export function seatName(
+  seat: OrgAdmin,
+  names: Readonly<Record<string, string>>,
+): string {
+  if (seat.person_id === null) return seat.title ?? 'An admin'
+  return names[seat.person_id] ?? seat.person_id
 }
 
 export interface Org {

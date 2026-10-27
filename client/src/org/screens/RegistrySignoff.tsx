@@ -22,7 +22,7 @@
 import { useState } from 'react'
 import { PageHeader, RegistryTable, SectionMap } from '../components'
 import { formatDistance, type UnitSystem } from '../../lib/units'
-import type { Org, OrgPark, OrgSection } from '../orgApi'
+import { seatName, type Org, type OrgPark, type OrgSection } from '../orgApi'
 
 export interface RegistrySignoffProps {
   readonly org: Org
@@ -167,13 +167,12 @@ export function RegistrySignoff({
         </div>
         <div className="org-stack">
           {org.admins.map((seat) => {
-            const isConfirmed = confirmed.has(seat.person_id)
-            const isReading = !isConfirmed && reading.has(seat.person_id)
+            const isConfirmed = seat.person_id !== null && confirmed.has(seat.person_id)
+            const isReading =
+              !isConfirmed && seat.person_id !== null && reading.has(seat.person_id)
             return (
               <div className="org-inline" key={seat.id}>
-                <span className="org-table__name">
-                  {names[seat.person_id] ?? seat.person_id}
-                </span>
+                <span className="org-table__name">{seatName(seat, names)}</span>
                 <span
                   className="org-pill"
                   data-tone={isConfirmed ? 'done' : isReading ? 'waiting' : 'quiet'}

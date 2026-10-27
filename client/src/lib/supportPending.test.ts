@@ -11,13 +11,13 @@ beforeEach(() => sessionStorage.clear())
 
 describe('the tier held across sign-in', () => {
   it('comes back once, after the round trip', () => {
-    holdPendingSupportTier(1000, 0)
-    expect(takePendingSupportTier(60_000)).toBe(1000)
+    holdPendingSupportTier(6000, 0)
+    expect(takePendingSupportTier(60_000)).toBe(6000)
     expect(takePendingSupportTier(60_000)).toBeNull()
   })
 
   it('is forgotten once stale, so a later unrelated sign-in is not hijacked', () => {
-    holdPendingSupportTier(10000, 0)
+    holdPendingSupportTier(12000, 0)
     expect(takePendingSupportTier(PENDING_TIER_MAX_AGE_MS + 1)).toBeNull()
   })
 

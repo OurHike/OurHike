@@ -4,14 +4,14 @@
 // each answered against a drawn mock:
 //
 //   - On the 5th distinct day of use in a calendar year (lib/activeDays.ts)
-//     the app asks every hiker to choose $0, $1, $10 or $100 a year. The
+//     the app asks every hiker to choose $0, $12, $60 or $120 a year. The
 //     choice is required, and **$0 is a choice**: it keeps everything
 //     working, and nothing anywhere is locked by not paying.
 //   - $0 stays on this phone and needs no account. A paid choice is
 //     verified through a signed-in account: the backend matches the payment
 //     provider's signed webhooks to it (Stripe's, since 2026-10-27).
 //   - Picking $0 brings one more screen, at most once a year: a nudge
-//     toward $1 or $10 in a hiker-trash voice, with a line that rotates
+//     toward $12 or $60 in a hiker-trash voice, with a line that rotates
 //     (lib/supportNudges.ts). "Keep it at $0" stays on that screen and
 //     readable.
 //   - Payment never happens inside the app. The website app continues to
@@ -33,10 +33,11 @@ import type { SupportSummary } from './api'
  *  number, not a measured one. */
 export const ASK_ON_DAY = 5
 
-/** The four answers, in cents a year. Yearly, the maintainer's choice over
- *  monthly: one card charge a year instead of twelve, and $100 lands on the
- *  all-access ceiling PRICING_MODEL.md already sketched. */
-export const TIERS = [100, 1000, 10000] as const
+/** The four answers, in cents a year: $12, $60 and $120, which are $1, $5 and
+ *  $10 a month (the maintainer's tiers, 2026-10-27, replacing $1, $10 and
+ *  $100). Yearly, the maintainer's choice over monthly: one card charge a
+ *  year instead of twelve, so the 30¢ card fee is paid once. */
+export const TIERS = [1200, 6000, 12000] as const
 export type PaidTier = (typeof TIERS)[number]
 export type Tier = 0 | PaidTier
 
@@ -47,7 +48,7 @@ export type Tier = 0 | PaidTier
  *  real completions take, which nobody has measured. */
 export const PENDING_GRACE_DAYS = 30
 
-/** `$1`, `$10`, `$100`. */
+/** `$12`, `$60`, `$120`. */
 export function dollars(cents: number): string {
   return `$${(cents / 100).toLocaleString('en-US')}`
 }

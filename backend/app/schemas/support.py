@@ -9,9 +9,11 @@ from app.core.support_providers import current_provider, provider_for
 from app.core.time import UtcDatetime
 from app.models.support import SupportCadence, SupportChoice
 
-# The three paid answers, in cents a year - the maintainer's $1, $10 and $100
-# (poll, 2026-10-23). $0 is the fourth answer and never reaches this API.
-PaidTier = Literal[100, 1000, 10000]
+# The three paid answers, in cents a year - the maintainer's $12, $60 and
+# $120, which are $1, $5 and $10 a month (2026-10-27, replacing the $1, $10
+# and $100 of the 2026-10-23 poll). $0 is the fourth answer and never reaches
+# this API.
+PaidTier = Literal[1200, 6000, 12000]
 
 
 class SupportChoiceIn(BaseModel):

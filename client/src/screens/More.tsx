@@ -123,7 +123,7 @@ export interface MoreProps extends SettingsProps {
    * row leads to an empty page, never a crash.
    */
   supportScreen?: ReactNode
-  /** The Your support row's second line, e.g. "$10 a year". */
+  /** The Your support row's second line, e.g. "$60 a year". */
   supportSummary?: string
   /**
    * Opens the moderation queue, and present ONLY for a moderator (#235).

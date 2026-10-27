@@ -53,11 +53,12 @@ const episode =
   'https://podcasts.rrchnm.org/show/the-green-tunnel/changemakers/'
 
 // Per yearly payment: 2.9% + 30c card + 0.7% Billing. Rounded to the cent,
-// which is what a hiker sees.
+// which is what a hiker sees. The tiers are the maintainer's $12, $60 and
+// $120 a year (2026-10-27), which are $1, $5 and $10 a month.
 const fees = [
-  { tier: '$1', fee: '$0.34', kept: '$0.66' },
-  { tier: '$10', fee: '$0.66', kept: '$9.34' },
-  { tier: '$100', fee: '$3.90', kept: '$96.10' },
+  { tier: '$12', fee: '$0.73', kept: '$11.27' },
+  { tier: '$60', fee: '$2.46', kept: '$57.54' },
+  { tier: '$120', fee: '$4.62', kept: '$115.38' },
 ]
 ---
 
@@ -72,7 +73,7 @@ const fees = [
         OurHike is pay-what-you-want, and <strong>$0 is one of the
         answers</strong>. The map, water, closures and hazards are free for
         every hiker, forever. Once a year, on your fifth day out with OurHike,
-        we ask you to choose what you give: $0, $1, $10 or $100 a year. Every
+        we ask you to choose what you give: $0, $12, $60 or $120 a year. Every
         answer keeps everything working.
       </p>
     </header>
@@ -136,7 +137,7 @@ const fees = [
           and never sent anywhere.
         </li>
         <li>
-          <strong>Pick $0, $1, $10 or $100 a year.</strong> $0 needs nothing:
+          <strong>Pick $0, $12, $60 or $120 a year.</strong> $0 needs nothing:
           no account, no reason, no follow-up. It asks again next year.
         </li>
         <li>

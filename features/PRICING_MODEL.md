@@ -10,8 +10,9 @@ Companion to [FEATURES.md](../FEATURES.md) (extends its existing "Business model
 >
 > The banner below says money never passes through OurHike. **For OurHike's
 > own costs, it now does**: every hiker is asked once a year to choose $0,
-> $1, $10 or $100 a year, $0 included, paid on the website through Buy Me a
-> Coffee and never inside the app. Running costs first, then growth, none of
+> $12, $60 or $120 a year, $0 included, paid on the website through Stripe
+> and never inside the app (tiers and processor as changed by the
+> maintainer, 2026-10-27). Running costs first, then growth, none of
 > it the founder's income, and the long-term intent is money flowing from
 > OurHike to the clubs once a nonprofit can make those grants. Decided by
 > the maintainer by poll; [SUPPORTING_OURHIKE.md](SUPPORTING_OURHIKE.md) is

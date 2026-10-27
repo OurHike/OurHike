@@ -44,9 +44,9 @@ from tests.tokens import auth_headers
 
 SECRET = "whsec_test"
 LINKS = {
-    100: "https://buy.stripe.com/test_one",
-    1000: "https://buy.stripe.com/test_ten",
-    10000: "https://buy.stripe.com/test_hundred",
+    1200: "https://buy.stripe.com/test_twelve",
+    6000: "https://buy.stripe.com/test_sixty",
+    12000: "https://buy.stripe.com/test_hundred_twenty",
 }
 
 
@@ -132,7 +132,7 @@ def t0():
 def _choose(client, user_id, email="hiker@example.com", **body):
     return client.put(
         "/support/me",
-        json={"amount_cents": 1000, "accounting_email": False, "delivery": "redirect", **body},
+        json={"amount_cents": 6000, "accounting_email": False, "delivery": "redirect", **body},
         headers=auth_headers(user_id, email=email),
     )
 
@@ -171,7 +171,7 @@ def _event(kind, obj, *, created=None, live=True, event_id=None):
     }
 
 
-def _session(*, choice=None, email="hiker@example.com", sub="sub_777", amount=1000, mode="subscription", created=None, live=True):
+def _session(*, choice=None, email="hiker@example.com", sub="sub_777", amount=6000, mode="subscription", created=None, live=True):
     """`checkout.session.completed`, as a Payment Link's checkout sends it."""
     created = int(time.time()) if created is None else created
     return _event(
@@ -208,7 +208,7 @@ def _subscription(kind="customer.subscription.updated", *, sub="sub_777", status
         "quantity": 1,
         "price": {
             "id": "price_ten",
-            "unit_amount": fields.pop("amount", 1000),
+            "unit_amount": fields.pop("amount", 6000),
             "currency": "usd",
             "recurring": {"interval": "year"},
         },
@@ -233,7 +233,7 @@ def _subscription(kind="customer.subscription.updated", *, sub="sub_777", status
     return _event(kind, obj, created=created)
 
 
-def _invoice(*, sub="sub_777", amount=1000, currency="usd", paid_at=None, basil=True, event_id=None):
+def _invoice(*, sub="sub_777", amount=6000, currency="usd", paid_at=None, basil=True, event_id=None):
     paid_at = int(time.time()) if paid_at is None else paid_at
     obj = {
         "id": f"in_{uuid.uuid4().hex[:12]}",
@@ -257,7 +257,7 @@ def _choice_id(receipt) -> str:
 
 
 def _paying(client, user_id, **session):
-    """A hiker who chose $10 in the app and whose payment then started."""
+    """A hiker who chose $60 in the app and whose payment then started."""
     choice = _choice_id(_choose(client, user_id))
     assert _deliver(client, _session(choice=choice, **session)).json() == {"result": "active"}
     return choice
@@ -278,12 +278,12 @@ def test_reading_requires_authentication(client):
 
 
 def test_a_website_choice_checks_out_through_its_tiers_link_carrying_the_choice(client, configured, db_session):
-    response = _choose(client, str(uuid.uuid4()), amount_cents=10000)
+    response = _choose(client, str(uuid.uuid4()), amount_cents=12000)
 
     assert response.status_code == 200
     body = response.json()
     assert body["support"]["status"] == "pending"
-    assert body["support"]["amount_cents"] == 10000
+    assert body["support"]["amount_cents"] == 12000
     assert body["support"]["email"] == "hiker@example.com"
     assert body["support"]["provider_label"] == "Stripe"
     assert (body["support"]["supporting"], body["support"]["can_stop"], body["support"]["can_choose"]) == (
@@ -292,7 +292,7 @@ def test_a_website_choice_checks_out_through_its_tiers_link_carrying_the_choice(
         True,
     )
     url = urlsplit(body["checkout_url"])
-    assert f"{url.scheme}://{url.netloc}{url.path}" == LINKS[10000]
+    assert f"{url.scheme}://{url.netloc}{url.path}" == LINKS[12000]
     query = parse_qs(url.query)
     assert query["client_reference_id"] == [db_session.query(SupportChoice).one().id]
     assert query["prefilled_email"] == ["hiker@example.com"]
@@ -305,7 +305,7 @@ def test_a_choice_keeps_the_consent_record_a_provider_move_needs(client, configu
     row = db_session.query(SupportChoice).one()
     assert row.terms_version is not None
     assert row.delivery == "email"
-    assert row.chosen_amount_cents == 1000
+    assert row.chosen_amount_cents == 6000
     assert row.accounting_email_at is not None
     assert row.migrate_notice_at is not None
 
@@ -314,7 +314,7 @@ def test_the_email_is_the_tokens_never_one_the_request_carries(client, configure
     """A typed address could point a stranger's payment at this account."""
     response = client.put(
         "/support/me",
-        json={"amount_cents": 1000, "delivery": "redirect", "email": "someone-else@example.com"},
+        json={"amount_cents": 6000, "delivery": "redirect", "email": "someone-else@example.com"},
         headers=auth_headers(str(uuid.uuid4()), email="Hiker@Example.com "),
     )
 
@@ -324,13 +324,15 @@ def test_the_email_is_the_tokens_never_one_the_request_carries(client, configure
 def test_a_sign_in_with_no_email_cannot_choose(client, configured):
     response = client.put(
         "/support/me",
-        json={"amount_cents": 1000, "delivery": "redirect"},
+        json={"amount_cents": 6000, "delivery": "redirect"},
         headers=auth_headers(str(uuid.uuid4())),
     )
     assert response.status_code == 422
 
 
-@pytest.mark.parametrize("amount", [0, 500, 1001, 100000])
+# The old tiers ($1, $10, $100) are refused too: a client from before the
+# change must not record an amount nobody offers any more.
+@pytest.mark.parametrize("amount", [0, 100, 1000, 10000, 1201, 120000])
 def test_only_the_three_paid_answers_are_accepted(client, configured, amount):
     assert _choose(client, str(uuid.uuid4()), amount_cents=amount).status_code == 422
 
@@ -342,7 +344,7 @@ def test_with_no_payment_links_configured_the_website_path_says_not_yet(client, 
 
 
 def test_a_payment_link_that_is_not_https_is_never_handed_out(client, configured, monkeypatch):
-    monkeypatch.setattr(settings, "stripe_payment_links", "1000=javascript:alert(1)")
+    monkeypatch.setattr(settings, "stripe_payment_links", "6000=javascript:alert(1)")
     assert _choose(client, str(uuid.uuid4())).status_code == 503
 
 
@@ -353,14 +355,14 @@ def test_with_no_known_provider_nothing_can_be_chosen(client, configured, monkey
 
 
 def test_a_store_app_choice_is_emailed_and_never_answers_with_a_link(client, configured):
-    response = _choose(client, str(uuid.uuid4()), delivery="email", amount_cents=10000)
+    response = _choose(client, str(uuid.uuid4()), delivery="email", amount_cents=12000)
 
     body = response.json()
     assert body["checkout_url"] is None
     assert body["emailed"] is True
     [message] = configured.sent
     assert message["Destination"]["ToAddresses"] == ["hiker@example.com"]
-    assert LINKS[10000] + "?client_reference_id=" in _parsed(message).get_body(("plain",)).get_content()
+    assert LINKS[12000] + "?client_reference_id=" in _parsed(message).get_body(("plain",)).get_content()
 
 
 def test_the_setup_link_goes_once_a_day_however_often_it_is_asked_for(client, configured):  # P5
@@ -380,11 +382,11 @@ def test_an_address_mail_cannot_take_is_a_quiet_no_rather_than_a_500(client, con
 
 def test_a_second_choice_while_pending_changes_the_amount_rather_than_adding_one(client, configured, db_session):
     user_id = str(uuid.uuid4())
-    _choose(client, user_id, amount_cents=1000)
-    _choose(client, user_id, amount_cents=10000)
+    _choose(client, user_id, amount_cents=6000)
+    _choose(client, user_id, amount_cents=12000)
 
     rows = db_session.query(SupportChoice).filter(SupportChoice.profile_id == user_id).all()
-    assert [row.amount_cents for row in rows] == [10000]
+    assert [row.amount_cents for row in rows] == [12000]
 
 
 def test_a_running_payment_blocks_a_second_choice(client, configured):
@@ -520,8 +522,8 @@ def test_the_founders_notice_lists_every_other_record_under_the_same_address(cli
     configured.api.status = 500
     user_id = str(uuid.uuid4())
     _paying(client, user_id)
-    # Somebody else paid $1 on a link with the same address and no choice id.
-    _deliver(client, _session(sub="sub_1", amount=100))
+    # Somebody else paid $12 on a link with the same address and no choice id.
+    _deliver(client, _session(sub="sub_1", amount=1200))
 
     _stop(client, user_id)
 
@@ -670,13 +672,13 @@ def test_a_payment_that_began_before_the_choice_is_not_that_choices_payment(clie
 
 def test_a_payment_for_another_amount_does_not_take_the_choice(client, configured, db_session):  # P10
     victim = str(uuid.uuid4())
-    _choose(client, victim, amount_cents=10000)
+    _choose(client, victim, amount_cents=12000)
 
-    _deliver(client, _session(sub="sub_1", amount=100))  # a stranger's $1, the hiker's address
-    _deliver(client, _session(sub="sub_2", amount=10000))  # the hiker's own
+    _deliver(client, _session(sub="sub_1", amount=1200))  # a stranger's $12, the hiker's address
+    _deliver(client, _session(sub="sub_2", amount=12000))  # the hiker's own
 
     mine = db_session.query(SupportChoice).filter(SupportChoice.profile_id == victim).one()
-    assert (mine.provider_ref, mine.amount_cents) == ("sub_2", 10000)
+    assert (mine.provider_ref, mine.amount_cents) == ("sub_2", 12000)
 
 
 def test_a_choice_id_only_claims_a_choice_still_waiting(client, configured, db_session):
@@ -726,11 +728,11 @@ def test_a_payment_after_a_pending_stop_is_kept_and_reaches_the_account_by_its_v
 
 
 def test_a_payment_from_a_link_with_no_choice_is_kept_until_its_account_reads_it(client, configured, db_session):  # S6
-    _deliver(client, _session(email="walk-in@example.com", amount=10000))
+    _deliver(client, _session(email="walk-in@example.com", amount=12000))
 
     [row] = db_session.query(SupportChoice).all()
     assert row.profile_id is None
-    assert (row.status, row.amount_cents) == (SupportStatus.active, 10000)
+    assert (row.status, row.amount_cents) == (SupportStatus.active, 12000)
 
     assert _me(client, str(uuid.uuid4()), email="walk-in@example.com")["status"] == "active"
     assert _me(client, str(uuid.uuid4()), email="someone@example.com")["status"] == "none"
@@ -826,7 +828,7 @@ def test_the_event_log_keeps_no_name_address_or_email(client, configured, db_ses
     stored = json.dumps(event.payload)
     for personal in ("Ramen Bomb", "Springer", "hiker@example.com"):
         assert personal not in stored
-    assert event.payload["amount_total"] == 1000
+    assert event.payload["amount_total"] == 6000
 
 
 # ---- Moving provider ----
@@ -872,7 +874,7 @@ def test_a_supporter_on_an_old_provider_can_move_and_the_old_payment_stops_when_
             email="hiker@example.com",
             provider="oldpay",
             provider_ref="old-1",
-            amount_cents=1000,
+            amount_cents=6000,
             status=SupportStatus.active,
             started_at=utc_now() - timedelta(days=200),
         )
@@ -936,44 +938,44 @@ def test_the_founders_notice_cannot_be_unsubscribed_from_a_hikers_link(client, c
 
 def test_the_total_sums_charges_and_not_what_was_only_chosen(client, configured):
     _choose(client, str(uuid.uuid4()))  # chosen, never paid
-    _deliver(client, _session(email="second@example.com", sub="sub_2", amount=10000))
-    _deliver(client, _invoice(sub="sub_2", amount=10000))
+    _deliver(client, _session(email="second@example.com", sub="sub_2", amount=12000))
+    _deliver(client, _invoice(sub="sub_2", amount=12000))
 
     response = client.get("/support/total")
 
-    assert response.json()["total_cents"] == 10000
+    assert response.json()["total_cents"] == 12000
     assert response.json()["supporters"] == 1
     assert "max-age=3600" in response.headers["cache-control"]
 
 
 def test_a_charge_delivered_twice_counts_once(client, configured):
-    invoice = _invoice(amount=1000, event_id="evt_same")
+    invoice = _invoice(amount=6000, event_id="evt_same")
     assert _deliver(client, invoice).json() == {"result": "charged"}
     assert _deliver(client, invoice).json() == {"result": "duplicate"}
 
-    assert client.get("/support/total").json()["total_cents"] == 1000
+    assert client.get("/support/total").json()["total_cents"] == 6000
 
 
 @pytest.mark.parametrize("basil", [True, False])
 def test_a_charge_that_arrives_before_its_checkout_still_counts(client, configured, basil):
     """Stripe does not promise order: `invoice.paid` often beats the session."""
-    _deliver(client, _invoice(sub="sub_early", amount=10000, basil=basil))
+    _deliver(client, _invoice(sub="sub_early", amount=12000, basil=basil))
 
     assert client.get("/support/total").json() == {
         "year": utc_now().year,
-        "total_cents": 10000,
+        "total_cents": 12000,
         "supporters": 1,
     }
 
 
 def test_the_total_is_computed_at_most_hourly(client, configured):  # C3
     assert client.get("/support/total").json()["total_cents"] == 0
-    _deliver(client, _invoice(amount=10000))
+    _deliver(client, _invoice(amount=12000))
 
     assert client.get("/support/total").json()["total_cents"] == 0
 
 
-def _charge(at: datetime, cents=1000, currency="USD", subscription="sub_1"):
+def _charge(at: datetime, cents=6000, currency="USD", subscription="sub_1"):
     return SupportEvent(
         provider="stripe",
         kind="charged",
@@ -987,8 +989,8 @@ def test_a_yearly_supporters_renewal_counts_in_the_year_it_was_charged(db_sessio
     db_session.add_all([_charge(datetime(2025, 3, 1)), _charge(datetime(2026, 3, 1))])
     db_session.commit()
 
-    assert year_total(db_session, 2025) == (1000, 1)
-    assert year_total(db_session, 2026) == (1000, 1)
+    assert year_total(db_session, 2025) == (6000, 1)
+    assert year_total(db_session, 2026) == (6000, 1)
     assert year_total(db_session, 2027) == (0, 0)
 
 
@@ -996,4 +998,4 @@ def test_another_currency_is_left_out_of_the_dollar_total(db_session):  # C1
     db_session.add_all([_charge(datetime(2026, 3, 1), currency="EUR"), _charge(datetime(2026, 4, 1), subscription="sub_2")])
     db_session.commit()
 
-    assert year_total(db_session, 2026) == (1000, 1)
+    assert year_total(db_session, 2026) == (6000, 1)

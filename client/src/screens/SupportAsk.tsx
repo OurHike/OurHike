@@ -74,9 +74,9 @@ export interface SupportAskProps {
 }
 
 const TIER_LINES: Record<Tier, string> = {
-  100: 'Pay what you can.',
-  1000: 'Pay what you want.',
-  10000: 'Pay it forward.',
+  1200: 'Pay what you can.',
+  6000: 'Pay what you want.',
+  12000: 'Pay it forward.',
   0: "I can't right now. Trails are for everyone, and so is this map.",
 }
 
@@ -330,11 +330,11 @@ function ZeroNudge({ now, onPick, onKeepZero }: ZeroNudgeProps) {
       <p className="support-nudge__eyebrow">Day five · you picked $0</p>
       <h1 className="support-nudge__title">{nudge.title}</h1>
       <p className="support-nudge__body">{nudge.body}</p>
-      <button type="button" className="support-nudge__one" onClick={() => onPick(100)}>
-        {nudge.one}
+      <button type="button" className="support-nudge__low" onClick={() => onPick(1200)}>
+        {nudge.low}
       </button>
-      <button type="button" className="support-nudge__ten" onClick={() => onPick(1000)}>
-        {nudge.ten}
+      <button type="button" className="support-nudge__mid" onClick={() => onPick(6000)}>
+        {nudge.mid}
       </button>
       <button type="button" className="support-nudge__zero" onClick={onKeepZero}>
         {nudge.zero}

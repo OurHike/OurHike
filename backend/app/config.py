@@ -283,7 +283,7 @@ class Settings(BaseSettings):
     # the old one are still recorded until they move.
     support_provider: str = "stripe"
     # One Stripe Payment Link per yearly tier, as `cents=url` pairs:
-    # "100=https://buy.stripe.com/...,1000=https://...,10000=https://...".
+    # "1200=https://buy.stripe.com/...,6000=https://...,12000=https://...".
     # A link rather than a Checkout Session made per choice because a link
     # never expires - the store apps' setup email can sit unread for a week -
     # and needs no secret key to make.

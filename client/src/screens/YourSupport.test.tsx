@@ -10,7 +10,7 @@ import type { SupportSummary } from '../lib/support'
 
 const ACTIVE: SupportSummary = {
   status: 'active',
-  amount_cents: 1000,
+  amount_cents: 6000,
   cadence: 'year',
   provider: 'stripe',
   provider_label: 'Stripe',
@@ -147,15 +147,15 @@ describe('Your support', () => {
 
 describe('the More row line', () => {
   it('names the amount, its state, or that $0 is an answer', () => {
-    expect(supportSummaryLine(ACTIVE, null, NOW)).toBe('$10 a year')
+    expect(supportSummaryLine(ACTIVE, null, NOW)).toBe('$60 a year')
     expect(supportSummaryLine({ ...ACTIVE, status: 'pending' }, null, NOW)).toBe(
-      '$10 a year, waiting to be confirmed',
+      '$60 a year, waiting to be confirmed',
     )
     expect(supportSummaryLine({ ...ACTIVE, status: 'paused' }, null, NOW)).toBe(
-      '$10 a year, paused',
+      '$60 a year, paused',
     )
     expect(supportSummaryLine({ ...ACTIVE, status: 'cancel_scheduled' }, null, NOW)).toBe(
-      '$10 a year, ending',
+      '$60 a year, ending',
     )
     expect(supportSummaryLine(null, { year: 2026, chosenAt: '' }, NOW)).toBe(
       '$0 this year',

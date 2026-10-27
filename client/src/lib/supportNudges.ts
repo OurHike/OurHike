@@ -13,8 +13,10 @@
 export interface Nudge {
   title: string
   body: string
-  one: string
-  ten: string
+  /** The lowest paid tier's button, $12 a year. */
+  low: string
+  /** The middle tier's, $60 a year. */
+  mid: string
   zero: string
 }
 
@@ -31,37 +33,37 @@ export interface Nudge {
 export const NUDGES: readonly Nudge[] = [
   {
     title: 'Taking a zero? Respect.',
-    body: "Every hiker needs one. But this map hasn't taken a day off all season. How about a nero instead: $1 a year.",
-    one: 'Nero it: $1 a year',
-    ten: 'Full send: $10 a year',
+    body: "Every hiker needs one. But this map hasn't taken a day off all season. How about a nero instead: $12 a year.",
+    low: 'Nero it: $12 a year',
+    mid: 'Full send: $60 a year',
     zero: 'Keep it at $0',
   },
   {
     title: 'The hiker box giveth.',
-    body: "You've been pulling from it all season. $1 a year puts something back for the next hiker who rolls in hungry.",
-    one: 'Put in $1 a year',
-    ten: 'Put in $10 a year',
+    body: "You've been pulling from it all season. $12 a year puts something back for the next hiker who rolls in hungry.",
+    low: 'Put in $12 a year',
+    mid: 'Put in $60 a year',
     zero: 'Keep it at $0',
   },
   {
     title: 'Ramen-bomb budget?',
-    body: "Totally fine; $0 is a real answer. But if there's a buck left after resupply, the next edition's on you.",
-    one: "If you're forcing me… $1 a year",
-    ten: '$10 a year',
+    body: "Totally fine; $0 is a real answer. But if there's a buck a month left after resupply, the next edition's on you.",
+    low: "If you're forcing me… $12 a year",
+    mid: '$60 a year',
     zero: 'Less money, less problems: keep it at $0',
   },
   {
     title: 'Hike your own hike. Pay your own way?',
-    body: 'Even a dollar a year says "this map matters to me," and that\'s what keeps it free for the hiker behind you.',
-    one: '$1 a year',
-    ten: '$10 a year',
+    body: 'Even a dollar a month says "this map matters to me," and that\'s what keeps it free for the hiker behind you.',
+    low: '$12 a year',
+    mid: '$60 a year',
     zero: 'Keep it at $0',
   },
   {
     title: 'Hiker trash has standards.',
-    body: 'Low ones, sure. But we always pack out what we pack in, and that includes a dollar for the map.',
-    one: 'Pack out $1 a year',
-    ten: 'Pack out $10 a year',
+    body: 'Low ones, sure. But we always pack out what we pack in, and that includes a dollar a month for the map.',
+    low: 'Pack out $12 a year',
+    mid: 'Pack out $60 a year',
     zero: 'Less money, less problems: keep it at $0',
   },
 ]

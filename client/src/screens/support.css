@@ -182,8 +182,8 @@
   margin-bottom: 6px;
 }
 
-.support-nudge__one,
-.support-nudge__ten {
+.support-nudge__low,
+.support-nudge__mid {
   min-height: 48px;
   font-size: 15.5px;
   font-weight: 700;
@@ -191,7 +191,7 @@
   cursor: pointer;
 }
 
-.support-nudge__one {
+.support-nudge__low {
   background: var(--accent-blaze-yellow);
   /* The chrome's own ground as ink: dark under both themes, as the yellow
      needs. */
@@ -199,7 +199,7 @@
   border: 0;
 }
 
-.support-nudge__ten {
+.support-nudge__mid {
   background: transparent;
   color: var(--fg-chrome-1);
   border: 1.5px solid var(--fg-chrome-2);

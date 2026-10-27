@@ -76,7 +76,7 @@ describe('shouldAsk', () => {
       expect(
         shouldAsk({
           ...base,
-          server: server({ status, amount_cents: 1000, supporting: true }),
+          server: server({ status, amount_cents: 6000, supporting: true }),
         }),
       ).toBe(false)
     }
@@ -85,7 +85,7 @@ describe('shouldAsk', () => {
   it(`waits ${PENDING_GRACE_DAYS} days on a paid choice nobody completed, then asks again`, () => {
     const pending = server({
       status: 'pending',
-      amount_cents: 1000,
+      amount_cents: 6000,
       chosen_at: '2026-10-10T12:00:00Z',
     })
     expect(shouldAsk({ ...base, server: pending })).toBe(false)
@@ -122,8 +122,8 @@ describe('the $0 nudge', () => {
 
   it('names the amount on every paid button, whatever the joke around it', () => {
     for (const nudge of NUDGES) {
-      expect(nudge.one).toContain('$1 a year')
-      expect(nudge.ten).toContain('$10 a year')
+      expect(nudge.low).toContain('$12 a year')
+      expect(nudge.mid).toContain('$60 a year')
       expect(nudge.zero).toContain('$0')
     }
   })
@@ -137,6 +137,6 @@ describe('the $0 nudge', () => {
 
 describe('dollars', () => {
   it('writes whole dollars', () => {
-    expect([0, 100, 1000, 10000].map(dollars)).toEqual(['$0', '$1', '$10', '$100'])
+    expect([0, 1200, 6000, 12000].map(dollars)).toEqual(['$0', '$12', '$60', '$120'])
   })
 })

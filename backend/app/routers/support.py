@@ -95,8 +95,8 @@ def choose_support(
 ) -> SupportChoiceReceipt:
     """Record a paid choice as `pending`, and say how to complete it.
 
-    A pending choice is updated in place (a hiker who picked $10 and comes
-    back for $100 has one choice, not two). A payment still charging on the
+    A pending choice is updated in place (a hiker who picked $60 and comes
+    back for $120 has one choice, not two). A payment still charging on the
     current provider is refused with 409: its amount is changed on the
     provider's side, or by Stop and a new choice. One on ANOTHER provider is
     not refused - that is a supporter moving, and the new choice names the

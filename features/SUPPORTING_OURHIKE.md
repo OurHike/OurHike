@@ -27,15 +27,15 @@ The public reading is [`site/src/pages/support.astro`](../site/src/pages/support
 
 ## 3. The ask
 
-- **On a hiker's 5th distinct day of use in a calendar year**, the app asks them to choose **$0, $1, $10 or $100 a year**.
+- **On a hiker's 5th distinct day of use in a calendar year**, the app asks them to choose **$0, $12, $60 or $120 a year** — $1, $5 and $10 a month. The maintainer set these on 2026-10-27, replacing the $1, $10 and $100 of the 2026-10-23 poll.
   - A day is EVENTING.md §2's "active": a foreground session with at least one interaction.
   - The count is local and never sent: [`client/src/lib/activeDays.ts`](../client/src/lib/activeDays.ts).
   - 5 is the maintainer's number, not a measured one.
 - **The choice is required, and $0 is a choice** (frame B, over a locked "safety mode" and over a dismissible reminder). Nothing is locked by not paying, and no feature reads a support state.
 - **Yearly**, over monthly and over a per-hiker choice of schedule.
-  - On a yearly charge, $0.39 of $1 goes to fees, $1.19 of $10 and $9.20 of $100 (the rates in §2; the arithmetic is mine).
-  - **$1 stays** knowing that.
-- **Picking $0 brings one more screen, once a year**: a nudge toward $1 or $10 in a hiker-trash voice.
+  - On a yearly charge, $0.73 of $12 goes to fees, $2.46 of $60 and $4.62 of $120 (Stripe's rates in §2; the arithmetic is mine). The flat 30¢ is paid once a year rather than twelve times.
+- **Picking $0 brings one more screen, once a year**: a nudge toward $12 or $60 in a hiker-trash voice.
+  - Three of its lines spoke of "a dollar" or "a buck" when the lowest tier was $1 a year; they now say "a dollar a month" and "a buck a month", which $12 a year is.
   - Its headline rotates once a year per phone through five lines the maintainer kept from eight. The rotation is `NUDGES` in [`client/src/lib/support.ts`](../client/src/lib/support.ts).
   - Two button labels are the maintainer's own: "If you're forcing me…" and "Less money, less problems".
   - "Keep it at $0" is an underlined link under the paid buttons, always on screen and readable. That was chosen over a full button and over a second confirm, which would read as a dark pattern.
@@ -92,13 +92,13 @@ The public reading is [`site/src/pages/support.astro`](../site/src/pages/support
 | Where | Setting | What it does when empty |
 |---|---|---|
 | Backend host | `SUPPORT_PROVIDER` — where new choices go; default `stripe` | — (an unknown name answers 503 "not switched on") |
-| Backend host | `STRIPE_PAYMENT_LINKS` — one Payment Link per tier, `100=https://buy.stripe.com/…,1000=…,10000=…` | a choice answers 503 "not switched on" |
+| Backend host | `STRIPE_PAYMENT_LINKS` — one Payment Link per tier, `1200=https://buy.stripe.com/…,6000=…,12000=…` | a choice answers 503 "not switched on" |
 | Backend host | `STRIPE_WEBHOOK_SECRET` — the endpoint's signing secret (`whsec_…`) | every webhook delivery is refused (503) |
 | Backend host | `STRIPE_SECRET_KEY` — a **restricted** key, Subscriptions: Write only | Stop emails the founder to cancel by hand instead |
 | Backend host | `SUPPORT_NOTIFY_ADDRESS` — where Stop requests go when Stripe cannot be reached | with no key either, the request waits in the retry queue |
 | Backend host | `API_PUBLIC_URL` — this API's own https address | support emails' unsubscribe link points at the app's Your support page, which stops payments but not mail |
 | Backend host | `MAIL_ENABLED` and SES | no support email sends |
-| Stripe | one product with three **yearly** prices at $1, $10 and $100, a Payment Link for each, and a webhook endpoint at `<API>/support/webhooks/stripe` sending `checkout.session.completed`, `customer.subscription.updated`, `customer.subscription.paused`, `customer.subscription.resumed`, `customer.subscription.deleted` and `invoice.paid` | — |
+| Stripe | one product with three **yearly** prices at $12, $60 and $120, a Payment Link for each, and a webhook endpoint at `<API>/support/webhooks/stripe` sending `checkout.session.completed`, `customer.subscription.updated`, `customer.subscription.paused`, `customer.subscription.resumed`, `customer.subscription.deleted` and `invoice.paid` | — |
 | GitHub variables | `API_BASE_URL` | the app's ask stays dormant, and the site's total reads "Not available" |
 
 **The provider seam.** Everything provider-shaped lives in [`backend/app/core/support_providers/`](../backend/app/core/support_providers/): a provider owns its checkout link, how its webhook is verified, how its events become OurHike's five kinds (`started`, `updated`, `paused`, `ended`, `charged`), and how a cancel is requested (an API call, or an email to a person). The state machine, matching, ordering, the event log and the total do not change per provider, and the app's copy names none: it says "payment page", and only the website's Your support shows `provider_label` from the server. The seam was proved before launch: Buy Me a Coffee was replaced by Stripe (2026-10-27) as one module swapped. Adding Open Source Collective is a module beside `stripe.py` and one line in the registry.

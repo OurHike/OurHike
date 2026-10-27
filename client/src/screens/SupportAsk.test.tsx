@@ -11,7 +11,7 @@ import { readLocalChoice, type SupportSummary } from '../lib/support'
 
 const PENDING: SupportSummary = {
   status: 'pending',
-  amount_cents: 1000,
+  amount_cents: 6000,
   cadence: 'year',
   provider: 'stripe',
   provider_label: 'Stripe',
@@ -54,9 +54,9 @@ afterEach(() => {
 })
 
 describe('the day-5 ask', () => {
-  it('offers $1, $10 and $100 a year and $0, and says any of them keeps everything working', () => {
+  it('offers $12, $60 and $120 a year and $0, and says any of them keeps everything working', () => {
     setup()
-    for (const name of [/^\$1 a year/, /^\$10 a year/, /^\$100 a year/, /^\$0/]) {
+    for (const name of [/^\$12 a year/, /^\$60 a year/, /^\$120 a year/, /^\$0/]) {
       expect(screen.getByRole('radio', { name })).toBeInTheDocument()
     }
     expect(
@@ -87,7 +87,7 @@ describe('the day-5 ask', () => {
     const buttons = screen
       .getAllByRole('button')
       .map((button) => button.textContent ?? '')
-    const one = buttons.findIndex((label) => label.includes('$1 a year'))
+    const one = buttons.findIndex((label) => label.includes('$12 a year'))
     const zero = buttons.findIndex((label) => /keep it at \$0/i.test(label))
     expect(one).toBeGreaterThanOrEqual(0)
     expect(zero).toBeGreaterThan(one)
@@ -95,13 +95,13 @@ describe('the day-5 ask', () => {
 
   it('sends the website app on to the checkout the backend names, asking for a redirect', async () => {
     const props = setup()
-    await userEvent.click(screen.getByRole('radio', { name: /^\$10 a year/ }))
+    await userEvent.click(screen.getByRole('radio', { name: /^\$60 a year/ }))
     await userEvent.click(screen.getByRole('button', { name: 'Continue' }))
     await userEvent.click(screen.getByRole('checkbox', { name: /yearly accounting/ }))
     await userEvent.click(screen.getByRole('button', { name: 'Continue to payment' }))
 
     expect(props.choose).toHaveBeenCalledWith({
-      amount_cents: 1000,
+      amount_cents: 6000,
       accounting_email: true,
       delivery: 'redirect',
     })
@@ -119,7 +119,7 @@ describe('the day-5 ask', () => {
         emailed: false,
       }),
     })
-    await userEvent.click(screen.getByRole('radio', { name: /^\$10 a year/ }))
+    await userEvent.click(screen.getByRole('radio', { name: /^\$60 a year/ }))
     await userEvent.click(screen.getByRole('button', { name: 'Continue' }))
     await userEvent.click(screen.getByRole('button', { name: 'Continue to payment' }))
 
@@ -129,7 +129,7 @@ describe('the day-5 ask', () => {
 
   it('names no payment provider on the website either', async () => {
     setup()
-    await userEvent.click(screen.getByRole('radio', { name: /^\$10 a year/ }))
+    await userEvent.click(screen.getByRole('radio', { name: /^\$60 a year/ }))
     await userEvent.click(screen.getByRole('button', { name: 'Continue' }))
     expect(screen.queryByText(/Stripe|Buy Me a Coffee/)).not.toBeInTheDocument()
   })
@@ -143,7 +143,7 @@ describe('the day-5 ask', () => {
     })
     expect(screen.queryByText(/Stripe|Buy Me a Coffee/)).not.toBeInTheDocument()
 
-    await userEvent.click(screen.getByRole('radio', { name: /^\$100 a year/ }))
+    await userEvent.click(screen.getByRole('radio', { name: /^\$120 a year/ }))
     await userEvent.click(screen.getByRole('button', { name: 'Continue' }))
     expect(screen.queryByText(/Stripe|Buy Me a Coffee/)).not.toBeInTheDocument()
     await userEvent.click(
@@ -161,17 +161,17 @@ describe('the day-5 ask', () => {
 
   it('asks a signed-out hiker to sign in with the tier in hand, and sends nothing', async () => {
     const props = setup({ accountEmail: null })
-    await userEvent.click(screen.getByRole('radio', { name: /^\$10 a year/ }))
+    await userEvent.click(screen.getByRole('radio', { name: /^\$60 a year/ }))
     await userEvent.click(screen.getByRole('button', { name: 'Continue' }))
     await userEvent.click(screen.getByRole('button', { name: 'Sign in to continue' }))
 
-    expect(props.onSignIn).toHaveBeenCalledWith(1000)
+    expect(props.onSignIn).toHaveBeenCalledWith(6000)
     expect(props.choose).not.toHaveBeenCalled()
   })
 
   it('says nothing was charged when the choice does not reach the server', async () => {
     setup({ choose: vi.fn().mockRejectedValue(new Error('offline')) })
-    await userEvent.click(screen.getByRole('radio', { name: /^\$1 a year/ }))
+    await userEvent.click(screen.getByRole('radio', { name: /^\$12 a year/ }))
     await userEvent.click(screen.getByRole('button', { name: 'Continue' }))
     await userEvent.click(screen.getByRole('button', { name: 'Continue to payment' }))
 

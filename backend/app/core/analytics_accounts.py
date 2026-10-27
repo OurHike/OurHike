@@ -26,7 +26,7 @@ from sqlalchemy.orm import Session
 
 from app.config import settings
 from app.core.analytics_seal import user_key
-from app.models.analytics import AnalyticsEvent, AnalyticsUser
+from app.models.analytics import AnalyticsEvent, AnalyticsUser, SealState
 
 
 class LinkedUsageUnreachable(RuntimeError):
@@ -58,19 +58,29 @@ def keys_or_refuse(db: Session, account_id: str) -> list[str]:
 
 
 def forget_link(db: Session, account_id: str) -> int:
-    """Unlink this account's usage: its User-table rows go, and its events lose their key.
+    """Unlink this account's usage: its User-table rows go, and its events lose their key and their seal.
 
-    The events stay, counted like any row a hiker sent without saying yes.
-    What this cannot reach, said rather than implied: each linked row's
-    `sealed` blob also holds the account id, and this server cannot open it
-    to take it out. It goes when the row does, six months on, and until then
-    only the maintainer's audited opening (scripts/analytics_keys.py `open`)
-    can read it. Does not commit. Returns how many events were unlinked.
+    The events stay, counted like any row a hiker sent without saying yes,
+    each with its 0.1-degree square. The sealed blob goes too, because it
+    holds the account id beside the exact fix and this server cannot open it
+    to take the account out alone (app/core/analytics_seal.py). Leaving it
+    would keep the account readable to the maintainer's `open` for up to
+    seven months after the hiker said no - and out of reach of a later
+    account deletion, which finds rows by their key. So the exact fix is
+    lost with it, and the row says `unlinked` rather than `sealed`.
+    Does not commit. Returns how many events were unlinked.
     """
     keys = keys_or_refuse(db, account_id)
     if not keys:
         return 0
     db.query(AnalyticsUser).filter(AnalyticsUser.user_key.in_(keys)).delete(synchronize_session=False)
+    # The seal first: the next statement takes away the key this one finds the rows by.
+    db.execute(
+        update(AnalyticsEvent)
+        .where(AnalyticsEvent.user_key.in_(keys), AnalyticsEvent.seal == SealState.sealed)
+        .values(sealed=None, seal=SealState.unlinked)
+        .execution_options(synchronize_session=False)
+    )
     return db.execute(
         update(AnalyticsEvent)
         .where(AnalyticsEvent.user_key.in_(keys))

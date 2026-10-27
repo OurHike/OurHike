@@ -106,11 +106,18 @@ class SealState(str, enum.Enum):
     clear. The count of these is on the report's data-health line, because a
     month of `no_key` rows is a month nobody ran `scripts/analytics_keys.py
     publish` for.
+
+    `unlinked` is a row whose hiker took back their yes
+    (app/core/analytics_accounts.py `forget_link`). Its blob held their
+    account id beside the fix, and this server cannot open it to take the
+    account out alone, so the blob went whole. The row's count and its square
+    stay, as a row from a hiker who said no would have them.
     """
 
     none = "none"
     sealed = "sealed"
     no_key = "no_key"
+    unlinked = "unlinked"
 
 
 class MonthStatus(str, enum.Enum):

@@ -119,7 +119,9 @@ def upgrade() -> None:
         sa.Column("has_fix", sa.Boolean(), nullable=False),
         sa.Column("area_lat", sa.Numeric(precision=4, scale=1), nullable=True),
         sa.Column("area_lon", sa.Numeric(precision=4, scale=1), nullable=True),
-        sa.Column("seal", sa.Enum("none", "sealed", "no_key", name="sealstate", native_enum=False, length=8), nullable=False),
+        sa.Column(
+            "seal", sa.Enum("none", "sealed", "no_key", "unlinked", name="sealstate", native_enum=False, length=8), nullable=False
+        ),
         sa.Column("sealed", sa.LargeBinary(), nullable=True),
         sa.PrimaryKeyConstraint("id"),
     )

@@ -100,10 +100,10 @@ def _usage_linked(data: dict | None) -> bool:
 def _forget_withdrawn_link(db: Session, account_id: str, *, before: dict | None, after: dict) -> None:
     """Unlink this account's usage when this sync takes back a yes it had stored.
 
-    Its User-table rows go and its events lose their key, in the same
-    transaction as the preference itself (app/core/analytics_accounts.py
-    `forget_link`, which also says what it cannot reach: the account id
-    sealed inside each row stays until the row's six months end).
+    Its User-table rows go and its events lose their key and their sealed
+    blob, in the same transaction as the preference itself
+    (app/core/analytics_accounts.py `forget_link` says why the blob, and the
+    exact fix inside it, go too).
 
     With no secret configured to find them, the link cannot be forgotten -
     but the preference is still saved, because it is what stops linking from

@@ -20,7 +20,7 @@ from app.core.account_deletion import delete_account
 from app.core.account_export import NOT_INCLUDED, USAGE_NOT_LOOKED_UP, build_export
 from app.core.analytics_accounts import LinkedUsageUnreachable
 from app.core.analytics_seal import user_key
-from app.models.analytics import AnalyticsEvent, AnalyticsUser
+from app.models.analytics import AnalyticsEvent, AnalyticsUser, SealState
 from app.models.preferences import UserPreferences
 from app.models.profile import Profile
 from tests.factories import make_profile, make_usage_consent
@@ -296,6 +296,47 @@ def test_taking_back_a_yes_unlinks_the_usage_it_linked(client, db_session, monke
     assert db_session.query(AnalyticsEvent).filter(AnalyticsEvent.user_key.isnot(None)).count() == 0
 
 
+def test_taking_back_a_yes_drops_the_sealed_account_and_keeps_the_count(client, db_session):
+    """The sealed blob holds the account id beside the fix, and this server
+    cannot take the account out alone - so the blob goes whole, and a later
+    account deletion, which finds rows by their key, has nothing of this
+    hiker left to miss. The row, its event and its square stay."""
+    hiker = make_profile(db_session)
+    _sync(client, hiker, measurement_enabled=True, measurement_linked=True)
+    _linked_rows(db_session, hiker.id)
+    event = db_session.query(AnalyticsEvent).one()
+    event.has_fix, event.area_lat, event.area_lon = True, 41.2, -74.1
+    db_session.commit()
+
+    _sync(client, hiker, measurement_linked=False)
+
+    db_session.expire_all()
+    event = db_session.query(AnalyticsEvent).one()
+    assert (event.user_key, event.sealed, event.seal) == (None, None, SealState.unlinked)
+    assert (event.event, event.has_fix, float(event.area_lat), float(event.area_lon)) == (
+        "hike_plan_made",
+        True,
+        41.2,
+        -74.1,
+    )
+
+
+def test_taking_back_a_yes_leaves_a_row_with_nothing_sealed_as_it_was(client, db_session):
+    """A linked row whose month had no published key sealed nothing
+    (`no_key`); there is no blob to drop, and it must not claim one went."""
+    hiker = make_profile(db_session)
+    _sync(client, hiker, measurement_enabled=True, measurement_linked=True)
+    _linked_rows(db_session, hiker.id)
+    event = db_session.query(AnalyticsEvent).one()
+    event.seal, event.sealed = SealState.no_key, None
+    db_session.commit()
+
+    _sync(client, hiker, measurement_linked=False)
+
+    db_session.expire_all()
+    assert db_session.query(AnalyticsEvent).one().seal == SealState.no_key
+
+
 def test_a_sync_that_keeps_the_yes_unlinks_nothing(client, db_session):
     hiker = make_profile(db_session)
     _sync(client, hiker, measurement_enabled=True, measurement_linked=True)
@@ -316,3 +357,4 @@ def test_a_no_that_was_never_a_yes_touches_nobodys_rows(client, db_session):
 
     db_session.expire_all()
     assert db_session.get(AnalyticsUser, theirs) is not None
+    assert db_session.query(AnalyticsEvent).filter(AnalyticsEvent.sealed.isnot(None)).count() == 1

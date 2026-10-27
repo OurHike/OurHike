@@ -563,9 +563,9 @@ export function Onboarding({
                 both ways out, and where the switch is, before the hiker decides. */}
             <p>
               Location is read on this phone. It leaves only with a report you file, or
-              sealed inside usage statistics, which you can turn off in Settings. Without
-              it the map still works &mdash; it just cannot tell you which side of the
-              ridge you are on.
+              sealed inside usage statistics, which you can turn off in More → Safety
+              &amp; privacy. Without it the map still works &mdash; it just cannot tell
+              you which side of the ridge you are on.
             </p>
             <div className="onboarding__actions">
               <button

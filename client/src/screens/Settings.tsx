@@ -954,10 +954,16 @@ export function SafetyPrivacySettings({
           location switch just above it, and the note above now says so.
 
           The wording is frame A's, approved as drawn. Both notes carry a
-          promise the backend keeps: "sealed so our servers cannot read it"
-          is app/core/analytics_seal.py's write-only sealing, "kept six
-          months" is app/core/analytics_rollup.py, and "deleting your account
-          deletes these" is app/core/account_deletion.py. */}
+          promise the backend keeps: "sealed as it arrives" is
+          app/core/analytics_seal.py's write-only sealing and "only the
+          rough area ... stays readable" its `area_lat`/`area_lon`, a 0.1-degree
+          square, 8 to 11 km across in this country - said without a number,
+          since a number here would need lib/units.ts to honour miles
+          (corrected after #1903's review: the square was in the clear while
+          the note said nothing could be read), "kept six months" is
+          app/core/analytics_rollup.py, and the running total going with a
+          no or a deletion is routers/preferences.py and
+          core/account_deletion.py. */}
       <label className="settings__row">
         <span className="settings__label">Share usage statistics</span>
         <input
@@ -970,7 +976,8 @@ export function SafetyPrivacySettings({
       <p className="settings__note">
         Counts when you open OurHike, sign in, make or finish a hike plan, view the map,
         and how long a visit lasts. With location on, your phone's position goes with each
-        count, sealed so our servers cannot read it. Kept six months. Off stops all of it.
+        count, sealed as it arrives; only the rough area it falls in, a grid square about
+        the size of a town, stays readable. Kept six months. Off stops all of it.
       </p>
       <label className="settings__row">
         <span className="settings__label">Link them to my account</span>
@@ -986,8 +993,8 @@ export function SafetyPrivacySettings({
       </label>
       <p className="settings__note">
         Adds a code made from your account, so we can see whether hikers come back and
-        finish what they plan. No name or email in it. Deleting your account deletes
-        these.
+        finish what they plan. No name or email in it. Keeps a running total for your
+        account; turning this off, or deleting your account, deletes it.
       </p>
 
       <label className="settings__row settings__row--later">

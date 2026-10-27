@@ -285,7 +285,7 @@ describe('Onboarding', () => {
       screen.getByText(
         /leaves only with a report you file, or sealed inside usage statistics/i,
       ),
-    ).toHaveTextContent(/turn off in Settings/i)
+    ).toHaveTextContent(/turn off in More → Safety & privacy/i)
     expect(screen.queryByText(/never sent anywhere/i)).toBeNull()
   })
 

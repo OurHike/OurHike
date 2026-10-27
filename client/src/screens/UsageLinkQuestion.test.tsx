@@ -25,7 +25,7 @@ describe('UsageLinkQuestion', () => {
     render(<UsageLinkQuestion onAnswer={vi.fn()} />)
 
     expect(screen.getByText(/either way/i).closest('li')).toHaveTextContent(
-      /your position goes with each count either way while location is on, sealed/i,
+      /your position goes with each count either way while location is on, sealed as it arrives/i,
     )
   })
 

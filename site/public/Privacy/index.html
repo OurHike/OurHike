@@ -288,8 +288,8 @@
         to mark exactly where a blowdown or a water source is — and, while
         <em>Share usage statistics</em> is on, with the usage counts
         described under <a href="#usage-analytics">Usage analytics</a>,
-        sealed so that our servers cannot read it. Otherwise it is used
-        on your device only.
+        sealed so that our servers cannot read the exact position. Otherwise
+        it is used on your device only.
       </p>
       <p>
         Nothing watches your position in the background. OurHike reads
@@ -302,7 +302,7 @@
       </p>
       <p>
         <strong>One feature keeps a record rather than forgetting it.</strong>
-        Under Settings → Safety &amp; privacy there is <em>Record a GPS
+        Under More → Safety &amp; privacy there is <em>Record a GPS
         trace</em>, a tool for measuring how accurate your phone's GPS
         actually is on the trail. While it is running it writes down where
         your phone thinks you are, several times a minute, and
@@ -395,16 +395,22 @@
           <strong>While location is on, each count also carries your phone's
           position.</strong> It is sealed (encrypted) the moment it arrives,
           with a key our servers do not hold, so they cannot read it back.
-          Our reports read only the grid square it falls in, roughly 8 to
-          11 km across. The key that opens a sealed position is kept by
+          What stays readable is only the grid square it falls in, roughly 8
+          to 11 km across, which is all our reports use. The key that opens a
+          sealed position is kept by
           OurHike's maintainer, off our servers, and the tool that opens one
           records who opened it and why.
         </li>
         <li>
           After you sign in, we ask once whether to link these counts to your
           account. If you say yes, a code made from your account — not your
-          name or email — goes with each count, and your account ID is
-          sealed alongside the position. If you say no, nothing that
+          name or email — goes with each count, beside that grid square, and
+          your account ID is sealed alongside the exact position. Saying yes
+          also keeps a running total for your account: the dates you were
+          first and last counted, how many plans you made and finished and
+          their miles, and which months you used the app. It is kept until
+          you unlink or delete your account, and it holds no position. If
+          you say no, nothing that
           identifies your account goes with them — only the yes-or-no answer
           above, that some account is signed in — but positions are still
           sent while location is on.
@@ -417,9 +423,10 @@
           than 25 people is never shown.
         </li>
         <li>
-          Turn it all off in Settings → Safety &amp; privacy → Share usage
+          Turn it all off in More → Safety &amp; privacy → Share usage
           statistics. Off stops collection and deletes anything not yet
-          sent. Deleting your account deletes the counts linked to it.
+          sent. Unlinking, or deleting your account, deletes the running
+          total; deleting your account also deletes the counts linked to it.
         </li>
         <li>
           We don't record your IP address with these counts, and no
@@ -492,7 +499,7 @@
           — no need to put personal details in the issue itself, just ask
           and we'll follow up.
         </li>
-        <li>Turn usage statistics off, or unlink them from your account, in Settings → Safety &amp; privacy.</li>
+        <li>Turn usage statistics off, or unlink them from your account, in More → Safety &amp; privacy.</li>
         <li>Clear locally stored map data and preferences any time from your device or browser settings.</li>
       </ul>
 

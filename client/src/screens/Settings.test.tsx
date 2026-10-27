@@ -672,11 +672,13 @@ describe('SafetyPrivacySettings', () => {
       ).toBeChecked()
     })
 
-    it('says the position goes sealed and is kept six months, before the hiker decides', () => {
+    it('says the position goes sealed, which part stays readable, and that it is kept six months, before the hiker decides', () => {
       render(<SafetyPrivacySettings {...PROPS} />)
 
       expect(
-        screen.getByText(/sealed so our servers cannot read it\. kept six months/i),
+        screen.getByText(
+          /sealed as it arrives; only the rough area it falls in, a grid square about the size of a town, stays readable\. kept six months/i,
+        ),
       ).toBeInTheDocument()
     })
 

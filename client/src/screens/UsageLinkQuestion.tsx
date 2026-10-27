@@ -12,8 +12,16 @@
 //     a position only on a yes was declined (poll 2026-10-27, package 4). The
 //     question must not let "No thanks" read as stopping location; only the
 //     Safety & privacy switch does that, and the last line says where it is.
-//   - "Deleted after six months, or when you delete your account" -
-//     backend/app/core/analytics_rollup.py and account_deletion.py.
+//   - "Counts are deleted after six months" - backend/app/core/
+//     analytics_rollup.py - and "a running total for your account until you
+//     unlink or delete it", the User table, which a no or a deletion removes
+//     (routers/preferences.py, core/account_deletion.py).
+//
+// TWO SENTENCES HERE WERE CORRECTED after #1903's review found them stronger
+// than the code: "sealed so our servers cannot read it" (the server keeps the
+// 0.1-degree square in the clear, beside the code for a yes) and "everything
+// is deleted after six months" (the running total is not). The maintainer has
+// the corrected wording to approve.
 //
 // Either answer leads back to where the hiker was. Nothing is asked again:
 // the answer is `measurement_linked`, synced, so a second phone does not ask.
@@ -38,9 +46,13 @@ export function UsageLinkQuestion({ onAnswer }: UsageLinkQuestionProps) {
         <li>No name or email goes with it.</li>
         <li>
           Your position goes with each count <strong>either way</strong> while location is
-          on, sealed so our servers cannot read it.
+          on, sealed as it arrives. Only the rough area it falls in, a grid square about
+          the size of a town, stays readable, and beside the code if you say yes.
         </li>
-        <li>Everything is deleted after six months, or when you delete your account.</li>
+        <li>
+          Counts are deleted after six months. Saying yes also keeps a running total for
+          your account until you unlink or delete it.
+        </li>
       </ul>
       <p className="usage-link__minor">
         To stop sharing entirely: More → Safety &amp; privacy → Share usage statistics.

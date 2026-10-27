@@ -2,17 +2,27 @@
 before and after, and someone off the crew verifies it (PLAN.md §6, #1910).
 
     claimed ──first before photo──► in_progress ──submit──► submitted ──verify──► verified
-       │                                │                       │
-       └──── release, or due_at passes ─┴──► released           └──send back──► in_progress
+       │                                │                       ├──send back──► in_progress
+       └──── release, or due_at passes ─┴──► released ◄──reject──┘
 
 The clock is due_at. It stops at submitted, so a slow reviewer never costs a
-crew its claim; a send-back restarts it with limits.SEND_BACK_DAYS. Running out
-is not a scheduled job: every request that reads claims first releases the ones
-past due (release_overdue), so a released claim is never shown as live.
+crew its claim. A send-back restarts it with whatever the crew had left when
+they submitted, and at least limits.SEND_BACK_DAYS; the after photos must then
+be retaken. A reject releases the site: the work was not done, and someone else
+may claim it. Running out is not a scheduled job: every request that reads
+claims first releases the ones past due (release_overdue), so a released claim
+is never shown as live.
+
+Only sites the latest analysis says need work may be claimed (analysis.py),
+and an account holds at most limits.LIVE_CLAIMS_PER_USER sites at once,
+counting the ones it has submitted and that wait for review. Before the
+adversarial review (2026-10-27, finding 2) one account could hold any number:
+the cap counted only open claims, any string could be claimed, and a
+send-back could be resubmitted at once with the same photos.
 
 Who may do what:
 - anyone signed in: claim an open site, read any claim, review a submitted
-  claim they are not crew on;
+  claim they are not crew on (verify, send back, or reject);
 - the crew (the claimer and whoever joined by invite link): photograph,
   log their own hours, submit, make an invite link;
 - the claimer: release.
@@ -20,22 +30,25 @@ Who may do what:
 
 from __future__ import annotations
 
+import asyncio
 import hashlib
 import secrets
 import uuid
 from datetime import UTC, datetime, timedelta
 
-from fastapi import APIRouter, Depends, HTTPException, Path, Query, Request, status
+from fastapi import APIRouter, Depends, FastAPI, HTTPException, Path, Query, Request, status
 from fastapi.concurrency import run_in_threadpool
 from sqlalchemy import func, select, update
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from steward_api import limits
+from steward_api.analysis import AnalysisUnavailable
 from steward_api.auth import current_user
 from steward_api.db import get_db
+from steward_api.locks import lock_user
 from steward_api.models import HOLDING_STATES, Claim, ClaimMember, Hours, Photo, StewardUser
-from steward_api.photos import NOT_SET_UP, PhotoStorageUnavailable, PhotoStore, carries_location_metadata, photo_key, sniff
+from steward_api.photos import NOT_SET_UP, PhotoStorageUnavailable, PhotoStore, UnusablePhoto, photo_key, reencode
 from steward_api.schemas import (
     ClaimCreate,
     ClaimDetail,
@@ -101,7 +114,7 @@ def _summary(claim: Claim, user: StewardUser, names: dict[str, str | None]) -> C
 
 def _detail(claim: Claim, user: StewardUser, db: Session, store: PhotoStore | None) -> ClaimDetail:
     crew = _crew_ids(claim)
-    names = _names(db, crew | {i for i in (claim.claimer_id, claim.reviewed_by) if i})
+    names = _names(db, crew | ({claim.claimer_id} if claim.claimer_id else set()))
     hours = {h.user_id: h.tenths / 10 for h in claim.hours}
     photos: list[PhotoView] = []
     if store is not None:
@@ -117,12 +130,13 @@ def _detail(claim: Claim, user: StewardUser, db: Session, store: PhotoStore | No
     return ClaimDetail(
         **_summary(claim, user, names).model_dump(),
         started_at=claim.started_at,
+        sent_back_at=claim.sent_back_at,
         verified_at=claim.verified_at,
         released_at=claim.released_at,
         steps_done=list(claim.steps_done or []),
         notes=claim.notes,
         review_note=claim.review_note,
-        reviewed_by=names.get(claim.reviewed_by) if claim.reviewed_by else None,
+        reviewed_by=claim.reviewed_by_name,
         crew=[CrewMember(name=names.get(m.user_id), you=m.user_id == user.id, hours=hours.get(m.user_id)) for m in claim.members],
         photos=photos,
         you_may_review=claim.state == "submitted" and user.id not in crew,
@@ -159,21 +173,35 @@ def _store(request: Request) -> PhotoStore:
 
 @router.post("/claims", response_model=list[ClaimSummary], status_code=status.HTTP_201_CREATED)
 def claim_sites(
-    body: ClaimCreate, user: StewardUser = Depends(current_user), db: Session = Depends(get_db)
+    body: ClaimCreate, request: Request, user: StewardUser = Depends(current_user), db: Session = Depends(get_db)
 ) -> list[ClaimSummary]:
     """Claim one site, or several at once (a site and its cluster). All or none:
-    if any of them is already held, nothing is claimed and the answer says which."""
-    release_overdue(db)
+    if any of them is already held, or is not one the analysis says needs work,
+    nothing is claimed and the answer says which."""
     sites = list(dict.fromkeys(body.rims_ids))
-    live = db.scalar(
+    try:
+        workable = request.app.state.analysis.current().workable
+    except AnalysisUnavailable as exc:
+        raise HTTPException(
+            status.HTTP_503_SERVICE_UNAVAILABLE, "The site list cannot be read right now, so no claim can be checked"
+        ) from exc
+    not_work = [rims_id for rims_id in sites if rims_id not in workable]
+    if not_work:
+        raise HTTPException(
+            status.HTTP_422_UNPROCESSABLE_CONTENT, f"Not a site the latest analysis says needs work: {', '.join(not_work)}"
+        )
+    release_overdue(db)
+    lock_user(db, user.id)
+    held_by_you = db.scalar(
         select(func.count())
         .select_from(Claim)
         .join(ClaimMember, ClaimMember.claim_id == Claim.id)
-        .where(ClaimMember.user_id == user.id, Claim.state.in_(WORKING_STATES))
+        .where(ClaimMember.user_id == user.id, Claim.state.in_(HOLDING_STATES))
     )
-    if (live or 0) + len(sites) > limits.LIVE_CLAIMS_PER_USER:
+    if (held_by_you or 0) + len(sites) > limits.LIVE_CLAIMS_PER_USER:
         raise HTTPException(
-            status.HTTP_409_CONFLICT, f"One account works on at most {limits.LIVE_CLAIMS_PER_USER} claims at a time"
+            status.HTTP_409_CONFLICT,
+            f"One account holds at most {limits.LIVE_CLAIMS_PER_USER} sites at a time, counting ones waiting for review",
         )
     held = db.scalars(select(Claim.rims_id).where(Claim.rims_id.in_(sites), Claim.state.in_(HOLDING_STATES))).all()
     if held:
@@ -265,7 +293,7 @@ def invite(claim_id: uuid.UUID, user: StewardUser = Depends(current_user), db: S
 @router.post("/claims/join", response_model=ClaimSummary)
 def join(body: JoinClaim, user: StewardUser = Depends(current_user), db: Session = Depends(get_db)) -> ClaimSummary:
     release_overdue(db)
-    claim = db.scalars(select(Claim).where(Claim.invite_token_sha256 == _hash(body.token))).first()
+    claim = db.scalars(select(Claim).where(Claim.invite_token_sha256 == _hash(body.token)).with_for_update()).first()
     if claim is None or claim.state not in WORKING_STATES:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "This invite is not valid any more. Ask the crew for a new one.")
     if user.id not in _crew_ids(claim):
@@ -290,70 +318,93 @@ async def upload_photo(
     phase: str = Query(pattern="^(before|after|extra)$"),
     point: int | None = Query(default=None),
     user: StewardUser = Depends(current_user),
-    db: Session = Depends(get_db),
 ) -> ClaimDetail:
     """The photo is the raw request body. One before and one after per photo
     point (a new one replaces the old), and any number of extras up to the cap.
     The first before photo moves a claim from claimed to in progress.
 
-    Async only to read the body as it arrives, so the cap holds before the
-    bytes are all in memory; the database and storage work then runs in a
-    worker thread, because the session is synchronous."""
+    In this order, each step holding nothing the next does not need (the
+    adversarial review's finding 1, 2026-10-27): the caller is checked against
+    the claim before a byte of body is read; the body is read with no database
+    connection held and a deadline; it is re-encoded in a worker thread; it is
+    written to R2 outside any transaction; and only then is the row written,
+    after checking the claim again, since it may have changed meanwhile."""
     store = _store(request)
     if (phase == "extra") != (point is None) or (point is not None and point not in limits.PHOTO_POINTS):
         raise HTTPException(
             status.HTTP_422_UNPROCESSABLE_CONTENT, "A before or after photo needs photo point 1 or 2; an extra needs none"
         )
+    await run_in_threadpool(_check_upload, request.app, user, claim_id)
     body = bytearray()
-    async for chunk in request.stream():
-        body.extend(chunk)
-        if len(body) > limits.PHOTO_MAX_BYTES:
-            raise HTTPException(status.HTTP_413_CONTENT_TOO_LARGE, "That photo is too large")
-    content_type = sniff(bytes(body))
-    if content_type is None:
-        raise HTTPException(status.HTTP_415_UNSUPPORTED_MEDIA_TYPE, "Only JPEG, PNG and WebP photos are accepted")
-    if carries_location_metadata(bytes(body), content_type):
+    try:
+        async with asyncio.timeout(limits.PHOTO_READ_SECONDS):
+            async for chunk in request.stream():
+                body.extend(chunk)
+                if len(body) > limits.PHOTO_MAX_BYTES:
+                    raise HTTPException(status.HTTP_413_CONTENT_TOO_LARGE, "That photo is too large")
+    except TimeoutError as exc:
         raise HTTPException(
-            status.HTTP_422_UNPROCESSABLE_CONTENT,
-            "This photo still carries its camera data, which can include where it was taken. Upload it from the app, which removes it.",
-        )
-    return await run_in_threadpool(_store_photo, db, store, user, claim_id, phase, point, bytes(body), content_type)
+            status.HTTP_408_REQUEST_TIMEOUT, "The photo took too long to arrive. Try again with a better signal."
+        ) from exc
+    try:
+        jpeg = await run_in_threadpool(reencode, bytes(body))
+    except UnusablePhoto as exc:
+        raise HTTPException(status.HTTP_415_UNSUPPORTED_MEDIA_TYPE, str(exc)) from exc
+    return await run_in_threadpool(_store_photo, request.app, store, user, claim_id, phase, point, jpeg)
+
+
+def _check_upload(app: FastAPI, user: StewardUser, claim_id: uuid.UUID) -> None:
+    with app.state.sessionmaker() as db:
+        release_overdue(db)
+        claim = _crew_claim(db, claim_id, user)
+        if len(claim.photos) >= limits.PHOTOS_PER_CLAIM:
+            raise HTTPException(status.HTTP_409_CONFLICT, f"A claim holds at most {limits.PHOTOS_PER_CLAIM} photos")
 
 
 def _store_photo(
-    db: Session,
+    app: FastAPI,
     store: PhotoStore,
     user: StewardUser,
     claim_id: uuid.UUID,
     phase: str,
     point: int | None,
-    body: bytes,
-    content_type: str,
+    jpeg: bytes,
 ) -> ClaimDetail:
-    release_overdue(db)
-    claim = _crew_claim(db, claim_id, user)
-    if len(claim.photos) >= limits.PHOTOS_PER_CLAIM:
-        raise HTTPException(status.HTTP_409_CONFLICT, f"A claim holds at most {limits.PHOTOS_PER_CLAIM} photos")
-    replaced = [p for p in claim.photos if point is not None and p.phase == phase and p.point == point]
-    photo = Photo(id=uuid.uuid4(), phase=phase, point=point, content_type=content_type, size_bytes=len(body), uploaded_by=user.id)
-    # Object first, row second: a row whose object failed to write would show a
-    # photo that is not there; an object whose row failed is swept as an orphan.
+    photo_id = uuid.uuid4()
+    key = photo_key(claim_id, photo_id)
+    # Object first, with no transaction open: R2 can take seconds, and a row
+    # whose object failed to write would show a photo that is not there.
     try:
-        store.put(photo_key(claim.id, photo.id), body, content_type)
+        store.put(key, jpeg, "image/jpeg")
     except PhotoStorageUnavailable as exc:
         raise HTTPException(status.HTTP_503_SERVICE_UNAVAILABLE, str(exc)) from exc
-    for old in replaced:
-        claim.photos.remove(old)
-    db.flush()
-    claim.photos.append(photo)
-    if phase == "before" and claim.state == "claimed":
-        claim.state = "in_progress"
-        claim.started_at = _now()
-    db.commit()
-    for old in replaced:
-        store.delete(photo_key(claim.id, old.id))
-    db.refresh(claim)
-    return _detail(claim, user, db, store)
+    with app.state.sessionmaker() as db:
+        try:
+            release_overdue(db)
+            claim = db.get(Claim, claim_id, with_for_update=True)
+            if claim is None or user.id not in _crew_ids(claim) or claim.state not in WORKING_STATES:
+                raise HTTPException(status.HTTP_409_CONFLICT, "This claim changed while the photo was being sent")
+            if len(claim.photos) >= limits.PHOTOS_PER_CLAIM:
+                raise HTTPException(status.HTTP_409_CONFLICT, f"A claim holds at most {limits.PHOTOS_PER_CLAIM} photos")
+            replaced = [p for p in claim.photos if point is not None and p.phase == phase and p.point == point]
+            for old in replaced:
+                claim.photos.remove(old)
+            db.flush()
+            claim.photos.append(
+                Photo(id=photo_id, phase=phase, point=point, content_type="image/jpeg", size_bytes=len(jpeg), uploaded_by=user.id)
+            )
+            if phase == "before" and claim.state == "claimed":
+                claim.state = "in_progress"
+                claim.started_at = _now()
+            db.commit()
+        except BaseException:
+            db.rollback()
+            store.delete(key)
+            raise
+        for old in replaced:
+            store.delete(photo_key(claim_id, old.id))
+        db.refresh(claim)
+        return _detail(claim, user, db, store)
 
 
 @router.delete("/claims/{claim_id}/photos/{photo_id}", response_model=ClaimDetail)
@@ -403,9 +454,15 @@ def log_hours(
 
 
 def _missing_photos(claim: Claim) -> list[str]:
-    have = {(p.phase, p.point) for p in claim.photos}
+    """Each photo point needs a before and an after. After a send-back, only
+    after photos taken since count: resubmitting the same pictures is not a fix."""
+    have = {
+        (p.phase, p.point)
+        for p in claim.photos
+        if not (p.phase == "after" and claim.sent_back_at is not None and p.created_at <= claim.sent_back_at)
+    }
     return [
-        f"{phase} at point {point}"
+        f"{phase} at point {point}" + (" (retaken since it was sent back)" if phase == "after" and claim.sent_back_at else "")
         for point in limits.PHOTO_POINTS
         for phase in ("before", "after")
         if (phase, point) not in have
@@ -450,8 +507,17 @@ def waiting_for_review(user: StewardUser = Depends(current_user), db: Session = 
 def review(
     claim_id: uuid.UUID, body: Review, request: Request, user: StewardUser = Depends(current_user), db: Session = Depends(get_db)
 ) -> ClaimDetail:
-    """Verify, which confirms the crew's hours; or send back, which gives the
-    crew limits.SEND_BACK_DAYS more. Never by the claimer or anyone on the crew."""
+    """Never by anyone who is or was on the crew: deleting an account keeps its
+    crew places (models.StewardUser.deleted_at), so leaving does not make a
+    person eligible to verify their own work.
+
+    - verify: confirms the crew's hours;
+    - send back: needs a note; the crew gets back the time they had left when
+      they submitted, and at least limits.SEND_BACK_DAYS, so one reviewer
+      cannot shorten a crew's clock by sending it back (the review's finding 9);
+      the after photos must be retaken;
+    - reject: needs a note; the site is released and the hours are not counted.
+    """
     claim = db.get(Claim, claim_id, with_for_update=True)
     if claim is None:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "No such claim")
@@ -459,19 +525,27 @@ def review(
         raise HTTPException(status.HTTP_403_FORBIDDEN, "Someone off the crew has to review this")
     if claim.state != "submitted":
         raise HTTPException(status.HTTP_409_CONFLICT, "Only a submitted claim can be reviewed")
+    if body.verdict != "verify" and not body.note:
+        raise HTTPException(status.HTTP_422_UNPROCESSABLE_CONTENT, "Say what is missing when sending back or rejecting")
+    now = _now()
     claim.reviewed_by = user.id
+    claim.reviewed_by_name = user.display_name
     claim.review_note = body.note
     if body.verdict == "verify":
         claim.state = "verified"
-        claim.verified_at = _now()
+        claim.verified_at = now
         for entry in claim.hours:
             entry.verified = True
-    else:
-        if not body.note:
-            raise HTTPException(status.HTTP_422_UNPROCESSABLE_CONTENT, "Say what needs doing when sending a submission back")
+    elif body.verdict == "send_back":
+        remaining = claim.due_at - (claim.submitted_at or now)
         claim.state = "in_progress"
+        claim.sent_back_at = now
         claim.submitted_at = None
-        claim.due_at = _now() + timedelta(days=limits.SEND_BACK_DAYS)
+        claim.due_at = now + max(remaining, timedelta(days=limits.SEND_BACK_DAYS))
+    else:
+        claim.state = "released"
+        claim.released_at = now
+        claim.invite_token_sha256 = None
     db.commit()
     return _detail(claim, user, db, request.app.state.photos)
 

@@ -7,10 +7,10 @@ this is and why; this file says only how to run it.
 ```
 pip install -r requirements-dev.txt
 python -m pytest                      # needs the local Postgres: backend/scripts/local-postgres.sh
-STEWARD_DATABASE_URL=... python -m alembic upgrade head
+STEWARD_DATABASE_URL=... python -m alembic upgrade head   # before every deploy that adds one
 STEWARD_SUPABASE_URL=https://<project>.supabase.co \
 STEWARD_ALLOWED_ORIGINS=http://localhost:5173 \
-STEWARD_SUMMARY_URL=https://<steward site>/data/summary.json \
+STEWARD_SITES_URL=https://<steward site>/data/sites.json \
   uvicorn steward_api.main:app --reload
 ```
 

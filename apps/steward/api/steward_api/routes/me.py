@@ -1,12 +1,12 @@
 from __future__ import annotations
 
 from fastapi import APIRouter, Depends, status
-from sqlalchemy import func, update
+from sqlalchemy import delete, func, update
 from sqlalchemy.orm import Session
 
 from steward_api.auth import current_user
 from steward_api.db import get_db
-from steward_api.models import Claim, StewardUser
+from steward_api.models import Claim, ClubWeights, Hours, SiteList, StewardUser
 from steward_api.routes.claims import WORKING_STATES
 from steward_api.schemas import Me, MeUpdate
 
@@ -27,16 +27,27 @@ def update_me(body: MeUpdate, user: StewardUser = Depends(current_user), db: Ses
 
 @router.delete("", status_code=status.HTTP_204_NO_CONTENT)
 def delete_me(user: StewardUser = Depends(current_user), db: Session = Depends(get_db)) -> None:
-    """Everything this API holds about the caller: their lists, crew places and
-    hours go; their weights changes and the claims they worked on stay in the
-    sites' and clubs' histories without a name (models.py).
+    """Deletes what this API holds that is the caller's own: their name (here
+    and on every history entry it was copied to), their lists and their hours.
+    Claims they were working on go back to Open.
+
+    What stays, without a name: the claims and weights changes they made, which
+    are other people's history too, and their crew places, which keep them from
+    ever reviewing work they were part of. The account row stays as a
+    tombstone and this sign-in is refused from then on (auth.current_user).
+    Deleting the row instead let the same token return as a new account the
+    moment after (the adversarial review's finding 3, 2026-10-27).
+
     The Supabase account itself is OurHike's, and is not touched here."""
-    # Claims they hold and are still working on go back to Open; a claim
-    # already submitted stays for its review, its claimer shown as nobody.
     db.execute(
         update(Claim)
         .where(Claim.claimer_id == user.id, Claim.state.in_(WORKING_STATES))
         .values(state="released", released_at=func.now(), invite_token_sha256=None)
     )
-    db.delete(user)
+    db.execute(update(ClubWeights).where(ClubWeights.changed_by == user.id).values(changed_by_name=None))
+    db.execute(update(Claim).where(Claim.reviewed_by == user.id).values(reviewed_by_name=None))
+    db.execute(delete(SiteList).where(SiteList.owner_id == user.id))
+    db.execute(delete(Hours).where(Hours.user_id == user.id))
+    user.display_name = None
+    user.deleted_at = func.now()
     db.commit()

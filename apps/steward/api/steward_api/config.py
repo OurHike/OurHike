@@ -35,9 +35,10 @@ class Settings(BaseSettings):
     #: web app's address. Empty allows none, which is the safe default.
     allowed_origins: Annotated[list[str], NoDecode] = []
 
-    #: Where the analysis job's public summary.json is served, for the list of
-    #: clubs a weights change may name. Empty refuses every weights change.
-    summary_url: str = ""
+    #: Where the analysis job's public sites.json is served (the web app's
+    #: data/sites.json): the sites a claim may name and the clubs a weights
+    #: change may name (analysis.py). Empty refuses both.
+    sites_url: str = ""
 
     #: Claim photos (#1910): a private R2 bucket of this app's own, never one of
     #: OurHike's (photos.py says why the names differ). All four, plus the write

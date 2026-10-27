@@ -19,6 +19,7 @@ from sqlalchemy.orm import Session
 from steward_api import limits
 from steward_api.auth import current_user
 from steward_api.db import get_db
+from steward_api.locks import lock_user
 from steward_api.models import SiteList, SiteListItem, StewardUser
 from steward_api.schemas import ListCreate, ListDetail, ListRename, ListSummary, SharedList, SharedLookup, ShareLink
 
@@ -46,8 +47,10 @@ def _detail(site_list: SiteList) -> ListDetail:
     return ListDetail(**_summary(site_list).model_dump(), rims_ids=[item.rims_id for item in site_list.items])
 
 
-def _own_list(db: Session, user: StewardUser, list_id: uuid.UUID) -> SiteList:
-    site_list = db.get(SiteList, list_id)
+def _own_list(db: Session, user: StewardUser, list_id: uuid.UUID, *, lock: bool = False) -> SiteList:
+    """The caller's list, or 404. `lock` holds its row, so a cap on its items
+    counted here still holds when the insert lands (locks.py)."""
+    site_list = db.get(SiteList, list_id, with_for_update=lock)
     if site_list is None or site_list.owner_id != user.id:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "No such list")
     return site_list
@@ -61,6 +64,7 @@ def my_lists(user: StewardUser = Depends(current_user), db: Session = Depends(ge
 
 @router.post("/lists", response_model=ListDetail, status_code=status.HTTP_201_CREATED)
 def create_list(body: ListCreate, user: StewardUser = Depends(current_user), db: Session = Depends(get_db)) -> ListDetail:
+    lock_user(db, user.id)
     owned = db.scalar(select(func.count()).select_from(SiteList).where(SiteList.owner_id == user.id)) or 0
     if owned >= limits.LISTS_PER_USER:
         raise HTTPException(
@@ -104,7 +108,7 @@ def add_item(
     db: Session = Depends(get_db),
 ) -> None:
     """Idempotent: saving a site twice keeps one entry."""
-    site_list = _own_list(db, user, list_id)
+    site_list = _own_list(db, user, list_id, lock=True)
     if any(item.rims_id == rims_id for item in site_list.items):
         return
     if len(site_list.items) >= limits.ITEMS_PER_LIST:

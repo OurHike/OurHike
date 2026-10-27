@@ -6,7 +6,7 @@ import pytest
 from conftest import bearer
 
 from steward_api import limits
-from steward_api.clubs import ClubDirectory, ClubsUnavailable
+from steward_api.analysis import AnalysisDirectory, AnalysisUnavailable
 
 CLUB = "Example Trail Club"
 CHANGE = {"club": CLUB, "deficit": 40, "water": 20, "trail": 6, "cluster": 8, "restricted": 10}
@@ -89,10 +89,39 @@ def test_one_account_changes_weights_at_most_the_daily_limit(client, monkeypatch
 
 def test_a_change_is_503_when_the_club_list_cannot_be_read(client, app):
     def unavailable():
-        raise ClubsUnavailable("down")
+        raise AnalysisUnavailable("down")
 
-    app.state.clubs = ClubDirectory(unavailable)
+    app.state.analysis = AnalysisDirectory(unavailable)
     assert client.post("/weights", json=CHANGE, headers=bearer("a")).status_code == 503
+
+
+def test_the_history_keeps_the_name_a_change_was_made_under(client):
+    client.patch("/me", json={"display_name": "Trail boss"}, headers=bearer("boss"))
+    client.post("/weights", json=CHANGE, headers=bearer("boss"))
+    client.patch("/me", json={"display_name": "Somebody new"}, headers=bearer("boss"))
+    assert weights(client)["history"][0]["changed_by"] == "Trail boss"
+
+
+def test_restoring_an_entry_id_past_any_real_one_is_a_422_not_a_500(client):
+    # The review's finding 11: an id past Postgres's integer range was a 500.
+    response = client.post("/weights/99999999999999999999999/restore", json={}, headers=bearer("a"))
+    assert response.status_code == 422
+
+
+def test_the_daily_limit_holds_against_parallel_requests(client, monkeypatch):
+    # The review's finding 8: counted then inserted, 12 parallel requests got
+    # past a cap of 3 in 6 runs of 7. The caller's row is now locked first.
+    from concurrent.futures import ThreadPoolExecutor
+
+    monkeypatch.setattr(limits, "WEIGHT_CHANGES_PER_DAY", 3)
+    client.get("/me", headers=bearer("racer"))
+
+    def change(deficit):
+        return client.post("/weights", json={**CHANGE, "deficit": deficit}, headers=bearer("racer")).status_code
+
+    with ThreadPoolExecutor(max_workers=8) as pool:
+        statuses = list(pool.map(change, range(20, 32)))
+    assert statuses.count(201) == 3, statuses
 
 
 def _pipeline_rules():

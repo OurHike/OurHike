@@ -91,6 +91,8 @@ packaging==26.3
     # via
     #   -c ../pipeline/requirements-dev.txt
     #   pytest
+pillow==12.3.0
+    # via -r requirements.txt
 pluggy==1.6.0
     # via
     #   -c ../pipeline/requirements-dev.txt

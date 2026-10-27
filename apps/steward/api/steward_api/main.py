@@ -6,11 +6,14 @@ import re
 
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import JSONResponse
+from sqlalchemy import text
+from sqlalchemy.exc import SQLAlchemyError
 
 from steward_api import limits
+from steward_api.analysis import AnalysisDirectory
 from steward_api.auth import TokenVerifier
 from steward_api.body_limit import BodyLimitMiddleware
-from steward_api.clubs import ClubDirectory
 from steward_api.config import Settings
 from steward_api.db import make_engine, make_sessionmaker
 from steward_api.photos import PhotoStore
@@ -21,7 +24,7 @@ def create_app(
     settings: Settings | None = None,
     *,
     verifier: TokenVerifier | None = None,
-    clubs: ClubDirectory | None = None,
+    analysis: AnalysisDirectory | None = None,
     photos: PhotoStore | None = None,
 ) -> FastAPI:
     settings = settings or Settings()
@@ -32,13 +35,21 @@ def create_app(
     app.state.engine = engine
     app.state.sessionmaker = make_sessionmaker(engine)
     app.state.verifier = verifier or TokenVerifier(settings)
-    app.state.clubs = clubs or ClubDirectory.from_url(settings.summary_url)
+    app.state.analysis = analysis or AnalysisDirectory.from_url(settings.sites_url)
     #: None when this deployment has no photo bucket: uploads then answer 503.
     app.state.photos = photos if photos is not None else settings.photo_storage()
 
     @app.get("/health")
-    def health() -> dict[str, str]:
-        return {"status": "ok"}
+    def health() -> JSONResponse:
+        """Up means the database answers: a deployment that fell back to the
+        localhost default would otherwise report healthy while every real
+        request failed (the review's finding 13)."""
+        try:
+            with engine.connect() as connection:
+                connection.execute(text("select 1"))
+        except SQLAlchemyError:
+            return JSONResponse({"status": "database unreachable"}, status_code=503)
+        return JSONResponse({"status": "ok"})
 
     app.include_router(me.router)
     app.include_router(lists.router)

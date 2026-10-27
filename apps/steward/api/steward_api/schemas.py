@@ -3,6 +3,7 @@ stripped of control characters here, so nothing downstream has to remember to.""
 
 from __future__ import annotations
 
+import unicodedata
 import uuid
 from datetime import datetime
 from typing import Annotated, Literal
@@ -11,18 +12,28 @@ from pydantic import AfterValidator, BaseModel, ConfigDict, Field, StringConstra
 
 from steward_api import limits
 
+_HIDDEN = ("Cc", "Cf", "Co", "Cs", "Cn")
+
 
 def _no_control_characters(value: str) -> str:
-    if any(ord(ch) < 32 or 0x7F <= ord(ch) < 0xA0 for ch in value):
-        raise ValueError("must not contain control characters")
+    """Refuses control characters, and the invisible format characters a name
+    can use to pass for another: bidi overrides, zero-width joiners and the
+    like (Unicode categories Cc, Cf, Co, Cs and Cn; the review's finding 10)."""
+    if any(unicodedata.category(ch) in _HIDDEN for ch in value):
+        raise ValueError("must not contain control or invisible formatting characters")
     return value
 
 
-def _text(max_length: int) -> type[str]:
+def _no_control_characters_but_line_breaks(value: str) -> str:
+    """The same, for notes, which may run over several lines."""
+    return _no_control_characters(value.replace("\r\n", "\n").replace("\n", " ")) and value
+
+
+def _text(max_length: int, *, multiline: bool = False) -> type[str]:
     return Annotated[
         str,
         StringConstraints(strip_whitespace=True, min_length=1, max_length=max_length),
-        AfterValidator(_no_control_characters),
+        AfterValidator(_no_control_characters_but_line_breaks if multiline else _no_control_characters),
     ]
 
 
@@ -129,8 +140,8 @@ class ClubWeightsView(BaseModel):
 # --- Claims (phase 3, #1910) ------------------------------------------------------
 
 Step = _text(limits.STEP_MAX)
-NotesText = _text(limits.NOTES_MAX)
-ReviewNote = _text(limits.REVIEW_NOTE_MAX)
+NotesText = _text(limits.NOTES_MAX, multiline=True)
+ReviewNote = _text(limits.REVIEW_NOTE_MAX, multiline=True)
 
 
 class ClaimCreate(Strict):
@@ -167,6 +178,8 @@ class PhotoView(BaseModel):
 
 class ClaimDetail(ClaimSummary):
     started_at: datetime | None
+    #: After photos older than this do not count toward the next submission.
+    sent_back_at: datetime | None
     verified_at: datetime | None
     released_at: datetime | None
     steps_done: list[str]
@@ -197,7 +210,9 @@ class Submission(Strict):
 
 
 class Review(Strict):
-    verdict: Literal["verify", "send_back"]
+    #: verify: the work is done. send_back: nearly, and here is what is missing.
+    #: reject: it was not done, and the site goes back to Open for someone else.
+    verdict: Literal["verify", "send_back", "reject"]
     note: ReviewNote | None = None
 
 

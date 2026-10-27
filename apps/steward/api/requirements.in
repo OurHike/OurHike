@@ -13,3 +13,6 @@ httpx
 # Claim photos go to a private R2 bucket over its S3 API (photos.py), as
 # backend/app/core/photos.py stores report photos.
 boto3
+# Every claim photo is decoded and redrawn on the server, so nothing but its
+# pixels is kept (photos.reencode). The version the pipeline already pins.
+pillow==12.3.0

@@ -48,8 +48,10 @@ CLAIM_DAYS = 14
 #: How long a crew gets after a reviewer sends a submission back. Picked:
 #: PLAN.md stops the clock at Submitted and says nothing about restarting it.
 SEND_BACK_DAYS = 7
-#: Live claims one account may hold at once. High enough to claim a whole
-#: cluster (the largest has 28 sites, 2026-10-26; most are 2-3).
+#: Sites one account may hold at once, counting claims it has submitted and
+#: that wait for review, since those hold their sites too (the review's
+#: finding 2). High enough to claim a cluster (most are 2-3 sites; the largest
+#: is 28, 2026-10-26).
 LIVE_CLAIMS_PER_USER = 10
 #: Sites in one "claim all" request.
 SITES_PER_CLAIM_REQUEST = 10
@@ -57,9 +59,17 @@ CREW_MAX = 12
 
 #: The fixed photo points every submission photographs before and after (PLAN.md §5).
 PHOTO_POINTS = (1, 2)
-#: One photo, after the phone has re-encoded it (2048 px on the long side at
-#: JPEG quality 0.85 is typically under 1 MB). Phone originals are not accepted.
+#: One photo as it arrives, after the phone has re-encoded it (2048 px on the
+#: long side at JPEG quality 0.85 is typically under 1 MB).
 PHOTO_MAX_BYTES = 3 * 1024 * 1024
+#: The server re-encodes every photo to this long side, as the phone does.
+PHOTO_LONG_SIDE = 2048
+#: Pixels a photo may claim before it is decoded: a 50-megapixel phone is the
+#: largest ordinary camera; a header claiming more is refused unread.
+PHOTO_MAX_PIXELS = 60_000_000
+#: Seconds to receive one photo's body. A slow upload past this is cut off
+#: rather than allowed to hold a worker (the review's finding 1).
+PHOTO_READ_SECONDS = 60
 PHOTOS_PER_CLAIM = 40
 #: Hours one person logs on one claim, across all their visits to it.
 HOURS_MAX = 72

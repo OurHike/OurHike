@@ -28,6 +28,11 @@ class StewardUser(Base):
     id: Mapped[str] = mapped_column(String(64), primary_key=True)
     display_name: Mapped[str | None] = mapped_column(String(limits.DISPLAY_NAME_MAX))
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+    #: Set when the person deletes their Campsite Steward data. The row stays as
+    #: a tombstone and the id is refused from then on: deleting the row let the
+    #: same token come straight back as a stranger, free of its weights cap and
+    #: able to review its own claim (the review's finding 3, 2026-10-27).
+    deleted_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
 
 
 class SiteList(Base):
@@ -85,13 +90,18 @@ class ClubWeights(Base):
     #: SET NULL rather than CASCADE: a person leaving must not rewrite a club's
     #: ranking history, so their changes stay and lose only the name.
     changed_by: Mapped[str | None] = mapped_column(ForeignKey("steward_user.id", ondelete="SET NULL"), index=True)
+    #: The changer's display name when they made the change, so a later rename
+    #: does not rewrite the history (the review's finding 10). Cleared if they
+    #: delete their data.
+    changed_by_name: Mapped[str | None] = mapped_column(String(limits.DISPLAY_NAME_MAX))
     changed_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
 
 
 # --- Claims (phase 3, #1910; PLAN.md §6) --------------------------------------------
 
 #: The states a claim moves through. "released" is reached by a claimer letting
-#: go or by the clock running out, and is final.
+#: go, by the clock running out, or by a reviewer rejecting the submission, and
+#: is final.
 CLAIM_STATES = ("claimed", "in_progress", "submitted", "verified", "released")
 #: The states that hold a site: at most one claim per site is in one of these.
 HOLDING_STATES = ("claimed", "in_progress", "submitted")
@@ -125,7 +135,12 @@ class Claim(Base):
     steps_done: Mapped[list[str]] = mapped_column(JSONB, server_default=text("'[]'::jsonb"))
     notes: Mapped[str | None] = mapped_column(String(limits.NOTES_MAX))
     reviewed_by: Mapped[str | None] = mapped_column(ForeignKey("steward_user.id", ondelete="SET NULL"))
+    #: The reviewer's display name at the review, as ClubWeights.changed_by_name.
+    reviewed_by_name: Mapped[str | None] = mapped_column(String(limits.DISPLAY_NAME_MAX))
     review_note: Mapped[str | None] = mapped_column(String(limits.REVIEW_NOTE_MAX))
+    #: When a reviewer last sent it back. After photos older than this do not
+    #: count toward the next submission, so a crew cannot resubmit unchanged.
+    sent_back_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     #: SHA-256 of the crew invite token, as for list share links.
     invite_token_sha256: Mapped[str | None] = mapped_column(String(64), unique=True)
 

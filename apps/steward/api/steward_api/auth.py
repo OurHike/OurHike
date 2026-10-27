@@ -12,6 +12,9 @@ exactly, because each line of it is a fix with a reason there:
 - an unknown `kid` forces at most one JWKS fetch a minute, so random `kid`s
   cannot turn every request into an outbound call (backend's #1754);
 - a JWKS that cannot be fetched is a 503, not a 401.
+
+Two refusals of its own: an anonymous Supabase user, and an account whose
+data was deleted here (a tombstone, models.StewardUser.deleted_at).
 """
 
 from __future__ import annotations
@@ -122,6 +125,11 @@ def current_user(
     user_id = str(claims["sub"])
     if not user_id or len(user_id) > 64:
         raise HTTPException(status.HTTP_401_UNAUTHORIZED, "Token subject is not usable")
+    # Supabase's anonymous sign-in mints a real user with no email behind it.
+    # Nothing here enables it, but a shared project could; such an account
+    # could claim and review with no one behind it (the review's finding 13).
+    if claims.get("is_anonymous") is True:
+        raise HTTPException(status.HTTP_401_UNAUTHORIZED, "Sign in with an email address to use Campsite Steward")
     user = db.get(StewardUser, user_id)
     if user is None:
         db.add(StewardUser(id=user_id))
@@ -134,4 +142,15 @@ def current_user(
         user = db.get(StewardUser, user_id)
         if user is None:
             raise HTTPException(status.HTTP_500_INTERNAL_SERVER_ERROR, "Could not create the account row")
+    if user.deleted_at is not None:
+        raise HTTPException(
+            status.HTTP_401_UNAUTHORIZED,
+            "This account's Campsite Steward data was deleted, so it cannot be used here again",
+        )
+    # End the read's transaction, which returns its connection to the pool.
+    # Without this the connection stayed checked out for the rest of the
+    # request, including the seconds a photo takes to arrive: fifteen slow
+    # uploads emptied the pool and every other request failed (the review's
+    # finding 1, 2026-10-27). The session opens a new transaction on its next query.
+    db.commit()
     return user

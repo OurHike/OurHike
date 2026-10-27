@@ -4,22 +4,25 @@ Decided by poll (2026-10-26): anyone signed in may change any club's weights,
 and the history makes every change visible and undoable. PLAN.md §10 "Open
 weights" names what that leaves open. What this file adds is only what keeps
 the history worth reading: the club must be one the analysis knows, a change
-must change something, and one account makes at most
-limits.WEIGHT_CHANGES_PER_DAY of them a day.
+must change something, one account makes at most
+limits.WEIGHT_CHANGES_PER_DAY of them a day, and each entry keeps the name its
+changer used at the time, so a rename cannot rewrite the history.
 """
 
 from __future__ import annotations
 
 from datetime import UTC, datetime, timedelta
+from typing import Annotated
 
-from fastapi import APIRouter, Depends, HTTPException, Query, Request, status
+from fastapi import APIRouter, Depends, HTTPException, Path, Query, Request, status
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
 from steward_api import limits
+from steward_api.analysis import AnalysisDirectory, AnalysisUnavailable
 from steward_api.auth import current_user
-from steward_api.clubs import ClubDirectory, ClubsUnavailable
 from steward_api.db import get_db
+from steward_api.locks import lock_user
 from steward_api.models import ClubWeights, StewardUser
 from steward_api.schemas import ClubWeightsView, WeightsChange, WeightsEntry, WeightsRestore
 
@@ -34,13 +37,13 @@ def _values(row: ClubWeights) -> dict[str, int]:
     return {name: getattr(row, name) for name in limits.WEIGHT_NAMES}
 
 
-def _entry(row: ClubWeights, names: dict[str, str | None], user: StewardUser) -> WeightsEntry:
+def _entry(row: ClubWeights, user: StewardUser) -> WeightsEntry:
     return WeightsEntry(
         id=row.id,
         **_values(row),
         note=row.note,
         restored_from=row.restored_from,
-        changed_by=names.get(row.changed_by) if row.changed_by else None,
+        changed_by=row.changed_by_name,
         by_you=row.changed_by == user.id,
         changed_at=row.changed_at,
     )
@@ -53,21 +56,19 @@ def _view(db: Session, club: str, user: StewardUser) -> ClubWeightsView:
         .order_by(ClubWeights.changed_at.desc(), ClubWeights.id.desc())
         .limit(HISTORY_LIMIT)
     ).all()
-    people = {row.changed_by for row in rows if row.changed_by}
-    names = dict(db.execute(select(StewardUser.id, StewardUser.display_name).where(StewardUser.id.in_(people))).all())
     return ClubWeightsView(
         club=club,
         current=_values(rows[0]) if rows else dict(limits.DEFAULT_WEIGHTS),
         defaults=dict(limits.DEFAULT_WEIGHTS),
-        history=[_entry(row, names, user) for row in rows],
+        history=[_entry(row, user) for row in rows],
     )
 
 
 def _known_club(request: Request, club: str) -> None:
-    directory: ClubDirectory = request.app.state.clubs
+    directory: AnalysisDirectory = request.app.state.analysis
     try:
-        known = directory.names()
-    except ClubsUnavailable as exc:
+        known = directory.current().clubs
+    except AnalysisUnavailable as exc:
         raise HTTPException(
             status.HTTP_503_SERVICE_UNAVAILABLE, "The club list cannot be read right now, so no change can be checked"
         ) from exc
@@ -76,6 +77,7 @@ def _known_club(request: Request, club: str) -> None:
 
 
 def _under_daily_cap(db: Session, user: StewardUser) -> None:
+    lock_user(db, user.id)
     since = datetime.now(UTC) - timedelta(days=1)
     made = db.scalar(
         select(func.count()).select_from(ClubWeights).where(ClubWeights.changed_by == user.id, ClubWeights.changed_at >= since)
@@ -114,14 +116,14 @@ def change_weights(
     if values == _current(db, body.club):
         raise HTTPException(status.HTTP_422_UNPROCESSABLE_CONTENT, "These are already the club's weights")
     _under_daily_cap(db, user)
-    db.add(ClubWeights(club=body.club, **values, note=body.note, changed_by=user.id))
+    db.add(ClubWeights(club=body.club, **values, note=body.note, changed_by=user.id, changed_by_name=user.display_name))
     db.commit()
     return _view(db, body.club, user)
 
 
 @router.post("/{entry_id}/restore", response_model=ClubWeightsView, status_code=status.HTTP_201_CREATED)
 def restore_weights(
-    entry_id: int,
+    entry_id: Annotated[int, Path(ge=1, le=2**31 - 1)],
     body: WeightsRestore,
     request: Request,
     user: StewardUser = Depends(current_user),
@@ -135,6 +137,15 @@ def restore_weights(
     if _values(earlier) == _current(db, earlier.club):
         raise HTTPException(status.HTTP_422_UNPROCESSABLE_CONTENT, "These are already the club's weights")
     _under_daily_cap(db, user)
-    db.add(ClubWeights(club=earlier.club, **_values(earlier), note=body.note, restored_from=earlier.id, changed_by=user.id))
+    db.add(
+        ClubWeights(
+            club=earlier.club,
+            **_values(earlier),
+            note=body.note,
+            restored_from=earlier.id,
+            changed_by=user.id,
+            changed_by_name=user.display_name,
+        )
+    )
     db.commit()
     return _view(db, earlier.club, user)

@@ -91,6 +91,8 @@ opentelemetry-api==1.45.1
     # via
     #   -c ../../../backend/requirements-dev.txt
     #   fastapi
+pillow==12.3.0
+    # via -r requirements.in
 psycopg==3.3.6
     # via
     #   -c ../../../backend/requirements-dev.txt

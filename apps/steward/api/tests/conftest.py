@@ -25,8 +25,8 @@ from sqlalchemy.engine import make_url
 from sqlalchemy.exc import ProgrammingError
 
 from alembic import command
+from steward_api.analysis import Analysis, AnalysisDirectory
 from steward_api.auth import TokenVerifier
-from steward_api.clubs import ClubDirectory
 from steward_api.config import Settings
 from steward_api.main import create_app
 from steward_api.models import Base
@@ -34,6 +34,11 @@ from steward_api.photos import MemoryPhotoStore
 
 DATABASE_URL = os.environ.get("STEWARD_TEST_DATABASE_URL", "postgresql+psycopg://ourhike:ourhike@localhost:5432/steward_test")
 CLUBS = frozenset({"Example Trail Club", "Second Example Club"})
+#: Invented RIMS_IDs: two that need work (claimable), and one that does not.
+SITE = "4d9ce529-d198-40ee-9a11-02b0184b5270"
+NEIGHBOUR = "f599a2a9-c5c4-4e62-c303-2ebb43e75017"
+SCORES_WELL = "4a02a65e-cddb-402b-9b6b-2624b01c2be8"
+ANALYSIS = Analysis(clubs=CLUBS, sites=frozenset({SITE, NEIGHBOUR, SCORES_WELL}), workable=frozenset({SITE, NEIGHBOUR}))
 ORIGIN = "https://steward.example"
 
 SIGNING_KEY = ec.generate_private_key(ec.SECP256R1())
@@ -47,6 +52,17 @@ def token(sub: str | None = None, *, key=SIGNING_KEY, **claims) -> str:
 
 def bearer(sub: str) -> dict[str, str]:
     return {"Authorization": f"Bearer {token(sub)}"}
+
+
+def image(fmt: str = "JPEG", size: tuple[int, int] = (64, 48), **save) -> bytes:
+    """A real, tiny image, so the server's decode-and-redraw has something to read."""
+    from io import BytesIO
+
+    from PIL import Image
+
+    out = BytesIO()
+    Image.new("RGB", size, (90, 120, 80)).save(out, fmt, **save)
+    return out.getvalue()
 
 
 def _require_disposable(url: str) -> None:
@@ -95,7 +111,7 @@ def app(settings):
     application = create_app(
         settings,
         verifier=TokenVerifier(settings, signing_key=lambda _token: public),
-        clubs=ClubDirectory(lambda: CLUBS),
+        analysis=AnalysisDirectory.fixed(ANALYSIS),
         photos=MemoryPhotoStore(),
     )
     yield application

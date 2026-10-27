@@ -16,14 +16,18 @@ good - months after the rollup had deleted the rows that filled it. Rows
 held come down when the rollup deletes a month, and the reused space means
 the file stays near the high-water mark the ceiling set.
 
-ROWS HELD are summed from `analytics_intake`'s `stored` counts, which the
-rollup deletes on the same date line as the rows (app/core/analytics_rollup.py
-`run`). Reading the table's own count would mean a full scan on every batch.
-The sum can be off at the edges, by reasoning rather than measurement: high
-by the rows of deleted accounts, which take their events with them but leave
-their counts; low by a row a phone dated a day ahead that arrived the day
-before the line. Running high turns batches away early, which is the safe
-direction.
+ROWS HELD are the nightly rollup's own count of the table, taken after its
+deletes and kept as the day's `held` row in `analytics_intake`, plus the
+`stored` rows counted since. Reading the table's own count would mean a full
+scan on every batch. Summing every `stored` count, as this did first, kept
+deleted rows in the sum for six months: rows are deleted by the month they
+describe, and their counts by the day they arrived, so 2,800 rows dated in
+May and sent in November were deleted on 1 December and still held the
+ceiling shut until the next June (#1903's second review). The sum runs high
+by the rows stored on the snapshot's own day before the rollup counted them
+- at most a day's budget - and by the rows of an account deleted since; both
+turn batches away early, which is the safe direction. Before the first
+snapshot, every `stored` count is summed.
 
 `analytics_storage_ceiling_mb` (app/config.py) stays in megabytes, because
 the plan it is sized against is quoted in megabytes. It becomes rows at
@@ -59,7 +63,15 @@ STORED_ROW_BYTES = 382
 
 # The one definition of rows held: the nightly checks run it alone, and the
 # intake gate runs it inside its own query, to keep one round trip a batch.
-ROWS_HELD_SQL = "select coalesce(sum(rows), 0) from analytics_intake where outcome = 'stored'"
+ROWS_HELD_SQL = """
+    with snapshot as (
+      select received_on, rows from analytics_intake where outcome = 'held' order by received_on desc limit 1
+    )
+    select coalesce((select rows from snapshot), 0) + coalesce((
+      select sum(rows) from analytics_intake
+      where outcome = 'stored' and received_on >= coalesce((select received_on from snapshot), date '-infinity')
+    ), 0)
+"""
 _ROWS_HELD = text(ROWS_HELD_SQL)
 
 

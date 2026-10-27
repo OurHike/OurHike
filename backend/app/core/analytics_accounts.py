@@ -46,6 +46,14 @@ def linked_usage_exists(db: Session) -> bool:
     )
 
 
+def has_linked_usage(db: Session, account_id: str) -> bool:
+    """Whether this account's linked usage is still held: its User-table row,
+    which ingest writes with its first linked row. False when no secret is
+    configured to find it - the honest answer then is "cannot tell"."""
+    keys = account_user_keys(account_id)
+    return bool(keys) and bool(db.scalar(select(exists().where(AnalyticsUser.user_key.in_(keys)))))
+
+
 def keys_or_refuse(db: Session, account_id: str) -> list[str]:
     """This account's possible keys, or `LinkedUsageUnreachable` when there are none and there should be.
 

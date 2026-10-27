@@ -45,6 +45,15 @@ from app.db.session import SessionLocal  # noqa: E402
 STEP_OUTCOMES = ("success", "failure", "cancelled", "skipped")
 
 
+# The most findings the public issue and this job's public log name, broken
+# ones first; the rest are counted, and named in the usage report. A night of
+# made-up versions once made 2,001 findings and a 364,684-character issue
+# body, past what GitHub takes - so the issue stopped updating and the real
+# faults behind them never reached it (#1903's second review). @unvalidated:
+# forty is a screenful, which is a guess at what anybody reads.
+MAX_PUBLIC_FINDINGS = 40
+
+
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     parser.add_argument(
@@ -77,9 +86,11 @@ def main(argv: list[str] | None = None) -> int:
     public = sorted(public, key=lambda f: (f.status != "broken", f.check_name, f.scope, f.day))
     if findings:
         print(f"{len(findings)} finding(s) on {today:%Y-%m-%d}:")
-        for finding in findings:
+        for finding in findings[:MAX_PUBLIC_FINDINGS]:
             waiting = "" if finding in public else "  (first night; the issue waits for a second)"
             print(f"  {finding.status:<6} {finding.check_name}  {finding.scope}  {finding.day:%Y-%m-%d}{waiting}")
+        if len(findings) > MAX_PUBLIC_FINDINGS:
+            print(f"  ...and {len(findings) - MAX_PUBLIC_FINDINGS} more, in the usage report.")
     else:
         print(f"Nothing out of the ordinary on {today:%Y-%m-%d}.")
 
@@ -96,8 +107,9 @@ def main(argv: list[str] | None = None) -> int:
                             "status": finding.status,
                             "day": finding.day.isoformat(),
                         }
-                        for finding in public
+                        for finding in public[:MAX_PUBLIC_FINDINGS]
                     ],
+                    "more": max(0, len(public) - MAX_PUBLIC_FINDINGS),
                 },
                 indent=2,
             )

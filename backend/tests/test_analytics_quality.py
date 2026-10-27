@@ -343,6 +343,36 @@ def test_no_sealing_keys_at_all_is_left_to_the_rows_it_costs(db_session):
     assert "seal_keys_running_out" not in found
 
 
+@pytest.mark.parametrize(("dropped", "warned"), [(9, False), (10, True)], ids=["nine-of-a-thousand", "ten"])
+def test_rows_the_phones_had_to_drop_are_a_warning_past_a_share_of_the_day(db_session, dropped, warned):
+    """Before the phones said so, a count that came in low could not be told
+    from phones that overflowed while offline (#1903's second review)."""
+    yesterday = TODAY - timedelta(days=1)
+    db_session.add(AnalyticsIntake(received_on=yesterday, app_version="", outcome=IntakeOutcome.stored, rows=1000 - dropped))
+    db_session.add(AnalyticsIntake(received_on=yesterday, app_version="", outcome=IntakeOutcome.dropped_full, rows=dropped))
+    db_session.commit()
+
+    found = {f.check_name for f in quality.run_checks(db_session, today=TODAY)}
+
+    assert ("rows_dropped_on_phone" in found) is warned
+
+
+def test_a_month_naming_more_clubs_than_it_keeps_rows_for_is_a_warning(db_session, monkeypatch):
+    monkeypatch.setattr(quality, "MAX_CLUBS_PER_MONTH", 2)
+    month = date(2026, 11, 1)
+    for club in ("GATC", "NOC", "MADEUP1"):
+        _rows(db_session, date(2026, 11, 3), {"map_screen_viewed": 1})
+        db_session.query(AnalyticsEvent).filter(AnalyticsEvent.clubs.is_(None)).update(
+            {"clubs": {club: 1.0}}, synchronize_session=False
+        )
+        db_session.commit()
+    run(db_session, today=TODAY)
+
+    found = {(f.check_name, f.day) for f in quality.run_checks(db_session, today=TODAY)}
+
+    assert ("clubs_over_cap", month) in found
+
+
 def test_a_rollup_that_failed_tonight_is_a_finding_tonight(db_session):
     found = quality.run_checks(db_session, today=TODAY, rollup_failed=True)
 

@@ -12,7 +12,7 @@ from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
-from app.core.analytics_accounts import LinkedUsageUnreachable, forget_link
+from app.core.analytics_accounts import LinkedUsageUnreachable, forget_link, has_linked_usage
 from app.core.auth import get_current_user
 from app.core.orm import commit_and_refresh
 from app.core.time import utc_now
@@ -62,7 +62,11 @@ def put_my_preferences(
     """
     now = utc_now()
 
-    row = db.get(UserPreferences, current_user.id)
+    # FOR UPDATE: a usage batch reads these answers under a share lock until it
+    # commits (app/routers/analytics.py `_synced_consent`), so an unlink here
+    # waits for a batch in flight and then finds its rows, rather than running
+    # first and leaving them linked for good (#1903's second review).
+    row = db.query(UserPreferences).filter(UserPreferences.profile_id == current_user.id).with_for_update().one_or_none()
     if row is None:
         row = UserPreferences(profile_id=current_user.id, data=_merged(existing=None, incoming=preferences), updated_at=now)
         db.add(row)
@@ -109,8 +113,18 @@ def _forget_withdrawn_link(db: Session, account_id: str, *, before: dict | None,
     but the preference is still saved, because it is what stops linking from
     here on (app/routers/analytics.py reads it). Logged by names only, for
     whoever restores the secret.
+
+    SO A NO IS CHECKED AGAINST THE ROWS, NOT ONLY AGAINST THE ANSWER BEFORE IT.
+    Compared with the stored answer alone, a no synced while the secret was
+    missing was never acted on again: every later sync found no and no, and
+    the rows stayed linked after the secret came back (#1903's second
+    review). Now any sync that leaves the answer at no, with the account's
+    User-table row still held, unlinks - the first one after the secret is
+    restored, at the latest.
     """
-    if not _usage_linked(before) or _usage_linked(after):
+    if _usage_linked(after):
+        return
+    if not _usage_linked(before) and not has_linked_usage(db, account_id):
         return
     try:
         forget_link(db, account_id)

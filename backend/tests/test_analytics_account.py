@@ -337,6 +337,25 @@ def test_taking_back_a_yes_leaves_a_row_with_nothing_sealed_as_it_was(client, db
     assert db_session.query(AnalyticsEvent).one().seal == SealState.no_key
 
 
+def test_a_no_synced_while_the_secret_was_missing_unlinks_at_the_first_sync_after_it_is_back(client, db_session, monkeypatch):
+    """Compared with the answer before it alone, the no was never acted on
+    again: every later sync found no and no (#1903's second review)."""
+    hiker = make_profile(db_session)
+    _sync(client, hiker, measurement_enabled=True, measurement_linked=True)
+    key = _linked_rows(db_session, hiker.id)
+    monkeypatch.setattr(settings, "analytics_user_key_secret", "")
+    _sync(client, hiker, measurement_linked=False)
+    db_session.expire_all()
+    assert db_session.get(AnalyticsUser, key) is not None, "nothing could find the rows"
+
+    monkeypatch.setattr(settings, "analytics_user_key_secret", SERVER_SECRET)
+    _sync(client, hiker, measurement_linked=False, theme="light")
+
+    db_session.expire_all()
+    assert db_session.get(AnalyticsUser, key) is None
+    assert db_session.query(AnalyticsEvent).filter(AnalyticsEvent.user_key.isnot(None)).count() == 0
+
+
 def test_a_sync_that_keeps_the_yes_unlinks_nothing(client, db_session):
     hiker = make_profile(db_session)
     _sync(client, hiker, measurement_enabled=True, measurement_linked=True)

@@ -48,6 +48,12 @@ MAX_EVENTS_PER_BATCH = 200
 MAX_CLUBS_PER_EVENT = 12
 MAX_PLAN_MILES = 5000.0
 
+# The most rows a phone may say it dropped, of each kind, in one batch. A
+# phone holds 200 rows (client/src/lib/usageQueue.ts `MAX_QUEUED`) and a year
+# without signal drops a few thousand; anything near this is not a phone.
+# @unvalidated, like the caps above.
+MAX_DROPPED = 100_000
+
 # A club as the phone names it: ATC's acronym for an A.T. section (`NYNJTC`,
 # `GATC`), an organization's slug elsewhere. A closed alphabet with no spaces,
 # so a trail name or a sentence cannot ride in on it.
@@ -138,6 +144,16 @@ class UsageEventIn(BaseModel):
                 raise ValueError("clubs' shares add up to one event")
         if len(set(self.club_firsts)) != len(self.club_firsts):
             raise ValueError("club_firsts names each club once")
+        # ONE CLUB FOR AN EVENT THAT HAPPENED AT ONE PLACE, and no first in a
+        # club the event was not about. A phone never sends otherwise - a visit
+        # and a map view each have one point, and its firsts come from its own
+        # clubs (client/src/lib/useUsageMeasurement.ts `stampInto`) - and each
+        # club a row names became twelve permanent `analytics_monthly` rows:
+        # 2,000 made-up rows made 288,063 of them (#1903's second review).
+        if self.event not in _PLAN_EVENTS and (len(self.clubs or {}) > 1 or len(self.club_firsts) > 1):
+            raise ValueError("only a plan names more than one club")
+        if not set(self.club_firsts) <= set(self.clubs or {}):
+            raise ValueError("club_firsts names only clubs the event was about")
         if self.month_returning and not self.month_first:
             raise ValueError("month_returning rides on the month's first row only")
         if self.ever_first and not (self.month_first and self.week_first) or (self.ever_first and self.month_returning):
@@ -146,6 +162,18 @@ class UsageEventIn(BaseModel):
             # would count one phone twice in new + returning + back-again.
             raise ValueError("ever_first is a first-of-the-week and -month row that is not returning")
         return self
+
+
+class DroppedIn(BaseModel):
+    """Rows the phone dropped that the server never saw: at its queue's cap
+    (`full`), or with a batch refused whole (`refused`). Counted in
+    `analytics_intake`, so a count that came in low can be told from phones
+    that overflowed (#1903's second review)."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    full: int = Field(default=0, ge=0, le=MAX_DROPPED)
+    refused: int = Field(default=0, ge=0, le=MAX_DROPPED)
 
 
 class UsageBatchIn(BaseModel):
@@ -160,6 +188,7 @@ class UsageBatchIn(BaseModel):
     # one is refused alone. The cap is still the envelope's: over it, the whole
     # batch is refused, because no phone sends one.
     events: list[Any] = Field(min_length=1, max_length=MAX_EVENTS_PER_BATCH)
+    dropped: DroppedIn | None = None
 
 
 class UsageBatchAck(BaseModel):

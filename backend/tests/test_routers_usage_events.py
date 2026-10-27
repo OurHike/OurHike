@@ -23,7 +23,9 @@ from datetime import timedelta
 from decimal import Decimal
 
 import pytest
-from sqlalchemy import inspect
+from sqlalchemy import inspect, text
+from sqlalchemy.exc import OperationalError
+from sqlalchemy.orm import sessionmaker
 
 from app.config import settings
 from app.core import analytics_quality as quality
@@ -39,6 +41,7 @@ from app.models.analytics import (
     AnalyticsSealKey,
     AnalyticsUser,
 )
+from app.routers import analytics as analytics_router
 from tests.factories import make_profile, make_rollup_heartbeat, make_usage_consent
 from tests.tokens import auth_headers
 
@@ -421,6 +424,125 @@ def test_the_storage_ceiling_counts_rows_held_so_a_deleted_month_lets_batches_in
     run(db_session, today=add_months(today, 7))
     assert db_session.query(AnalyticsEvent).count() == 0, "the month left retention"
     assert _post(client, [_event(today)]).status_code == 202
+
+
+def test_rows_deleted_by_the_month_they_describe_stop_holding_the_ceiling_shut(client, db_session, today, monkeypatch):
+    """Rows are deleted by the month they describe and their counts were kept
+    by the day they arrived, so summed counts held 2,800 rows dated in May and
+    sent in November against the ceiling until the next June (#1903's second
+    review). Rows held start from the rollup's own count of the table now."""
+    monkeypatch.setattr(settings, "analytics_storage_ceiling_mb", 1)
+    monkeypatch.setattr(analytics_storage, "STORED_ROW_BYTES", 1024 * 1024 // 2)
+    oldest = retention_start(today)
+    assert _post(client, [_event(oldest), _event(oldest)]).status_code == 202
+    assert _post(client, [_event(today)]).status_code == 503
+
+    run(db_session, today=add_months(today, 1))
+    assert db_session.query(AnalyticsEvent).count() == 0, "their month left retention"
+
+    assert _post(client, [_event(today)]).status_code == 202
+
+
+def test_a_day_keeps_counts_under_its_cap_of_versions_and_the_rest_as_other(client, db_session, today, monkeypatch):
+    """Each version was its own counter row, kept six months: 50 requests of
+    refused rows made 10,001 (#1903's second review)."""
+    monkeypatch.setattr(analytics_router, "MAX_VERSIONS_PER_DAY", 2)
+
+    for minor in range(4):
+        _post(client, [_event(today, app_version=f"1.{minor}.0")])
+
+    assert _intake(db_session) == {("1.0.0", "stored"): 1, ("1.1.0", "stored"): 1, ("(other)", "stored"): 2}
+
+
+def test_what_the_phone_dropped_is_counted_with_the_batch_that_carries_it(client, db_session, today):
+    response = client.post(
+        "/usage-events", json={"identified": False, "events": [_event(today)], "dropped": {"full": 7, "refused": 2}}
+    )
+
+    assert response.status_code == 202
+    counts = _intake(db_session)
+    assert (counts[("", "dropped_full")], counts[("", "dropped_refused")]) == (7, 2)
+
+
+def test_what_the_phone_dropped_is_not_counted_with_a_batch_turned_away(client, db_session, today, monkeypatch):
+    """The phone keeps its count with the rows, and sends both again."""
+    monkeypatch.setattr(settings, "analytics_daily_row_budget", 0)
+
+    response = client.post("/usage-events", json={"identified": False, "events": [_event(today)], "dropped": {"full": 7}})
+
+    assert response.status_code == 503
+    assert ("", "dropped_full") not in _intake(db_session)
+
+
+@pytest.mark.parametrize(
+    "fields",
+    [
+        {"clubs": {"GATC": 0.5, "PATC": 0.5}},
+        {"clubs": {"GATC": 1.0}, "club_firsts": ["GATC", "PATC"]},
+        {"club_firsts": ["GATC"]},
+    ],
+    ids=["two-clubs-on-a-map-view", "a-first-in-a-club-it-was-not-about", "a-first-with-no-club"],
+)
+def test_a_row_naming_clubs_it_could_not_be_about_is_refused(client, today, fields):
+    """Each club a row names became twelve permanent monthly rows: 2,000 made-up
+    rows made 288,063 of them (#1903's second review)."""
+    assert _post(client, [_event(today, **fields)]).json()["refused"] == 1
+
+
+def test_a_plan_still_names_every_club_it_crosses(client, today):
+    plan = _event(today, event="hike_plan_made", miles=30.0, clubs={"GATC": 0.5, "NOC": 0.5}, club_firsts=["GATC", "NOC"])
+
+    assert _post(client, [plan]).json()["accepted"] == 1
+
+
+def test_a_resent_batch_is_found_before_any_of_it_is_sealed(client, today, seal_secret, monkeypatch):
+    """A resent batch of 200 sealed in full only for the insert to keep none of
+    it cost 153 ms of CPU against 8 ms for a 503 (#1903's second review)."""
+    events = [_event(today, fix={"lat": 41.3, "lon": -74.1}) for _ in range(3)]
+    assert _post(client, events).json()["accepted"] == 3
+    sealed = []
+    monkeypatch.setattr(analytics_router, "seal", lambda *args: sealed.append(args) or b"\x01")
+
+    response = _post(client, events)
+
+    assert response.json() == {"accepted": 0, "duplicates": 3, "refused": 0}
+    assert sealed == []
+
+
+def test_a_batch_reads_the_accounts_answers_under_a_lock_an_unlink_must_wait_for(db_engine, db_session):
+    """Read without one, a batch in flight while the hiker took back their yes
+    committed linked rows after the unlink had run, and nothing would ever
+    unlink them (#1903's second review)."""
+    hiker = _hiker_who_said_yes(db_session)
+    batch = sessionmaker(bind=db_engine)()
+    try:
+        assert analytics_router._synced_consent(batch, hiker) == (True, True)
+        with db_engine.connect() as unlink:
+            with pytest.raises(OperationalError):
+                unlink.execute(text("select 1 from user_preferences where profile_id = :id for update nowait"), {"id": hiker.id})
+    finally:
+        batch.rollback()
+        batch.close()
+
+
+def test_a_usage_batch_past_its_own_ceiling_is_refused_unread(client):
+    """Anyone may call this route, so the general 16 MiB was 16 MiB of work for
+    any stranger; 200 of the largest rows the schema takes are 219 KiB."""
+    body = b'{"identified": false, "events": ["' + b"x" * (256 * 1024) + b'"]}'
+
+    response = client.post("/usage-events", content=body, headers={"Content-Type": "application/json"})
+
+    assert response.status_code == 413
+
+
+def test_a_refused_envelope_is_not_echoed_back(client):
+    """Pydantic puts what was sent in each error's `input`: a 1 MiB field came
+    back as 2 MiB of outbound bandwidth, which is what the host bills."""
+    response = client.post("/usage-events", json={"identified": False, "events": "x" * 100_000})
+
+    assert response.status_code == 422
+    assert all("input" not in error for error in response.json()["detail"])
+    assert len(response.content) < 2_000
 
 
 def test_with_no_rollup_heartbeat_at_all_every_batch_is_paused(client, db_session, today):

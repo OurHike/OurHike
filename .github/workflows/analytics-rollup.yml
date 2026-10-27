@@ -215,6 +215,7 @@ jobs:
                 '| check | slice | which way | day | first seen |',
                 '|---|---|---|---|---|',
                 ...open.map(f => `| \`${cell(f.check)}\` | \`${cell(f.scope)}\` | ${cell(f.status)} | ${cell(f.day)} | ${firstSeen[f.key]} |`),
+                ...(verdict.more ? ['', `…and ${verdict.more} more, named in the usage report.`] : []),
                 '',
                 `Last checked ${verdict.checked_at} · [run](${process.env.RUN_URL})`,
                 '',

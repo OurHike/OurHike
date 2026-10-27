@@ -81,7 +81,7 @@ from sqlalchemy.dialects.postgresql import insert
 from sqlalchemy.orm import Session
 
 from app.core import analytics_storage
-from app.core.analytics_rollup import ALL, add_months, closes_on, retention_start
+from app.core.analytics_rollup import ALL, CLUBS_NAMED, MAX_CLUBS_PER_MONTH, add_months, closes_on, retention_start
 from app.models.analytics import (
     AnalyticsAnomaly,
     AnalyticsMonth,
@@ -120,6 +120,11 @@ REFUSED_SHARE_VERSION = 0.05
 MIN_REFUSED_ROWS = 10
 DUPLICATE_SHARE = 0.2
 MIN_INTAKE_ROWS = 100
+# The share of a day's rows the phones say they dropped - at their queue's cap
+# or with a batch refused whole - at which it is a warning: below it, a count
+# that came in low is less use, and above it, it may be phones that
+# overflowed. The same line as refused rows, and @unvalidated like them.
+DROPPED_SHARE = REFUSED_SHARE
 LATE_SHARE = 0.02
 OVERDUE_GRACE_DAYS = 2
 # How long after its close a month's sums are still judged. A fortnight, the
@@ -448,6 +453,11 @@ def _intake_findings(db: Session, today: date) -> list[Finding]:
         for outcome, check in _TURNED_AWAY:
             if versions["*"][outcome]:
                 findings.append(Finding(day, check, ALL, "warn", float(versions["*"][outcome])))
+        whole = versions["*"]
+        dropped = whole["dropped_full"] + whole["dropped_refused"]
+        offered = dropped + whole["stored"] + whole["duplicate"]
+        if dropped >= MIN_REFUSED_ROWS and dropped / offered >= DROPPED_SHARE:
+            findings.append(Finding(day, "rows_dropped_on_phone", ALL, "warn", dropped / offered, DROPPED_SHARE))
     return findings
 
 
@@ -460,6 +470,22 @@ def _pipeline_findings(db: Session, today: date) -> list[Finding]:
         status = getattr(state.status, "value", state.status)
         if status == MonthStatus.provisional.value and today > closes_on(state.month) + timedelta(days=OVERDUE_GRACE_DAYS):
             findings.append(Finding(state.month, "month_not_closed", ALL, "warn"))
+    return findings
+
+
+def _club_cap_findings(db: Session, today: date) -> list[Finding]:
+    """A month whose events named more clubs than the rollup keeps rows for
+    (`MAX_CLUBS_PER_MONTH`): the least-named went uncounted per club. Either
+    real clubs outgrew the cap, or somebody is sending made-up ones."""
+    frozen = frozen_months(db, today)
+    findings = []
+    for state in db.query(AnalyticsMonth).all():
+        if state.month in frozen or state.raw_deleted_at is not None:
+            continue
+        bounds = {"start": state.month, "end": add_months(state.month, 1)}
+        named = db.execute(CLUBS_NAMED, bounds).scalar_one()
+        if named > MAX_CLUBS_PER_MONTH:
+            findings.append(Finding(state.month, "clubs_over_cap", ALL, "warn", float(named), float(MAX_CLUBS_PER_MONTH)))
     return findings
 
 
@@ -598,6 +624,7 @@ def run_checks(db: Session, *, today: date, rollup_failed: bool = False) -> list
         *_pipeline_findings(db, today),
         *_storage_findings(db, today),
         *_key_findings(db, today),
+        *_club_cap_findings(db, today),
         *failed_rollup,
         *invariant_findings(db, today=today),
     ]
@@ -616,6 +643,7 @@ MONTH_CHECKS = (
     "hikers_within_phones",
     "late_rows_after_close",
     "month_not_closed",
+    "clubs_over_cap",
 )
 
 
@@ -636,6 +664,7 @@ NAMED_CHECKS = (
     "storage_near_ceiling",
     "database_near_quota",
     "seal_keys_running_out",
+    "rows_dropped_on_phone",
     *MONTH_CHECKS,
 )
 
@@ -660,6 +689,9 @@ def one_per_key(findings: list[Finding]) -> list[Finding]:
     return list(kept.values())
 
 
+_RECORD_CHUNK = 1000
+
+
 def record(db: Session, findings: list[Finding], *, today: date) -> list[Finding]:
     """Store tonight's findings, and return them.
 
@@ -681,8 +713,15 @@ def record(db: Session, findings: list[Finding], *, today: date) -> list[Finding
             rejudged = stored.day >= window_start
         if rejudged and (stored.day, stored.check_name, stored.scope) not in tonight:
             db.delete(stored)
-    if findings:
-        table = AnalyticsAnomaly.__table__
+    table = AnalyticsAnomaly.__table__
+    ordered = sorted(findings, key=lambda f: f.key)
+    # In chunks: one statement of 10 values a finding passes Postgres's
+    # 65,535-parameter limit at 6,554 findings, and a night of made-up
+    # versions once reached it, failing every finding with it (#1903's second
+    # review). The caps on versions and clubs keep a night far below that;
+    # this keeps a night that is not from failing whole.
+    for start in range(0, len(ordered), _RECORD_CHUNK):
+        chunk = ordered[start : start + _RECORD_CHUNK]
         statement = insert(table).values(
             [
                 {
@@ -697,7 +736,7 @@ def record(db: Session, findings: list[Finding], *, today: date) -> list[Finding
                     "first_seen_on": today,
                     "last_seen_on": today,
                 }
-                for finding in sorted(findings, key=lambda f: f.key)
+                for finding in chunk
             ]
         )
         db.execute(

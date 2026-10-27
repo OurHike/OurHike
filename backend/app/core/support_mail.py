@@ -152,8 +152,7 @@ def send_setup_link(
         f"You chose to give OurHike {amount} a {choice.cadence.value}. Thank you.\n\n"
         f"Set it up here, on {provider_label}'s secure payment page:\n"
         f"{checkout_url}\n\n"
-        "Stopping is two taps in the app: More → Your support → Stop. We cancel it for you.\n\n"
-        "Not tax-deductible: OurHike isn't a nonprofit yet.\n"
+        "Stopping is two taps in the app: More → Your support → Stop. We cancel it for you.\n"
         f"{_stop_line(choice)}"
     )
     return _send(

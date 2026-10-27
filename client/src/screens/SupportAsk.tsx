@@ -291,9 +291,6 @@ export function SupportAsk({
           >
             Back
           </button>
-          <p className="support-ask__fine">
-            Not tax-deductible: OurHike isn&rsquo;t a nonprofit yet.
-          </p>
         </section>
       )}
 

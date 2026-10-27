@@ -34,6 +34,7 @@ The public reading is [`site/src/pages/support.astro`](../site/src/pages/support
 - **The choice is required, and $0 is a choice** (frame B, over a locked "safety mode" and over a dismissible reminder). Nothing is locked by not paying, and no feature reads a support state.
 - **Yearly**, over monthly and over a per-hiker choice of schedule.
   - On a yearly charge, $0.73 of $12 goes to fees, $2.46 of $60 and $4.62 of $120 (Stripe's rates in §2; the arithmetic is mine). The flat 30¢ is paid once a year rather than twelve times.
+- **No "not tax-deductible" line** on any page a hiker sees — the app's confirm sheet, the setup email, the /support/ site page, or Stripe's checkout (the maintainer, 2026-10-27). It is still true (§2); the hiker-facing copy just does not say it.
 - **Picking $0 brings one more screen, once a year**: a nudge toward $12 or $60 in a hiker-trash voice.
   - Three of its lines spoke of "a dollar" or "a buck" when the lowest tier was $1 a year; they now say "a dollar a month" and "a buck a month", which $12 a year is.
   - Its headline rotates once a year per phone through five lines the maintainer kept from eight. The rotation is `NUDGES` in [`client/src/lib/support.ts`](../client/src/lib/support.ts).
@@ -100,6 +101,14 @@ The public reading is [`site/src/pages/support.astro`](../site/src/pages/support
 | Backend host | `MAIL_ENABLED` and SES | no support email sends |
 | Stripe | one product with three **yearly** prices at $12, $60 and $120, a Payment Link for each, and a webhook endpoint at `<API>/support/webhooks/stripe` sending `checkout.session.completed`, `customer.subscription.updated`, `customer.subscription.paused`, `customer.subscription.resumed`, `customer.subscription.deleted` and `invoice.paid` | — |
 | GitHub variables | `API_BASE_URL` | the app's ask stays dormant, and the site's total reads "Not available" |
+
+**Stripe's own pages carry OurHike's words, and they live here** because Stripe's dashboard is not a place anyone reviews. Each Payment Link is made with these settings, in test mode on 2026-10-27 and the same again in live mode when that day comes:
+
+- **Product** "Support OurHike"; three yearly USD prices, lookup keys `ourhike_support_1200_year`, `ourhike_support_6000_year`, `ourhike_support_12000_year`.
+- **Under the Subscribe button** (`custom_text.submit`): "A yearly resupply for the map: charged today, then again on this date each year. Stop anytime in the OurHike app under More → Your support → Stop. Two taps, no reason needed." (The maintainer chose this over two other wordings by poll, 2026-10-27, and asked for the tax line to go.)
+- **After paying** (`after_completion.hosted_confirmation`): "Resupply complete. Hike on back to OurHike; your choice shows under More → Your support in a minute or so."
+- **Subscription description**: "Support OurHike, $12 a year" (and $60, $120), with `ourhike_tier_cents` in the link's and the subscription's metadata.
+- **Set every field when the link is created.** Updating a link's text through the API cleared its subscription description, which the update call cannot set back (seen 2026-10-27, reported to Stripe), so wording changes mean a new link, the old one deactivated, and `STRIPE_PAYMENT_LINKS` updated.
 
 **The provider seam.** Everything provider-shaped lives in [`backend/app/core/support_providers/`](../backend/app/core/support_providers/): a provider owns its checkout link, how its webhook is verified, how its events become OurHike's five kinds (`started`, `updated`, `paused`, `ended`, `charged`), and how a cancel is requested (an API call, or an email to a person). The state machine, matching, ordering, the event log and the total do not change per provider, and the app's copy names none: it says "payment page", and only the website's Your support shows `provider_label` from the server. The seam was proved before launch: Buy Me a Coffee was replaced by Stripe (2026-10-27) as one module swapped. Adding Open Source Collective is a module beside `stripe.py` and one line in the registry.
 

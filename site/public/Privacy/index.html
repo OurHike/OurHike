@@ -419,18 +419,32 @@
           Counts and positions are kept for the six whole months after the
           month they were recorded, then deleted. A backup of our database
           taken before that can hold them until the backup itself expires.
+          If the job that deletes them stops running, we stop collecting
+          within three days, until it runs again.
           Monthly totals are kept, and any figure that would describe fewer
           than 25 people is never shown.
         </li>
         <li>
           Turn it all off in More → Safety &amp; privacy → Share usage
           statistics. Off stops collection and deletes anything not yet
-          sent. Unlinking, or deleting your account, deletes the running
-          total; deleting your account also deletes the counts linked to it.
+          sent. If you're signed in, your other phones follow the next time
+          each one opens signed in, unless you have changed the setting on
+          that phone since.
         </li>
         <li>
-          We don't record your IP address with these counts, and no
-          third-party analytics tool is involved.
+          Unlinking deletes the running total and takes your account off
+          the counts already sent: the code goes, and so does your sealed
+          account ID, with the exact position sealed beside it. The counts
+          themselves stay, with their grid square, like those of anyone who
+          said no. Deleting your account deletes the running total and
+          every count still linked to it.
+        </li>
+        <li>
+          We don't record your IP address with these counts, and our
+          server leaves it out of its own logs for them; the hosting in
+          front of our server may still log it, as described under
+          Standard technical information. No third-party analytics tool is
+          involved.
         </li>
       </ul>
 

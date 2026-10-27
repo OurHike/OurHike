@@ -10,3 +10,6 @@ pyjwt[crypto]
 psycopg[binary]
 # The club list is read from the analysis job's public summary.json (clubs.py).
 httpx
+# Claim photos go to a private R2 bucket over its S3 API (photos.py), as
+# backend/app/core/photos.py stores report photos.
+boto3

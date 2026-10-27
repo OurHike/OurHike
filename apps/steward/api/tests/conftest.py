@@ -30,6 +30,7 @@ from steward_api.clubs import ClubDirectory
 from steward_api.config import Settings
 from steward_api.main import create_app
 from steward_api.models import Base
+from steward_api.photos import MemoryPhotoStore
 
 DATABASE_URL = os.environ.get("STEWARD_TEST_DATABASE_URL", "postgresql+psycopg://ourhike:ourhike@localhost:5432/steward_test")
 CLUBS = frozenset({"Example Trail Club", "Second Example Club"})
@@ -95,6 +96,7 @@ def app(settings):
         settings,
         verifier=TokenVerifier(settings, signing_key=lambda _token: public),
         clubs=ClubDirectory(lambda: CLUBS),
+        photos=MemoryPhotoStore(),
     )
     yield application
     with application.state.engine.begin() as connection:

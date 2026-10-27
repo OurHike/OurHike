@@ -5,7 +5,7 @@ from __future__ import annotations
 
 import uuid
 from datetime import datetime
-from typing import Annotated
+from typing import Annotated, Literal
 
 from pydantic import AfterValidator, BaseModel, ConfigDict, Field, StringConstraints
 
@@ -124,3 +124,84 @@ class ClubWeightsView(BaseModel):
     defaults: dict[str, int]
     #: Newest first, at most HISTORY_LIMIT entries.
     history: list[WeightsEntry]
+
+
+# --- Claims (phase 3, #1910) ------------------------------------------------------
+
+Step = _text(limits.STEP_MAX)
+NotesText = _text(limits.NOTES_MAX)
+ReviewNote = _text(limits.REVIEW_NOTE_MAX)
+
+
+class ClaimCreate(Strict):
+    #: One site, or a site and the rest of its cluster ("Claim all 3").
+    rims_ids: list[RimsId] = Field(min_length=1, max_length=limits.SITES_PER_CLAIM_REQUEST)
+
+
+class ClaimSummary(BaseModel):
+    id: uuid.UUID
+    rims_id: str
+    state: str
+    claimed_at: datetime
+    due_at: datetime
+    submitted_at: datetime | None
+    #: The claimer's display name, or None if they set none or left.
+    claimer: str | None
+    crew_size: int
+    you_are_crew: bool
+
+
+class CrewMember(BaseModel):
+    name: str | None
+    you: bool
+    hours: float | None
+
+
+class PhotoView(BaseModel):
+    id: uuid.UUID
+    phase: str
+    point: int | None
+    url: str
+    created_at: datetime
+
+
+class ClaimDetail(ClaimSummary):
+    started_at: datetime | None
+    verified_at: datetime | None
+    released_at: datetime | None
+    steps_done: list[str]
+    notes: str | None
+    review_note: str | None
+    reviewed_by: str | None
+    crew: list[CrewMember]
+    photos: list[PhotoView]
+    #: True when this caller may review it: submitted, and not on its crew.
+    you_may_review: bool
+
+
+class InviteLink(BaseModel):
+    token: str
+
+
+class JoinClaim(Strict):
+    token: Annotated[str, StringConstraints(min_length=16, max_length=128)]
+
+
+class HoursEntry(Strict):
+    hours: Annotated[float, Field(gt=0, le=limits.HOURS_MAX, multiple_of=0.5)]
+
+
+class Submission(Strict):
+    steps_done: list[Step] = Field(default_factory=list, max_length=limits.STEPS_MAX)
+    notes: NotesText | None = None
+
+
+class Review(Strict):
+    verdict: Literal["verify", "send_back"]
+    note: ReviewNote | None = None
+
+
+class HoursTotals(BaseModel):
+    verified: float
+    waiting: float
+    claims: int

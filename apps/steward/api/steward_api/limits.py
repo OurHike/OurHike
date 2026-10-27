@@ -38,3 +38,33 @@ WEIGHT_CHANGES_PER_DAY = 30
 
 #: Any request body, in bytes. The largest legitimate one is a list rename.
 MAX_BODY_BYTES = 16 * 1024
+
+# --- Claims (phase 3, #1910) ------------------------------------------------------
+
+#: How long a claim lasts before it is released: the original request's two
+#: weeks (PLAN.md §6, `@unvalidated` there: how many claims are released
+#: unfinished, by season, would settle it).
+CLAIM_DAYS = 14
+#: How long a crew gets after a reviewer sends a submission back. Picked:
+#: PLAN.md stops the clock at Submitted and says nothing about restarting it.
+SEND_BACK_DAYS = 7
+#: Live claims one account may hold at once. High enough to claim a whole
+#: cluster (the largest has 28 sites, 2026-10-26; most are 2-3).
+LIVE_CLAIMS_PER_USER = 10
+#: Sites in one "claim all" request.
+SITES_PER_CLAIM_REQUEST = 10
+CREW_MAX = 12
+
+#: The fixed photo points every submission photographs before and after (PLAN.md §5).
+PHOTO_POINTS = (1, 2)
+#: One photo, after the phone has re-encoded it (2048 px on the long side at
+#: JPEG quality 0.85 is typically under 1 MB). Phone originals are not accepted.
+PHOTO_MAX_BYTES = 3 * 1024 * 1024
+PHOTOS_PER_CLAIM = 40
+#: Hours one person logs on one claim, across all their visits to it.
+HOURS_MAX = 72
+
+NOTES_MAX = 1000
+REVIEW_NOTE_MAX = 500
+STEP_MAX = 120
+STEPS_MAX = 20

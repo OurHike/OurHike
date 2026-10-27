@@ -18,6 +18,15 @@ anyio==4.14.2
     #   httpx
     #   starlette
     #   watchfiles
+boto3==1.43.114
+    # via
+    #   -c ../../../backend/requirements-dev.txt
+    #   -r requirements.in
+botocore==1.43.114
+    # via
+    #   -c ../../../backend/requirements-dev.txt
+    #   boto3
+    #   s3transfer
 certifi==2026.7.22
     # via
     #   -c ../../../backend/requirements-dev.txt
@@ -65,6 +74,11 @@ idna==3.18
     #   -c ../../../backend/requirements-dev.txt
     #   anyio
     #   httpx
+jmespath==1.1.0
+    # via
+    #   -c ../../../backend/requirements-dev.txt
+    #   boto3
+    #   botocore
 mako==1.4.1
     # via
     #   -c ../../../backend/requirements-dev.txt
@@ -106,6 +120,10 @@ pyjwt==2.15.1
     # via
     #   -c ../../../backend/requirements-dev.txt
     #   -r requirements.in
+python-dateutil==2.9.0.post0
+    # via
+    #   -c ../../../backend/requirements-dev.txt
+    #   botocore
 python-dotenv==1.2.4
     # via
     #   -c ../../../backend/requirements-dev.txt
@@ -115,6 +133,14 @@ pyyaml==6.0.3
     # via
     #   -c ../../../backend/requirements-dev.txt
     #   uvicorn
+s3transfer==0.19.2
+    # via
+    #   -c ../../../backend/requirements-dev.txt
+    #   boto3
+six==1.17.0
+    # via
+    #   -c ../../../backend/requirements-dev.txt
+    #   python-dateutil
 sqlalchemy==2.1.4
     # via
     #   -c ../../../backend/requirements-dev.txt
@@ -148,6 +174,10 @@ tzdata==2026.4 ; sys_platform == 'win32'
     # via
     #   -c ../../../backend/requirements-dev.txt
     #   psycopg
+urllib3==2.7.0
+    # via
+    #   -c ../../../backend/requirements-dev.txt
+    #   botocore
 uvicorn==0.54.0
     # via
     #   -c ../../../backend/requirements-dev.txt

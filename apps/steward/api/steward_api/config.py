@@ -39,6 +39,28 @@ class Settings(BaseSettings):
     #: clubs a weights change may name. Empty refuses every weights change.
     summary_url: str = ""
 
+    #: Claim photos (#1910): a private R2 bucket of this app's own, never one of
+    #: OurHike's (photos.py says why the names differ). All four, plus the write
+    #: flag, or photo uploads answer that storage is not set up.
+    r2_endpoint_url: str = ""
+    r2_bucket: str = ""
+    r2_access_key_id: str = ""
+    r2_secret_access_key: str = ""
+    r2_write_enabled: bool = False
+
+    def photo_storage(self):
+        from steward_api.photos import R2PhotoStore
+
+        if not (
+            self.r2_write_enabled
+            and self.r2_endpoint_url
+            and self.r2_bucket
+            and self.r2_access_key_id
+            and self.r2_secret_access_key
+        ):
+            return None
+        return R2PhotoStore(self.r2_endpoint_url, self.r2_bucket, self.r2_access_key_id, self.r2_secret_access_key)
+
     @field_validator("allowed_origins", mode="before")
     @classmethod
     def _split_origins(cls, value: object) -> object:

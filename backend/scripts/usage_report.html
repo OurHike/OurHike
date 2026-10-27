@@ -102,6 +102,11 @@ footer.foot .wrap{display:flex;flex-wrap:wrap;gap:6px 20px;justify-content:space
 .chip.low,.chip.zero,.chip.broken,.chip.warn{background:#f6e3d3;color:var(--blaze-orange-dark)}
 .chip.high{background:#dcebf5;color:#155580}
 .chip.learning,.chip.quiet{background:var(--paper-100);color:var(--fg-2)}
+.panel h2.part{font-size:14px;margin-top:16px}
+.panel h2.part.first{margin-top:6px}
+.sgrid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:10px}
+@media (max-width:900px){.sgrid{grid-template-columns:minmax(0,1fr)}}
+.scap{font-size:11.5px;color:var(--fg-2);margin-top:4px;line-height:1.4}
 </style>
 </head>
 <body>
@@ -413,12 +418,9 @@ footer.foot .wrap{display:flex;flex-wrap:wrap;gap:6px 20px;justify-content:space
         '<td class="n">' + fmt(late) + '</td></tr>';
     }).join('');
     var keys = DATA.keys_published_through;
-    var keyLine = keys ? 'Sealing keys are published through ' + monthName(keys, true) + '.' : '<span class="warn">No sealing keys are published, so every fix and account is being thrown away.</span>';
-    if (keys && DATA.today) {
-      var through = new Date(keys + '-01T00:00:00Z'), today = new Date(DATA.today + 'T00:00:00Z');
-      var monthsLeft = (through.getUTCFullYear() - today.getUTCFullYear()) * 12 + through.getUTCMonth() - today.getUTCMonth();
-      if (monthsLeft < 3) keyLine = '<span class="warn">' + keyLine + ' That is under three months ahead: run scripts/analytics_keys.py publish.</span>';
-    }
+    // A fact here; the warning when they run short is a nightly check
+    // (`seal_keys_running_out`), under Data quality with every other one.
+    var keyLine = keys ? 'Sealing keys are published through ' + monthName(keys, true) + '.' : 'No sealing keys are published: rows with a fix or an account are stored without them.';
     return '<div class="scroll"><table><tr><th>Month</th><th>State</th><th class="n">Events</th><th class="n">Linked</th><th class="n">Fixes</th><th class="n">Thrown away (no key)</th><th class="n">After close</th></tr>' + body + '</table></div><p class="note">' + keyLine + '</p>';
   }
 
@@ -483,7 +485,9 @@ footer.foot .wrap{display:flex;flex-wrap:wrap;gap:6px 20px;justify-content:space
     rows_paused: 'Batches turned away: rollup not running',
     rows_unsealed_no_key: 'Fixes thrown away for want of a key',
     rollup_failed: 'The nightly rollup failed',
-    storage_near_ceiling: 'Usage rows near the storage ceiling',
+    storage_near_ceiling: 'Usage data near its storage ceiling',
+    database_near_quota: 'Database near its plan’s limit',
+    seal_keys_running_out: 'Sealing keys run out within three months: run scripts/analytics_keys.py publish',
     month_not_closed: 'Month not closed on time',
     platforms_add_up: 'Platforms add up to the whole app',
     growth_split_adds_up: 'New, returning and back again add up to active',
@@ -543,6 +547,34 @@ footer.foot .wrap{display:flex;flex-wrap:wrap;gap:6px 20px;justify-content:space
     return out.join('');
   }
 
+  // The storage strip (app/core/analytics_report.py `_storage`): each limit's
+  // share and its status, both as the server judged them by the nightly
+  // checks' own line, so a gauge and a finding cannot disagree.
+  function gaugeHtml(label, g, caption, warnShare) {
+    var W = 260, H = 16;
+    var x = function (v) { return 1 + (W - 2) * Math.min(Math.max(v, 0), 1); };
+    var said = g.share === null ? 'no limit set' : pct(g.share) + ' of its limit';
+    var bar = '<svg viewBox="0 0 ' + W + ' ' + H + '" role="img" aria-label="' + esc(label + ': ' + said) + '">' +
+      '<rect x="1" y="3" width="' + (W - 2) + '" height="10" rx="5" fill="#f7f3e9" stroke="#e7e1d3"/>' +
+      (g.share ? '<rect x="1" y="3" width="' + Math.max(x(g.share) - 1, 3) + '" height="10" rx="5" fill="' + (g.status === 'warn' ? '#c1611a' : '#47784b') + '"/>' : '') +
+      '<line x1="' + x(warnShare) + '" x2="' + x(warnShare) + '" y1="0" y2="' + H + '" stroke="#5a5346" stroke-dasharray="2 2"/>' +
+      '</svg>';
+    var chip = g.status ? '<span class="chip ' + g.status + '">' + esc(STATUS_WORDS[g.status]) + '</span>' : '<span class="chip quiet">no limit set</span>';
+    return '<div class="qcell"><div class="qhead"><span>' + esc(label) + '</span>' + chip + '</div>' + bar + '<div class="scap">' + caption + '</div></div>';
+  }
+
+  function storageHtml(s) {
+    if (!s) return '';
+    var rows = s.rows.share === null ? 'No ceiling is set.' : pct(s.rows.share) + ' of the ' + fmt(s.usage.of_mb) + ' MB ceiling, counted as rows. At 100%, phones keep their rows and send them later.';
+    var cells = [
+      gaugeHtml('Usage rows held', s.rows, rows, s.warn_share),
+      gaugeHtml('Usage tables on disk', s.usage, fmt(s.usage.mb) + ' MB of the same ' + fmt(s.usage.of_mb) + ' MB. A deleted month’s room stays in the file, kept for new rows, so this does not fall when rows are deleted.', s.warn_share),
+      gaugeHtml('Whole database', s.database, fmt(s.database.mb) + ' MB of the ' + fmt(s.database.of_mb) + ' MB the plan allows, for everything the app keeps - not only usage.', s.warn_share)
+    ];
+    return '<h2 class="part first">Storage</h2><div class="sub">Measured when this file was written · dashed line = ' + pct(s.warn_share) + ', where the nightly checks raise a warning, leaving time to move to a bigger plan before phones’ batches wait or the database stops taking writes</div>' +
+      '<div class="sgrid">' + cells.join('') + '</div>';
+  }
+
   function qualityHtml() {
     var q = DATA.quality;
     if (!q) return '<p class="note">No data-quality checks in this file.</p>';
@@ -556,7 +588,10 @@ footer.foot .wrap{display:flex;flex-wrap:wrap;gap:6px 20px;justify-content:space
           return '<tr><td>' + dayName(f.day) + '</td><td>' + esc(checkName(f.check)) + '<span class="qslice">' + esc(scopeName(f.scope)) + '</span></td><td><span class="chip ' + esc(f.status) + '">' + esc(STATUS_WORDS[f.status] || f.status) + '</span></td><td>' + dayName(f.first_seen) + '</td></tr>';
         }).join('') + '</table></div>'
       : '<p class="note">Nothing out of the ordinary in the last sixty days.</p>';
-    return '<div class="qgrid">' + cells + '</div><h2 style="margin-top:14px">Findings</h2><div class="sub">Every check that has come out wrong in the last sixty days, newest first. The nightly job opens one issue while any is open; it names checks, never figures.</div>' + findings;
+    return storageHtml(q.storage) +
+      '<h2 class="part">Each metric, day by day</h2><div class="sub">Each day as a share of what the same weekday in the weeks before would expect, counted at the same age so late uploads do not read as a drop · shaded = within half of expected either way, which is never an anomaly · dots = an anomaly, hollow where the day was too small to show as a share</div>' +
+      '<div class="qgrid">' + cells + '</div>' +
+      '<h2 class="part">Findings</h2><div class="sub">Every check that has come out wrong in the last sixty days, newest first, storage included. The nightly job opens one issue while any is open; it names checks, never figures.</div>' + findings;
   }
 
   // ---- the page ------------------------------------------------------------
@@ -637,7 +672,7 @@ footer.foot .wrap{display:flex;flex-wrap:wrap;gap:6px 20px;justify-content:space
         '<section class="panel"><h2>Retention by first month</h2><div class="sub">All clubs: the User table holds no place · hikers who said yes, by the month first seen · share active N months later · read from the User table, which outlives the six-month raw rows</div>' + cohortsHtml() +
           '<p class="note">User table today: ' + fmt(DATA.users.hikers) + ' hikers who said yes · ' + fmt(DATA.users.ever_planned) + ' ever made a plan · ' + fmt(DATA.users.ever_completed) + ' ever completed one.</p></section>' +
         '<section class="panel"><h2>Data health</h2><div class="sub">All clubs · whether the numbers above can be trusted, month by month</div>' + healthHtml() + '</section>' +
-        '<section class="panel wide"><h2>Data quality · each metric, day by day</h2><div class="sub">Each day as a share of what the same weekday in the weeks before would expect, counted at the same age so late uploads do not read as a drop · shaded = within half of expected either way, which is never an anomaly · dots = an anomaly, hollow where the day was too small to show as a share</div>' + qualityHtml() + '</section>' +
+        '<section class="panel wide"><h2>Data quality</h2><div class="sub">Every warning the nightly checks raise shows here, with its figures; the tracking issue they open names the checks and nothing more</div>' + qualityHtml() + '</section>' +
       '</div>';
     root.innerHTML = html;
 

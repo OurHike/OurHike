@@ -12,9 +12,9 @@ Three commands, run by the maintainer on their own machine and never by CI:
         from it and the month's name, and writes only the PUBLIC half into
         `analytics_seal_keys`. Until a month has one, `POST /usage-events`
         seals nothing for that month - it throws the fix and the account id
-        away and stores the row as `no_key`. So publish well ahead, and the
-        report's data-health line says when the published months are
-        running out.
+        away and stores the row as `no_key`. So publish well ahead: the
+        nightly checks raise `seal_keys_running_out` when fewer than three
+        months are left (app/core/analytics_quality.py).
 
     DATABASE_URL=... python scripts/analytics_keys.py open \\
             --month 2026-10 --by "Your name" --reason "why, in a sentence" \\

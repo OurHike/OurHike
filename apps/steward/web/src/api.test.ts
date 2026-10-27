@@ -45,3 +45,14 @@ it('createApi puts a share token in the POST body, never in the URL', async () =
   expect(url).not.toContain('secret-token-value')
   expect(init.body).toBe(JSON.stringify({ token: 'secret-token-value' }))
 })
+
+it('createApi sends a photo as the raw body with its own type', async () => {
+  const fetchImpl = vi.fn(async () => respond(201, {}))
+  const api = createApi('https://api.example', async () => 't', fetchImpl)
+  const photo = new Blob(['jpeg bytes'], { type: 'image/jpeg' })
+  await api.uploadPhoto('claim-1', 'before', 1, photo)
+  const [url, init] = fetchImpl.mock.calls[0] as unknown as [string, RequestInit]
+  expect(url).toBe('https://api.example/claims/claim-1/photos?phase=before&point=1')
+  expect((init.headers as Record<string, string>)['Content-Type']).toBe('image/jpeg')
+  expect(init.body).toBe(photo)
+})

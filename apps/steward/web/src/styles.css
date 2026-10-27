@@ -449,3 +449,53 @@ pre.formula {
     min-height: 320px;
   }
 }
+
+/* Claim photos (#1910): a row of slots, each a 4:3 frame over its button. */
+.photo-row {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(min(45%, 220px), 1fr));
+  gap: 12px;
+}
+.photo-slot {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.photo-slot img,
+.photo-empty {
+  width: 100%;
+  aspect-ratio: 4 / 3;
+  object-fit: cover;
+  border-radius: 8px;
+  background: var(--ground);
+  border: 1px dashed var(--line-2);
+}
+.photo-empty {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--ink-2);
+  font-size: 13px;
+}
+.photo-slot figcaption {
+  font-size: 13px;
+  color: var(--ink-2);
+}
+.button.disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+.visually-hidden {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip: rect(0 0 0 0);
+  white-space: nowrap;
+}
+textarea {
+  font: inherit;
+  padding: 8px 10px;
+  border: 1px solid var(--line-2);
+  border-radius: 8px;
+}

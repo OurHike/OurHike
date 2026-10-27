@@ -72,10 +72,7 @@ describe('Saving and sharing lists', () => {
         <SitePage site={site1} sites={fixtureSites} />,
       ),
     )
-    expect(screen.getByRole('link', { name: 'Sign in' })).toHaveAttribute(
-      'href',
-      '#/account',
-    )
+    expect(screen.getByText(/to save this site to a list/)).toBeInTheDocument()
   })
 
   it('saves a site to a new list from its page', async () => {

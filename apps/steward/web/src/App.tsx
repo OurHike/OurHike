@@ -3,11 +3,14 @@ import { useStewardData, type StewardData } from './data'
 import { useRoute, type Route } from './route'
 import { AccountScreen } from './screens/AccountScreen'
 import { AnalysisScreen } from './screens/AnalysisScreen'
+import { ClaimScreen } from './screens/ClaimScreen'
 import { GuideScreen } from './screens/GuideScreen'
+import { JoinScreen } from './screens/JoinScreen'
 import { ListsScreen } from './screens/ListsScreen'
 import { SharedScreen } from './screens/SharedScreen'
 import { SitePage } from './screens/SitePage'
 import { SitesScreen } from './screens/SitesScreen'
+import { WorkScreen } from './screens/WorkScreen'
 
 const NAV: { href: string; label: string; screens: Route['screen'][] }[] = [
   { href: '#/', label: 'Sites', screens: ['sites', 'site'] },
@@ -40,6 +43,9 @@ function Screen({ route, data }: { route: Route; data: StewardData }) {
   if (route.screen === 'lists') return <ListsScreen sites={data.sites} />
   if (route.screen === 'shared')
     return <SharedScreen token={route.token} sites={data.sites} />
+  if (route.screen === 'claim') return <ClaimScreen id={route.id} sites={data.sites} />
+  if (route.screen === 'join') return <JoinScreen token={route.token} />
+  if (route.screen === 'work') return <WorkScreen sites={data.sites} />
   return <SitesScreen sites={data.sites} summary={data.summary} />
 }
 
@@ -66,12 +72,24 @@ export function App({ load }: { load?: () => Promise<StewardData> }) {
               </a>
             ))}
             {session.state === 'signed_in' && (
-              <a
-                href="#/lists"
-                aria-current={route.screen === 'lists' ? 'page' : undefined}
-              >
-                Your lists
-              </a>
+              <>
+                <a
+                  href="#/work"
+                  aria-current={
+                    route.screen === 'work' || route.screen === 'claim'
+                      ? 'page'
+                      : undefined
+                  }
+                >
+                  Your work
+                </a>
+                <a
+                  href="#/lists"
+                  aria-current={route.screen === 'lists' ? 'page' : undefined}
+                >
+                  Your lists
+                </a>
+              </>
             )}
           </nav>
           {session.state !== 'off' && (

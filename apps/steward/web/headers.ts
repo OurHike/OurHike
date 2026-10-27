@@ -5,6 +5,8 @@
 // basemap, the Supabase project, and the steward API.
 
 export const BASEMAP_ORIGIN = 'https://tiles.openfreemap.org'
+/** Where a signed R2 URL points: the account's S3 endpoint, whichever account it is. */
+export const PHOTO_ORIGIN = 'https://*.r2.cloudflarestorage.com'
 
 /** The origin of an http(s) URL, or null for an empty or unusable one. */
 export function originOf(url: string | undefined): string | null {
@@ -35,7 +37,8 @@ export function contentSecurityPolicy(env: {
     // React and MapLibre set element styles; the fonts' stylesheet is Google's.
     "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com",
     'font-src https://fonts.gstatic.com',
-    `img-src 'self' data: blob: ${BASEMAP_ORIGIN}`,
+    // Claim photos are read through short-lived signed URLs on R2's S3 host (#1910).
+    `img-src 'self' data: blob: ${BASEMAP_ORIGIN} ${PHOTO_ORIGIN}`,
     `connect-src ${connect.filter(Boolean).join(' ')}`,
     // MapLibre's worker is a file Vite emits, so 'self'; blob: for its fallback.
     "worker-src 'self' blob:",
@@ -52,7 +55,8 @@ export function headersFile(env: { supabaseUrl?: string; apiUrl?: string }): str
     `  Content-Security-Policy: ${contentSecurityPolicy(env)}`,
     '  X-Content-Type-Options: nosniff',
     '  Referrer-Policy: strict-origin-when-cross-origin',
-    // Phase 4 (the camera and location at a site) will open camera and geolocation to 'self'.
+    // A claim's photos are taken through a file input, which needs no camera
+    // permission; phase 4's live photo-point outline will open camera to 'self'.
     '  Permissions-Policy: camera=(), microphone=(), geolocation=(), payment=()',
     '',
   ].join('\n')

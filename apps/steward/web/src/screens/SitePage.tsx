@@ -12,6 +12,7 @@ import {
   siteName,
 } from '../format'
 import { useAccount } from '../account'
+import { ClaimPanel } from '../components/ClaimPanel'
 import { SaveToList } from '../components/SaveToList'
 import { planFor } from '../guide'
 import { siteHref } from '../route'
@@ -115,6 +116,7 @@ export function SitePage({ site, sites }: Props) {
         </div>
       </header>
 
+      <ClaimPanel site={site} neighbours={neighbours} />
       <SaveToList rimsId={site.rims_id} />
 
       {site.action === 'adopt_note' && (

@@ -1,4 +1,5 @@
-// The steward API (apps/steward/api/, #1906): lists, share links and club weights.
+// The steward API (apps/steward/api/): lists, share links and club weights (#1906),
+// and claims, crews, photos and reviews (#1910).
 // Every call carries the signed-in person's Supabase access token.
 
 import type { Weights } from './types'
@@ -47,6 +48,48 @@ export interface ClubWeights {
   history: WeightsEntry[]
 }
 
+export type ClaimState = 'claimed' | 'in_progress' | 'submitted' | 'verified' | 'released'
+export type PhotoPhase = 'before' | 'after' | 'extra'
+
+export interface ClaimSummary {
+  id: string
+  rims_id: string
+  state: ClaimState
+  claimed_at: string
+  due_at: string
+  submitted_at: string | null
+  claimer: string | null
+  crew_size: number
+  you_are_crew: boolean
+}
+
+export interface ClaimPhoto {
+  id: string
+  phase: PhotoPhase
+  point: number | null
+  url: string
+  created_at: string
+}
+
+export interface ClaimDetail extends ClaimSummary {
+  started_at: string | null
+  verified_at: string | null
+  released_at: string | null
+  steps_done: string[]
+  notes: string | null
+  review_note: string | null
+  reviewed_by: string | null
+  crew: { name: string | null; you: boolean; hours: number | null }[]
+  photos: ClaimPhoto[]
+  you_may_review: boolean
+}
+
+export interface HoursTotals {
+  verified: number
+  waiting: number
+  claims: number
+}
+
 export interface StewardApi {
   me(): Promise<{ display_name: string | null }>
   setDisplayName(name: string | null): Promise<{ display_name: string | null }>
@@ -64,6 +107,29 @@ export interface StewardApi {
   weights(club: string): Promise<ClubWeights>
   changeWeights(club: string, weights: Weights, note: string | null): Promise<ClubWeights>
   restoreWeights(entryId: number, note: string | null): Promise<ClubWeights>
+  claimSites(rimsIds: string[]): Promise<ClaimSummary[]>
+  claimForSite(rimsId: string): Promise<ClaimSummary | null>
+  myClaims(): Promise<ClaimSummary[]>
+  claim(id: string): Promise<ClaimDetail>
+  releaseClaim(id: string): Promise<ClaimDetail>
+  invite(id: string): Promise<{ token: string }>
+  joinClaim(token: string): Promise<ClaimSummary>
+  uploadPhoto(
+    id: string,
+    phase: PhotoPhase,
+    point: number | null,
+    photo: Blob,
+  ): Promise<ClaimDetail>
+  deletePhoto(id: string, photoId: string): Promise<ClaimDetail>
+  logHours(id: string, hours: number): Promise<ClaimDetail>
+  submit(id: string, stepsDone: string[], notes: string | null): Promise<ClaimDetail>
+  reviews(): Promise<ClaimSummary[]>
+  review(
+    id: string,
+    verdict: 'verify' | 'send_back',
+    note: string | null,
+  ): Promise<ClaimDetail>
+  myHours(): Promise<HoursTotals>
 }
 
 /** What the API's error body says, as a sentence a person can read. */
@@ -88,19 +154,28 @@ export function createApi(
   async function call<T>(method: string, path: string, body?: unknown): Promise<T> {
     const access = await token()
     if (!access) throw new ApiError(401, 'Sign in first.')
+    // A photo goes as the raw body with its own type; everything else as JSON.
+    const raw = body instanceof Blob
     const response = await fetchImpl(`${root}${path}`, {
       method,
       headers: {
         Authorization: `Bearer ${access}`,
-        ...(body === undefined ? {} : { 'Content-Type': 'application/json' }),
+        ...(body === undefined
+          ? {}
+          : {
+              'Content-Type': raw
+                ? body.type || 'application/octet-stream'
+                : 'application/json',
+            }),
       },
-      body: body === undefined ? undefined : JSON.stringify(body),
+      body: body === undefined ? undefined : raw ? body : JSON.stringify(body),
     })
     if (!response.ok) throw new ApiError(response.status, await errorMessage(response))
     return (response.status === 204 ? undefined : await response.json()) as T
   }
 
   const listPath = (id: string) => `/lists/${encodeURIComponent(id)}`
+  const claimPath = (id: string) => `/claims/${encodeURIComponent(id)}`
   const itemPath = (id: string, rimsId: string) =>
     `${listPath(id)}/items/${encodeURIComponent(rimsId)}`
 
@@ -124,5 +199,27 @@ export function createApi(
       call('POST', '/weights', { club, ...weights, note }),
     restoreWeights: (entryId, note) =>
       call('POST', `/weights/${encodeURIComponent(String(entryId))}/restore`, { note }),
+    claimSites: (rimsIds) => call('POST', '/claims', { rims_ids: rimsIds }),
+    claimForSite: (rimsId) => call('GET', `/claims/site/${encodeURIComponent(rimsId)}`),
+    myClaims: () => call('GET', '/claims/mine'),
+    claim: (id) => call('GET', claimPath(id)),
+    releaseClaim: (id) => call('POST', `${claimPath(id)}/release`),
+    invite: (id) => call('POST', `${claimPath(id)}/invite`),
+    joinClaim: (token) => call('POST', '/claims/join', { token }),
+    uploadPhoto: (id, phase, point, photo) =>
+      call(
+        'POST',
+        `${claimPath(id)}/photos?phase=${phase}${point === null ? '' : `&point=${point}`}`,
+        photo,
+      ),
+    deletePhoto: (id, photoId) =>
+      call('DELETE', `${claimPath(id)}/photos/${encodeURIComponent(photoId)}`),
+    logHours: (id, hours) => call('PUT', `${claimPath(id)}/hours`, { hours }),
+    submit: (id, stepsDone, notes) =>
+      call('POST', `${claimPath(id)}/submit`, { steps_done: stepsDone, notes }),
+    reviews: () => call('GET', '/reviews'),
+    review: (id, verdict, note) =>
+      call('POST', `${claimPath(id)}/review`, { verdict, note }),
+    myHours: () => call('GET', '/hours/mine'),
   }
 }

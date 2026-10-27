@@ -31,3 +31,12 @@ it('originOf refuses anything that is not an http(s) address', () => {
 it('the headers file applies to every path', () => {
   expect(headersFile({}).split('\n')[0]).toBe('/*')
 })
+
+it('the policy lets claim photos load from signed R2 URLs and nowhere else new', () => {
+  const img = contentSecurityPolicy({})
+    .split('; ')
+    .find((d) => d.startsWith('img-src'))
+  expect(img).toBe(
+    "img-src 'self' data: blob: https://tiles.openfreemap.org https://*.r2.cloudflarestorage.com",
+  )
+})

@@ -27,6 +27,8 @@ if (import.meta.env.VITE_STEWARD_FAKE_ACCOUNT === '1') {
         { deficit: 50, water: 24, trail: 6, cluster: 8, restricted: 10 },
         'Water first this season',
       )
+      await api.claimSites(['example-0004'])
+      await api.seedSubmittedByOther('example-0005', 'Ridge Runner')
       render(withAccount(fakeAccount(SIGNED_IN, api), <App />))
     },
   )

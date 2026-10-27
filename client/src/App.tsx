@@ -102,12 +102,14 @@ import {
   KeepSpotSheet,
   ShareHike,
   SignInPrompt,
-  SignInWindow,
   AccountPanel,
   HikePickSheet,
   AddDayHikeSheet,
-  BailSheet,
-  PlaceSheet,
+  DayHikesHere,
+  SectionPlanner,
+  ReportPickBar,
+  PressPlate,
+  RouteHoverPlate,
   TripList,
   Volunteer,
   VolunteerHours,
@@ -308,8 +310,6 @@ import { type ViaStop } from './lib/dayPlanner'
 import type { ChartStretch } from './chrome/ElevationChart'
 import type { RouteStopChoice } from './chrome/RouteStopPicker'
 import { RouteMapPickBar } from './chrome/RouteMapPickBar'
-import { ReportPickBar } from './chrome/ReportPickBar'
-import { SectionPlanner } from './chrome/SectionPlanner'
 import { nearestStop } from './lib/cascade'
 import { mileMarker, stopLabel } from './lib/planDisplay'
 import { longDate } from './lib/hikeText'
@@ -446,7 +446,6 @@ import { dayHikeWalk } from './lib/dayHikeWalk'
 import { TurnCard } from './chrome/TurnCard'
 import { OffRouteBand, OffRouteCard } from './chrome/OffRouteCard'
 import { dayHikesNearHere } from './lib/dayHikeShelf'
-import { DayHikesHere } from './chrome/DayHikesHere'
 import { planRoomFor } from './lib/planRoom'
 import type { DayHikeCandidate } from './chrome/AddDayHikeSheet'
 import { hikeShareText } from './lib/hikeShareText'
@@ -503,7 +502,6 @@ import {
   type HikerMode,
 } from './lib/hikerMode'
 import { readLaunchMirror, writeLaunchMirror } from './lib/launchMirror'
-import { RouteHoverPlate } from './chrome/RouteHover'
 import { useRouteHover } from './chrome/useRouteHover'
 import { loadTakenTrail, saveTakenTrail } from './lib/takenTrail'
 import { LAUNCH_MARKS, markLaunch } from './lib/launchMarks'
@@ -512,7 +510,6 @@ import { fetchMyVolunteerHours } from './lib/api'
 import { queuedHoursSummary } from './lib/volunteerHours'
 import type { VolunteerHoursDraft, VolunteerHoursSummary } from './lib/volunteerHours'
 import type { FieldNoteContext, ReportAnchor } from './chrome/FieldNoteSection'
-import { PressPlate } from './chrome/PressPlate'
 import { closureBanner, closureLanes, type RankedClosure } from './lib/closureBanner'
 import { projectClosures } from './lib/closureProjection'
 import {
@@ -606,6 +603,9 @@ import './App.css'
 // can match a phone, which is how the WEBSITE.md §8 constraint is kept
 // structurally rather than by review.
 import './desktop.css'
+import { SignInWindow } from './chrome/SignInWindow'
+import { BailSheet } from './chrome/BailSheet'
+import { PlaceSheet } from './chrome/PlaceSheet'
 
 // OurHike hikes one trail today - see lib/trails.ts for why this is a lookup
 // and not just a string.

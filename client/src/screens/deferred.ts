@@ -125,29 +125,31 @@ export const EmailSignIn = screen(
   () => import('./EmailSignIn').then((m) => m.EmailSignIn),
   'EmailSignIn',
 )
-// The window the two above open in (#1596) and its signed-in view, opened
-// only by a tap on the account button or by a refused report (#1573) -
-// deferred in #1903 to pay for usage measurement's wiring (#1902), the part
-// of it App has to build before any import(): the props, the plan calls and
-// the link question's branch. Measured 2026-10-27 by check-build-output.mjs,
-// one build each: `main` at 245,473 bytes compressed, the branch with every
-// line of measurement it could defer deferred at 246,471, and the same
-// branch with these two deferred at 246,070 - and with the two sheets below
-// as well, 245,516, 244 under.
-export const SignInWindow = screen(
-  () => import('../chrome/SignInWindow').then((m) => m.SignInWindow),
-  'SignInWindow',
-)
+// Tap-opened surfaces deferred in #1903 to pay for usage measurement's wiring
+// (#1902), the part of it App has to build before any import(): the props,
+// the plan calls and the link question's branch. The account panel opens
+// inside the sign-in window; "Which long hike?" and add-a-day-hike open over
+// whatever screen is up; the other five live on the map, which is itself
+// deferred. Measured 2026-10-27 by check-build-output.mjs, one build each:
+// `main` at aad6cd17 245,489 bytes compressed; the branch with these eight
+// deferred 244,846. CI's preview build inlines five VITE_ variables and has
+// read 266 bytes above a plain build of the same commit (ced035f4).
+//
+// NOTHING THAT TAKES FOCUS WHEN IT OPENS IS ON THIS LIST, and that is a rule
+// learned here rather than a preference. chrome/SignInWindow.tsx focuses its
+// panel on mount so Escape works at once; chrome/BailSheet.tsx and
+// chrome/PlaceSheet.tsx autofocus a button. Deferred, all three mount when
+// their chunk lands rather than inside the tap, and on WebKit that focus did
+// not take: e2e/identityRooms.spec.ts's "Escape closes the window" failed on
+// phone-webkit twice at ced035f4, where the window was on this list. That
+// mechanism is reasoned rather than reproduced - WebKit is not in the
+// sandbox, and Chromium honoured the late focus in a probe that held the
+// window's module back 2.5 s - but the iOS shell is WebKit, so all three
+// stay eager.
 export const AccountPanel = screen(
   () => import('../chrome/AccountPanel').then((m) => m.AccountPanel),
   'AccountPanel',
 )
-// "Which long hike?" and the add-a-day-hike sheet, each opened by a tap over
-// whatever screen the hiker is on - deferred in the same change and for the
-// same reason as the two above, when those two alone left the closure at
-// 246,070 bytes, 310 over the line. screens/plan.css stays in the first
-// frame: chrome/SectionPlanner.tsx and chrome/DayHikesHere.tsx import it
-// eagerly too.
 export const HikePickSheet = screen(
   () => import('../chrome/HikePickSheet').then((m) => m.HikePickSheet),
   'HikePickSheet',
@@ -156,22 +158,25 @@ export const AddDayHikeSheet = screen(
   () => import('../chrome/AddDayHikeSheet').then((m) => m.AddDayHikeSheet),
   'AddDayHikeSheet',
 )
-// The bail sheet (a half-built plan, and a tap that would leave it) and
-// "Where you hike" from More → You - deferred for the same budget when CI's
-// preview build, which inlines five VITE_ variables a plain build leaves
-// out, measured the four above at 245,782 bytes, 22 over the line, against
-// 245,516 locally (ced035f4). With these two as well: 245,050 on a plain
-// build, against `main`'s 245,489 at aad6cd17 the same hour. Add the 266
-// bytes the preview's variables added to this branch and `main`'s own
-// preview build reads about 245,755, five under the line (reasoned, not
-// built) - so the next shell change to land there trips it whatever it does.
-export const BailSheet = screen(
-  () => import('../chrome/BailSheet').then((m) => m.BailSheet),
-  'BailSheet',
+export const DayHikesHere = screen(
+  () => import('../chrome/DayHikesHere').then((m) => m.DayHikesHere),
+  'DayHikesHere',
 )
-export const PlaceSheet = screen(
-  () => import('../chrome/PlaceSheet').then((m) => m.PlaceSheet),
-  'PlaceSheet',
+export const SectionPlanner = screen(
+  () => import('../chrome/SectionPlanner').then((m) => m.SectionPlanner),
+  'SectionPlanner',
+)
+export const ReportPickBar = screen(
+  () => import('../chrome/ReportPickBar').then((m) => m.ReportPickBar),
+  'ReportPickBar',
+)
+export const PressPlate = screen(
+  () => import('../chrome/PressPlate').then((m) => m.PressPlate),
+  'PressPlate',
+)
+export const RouteHoverPlate = screen(
+  () => import('../chrome/RouteHover').then((m) => m.RouteHoverPlate),
+  'RouteHoverPlate',
 )
 export const AppFailureReport = screen(
   () => import('./AppFailureReport').then((m) => m.AppFailureReport),

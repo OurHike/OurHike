@@ -104,6 +104,10 @@ import {
   KeepSpotSheet,
   ShareHike,
   SignInPrompt,
+  SignInWindow,
+  AccountPanel,
+  HikePickSheet,
+  AddDayHikeSheet,
   TripList,
   Volunteer,
   VolunteerHours,
@@ -444,8 +448,7 @@ import { OffRouteBand, OffRouteCard } from './chrome/OffRouteCard'
 import { dayHikesNearHere } from './lib/dayHikeShelf'
 import { DayHikesHere } from './chrome/DayHikesHere'
 import { planRoomFor } from './lib/planRoom'
-import { HikePickSheet } from './chrome/HikePickSheet'
-import { AddDayHikeSheet, type DayHikeCandidate } from './chrome/AddDayHikeSheet'
+import type { DayHikeCandidate } from './chrome/AddDayHikeSheet'
 import { hikeShareText } from './lib/hikeShareText'
 import type { LongHikeToday } from './screens/Today'
 import type { DayHikeDrawing } from './map/dayHikeLayers'
@@ -543,9 +546,9 @@ import {
   type MileRange,
 } from './lib/walkedMiles'
 import { clubRunAtMile, clubTimeline } from './lib/clubSections'
-import { accountTag, clubAtTrailMile } from './lib/usageEvents'
-import { hikeExtent, planExtent } from './lib/usagePlans'
-import { type UsageMeasurement, useUsageMeasurement } from './lib/useUsageMeasurement'
+import { BUILD_INFO } from './lib/buildInfo'
+import { DeferredMeasureUsage } from './lib/DeferredMeasureUsage'
+import type { UsageMeasurement, UsageMeasurementInput } from './lib/useUsageMeasurement'
 import {
   clearPlannedHike,
   hikeSummary,
@@ -603,8 +606,6 @@ import './App.css'
 // can match a phone, which is how the WEBSITE.md §8 constraint is kept
 // structurally rather than by review.
 import './desktop.css'
-import { SignInWindow } from './chrome/SignInWindow'
-import { AccountPanel } from './chrome/AccountPanel'
 
 // OurHike hikes one trail today - see lib/trails.ts for why this is a lookup
 // and not just a string.
@@ -3755,43 +3756,31 @@ function App() {
    * installs, sign-ins, sessions, screens and the map coming into view itself,
    * and the plan handlers above call `usageRef.current` for the other two.
    * The club at a point is the legend's own answer, the A.T. mile under it and
-   * who maintains that mile, so a map view and the legend never disagree.
+   * who maintains that mile (the hook works out the second), so a map view
+   * and the legend never disagree.
    */
-  const usageClubAt = useCallback(
-    (lon: number, lat: number) => {
-      if (trailIndex === null) return null
-      const mile = mileOnTrail(trailIndex, { lon, lat })
-      return mile === null ? null : clubAtTrailMile(clubRuns, mile)
-    },
-    [trailIndex, clubRuns],
-  )
   const [askingUsageLink, setAskingUsageLink] = useState(false)
   const askAboutUsageLink = useCallback(() => setAskingUsageLink(true), [])
-  const usage = useUsageMeasurement({
+  const usageInput: UsageMeasurementInput = {
     ready: preferencesLoaded,
     enabled: preferences.measurement_enabled,
-    linkedAccount:
-      preferences.measurement_linked === true && account !== null
-        ? accountTag(account.email)
-        : null,
+    linked: preferences.measurement_linked,
+    accountEmail: account === null ? null : account.email,
     newInstall: !preferences.onboarding_completed,
-    signedIn: account !== null,
+    version: BUILD_INFO.version,
     online,
     reportsWaiting: queuedCount,
     screen: JSON.stringify([activeTab, nav.top]),
     mapInView: mapShownNow,
-    heldFix:
-      gps.status === 'located'
-        ? { lat: gps.at.lat, lon: gps.at.lon, accuracy: gps.accuracyM, at: gps.fixedAt }
-        : null,
-    mapCentre: camera === null ? null : camera.center,
-    clubAtPoint: usageClubAt,
+    gps,
+    camera,
+    trailIndex,
     clubRuns,
     onSignIn: askAboutUsageLink,
-  })
-  useEffect(() => {
-    usageRef.current = usage
-  }, [usage])
+  }
+  const setUsage = useCallback((measurement: UsageMeasurement | null) => {
+    usageRef.current = measurement
+  }, [])
 
   /** Closes the legend. A named callback rather than an inline arrow because
    *  the tapped-line feature holds it too - any tap that opens a sheet puts
@@ -4247,7 +4236,7 @@ function App() {
    */
   const handleLayOutSection = useCallback(
     (plan: HikePlan) => {
-      usageRef.current?.planMade(planExtent(plan))
+      usageRef.current?.planMade({ plan })
       applyTripStore((store) => {
         const added = addTrip(store, plan)
         const id = added.openId
@@ -4714,7 +4703,7 @@ function App() {
 
   const handleFinishHike = useCallback(() => {
     if (activeHike === null) return
-    usageRef.current?.planCompleted(hikeExtent(activeHike))
+    usageRef.current?.planCompleted({ hike: activeHike })
     applyTripStore((store) => finishHike(store, activeHike.id, localDay(now)))
     closeStepAway()
     // Offered, never declared - and this IS the hiker saying so, so the
@@ -4974,7 +4963,7 @@ function App() {
         ? { ...hikeDraft, name: hikeNameFromEnds(hikeDraft, pois) }
         : { ...hikeDraft, name: hikeDraft.name.trim() }
     const started: Hike = { ...named, status: 'walking' }
-    usageRef.current?.planMade(hikeExtent(started))
+    usageRef.current?.planMade({ hike: started })
     applyTripStore((store) => setActiveHike(addHike(store, started), started.id))
     setHikeDraft(null)
     setHikeSheet(null)
@@ -7278,7 +7267,7 @@ function App() {
   const handleLayOut = useCallback(
     (next: HikePlan) => {
       const tripId = targetRequest?.tripId ?? null
-      if (tripId === null) usageRef.current?.planMade(planExtent(next))
+      if (tripId === null) usageRef.current?.planMade({ plan: next })
       applyTripStore((store) =>
         tripId === null ? addTrip(store, next) : updateTrip(store, tripId, next),
       )
@@ -11266,6 +11255,7 @@ function App() {
 
   return (
     <>
+      <DeferredMeasureUsage input={usageInput} onMeasure={setUsage} />
       {nothingWouldRender && (
         <div className="app__screen">
           {/* THE FRONT DOOR, WHILE THE MAP IS STILL COMING (#1429).

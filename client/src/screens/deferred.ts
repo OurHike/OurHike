@@ -125,6 +125,37 @@ export const EmailSignIn = screen(
   () => import('./EmailSignIn').then((m) => m.EmailSignIn),
   'EmailSignIn',
 )
+// The window the two above open in (#1596) and its signed-in view, opened
+// only by a tap on the account button or by a refused report (#1573) -
+// deferred in #1903 to pay for usage measurement's wiring (#1902), the part
+// of it App has to build before any import(): the props, the plan calls and
+// the link question's branch. Measured 2026-10-27 by check-build-output.mjs,
+// one build each: `main` at 245,473 bytes compressed, the branch with every
+// line of measurement it could defer deferred at 246,471, and the same
+// branch with these two deferred at 246,070 - and with the two sheets below
+// as well, 245,516, 244 under.
+export const SignInWindow = screen(
+  () => import('../chrome/SignInWindow').then((m) => m.SignInWindow),
+  'SignInWindow',
+)
+export const AccountPanel = screen(
+  () => import('../chrome/AccountPanel').then((m) => m.AccountPanel),
+  'AccountPanel',
+)
+// "Which long hike?" and the add-a-day-hike sheet, each opened by a tap over
+// whatever screen the hiker is on - deferred in the same change and for the
+// same reason as the two above, when those two alone left the closure at
+// 246,070 bytes, 310 over the line. screens/plan.css stays in the first
+// frame: chrome/SectionPlanner.tsx and chrome/DayHikesHere.tsx import it
+// eagerly too.
+export const HikePickSheet = screen(
+  () => import('../chrome/HikePickSheet').then((m) => m.HikePickSheet),
+  'HikePickSheet',
+)
+export const AddDayHikeSheet = screen(
+  () => import('../chrome/AddDayHikeSheet').then((m) => m.AddDayHikeSheet),
+  'AddDayHikeSheet',
+)
 export const AppFailureReport = screen(
   () => import('./AppFailureReport').then((m) => m.AppFailureReport),
   'AppFailureReport',

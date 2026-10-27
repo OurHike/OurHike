@@ -91,6 +91,16 @@ details summary{cursor:pointer;font-size:12px;color:var(--forest-600);margin-top
 footer.foot{border-top:1px solid var(--border-2);background:var(--paper-0);font-size:12px;color:var(--fg-3)}
 footer.foot .wrap{display:flex;flex-wrap:wrap;gap:6px 20px;justify-content:space-between;padding-top:12px;padding-bottom:16px}
 .warn{color:var(--blaze-orange-dark);font-weight:600}
+.panel.wide{grid-column:1/-1}
+.qgrid{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:10px}
+@media (max-width:900px){.qgrid{grid-template-columns:repeat(2,minmax(0,1fr))}}
+.qcell{border:1px solid var(--border-1);border-radius:10px;padding:8px 9px 6px;min-width:0}
+.qcell .qhead{display:flex;justify-content:space-between;align-items:center;gap:6px;font-size:12.5px;font-weight:600;color:var(--fg-1)}
+.chip{font-size:11px;font-weight:600;border-radius:999px;padding:1px 8px;white-space:nowrap}
+.chip.ok{background:var(--sage-100);color:var(--pine-700)}
+.chip.low,.chip.zero,.chip.broken,.chip.warn{background:#f6e3d3;color:var(--blaze-orange-dark)}
+.chip.high{background:#dcebf5;color:#155580}
+.chip.learning,.chip.quiet{background:var(--paper-100);color:var(--fg-2)}
 </style>
 </head>
 <body>
@@ -411,6 +421,107 @@ footer.foot .wrap{display:flex;flex-wrap:wrap;gap:6px 20px;justify-content:space
     return '<div class="scroll"><table><tr><th>Month</th><th>State</th><th class="n">Events</th><th class="n">Linked</th><th class="n">Fixes</th><th class="n">Thrown away (no key)</th><th class="n">After close</th></tr>' + body + '</table></div><p class="note">' + keyLine + '</p>';
   }
 
+  // ---- every phone, with no identifier ----------------------------------------
+  // New, returning and back-again phones add up to the month's active phones
+  // (app/core/analytics_rollup.py); a phone counted last month and not this
+  // one is lost, drawn below the line. All clubs only: these come from the
+  // phone's own month answers, which are not split by club.
+  function growthSvg() {
+    var ms = rangeMonths();
+    var W = 600, H = 240, L = 44, R = 8, T = 16, B = 30;
+    var parts = [['devices_new', '#284029', 'New'], ['devices_returning', '#47784b', 'Returning'], ['devices_back', '#96b98c', 'Back again']];
+    var rows = ms.map(function (m) {
+      var prev = MONTHS[MONTHS.indexOf(m) - 1];
+      var vals = parts.map(function (p) { return figure(m, p[0]).value; });
+      var masked = vals.some(function (v) { return v === null; });
+      var before = prev ? figure(prev, 'devices_active').value : null;
+      var returning = vals[1];
+      var lost = (!masked && before !== null && returning !== null) ? Math.max(0, before - returning) : null;
+      return { m: m, vals: vals, masked: masked, lost: lost };
+    });
+    var maxUp = Math.max.apply(null, rows.map(function (r) { return r.masked ? 0 : r.vals.reduce(function (a, b) { return a + (b || 0); }, 0); }).concat([FLOOR]));
+    var maxDown = Math.max.apply(null, rows.map(function (r) { return r.lost || 0; }).concat([0]));
+    var span = maxUp + maxDown;
+    var y = function (v) { return T + (H - T - B) * (1 - (v + maxDown) / span); };
+    var band = (W - L - R) / ms.length, bw = Math.min(24, band * 0.6);
+    var out = ['<svg viewBox="0 0 ' + W + ' ' + H + '" role="img" aria-label="Active phones by where they came from, and phones lost, by month">'];
+    out.push('<line x1="' + L + '" x2="' + (W - R) + '" y1="' + y(0) + '" y2="' + y(0) + '" stroke="#c3baa4"/>');
+    out.push('<text x="' + (L - 6) + '" y="' + (y(maxUp) + 4) + '" text-anchor="end" font-size="11" fill="#8a8271">' + fmt(maxUp, 0) + '</text>');
+    if (maxDown > 0) out.push('<text x="' + (L - 6) + '" y="' + (y(-maxDown) + 4) + '" text-anchor="end" font-size="11" fill="#8a8271">−' + fmt(maxDown, 0) + '</text>');
+    rows.forEach(function (r, i) {
+      var x = L + band * i + (band - bw) / 2, cx = x + bw / 2;
+      if (r.masked) {
+        out.push('<rect x="' + x + '" y="' + (y(0) - 3) + '" width="' + bw + '" height="3" fill="#c3baa4"><title>' + esc(monthName(r.m, true)) + ': under ' + FLOOR + '</title></rect>');
+      } else {
+        var base = 0;
+        parts.forEach(function (p, k) {
+          var v = r.vals[k] || 0;
+          if (v <= 0) return;
+          out.push('<rect x="' + x + '" y="' + y(base + v) + '" width="' + bw + '" height="' + Math.max(0, y(base) - y(base + v) - 1) + '" fill="' + p[1] + '"><title>' + esc(monthName(r.m, true) + ' · ' + p[2] + ': ' + fmt(v)) + '</title></rect>');
+          base += v;
+        });
+        if (r.lost) out.push('<rect x="' + x + '" y="' + y(0) + '" width="' + bw + '" height="' + Math.max(0, y(-r.lost) - y(0)) + '" fill="#c1611a"><title>' + esc(monthName(r.m, true) + ' · Lost since last month: ' + fmt(r.lost)) + '</title></rect>');
+      }
+      out.push('<text x="' + cx + '" y="' + (H - 10) + '" text-anchor="middle" font-size="10.5" fill="#8a8271">' + (ms.length > 12 ? monthName(r.m).charAt(0) : monthName(r.m)) + '</text>');
+    });
+    out.push('</svg>');
+    return out.join('') + '<div class="legend">' + parts.map(function (p) { return '<span><i style="background:' + p[1] + '"></i>' + p[2] + '</span>'; }).join('') + '<span><i style="background:#c1611a"></i>Lost since last month</span></div>';
+  }
+
+  // ---- data quality ----------------------------------------------------------
+  // Each metric's days as a share of what the same weekday in the weeks before
+  // would expect (app/core/analytics_quality.py): the band is where a day is
+  // still ordinary. Shares, never counts - see `_quality` in analytics_report.py.
+  var QUALITY_NAMES = { installs: 'First opens', logins: 'Sign-ins', plans_made: 'Plans made', plans_completed: 'Plans completed', map_views: 'Map views', sessions: 'Visits', pageviews: 'Screens', phones_this_week: 'Phones, first this week' };
+  var STATUS_WORDS = { ok: 'normal', low: 'far below', high: 'far above', zero: 'none at all', quiet: 'too few to judge', learning: 'learning', broken: 'does not add up', warn: 'needs a look' };
+  function checkName(name) {
+    var parts = name.split(':'), base = parts[0];
+    var metric = base.replace(/_per_session$/, '');
+    var label = QUALITY_NAMES[metric] ? QUALITY_NAMES[metric] + (base !== metric ? ' per visit' : '') : base.replace(/_/g, ' ');
+    return label + (parts[1] ? ' (' + parts[1].replace(/_/g, ' ') + ')' : '');
+  }
+  function scopeName(scope) { return scope === ALL ? 'whole app' : scope.replace(':', ' '); }
+
+  function sparkSvg(points) {
+    var W = 260, H = 70, P = 4;
+    var shares = points.map(function (p) { return p.share; }).filter(function (v) { return v !== null; });
+    var highs = points.map(function (p) { return p.high; }).filter(function (v) { return v !== null; });
+    var top = Math.max.apply(null, [1.6].concat(shares, highs));
+    var x = function (i) { return P + (W - 2 * P) * i / Math.max(1, points.length - 1); };
+    var y = function (v) { return H - P - (H - 2 * P) * Math.min(v, top) / top; };
+    var out = ['<svg viewBox="0 0 ' + W + ' ' + H + '" role="img" aria-label="Each day as a share of what was expected">'];
+    var upper = [], lower = [];
+    points.forEach(function (p, i) { if (p.low !== null && p.high !== null) { upper.push(x(i) + ',' + y(p.high)); lower.unshift(x(i) + ',' + y(p.low)); } });
+    if (upper.length) out.push('<polygon points="' + upper.concat(lower).join(' ') + '" fill="#e3ecda"/>');
+    out.push('<line x1="' + P + '" x2="' + (W - P) + '" y1="' + y(1) + '" y2="' + y(1) + '" stroke="#96b98c" stroke-dasharray="3 3"/>');
+    var path = [];
+    points.forEach(function (p, i) { if (p.share !== null) path.push((path.length ? 'L' : 'M') + x(i) + ',' + y(p.share)); else if (path.length) path.push(''); });
+    out.push('<path d="' + path.join(' ').replace(/ (?=M)/g, ' ') + '" fill="none" stroke="#355c3a" stroke-width="1.5"/>');
+    points.forEach(function (p, i) {
+      if (p.share === null || p.status === 'ok') return;
+      var colour = p.status === 'high' ? '#1c6ea4' : '#c1611a';
+      out.push('<circle cx="' + x(i) + '" cy="' + y(p.share) + '" r="3" fill="' + colour + '"><title>' + esc(dayName(p.day) + ': ' + Math.round(p.share * 100) + '% of expected, ' + STATUS_WORDS[p.status]) + '</title></circle>');
+    });
+    out.push('</svg>');
+    return out.join('');
+  }
+
+  function qualityHtml() {
+    var q = DATA.quality;
+    if (!q) return '<p class="note">No data-quality checks in this file.</p>';
+    var cells = q.metrics.map(function (metric) {
+      var points = q.series[metric] || [];
+      var last = points.length ? points[points.length - 1] : { status: 'learning' };
+      return '<div class="qcell"><div class="qhead"><span>' + esc(QUALITY_NAMES[metric] || metric) + '</span><span class="chip ' + last.status + '">' + esc(STATUS_WORDS[last.status] || last.status) + '</span></div>' + sparkSvg(points) + '</div>';
+    }).join('');
+    var findings = q.findings.length
+      ? '<div class="scroll"><table><tr><th>Day</th><th>Check</th><th>Slice</th><th>Which way</th><th>First seen</th></tr>' + q.findings.map(function (f) {
+          return '<tr><td>' + dayName(f.day) + '</td><td>' + esc(checkName(f.check)) + '</td><td>' + esc(scopeName(f.scope)) + '</td><td><span class="chip ' + esc(f.status) + '">' + esc(STATUS_WORDS[f.status] || f.status) + '</span></td><td>' + dayName(f.first_seen) + '</td></tr>';
+        }).join('') + '</table></div>'
+      : '<p class="note">Nothing out of the ordinary in the last sixty days.</p>';
+    return '<div class="qgrid">' + cells + '</div><h2 style="margin-top:14px">Findings</h2><div class="sub">Every check that has come out wrong in the last sixty days, newest first. The nightly job opens one issue while any is open; it names checks, never figures.</div>' + findings;
+  }
+
   // ---- the page ------------------------------------------------------------
   function render() {
     var root = document.getElementById('root');
@@ -436,6 +547,8 @@ footer.foot .wrap{display:flex;flex-wrap:wrap;gap:6px 20px;justify-content:space
       delta = (change >= 0 ? '▲ ' : '▼ ') + Math.abs(Math.round(change * 100)) + '% vs ' + monthName(prev) + ' (' + fmt(before.value) + ')';
     }
     if (info.status === 'provisional') delta += (delta ? ' · ' : '') + 'provisional';
+    var signedIn = figure(to, 'devices_signed_in', club);
+    if (all && signedIn.value !== null && active.value) delta += (delta ? ' · ' : '') + pct(signedIn.value / active.value) + ' signed in';
 
     var plans = rangeSum('plans_made', club), miles = rangeSum('plan_miles', club);
     var done = rangeSum('plans_completed', club), doneMiles = rangeSum('completed_miles', club);
@@ -467,7 +580,14 @@ footer.foot .wrap{display:flex;flex-wrap:wrap;gap:6px 20px;justify-content:space
         '<section class="panel"><h2>' + (all ? 'By club' : esc(clubName(club)) + ', month by month') + '</h2><div class="sub">' +
           (all ? 'Each event belongs to the club whose trail it was about; a plan is split by its miles in each club · click a row to filter' : 'Plans are split by their miles in each club, so a plan crossing a boundary counts as part of one here') + '</div>' +
           (DATA.clubs.length ? (all ? clubTableHtml() : clubMonthsHtml(club)) : '<p class="note">No event has named a club yet.</p>') + '</section>' +
-        '<section class="panel"><h2>Who planned and who finished · ' + monthName(to, true) + '</h2><div class="sub">Hikers who said yes to linking their account. A completion can belong to an earlier month’s plan.</div>' + funnel + '</section>' +
+        '<section class="panel"><h2>Who planned and who finished · ' + monthName(to, true) + '</h2><div class="sub">' + (all ? 'Every phone, counted by its own “first time this month” answers - no account needed. ' : '') + 'Below, hikers who said yes to linking their account. A completion can belong to an earlier month’s plan.</div>' +
+          (all ? stepsSvg([
+            { label: 'Active phones', value: active.value },
+            { label: 'Viewed the map', value: figure(to, 'devices_map_view').value },
+            { label: 'Made a plan', value: figure(to, 'devices_plan_made').value },
+            { label: 'Completed a hike', value: figure(to, 'devices_plan_completed').value }
+          ], 'Every phone, by what it did', 600) + '<h2 style="margin-top:12px;font-size:14px">Hikers who said yes</h2>' : '') + funnel + '</section>' +
+        (all ? '<section class="panel"><h2>Where this month’s phones came from</h2><div class="sub">All clubs · new, returning from last month, or back after a gap - and lost since last month, below the line · every phone, no identifier</div>' + growthSvg() + '</section>' : '') +
         (all ? '<section class="panel"><h2>Sessions by platform · ' + monthName(to, true) + '</h2><div class="sub">Share of sessions</div>' + platformsHtml(to) +
           '<h2 style="margin-top:14px">Session length · ' + monthName(to, true) + '</h2>' +
           stepsSvg([
@@ -480,6 +600,7 @@ footer.foot .wrap{display:flex;flex-wrap:wrap;gap:6px 20px;justify-content:space
         '<section class="panel"><h2>Retention by first month</h2><div class="sub">All clubs: the User table holds no place · hikers who said yes, by the month first seen · share active N months later · read from the User table, which outlives the six-month raw rows</div>' + cohortsHtml() +
           '<p class="note">User table today: ' + fmt(DATA.users.hikers) + ' hikers who said yes · ' + fmt(DATA.users.ever_planned) + ' ever made a plan · ' + fmt(DATA.users.ever_completed) + ' ever completed one.</p></section>' +
         '<section class="panel"><h2>Data health</h2><div class="sub">All clubs · whether the numbers above can be trusted, month by month</div>' + healthHtml() + '</section>' +
+        '<section class="panel wide"><h2>Data quality · each metric, day by day</h2><div class="sub">Each day as a share of what the same weekday in the weeks before would expect, counted at the same age so late uploads do not read as a drop · shaded = still ordinary · dots = an anomaly</div>' + qualityHtml() + '</section>' +
       '</div>';
     root.innerHTML = html;
 

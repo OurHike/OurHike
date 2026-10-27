@@ -2,8 +2,10 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { renderHook, waitFor } from '@testing-library/react'
 import { get, set, update } from 'idb-keyval'
 
+import { accountTag } from './accountTag'
 import { apiFetch } from './api'
 import { noteSignInStarted } from './signInMarker'
+import type { TrailIndex } from './trailPosition'
 import type { ClubRunLike } from './usageEvents'
 import { readUsage, type UsageStore } from './usageQueue'
 import { type UsageMeasurementInput, useUsageMeasurement } from './useUsageMeasurement'
@@ -21,6 +23,8 @@ vi.mock('./api', () => ({
   ApiError: class ApiError extends Error {},
 }))
 vi.mock('./tracePlatform', () => ({ traceShell: () => 'web' }))
+// Mile 1390 wherever the map is pointed: inside NYNJTC's run in RUNS below.
+vi.mock('./trailPosition', () => ({ mileOnTrail: vi.fn(() => 1390) }))
 
 let stored: unknown = undefined
 beforeEach(() => {
@@ -48,16 +52,17 @@ function input(overrides: Partial<UsageMeasurementInput> = {}): UsageMeasurement
   return {
     ready: true,
     enabled: true,
-    linkedAccount: null,
+    linked: null,
+    accountEmail: null,
     newInstall: false,
-    signedIn: false,
+    version: '1.4.0',
     online: false,
     reportsWaiting: 0,
     screen: 'today',
     mapInView: false,
-    heldFix: null,
-    mapCentre: null,
-    clubAtPoint: () => null,
+    gps: { status: 'idle' },
+    camera: null,
+    trailIndex: null,
     clubRuns: RUNS,
     ...overrides,
   }
@@ -120,7 +125,9 @@ describe('sign-in', () => {
     noteSignInStarted()
     const onSignIn = vi.fn()
 
-    renderHook(() => useUsageMeasurement(input({ signedIn: true, onSignIn })))
+    renderHook(() =>
+      useUsageMeasurement(input({ accountEmail: 'alice@example.org', onSignIn })),
+    )
 
     await waitFor(async () => expect(await events()).toContain('user_login'))
     expect(onSignIn).toHaveBeenCalledTimes(1)
@@ -129,7 +136,9 @@ describe('sign-in', () => {
   it('does not count an account restored at launch as a sign-in', async () => {
     const onSignIn = vi.fn()
 
-    renderHook(() => useUsageMeasurement(input({ signedIn: true, onSignIn })))
+    renderHook(() =>
+      useUsageMeasurement(input({ accountEmail: 'alice@example.org', onSignIn })),
+    )
 
     await new Promise((resolve) => setTimeout(resolve, 20))
     expect(await events()).not.toContain('user_login')
@@ -139,18 +148,17 @@ describe('sign-in', () => {
 
 describe('the map coming into view', () => {
   it('records one view per arrival, with the club at the map’s centre', async () => {
-    const clubAtPoint = vi.fn(() => 'NYNJTC')
+    const at = {
+      trailIndex: {} as TrailIndex,
+      camera: { center: [-74.1, 41.3] as const },
+    }
     const { rerender } = renderHook(
       (props: UsageMeasurementInput) => useUsageMeasurement(props),
-      {
-        initialProps: input({ clubAtPoint, mapCentre: [-74.1, 41.3] }),
-      },
+      { initialProps: input(at) },
     )
 
-    rerender(input({ clubAtPoint, mapCentre: [-74.1, 41.3], mapInView: true }))
-    rerender(
-      input({ clubAtPoint, mapCentre: [-74.1, 41.3], mapInView: true, screen: 'map' }),
-    )
+    rerender(input({ ...at, mapInView: true }))
+    rerender(input({ ...at, mapInView: true, screen: 'map' }))
 
     await waitFor(async () => expect(await events()).toEqual(['map_screen_viewed']))
     expect((await readUsage()).rows[0].row.clubs).toEqual({ NYNJTC: 1 })
@@ -172,28 +180,28 @@ describe('plans', () => {
 
   it('links a row to the account only while the hiker said yes and is signed in', async () => {
     const { result } = renderHook(() =>
-      useUsageMeasurement(input({ linkedAccount: 'tag-alice', signedIn: true })),
+      useUsageMeasurement(input({ linked: true, accountEmail: 'alice@example.org' })),
     )
 
     result.current.planCompleted({ miles: 8 })
 
     await waitFor(async () => expect((await readUsage()).rows).toHaveLength(1))
     const [queued] = (await readUsage()).rows
-    expect(queued.linkedTo).toBe('tag-alice')
+    expect(queued.linkedTo).toBe(accountTag('alice@example.org'))
     expect(queued.row.signed_in).toBe(true)
   })
 
   it('unlinks what is waiting when a signed-in hiker says no', async () => {
     const { result, rerender } = renderHook(
       (props: UsageMeasurementInput) => useUsageMeasurement(props),
-      { initialProps: input({ linkedAccount: 'tag-alice', signedIn: true }) },
+      { initialProps: input({ linked: true, accountEmail: 'alice@example.org' }) },
     )
     result.current.planMade({ miles: 4 })
     await waitFor(async () =>
-      expect((await readUsage()).rows[0]?.linkedTo).toBe('tag-alice'),
+      expect((await readUsage()).rows[0]?.linkedTo).toBe(accountTag('alice@example.org')),
     )
 
-    rerender(input({ linkedAccount: null, signedIn: true }))
+    rerender(input({ linked: false, accountEmail: 'alice@example.org' }))
 
     await waitFor(async () => expect((await readUsage()).rows[0]?.linkedTo).toBeNull())
     expect(await events()).toEqual(['hike_plan_made'])
@@ -201,6 +209,29 @@ describe('plans', () => {
 })
 
 describe('sending', () => {
+  it('sends what is waiting when the app is put away, not only every five minutes', async () => {
+    // Online from the start, so the launch's own flush has already found an
+    // empty queue by the time the plan below is recorded.
+    const { result } = renderHook(() => useUsageMeasurement(input({ online: true })))
+    result.current.planMade({ miles: 3 })
+    await waitFor(async () => expect(await events()).toContain('hike_plan_made'))
+    vi.mocked(apiFetch).mockClear()
+
+    Object.defineProperty(document, 'visibilityState', {
+      value: 'hidden',
+      configurable: true,
+    })
+    document.dispatchEvent(new Event('visibilitychange'))
+
+    await waitFor(() =>
+      expect(apiFetch).toHaveBeenCalledWith('/usage-events', expect.anything()),
+    )
+    Object.defineProperty(document, 'visibilityState', {
+      value: 'visible',
+      configurable: true,
+    })
+  })
+
   it('waits while a hiker’s report is still queued, and sends once it is gone', async () => {
     const { result, rerender } = renderHook(
       (props: UsageMeasurementInput) => useUsageMeasurement(props),

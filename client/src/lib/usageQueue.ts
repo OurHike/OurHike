@@ -19,7 +19,7 @@
 
 import { get, set, update } from 'idb-keyval'
 
-import { accessToken, ApiError, apiFetch, API_CONFIGURED } from './api'
+import { accessToken, apiFetch, API_CONFIGURED } from './api'
 import {
   FRESH_HEARTBEAT,
   type Heartbeat,
@@ -146,14 +146,30 @@ export async function unlinkWaitingRows(): Promise<void> {
 
 export type SendResult = 'sent' | 'refused' | 'later'
 
-/** One batch to `POST /usage-events`. A linked batch carries the token; no other does. */
+/** The HTTP status an error carries, if any - lib/api.ts's ApiError has one. */
+function statusOf(error: unknown): number | null {
+  const status = (error as { status?: unknown } | null)?.status
+  return typeof status === 'number' ? status : null
+}
+
+/**
+ * One batch to `POST /usage-events`. A linked batch carries the token; no
+ * other does.
+ *
+ * NOTHING HERE MAY THROW, the whole body inside the `try` and the catch
+ * reading `status` rather than `instanceof ApiError`. A count is the last
+ * thing that may break anything (EVENTING.md §1 rule 4), and the App tests
+ * proved the gap: they replace lib/api with partial mocks that export no
+ * `apiFetch` and no `ApiError`, so reaching for either outside a `try` turned
+ * a background flush into an unhandled error in CI (#1903's first runs).
+ */
 export async function sendUsageBatch(
   rows: UsageRow[],
   linked: boolean,
 ): Promise<SendResult> {
-  if (!API_CONFIGURED) return 'later'
-  const token = linked ? await accessToken() : null
   try {
+    if (!API_CONFIGURED) return 'later'
+    const token = linked ? await accessToken() : null
     await apiFetch('/usage-events', {
       method: 'POST',
       credentials: 'omit',
@@ -165,8 +181,9 @@ export async function sendUsageBatch(
     })
     return 'sent'
   } catch (error) {
-    if (error instanceof ApiError && error.status >= 400 && error.status < 500) {
-      return error.status === 408 || error.status === 429 ? 'later' : 'refused'
+    const status = statusOf(error)
+    if (status !== null && status >= 400 && status < 500) {
+      return status === 408 || status === 429 ? 'later' : 'refused'
     }
     return 'later'
   }
@@ -191,25 +208,30 @@ export function flushUsage(
   if (inFlight !== null) return inFlight
   inFlight = (async () => {
     let gone = 0
-    const { rows } = await readUsage()
-    const linkable = (queued: QueuedUsageRow) =>
-      linkedAccount !== null && queued.linkedTo === linkedAccount
-    for (const linked of [false, true]) {
-      const waiting = rows.filter((queued) => linkable(queued) === linked)
-      for (let start = 0; start < waiting.length; start += BATCH_SIZE) {
-        const batch = waiting.slice(start, start + BATCH_SIZE)
-        const result = await send(
-          batch.map((queued) => queued.row),
-          linked,
-        )
-        if (result === 'later') return gone
-        const ids = new Set(batch.map((queued) => queued.row.id))
-        await updateUsage((store) => ({
-          ...store,
-          rows: store.rows.filter((queued) => !ids.has(queued.row.id)),
-        }))
-        gone += batch.length
+    try {
+      const { rows } = await readUsage()
+      const linkable = (queued: QueuedUsageRow) =>
+        linkedAccount !== null && queued.linkedTo === linkedAccount
+      for (const linked of [false, true]) {
+        const waiting = rows.filter((queued) => linkable(queued) === linked)
+        for (let start = 0; start < waiting.length; start += BATCH_SIZE) {
+          const batch = waiting.slice(start, start + BATCH_SIZE)
+          const result = await send(
+            batch.map((queued) => queued.row),
+            linked,
+          )
+          if (result === 'later') return gone
+          const ids = new Set(batch.map((queued) => queued.row.id))
+          await updateUsage((store) => ({
+            ...store,
+            rows: store.rows.filter((queued) => !ids.has(queued.row.id)),
+          }))
+          gone += batch.length
+        }
       }
+    } catch {
+      // Whatever went wrong, the rows that had not gone are still queued for
+      // the next chance - and a background count never rejects at its caller.
     }
     return gone
   })().finally(() => {

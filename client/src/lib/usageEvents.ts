@@ -77,7 +77,7 @@ export interface UsageRow {
 /**
  * A row waiting to send, and which account it may be linked to.
  *
- * `linkedTo` is `accountTag` of the account that was signed in, with the
+ * `linkedTo` is lib/accountTag.ts's tag of the account that was signed in, with the
  * hiker's yes, when the row was RECORDED - or null. lib/usageQueue.ts sends a
  * row linked only while that same account is signed in with its yes still
  * standing; every other row goes without an account. So a phone shared by
@@ -88,26 +88,6 @@ export interface UsageRow {
 export interface QueuedUsageRow {
   row: UsageRow
   linkedTo: string | null
-}
-
-/**
- * A short, stable tag for an account, from its email: enough to tell two
- * accounts on one phone apart, and kept on that phone only. Not a secret and
- * not an identifier anybody else sees - the email it is made from is already
- * in the sign-in session on the same phone. cyrb53, a 53-bit string hash.
- */
-export function accountTag(email: string): string {
-  const text = email.trim().toLowerCase()
-  let h1 = 0xdeadbeef
-  let h2 = 0x41c6ce57
-  for (let i = 0; i < text.length; i += 1) {
-    const code = text.charCodeAt(i)
-    h1 = Math.imul(h1 ^ code, 2654435761)
-    h2 = Math.imul(h2 ^ code, 1597334677)
-  }
-  h1 = Math.imul(h1 ^ (h1 >>> 16), 2246822507) ^ Math.imul(h2 ^ (h2 >>> 13), 3266489909)
-  h2 = Math.imul(h2 ^ (h2 >>> 16), 2246822507) ^ Math.imul(h1 ^ (h1 >>> 13), 3266489909)
-  return (4294967296 * (2097151 & h2) + (h1 >>> 0)).toString(36)
 }
 
 /**

@@ -44,14 +44,22 @@ background looking at the slices this report actually publishes.
 from __future__ import annotations
 
 from collections import defaultdict
-from datetime import date
+from datetime import date, timedelta
 
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
+from app.core import analytics_quality as quality
 from app.core.analytics_rollup import ALL, add_months, closes_on
 from app.core.time import utc_now
-from app.models.analytics import AnalyticsMonth, AnalyticsMonthly, AnalyticsSealKey, AnalyticsUser, MonthStatus
+from app.models.analytics import (
+    AnalyticsAnomaly,
+    AnalyticsMonth,
+    AnalyticsMonthly,
+    AnalyticsSealKey,
+    AnalyticsUser,
+    MonthStatus,
+)
 
 K_FLOOR = 25
 
@@ -88,6 +96,9 @@ DEFAULT_MONTHS = 24
 # first seen, followed for this many months after.
 COHORT_MONTHS = 12
 COHORT_FOLLOW = 6
+
+# How far back the data-quality panel lists findings.
+FINDINGS_DAYS = 60
 
 
 def _cell_key(month: date, club: str, platform: str) -> str:
@@ -197,6 +208,51 @@ def _user_table(db: Session) -> dict[str, int | None]:
     return {name: (None if 0 < value < K_FLOOR else value) for name, value in figures.items()}
 
 
+def _ratio(value: float | None, expected: float | None) -> float | None:
+    return None if value is None or not expected else round(value / expected, 3)
+
+
+def _quality(db: Session, today: date) -> dict:
+    """The data-quality panel: each metric's days as a share of what was expected.
+
+    A SHARE, NEVER A COUNT. The panel answers "is this normal", which a ratio
+    to the expected value answers completely, and a forwarded report then
+    carries no daily figure to read a small number out of. A day too young to
+    judge, or too quiet (app/core/analytics_quality.py), has no ratio at all.
+    """
+    arrivals = quality.load_arrivals(db, today)
+    series = {}
+    for metric in quality.DAILY_METRICS:
+        points = []
+        for item in quality.daily_judgements(arrivals, metric, today, quality.SERIES_DAYS):
+            judged = item.status not in ("learning", "quiet")
+            points.append(
+                {
+                    "day": item.day.isoformat(),
+                    "status": item.status,
+                    "share": _ratio(item.observed, item.expected) if judged else None,
+                    "low": _ratio(item.low, item.expected) if judged else None,
+                    "high": _ratio(item.high, item.expected) if judged else None,
+                }
+            )
+        series[metric] = points
+    findings = [
+        {
+            "day": row.day.isoformat(),
+            "check": row.check_name,
+            "scope": row.scope,
+            "status": row.status,
+            "first_seen": row.first_seen_on.isoformat(),
+            "last_seen": row.last_seen_on.isoformat(),
+        }
+        for row in db.query(AnalyticsAnomaly)
+        .filter(AnalyticsAnomaly.day >= today - timedelta(days=FINDINGS_DAYS))
+        .order_by(AnalyticsAnomaly.day.desc(), AnalyticsAnomaly.check_name)
+        .all()
+    ]
+    return {"series": series, "findings": findings, "metrics": list(quality.DAILY_METRICS)}
+
+
 def build_report_data(db: Session, *, environment: str, months: int = DEFAULT_MONTHS, today: date | None = None) -> dict:
     """Everything the page draws, masked, as plain JSON-ready values."""
     today = today or utc_now().date()
@@ -214,6 +270,8 @@ def build_report_data(db: Session, *, environment: str, months: int = DEFAULT_MO
             "cohorts": [],
             "users": _user_table(db),
             "keys_published_through": None,
+            "quality": _quality(db, today),
+            "today": today.isoformat(),
         }
 
     month_list = [state.month for state in states]
@@ -245,5 +303,6 @@ def build_report_data(db: Session, *, environment: str, months: int = DEFAULT_MO
         "cohorts": _cohorts(db, month_list[-1]),
         "users": _user_table(db),
         "keys_published_through": f"{last_key[0]:%Y-%m}" if last_key else None,
+        "quality": _quality(db, today),
         "today": today.isoformat(),
     }

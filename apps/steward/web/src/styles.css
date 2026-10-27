@@ -499,3 +499,29 @@ textarea {
   border: 1px solid var(--line-2);
   border-radius: 8px;
 }
+
+/* A photo waiting on the phone for signal, and the before photo shown small under
+   an empty after slot to line up with (#1911). */
+.photo-queued {
+  position: relative;
+}
+.photo-queued .pill {
+  position: absolute;
+  left: 8px;
+  top: 8px;
+}
+.photo-reference {
+  margin: 0;
+  display: grid;
+  grid-template-columns: 72px minmax(0, 1fr);
+  gap: 8px;
+  align-items: center;
+  font-size: 13px;
+  color: var(--ink-2);
+}
+.photo-reference img {
+  width: 72px;
+  aspect-ratio: 4 / 3;
+  object-fit: cover;
+  border-radius: 6px;
+}

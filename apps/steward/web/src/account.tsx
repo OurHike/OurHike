@@ -24,6 +24,7 @@ import {
 } from 'react'
 import type { SupabaseClient } from '@supabase/supabase-js'
 import { createApi, type StewardApi } from './api'
+import { clearOffline } from './offline'
 
 const SUPABASE_URL: string = import.meta.env.VITE_SUPABASE_URL ?? ''
 const SUPABASE_ANON_KEY: string = import.meta.env.VITE_SUPABASE_ANON_KEY ?? ''
@@ -145,6 +146,9 @@ export function AccountProvider({ children }: { children: ReactNode }) {
         return error ? plain(error.message) : null
       },
       async signOut() {
+        // Saved claims and queued photos are this person's; a shared phone
+        // should not keep them for the next one (src/offline.ts).
+        await clearOffline()
         await (await supabase()).auth.signOut()
       },
     }

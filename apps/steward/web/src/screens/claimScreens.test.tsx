@@ -1,6 +1,8 @@
 import { render, screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { afterEach, describe, expect, it, vi } from 'vitest'
+import { act } from '@testing-library/react'
+import { clearOffline, queuedPhotos, saveClaim } from '../offline'
 import { fixtureSites } from '../fixtures'
 import {
   SIGNED_IN,
@@ -22,9 +24,10 @@ const site4 = fixtureSites.find((s) => s.rims_id === 'example-0004')!
 const prepare = async () => new Blob(['re-encoded'], { type: 'image/jpeg' })
 const picture = () => new File(['pixels'], 'IMG_0001.HEIC', { type: 'image/heic' })
 
-afterEach(() => {
+afterEach(async () => {
   window.location.hash = ''
   window.localStorage.clear()
+  await clearOffline()
 })
 
 describe('Claiming from a site page', () => {
@@ -220,5 +223,100 @@ describe('Joining and your work', () => {
     expect(
       within(waiting).getByRole('link', { name: 'Example site 5' }),
     ).toBeInTheDocument()
+  })
+})
+
+describe('With no signal', () => {
+  it('opens a claim this phone saved, and says it is the saved copy', async () => {
+    const api = fakeApi()
+    const [made] = await api.claimSites(['example-0004'])
+    await saveClaim(await api.claim(made.id))
+    const offline = {
+      ...api,
+      claim: vi.fn(async () => Promise.reject(new TypeError('Failed to fetch'))),
+    }
+    render(
+      withAccount(
+        fakeAccount(SIGNED_IN, offline),
+        <ClaimScreen id={made.id} sites={fixtureSites} prepare={prepare} />,
+      ),
+    )
+    expect(
+      await screen.findByText(/This is the claim as this phone saved it/),
+    ).toBeInTheDocument()
+    expect(screen.getByRole('region', { name: 'Time left' })).toBeInTheDocument()
+  })
+
+  it('says so when a claim was never opened on this phone', async () => {
+    const api = {
+      ...fakeApi(),
+      claim: vi.fn(async () => Promise.reject(new TypeError('Failed to fetch'))),
+    }
+    render(
+      withAccount(
+        fakeAccount(SIGNED_IN, api),
+        <ClaimScreen id="claim-x" sites={fixtureSites} prepare={prepare} />,
+      ),
+    )
+    expect(await screen.findByRole('alert')).toHaveTextContent(
+      'has not been opened on this phone before',
+    )
+  })
+
+  it('keeps a photo on the phone, shows it waiting, and sends it when the signal comes back', async () => {
+    const api = fakeApi()
+    const [made] = await api.claimSites(['example-0004'])
+    let signal = false
+    const flaky = {
+      ...api,
+      uploadPhoto: vi.fn(async (...args: Parameters<typeof api.uploadPhoto>) =>
+        signal
+          ? api.uploadPhoto(...args)
+          : Promise.reject(new TypeError('Failed to fetch')),
+      ),
+    }
+    render(
+      withAccount(
+        fakeAccount(SIGNED_IN, flaky),
+        <ClaimScreen id={made.id} sites={fixtureSites} prepare={prepare} />,
+      ),
+    )
+    await screen.findByRole('region', { name: 'Time left' })
+    for (const box of screen.getAllByRole('checkbox').slice(0, 6))
+      await userEvent.click(box)
+    await userEvent.upload(screen.getByLabelText('Before, point 1'), picture())
+    expect(
+      await screen.findByText(/1 photo waiting on this phone for signal/),
+    ).toBeInTheDocument()
+    expect(screen.getByText('Waiting for signal')).toBeInTheDocument()
+    expect(await queuedPhotos(made.id)).toHaveLength(1)
+
+    signal = true
+    await act(async () => {
+      window.dispatchEvent(new Event('online'))
+    })
+    await waitFor(async () => expect(await queuedPhotos(made.id)).toHaveLength(0))
+    await waitFor(() =>
+      expect(screen.queryByText(/waiting on this phone/)).not.toBeInTheDocument(),
+    )
+    expect(api.calls).toContain('photo before 1 image/jpeg')
+  })
+
+  it('shows the before photo under an empty after slot, to line up with', async () => {
+    const api = fakeApi()
+    const [made] = await api.claimSites(['example-0004'])
+    await api.uploadPhoto(made.id, 'before', 1, new Blob(['x'], { type: 'image/jpeg' }))
+    render(
+      withAccount(
+        fakeAccount(SIGNED_IN, api),
+        <ClaimScreen id={made.id} sites={fixtureSites} prepare={prepare} />,
+      ),
+    )
+    expect(
+      await screen.findByAltText('The before photo at point 1, to line up with'),
+    ).toBeInTheDocument()
+    expect(
+      screen.queryByAltText('The before photo at point 2, to line up with'),
+    ).not.toBeInTheDocument()
   })
 })

@@ -1,4 +1,6 @@
 import '@testing-library/jest-dom/vitest'
+// IndexedDB for src/offline.ts, in memory: jsdom has none.
+import 'fake-indexeddb/auto'
 import { cleanup } from '@testing-library/react'
 import { afterEach } from 'vitest'
 

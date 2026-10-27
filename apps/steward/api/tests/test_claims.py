@@ -559,6 +559,7 @@ def test_no_more_photos_decode_at_once_than_the_limit(app, monkeypatch):
         return JPEG
 
     monkeypatch.setattr(claims_routes, "reencode", slow)
+    monkeypatch.setattr(limits, "PHOTO_UPLOADS_AT_ONCE", 10)
     claim_id = claim(TestClient(app))
 
     async def upload_six():
@@ -579,3 +580,41 @@ def test_no_more_photos_decode_at_once_than_the_limit(app, monkeypatch):
     responses = asyncio.run(upload_six())
     assert [r.status_code for r in responses] == [201] * 6
     assert most[0] == limits.REENCODE_AT_ONCE
+
+
+def test_one_account_has_at_most_so_many_photos_arriving_at_once(app, monkeypatch):
+    # The fifth pass, reasoned: each upload holds its body in memory, and
+    # nothing limited how many one account had in flight.
+    import asyncio
+    import time
+
+    import httpx
+
+    from steward_api.routes import claims as claims_routes
+
+    def slow(body):
+        time.sleep(0.3)
+        return JPEG
+
+    monkeypatch.setattr(claims_routes, "reencode", slow)
+    monkeypatch.setattr(limits, "PHOTO_UPLOADS_AT_ONCE", 2)
+    claim_id = claim(TestClient(app))
+
+    async def upload(http, who):
+        return await http.post(
+            f"/claims/{claim_id}/photos",
+            params={"phase": "extra"},
+            content=JPEG,
+            headers={**bearer(who), "Content-Type": "image/jpeg"},
+        )
+
+    async def burst():
+        transport = httpx.ASGITransport(app=app)
+        async with httpx.AsyncClient(transport=transport, base_url="http://test") as http:
+            return await asyncio.gather(*(upload(http, "claimer") for _ in range(5)))
+
+    codes = sorted(r.status_code for r in asyncio.run(burst()))
+    assert codes == [201, 201, 429, 429, 429]
+    assert app.state.sending == {}
+    # Once they finish, the account sends again.
+    assert photo(TestClient(app), claim_id, "extra").status_code == 201

@@ -312,7 +312,7 @@ export function fakeApi(): FakeApi {
       if (replaces && point !== null && replaces !== (current?.id ?? 'nothing'))
         throw new ApiError(
           412,
-          'Someone photographed this point again after this photo was taken, so it was not put over theirs',
+          'This point has a newer photo than this phone had seen when it took this one, so it was not put over it',
         )
       if (clientId) clientIds.add(`${id}/${clientId}`)
       claim.photos = claim.photos.filter(

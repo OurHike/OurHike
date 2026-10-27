@@ -8,7 +8,7 @@ queues photos (#1911); follow-up visits wait on a decision (§11). An adversaria
 on 2026-10-27 proved thirteen findings; re-checking the fixes, seven more; a third
 pass, two fixes that held only in part and six problems in the offline layer; and a
 fourth, that offline stopped working an hour after the signal went, and three smaller
-problems. All are fixed (§10). This file began as the
+problems. All are fixed, and a fifth pass found those fixes held (§10). This file began as the
 deliverable of **#1899 — Plan Campsite Steward, a separate app that ranks the A.T.
 campsites needing restoration and lets volunteers claim them**, written 2026-10-24 to
 2026-10-26 from a planning session with the maintainer: a first-pass analysis, then
@@ -728,6 +728,12 @@ The fourth pass found the third's fixes held, P2's in part, and four new problem
 
 It also moved the decode limit (N1) from a lock inside the worker thread to a limiter
 taken before one, so photos waiting to decode hold no thread another request needs.
+
+A fifth pass closed all four, through the app's own sign-in and claim screen with
+supabase-js and no signal, and against real uvicorn. Two notes from it are taken: one
+account may have at most 4 photos arriving at once (each holds its body in memory,
+and nothing limited them), and the 412 now says what the server knows (the point has
+a newer photo than the phone had seen), not which photo was taken first.
 
 ## 11. Still open
 

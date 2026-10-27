@@ -122,7 +122,7 @@ class UnusablePhoto(ValueError):
     pass
 
 
-def reencode(body: bytes) -> bytes:
+def reencode(body: bytes | bytearray) -> bytes:
     """The photo decoded and drawn again as a plain JPEG: upright, and carrying
     no metadata at all, because only pixels are copied into a fresh image.
 

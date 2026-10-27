@@ -85,6 +85,11 @@ PHOTOS_PER_CLAIM = 40
 CLIENT_ID_PATTERN = r"^[A-Za-z0-9_-]{1,64}$"
 #: What a queued photo's `replaces` may say: a photo id, or that its slot was empty.
 REPLACES_PATTERN = r"^(nothing|[0-9a-fA-F-]{36})$"
+#: Photos one account may have arriving at once (routes/claims._sending).
+#: Reasoned: the web app sends one at a time (web/src/offline.ts runs one send
+#: at a time, and the claim screen waits for each upload), so four leaves room
+#: for two phones on one account and refuses only a script.
+PHOTO_UPLOADS_AT_ONCE = 4
 #: Photos decoded at once, process-wide (main.create_app's limiter). Each holds
 #: its decoded pixels while it runs (about 13 MB at the size cap); the rest
 #: wait without holding a worker thread. `@unvalidated`: two keeps a second

@@ -34,6 +34,8 @@ import asyncio
 import hashlib
 import secrets
 import uuid
+from collections.abc import Iterator
+from contextlib import contextmanager
 from datetime import UTC, datetime, timedelta
 
 import anyio
@@ -390,35 +392,60 @@ async def upload_photo(
         raise HTTPException(
             status.HTTP_422_UNPROCESSABLE_CONTENT, "A before or after photo needs photo point 1 or 2; an extra needs none"
         )
-    already = await run_in_threadpool(_check_upload, request.app, store, user, claim_id, client_id, phase, point, replaces)
-    body = bytearray()
-    try:
-        async with asyncio.timeout(limits.PHOTO_READ_SECONDS):
-            chunks = request.stream().__aiter__()
-            while True:
-                try:
-                    chunk = await asyncio.wait_for(chunks.__anext__(), limits.PHOTO_IDLE_SECONDS)
-                except StopAsyncIteration:
-                    break
-                body.extend(chunk)
-                if len(body) > limits.PHOTO_MAX_BYTES:
-                    raise HTTPException(status.HTTP_413_CONTENT_TOO_LARGE, "That photo is too large")
-    except TimeoutError as exc:
+    with _sending(request.app, user.id):
+        already = await run_in_threadpool(_check_upload, request.app, store, user, claim_id, client_id, phase, point, replaces)
+        body = bytearray()
+        try:
+            async with asyncio.timeout(limits.PHOTO_READ_SECONDS):
+                chunks = request.stream().__aiter__()
+                while True:
+                    try:
+                        chunk = await asyncio.wait_for(chunks.__anext__(), limits.PHOTO_IDLE_SECONDS)
+                    except StopAsyncIteration:
+                        break
+                    body.extend(chunk)
+                    if len(body) > limits.PHOTO_MAX_BYTES:
+                        raise HTTPException(status.HTTP_413_CONTENT_TOO_LARGE, "That photo is too large")
+        except TimeoutError as exc:
+            raise HTTPException(
+                status.HTTP_408_REQUEST_TIMEOUT, "The photo took too long to arrive. Try again with a better signal."
+            ) from exc
+        if already is not None:
+            # Read in full all the same, so the phone gets its answer on a
+            # connection that finished cleanly rather than one cut off mid-send.
+            response.status_code = status.HTTP_200_OK
+            return already
+        try:
+            # The limiter is taken before a worker thread is, so photos waiting
+            # their turn to decode hold no thread another request needs.
+            jpeg = await anyio.to_thread.run_sync(reencode, body, limiter=request.app.state.reencoding)
+        except UnusablePhoto as exc:
+            raise HTTPException(status.HTTP_415_UNSUPPORTED_MEDIA_TYPE, str(exc)) from exc
+        return await run_in_threadpool(_store_photo, request.app, store, user, claim_id, phase, point, client_id, replaces, jpeg)
+
+
+@contextmanager
+def _sending(app: FastAPI, user_id: str) -> Iterator[None]:
+    """At most limits.PHOTO_UPLOADS_AT_ONCE photos arriving from one account at
+    a time, counted from before the body is read until the photo is stored.
+    Each holds its body in memory meanwhile, and nothing else limited how many
+    one account could have in flight (the adversarial review's fifth pass,
+    reasoned). Counted in this process: the check and the increment have no
+    await between them, so one event loop cannot interleave two. With more
+    than one instance, each counts its own."""
+    sending: dict[str, int] = app.state.sending
+    if sending.get(user_id, 0) >= limits.PHOTO_UPLOADS_AT_ONCE:
         raise HTTPException(
-            status.HTTP_408_REQUEST_TIMEOUT, "The photo took too long to arrive. Try again with a better signal."
-        ) from exc
-    if already is not None:
-        # Read in full all the same, so the phone gets its answer on a
-        # connection that finished cleanly rather than one cut off mid-send.
-        response.status_code = status.HTTP_200_OK
-        return already
+            status.HTTP_429_TOO_MANY_REQUESTS,
+            f"This account is already sending {limits.PHOTO_UPLOADS_AT_ONCE} photos. Try again when they finish.",
+        )
+    sending[user_id] = sending.get(user_id, 0) + 1
     try:
-        # The limiter is taken before a worker thread is, so photos waiting
-        # their turn to decode hold no thread another request needs.
-        jpeg = await anyio.to_thread.run_sync(reencode, bytes(body), limiter=request.app.state.reencoding)
-    except UnusablePhoto as exc:
-        raise HTTPException(status.HTTP_415_UNSUPPORTED_MEDIA_TYPE, str(exc)) from exc
-    return await run_in_threadpool(_store_photo, request.app, store, user, claim_id, phase, point, client_id, replaces, jpeg)
+        yield
+    finally:
+        sending[user_id] -= 1
+        if not sending[user_id]:
+            del sending[user_id]
 
 
 def _sent_before(db: Session, claim: Claim, user: StewardUser, client_id: str | None) -> bool:
@@ -436,7 +463,7 @@ def _check_slot(claim: Claim, phase: str, point: int | None, replaces: str | Non
     if replaces != (str(current.id) if current else "nothing"):
         raise HTTPException(
             status.HTTP_412_PRECONDITION_FAILED,
-            "Someone photographed this point again after this photo was taken, so it was not put over theirs",
+            "This point has a newer photo than this phone had seen when it took this one, so it was not put over it",
         )
 
 

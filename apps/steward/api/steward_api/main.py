@@ -47,6 +47,8 @@ def create_app(
     #: thread instead, a slow decode backed up into every other route (the
     #: adversarial review's fourth pass, reasoned).
     app.state.reencoding = anyio.CapacityLimiter(limits.REENCODE_AT_ONCE)
+    #: Photos arriving now, by account (routes/claims._sending).
+    app.state.sending = {}
 
     # Its own pool of one connection, so health checks never queue for a
     # connection a real request needs (the re-check's N6).

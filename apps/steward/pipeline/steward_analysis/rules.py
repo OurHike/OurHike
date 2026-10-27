@@ -11,6 +11,7 @@ invented numbers without a layer, a network or a DataFrame.
 
 from __future__ import annotations
 
+import math
 from dataclasses import dataclass
 
 # --- ATC's vocabulary, as the CSI layer spells it ---------------------------------------------------
@@ -156,24 +157,56 @@ NEAR_TRAIL_FT = 50
 BIG_COMPLEX = 4
 
 
+#: The weights by name, in the order need_parts() lists them.
+WEIGHT_NAMES = ("deficit", "water", "trail", "cluster", "restricted")
+
+
+def need_parts(site: SiteFacts) -> dict[str, float]:
+    """What each weight is multiplied by for this site: need is the sum of weight x part.
+
+    Written into sites.json beside the need itself, so the web app can re-rank
+    a club's sites under that club's own weights (#1906) by multiplying and
+    adding, with no second copy of the rules below to drift from this one.
+    All zero for a site already recovering, whose need is 0 whatever the weights.
+    """
+    if site.inventory_status in RECOVERING:
+        return dict.fromkeys(WEIGHT_NAMES, 0.0)
+    if site.water_ft < NEAR_WATER_FT:
+        water = 1.0
+    elif site.water_ft < WATER_FT:
+        water = 0.5
+    else:
+        water = 0.0
+    if site.complex_size >= BIG_COMPLEX:
+        cluster = 1.0
+    elif site.complex_size >= 2:
+        cluster = 0.5
+    else:
+        cluster = 0.0
+    return {
+        "deficit": (CSI_MAX - site.csi) / (CSI_MAX - CSI_MIN),
+        "water": water,
+        "trail": 1.0 if site.trail_ft < NEAR_TRAIL_FT else 0.0,
+        "cluster": cluster,
+        "restricted": 1.0 if site.site_type == USER_CREATED and site.camping_restricted else 0.0,
+    }
+
+
+def need_from_parts(parts: dict[str, float], weights: Weights = DEFAULT_WEIGHTS) -> int:
+    """0-100: the weighted sum, clamped, and rounded half up.
+
+    Half up rather than Python's round(), which rounds a half to the even
+    neighbour, because the web app does this same sum with JavaScript's
+    Math.round, which rounds a half up. A club's own weights can land a sum
+    on exactly .5 (a water weight of 13 gives 6.5), and the two must agree.
+    """
+    score = sum(getattr(weights, name) * parts[name] for name in WEIGHT_NAMES)
+    return math.floor(min(max(score, 0), 100) + 0.5)
+
+
 def need(site: SiteFacts, weights: Weights = DEFAULT_WEIGHTS) -> int:
     """0-100. Higher means more in need of work."""
-    if site.inventory_status in RECOVERING:
-        return 0
-    score = weights.deficit * (CSI_MAX - site.csi) / (CSI_MAX - CSI_MIN)
-    if site.water_ft < NEAR_WATER_FT:
-        score += weights.water
-    elif site.water_ft < WATER_FT:
-        score += weights.water / 2
-    if site.trail_ft < NEAR_TRAIL_FT:
-        score += weights.trail
-    if site.complex_size >= BIG_COMPLEX:
-        score += weights.cluster
-    elif site.complex_size >= 2:
-        score += weights.cluster / 2
-    if site.site_type == USER_CREATED and site.camping_restricted:
-        score += weights.restricted
-    return int(round(min(max(score, 0), 100)))
+    return need_from_parts(need_parts(site), weights)
 
 
 # --- Tiers ------------------------------------------------------------------------------------------

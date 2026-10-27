@@ -107,6 +107,17 @@ def test_sites_json_holds_every_site_with_its_location_grouped_by_club_then_need
     assert len(first_club) == 6 and first_club == sorted(first_club, reverse=True)
 
 
+def test_each_site_s_need_is_its_need_parts_under_the_default_weights(built):
+    # The web app re-ranks under a club's weights from need_parts alone (#1906), so
+    # under the defaults the parts must give back exactly the need the job wrote.
+    _, _, _, sites = built
+    scored = [s for s in sites if s["need_parts"] is not None]
+    assert scored
+    for s in scored:
+        assert list(s["need_parts"]) == list(rules.WEIGHT_NAMES)
+        assert rules.need_from_parts(s["need_parts"]) == s["need"], s["rims_id"]
+
+
 def test_sites_json_never_carries_atcs_photo_links(built):
     _, _, _, sites = built
     assert not any("photo" in str(k).lower() for s in sites for k in s)

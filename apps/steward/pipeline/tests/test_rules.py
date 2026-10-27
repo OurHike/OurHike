@@ -1,3 +1,4 @@
+import math
 from dataclasses import replace
 
 import pytest
@@ -142,3 +143,23 @@ def test_crew(changes, action, expected):
 )
 def test_regime_guess_marks_every_guess_with_a_question_mark(manager, designation, unit, expected):
     assert rules.regime_guess(manager, designation, unit) == expected
+
+
+def test_need_is_the_weighted_sum_of_need_parts_so_a_club_can_re_rank_without_the_rules():
+    site = replace(QUIET, csi=9, water_ft=150, trail_ft=20, complex_size=3)
+    parts = rules.need_parts(site)
+    assert parts == {"deficit": 21 / 27, "water": 0.5, "trail": 1.0, "cluster": 0.5, "restricted": 0.0}
+    club = rules.Weights(deficit=40, water=20, trail=0, cluster=16, restricted=10)
+    by_hand = 40 * 21 / 27 + 20 * 0.5 + 0 + 16 * 0.5 + 0
+    assert rules.need(site, club) == rules.need_from_parts(parts, club) == math.floor(by_hand + 0.5)
+
+
+def test_need_parts_are_all_zero_for_a_recovering_site():
+    parts = rules.need_parts(replace(QUIET, csi=3, inventory_status="Closed/Recovering"))
+    assert set(parts.values()) == {0.0}
+
+
+def test_need_from_parts_rounds_a_half_up_as_javascript_does_not_to_even_as_python_does():
+    # water 13, half of it within 200 ft: 6.5 exactly. round(6.5) is 6; Math.round(6.5) is 7.
+    parts = {"deficit": 0.0, "water": 0.5, "trail": 0.0, "cluster": 0.0, "restricted": 0.0}
+    assert rules.need_from_parts(parts, rules.Weights(water=13)) == 7

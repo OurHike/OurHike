@@ -148,11 +148,12 @@ def score(
     ]
     df["regime_reviewed"] = df["unit_name"].map(lambda n: camping_rules.get(n) if n else None)
 
-    actions, needs, tiers, crews = [], [], [], []
+    actions, needs, parts, tiers, crews = [], [], [], [], []
     for row in df.itertuples(index=False):
         if not row.complete:
             actions.append(rules.UNKNOWN)
             needs.append(0)
+            parts.append(None)
             tiers.append(None)
             crews.append(None)
             continue
@@ -168,13 +169,16 @@ def score(
             camping_restricted=_reviewed_restricted(row.regime_reviewed),
         )
         a = rules.action(facts)
-        n = rules.need(facts)
+        p = rules.need_parts(facts)
+        n = rules.need_from_parts(p)
         actions.append(a)
         needs.append(n)
+        parts.append(p)
         tiers.append(rules.tier(n, a))
         crews.append(rules.crew(facts, a))
     df["action"] = actions
     df["need"] = needs
+    df["need_parts"] = parts
     df["tier"] = tiers
     df["crew"] = crews
     return df
@@ -342,12 +346,26 @@ def site_records(df: pd.DataFrame) -> list[dict]:
                     else {"regime": row["regime_guess"], "source": "guess"}
                 ),
                 "need": int(row["need"]),
+                # What each of the five weights multiplies for this site, so a club's own
+                # weights re-rank it as sum(weight x part) (rules.need_parts). None where
+                # the site's assessment is incomplete and it has no need to re-rank.
+                "need_parts": _parts(row["need_parts"]),
                 "tier": _none(row["tier"]),
                 "action": _none(row["action"]),
                 "crew": _none(row["crew"]),
             }
         )
     return out
+
+
+def _parts(parts: dict | None) -> dict | None:
+    if not isinstance(parts, dict):
+        return None
+    # Not rounded. The deficit part is k/27, and any rounding of it can tip a
+    # weighted sum that lands on exactly .5 to the other side; written in full,
+    # the web app's sum (in rules.WEIGHT_NAMES order) is the same double this
+    # one is, and rounds the same way.
+    return {name: float(parts[name]) for name in rules.WEIGHT_NAMES}
 
 
 def _trail(found: dict | None) -> dict | None:

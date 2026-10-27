@@ -128,11 +128,14 @@ the decision put the point where those reads use up Render's and Supabase's free
 month at about 2,750 hikers. That figure is reasoned from usage inputs nobody has measured
 (how often the app opens with signal, how many bytes each open reads); the two 5 GB limits
 are the vendors' own. With the cache, this service sees at most one request per URL per
-edge location every five minutes, however many hikers ask.
+edge location every five minutes for the anonymous reads, however many hikers ask. Two
+things stretch "per URL": Cloudflare keeps a separate copy per `Origin` header value (the
+app's own two origins, in practice), and signed-in reads, below.
 
-**What it costs: $0,** on Cloudflare's free plan, in a zone that already exists: one CNAME
-and one cache rule, both in [LAUNCH_CHECKLIST.md](../LAUNCH_CHECKLIST.md) §6. Gzip is on in
-`app/main.py` for the same bill, since it cuts the bytes Render counts.
+**What it costs: $0,** on Cloudflare's free plan, in a zone that already exists: one CNAME,
+one cache rule, one WAF rule and the one rate-limiting rule the plan allows, all in
+[LAUNCH_CHECKLIST.md](../LAUNCH_CHECKLIST.md) §6. Gzip is on in `app/main.py` for the same
+bill, since it cuts the bytes Render counts.
 
 **What it leaves uncached, and what that costs.** `GET /field-notes` and
 `GET /waypoints/{poi_id}/photos` embed presigned photo URLs that expire five minutes after
@@ -146,11 +149,51 @@ the follow-up that removes the trade: a stable photo route like reports already 
 list carries no signature, which is
 [#1905 — GET /field-notes embeds 5-minute signed photo links, so the edge cache cannot keep it and every hiker's app open still reaches the API](https://github.com/OurHike/OurHike/issues/1905).
 
+**Signed-in reads are the open question.** The app sends a signed-in hiker's token on all
+three shared reads (`readFetch` in `client/src/lib/api.ts`), and the API answers any request
+carrying one `private, no-store`. Cloudflare's docs say what it stores in that case, not
+whether it answers such a request from the anonymous copy it already holds, and §6 step 7's
+last check finds out. If it does, nothing private leaks, because the anonymous copy holds
+less, but a reporter's own queued report drops out of their app for up to 300 s. If it does
+not, every signed-in hiker's reads reach this service, so the origin carries the signed-in
+share of all reads (1 in 5 hikers sign in, in the cost model, @unvalidated) on top of the
+edge's misses. The fix is a client change, so it ships with a release:
+[#1916 — A signed-in hiker's app sends its token on the three edge-cached reads, so they either skip the cache or hide the hiker's own queued report](https://github.com/OurHike/OurHike/issues/1916).
+
 **What would undo it.** Narrowing CORS from `*` (a shared copy can carry only one answer),
 or a cache rule that stops honouring the origin's `Cache-Control`. The second is the one to
 watch: `cf-cache-status: HIT` on a repeated anonymous `GET /closures` is the check. §6
-step 7 runs it once by hand, and `pipeline/check_deployment.py` asks it every day: it
-fills a copy with no `Origin`, as curl or a crawler would, and reads it back as a browser.
+step 7 runs it once by hand, and `pipeline/check_deployment.py` asks it every day, the way
+a hiker's browser does, with the app's own `Origin`.
+
+## What a stranger can do to the free tier
+
+**The 5 GB a month is a ceiling a stranger can reach on purpose,** and the edge cache does
+not stop them. It only takes the anonymous hikers' reads off the meter. Every route the
+edge does not keep still answers each request from Render. `/openapi.json` is 59,426 bytes
+gzipped (257,105 raw, measured 2026-10-27 against this branch), so about 84,000 requests
+spend Render's month, and `GET /field-notes` grows with the season. The cache's own key can
+be varied too: Cloudflare keeps a copy per `Origin` value and per a few other headers, and
+only Enterprise can change that. §6 closes the cheap routes round it: the `onrender.com`
+address off, any query string on the three cached paths refused, and one address held to 50
+requests in 10 seconds on the API's own paths. The plan's rate limit cannot test the
+hostname, so it names the API's paths rather than all of them: a rule over every path would
+also count `data.ourhike.org`, where every hiker's map downloads come from. Many addresses
+at once still get through.
+
+**What reaching it costs depends on one setting, and the choice is the maintainer's.**
+- **No card on file:** Render suspends every free service for the rest of the month
+  (`render.com/docs/free`). Hikers keep the map, and the published baseline still carries
+  the closures already verified. But reports wait in outboxes, and no new closure can be
+  verified, so `conditions/closures.json` gains nothing until the next month. On the
+  safety read, that is the cost.
+- **A card on file:** the same stranger costs $0.15 per GB past the first 5. That is
+  arithmetic, not a forecast: 100 GB is $15, and the total is bounded only by their
+  patience. Render's spend controls for bandwidth have not been read here.
+
+Either way, the daily check sees it within a day, on **#738 — Deployed app reachability**:
+`/health` failing, and the edge check reporting what it reached. Billing alerts are
+**#395 — Put a ceiling on the bill before the app is public**.
 
 ## Which build is serving, and why the release order depends on it
 

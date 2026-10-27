@@ -459,8 +459,9 @@ What is left is account work, in this order. Secrets never pass through a sessio
    | Instance type | Free | |
    | Health Check Path | `/health` | Not `/ready`: a check that needs the database turns a database outage into a restart loop (`backend/app/main.py`). |
    | Auto-Deploy | on every commit to `main` | |
+   | PR Previews | Off | Render copies the service's environment into a preview, "database connection information" included (render.com/docs/service-previews, read 2026-10-27), so a preview of an unmerged branch would run against the production database. |
 
-   Do not add a card yet. With no card, going past the free 5 GB of outbound bandwidth suspends the service for the rest of the month instead of billing for it (backend/HOSTING.md; #395 — Put a ceiling on the bill before the app is public).
+   Leave the card off until you have made step 8's choice. With no card, going past the free 5 GB of outbound bandwidth suspends the service for the rest of the month instead of billing for it (backend/HOSTING.md; #395 — Put a ceiling on the bill before the app is public).
 
 2. **Set the environment** in the service's **Environment** tab. Never committed, never baked into the image:
    ```
@@ -479,13 +480,52 @@ What is left is account work, in this order. Secrets never pass through a sessio
 4. **Give it its domain.** Render's own Cloudflare instructions (render.com/docs/configure-cloudflare-dns, read 2026-10-23):
    1. Render → the service → **Settings → Custom Domains** → add `api.ourhike.org`.
    2. Cloudflare → `ourhike.org` → **DNS** → add a `CNAME` named `api`, target `ourhike-api.onrender.com`, **Proxy status: DNS only** (grey cloud). Render has to reach the record itself to issue the certificate, and a proxied record blocks that. Add no `AAAA` record: Render does not serve IPv6.
-   3. Once Render shows the certificate as issued, switch the record to **Proxied** (orange cloud). Cloudflare must then reach Render over HTTPS, which needs SSL/TLS mode **Full** or **Full (strict)**. If the zone is on Flexible, leave the zone alone (the apex points at GitHub Pages, 3b) and add a **Configuration Rule** for hostname `api.ourhike.org` that sets SSL to Full.
+   3. Once Render shows the certificate as issued, switch the record to **Proxied** (orange cloud). Cloudflare then has to reach Render over HTTPS and check the certificate it is shown: SSL/TLS mode **Full (strict)**. Render's certificate for `api.ourhike.org` is real by this point, and plain **Full** would accept any certificate on the hop that carries hikers' tokens. If the zone is set to anything else, leave the zone alone (the apex points at GitHub Pages, 3b) and add a **Configuration Rule** for hostname `api.ourhike.org` that sets SSL to **Strict**. If Render's certificate ever fails to renew while proxied, strict mode answers 526 rather than carrying on unchecked, and the daily check in step 6 goes red.
+   4. Once step 7's first line answers through `api.ourhike.org`, turn the `onrender.com` address off: Render → the service → **Settings → Custom Domains → Render Subdomain → Disabled** (render.com/docs/custom-domains, read 2026-10-27; that page does not say whether a Free instance offers it). Requests to `ourhike-api.onrender.com` then get a 404 from Render and never reach the service, so nothing in step 5 can be walked round. Render's own health check is unaffected: it sends the custom domain as its `Host`.
 
-5. **Turn on the edge cache.** Cloudflare → `ourhike.org` → **Caching → Cache Rules → Create rule**:
-   - **When** the hostname equals `api.ourhike.org`
-   - **Then** *Eligible for cache*; Edge TTL *Use cache-control header if present, bypass cache if not*; Browser TTL *Respect origin*.
+5. **Turn on the edge cache, and close the ways round it.** Cloudflare → `ourhike.org`:
+   1. **Caching → Cache Rules → Create rule.** Edit the expression by hand:
+      ```
+      (http.host eq "api.ourhike.org" and http.request.method eq "GET" and http.request.uri.path in {"/closures" "/reports" "/disputes"})
+      ```
+      **Then** *Eligible for cache*; Edge TTL *Use cache-control header if present, bypass cache if not*; Browser TTL *Respect origin*. **Never** choose *Ignore cache-control header and use this TTL* or a *Status code TTL*: Cloudflare caches a `no-store` response under either (developers.cloudflare.com/cache/troubleshooting/investigating-uncached-responses, read 2026-10-27). That is why the rule names these three paths rather than the whole hostname: the API answers them `public, max-age=0, s-maxage=300`, a signed-in caller `private, no-store`, and everything else `no-store` (`backend/app/core/edge_cache.py`), and a mistake in this rule can then reach nothing else.
+   2. **Security → WAF → Custom rules → Create rule**, action **Block**:
+      ```
+      (http.host eq "api.ourhike.org" and http.request.method eq "GET" and http.request.uri.path in {"/closures" "/reports" "/disputes"} and http.request.uri.query ne "")
+      ```
+      The app never sends a query string to these three (`client/src/lib/api.ts`), and Cloudflare keeps a separate copy per query string, so `?n=1`, `?n=2` and so on would each reach Render and Supabase. A Free plan cannot tell the cache to ignore it: Cloudflare offers that option to Enterprise and pay-as-you-go plans (developers.cloudflare.com/cache/how-to/cache-rules/settings, read 2026-10-27).
+   3. **Security → WAF → Rate limiting rules → Create rule.** Free allows one rule, counting by IP over 10 seconds, and its expression may test the path but not the hostname (developers.cloudflare.com/waf/rate-limiting-rules, read 2026-10-27). So the rule applies to every hostname in the zone, `data.ourhike.org` included: an R2 custom domain gets the zone's WAF (developers.cloudflare.com/r2/buckets/public-buckets, read 2026-10-27). That host serves every hiker's map downloads and conditions files, and many hikers can share one address behind a mobile carrier's NAT. A rule there would refuse the map to a town full of them. **Never match every path.** Match the API's own first path segments, which no path on `data.ourhike.org`, `docs.ourhike.org` or `ourhike.org` begins with (checked 2026-10-27 against the route table, `pipeline/publish.py`'s keys and `site/`):
+      ```
+      (starts_with(http.request.uri.path, "/app-failures")
+       or starts_with(http.request.uri.path, "/assist")
+       or starts_with(http.request.uri.path, "/challenges")
+       or starts_with(http.request.uri.path, "/closures")
+       or starts_with(http.request.uri.path, "/clubs")
+       or starts_with(http.request.uri.path, "/console")
+       or starts_with(http.request.uri.path, "/day-hikes")
+       or starts_with(http.request.uri.path, "/disputes")
+       or starts_with(http.request.uri.path, "/docs")
+       or starts_with(http.request.uri.path, "/field-notes")
+       or starts_with(http.request.uri.path, "/health")
+       or starts_with(http.request.uri.path, "/hikes")
+       or starts_with(http.request.uri.path, "/maintainer-assignments")
+       or starts_with(http.request.uri.path, "/moderation")
+       or starts_with(http.request.uri.path, "/nominations")
+       or starts_with(http.request.uri.path, "/openapi.json")
+       or starts_with(http.request.uri.path, "/preferences")
+       or starts_with(http.request.uri.path, "/profiles")
+       or starts_with(http.request.uri.path, "/ready")
+       or starts_with(http.request.uri.path, "/redoc")
+       or starts_with(http.request.uri.path, "/reports")
+       or starts_with(http.request.uri.path, "/ridge-runner")
+       or starts_with(http.request.uri.path, "/trips")
+       or starts_with(http.request.uri.path, "/volunteer-hours")
+       or starts_with(http.request.uri.path, "/waypoints")
+       or starts_with(http.request.uri.path, "/workdays"))
+      ```
+      Then more than **50 requests in 10 seconds** from one IP → **Block** for 10 seconds. @unvalidated: 50 is picked to sit well above an app open (4 reads) plus an outbox flush of a few reports with up to 6 photos each, and the outbox retries after a refusal anyway. A week of real request logs would settle it. The shared-address case applies here too: a block costs the hikers behind one address 10 seconds of live reads, while their app shows the published baseline. A route added under a new first segment is outside the rule until it is added here. If the editor refuses the expression, leave rate limiting off: a rule that can catch the map is worse than no rule.
 
-   The rule hands the decision to the API. Three routes answer `public, max-age=0, s-maxage=300`, a signed-in caller gets `private, no-store`, and every other response says `no-store` (`backend/app/core/edge_cache.py`), so a rule set more loosely than this still cannot keep a signed photo URL or anybody's own data. If Cloudflare's labels have moved, the intent is: honour the origin's `Cache-Control`, and cache nothing that sends none.
+   What these leave open, stated so it is not assumed closed: Cloudflare's cache key also includes the `Origin` header and a few others, and only Enterprise can change which headers count. A stranger can vary those, or spread requests over many addresses, and reach the origin anyway. backend/HOSTING.md says what that can cost and the choice it leaves you. If Cloudflare's labels have moved, the intent of all three is: cache these three reads by the origin's `Cache-Control` and nothing else; refuse a query string on them; slow down one address that floods.
 
 6. **Point the client at it**: set the `API_BASE_URL` repository variable to `https://api.ourhike.org`. `pages.yml` bakes it into the next build, and production builds from a tag (RELEASING.md §12), so hikers reach the backend from the next release onward. The app's Content-Security-Policy picks the origin up from the same variable (`client/scripts/csp.mjs`), so there is nothing to add there. Nothing goes on Supabase's redirect allow-list either: sign-in returns to the app's origin, never to the API's. `UA_API_BASE_URL` stays unset, and UA keeps queueing reports in its outbox, which `.github/expected-settings.yml` describes as a normal state.
 
@@ -498,13 +538,18 @@ What is left is account work, in this order. Secrets never pass through a sessio
    curl -sS https://api.ourhike.org/closures   # [] - the tables are there
    curl -sS -o /dev/null -D - https://api.ourhike.org/closures | grep -iE 'cache-control|cf-cache-status|access-control-allow-origin'
    ```
-   Run the last line twice. The second answer should carry `cf-cache-status: HIT`, `cache-control: public, max-age=0, s-maxage=300` and `access-control-allow-origin: *`. Then once with a token-shaped header, which must never be served from the cache:
+   Run the last line twice. The second answer should carry `cf-cache-status: HIT`, `cache-control: public, max-age=0, s-maxage=300` and `access-control-allow-origin: *`. Then check that the ways round the cache are shut:
+   ```
+   curl -sS -o /dev/null -w '%{http_code}\n' 'https://api.ourhike.org/closures?n=1'   # 403 - step 5.2's rule
+   curl -sS -o /dev/null -w '%{http_code}\n' https://ourhike-api.onrender.com/health  # 404 - step 4.4, if Render offered it
+   ```
+   Then once with a token-shaped header:
    ```
    curl -sS -o /dev/null -D - -H 'Authorization: Bearer x' https://api.ourhike.org/closures | grep -iE 'cache-control|cf-cache-status'
    ```
-   That should say `private, no-store`, with a `cf-cache-status` other than `HIT`. A healthy `/health` beside a 500 on `/closures` reading `UndefinedTable: relation "closures" does not exist` means the database behind `DATABASE_URL` is not the migrated one.
+   This answer says which of two things Cloudflare does with a signed-in read, which its docs do not settle. A `cf-cache-status` of `HIT` means it served the stored anonymous copy: nothing private leaks, because the anonymous copy holds less, but a reporter's own queued report is missing from their app for up to 300 s. Anything else means signed-in reads pass straight through to Render, and the API's own `private, no-store` is on the answer. backend/HOSTING.md says what each costs. A healthy `/health` beside a 500 on `/closures` reading `UndefinedTable: relation "closures" does not exist` means the database behind `DATABASE_URL` is not the migrated one.
 
-8. **Keep the bill bounded**, which is #395 — Put a ceiling on the bill before the app is public: no card on Render until you choose Starter, and Supabase's spend cap on.
+8. **Keep the bill bounded**, which is #395 — Put a ceiling on the bill before the app is public: Supabase's spend cap on, and decide whether Render gets a card. Without one, a stranger who spends the free 5 GB suspends the API until the next month; with one, the same stranger costs $0.15 a GB. backend/HOSTING.md, "What a stranger can do to the free tier", is that choice in full.
 
 **Expect a cold start.** The service sleeps after 15 minutes idle, and Render says the first request after that takes about a minute. Cloudflare waits up to 100 seconds for an origin, so a cold start fits; a request that takes longer is answered 524, and a report caught by it goes back in the outbox. Every remaining caller tolerates the wait — reports wait in the outbox, moderation is a person at a desk, and closures do not come from here at all any more — with one visible exception: opening a report photo after a quiet period will wait.
 

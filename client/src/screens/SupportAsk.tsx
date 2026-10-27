@@ -23,9 +23,12 @@
 // travels by email, which Apple's 3.1.3 allows and its 3.1.1(a) and Google's
 // Payments policy do not allow in the app. See lib/support.ts for the sources.
 //
-// NO PROVIDER IS NAMED HERE. Which provider takes the money is the backend's
-// setting (app/core/support_providers/), and copy that named one would turn
-// a provider move into a release - the #1885 architecture review.
+// ONE PROVIDER NAME, ON ONE BUTTON. Which provider takes the money is the
+// backend's setting (app/core/support_providers/), so the rest of this copy
+// says "payment page" (the #1885 architecture review). The website app's pay
+// button keeps "Continue to Buy Me a Coffee" by the maintainer's choice
+// (2026-10-27), so a hiker knows where the button sends them. Moving provider
+// means changing that one string; the store apps never show it.
 
 import { useState } from 'react'
 import { Capacitor } from '@capacitor/core'
@@ -279,7 +282,7 @@ export function SupportAsk({
               ? 'Sign in to continue'
               : native
                 ? 'Email me how to set it up'
-                : 'Continue to payment'}
+                : 'Continue to Buy Me a Coffee'}
           </button>
           <button
             type="button"

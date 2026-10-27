@@ -98,7 +98,9 @@ describe('the day-5 ask', () => {
     await userEvent.click(screen.getByRole('radio', { name: /^\$10 a year/ }))
     await userEvent.click(screen.getByRole('button', { name: 'Continue' }))
     await userEvent.click(screen.getByRole('checkbox', { name: /yearly accounting/ }))
-    await userEvent.click(screen.getByRole('button', { name: 'Continue to payment' }))
+    await userEvent.click(
+      screen.getByRole('button', { name: 'Continue to Buy Me a Coffee' }),
+    )
 
     expect(props.choose).toHaveBeenCalledWith({
       amount_cents: 1000,
@@ -121,17 +123,21 @@ describe('the day-5 ask', () => {
     })
     await userEvent.click(screen.getByRole('radio', { name: /^\$10 a year/ }))
     await userEvent.click(screen.getByRole('button', { name: 'Continue' }))
-    await userEvent.click(screen.getByRole('button', { name: 'Continue to payment' }))
+    await userEvent.click(
+      screen.getByRole('button', { name: 'Continue to Buy Me a Coffee' }),
+    )
 
     expect(props.navigate).not.toHaveBeenCalled()
     expect(await screen.findByRole('alert')).toHaveTextContent(/nothing was charged/)
   })
 
-  it('names no payment provider on the website either', async () => {
+  it('names the payment provider on the website pay button and nowhere else', async () => {
     setup()
     await userEvent.click(screen.getByRole('radio', { name: /^\$10 a year/ }))
     await userEvent.click(screen.getByRole('button', { name: 'Continue' }))
-    expect(screen.queryByText(/Buy Me a Coffee/)).not.toBeInTheDocument()
+    expect(screen.getAllByText(/Buy Me a Coffee/)).toEqual([
+      screen.getByRole('button', { name: 'Continue to Buy Me a Coffee' }),
+    ])
   })
 
   it('in the store apps, never names a checkout: the setup link goes by email', async () => {
@@ -173,7 +179,9 @@ describe('the day-5 ask', () => {
     setup({ choose: vi.fn().mockRejectedValue(new Error('offline')) })
     await userEvent.click(screen.getByRole('radio', { name: /^\$1 a year/ }))
     await userEvent.click(screen.getByRole('button', { name: 'Continue' }))
-    await userEvent.click(screen.getByRole('button', { name: 'Continue to payment' }))
+    await userEvent.click(
+      screen.getByRole('button', { name: 'Continue to Buy Me a Coffee' }),
+    )
 
     expect(await screen.findByRole('alert')).toHaveTextContent(/nothing was charged/)
   })

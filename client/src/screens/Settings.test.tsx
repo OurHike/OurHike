@@ -651,6 +651,77 @@ describe('SafetyPrivacySettings', () => {
         location_permission_requested: false,
       })
     })
+
+    it('no longer promises the fix is sent nowhere, now that usage statistics carry it sealed', () => {
+      render(<SafetyPrivacySettings {...PROPS} />)
+
+      expect(screen.queryByText(/sent nowhere unless you file a report/i)).toBeNull()
+      expect(screen.getByText(/sealed inside usage statistics/i)).toBeInTheDocument()
+    })
+  })
+
+  describe('usage statistics (#1902)', () => {
+    // The two switches the maintainer placed here on 2026-10-27 (poll 3,
+    // frame A), under the location switch the first one depends on.
+
+    it('shares usage statistics by default, the split consent the maintainer chose', () => {
+      render(<SafetyPrivacySettings {...PROPS} />)
+
+      expect(
+        screen.getByRole('checkbox', { name: /share usage statistics/i }),
+      ).toBeChecked()
+    })
+
+    it('says the position goes sealed and is kept six months, before the hiker decides', () => {
+      render(<SafetyPrivacySettings {...PROPS} />)
+
+      expect(
+        screen.getByText(/sealed so our servers cannot read it\. kept six months/i),
+      ).toBeInTheDocument()
+    })
+
+    it('turns sharing off with one tap', async () => {
+      const user = userEvent.setup()
+      render(<SafetyPrivacySettings {...PROPS} />)
+
+      await user.click(screen.getByRole('checkbox', { name: /share usage statistics/i }))
+
+      expect(PROPS.onChange).toHaveBeenCalledWith({ measurement_enabled: false })
+    })
+
+    it('reads an unanswered link question as not linked', () => {
+      render(<SafetyPrivacySettings {...PROPS} />)
+
+      expect(
+        screen.getByRole('checkbox', { name: /link them to my account/i }),
+      ).not.toBeChecked()
+    })
+
+    it('cannot link anything while sharing itself is off', () => {
+      render(
+        <SafetyPrivacySettings
+          {...PROPS}
+          preferences={{
+            ...DEFAULT_PREFERENCES,
+            measurement_enabled: false,
+            measurement_linked: true,
+          }}
+        />,
+      )
+
+      const link = screen.getByRole('checkbox', { name: /link them to my account/i })
+      expect(link).toBeDisabled()
+      expect(link).not.toBeChecked()
+    })
+
+    it('links the account when the hiker ticks it', async () => {
+      const user = userEvent.setup()
+      render(<SafetyPrivacySettings {...PROPS} />)
+
+      await user.click(screen.getByRole('checkbox', { name: /link them to my account/i }))
+
+      expect(PROPS.onChange).toHaveBeenCalledWith({ measurement_linked: true })
+    })
   })
 })
 

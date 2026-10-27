@@ -90,6 +90,7 @@ import {
   HikePicker,
   HikeSetup,
   IdentitySetup,
+  UsageLinkQuestion,
   InstallPrompt,
   MapScreen,
   Moderation,
@@ -542,6 +543,9 @@ import {
   type MileRange,
 } from './lib/walkedMiles'
 import { clubRunAtMile, clubTimeline } from './lib/clubSections'
+import { clubAtTrailMile } from './lib/usageEvents'
+import { hikeExtent, planExtent } from './lib/usagePlans'
+import { type UsageMeasurement, useUsageMeasurement } from './lib/useUsageMeasurement'
 import {
   clearPlannedHike,
   hikeSummary,
@@ -936,6 +940,13 @@ function App() {
   // `selectTab` already - and the navigator's tests hold both courtesies.
   const nav = useNavigator<BailAsk>()
   const activeTab = nav.tab
+  /**
+   * Usage measurement's two plan calls (#1902), reached through a ref because
+   * the handlers that make and finish plans are declared well above the hook
+   * that answers them (`useUsageMeasurement`, beside `maintainerLine`), and a
+   * ref is the one thing they can hold without a dependency they cannot list.
+   */
+  const usageRef = useRef<UsageMeasurement | null>(null)
   const {
     selectTab,
     navigate,
@@ -2081,6 +2092,10 @@ function App() {
   // order updatePreferences uses, and for the same reason.
   const handleSaveHike = useCallback(async (next: PlannedHike) => {
     await savePlannedHike(next)
+    // Every save counts as a plan made, an edit included: a planned hike is
+    // two miles and no identity, so an edit and a new plan cannot be told
+    // apart here (#1902).
+    usageRef.current?.planMade({ fromMile: next.startMile, toMile: next.endMile })
     setHike(next)
     setPickingHike(false)
   }, [])
@@ -3177,9 +3192,11 @@ function App() {
    * gate and the arithmetic; this is only the pair of fixes it needs.
    *
    * NOTHING IS UPLOADED, and that is the design rather than an omission.
-   * features/EVENTING.md rule 2 forbids geography in the event pipe - "no
+   * features/EVENTING.md rule 2 forbade geography in the event pipe - "no
    * coordinates, no mile, no segment id, no POI id, no region" - and the rule
    * above needs none of it, because the phone is asking about its own fixes.
+   * (Rule 2 was reversed for usage events on 2026-10-27, #1902: they carry a
+   * sealed fix. This record is not one of them and still uploads nothing.)
    * What is kept is the ANSWER (mile intervals, merged) and never the evidence:
    * no coordinates, no timestamps, no ordering, so what sits on the device
    * cannot be replayed into a route down the corridor the way a fix log can.
@@ -3733,6 +3750,46 @@ function App() {
       : `Maintained by the ${run.club.name}.`
   }, [belowSeam, camera, trailIndex, clubRuns])
 
+  /**
+   * Usage measurement (#1902, features/EVENTING.md §0). One hook: it notices
+   * installs, sign-ins, sessions, screens and the map coming into view itself,
+   * and the plan handlers above call `usageRef.current` for the other two.
+   * The club at a point is the legend's own answer, the A.T. mile under it and
+   * who maintains that mile, so a map view and the legend never disagree.
+   */
+  const usageClubAt = useCallback(
+    (lon: number, lat: number) => {
+      if (trailIndex === null) return null
+      const mile = mileOnTrail(trailIndex, { lon, lat })
+      return mile === null ? null : clubAtTrailMile(clubRuns, mile)
+    },
+    [trailIndex, clubRuns],
+  )
+  const [askingUsageLink, setAskingUsageLink] = useState(false)
+  const askAboutUsageLink = useCallback(() => setAskingUsageLink(true), [])
+  const usage = useUsageMeasurement({
+    ready: preferencesLoaded,
+    enabled: preferences.measurement_enabled,
+    linked: preferences.measurement_linked === true && account !== null,
+    newInstall: !preferences.onboarding_completed,
+    signedIn: account !== null,
+    online,
+    reportsWaiting: queuedCount,
+    screen: JSON.stringify([activeTab, nav.top]),
+    mapInView: mapShownNow,
+    heldFix:
+      gps.status === 'located'
+        ? { lat: gps.at.lat, lon: gps.at.lon, accuracy: gps.accuracyM, at: gps.fixedAt }
+        : null,
+    mapCentre: camera === null ? null : camera.center,
+    clubAtPoint: usageClubAt,
+    clubRuns,
+    onSignIn: askAboutUsageLink,
+  })
+  useEffect(() => {
+    usageRef.current = usage
+  }, [usage])
+
   /** Closes the legend. A named callback rather than an inline arrow because
    *  the tapped-line feature holds it too - any tap that opens a sheet puts
    *  the legend away - and a new function each render would have re-made that
@@ -4187,6 +4244,7 @@ function App() {
    */
   const handleLayOutSection = useCallback(
     (plan: HikePlan) => {
+      usageRef.current?.planMade(planExtent(plan))
       applyTripStore((store) => {
         const added = addTrip(store, plan)
         const id = added.openId
@@ -4653,6 +4711,7 @@ function App() {
 
   const handleFinishHike = useCallback(() => {
     if (activeHike === null) return
+    usageRef.current?.planCompleted(hikeExtent(activeHike))
     applyTripStore((store) => finishHike(store, activeHike.id, localDay(now)))
     closeStepAway()
     // Offered, never declared - and this IS the hiker saying so, so the
@@ -4912,6 +4971,7 @@ function App() {
         ? { ...hikeDraft, name: hikeNameFromEnds(hikeDraft, pois) }
         : { ...hikeDraft, name: hikeDraft.name.trim() }
     const started: Hike = { ...named, status: 'walking' }
+    usageRef.current?.planMade(hikeExtent(started))
     applyTripStore((store) => setActiveHike(addHike(store, started), started.id))
     setHikeDraft(null)
     setHikeSheet(null)
@@ -5803,9 +5863,12 @@ function App() {
       // in the list - so the shelf does not reorder under a hiker who
       // changed one stop. A record deleted on another phone meanwhile is
       // simply saved again: the hiker has the route in hand and asked for it.
-      const hikes = store.hikes.some((saved) => saved.id === hike.id)
-        ? store.hikes.map((saved) => (saved.id === hike.id ? hike : saved))
-        : [...store.hikes, hike]
+      const isNew = !store.hikes.some((saved) => saved.id === hike.id)
+      if (isNew && hike.recorded === 'planned')
+        usageRef.current?.planMade({ miles: hike.figures.miles })
+      const hikes = isNew
+        ? [...store.hikes, hike]
+        : store.hikes.map((saved) => (saved.id === hike.id ? hike : saved))
       // The saved card is where Save lands (#1373, frame 5c): the record
       // opens on the Plan tab with "Walk this" and the line saying where it
       // now lives, rather than the map with nothing on it. `openId` used to
@@ -6016,6 +6079,8 @@ function App() {
   const saveSuggestedHike = useCallback((hike: SuggestedHike) => {
     void loadDayHikes().then((store) => {
       const already = savedFromSource(store.hikes, hike.id)
+      if (already === undefined) usageRef.current?.planMade({ miles: hike.miles })
+      else usageRef.current?.planCompleted({ miles: already.figures.miles })
       const today = new Date().toISOString().slice(0, 10)
       const hikes =
         already === undefined
@@ -6269,6 +6334,9 @@ function App() {
     if (id === null) return
     const today = localDay(new Date())
     void loadDayHikes().then((store) => {
+      const walked = store.hikes.find((hike) => hike.id === id)
+      if (walked !== undefined)
+        usageRef.current?.planCompleted({ miles: walked.figures.miles })
       const next = {
         hikes: store.hikes.map((hike) => (hike.id === id ? logWalk(hike, today) : hike)),
         openId: id,
@@ -6285,6 +6353,9 @@ function App() {
   const finishOpenWalk = useCallback(
     (id: string, day: string) => {
       void loadDayHikes().then((store) => {
+        const walked = store.hikes.find((hike) => hike.id === id)
+        if (walked !== undefined)
+          usageRef.current?.planCompleted({ miles: walked.figures.miles })
         const next = {
           ...store,
           hikes: store.hikes.map((hike) => (hike.id === id ? logWalk(hike, day) : hike)),
@@ -7204,6 +7275,7 @@ function App() {
   const handleLayOut = useCallback(
     (next: HikePlan) => {
       const tripId = targetRequest?.tripId ?? null
+      if (tripId === null) usageRef.current?.planMade(planExtent(next))
       applyTripStore((store) =>
         tripId === null ? addTrip(store, next) : updateTrip(store, tripId, next),
       )
@@ -9710,6 +9782,19 @@ function App() {
       <IdentitySetup
         onSave={handleSaveIdentity}
         onSkip={() => setCollectingIdentity(false)}
+      />
+    )
+  } else if (askingUsageLink && preferences.measurement_linked === null) {
+    // Asked once, after a sign-in this app started (#1902), and after the
+    // identity question when both are due - that one is about the report the
+    // hiker just wrote. Either answer is final until changed on Safety &
+    // privacy; a phone that synced an answer from another never asks.
+    flowScreen = (
+      <UsageLinkQuestion
+        onAnswer={(linked) => {
+          updatePreferences({ measurement_linked: linked })
+          setAskingUsageLink(false)
+        }}
       />
     )
   } else if (reportingFailure) {

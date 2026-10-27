@@ -35,12 +35,12 @@ Companion to [FEATURE_GATING.md](FEATURE_GATING.md), [IDENTITY_AND_PRIVACY.md](I
 
 | Event | Sent when | What it may carry besides the common fields |
 |---|---|---|
-| `app_installed` | the first launch of an install, as the app can see it. A store install is counted by the stores; a reinstall or cleared storage counts again here | — |
-| `user_login` | a sign-in completes | club at the fix |
-| `hike_plan_made` | a long hike, a section, a day hike or a saved route is newly planned | `miles`, clubs split by miles |
-| `hike_plan_completed` | a long hike is finished, or a day hike's walk is logged | `miles`, clubs split by miles |
+| `app_installed` | the first launch of an install that had not finished first run, as the app can see it. A store install is counted by the stores, and a reinstall or cleared storage counts again here. An install that predates measurement is not counted, and neither is its first event | — |
+| `user_login` | a sign-in **this app started** finishes (`client/src/lib/signInMarker.ts`). A session restored at launch is not a sign-in, and neither is supabase-js's `SIGNED_IN`, which also fires when a tab regains focus | club at the fix |
+| `hike_plan_made` | a long hike is started, a section or trip is laid out (new ones only), a day hike or suggested route is newly saved, or the planned A.T. hike is saved. That last one counts every save, edits included, because a planned hike has no identity to tell an edit from a new plan | `miles`; clubs split by miles where the plan is on the A.T. |
+| `hike_plan_completed` | a long hike is finished, or a day hike's walk is logged, including a saved route walked again | `miles`; clubs split by miles where the plan is on the A.T. |
 | `map_screen_viewed` | the map comes into view, once per arrival | club at the map's centre |
-| `session` | a visit ends: the app hidden, or 30 minutes idle | `pageviews` (screens shown), `session_length` in four buckets, club at the fix |
+| `session` | a visit is over: the app out of sight for more than 30 minutes, or found unfinished at the next launch because the phone killed it | `pageviews` (screens shown), `session_length` in four buckets, club at the fix |
 
 **Common fields on every row:**
 - the phone-minted id
@@ -144,6 +144,8 @@ The same role can build the report. It cannot run `open`, by design; that needs 
 - **Positions are collected from anywhere, including homes.** That is the trail-only package declined in poll 2. A home is the place that names a person fastest, which is why opening a sealed row is logged.
 - **Positions are collected from hikers who said no to linking**, sealed and without an account. That is the yes-only package declined in poll 2. The question after sign-in says "either way" for this reason.
 - **Clubs are shown by their ids** (`NYNJTC`, `GATC`). The report has no names table.
+- **Only A.T. miles get a club.** A day hike or any plan on another trail is counted by its length with no club. Its club would be the organization that publishes that trail, which the app does not yet look up. A map view or session off the A.T. corridor (more than 3 miles from its centreline, `MAX_OFF_TRAIL_MILES`) has no club either.
+- **Hikers already signed in when this ships are not asked** the link question until their next sign-in. The question is asked only after a sign-in the app started, so it never interrupts a launch. Until then they are counted unlinked, and can link from Safety & privacy.
 - **The App Store and Play privacy declarations** have to list precise location and usage data before a store build ships this. That is store-console work outside this repository.
 - **Nobody with a licence to say so has reviewed this design**, §9's caveat, which applies with more force now that it holds an identifier and a position.
 

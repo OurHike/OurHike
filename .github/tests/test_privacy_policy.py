@@ -134,10 +134,35 @@ def test_it_states_the_one_notification_rule(policy: str):
     assert "notification" in policy.lower()
 
 
-def test_it_still_says_location_stays_on_the_device(policy: str):
-    """The claim a hiker is most likely to be deciding on, and the one this
-    app can actually make."""
+def test_it_says_exactly_when_location_leaves_the_device(policy: str):
+    """The claim a hiker is most likely to be deciding on.
+
+    It used to be "used on your device only" and nothing else. Since #1902
+    (the maintainer's decision of 2026-10-27, features/EVENTING.md §0) the
+    phone's position also goes, sealed, with the usage counts while "Share
+    usage statistics" is on - so the policy has to name both ways out, and
+    still say that otherwise it stays put."""
     assert "on your device only" in policy
+    assert re.search(r"sealed", policy)
+    assert re.search(r"Share usage statistics", policy)
+
+
+def test_it_names_the_switch_by_the_label_the_app_shows(policy: str):
+    """A policy telling a hiker to find a switch the app does not have is the
+    drift this file exists for. The label is read out of the Settings screen
+    rather than restated here."""
+    settings = (REPO_ROOT / "client" / "src" / "screens" / "Settings.tsx").read_text(encoding="utf-8")
+    label = re.search(r'<span className="settings__label">(Share usage statistics)</span>', settings)
+    assert label is not None, "Settings.tsx no longer has the usage-statistics switch this policy points to"
+    assert label.group(1) in policy
+
+
+def test_it_says_how_long_usage_counts_are_kept(policy: str):
+    """Six months is the maintainer's request (#1902), enforced by
+    backend/app/core/analytics_rollup.py's RETENTION_MONTHS."""
+    rollup = (REPO_ROOT / "backend" / "app" / "core" / "analytics_rollup.py").read_text(encoding="utf-8")
+    assert re.search(r"^RETENTION_MONTHS = 6$", rollup, re.MULTILINE)
+    assert "six whole months" in policy
 
 
 def test_it_carries_a_date(policy: str):

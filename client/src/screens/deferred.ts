@@ -113,6 +113,10 @@ export const IdentitySetup = screen(
   () => import('./IdentitySetup').then((m) => m.IdentitySetup),
   'IdentitySetup',
 )
+export const UsageLinkQuestion = screen(
+  () => import('./UsageLinkQuestion').then((m) => m.UsageLinkQuestion),
+  'UsageLinkQuestion',
+)
 export const SignInPrompt = screen(
   () => import('./SignInPrompt').then((m) => m.SignInPrompt),
   'SignInPrompt',

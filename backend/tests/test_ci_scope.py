@@ -48,6 +48,7 @@ from tests.test_client_report_contract import CLIENT_FILES_READ as REPORT_FILES
 from tests.test_client_response_contract import CLIENT_FILES_READ as RESPONSE_FILES
 from tests.test_conditions_publisher_contract import PIPELINE_FILES_READ
 from tests.test_preferences_contract import CLIENT_MODEL
+from tests.test_usage_registry_contract import CLIENT_FILES_READ as USAGE_FILES
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
 WORKFLOW = REPO_ROOT / ".github" / "workflows" / "backend-tests.yml"
@@ -60,7 +61,13 @@ ACTION = ".github/actions/changed-paths"
 # count. Since #446 the set also carries the pipeline's conditions publisher,
 # which test_conditions_publisher_contract.py reads for the same reason the
 # client contract tests read client source.
-CLIENT_FILES = {*REPORT_FILES, *RESPONSE_FILES, CLIENT_MODEL, *PIPELINE_FILES_READ}
+CLIENT_FILES = {
+    *REPORT_FILES,
+    *RESPONSE_FILES,
+    CLIENT_MODEL,
+    *PIPELINE_FILES_READ,
+    *USAGE_FILES,
+}
 
 
 def scope_prefixes() -> list[str]:

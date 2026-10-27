@@ -683,6 +683,16 @@ export const FLOW_COVERAGE: Readonly<Record<string, FlowSurface>> = {
     flow: { status: 'covered', spec: 'e2e/settingsRooms.spec.ts' },
   },
   'screens/IdentitySetup.tsx': { step: 'F13 More', flow: { status: 'planned' } },
+  // Unit-only for the reason the account panel below gives: the question
+  // appears after a sign-in this app started finishes (#1902), and no flow spec
+  // can complete one - the wall e2e/identityRooms.spec.ts stops at.
+  'screens/UsageLinkQuestion.tsx': {
+    step: 'F13 More',
+    flow: {
+      status: 'unit-only',
+      why: "'Link your usage to your account?' (#1902) appears only after a sign-in this app started finishes, and no flow spec can finish one - the same wall e2e/identityRooms.spec.ts stops at for the email code step. UsageLinkQuestion.test.tsx holds its wording and both answers; useUsageMeasurement.test.tsx holds that a restored session never triggers it.",
+    },
+  },
   // Reachable in every build since #1572 put the provider list in code:
   // ENABLED_PROVIDERS names email, so SignInPrompt offers it and this screen
   // mounts behind that button. It was 'unit-only' while the deployed set came

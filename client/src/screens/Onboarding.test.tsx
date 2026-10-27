@@ -274,12 +274,19 @@ describe('Onboarding', () => {
     expect(screen.getByRole('heading', { level: 1 })).toHaveTextContent(/where you are/i)
   })
 
-  it('promises on the location step that position never leaves the phone', async () => {
+  it('says on the location step exactly when position leaves the phone, before the hiker decides', async () => {
+    // "Never sent anywhere" stopped being true with usage statistics (#1902):
+    // a fix also goes, sealed, with the usage counts while those are on.
     const user = userEvent.setup()
     render(<Onboarding {...PROPS} />)
     await advance(user, 4)
 
-    expect(screen.getByText(/never sent anywhere/i)).toBeInTheDocument()
+    expect(
+      screen.getByText(
+        /leaves only with a report you file, or sealed inside usage statistics/i,
+      ),
+    ).toHaveTextContent(/turn off in Settings/i)
+    expect(screen.queryByText(/never sent anywhere/i)).toBeNull()
   })
 
   it('never asks about notifications anywhere in first run', async () => {

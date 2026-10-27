@@ -229,7 +229,7 @@
 
     <main class="wrap">
       <h1>Privacy Policy</h1>
-      <p class="updated">Last updated September 15, 2026</p>
+      <p class="updated">Last updated October 27, 2026</p>
 
       <p class="lede">
         OurHike is a small, volunteer-built offline map for hikers,
@@ -283,17 +283,22 @@
       <h3>Location</h3>
       <p>
         OurHike can use your device's GPS to show your position on the
-        map. That location is used on your device only and is not sent
-        anywhere unless you choose to attach it to a report you submit —
-        for example, to mark exactly where a blowdown or a water source
-        is.
+        map. That position leaves your phone in two ways and no others:
+        when you choose to attach it to a report you submit — for example,
+        to mark exactly where a blowdown or a water source is — and, while
+        <em>Share usage statistics</em> is on, with the usage counts
+        described under <a href="#usage-analytics">Usage analytics</a>,
+        sealed so that our servers cannot read it. Otherwise it is used
+        on your device only.
       </p>
       <p>
         Nothing watches your position in the background. OurHike reads
         your location while you have the app open and are using a screen
         that needs it — the map, or a walk you are following — and it
-        does that entirely on your phone. Your track is not uploaded,
-        not stored on our side, and not used for anything else.
+        does that entirely on your phone. Your track — the line your
+        position draws as you walk — is not uploaded and not stored on our
+        side. Usage statistics send one position per thing they count, and
+        only a position the map already has: they never switch location on.
       </p>
       <p>
         <strong>One feature keeps a record rather than forgetting it.</strong>
@@ -365,22 +370,60 @@
         you.
       </p>
 
-      <h3>Usage analytics</h3>
+      <h3 id="usage-analytics">Usage analytics</h3>
       <p>
-        We don't currently run any analytics or event-tracking tool in the
-        app. We're likely to add some limited, aggregated analytics in the
-        future — for example, which screens or features get used — to
-        help us understand what's working and prioritize what to build
-        next. If we do, we'll aim to keep it as non-identifying as we
-        reasonably can, and we'll update this page when it happens rather
-        than after the fact.
+        OurHike counts six things, so we can see what is used and what
+        helps: opening the app for the first time, signing in,
+        making a hike plan, finishing one, viewing the map, and each visit,
+        with how many screens it showed and roughly how long it lasted. These
+        counts are on unless you turn them off.
       </p>
+      <ul>
+        <li>
+          Each count carries the date (never the time of day), which kind of
+          phone, the app version, and — when it was about a stretch of trail —
+          the club that maintains that stretch.
+        </li>
+        <li>
+          <strong>While location is on, each count also carries your phone's
+          position.</strong> It is sealed (encrypted) the moment it arrives,
+          with a key our servers do not hold, so they cannot read it back.
+          Our reports read only the grid square it falls in, roughly 8 to
+          11 km across. The key that opens a sealed position is kept by
+          OurHike's maintainer, off our servers, and the tool that opens one
+          records who opened it and why.
+        </li>
+        <li>
+          After you sign in, we ask once whether to link these counts to your
+          account. If you say yes, a code made from your account — not your
+          name or email — goes with each count, and your account ID is
+          sealed alongside the position. If you say no, nothing about your
+          account goes with them, but positions are still sent while
+          location is on.
+        </li>
+        <li>
+          Counts and positions are kept for the six whole months after the
+          month they were recorded, then deleted. A backup of our database
+          taken before that can hold them until the backup itself expires.
+          Monthly totals are kept, and any figure that would describe fewer
+          than 25 people is never shown.
+        </li>
+        <li>
+          Turn it all off in Settings → Safety &amp; privacy → Share usage
+          statistics. Off stops collection and deletes anything not yet
+          sent. Deleting your account deletes the counts linked to it.
+        </li>
+        <li>
+          We don't record your IP address with these counts, and no
+          third-party analytics tool is involved.
+        </li>
+      </ul>
 
       <h2>How we use this information</h2>
       <ul>
         <li>To run the app: show your position, sync your account, and let you submit and track reports.</li>
         <li>To keep the trail community trustworthy: moderators use report details to verify conditions and act on safety concerns.</li>
-        <li>To improve OurHike: understanding what's used and what isn't, in aggregate.</li>
+        <li>To improve OurHike: understanding what's used and what isn't, from the usage counts above, in aggregate.</li>
       </ul>
       <p>
         We do not sell your personal information, and we don't run
@@ -441,6 +484,7 @@
           — no need to put personal details in the issue itself, just ask
           and we'll follow up.
         </li>
+        <li>Turn usage statistics off, or unlink them from your account, in Settings → Safety &amp; privacy.</li>
         <li>Clear locally stored map data and preferences any time from your device or browser settings.</li>
       </ul>
 

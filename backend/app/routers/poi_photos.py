@@ -32,7 +32,7 @@ from sqlalchemy import Date, cast, func, or_
 from sqlalchemy.orm import Session
 
 from app.core.auth import get_current_user
-from app.core.orm import commit_and_refresh
+from app.core.orm import commit_and_refresh, release_before_waiting
 from app.core.photos import (
     ALLOWED_CONTENT_TYPE,
     JPEG_MAGIC,
@@ -261,7 +261,9 @@ async def upload_shared_photo(
     chose over refusing the thirteenth share.
     """
     poi_id = _checked_poi_id(poi_id)
-    photo = await run_in_threadpool(_photo_this_caller_may_upload, db, poi_id, current_user)
+    # The checks, then the connection handed back before the wait for the
+    # bytes (`release_before_waiting`, #1915). The write looks the share up again.
+    await run_in_threadpool(_share_checked_then_released, db, poi_id, current_user)
 
     if request.headers.get("content-type", "").split(";")[0].strip() != ALLOWED_CONTENT_TYPE:
         raise HTTPException(
@@ -281,7 +283,12 @@ async def upload_shared_photo(
     # The R2 put, the commits and the eviction's deletes are all blocking, so
     # they run off the event loop; `read_capped_body` is the only awaited part
     # (#1753).
-    return await run_in_threadpool(_store_and_record, db, photo, poi_id, body, current_user)
+    return await run_in_threadpool(_store_and_record, db, poi_id, body, current_user)
+
+
+def _share_checked_then_released(db: Session, poi_id: str, current_user: Profile) -> None:
+    _photo_this_caller_may_upload(db, poi_id, current_user)
+    release_before_waiting(db)
 
 
 def _photo_this_caller_may_upload(db: Session, poi_id: str, current_user: Profile) -> PoiPhoto:
@@ -300,7 +307,10 @@ def _photo_this_caller_may_upload(db: Session, poi_id: str, current_user: Profil
     return photo
 
 
-def _store_and_record(db: Session, photo: PoiPhoto, poi_id: str, body: bytes, current_user: Profile) -> PoiPhotoOut:
+def _store_and_record(db: Session, poi_id: str, body: bytes, current_user: Profile) -> PoiPhotoOut:
+    # Again, on the share as it is now: it may have been withdrawn while the
+    # bytes were arriving.
+    photo = _photo_this_caller_may_upload(db, poi_id, current_user)
     try:
         store_photo_object(poi_photo_key(poi_id, current_user.id), body)
     except PhotoStorageUnavailable as error:

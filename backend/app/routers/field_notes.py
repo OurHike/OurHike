@@ -25,7 +25,7 @@ from sqlalchemy.orm import Session
 from app.core.assignments import stood_behind
 from app.core.auth import get_current_user, get_current_user_optional, require_role
 from app.core.disputes import DISPUTE_DECAY_DAYS, DisputeInput, dispute_state
-from app.core.orm import commit_and_refresh, get_or_404
+from app.core.orm import commit_and_refresh, get_or_404, release_before_waiting
 from app.core.photos import (
     ALLOWED_CONTENT_TYPE,
     JPEG_MAGIC,
@@ -389,7 +389,9 @@ async def upload_note_photo(
     the body is capped as it streams, and JPEG is decided by the bytes' own
     magic rather than by a header the client writes.
     """
-    note = await run_in_threadpool(_note_this_caller_may_upload_to, db, note_id, current_user)
+    # The checks, then the connection handed back before the wait for the
+    # bytes (`release_before_waiting`, #1915). The write looks the note up again.
+    await run_in_threadpool(_note_checked_then_released, db, note_id, current_user)
 
     if request.headers.get("content-type", "").split(";")[0].strip() != ALLOWED_CONTENT_TYPE:
         raise HTTPException(
@@ -408,7 +410,12 @@ async def upload_note_photo(
 
     # The R2 put and the commit are blocking, so they run off the event loop;
     # `read_capped_body` is the only awaited part (#1753).
-    return await run_in_threadpool(_store_and_record_note_photo, db, note, body, current_user)
+    return await run_in_threadpool(_store_and_record_note_photo, db, note_id, body, current_user)
+
+
+def _note_checked_then_released(db: Session, note_id: str, current_user: Profile) -> None:
+    _note_this_caller_may_upload_to(db, note_id, current_user)
+    release_before_waiting(db)
 
 
 def _note_this_caller_may_upload_to(db: Session, note_id: str, current_user: Profile) -> FieldNote:
@@ -428,7 +435,10 @@ def _note_this_caller_may_upload_to(db: Session, note_id: str, current_user: Pro
     return note
 
 
-def _store_and_record_note_photo(db: Session, note: FieldNote, body: bytes, current_user: Profile) -> FieldNoteOut:
+def _store_and_record_note_photo(db: Session, note_id: str, body: bytes, current_user: Profile) -> FieldNoteOut:
+    # Again, on the note as it is now: it may have been deleted while the
+    # bytes were arriving.
+    note = _note_this_caller_may_upload_to(db, note_id, current_user)
     try:
         store_photo_object(note_photo_key(note.id), body)
     except PhotoStorageUnavailable as error:

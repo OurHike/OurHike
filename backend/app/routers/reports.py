@@ -17,7 +17,7 @@ from sqlalchemy.orm import Session
 
 from app.core.assignments import assignments_covering, stood_behind
 from app.core.auth import get_current_user, get_current_user_optional
-from app.core.orm import commit_and_refresh, get_or_404
+from app.core.orm import commit_and_refresh, get_or_404, release_before_waiting
 from app.core.photos import (
     ALLOWED_CONTENT_TYPE,
     FIRST_PHOTO_INDEX,
@@ -603,20 +603,8 @@ async def upload_report_photo_at(
     cap enforced as the body arrives, the row written last - is unchanged from
     the single-photo endpoint below, and is shared with it rather than copied.
     """
-    report = await run_in_threadpool(_report_this_caller_may_upload_to, db, report_id, current_user)
-
-    if index < FIRST_PHOTO_INDEX or index > MAX_REPORT_PHOTOS:
-        raise HTTPException(
-            status_code=status.HTTP_409_CONFLICT,
-            detail=f"A report holds photos {FIRST_PHOTO_INDEX} to {MAX_REPORT_PHOTOS}.",
-        )
-    if index > report.photo_count + 1:
-        raise HTTPException(
-            status_code=status.HTTP_409_CONFLICT,
-            detail=f"This report has {report.photo_count} photos; the next one is {report.photo_count + 1}.",
-        )
-
-    return await _store_report_photo(report, index, request, db, current_user)
+    await run_in_threadpool(_checked_then_released, db, report_id, index, current_user)
+    return await _store_report_photo(report_id, index, request, db, current_user)
 
 
 @router.put(
@@ -655,13 +643,37 @@ async def upload_report_photo(
     `GET /reports/{id}/photo` below, which checks the report's own visibility
     and status first. Nothing here makes a photo reachable.
     """
-    return await _store_report_photo(
-        await run_in_threadpool(_report_this_caller_may_upload_to, db, report_id, current_user),
-        FIRST_PHOTO_INDEX,
-        request,
-        db,
-        current_user,
-    )
+    await run_in_threadpool(_checked_then_released, db, report_id, FIRST_PHOTO_INDEX, current_user)
+    return await _store_report_photo(report_id, FIRST_PHOTO_INDEX, request, db, current_user)
+
+
+def _checked_then_released(db: Session, report_id: str, index: int, current_user: Profile) -> None:
+    """Every check that needs no bytes, then the connection handed back.
+
+    Run before the body is read, so a refusal costs the phone nothing but the
+    headers. The connection goes back to the pool before the wait
+    (`release_before_waiting`), and `_store_and_record_photo` runs the same
+    checks again on the row as it is after the bytes arrive.
+    """
+    _upload_target(db, report_id, index, current_user)
+    release_before_waiting(db)
+
+
+def _upload_target(db: Session, report_id: str, index: int, current_user: Profile) -> Report:
+    """The report photo `index` may be written to, or the refusal that says why not."""
+    report = _report_this_caller_may_upload_to(db, report_id, current_user)
+
+    if index < FIRST_PHOTO_INDEX or index > MAX_REPORT_PHOTOS:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail=f"A report holds photos {FIRST_PHOTO_INDEX} to {MAX_REPORT_PHOTOS}.",
+        )
+    if index > report.photo_count + 1:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail=f"This report has {report.photo_count} photos; the next one is {report.photo_count + 1}.",
+        )
+    return report
 
 
 def _report_this_caller_may_upload_to(db: Session, report_id: str, current_user: Profile) -> Report:
@@ -696,7 +708,7 @@ def _report_this_caller_may_upload_to(db: Session, report_id: str, current_user:
 
 
 async def _store_report_photo(
-    report: Report,
+    report_id: str,
     index: int,
     request: Request,
     db: Session,
@@ -728,11 +740,15 @@ async def _store_report_photo(
     # synchronous commit), so it leaves the event loop for the threadpool, as
     # every `def` handler already does. Left on the loop, a 2 MiB put stalled
     # every other request, /health included (#1753).
-    stored = await run_in_threadpool(_store_and_record_photo, report, index, body, db)
+    stored = await run_in_threadpool(_store_and_record_photo, db, report_id, index, body, current_user)
     return ReportOut.for_viewer(stored, current_user)
 
 
-def _store_and_record_photo(report: Report, index: int, body: bytes, db: Session) -> Report:
+def _store_and_record_photo(db: Session, report_id: str, index: int, body: bytes, current_user: Profile) -> Report:
+    # Looked up again, not carried across the wait: the transaction that
+    # loaded it ended before the bytes were read (#1915), and in the meantime
+    # the report may have been deleted, or the set grown by another upload.
+    report = _upload_target(db, report_id, index, current_user)
     try:
         key = store_photo(report.id, body, index)
     except PhotoStorageUnavailable as error:

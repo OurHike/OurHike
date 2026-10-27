@@ -3,7 +3,8 @@ import { renderHook, waitFor } from '@testing-library/react'
 import { get, set, update } from 'idb-keyval'
 
 import { accountTag } from './accountTag'
-import { apiFetch } from './api'
+import { accessToken, apiFetch } from './api'
+import { PREFERENCES_SYNC_KEY } from './preferences'
 import { noteSignInStarted } from './signInMarker'
 import type { TrailIndex } from './trailPosition'
 import type { ClubRunLike } from './usageEvents'
@@ -38,6 +39,7 @@ beforeEach(() => {
     stored = updater(stored)
   })
   vi.mocked(apiFetch).mockClear()
+  vi.mocked(accessToken).mockReset().mockResolvedValue('token')
 })
 afterEach(() => {
   vi.useRealTimers()
@@ -316,7 +318,87 @@ describe('sending', () => {
   })
 })
 
+describe('sending linked rows', () => {
+  it('holds them while a consent answer given on this phone has not reached the account', async () => {
+    // A yes not yet synced stored them unlinked for good; an on after an off
+    // had them declined and dropped (#1903's second review).
+    const unpushed = {
+      dirty: true,
+      syncedAt: '2026-10-27T00:00:00Z',
+      consentTouched: ['measurement_linked'],
+    }
+    vi.mocked(get).mockImplementation(async (key) =>
+      key === PREFERENCES_SYNC_KEY ? unpushed : stored,
+    )
+    const alice = { linked: true, accountEmail: 'alice@example.org', consentSyncs: true }
+    const { result, rerender } = renderHook(
+      (props: UsageMeasurementInput) => useUsageMeasurement(props),
+      { initialProps: input(alice) },
+    )
+    result.current.planMade({ miles: 3 })
+    await waitFor(async () => expect(await events()).toContain('hike_plan_made'))
+
+    rerender(input({ ...alice, online: true }))
+    await new Promise((resolve) => setTimeout(resolve, 20))
+
+    expect(apiFetch).not.toHaveBeenCalled()
+    expect(await events()).toContain('hike_plan_made')
+  })
+
+  it('sends them once that answer has gone up', async () => {
+    // A token issued to the account the rows were recorded under, as
+    // lib/usageQueue.ts reads it: anything else holds the linked batch.
+    const payload = btoa(JSON.stringify({ email: 'alice@example.org' })).replace(
+      /=+$/,
+      '',
+    )
+    vi.mocked(accessToken).mockResolvedValue(`header.${payload}.signature`)
+    const pushed = { dirty: false, syncedAt: '2026-10-27T00:00:00Z', consentTouched: [] }
+    vi.mocked(get).mockImplementation(async (key) =>
+      key === PREFERENCES_SYNC_KEY ? pushed : stored,
+    )
+    const alice = { linked: true, accountEmail: 'alice@example.org', consentSyncs: true }
+    const { result, rerender } = renderHook(
+      (props: UsageMeasurementInput) => useUsageMeasurement(props),
+      { initialProps: input(alice) },
+    )
+    result.current.planMade({ miles: 3 })
+    await waitFor(async () => expect(await events()).toContain('hike_plan_made'))
+
+    rerender(input({ ...alice, online: true }))
+
+    await waitFor(() =>
+      expect(apiFetch).toHaveBeenCalledWith('/usage-events', expect.anything()),
+    )
+  })
+})
+
 describe('visits', () => {
+  it('ends a visit once when two tabs come back to it at the same moment', async () => {
+    // A read and two writes let both tabs end the same visit: two `session`
+    // rows with different ids, which no server can tell apart (#1903's
+    // second review).
+    const now = Date.now()
+    stored = {
+      ...EMPTY_USAGE,
+      initialized: true,
+      session: {
+        startedAt: now - 3 * 60 * 60_000,
+        lastSeenAt: now - 2 * 60 * 60_000,
+        pageviews: 2,
+      },
+    }
+
+    renderHook(() => useUsageMeasurement(input()))
+    renderHook(() => useUsageMeasurement(input()))
+
+    await waitFor(() =>
+      expect((stored as UsageStore).session?.startedAt).toBeGreaterThan(now - 1000),
+    )
+    await new Promise((resolve) => setTimeout(resolve, 20))
+    expect((await events()).filter((event) => event === 'session')).toHaveLength(1)
+  })
+
   it('continues a visit last seen within the idle gap when the app is launched again', async () => {
     const now = Date.now()
     stored = {

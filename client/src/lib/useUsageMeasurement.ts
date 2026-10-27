@@ -34,6 +34,7 @@ import { useCallback, useEffect, useMemo, useRef } from 'react'
 import { accountTag } from './accountTag'
 import type { Hike } from './hikes'
 import type { HikePlan } from './plan'
+import { preferencesSyncState } from './preferences'
 import { takeFinishedSignIn } from './signInMarker'
 import { traceShell } from './tracePlatform'
 import { mileOnTrail, type TrailIndex } from './trailPosition'
@@ -58,7 +59,6 @@ import {
   clearUsage,
   flushUsage,
   type PendingSession,
-  readUsage,
   resumeUsage,
   unlinkWaitingRows,
   updateUsage,
@@ -81,6 +81,14 @@ export interface UsageMeasurementInput {
    * an "off" that arrives empties the queue.
    */
   consentSettled: boolean
+  /**
+   * The signed-in account's consent answers sync with this phone - signed in,
+   * with account sync on. Then a consent answer given here and not yet pushed
+   * holds linked rows back until it is (lib/usageQueue.ts `flushUsage`). With
+   * sync off the phone's own switches are the only ones it hears, and nothing
+   * waits on a push that will never happen.
+   */
+  consentSyncs?: boolean
   /** "Share usage statistics". */
   enabled: boolean
   /** "Link them to my account": null until the hiker has answered. */
@@ -167,6 +175,14 @@ function linkedAccount(input: UsageMeasurementInput): string | null {
   return input.linked === true && input.accountEmail !== null
     ? accountTag(input.accountEmail)
     : null
+}
+
+/** Send what is waiting, as things stand at `input`. */
+function flushFor(input: UsageMeasurementInput): Promise<number> {
+  const holdLinked = input.consentSyncs
+    ? async () => (await preferencesSyncState()).consentTouched.length > 0
+    : undefined
+  return flushUsage(undefined, linkedAccount(input), holdLinked)
 }
 
 /** How a row is stamped, where it differs from "now, as things stand". */
@@ -259,33 +275,6 @@ export function useUsageMeasurement(input: UsageMeasurementInput): UsageMeasurem
     [stampInto],
   )
 
-  /**
-   * The row for a visit that is over, dated the day it started, and belonging
-   * to whoever the visit belonged to as it began - a signed-out visit ended
-   * after a sign-in is still signed out (#1903's review).
-   */
-  const endSession = useCallback(
-    async (session: PendingSession) => {
-      await record(
-        'session',
-        {
-          pageviews: session.pageviews,
-          session_length: sessionLength(
-            Math.max(0, session.lastSeenAt - session.startedAt),
-          ),
-          ...(session.clubs === undefined ? {} : { clubs: session.clubs }),
-        },
-        {
-          at: new Date(session.startedAt),
-          fix: session.fix ?? null,
-          linkedTo: session.linkedTo ?? null,
-          signedIn: session.signedIn ?? false,
-        },
-      )
-    },
-    [record],
-  )
-
   /** A visit starting now, owned by whoever is here now. */
   const newSession = useCallback((now: number): PendingSession => {
     const current = latest.current
@@ -320,6 +309,51 @@ export function useUsageMeasurement(input: UsageMeasurementInput): UsageMeasurem
     [pointClubs],
   )
 
+  /**
+   * The visit, continued when it was seen within the idle gap - `pageviews`
+   * more screens - or else its row stamped and the next visit begun. IN ONE
+   * WRITE, against the visit stored at that moment rather than one read
+   * earlier: as a read and two writes, two tabs launching together, or a
+   * phone killed between the writes, ended the same visit twice - two
+   * `session` rows with different ids, which no server can tell apart
+   * (#1903's second review).
+   *
+   * The ended visit's row is dated the day it started, and belongs to whoever
+   * the visit belonged to as it began - a signed-out visit ended after a
+   * sign-in is still signed out (#1903's review).
+   */
+  const continueOrBegin = useCallback(
+    (now: number, pageviews: number) =>
+      updateUsage((store) => {
+        if (store.off) return store
+        const session = store.session
+        if (session !== null && now - session.lastSeenAt <= SESSION_IDLE_MS)
+          return { ...store, session: touchSession(session, now, pageviews) }
+        const ended =
+          session === null
+            ? store
+            : stampInto(
+                store,
+                'session',
+                {
+                  pageviews: session.pageviews,
+                  session_length: sessionLength(
+                    Math.max(0, session.lastSeenAt - session.startedAt),
+                  ),
+                  ...(session.clubs === undefined ? {} : { clubs: session.clubs }),
+                },
+                {
+                  at: new Date(session.startedAt),
+                  fix: session.fix ?? null,
+                  linkedTo: session.linkedTo ?? null,
+                  signedIn: session.signedIn ?? false,
+                },
+              )
+        return { ...ended, session: newSession(now) }
+      }),
+    [stampInto, touchSession, newSession],
+  )
+
   // --- first launch, and the visit in progress -----------------------------------
   const started = useRef(false)
   useEffect(() => {
@@ -349,19 +383,10 @@ export function useUsageMeasurement(input: UsageMeasurementInput): UsageMeasurem
       // visibility path below already keeps: a phone that kills the app, an
       // OAuth redirect reloading the page and a return from the organization
       // console each counted a second visit before #1903's review.
-      const session = store.session
-      if (session !== null && now - session.lastSeenAt <= SESSION_IDLE_MS) {
-        await updateUsage((current) =>
-          current.session === null
-            ? current
-            : { ...current, session: touchSession(current.session, now, 1) },
-        )
-        return
-      }
-      if (session !== null) await endSession(session)
-      await updateUsage((current) => ({ ...current, session: newSession(now) }))
+      if (store.off) return
+      await continueOrBegin(now, 1)
     })()
-  }, [input.ready, input.enabled, stampInto, endSession, newSession, touchSession])
+  }, [input.ready, input.enabled, stampInto, continueOrBegin])
 
   useEffect(() => {
     const onVisibility = () => {
@@ -382,25 +407,15 @@ export function useUsageMeasurement(input: UsageMeasurementInput): UsageMeasurem
           // the server has answered for it.
           const { online, reportsWaiting, consentSettled } = latest.current
           if (online && reportsWaiting === 0 && consentSettled)
-            void flushUsage(undefined, linkedAccount(latest.current))
+            void flushFor(latest.current)
           return
         }
-        const { session } = await readUsage()
-        if (session !== null && now - session.lastSeenAt <= SESSION_IDLE_MS) {
-          await updateUsage((store) =>
-            store.session === null
-              ? store
-              : { ...store, session: touchSession(store.session, now) },
-          )
-          return
-        }
-        if (session !== null) await endSession(session)
-        await updateUsage((store) => ({ ...store, session: newSession(now) }))
+        await continueOrBegin(now, 0)
       })()
     }
     document.addEventListener('visibilitychange', onVisibility)
     return () => document.removeEventListener('visibilitychange', onVisibility)
-  }, [endSession, newSession, touchSession])
+  }, [continueOrBegin, touchSession])
 
   // --- pageviews ---------------------------------------------------------------------
   const lastScreen = useRef<string | null>(null)
@@ -478,10 +493,9 @@ export function useUsageMeasurement(input: UsageMeasurementInput): UsageMeasurem
   useEffect(() => {
     if (!canSend) return
     // The account that matters is the one signed in when the batch leaves.
-    void flushUsage(undefined, linkedAccount(latest.current))
+    void flushFor(latest.current)
     const timer = window.setInterval(() => {
-      if (document.visibilityState === 'visible')
-        void flushUsage(undefined, linkedAccount(latest.current))
+      if (document.visibilityState === 'visible') void flushFor(latest.current)
     }, FLUSH_EVERY_MS)
     return () => window.clearInterval(timer)
   }, [canSend])

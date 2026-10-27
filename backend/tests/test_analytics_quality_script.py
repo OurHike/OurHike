@@ -14,6 +14,7 @@ from datetime import date, timedelta
 from pathlib import Path
 
 import pytest
+from sqlalchemy import text as sql
 
 from app.models.analytics import AnalyticsEvent
 
@@ -66,6 +67,23 @@ def test_a_finding_is_named_and_its_figure_is_not(script, db_session, tmp_path, 
         assert str(THROWN_AWAY) not in re.sub(r"\d{4}-\d{2}-\d{2}(T[\d:]+Z)?", "", text)
     finding = json.loads(written)["open"][0]
     assert set(finding) == {"key", "check", "scope", "status", "day"}
+
+
+def test_checks_that_cannot_run_are_named_by_class_and_their_values_are_not_printed(script, monkeypatch, capsys):
+    """The text of a database error ends in the values its statement was
+    bound to; a traceback here would publish them."""
+
+    def failing_checks(db, **_):
+        db.execute(sql("select 1 / (:visits - :visits)"), {"visits": THROWN_AWAY})
+
+    monkeypatch.setattr(script, "run_checks", failing_checks)
+
+    assert script.main(["--today", TODAY.isoformat()]) == 1
+
+    out, err = capsys.readouterr()
+    assert "DataError" in err
+    assert str(THROWN_AWAY) not in out + err
+    assert "Traceback" not in err
 
 
 def test_a_quiet_night_writes_an_empty_verdict(script, tmp_path, capsys):

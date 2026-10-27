@@ -6,12 +6,15 @@ What a run does, and why in that order, is app/core/analytics_rollup.py's
 docstring. This file is the command around it: it prints what was done as
 month names - never a row, and never a count, because Actions logs on this
 repository are public and a month's row count is its traffic - and exits 1
-when a month past
-retention was refused deletion because it had not closed. `run` closes every
-due month before it deletes anything, so that refusal should be unreachable;
-it is the guard for the day somebody reorders the steps or stretches the close
-window past retention, and it goes red rather than deleting numbers nobody
-froze.
+when a month past retention was refused deletion because it had not closed.
+`run` closes every due month before it deletes anything, so that refusal
+should be unreachable; it is the guard for the day somebody reorders the
+steps or stretches the close window past retention, and it goes red rather
+than deleting numbers nobody froze.
+
+A run that FAILS exits 1 too, and says so by names alone
+(app/core/logs.py `describe_failure`) - never a traceback, whose text can
+carry the values a failed statement was bound to.
 
 Run nightly by .github/workflows/analytics-rollup.yml. Safe to run by hand
 and to run twice: every step is idempotent, and a run that finds nothing to
@@ -28,6 +31,7 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 from app.core.analytics_rollup import closes_on, retention_start, run  # noqa: E402
+from app.core.logs import describe_failure  # noqa: E402
 from app.core.time import utc_now  # noqa: E402
 from app.db.session import SessionLocal  # noqa: E402
 
@@ -46,8 +50,13 @@ def main(argv: list[str] | None = None) -> int:
     )
     args = parser.parse_args(argv)
 
-    with SessionLocal() as db:
-        result = run(db, today=args.today)
+    try:
+        with SessionLocal() as db:
+            result = run(db, today=args.today)
+    except Exception as failure:
+        # Caught rather than left to print its traceback: this log is public.
+        print(f"The rollup did not run, and nothing was committed: {describe_failure(failure)}", file=sys.stderr)
+        return 1
 
     today = args.today or utc_now().date()
     print(f"Recomputed:               {_months(result.recomputed)}")

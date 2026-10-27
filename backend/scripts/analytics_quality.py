@@ -15,7 +15,9 @@ the usage report (scripts/usage_report.py) is where a person reads them.
 `--verdict` writes the open findings as JSON for the workflow's tracking-issue
 step, in the same no-figures shape. Exit 0 whatever was found: a finding is
 news about the data, not a failure of the job. Exit 1 only if the checks
-themselves could not run.
+themselves could not run - said by names alone (app/core/logs.py
+`describe_failure`), never with a traceback, whose text can carry the values
+a failed statement was bound to.
 """
 
 from __future__ import annotations
@@ -29,6 +31,7 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 from app.core.analytics_quality import record, run_checks  # noqa: E402
+from app.core.logs import describe_failure  # noqa: E402
 from app.core.time import utc_now  # noqa: E402
 from app.db.session import SessionLocal  # noqa: E402
 
@@ -45,8 +48,13 @@ def main(argv: list[str] | None = None) -> int:
     args = parser.parse_args(argv)
     today = args.today or utc_now().date()
 
-    with SessionLocal() as db:
-        findings = record(db, run_checks(db, today=today), today=today)
+    try:
+        with SessionLocal() as db:
+            findings = record(db, run_checks(db, today=today), today=today)
+    except Exception as failure:
+        # Caught rather than left to print its traceback: this log is public.
+        print(f"The data-quality checks could not run: {describe_failure(failure)}", file=sys.stderr)
+        return 1
 
     findings = sorted(findings, key=lambda f: (f.status != "broken", f.check_name, f.scope, f.day))
     if findings:

@@ -1,0 +1,245 @@
+# Backs production's database up every night, encrypted, to a private bucket.
+#
+# #1908 - Back production's database up nightly to a private R2 bucket, because
+# Supabase Free keeps no backups (supabase.com/pricing, read 2026-10-23). The
+# maintainer chose this over Supabase Pro by poll on 2026-10-23, and on
+# 2026-10-27 chose the four things below: a dedicated role with SELECT and
+# BYPASSRLS, `age` encryption, 90 days kept, and this branch.
+#
+# WHAT A LOST DATABASE COSTS. publish-conditions.yml bakes the closures every
+# hiker's phone reads from this database, so one that came back empty would
+# publish "no closures" - which reads to a hiker as the trail being open, not
+# as data being lost. Also every synced trip, preference, moderation decision
+# and organization registry.
+#
+# THE ORDER IS THE POINT: dump, restore, compare, encrypt, upload. A dump is
+# only uploaded once a throwaway Postgres 17 has restored it and every table
+# the live statistics say has rows came back with rows -
+# .github/scripts/backup_database.py says why the comparison reads statistics
+# rather than count(*). And it is encrypted before it leaves the runner: the
+# job holds the public `age` recipient only, and the private key stays offline
+# with the maintainer, so a leaked bucket token exposes ciphertext.
+#
+# THE CREDENTIALS ARE THIS JOB'S OWN. BACKUP_DATABASE_URL is the dedicated
+# `ourhike_backup` role, through the session pooler on 5432 - not the migration
+# owner, and not the transaction pooler, which pg_dump cannot use. The bucket
+# is used for nothing else, and its token reaches nothing else: a dump holds
+# people's data, so the set of keys that can read it should be one. Retention
+# is the bucket's lifecycle rule (90 days), so this job never deletes.
+# LAUNCH_CHECKLIST.md 5b is how each is made.
+#
+# HOW IT ALARMS. Like check-deployment.yml, through one tracking issue: opening
+# it notifies, updating it does not, and the all-clear closes it. Unlike that
+# job, a configured backup that fails also turns the run red - the run listing
+# is the one place a missing backup must never look like a present one.
+# Missing settings open the issue too, saying production has no backup, which
+# until they are set is simply true. They do not turn every night's run red:
+# that would be the same news by email every day, which #431 rules out.
+
+name: Back up the database
+
+on:
+  schedule:
+    # 05:12 UTC daily: the middle of the night across the US, off the hour
+    # because GitHub queues everything submitted at :00, and clear of every
+    # other schedule here (the nearest are publish-conditions at :40 and the
+    # Monday data release at 06:25).
+    - cron: "12 5 * * *"
+  workflow_dispatch:
+
+# Read the repo, write the one tracking issue. The bucket and the database are
+# reached through this job's own secrets, never the token.
+permissions:
+  contents: read
+  issues: write
+
+# One at a time, and never cancel a run in flight: a cancelled run could leave
+# the tracking issue describing a backup that was half taken.
+concurrency:
+  group: backup-database
+  cancel-in-progress: false
+
+env:
+  ISSUE_TITLE: "Nightly database backup"
+  ISSUE_LABEL: backup-health
+  # The client tools that dump and restore. pg_dump refuses a server newer
+  # than itself, production is Postgres 17, and the runner's own client is 16.
+  PG_IMAGE: postgres:17
+
+jobs:
+  backup:
+    runs-on: ubuntu-latest
+    # A cap, not a measurement: nobody has timed a dump of production yet
+    # (@unvalidated). The first run's log says how far under thirty minutes
+    # the dump, the restore and the upload really are, and that is the number
+    # to resize this from.
+    timeout-minutes: 30
+
+    # The throwaway database every dump is restored into before it counts. Its
+    # password is not a secret: nothing reaches it from outside the job, and
+    # it is destroyed with the job.
+    services:
+      scratch:
+        image: postgres:17
+        env:
+          POSTGRES_PASSWORD: scratch
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 12
+
+    steps:
+      # Before the checkout, so no working directory: the rule
+      # test_workflow_working_directory.py holds every workflow to.
+      - name: Are the backup settings there
+        id: can
+        env:
+          BACKUP_DATABASE_URL: ${{ secrets.BACKUP_DATABASE_URL }}
+          BACKUP_R2_BUCKET: ${{ secrets.BACKUP_R2_BUCKET }}
+          BACKUP_R2_ACCESS_KEY_ID: ${{ secrets.BACKUP_R2_ACCESS_KEY_ID }}
+          BACKUP_R2_SECRET_ACCESS_KEY: ${{ secrets.BACKUP_R2_SECRET_ACCESS_KEY }}
+          R2_ENDPOINT_URL: ${{ secrets.R2_ENDPOINT_URL }}
+          BACKUP_AGE_RECIPIENT: ${{ vars.BACKUP_AGE_RECIPIENT }}
+        run: |
+          missing=""
+          for name in BACKUP_DATABASE_URL BACKUP_R2_BUCKET BACKUP_R2_ACCESS_KEY_ID BACKUP_R2_SECRET_ACCESS_KEY R2_ENDPOINT_URL BACKUP_AGE_RECIPIENT; do
+            if [ -z "${!name}" ]; then missing="$missing $name"; fi
+          done
+          if [ -n "$missing" ]; then
+            echo "::warning::No backup was taken: not set:$missing. See LAUNCH_CHECKLIST.md 5b."
+            echo "go=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "go=true" >> "$GITHUB_OUTPUT"
+          fi
+          echo "missing=${missing# }" >> "$GITHUB_OUTPUT"
+
+      - uses: actions/checkout@v7
+
+      - uses: actions/setup-python@v7
+        with:
+          python-version: "3.14"
+
+      # Only the archives this job installs from: the runner's vendor
+      # repositories are dropped first, so their outages cannot fail a backup
+      # (test_apt_update_is_not_fatal.py, #1361).
+      - name: Install age
+        if: steps.can.outputs.go == 'true'
+        run: |
+          sudo find /etc/apt/sources.list.d -maxdepth 1 -type f \
+            ! -name 'ubuntu.sources' ! -name 'ubuntu.list' -print -delete
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq age
+          age --version
+
+      - name: Fetch the Postgres 17 client tools
+        if: steps.can.outputs.go == 'true'
+        run: docker pull --quiet "$PG_IMAGE"
+
+      - name: Dump
+        id: dump
+        if: steps.can.outputs.go == 'true'
+        env:
+          BACKUP_DATABASE_URL: ${{ secrets.BACKUP_DATABASE_URL }}
+        run: python .github/scripts/backup_database.py dump --workdir "$RUNNER_TEMP/backup" --pg-image "$PG_IMAGE"
+
+      - name: Restore into the scratch database and compare
+        id: verify
+        if: steps.dump.outcome == 'success'
+        run: >-
+          python .github/scripts/backup_database.py verify --workdir "$RUNNER_TEMP/backup" --pg-image "$PG_IMAGE"
+          --scratch-url "postgresql://postgres:scratch@localhost:5432/postgres"
+
+      - name: Encrypt
+        id: seal
+        if: steps.verify.outcome == 'success'
+        env:
+          BACKUP_AGE_RECIPIENT: ${{ vars.BACKUP_AGE_RECIPIENT }}
+        run: python .github/scripts/backup_database.py seal --workdir "$RUNNER_TEMP/backup"
+
+      # The AWS CLI the runner ships, pointed at R2 (region `auto`, which R2's
+      # AWS CLI page says the SDK requires and R2 ignores). Checksums only
+      # when an operation requires one, so the upload does not depend on R2
+      # accepting the CRC headers newer AWS clients add by default: R2's S3
+      # compatibility page lists those checksum types without saying which
+      # operations take them (both pages read 2026-10-27). The size is read
+      # back after the upload, because "the command exited 0" and "the object
+      # is in the bucket at full size" are different facts, and only the
+      # second one is a backup.
+      - name: Upload
+        id: upload
+        if: steps.seal.outcome == 'success'
+        env:
+          AWS_ACCESS_KEY_ID: ${{ secrets.BACKUP_R2_ACCESS_KEY_ID }}
+          AWS_SECRET_ACCESS_KEY: ${{ secrets.BACKUP_R2_SECRET_ACCESS_KEY }}
+          AWS_DEFAULT_REGION: auto
+          AWS_REQUEST_CHECKSUM_CALCULATION: when_required
+          AWS_RESPONSE_CHECKSUM_VALIDATION: when_required
+          R2_ENDPOINT_URL: ${{ secrets.R2_ENDPOINT_URL }}
+          BUCKET: ${{ secrets.BACKUP_R2_BUCKET }}
+          SEALED: ${{ steps.seal.outputs.file }}
+          KEY: ${{ steps.seal.outputs.key }}
+        run: |
+          aws s3 cp "$SEALED" "s3://$BUCKET/$KEY" --endpoint-url "$R2_ENDPOINT_URL" --only-show-errors
+          local_size=$(stat -c %s "$SEALED")
+          stored_size=$(aws s3api head-object --bucket "$BUCKET" --key "$KEY" --endpoint-url "$R2_ENDPOINT_URL" --query ContentLength --output text)
+          if [ "$local_size" != "$stored_size" ]; then
+            echo "::error::Uploaded $local_size bytes and the bucket holds $stored_size under $KEY."
+            exit 1
+          fi
+          echo "Stored $KEY, $stored_size bytes, encrypted."
+
+      - name: Open, update, or close the tracking issue
+        if: always()
+        uses: actions/github-script@v9
+        env:
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+          GO: ${{ steps.can.outputs.go }}
+          MISSING: ${{ steps.can.outputs.missing }}
+          DUMP: ${{ steps.dump.outcome }}
+          VERIFY: ${{ steps.verify.outcome }}
+          SEAL: ${{ steps.seal.outcome }}
+          UPLOAD: ${{ steps.upload.outcome }}
+          KEY: ${{ steps.seal.outputs.key }}
+        with:
+          script: |
+            const trackingIssue = require(`${process.env.GITHUB_WORKSPACE}/.github/scripts/tracking-issue.js`)
+            const env = process.env
+            const checkedAt = new Date().toISOString().slice(0, 10)
+
+            // The first stage that did not succeed is the finding; the ones
+            // after it never ran, and listing them would read as four faults.
+            const stages = [
+              ['settings', env.GO === 'true', `Not set: ${env.MISSING || 'unknown'}. Until they are, production has no backup at all.`],
+              ['dump', env.DUMP === 'success', 'pg_dump or the statistics read failed. A role without BYPASSRLS makes pg_dump refuse, which is the safe failure.'],
+              ['restore check', env.VERIFY === 'success', 'The dump did not restore, or a table the live statistics say has rows came back empty. The log has the table-by-table comparison.'],
+              ['encrypt', env.SEAL === 'success', 'age did not seal the dump, or BACKUP_AGE_RECIPIENT is not an age public key.'],
+              ['upload', env.UPLOAD === 'success', 'The encrypted dump did not reach the bucket at full size.'],
+            ]
+            const failed = stages.find(([, ok]) => !ok)
+
+            await trackingIssue({github, context, core}, {
+              label: env.ISSUE_LABEL,
+              title: env.ISSUE_TITLE,
+              checkedAt,
+              keys: failed ? [failed[0]] : [],
+              healthy: !failed,
+              allClear: `Production was backed up again on ${checkedAt}: \`${env.KEY}\`, restored and compared before it was encrypted and uploaded. Closing.`,
+              render: (firstSeen, cell) => [
+                `**Production's database was not backed up on ${checkedAt}.** The last good backup is the newest object under \`postgres/\` in the backup bucket, kept 90 days.`,
+                '',
+                '| stage | first failing | what it means |',
+                '|---|---|---|',
+                `| ${cell(failed[0])} | ${firstSeen[failed[0]]} | ${cell(failed[2])} |`,
+                '',
+                `[The run](${env.RUN_URL}). How to fix each stage, and how to restore: LAUNCH_CHECKLIST.md 5b.`,
+              ].join('\n'),
+            })
+
+      - name: Fail the run when a configured backup was not taken
+        if: steps.can.outputs.go == 'true' && steps.upload.outcome != 'success'
+        run: |
+          echo "::error::No backup was taken tonight. The tracking issue names the stage that failed."
+          exit 1

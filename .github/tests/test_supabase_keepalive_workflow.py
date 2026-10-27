@@ -164,6 +164,9 @@ SCHEDULED_ROSTER = {
     "check-auth-redirects.yml": "GET /auth/v1/verify daily (#488) - GoTrue queries its own auth schema tables to "
     "reject the junk token, which is real database activity even though the point of the probe is the redirect "
     "allow-list, not keeping the project awake",
+    "backup-database.yml": "dumps production nightly as the dedicated backup role (#1908 - Back production's "
+    "database up nightly to a private R2 bucket, because Supabase Free keeps no backups) - scheduled database "
+    "activity, though not a keepalive: it reaches Postgres through the session pooler and never the project's API",
     "settings-configured.yml": "not a road at all, and on the roster to say so: it reads every declared setting by "
     "name - the Supabase URL, the migration and conditions connection strings among them - and its first step "
     "reduces the values to the names that came back non-empty, before anything could connect. Nothing in it "

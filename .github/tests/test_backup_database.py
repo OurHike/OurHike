@@ -1,0 +1,303 @@
+"""The nightly backup: what it refuses, what it compares, and the order it runs in.
+
+#1908 - Back production's database up nightly to a private R2 bucket, because
+Supabase Free keeps no backups. `.github/scripts/backup_database.py` is the
+judgement and `.github/workflows/backup-database.yml` the order; this holds both.
+
+THE TRAP THE RESTORE CHECK EXISTS FOR, REPRODUCED. Row-level security is on for
+every table with no policies. A role it applies to makes plain `pg_dump` refuse,
+which is safe, but `pg_dump --enable-row-security` succeeds with zero rows. The
+last test here builds that empty dump against a real Postgres and asserts
+`verify` refuses it. It skips where no Postgres is reachable, which includes
+CI's settings job; measured 2026-10-27 on the session's local Postgres 16.15
+with age 1.1.1, as the PR for #1908 records.
+"""
+
+from __future__ import annotations
+
+import ast
+import datetime
+import os
+import shutil
+import subprocess
+import uuid
+from pathlib import Path
+
+import backup_database as backup
+import pytest
+import yaml
+
+REPO_ROOT = Path(__file__).resolve().parents[2]
+WORKFLOW = REPO_ROOT / ".github" / "workflows" / "backup-database.yml"
+SCRIPT = REPO_ROOT / ".github" / "scripts" / "backup_database.py"
+
+POOLER = "postgresql://ourhike_backup.abcdefghijklmnopqrst:p%40ss%2Fw0rd@aws-0-us-east-1.pooler.supabase.com:5432/postgres"
+
+
+# --- The connection string --------------------------------------------------
+
+
+def test_a_session_pooler_url_becomes_libpq_variables_with_the_password_decoded():
+    assert backup.libpq_environment(POOLER) == {
+        "PGHOST": "aws-0-us-east-1.pooler.supabase.com",
+        "PGPORT": "5432",
+        "PGDATABASE": "postgres",
+        "PGUSER": "ourhike_backup.abcdefghijklmnopqrst",
+        "PGPASSWORD": "p@ss/w0rd",
+        "PGSSLMODE": "require",
+    }
+
+
+def test_a_driver_suffix_from_sqlalchemy_is_accepted():
+    assert backup.libpq_environment(POOLER.replace("postgresql://", "postgresql+psycopg://"))["PGHOST"].endswith("supabase.com")
+
+
+def test_the_transaction_pooler_is_refused_by_name_without_quoting_the_secret():
+    with pytest.raises(backup.Refused) as refusal:
+        backup.libpq_environment(POOLER.replace(":5432/", ":6543/"))
+
+    assert "6543" in str(refusal.value) and "session pooler" in str(refusal.value)
+    assert "p@ss" not in str(refusal.value) and "p%40ss" not in str(refusal.value)
+
+
+@pytest.mark.parametrize("sslmode", ["disable", "allow", "prefer"])
+def test_a_dump_never_travels_unencrypted(sslmode):
+    with pytest.raises(backup.Refused, match="unencrypted"):
+        backup.libpq_environment(f"{POOLER}?sslmode={sslmode}")
+
+
+def test_a_stricter_sslmode_and_its_certificate_are_passed_on():
+    env = backup.libpq_environment(f"{POOLER}?sslmode=verify-full&sslrootcert=/etc/ssl/supabase.crt")
+
+    assert (env["PGSSLMODE"], env["PGSSLROOTCERT"]) == ("verify-full", "/etc/ssl/supabase.crt")
+
+
+def test_only_the_scratch_database_may_go_unencrypted():
+    """The job's own throwaway Postgres has no TLS, and nothing leaves the runner to reach it."""
+    env = backup.libpq_environment("postgresql://postgres:scratch@localhost:5432/postgres", require_encryption=False)
+
+    assert env["PGSSLMODE"] == "prefer"
+
+
+@pytest.mark.parametrize(
+    "url",
+    ["", "https://example.org/postgres", "postgresql:///no-host", "postgresql://u:secret@host:notaport/db"],
+    ids=["empty", "not-postgres", "no-host", "bad-port"],
+)
+def test_a_connection_string_that_cannot_be_used_is_refused_without_being_quoted(url):
+    with pytest.raises(backup.Refused) as refusal:
+        backup.libpq_environment(url)
+
+    assert "secret" not in str(refusal.value)
+
+
+# --- Secrets stay out of argv -----------------------------------------------
+
+
+def test_a_docker_run_tool_gets_the_variable_names_and_never_their_values(tmp_path, monkeypatch):
+    monkeypatch.setenv("BACKUP_DATABASE_URL", POOLER)
+    tools = backup.Tools(workdir=tmp_path, image="postgres:17")
+    pg_env = backup.libpq_environment(POOLER)
+
+    argv, env = tools.command("pg_dump", ["--format=custom"], pg_env)
+
+    assert argv[:2] == ["docker", "run"] and "postgres:17" in argv
+    assert ["--env", "PGPASSWORD"] == argv[argv.index("PGPASSWORD") - 1 : argv.index("PGPASSWORD") + 1]
+    assert not any("p@ss" in arg or "pooler.supabase.com" in arg for arg in argv)
+    assert env["PGPASSWORD"] == "p@ss/w0rd"
+    assert "BACKUP_DATABASE_URL" not in env, "the whole connection string never reaches a tool"
+
+
+def test_a_tool_on_path_inherits_no_stray_libpq_setting(tmp_path, monkeypatch):
+    """A PGHOST left in the runner's environment must not redirect a dump."""
+    monkeypatch.setenv("PGHOST", "somewhere-else.example")
+    argv, env = backup.Tools(workdir=tmp_path).command("psql", ["--version"], {"PGHOST": "intended.example"})
+
+    assert argv == ["psql", "--version"]
+    assert env["PGHOST"] == "intended.example"
+
+
+# --- The comparison ---------------------------------------------------------
+
+
+def test_a_table_with_rows_that_restores_empty_is_the_failure():
+    problems = backup.compare({"public.closures": 12, "public.profiles": 3}, {"public.closures": 0, "public.profiles": 3})
+
+    assert problems == ["public.closures: the live statistics say about 12 row(s), and the restore holds none"]
+
+
+def test_a_table_missing_from_the_restore_fails_whatever_it_held():
+    assert backup.compare({"public.empty_table": 0}, {"public.other": 1}) == [
+        "public.empty_table is in the database and missing from the restore"
+    ]
+
+
+def test_a_restore_with_no_tables_at_all_fails():
+    assert "the restore holds no tables at all" in backup.compare({}, {})
+
+
+def test_empty_on_both_sides_is_a_faithful_backup():
+    """`n_live_tup` is an estimate, so only "has rows" against "has none" is compared."""
+    assert backup.compare({"public.reports": 0, "public.closures": 40}, {"public.reports": 0, "public.closures": 38}) == []
+
+
+def test_the_report_puts_every_table_side_by_side():
+    lines = backup.report({"public.closures": 12}, {"public.closures": 12, "auth.users": 2}).splitlines()
+
+    assert lines[1].split() == ["auth.users", "-", "2"]
+    assert lines[2].split() == ["public.closures", "12", "12"]
+
+
+# --- Sealing ----------------------------------------------------------------
+
+
+def test_sealing_refuses_anything_that_is_not_an_age_public_key(tmp_path):
+    with pytest.raises(backup.Refused, match="age public key"):
+        backup.seal(tmp_path, "AGE-SECRET-KEY-1QQQQ", datetime.datetime(2026, 10, 27, tzinfo=datetime.UTC))
+
+
+@pytest.mark.skipif(shutil.which("age-keygen") is None, reason="age is not installed here; the workflow installs it")
+def test_sealing_leaves_only_ciphertext_and_counts_behind(tmp_path):
+    for name in (*backup.ARCHIVES, backup.LIVE_ROWS, backup.RESTORED_ROWS):
+        (tmp_path / name).write_text(f"contents of {name}\n", encoding="utf-8")
+    key_file = tmp_path / "identity.txt"
+    subprocess.run(["age-keygen", "-o", str(key_file)], check=True, capture_output=True)
+    recipient = subprocess.run(["age-keygen", "-y", str(key_file)], check=True, capture_output=True, text=True).stdout.strip()
+
+    sealed, key = backup.seal(tmp_path, recipient, datetime.datetime(2026, 10, 27, 5, 12, 3, tzinfo=datetime.UTC))
+
+    assert key == "postgres/2026/10/27/ourhike-20261027T051203Z.tar.age"
+    assert sealed.read_bytes().startswith(b"age-encryption.org/v1")
+    assert not any((tmp_path / name).exists() for name in (*backup.ARCHIVES, "ourhike-20261027T051203Z.tar"))
+
+
+# --- The workflow's order ---------------------------------------------------
+
+
+def _steps() -> dict[str, dict]:
+    workflow = yaml.safe_load(WORKFLOW.read_text(encoding="utf-8"))
+    return {step.get("id") or step.get("name"): step for step in workflow["jobs"]["backup"]["steps"]}
+
+
+def test_each_stage_runs_only_after_the_one_before_it_succeeded():
+    steps = _steps()
+
+    assert steps["dump"]["if"] == "steps.can.outputs.go == 'true'"
+    assert steps["verify"]["if"] == "steps.dump.outcome == 'success'"
+    assert steps["seal"]["if"] == "steps.verify.outcome == 'success'"
+    assert steps["upload"]["if"] == "steps.seal.outcome == 'success'"
+
+
+def test_only_the_sealed_file_is_uploaded():
+    upload = _steps()["upload"]
+
+    assert upload["env"]["SEALED"] == "${{ steps.seal.outputs.file }}"
+    assert 'aws s3 cp "$SEALED"' in upload["run"]
+
+
+def test_the_database_credential_reaches_the_dump_and_nothing_after_it():
+    holders = [name for name, step in _steps().items() if "secrets.BACKUP_DATABASE_URL" in str(step.get("env", {}))]
+
+    assert holders == ["can", "dump"]
+
+
+def test_nothing_ever_asks_pg_dump_to_apply_row_level_security():
+    """With that flag, a role RLS applies to dumps nothing and succeeds.
+
+    Read from the script's code rather than its text, because its docstring
+    has to name the flag to say why it is absent."""
+    tree = ast.parse(SCRIPT.read_text(encoding="utf-8"))
+    docstrings = {
+        id(node.body[0].value)
+        for node in ast.walk(tree)
+        if isinstance(node, ast.Module | ast.FunctionDef | ast.ClassDef)
+        and node.body
+        and isinstance(node.body[0], ast.Expr)
+        and isinstance(node.body[0].value, ast.Constant)
+    }
+    strings = [
+        node.value
+        for node in ast.walk(tree)
+        if isinstance(node, ast.Constant) and isinstance(node.value, str) and id(node) not in docstrings
+    ]
+    assert not [text for text in strings if "enable-row-security" in text]
+
+    runs = [step.get("run", "") for step in _steps().values()]
+    assert not [run for run in runs if "enable-row-security" in run]
+
+
+def test_the_tracking_issue_hears_about_every_outcome():
+    assert _steps()["Open, update, or close the tracking issue"]["if"] == "always()"
+
+
+# --- Against a real Postgres --------------------------------------------------
+
+ADMIN_URL = os.environ.get("OURHIKE_BACKUP_TEST_ADMIN_URL", "postgresql://ourhike:ourhike@localhost:5432/ourhike_dev")
+
+
+def _psql(url: str, sql: str) -> subprocess.CompletedProcess:
+    return subprocess.run(["psql", url, "-X", "-q", "-v", "ON_ERROR_STOP=1", "-c", sql], capture_output=True, text=True)
+
+
+def _reachable() -> bool:
+    if not all(shutil.which(tool) for tool in ("psql", "pg_dump", "pg_restore")):
+        return False
+    return _psql(ADMIN_URL, "select 1").returncode == 0
+
+
+@pytest.fixture
+def databases():
+    """A source and a scratch database, created and dropped around the test."""
+    if not _reachable():
+        pytest.skip("no local Postgres with psql, pg_dump and pg_restore; CI's settings job has none")
+    suffix = uuid.uuid4().hex[:8]
+    names = (f"backup_test_src_{suffix}", f"backup_test_scratch_{suffix}")
+    for name in names:
+        created = _psql(ADMIN_URL, f"create database {name}")
+        if created.returncode != 0:
+            pytest.skip(f"this role cannot create databases: {created.stderr.strip()}")
+    base = ADMIN_URL.rsplit("/", 1)[0]
+    yield tuple(f"{base}/{name}" for name in names)
+    for name in names:
+        _psql(ADMIN_URL, f"drop database if exists {name} with (force)")
+
+
+def test_an_empty_dump_from_row_level_security_is_caught_by_the_restore(databases, tmp_path):
+    """The issue's trap, end to end. FORCE makes RLS apply to the owner, which
+    stands in for a role without BYPASSRLS without needing a superuser here."""
+    source, scratch = databases
+    assert (
+        _psql(
+            source,
+            "create table public.closures (id int primary key); insert into public.closures values (1), (2), (3);"
+            "alter table public.closures enable row level security; alter table public.closures force row level security;"
+            "create schema auth; create table auth.users (id uuid primary key); create table auth.identities (id uuid primary key);",
+        ).returncode
+        == 0
+    )
+    source_env = backup.libpq_environment(source, require_encryption=False)
+    scratch_env = backup.libpq_environment(scratch, require_encryption=False)
+    tools = backup.Tools(workdir=tmp_path)
+
+    # The statistics the nightly read takes, written as `dump` writes them.
+    backup._write_counts(tmp_path / backup.LIVE_ROWS, {"public.closures": 3, "auth.users": 0, "auth.identities": 0})
+
+    # What `dump` would do: refuse, because RLS now applies and the flag is absent.
+    with pytest.raises(backup.Refused, match="pg_dump exited"):
+        tools.run("pg_dump", ["--format=custom", "--schema=public", f"--file={tmp_path / 'public.dump'}"], source_env)
+
+    # The trap: the same dump with --enable-row-security succeeds and holds nothing.
+    tools.run(
+        "pg_dump",
+        ["--format=custom", "--enable-row-security", "--schema=public", f"--file={tmp_path / 'public.dump'}"],
+        source_env,
+    )
+    tools.run(
+        "pg_dump",
+        ["--format=custom", "--table=auth.users", "--table=auth.identities", f"--file={tmp_path / 'auth.dump'}"],
+        source_env,
+    )
+
+    assert backup.verify(tmp_path, tools, scratch_env) == [
+        "public.closures: the live statistics say about 3 row(s), and the restore holds none"
+    ]

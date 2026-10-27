@@ -396,6 +396,55 @@ settings:
       way, because that one is baked from a reviewed file in git and needs no
       credential at all.
 
+  BACKUP_DATABASE_URL:
+    where: secret
+    required: false
+    why: >-
+      Production's Postgres, as the dedicated `ourhike_backup` role, for
+      backup-database.yml's nightly dump (#1908). SELECT and BYPASSRLS and
+      nothing else - not the migration owner, so a leaked copy can read but
+      never write or drop. BYPASSRLS is the point rather than a convenience:
+      every table has row-level security on, and a role without it makes
+      pg_dump refuse. Through the session pooler on 5432; the transaction
+      pooler is refused by name. Optional only in the sense that nothing else
+      breaks without it - while it is unset, the backup job's tracking issue
+      says production has no backup, which is then the truth.
+
+  BACKUP_R2_BUCKET:
+    where: secret
+    required: false
+    why: >-
+      The private bucket the encrypted dumps go to, used for nothing else, with
+      a lifecycle rule deleting objects after 90 days (LAUNCH_CHECKLIST.md 5b).
+      Not `our-hike`, which is public, and not `our-hike-raw`, whose token five
+      pipeline jobs hold: a dump holds people's data, so the set of keys that
+      can read it should be one.
+
+  BACKUP_R2_ACCESS_KEY_ID:
+    where: secret
+    required: false
+    why: >-
+      Half of an R2 token scoped to BACKUP_R2_BUCKET alone. R2 offers no
+      write-only token, so this one could read the dumps back - which is why
+      they are encrypted before upload and the key to open them is not here.
+
+  BACKUP_R2_SECRET_ACCESS_KEY:
+    where: secret
+    required: false
+    why: >-
+      The other half, shown once at creation. A wrong value fails the upload
+      step and opens the backup tracking issue, never silently.
+
+  BACKUP_AGE_RECIPIENT:
+    where: variable
+    required: false
+    why: >-
+      The `age` public key every dump is encrypted to (`age1...`). Public by
+      construction - it can only seal, never open - so it lives on the
+      Variables tab where a build log may show it. Its private half is kept
+      offline by the maintainer and is the only way to read a backup, so
+      losing it loses every backup made to it (LAUNCH_CHECKLIST.md 5b).
+
   PROTECTIONS_READ_TOKEN:
     where: secret
     required: false

@@ -99,11 +99,17 @@ SKIPPED = "skipped"
 # check runs daily, so it will meet a sleeping instance nearly every time -
 # the cold start IS the normal path here, not the exception. HTTP_TIMEOUT is
 # 30, which is inside that documented window, so reusing it would report a
-# healthy backend as unreachable most mornings. 90 is the documented worst
-# case plus the same margin again, and it is a timeout rather than a promise:
-# a service that is genuinely down still fails fast on a refused connection.
+# healthy backend as unreachable most mornings. It is a timeout rather than a
+# promise: a service that is genuinely down still fails fast on a refused
+# connection.
+#
+# 110 rather than the 90 this was: the backend now sits behind Cloudflare
+# (backend/HOSTING.md), which gives up on an origin after 100 s and
+# answers 524 itself. A timeout under 100 turned that answer - the edge saying
+# the origin never replied - into UNREACHABLE, which by design never opens the
+# tracking issue. Past 100, a stalled origin is a FAILED with the 524 in it.
 BACKEND_HEALTH_PATH = "/health"
-BACKEND_COLD_START_TIMEOUT = 90
+BACKEND_COLD_START_TIMEOUT = 110
 
 # The anonymous read the edge in front of the backend must keep, and the
 # Cloudflare cache states that mean it did.
@@ -920,7 +926,6 @@ def check_backend_edge_cache(
     api_base: str | None,
     origin: str | None,
     session: requests.Session | None = None,
-    run_id: str | None = None,
 ) -> dict:
     """Is the edge keeping the backend's anonymous reads - the assumption its free tier rests on.
 
@@ -933,16 +938,18 @@ def check_backend_edge_cache(
     a few thousand hikers away. Nothing breaks on the day it happens, which is
     why it needs a check rather than a symptom.
 
-    **A shared copy a browser cannot read.** Starlette adds
-    `Access-Control-Allow-Origin` only when a request sends an `Origin`, so a
-    copy filled by curl or a crawler carries the header only because
-    backend/app/core/edge_cache.py adds it regardless. If that ever stops, every
-    browser served such a copy is refused, while every check that sends no
-    `Origin` passes - #427's failure on the data bucket. So the copy is filled
-    here the way a crawler would, with no `Origin`, and read back the way a
-    browser would. The URL carries a query string unique to this run, which
-    the edge keys separately: the copy read back is the one this run filled,
-    not one somebody else's request left there.
+    **A copy a browser cannot read.** Every check that sends no `Origin` passes
+    while every browser is refused - #427's failure on the data bucket (Production's
+    origin is capitalised in the R2 CORS policy, so no browser ever matches it and
+    the deployed app draws no trail). So this
+    asks the way a hiker's browser does, with the app's own `Origin`. Cloudflare
+    keeps a copy per `Origin` value (its default cache key), so the copy read
+    here is the one every hiker on that origin is handed. There is no query
+    string: LAUNCH_CHECKLIST.md §6 refuses one on these paths, and a unique one
+    would read a copy no hiker ever gets.
+
+    The first read may be the one that fills the copy, so it reads until the
+    edge serves one or the tries run out.
 
     Not hiker-facing, for `check_backend_health`'s reason: a refused live read
     falls back to the published baseline, so this failing costs money and
@@ -957,15 +964,12 @@ def check_backend_edge_cache(
             "detail": "unset, so there is no backend edge to ask (#600)",
         }
 
-    stamp = run_id or datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ")
-    url = f"{api_base.rstrip('/')}{BACKEND_EDGE_PATH}?edge-check={stamp}"
-    requester = session or requests
+    url = f"{api_base.rstrip('/')}{BACKEND_EDGE_PATH}"
+    headers = {"Origin": origin} if origin else {}
     seen: list[str] = []
     try:
-        # The fill: no Origin, so the backend's own header is all the copy has.
-        requester.get(url, timeout=BACKEND_COLD_START_TIMEOUT)
         for _ in range(BACKEND_EDGE_TRIES):
-            response = requester.get(url, headers={"Origin": origin} if origin else {}, timeout=BACKEND_COLD_START_TIMEOUT)
+            response = (session or requests).get(url, headers=headers, timeout=BACKEND_COLD_START_TIMEOUT)
             status = (response.headers.get("cf-cache-status") or "").upper()
             seen.append(status or "none")
             if response.status_code != 200 or status in EDGE_SERVED:
@@ -993,14 +997,14 @@ def check_backend_edge_cache(
 
     if seen[-1] not in EDGE_SERVED:
         return failed(
-            f"cf-cache-status was {', '.join(seen)} on {len(seen)} reads after the fill: the edge is not "
-            f"keeping {BACKEND_EDGE_PATH} (Cache-Control was {response.headers.get('Cache-Control')!r})"
+            f"cf-cache-status was {', '.join(seen)} on {len(seen)} reads: the edge is not keeping "
+            f"{BACKEND_EDGE_PATH} (Cache-Control was {response.headers.get('Cache-Control')!r})"
         )
 
     if response.headers.get("Access-Control-Allow-Origin") not in ("*", origin):
         return failed(
-            f"the edge's copy of {BACKEND_EDGE_PATH}, filled without an Origin, carries no "
-            f"Access-Control-Allow-Origin for {origin}, so a browser would refuse the live read"
+            f"the edge's copy of {BACKEND_EDGE_PATH} carries no Access-Control-Allow-Origin for {origin}, "
+            "so a browser would refuse the live read"
         )
 
     return {

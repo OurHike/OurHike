@@ -1055,16 +1055,16 @@ class TestBackendEdgeCache:
 
     `/health` stays green through both failures this exists for: the edge no
     longer keeping the anonymous reads, which puts the free tier's quotas back
-    within a few thousand hikers, and a shared copy that carries no CORS
-    header, which every browser refuses while every Origin-less check passes.
+    within a few thousand hikers, and a copy that carries no CORS header, which
+    every browser refuses while every Origin-less check passes.
     """
 
     API = "https://api.example.org"
-    URL = f"{API}/closures?edge-check=run1"
+    URL = f"{API}/closures"
     ORIGIN = "https://ourhike.org"
 
     def _ask(self, session=None):
-        return check_deployment.check_backend_edge_cache(self.API, self.ORIGIN, session=session, run_id="run1")
+        return check_deployment.check_backend_edge_cache(self.API, self.ORIGIN, session=session)
 
     def test_an_unset_base_is_skipped_rather_than_failed(self):
         report = check_deployment.check_backend_edge_cache(None, self.ORIGIN)
@@ -1087,10 +1087,10 @@ class TestBackendEdgeCache:
         assert report["state"] == OK
         assert "HIT" in report["detail"]
 
-    def test_the_fill_sends_no_origin_and_the_reads_send_the_hikers_origin(self, requests_mock):
-        """The order is the test: a copy filled by an Origin-less request is
-        the one that would reach browsers without the header, so that is the
-        copy read back."""
+    def test_every_read_is_a_browser_read_with_no_query_string(self, requests_mock):
+        """Cloudflare keeps a copy per Origin, so only a read that carries the
+        app's own Origin reads the copy hikers get. A query string would read a
+        copy nobody gets, and LAUNCH_CHECKLIST.md §6 refuses one on this path."""
         requests_mock.get(
             self.URL,
             [
@@ -1101,9 +1101,10 @@ class TestBackendEdgeCache:
 
         self._ask()
 
-        fill, read = requests_mock.request_history
-        assert "Origin" not in fill.headers
-        assert read.headers["Origin"] == self.ORIGIN
+        assert len(requests_mock.request_history) == 2
+        for read in requests_mock.request_history:
+            assert read.headers["Origin"] == self.ORIGIN
+            assert read.query == ""
 
     def test_a_shared_copy_without_allow_origin_fails_because_browsers_would_refuse_it(self, requests_mock):
         requests_mock.get(
@@ -1117,7 +1118,7 @@ class TestBackendEdgeCache:
         report = self._ask()
 
         assert report["state"] == FAILED
-        assert "filled without an Origin" in report["detail"]
+        assert "carries no Access-Control-Allow-Origin" in report["detail"]
 
     def test_no_cf_cache_status_fails_because_the_backend_is_not_behind_the_edge(self, requests_mock):
         """`API_BASE_URL` pointed at the onrender.com host, or the record
@@ -1130,7 +1131,7 @@ class TestBackendEdgeCache:
         assert report["state"] == FAILED
         assert "not behind Cloudflare" in report["detail"]
 
-    def test_three_misses_after_the_fill_fail_and_name_what_the_edge_said(self, requests_mock):
+    def test_three_misses_fail_and_name_what_the_edge_said(self, requests_mock):
         requests_mock.get(
             self.URL,
             json=[],
@@ -1142,9 +1143,9 @@ class TestBackendEdgeCache:
         assert report["state"] == FAILED
         assert "MISS, MISS, MISS" in report["detail"]
         assert "no-store" in report["detail"]
-        assert len(requests_mock.request_history) == 1 + check_deployment.BACKEND_EDGE_TRIES
+        assert len(requests_mock.request_history) == check_deployment.BACKEND_EDGE_TRIES
 
-    def test_one_unlucky_miss_does_not_fail_the_run(self, requests_mock):
+    def test_one_unlucky_miss_after_the_fill_does_not_fail_the_run(self, requests_mock):
         """Two machines in one data centre can each miss once before the copy
         reaches both. A monitor that fires on that gets muted."""
         requests_mock.get(
@@ -1158,13 +1159,21 @@ class TestBackendEdgeCache:
 
         assert self._ask()["state"] == OK
 
-    def test_a_non_200_fails(self, requests_mock):
-        requests_mock.get(self.URL, status_code=503)
+    def test_a_524_from_the_edge_is_a_failure_not_an_unreachable(self, requests_mock):
+        """Cloudflare answers 524 when the origin never replied within 100 s.
+        That is an answer, and a monitor that called it unreachable would never
+        open the tracking issue."""
+        requests_mock.get(self.URL, status_code=524)
 
         report = self._ask()
 
         assert report["state"] == FAILED
-        assert "503" in report["detail"]
+        assert "524" in report["detail"]
+
+    def test_the_timeout_outlasts_cloudflares_own(self):
+        """Cloudflare gives up on an origin after 100 s and says so with a 524.
+        A timeout under that would turn the 524 into UNREACHABLE."""
+        assert check_deployment.BACKEND_COLD_START_TIMEOUT > 100
 
     def test_a_request_that_never_completed_is_unreachable_not_failed(self, requests_mock):
         requests_mock.get(self.URL, exc=requests.exceptions.ConnectTimeout)

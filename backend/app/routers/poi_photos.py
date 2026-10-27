@@ -472,7 +472,12 @@ def report_photo(
 
     Latest report wins and re-surfaces the row: a photo reviewed last month
     and reported again today is back in front of a person, because the
-    second reporter may have seen what the first look missed. Requires an
+    second reporter may have seen what the first look missed. The exception
+    is the same account reporting again after a moderator has looked (#1762):
+    it has no new eyes to offer, so it changes nothing, and one account
+    cannot put a decided photo back at the top of the queue by repeating
+    itself. Two accounts taking turns still can; closing that needs a row
+    per (photo, reporter), which this does not add. Requires an
     account, like every write - a report against somebody's photograph
     needs a reporter to weigh it by.
     """
@@ -489,6 +494,9 @@ def report_photo(
     )
     if photo is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Photo not found")
+
+    if photo.reported_by == current_user.id and photo.reviewed_at is not None:
+        return Response(status_code=status.HTTP_204_NO_CONTENT)
 
     photo.reported_at = utc_now()
     photo.reported_by = current_user.id

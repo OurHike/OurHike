@@ -23,24 +23,35 @@ decision rather than a decorator copied from a neighbour.
 **A SIGNED-IN CALLER IS NEVER SHARED.** A request carrying `Authorization`
 gets `private, no-store`, whatever the route does with the token. Cloudflare
 does not store a response marked private, so a reporter's view of their own
-report waiting in the queue cannot be handed to the next caller.
+report waiting in the queue cannot be handed to the next caller. Whether the
+edge serves such a request its stored anonymous copy, or passes it through,
+is not something Cloudflare's docs settle; LAUNCH_CHECKLIST.md §6 step 7's last
+check says which, and backend/HOSTING.md says what each costs.
 
 **A SHARED COPY CARRIES ITS OWN CORS ANSWER.** Starlette's CORSMiddleware adds
-`Access-Control-Allow-Origin` only when the request sent an `Origin` header,
-and the edge keys its copy on the URL, not on the Origin. A copy filled by
-curl, a monitor or a crawler would otherwise reach every browser for the next
-`EDGE_TTL_SECONDS` without the header, and every browser would refuse to read
-it. That is #427's shape one layer up: there, every check that sent no
-`Origin` saw the data bucket answer correctly, while every browser was refused
-because the policy's spelling of production's origin could never match.
-Setting `*` here repeats what `allow_origins=["*"]` in app/main.py already
-answers any browser. If CORS is ever narrowed from `*`, one origin's answer can
-no longer be shared, and these routes have to leave the edge cache in the same
-change.
+`Access-Control-Allow-Origin` only when the request sent an `Origin` header.
+Cloudflare keeps a separate copy per `Origin` value (its default cache key
+includes the header, developers.cloudflare.com/cache/how-to/cache-keys, read
+2026-10-27), so there a copy filled by curl or a monitor is never handed to a
+browser. A shared cache that keys on the URL alone would hand it to every
+browser for the next `EDGE_TTL_SECONDS`, and every browser would refuse to
+read it. That is the shape of #427 (Production's origin is capitalised in the
+R2 CORS policy, so no browser ever matches it and the deployed app draws no
+trail), one layer up: there, every check that sent no `Origin` saw the data
+bucket answer correctly, while every browser was refused. So
+the header is set here regardless of the cache in front, repeating what
+`allow_origins=["*"]` in app/main.py already answers any browser. If CORS is
+ever narrowed from `*`, one origin's answer can no longer be shared, and these
+routes have to leave the edge cache in the same change.
 
-**EVERYTHING ELSE SAYS `no-store`** (NoStoreByDefaultMiddleware). A cache rule
-set up more generously than LAUNCH_CHECKLIST.md §6 asks for then still cannot
-keep a response that carries a signed URL or somebody's own data.
+**EVERYTHING ELSE SAYS `no-store`** (NoStoreByDefaultMiddleware). That binds
+a cache rule that honours the origin's `Cache-Control`, which is the rule
+LAUNCH_CHECKLIST.md §6 sets up. It does not bind one told to ignore it:
+Cloudflare's docs say that with an Edge TTL that ignores the origin's
+cache-control, or a status-code TTL, "a response with `no-store` ... is
+cached" (developers.cloudflare.com/cache/troubleshooting/investigating-uncached-responses,
+read 2026-10-27). That is why §6 scopes the rule to these three paths rather
+than to the hostname, and says never to choose either mode.
 """
 
 from __future__ import annotations

@@ -148,7 +148,8 @@ jobs:
         uses: actions/download-artifact@v8
         with:
           name: campsite-steward-site
-          path: site
+          # Where the score job built it, as .github/tests/test_artifact_handoff_paths.py asks.
+          path: apps/steward/web/dist
 
       - name: Publish to Cloudflare Pages
         if: steps.can.outputs.publish == 'true'
@@ -157,7 +158,7 @@ jobs:
           apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
           command: >-
-            pages deploy site
+            pages deploy apps/steward/web/dist
             --project-name=${{ vars.STEWARD_PAGES_PROJECT }}
             --branch=main
             --commit-dirty=true

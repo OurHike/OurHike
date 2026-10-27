@@ -176,12 +176,28 @@ MAX_REFERENCE_LINES = 12_000
 
 
 # Campsite Steward's analysis job (apps/steward/pipeline/, #1901) writes JSON:
-# a public summary, and one file per club holding the location of every
-# user-created campsite in ATC's inventory - SOURCE_SURVEY.md §3b's case above,
-# whole. Its data/ directory is gitignored (apps/steward/pipeline/.gitignore);
-# this is the check that nothing it wrote was committed anyway. No JSON under
-# apps/steward/ is source today, so the rule needs no allowlist yet.
+# summary.json, and sites.json holding the location of every user-created
+# campsite in ATC's inventory. Those files are public by the maintainer's choice
+# (2026-10-27), but public is not committed: they are rebuilt weekly and
+# published beside the web app by steward-analysis.yml, and CONTRIBUTING.md's
+# "Data does not go in commits" holds for them as for everything else. Both
+# places they land are gitignored (apps/steward/pipeline/.gitignore, and
+# apps/steward/web/public/data/ in apps/steward/web/.gitignore); this is the
+# check that nothing was committed anyway. The only JSON under apps/steward/
+# that is source is the web app's tool configuration, named one by one below.
 STEWARD_DIR = "apps/steward/"
+STEWARD_JSON_SOURCE = frozenset(
+    {
+        "apps/steward/web/package.json",
+        "apps/steward/web/package-lock.json",
+        "apps/steward/web/tsconfig.json",
+        "apps/steward/web/tsconfig.app.json",
+        "apps/steward/web/tsconfig.node.json",
+        "apps/steward/web/tsconfig.test.json",
+        "apps/steward/web/.oxlintrc.json",
+        "apps/steward/web/.prettierrc.json",
+    }
+)
 
 
 def tracked_files() -> list[str]:
@@ -212,7 +228,9 @@ def is_pipeline_json_outside_the_allowlist(path: str) -> bool:
 
 
 def is_steward_output(path: str) -> bool:
-    return path.startswith(STEWARD_DIR) and (Path(path).suffix.lower() == ".json" or "/data/" in path)
+    if not path.startswith(STEWARD_DIR):
+        return False
+    return "/data/" in path or (Path(path).suffix.lower() == ".json" and path not in STEWARD_JSON_SOURCE)
 
 
 @pytest.fixture(scope="module")
@@ -283,9 +301,10 @@ def test_no_exported_json_is_tracked_under_pipeline(tracked):
 
 
 def test_nothing_campsite_steward_scored_is_tracked(tracked):
-    """apps/steward/pipeline/data/ holds fetched layers and scored sites, including
-    every user-created campsite's location. A commit would publish them from every
-    fork, permanently, before anybody decided they could be."""
+    """The steward job's fetched layers and scored sites, including every
+    user-created campsite's location, are rebuilt weekly and published by a
+    deploy. A commit would freeze a copy into every fork's history, permanently,
+    where no later run can correct or withdraw it."""
     committed = [path for path in tracked if is_steward_output(path)]
 
     assert committed == [], (
@@ -314,6 +333,10 @@ def test_nothing_campsite_steward_scored_is_tracked(tracked):
         ("apps/steward/pipeline/data/out/sites/example-trail-club.json", "steward"),
         ("apps/steward/pipeline/data/raw/csi.json", "steward"),
         ("apps/steward/pipeline/data/raw/padus.geojson", "steward"),
+        ("apps/steward/pipeline/data/out/sites.json", "steward"),
+        ("apps/steward/web/public/data/sites.json", "steward"),
+        ("apps/steward/web/dist/data/summary.json", "steward"),
+        ("apps/steward/web/src/sites.json", "steward"),
         # What they must leave alone: the reviewed seeds and joins, the
         # registry, fixtures, and JSON that is source outside pipeline/.
         ("pipeline/dbt/seeds/dbt_project_evaluator_exceptions.csv", None),
@@ -328,6 +351,9 @@ def test_nothing_campsite_steward_scored_is_tracked(tracked):
         ("apps/steward/PLAN.md", None),
         ("apps/steward/pipeline/steward_analysis/build.py", None),
         ("apps/steward/pipeline/requirements.txt", None),
+        ("apps/steward/web/package.json", None),
+        ("apps/steward/web/tsconfig.app.json", None),
+        ("apps/steward/web/src/fixtures.ts", None),
     ],
 )
 def test_each_rule_catches_what_it_names_and_leaves_the_rest(path, flagged_by):

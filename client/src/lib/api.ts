@@ -164,14 +164,12 @@ async function authedFetch(path: string, init: RequestInit = {}): Promise<Respon
  * A third stance, and the reason reads could not just borrow `authedFetch`
  * (#286). That one refuses without a token, which is right for a write the
  * server would refuse anyway. A read must not: browsing has never needed an
- * account in this app, and `list_reports` is built to answer an anonymous
- * caller with the public set.
+ * account in this app, and every read here answers an anonymous caller.
  *
- * But the token still goes when it exists, and that is not a nicety - it is
- * what lets a reporter see their own unmoderated report. Without it someone's
- * own report vanishes from the app between submitting it and a moderator
- * reaching it, which is precisely what "Waiting" on the More screen is
- * describing.
+ * But the token still goes when it exists, and that is not a nicety:
+ * `list_field_notes` and the report photo links answer a signed-in caller
+ * with more of their own. The three conditions reads do not use this any
+ * more, and `sharedFetch` below says why.
  */
 async function readFetch(path: string, signal?: AbortSignal): Promise<Response> {
   const token = await accessToken()
@@ -180,6 +178,27 @@ async function readFetch(path: string, signal?: AbortSignal): Promise<Response> 
     signal,
     headers: token === null ? {} : { Authorization: `Bearer ${token}` },
   })
+}
+
+/**
+ * A read every hiker's app makes the same way, so it never carries a token,
+ * even when there is one (#1916 - A signed-in hiker's app sends its token on
+ * the three edge-cached reads, so they either skip the cache or hide the
+ * hiker's own queued report). A fifth stance.
+ *
+ * `GET /closures`, `/reports` and `/disputes` are the reads a cache in front
+ * of the API keeps one copy of for everybody (#1907 - Let Cloudflare cache
+ * GET /closures, /reports and /disputes in front of the API, and write the
+ * click-path that stands it up). A token makes a request the cache cannot
+ * simply answer from that copy: it either goes past it to the API, or is
+ * answered from it, and Cloudflare's docs do not say which. The first spends
+ * the API's free tier on every signed-in hiker. The second hides a reporter's
+ * own waiting report. The server never reads the caller on `/closures` or
+ * `/disputes`, and the one thing a token bought on `/reports` comes from
+ * `/reports/mine` instead (`fetchReports`).
+ */
+async function sharedFetch(path: string, signal?: AbortSignal): Promise<Response> {
+  return apiFetch(path, { signal })
 }
 
 /**
@@ -269,16 +288,51 @@ export interface ReportSummary {
 }
 
 /**
- * Reports visible to this caller: public and moderated, plus their own at any
- * status when a token went with the request.
+ * Reports visible to this hiker: the public, moderated set everybody gets,
+ * plus their own at any status when they are signed in.
  *
- * **Throws rather than returning `[]` on failure, and that is the point.** An
- * empty list and a failed fetch draw the same map and mean opposite things on
- * the ground - the wrong one of those tells a hiker a closed stretch of trail
- * is open. The caller has to be able to say it does not know.
+ * Two reads, so the shared one carries no token (`sharedFetch`, #1916). The
+ * hiker's own come from `GET /reports/mine`, and each replaces the shared
+ * copy of the same report, because that is the one its reporter is allowed to
+ * see all of. Without them, someone's own report would vanish from the app
+ * between submitting it and a moderator reaching it, which is precisely what
+ * "Waiting" on the More screen is describing.
+ *
+ * **Throws rather than returning `[]` when the shared read fails, and that is
+ * the point.** An empty list and a failed fetch draw the same map and mean
+ * opposite things on the ground - the wrong one of those tells a hiker a
+ * closed stretch of trail is open. The caller has to be able to say it does
+ * not know.
+ *
+ * **The hiker's own read failing does not.** It leaves out their waiting
+ * reports and nothing else: the public list is still what everybody else is
+ * told, and holding back a fresh one because of an expired token or a server
+ * that predates `/reports/mine` would keep stale warnings on the map.
  */
 export async function fetchReports(signal?: AbortSignal): Promise<ReportSummary[]> {
-  const response = await readFetch('/reports', signal)
+  const [shared, mine] = await Promise.all([
+    sharedFetch('/reports', signal).then(
+      async (response) => (await response.json()) as ReportSummary[],
+    ),
+    fetchMyReports(signal).catch(() => []),
+  ])
+  if (mine.length === 0) return shared
+  const own = new Set(mine.map((report) => report.id))
+  return [...shared.filter((report) => !own.has(report.id)), ...mine]
+}
+
+/**
+ * The signed-in hiker's own reports at any status, or `[]` without asking
+ * when nobody is signed in (#1916).
+ */
+async function fetchMyReports(signal?: AbortSignal): Promise<ReportSummary[]> {
+  const token = await accessToken()
+  if (token === null) return []
+
+  const response = await apiFetch('/reports/mine', {
+    signal,
+    headers: { Authorization: `Bearer ${token}` },
+  })
   return (await response.json()) as ReportSummary[]
 }
 
@@ -372,7 +426,7 @@ export interface ClosureSummary {
  * hiker would act on by walking into it.
  */
 export async function fetchClosures(signal?: AbortSignal): Promise<ClosureSummary[]> {
-  const response = await readFetch('/closures', signal)
+  const response = await sharedFetch('/closures', signal)
   return (await response.json()) as ClosureSummary[]
 }
 
@@ -391,7 +445,7 @@ export async function fetchClosures(signal?: AbortSignal): Promise<ClosureSummar
  * about a spring.
  */
 export async function fetchDisputes(signal?: AbortSignal): Promise<DisputeSummary[]> {
-  const response = await readFetch('/disputes', signal)
+  const response = await sharedFetch('/disputes', signal)
   return (await response.json()) as DisputeSummary[]
 }
 

@@ -501,6 +501,34 @@ def list_my_thanks(
     return [ReportOut.for_viewer(row, current_user) for row in rows]
 
 
+@router.get("/mine", response_model=list[ReportOut])
+def list_my_reports(
+    response: Response,
+    db: Session = Depends(get_db),
+    current_user: Profile = Depends(get_current_user),
+) -> list[ReportOut]:
+    """The caller's own reports at any status: what a token on `GET /reports`
+    buys, on a path of its own.
+
+    #1916 - A signed-in hiker's app sends its token on the three edge-cached
+    reads, so they either skip the cache or hide the hiker's own queued
+    report. `GET /reports` is the same list for every anonymous caller, which
+    is what lets a shared cache in front of the API keep one copy of it, and
+    a reporter's own report waiting for a moderator is the one thing on it
+    that differs by caller. So the app reads `GET /reports` with no token and
+    this with one, and merges the two (`fetchReports` in client/src/lib/api.ts).
+
+    `list_reports` still answers a token the way it always has, for every app
+    installed before that change.
+
+    One person's list, so no cache may keep it, and ordered by id for
+    `list_reports`'s reason.
+    """
+    response.headers["Cache-Control"] = "private, no-store, max-age=0"
+    rows = db.query(Report).filter(Report.reporter_id == current_user.id).order_by(Report.id).all()
+    return [ReportOut.for_viewer(row, current_user) for row in rows]
+
+
 @router.get("/{report_id}", response_model=ReportOut)
 def get_report(
     report_id: str,

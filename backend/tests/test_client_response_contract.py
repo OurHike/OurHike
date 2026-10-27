@@ -192,6 +192,11 @@ def response_schema(document: dict, path: str, *, unwrap: str | None = None) -> 
 # moderation queue's own wrapper is part of what is checked.
 SEAMS = [
     ("ReportSummary", "/reports", None),
+    # The reporter's own reports, which `fetchReports` merges into the shared
+    # list (#1916 - A signed-in hiker's app sends its token on the three
+    # edge-cached reads, so they either skip the cache or hide the hiker's
+    # own queued report).
+    ("ReportSummary", "/reports/mine", None),
     ("ClosureSummary", "/closures", None),
     ("ProfileSummary", "/profiles/me", None),
     ("QueuedReport", "/moderation/queue", "reports"),
@@ -206,7 +211,7 @@ def document() -> dict:
     return current_document()
 
 
-@pytest.mark.parametrize(("interface", "path", "unwrap"), SEAMS, ids=[s[0] for s in SEAMS])
+@pytest.mark.parametrize(("interface", "path", "unwrap"), SEAMS, ids=[f"{s[0]} {s[1]}" for s in SEAMS])
 def test_every_field_the_client_reads_is_one_the_server_sends(document, interface, path, unwrap):
     """The core assertion, in the one direction that is a defect.
 
@@ -228,7 +233,7 @@ def test_every_field_the_client_reads_is_one_the_server_sends(document, interfac
     )
 
 
-@pytest.mark.parametrize(("interface", "path", "unwrap"), SEAMS, ids=[s[0] for s in SEAMS])
+@pytest.mark.parametrize(("interface", "path", "unwrap"), SEAMS, ids=[f"{s[0]} {s[1]}" for s in SEAMS])
 def test_a_field_the_client_declares_non_null_is_required_and_never_null(document, interface, path, unwrap):
     """Nullability, which is the same failure one step further in.
 
@@ -262,7 +267,7 @@ def test_a_field_the_client_declares_non_null_is_required_and_never_null(documen
     )
 
 
-@pytest.mark.parametrize(("interface", "path", "unwrap"), SEAMS, ids=[s[0] for s in SEAMS])
+@pytest.mark.parametrize(("interface", "path", "unwrap"), SEAMS, ids=[f"{s[0]} {s[1]}" for s in SEAMS])
 def test_the_scalar_types_agree_where_they_are_inferable(document, interface, path, unwrap):
     """`number` against `number`, and so on - the coarse check, deliberately.
 

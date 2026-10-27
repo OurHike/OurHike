@@ -529,9 +529,13 @@ describe('sendReport idempotency', () => {
 // The client could post a report and never see one - its own included. Two
 // properties matter more than the fetch itself.
 //
-//  1. The token goes WHEN THERE IS ONE, and is never required. Browsing has
-//     never needed an account, but a reporter has to be able to see their own
-//     unmoderated report, which is what "Waiting" on the More screen means.
+//  1. The shared reads carry NO token, and a reporter still sees their own.
+//     Browsing has never needed an account, and since #1916 (A signed-in
+//     hiker's app sends its token on the three edge-cached reads, so they
+//     either skip the cache or hide the hiker's own queued report) a signed-in
+//     hiker's `/reports`, `/closures` and `/disputes` go out exactly as an
+//     anonymous one's do. Their own unmoderated report, which is what
+//     "Waiting" on the More screen means, comes from `/reports/mine`.
 //  2. A failed read THROWS. An empty list and a failed fetch draw the same
 //     map and mean opposite things on the ground.
 
@@ -550,37 +554,119 @@ describe('reading reports and closures', () => {
     } as Response)
   }
 
+  /** A server answering each path its own way, and 404 for any other. */
+  function mockRoutes(routes: Record<string, { status?: number; body: unknown }>) {
+    return vi.spyOn(globalThis, 'fetch').mockImplementation(async (input) => {
+      const route = routes[new URL(String(input)).pathname] ?? { status: 404, body: null }
+      const status = route.status ?? 200
+      return {
+        ok: status >= 200 && status < 300,
+        status,
+        json: async () => route.body,
+      } as Response
+    })
+  }
+
+  /** The headers the request to `path` went out with. */
+  function headersFor(spy: ReturnType<typeof mockRoutes>, path: string) {
+    const call = spy.mock.calls.find(
+      ([input]) => new URL(String(input)).pathname === path,
+    )
+    expect(call, `no request to ${path}`).toBeDefined()
+    return ((call?.[1] as RequestInit | undefined)?.headers ?? {}) as Record<
+      string,
+      string
+    >
+  }
+
   afterEach(() => {
     vi.unstubAllEnvs()
     vi.resetModules()
   })
 
-  it('reads reports without an account', async () => {
+  it("reads reports without an account, and asks for nobody's own", async () => {
     withSession(null)
     const api = await configuredApi()
     const spy = mockJson([{ id: 'r1' }])
 
     await expect(api.fetchReports()).resolves.toEqual([{ id: 'r1' }])
 
-    const headers = (spy.mock.calls[0][1] as RequestInit).headers as Record<
-      string,
-      string
-    >
-    expect(headers.Authorization).toBeUndefined()
+    const headers = (spy.mock.calls[0][1] as RequestInit).headers as
+      Record<string, string> | undefined
+    expect(headers?.Authorization).toBeUndefined()
+    expect(spy).toHaveBeenCalledTimes(1)
   })
 
-  it('sends the token when there is one, so a reporter sees their own', async () => {
+  it('signed in, reads /reports with no token and asks /reports/mine with one', async () => {
     withSession('a-real-token')
     const api = await configuredApi()
-    const spy = mockJson([])
+    const spy = mockRoutes({
+      '/reports': { body: [{ id: 'shared-1' }] },
+      '/reports/mine': { body: [{ id: 'mine-1', status: 'submitted' }] },
+    })
 
-    await api.fetchReports()
+    await expect(api.fetchReports()).resolves.toEqual([
+      { id: 'shared-1' },
+      { id: 'mine-1', status: 'submitted' },
+    ])
+    expect(headersFor(spy, '/reports').Authorization).toBeUndefined()
+    expect(headersFor(spy, '/reports/mine').Authorization).toBe('Bearer a-real-token')
+  })
 
-    const headers = (spy.mock.calls[0][1] as RequestInit).headers as Record<
-      string,
-      string
-    >
-    expect(headers.Authorization).toBe('Bearer a-real-token')
+  it("keeps the reporter's own copy of a report that is on both lists", async () => {
+    // The shared copy is what a stranger may see of it. The reporter's own
+    // copy is the one `ReportOut.for_viewer` fills in for them.
+    withSession('a-real-token')
+    const api = await configuredApi()
+    mockRoutes({
+      '/reports': { body: [{ id: 'r1', note: null }] },
+      '/reports/mine': { body: [{ id: 'r1', note: 'Large tree across the trail.' }] },
+    })
+
+    await expect(api.fetchReports()).resolves.toEqual([
+      { id: 'r1', note: 'Large tree across the trail.' },
+    ])
+  })
+
+  it.each([
+    ['refuses the token', 401],
+    ['predates /reports/mine', 404],
+    ['fails', 500],
+  ])('still returns the shared list when /reports/mine %s', async (_why, status) => {
+    // The shared list is what everybody else is told. Holding it back over
+    // the hiker's own waiting reports would leave stale warnings on the map.
+    withSession('a-real-token')
+    const api = await configuredApi()
+    mockRoutes({
+      '/reports': { body: [{ id: 'shared-1' }] },
+      '/reports/mine': { status, body: null },
+    })
+
+    await expect(api.fetchReports()).resolves.toEqual([{ id: 'shared-1' }])
+  })
+
+  it("throws when the shared read fails, even with the hiker's own in hand", async () => {
+    withSession('a-real-token')
+    const api = await configuredApi()
+    mockRoutes({
+      '/reports': { status: 500, body: null },
+      '/reports/mine': { body: [{ id: 'mine-1' }] },
+    })
+
+    await expect(api.fetchReports()).rejects.toBeInstanceOf(api.ApiError)
+  })
+
+  it.each([
+    ['fetchClosures' as const, '/closures'],
+    ['fetchDisputes' as const, '/disputes'],
+  ])('%s sends no token even when the hiker is signed in', async (fn, path) => {
+    withSession('a-real-token')
+    const api = await configuredApi()
+    const spy = mockRoutes({ [path]: { body: [] } })
+
+    await api[fn]()
+
+    expect(headersFor(spy, path).Authorization).toBeUndefined()
   })
 
   it('reads closures anonymously too', async () => {

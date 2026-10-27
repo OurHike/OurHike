@@ -17,6 +17,7 @@ from sqlalchemy.orm import Session
 
 from app.core.assignments import assignments_covering, stood_behind
 from app.core.auth import get_current_user, get_current_user_optional
+from app.core.edge_cache import shared_at_edge
 from app.core.orm import commit_and_refresh, get_or_404
 from app.core.photos import (
     ALLOWED_CONTENT_TYPE,
@@ -347,7 +348,7 @@ def create_report(
         return ReportOut.for_viewer(settled, current_user)
 
 
-@router.get("", response_model=list[ReportOut])
+@router.get("", response_model=list[ReportOut], dependencies=[Depends(shared_at_edge)])
 def list_reports(
     db: Session = Depends(get_db),
     current_user: Profile | None = Depends(get_current_user_optional),

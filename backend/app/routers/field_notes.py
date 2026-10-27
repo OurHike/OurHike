@@ -25,6 +25,7 @@ from sqlalchemy.orm import Session
 from app.core.assignments import stood_behind
 from app.core.auth import get_current_user, get_current_user_optional, require_role
 from app.core.disputes import DISPUTE_DECAY_DAYS, DisputeInput, dispute_state
+from app.core.edge_cache import shared_at_edge
 from app.core.orm import commit_and_refresh, get_or_404
 from app.core.photos import (
     ALLOWED_CONTENT_TYPE,
@@ -273,7 +274,7 @@ def _existing_flag(db: Session, note_id: str, flagger_id: str) -> NoteFlag | Non
     return db.query(NoteFlag).filter(NoteFlag.note_id == note_id, NoteFlag.flagged_by == flagger_id).first()
 
 
-@router.get("/disputes", response_model=list[DisputeOut])
+@router.get("/disputes", response_model=list[DisputeOut], dependencies=[Depends(shared_at_edge)])
 def list_disputes(db: Session = Depends(get_db)) -> list[DisputeOut]:
     """Places the field says are not there (#876, FIELD_NOTES.md §4).
 

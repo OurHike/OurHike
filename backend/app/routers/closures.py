@@ -15,6 +15,7 @@ from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from app.core.auth import get_current_user, require_role
+from app.core.edge_cache import shared_at_edge
 from app.core.orm import commit_and_refresh, get_or_404
 from app.core.time import to_naive_utc
 from app.db.session import get_db
@@ -121,7 +122,7 @@ def create_closure(
         return settled
 
 
-@router.get("", response_model=list[ClosureOut])
+@router.get("", response_model=list[ClosureOut], dependencies=[Depends(shared_at_edge)])
 def list_closures(db: Session = Depends(get_db)) -> list[Closure]:
     """List closures visible to anyone: verified only. No auth required -
     browsing needs no account, and closures are never hideable once

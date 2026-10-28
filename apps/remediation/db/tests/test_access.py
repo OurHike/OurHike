@@ -12,10 +12,9 @@ TABLES = (
     "site_list_item",
     "club_weights",
     "claim",
-    "claim_member",
+    "follow_up",
     "photo",
     "photo_receipt",
-    "hours",
     "migration",
 )
 
@@ -39,7 +38,7 @@ def test_every_table_has_row_level_security_on(db):
 
 def test_signed_out_callers_get_only_the_open_views_and_a_clubs_weights(db):
     with db.acting(None) as connection:
-        for view in ("open_claims", "open_photos", "open_weights"):
+        for view in ("open_claims", "open_photos", "open_follow_ups", "open_weights"):
             connection.execute(f"select * from remediation.{view}").fetchall()
     assert db.call(None, "read_weights", CLUB)["current"]["deficit"] == 60
     error = db.refused(None, "claim_sites", [SITE])

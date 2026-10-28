@@ -13,7 +13,6 @@ import {
   withAccount,
 } from '../test/fakeAccount'
 import { ClaimScreen } from './ClaimScreen'
-import { JoinScreen } from './JoinScreen'
 import { SitePage } from './SitePage'
 import { WorkScreen } from './WorkScreen'
 
@@ -63,9 +62,9 @@ describe('Claiming from a site page', () => {
     ])
   })
 
-  it('shows a site someone else claimed as held, without their name until the work is verified', async () => {
+  it('shows a site someone else claimed as held, without their name until the work is done', async () => {
     const api = fakeApi()
-    await api.seedSubmittedByOther('example-0004', 'Ridge Runner')
+    await api.seedWorkedByOther('example-0004', 'Ridge Runner')
     render(
       withAccount(
         fakeAccount(SIGNED_IN, api),
@@ -73,7 +72,7 @@ describe('Claiming from a site page', () => {
       ),
     )
     expect(
-      await screen.findByText(/by a volunteer, and waiting for someone off the crew/),
+      await screen.findByText(/by a volunteer, 14 days left on the claim/),
     ).toBeInTheDocument()
     expect(screen.queryByText(/Ridge Runner/)).not.toBeInTheDocument()
   })
@@ -110,12 +109,12 @@ describe('The claim workspace', () => {
     expect(api.calls.some((c) => c.includes('heic'))).toBe(false)
   })
 
-  it('submits once both points have a before and an after', async () => {
+  it('is marked done once both points have a before and an after, and is then public', async () => {
     const { api, id } = await openClaim()
     for (const box of screen.getAllByRole('checkbox').slice(0, 6))
       await userEvent.click(box)
-    const submitButton = screen.getByRole('button', { name: 'Submit for review' })
-    expect(submitButton).toBeDisabled()
+    const doneButton = screen.getByRole('button', { name: 'Mark as done' })
+    expect(doneButton).toBeDisabled()
     for (const label of [
       'Before, point 1',
       'After, point 1',
@@ -126,20 +125,28 @@ describe('The claim workspace', () => {
       await waitFor(() => expect(screen.getByAltText(label)).toBeInTheDocument())
     }
     await userEvent.click(screen.getByRole('checkbox', { name: 'Hide the site' }))
-    await userEvent.click(screen.getByRole('button', { name: 'Submit for review' }))
-    await waitFor(async () => expect((await api.claim(id)).state).toBe('submitted'))
+    expect(screen.getByText(/Done is public at once/)).toBeInTheDocument()
+    await userEvent.click(screen.getByRole('button', { name: 'Mark as done' }))
+    await waitFor(async () => expect((await api.claim(id)).state).toBe('done'))
     expect((await api.claim(id)).steps_done).toEqual(['Hide the site'])
+    // No reviewer: the record and the site's follow-up visits come next.
+    expect(
+      await screen.findByRole('region', { name: 'Follow-up visits' }),
+    ).toBeInTheDocument()
   })
 
-  it('a crew invite link is shown once made', async () => {
+  it('has no crew, no invite and no reminder (decided 2026-10-28)', async () => {
     await openClaim()
-    await userEvent.click(screen.getByRole('button', { name: 'Invite someone' }))
-    expect(await screen.findByText(/#\/join\//)).toBeInTheDocument()
+    expect(
+      screen.queryByRole('button', { name: 'Invite someone' }),
+    ).not.toBeInTheDocument()
+    expect(screen.queryByText(/Under five days left/)).not.toBeInTheDocument()
+    expect(screen.getByText(/volunteer agreement/)).toBeInTheDocument()
   })
 })
 
-describe('A claim seen from outside its crew', () => {
-  it('says its photos and report are the crew’s until submitted, not that it has none', async () => {
+describe('A claim seen by someone else', () => {
+  it('says its photos and report are the claimer’s until done, not that it has none', async () => {
     const api = fakeApi()
     const id = await api.seedWorkedByOther('example-0004')
     render(
@@ -149,20 +156,16 @@ describe('A claim seen from outside its crew', () => {
       ),
     )
     expect(
-      await screen.findByText(
-        /Its photos and report are the crew’s until they submit it/,
-      ),
+      await screen.findByText(/Its photos and report are theirs until they mark it done/),
     ).toBeInTheDocument()
     expect(screen.queryByText('No photo')).not.toBeInTheDocument()
     expect(screen.queryByText('No steps ticked.')).not.toBeInTheDocument()
     expect(screen.queryByRole('img')).not.toBeInTheDocument()
   })
-})
 
-describe('Reviewing', () => {
-  it('verifies someone else’s submission from its before and after photos', async () => {
+  it('shows done work to anyone: the before and after, the name, and no review to give', async () => {
     const api = fakeApi()
-    const id = await api.seedSubmittedByOther('example-0004')
+    const id = await api.seedDoneByOther('example-0004', 'Ridge Runner')
     render(
       withAccount(
         fakeAccount(SIGNED_IN, api),
@@ -170,84 +173,64 @@ describe('Reviewing', () => {
       ),
     )
     expect(await screen.findByAltText('After, point 2')).toBeInTheDocument()
-    await userEvent.click(screen.getByRole('button', { name: 'Verify' }))
-    expect(await screen.findByText(/^Verified by/)).toBeInTheDocument()
-  })
-
-  it('sending back needs a note for the crew', async () => {
-    const api = fakeApi()
-    const id = await api.seedSubmittedByOther('example-0004')
-    render(
-      withAccount(
-        fakeAccount(SIGNED_IN, api),
-        <ClaimScreen id={id} sites={fixtureSites} prepare={prepare} />,
-      ),
-    )
-    const sendBack = await screen.findByRole('button', { name: 'Send back' })
-    expect(sendBack).toBeDisabled()
-    await userEvent.type(screen.getByLabelText(/Note to the crew/), 'Point 2 is blurred')
-    await userEvent.click(sendBack)
-    await waitFor(async () => expect((await api.claim(id)).state).toBe('in_progress'))
+    expect(screen.getByText(/by Ridge Runner/)).toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: 'Verify' })).not.toBeInTheDocument()
   })
 })
 
-describe('Rejecting', () => {
-  it('releases the site, with the reason shown on the claim', async () => {
+describe('Follow-up visits', () => {
+  it('a restored site offers its open visit, and taking it opens a claim of its own', async () => {
     const api = fakeApi()
-    const id = await api.seedSubmittedByOther('example-0004')
+    await api.seedDoneByOther('example-0004', 'Ridge Runner', true)
     render(
       withAccount(
         fakeAccount(SIGNED_IN, api),
-        <ClaimScreen id={id} sites={fixtureSites} prepare={prepare} />,
+        <SitePage site={site4} sites={fixtureSites} />,
       ),
     )
-    await userEvent.type(
-      await screen.findByLabelText(/Note to the crew/),
-      'These are photos of a car park',
+    const visits = await screen.findByRole('region', { name: 'Follow-up visits' })
+    expect(
+      screen.getByRole('link', { name: 'See the before and after' }),
+    ).toHaveAttribute('href', expect.stringMatching(/^#\/claim\//))
+    expect(within(visits).getAllByText(/Not open yet/)).toHaveLength(2)
+    await userEvent.click(within(visits).getByRole('button', { name: 'Take visit 1' }))
+    await waitFor(() => expect(window.location.hash).toMatch(/^#\/claim\//))
+    expect(api.calls).toContain('take follow-up 1')
+  })
+
+  it('a visit re-photographs only the after, lined up with the restoration’s', async () => {
+    const api = fakeApi()
+    await api.seedDoneByOther('example-0004', 'Ridge Runner', true)
+    const [first] = await api.followUps('example-0004')
+    const visit = await api.takeFollowUp(first.id)
+    render(
+      withAccount(
+        fakeAccount(SIGNED_IN, api),
+        <ClaimScreen id={visit.id} sites={fixtureSites} prepare={prepare} />,
+      ),
     )
-    await userEvent.click(
-      screen.getByRole('button', { name: 'Reject: the work was not done' }),
-    )
-    expect(await screen.findByText(/^Rejected by/)).toBeInTheDocument()
-    expect(await api.claimForSite('example-0004')).toBeNull()
+    await screen.findByRole('region', { name: 'Time left' })
+    expect(screen.getByText(/Follow-up visit 1 of 3/)).toBeInTheDocument()
+    expect(screen.queryByLabelText('Before, point 1')).not.toBeInTheDocument()
+    expect(screen.getByLabelText('After, point 1')).toBeInTheDocument()
+    expect(
+      screen.getAllByRole('img', { name: /At the restoration, point/ }),
+    ).toHaveLength(2)
+    expect(
+      screen.getByRole('checkbox', { name: 'Redo the cover where it has moved' }),
+    ).toBeInTheDocument()
   })
 })
 
-describe('Joining and your work', () => {
-  it('an invite link joins the crew and opens the claim', async () => {
-    const owner = fakeApi()
-    const [made] = await owner.claimSites(['example-0004'])
-    const { token } = await owner.invite(made.id)
-    // The fake is one person; leaving and rejoining stands in for a second one.
-    const claim = await owner.claim(made.id)
-    expect(claim.crew_size).toBe(1)
-    render(withAccount(fakeAccount(SIGNED_IN, owner), <JoinScreen token={token} />))
-    await waitFor(() => expect(window.location.hash).toBe(`#/claim/${made.id}`))
-  })
-
-  it('a used-up invite says so', async () => {
-    render(
-      withAccount(
-        fakeAccount(SIGNED_IN, fakeApi()),
-        <JoinScreen token="nothing-like-a-real-token" />,
-      ),
-    )
-    expect(await screen.findByRole('alert')).toHaveTextContent(
-      'This invite does not work',
-    )
-  })
-
-  it('lists your claims with days left and the work waiting for a reviewer', async () => {
+describe('Your work', () => {
+  it('lists your claims with days left and your hours on done work', async () => {
     const api = fakeApi()
     await api.claimSites(['example-0004'])
-    await api.seedSubmittedByOther('example-0005')
     render(withAccount(fakeAccount(SIGNED_IN, api), <WorkScreen sites={fixtureSites} />))
     const working = await screen.findByRole('region', { name: 'In progress' })
     expect(within(working).getByText('14 days left')).toBeInTheDocument()
-    const waiting = screen.getByRole('region', { name: /Waiting for a reviewer/ })
-    expect(
-      within(waiting).getByRole('link', { name: 'Example site 5' }),
-    ).toBeInTheDocument()
+    expect(screen.getByText('hours on done work')).toBeInTheDocument()
+    expect(screen.queryByText(/Waiting for a reviewer/)).not.toBeInTheDocument()
   })
 })
 
@@ -393,10 +376,10 @@ describe('With no signal', () => {
       ),
     )
     expect(
-      await screen.findByAltText('The before photo at point 1, to line up with'),
+      await screen.findByAltText('The earlier photo at point 1, to line up with'),
     ).toBeInTheDocument()
     expect(
-      screen.queryByAltText('The before photo at point 2, to line up with'),
+      screen.queryByAltText('The earlier photo at point 2, to line up with'),
     ).not.toBeInTheDocument()
   })
 })

@@ -52,20 +52,24 @@ export interface ClubWeights {
   history: WeightsEntry[]
 }
 
-export type ClaimState = 'claimed' | 'in_progress' | 'submitted' | 'verified' | 'released'
+export type ClaimState = 'claimed' | 'in_progress' | 'done' | 'released'
 export type PhotoPhase = 'before' | 'after' | 'extra'
-export type Verdict = 'verify' | 'send_back' | 'reject'
 
+/** One person's claim on one site (decided 2026-10-28: no crew, no review). */
 export interface ClaimSummary {
   id: string
   rims_id: string
+  /** A restoration, or one of the three follow-up visits after it. */
+  kind: 'restore' | 'follow_up'
+  /** Which follow-up visit, 1 to 3; null for a restoration. */
+  visit: number | null
   state: ClaimState
   claimed_at: string
   due_at: string
-  submitted_at: string | null
+  done_at: string | null
+  /** Shown to the claimer, and to everyone once the work is done. */
   claimer: string | null
-  crew_size: number
-  you_are_crew: boolean
+  yours: boolean
 }
 
 export interface ClaimPhoto {
@@ -80,28 +84,40 @@ export interface ClaimPhoto {
 }
 
 export interface ClaimDetail extends ClaimSummary {
-  /** False when this account sees only what anyone may: until a claim is
-   *  submitted its photos, report and crew are its crew's (the remediation
-   *  schema's _claim_detail). The lists are then empty, which says nothing
-   *  about the claim's own. */
+  /** False when this account sees only what anyone may: until the work is
+   *  done its photos and report are the claimer's (the remediation schema's
+   *  _claim_detail). The lists are then empty, which says nothing about the
+   *  claim's own. */
   full: boolean
   started_at: string | null
-  /** After photos older than this do not count toward the next submission. */
-  sent_back_at: string | null
-  verified_at: string | null
   released_at: string | null
   steps_done: string[]
   notes: string | null
-  review_note: string | null
-  reviewed_by: string | null
-  crew: { name: string | null; you: boolean; hours: number | null }[]
+  hours: number | null
   photos: ClaimPhoto[]
-  you_may_review: boolean
+  /** For a follow-up visit: the restoration's after photos, to line the new
+   *  ones up with. Empty for a restoration. */
+  reference: ClaimPhoto[]
+}
+
+export type FollowUpState = 'waiting' | 'open' | 'taken' | 'done' | 'missed'
+
+/** One of a restored site's three follow-up visits (PLAN.md §6). */
+export interface FollowUp {
+  id: string
+  rims_id: string
+  /** The restoration it follows up, whose before and after it is measured against. */
+  done_claim_id: string
+  visit: number
+  /** The day after Labor Day, as a date (YYYY-MM-DD). */
+  opens_on: string
+  closes_on: string
+  state: FollowUpState
 }
 
 export interface HoursTotals {
-  verified: number
-  waiting: number
+  done: number
+  in_progress: number
   claims: number
 }
 
@@ -127,14 +143,12 @@ export interface RemediationApi {
   myClaims(): Promise<ClaimSummary[]>
   claim(id: string): Promise<ClaimDetail>
   releaseClaim(id: string): Promise<ClaimDetail>
-  invite(id: string): Promise<{ token: string }>
-  joinClaim(token: string): Promise<ClaimSummary>
   /** `clientId` is the phone's own id for the photo (src/offline.ts): it names
    *  the photo's object in the bucket, and the claim takes a photo once
    *  however many times it is sent under one id. `replaces`, for a queued
    *  before or after photo, is the id of the photo in its slot when it was
-   *  taken, or 'nothing': if someone has photographed the point since, the
-   *  answer is 412 rather than this one put over theirs. */
+   *  taken, or 'nothing': if the point has been photographed since (from
+   *  another phone), the answer is 412 rather than this one put over it. */
   uploadPhoto(
     id: string,
     phase: PhotoPhase,
@@ -144,9 +158,11 @@ export interface RemediationApi {
   ): Promise<ClaimDetail>
   deletePhoto(id: string, photoId: string): Promise<ClaimDetail>
   logHours(id: string, hours: number): Promise<ClaimDetail>
-  submit(id: string, stepsDone: string[], notes: string | null): Promise<ClaimDetail>
-  reviews(): Promise<ClaimSummary[]>
-  review(id: string, verdict: Verdict, note: string | null): Promise<ClaimDetail>
+  /** Marks the work done, which makes it public at once. */
+  finish(id: string, stepsDone: string[], notes: string | null): Promise<ClaimDetail>
+  /** A site's follow-up visits, from its latest restoration; empty if none. */
+  followUps(rimsId: string): Promise<FollowUp[]>
+  takeFollowUp(id: string): Promise<ClaimSummary>
   myHours(): Promise<HoursTotals>
 }
 
@@ -242,17 +258,22 @@ export function createApi(client: DataClient): RemediationApi {
     return new Map(paths.map((path) => [path, usable(path, 0)]))
   }
 
-  /** A claim as the functions return it, with a signed link to each photo. */
+  /** A claim as the functions return it, with a signed link to each photo,
+   *  its own and the ones a follow-up lines up with. */
   async function withUrls(raw: Raw): Promise<ClaimDetail> {
     const { unused_path: _, ...claim } = raw
-    const photos = (claim.photos as (Omit<ClaimPhoto, 'url'> & { path: string })[]) ?? []
-    const urls = await sign(photos.map((photo) => photo.path))
+    type Unsigned = Omit<ClaimPhoto, 'url'> & { path: string }
+    const photos = (claim.photos as Unsigned[]) ?? []
+    const reference = (claim.reference as Unsigned[]) ?? []
+    const urls = await sign([...photos, ...reference].map((photo) => photo.path))
+    const signed = ({ path, ...photo }: Unsigned): ClaimPhoto => ({
+      ...photo,
+      url: urls.get(path) ?? null,
+    })
     return {
       ...(claim as unknown as ClaimDetail),
-      photos: photos.map(({ path, ...photo }) => ({
-        ...photo,
-        url: urls.get(path) ?? null,
-      })),
+      photos: photos.map(signed),
+      reference: reference.map(signed),
     }
   }
 
@@ -270,30 +291,12 @@ export function createApi(client: DataClient): RemediationApi {
     return withUrls(raw)
   }
 
-  // This account's folder on each claim in the bucket: a random id the claim
-  // gave it, which the insert policy requires and which names nobody.
-  const folders = new Map<string, Promise<string>>()
-  function folder(claimId: string): Promise<string> {
-    let found = folders.get(claimId)
-    if (!found) {
-      found = call<string>('photo_folder', { p_claim_id: claimId })
-      // Asked again next time, not remembered, if this one failed.
-      found.catch(() => folders.delete(claimId))
-      folders.set(claimId, found)
-    }
-    return found
-  }
-
   async function upload(claimId: string, clientId: string, photo: Blob): Promise<void> {
-    const { error } = await bucket().upload(
-      `${claimId}/${await folder(claimId)}/${clientId}.jpg`,
-      photo,
-      {
-        contentType: 'image/jpeg',
-        upsert: false,
-        cacheControl: String(PHOTO_LINK_SECONDS),
-      },
-    )
+    const { error } = await bucket().upload(`${claimId}/${clientId}.jpg`, photo, {
+      contentType: 'image/jpeg',
+      upsert: false,
+      cacheControl: String(PHOTO_LINK_SECONDS),
+    })
     if (!error) return
     // Already there: an earlier send of this same photo arrived and its
     // answer did not. The id is this photo's alone, so it is this photo.
@@ -349,8 +352,6 @@ export function createApi(client: DataClient): RemediationApi {
     myClaims: () => call('my_claims'),
     claim: async (id) => withUrls(await call<Raw>('read_claim', { p_id: id })),
     releaseClaim: (id) => claimCall('release_claim', { p_id: id }),
-    invite: (id) => call('make_invite', { p_id: id }),
-    joinClaim: (token) => call('join_claim', { p_token: token }),
     uploadPhoto: async (id, phase, point, photo, send = {}) => {
       const clientId = send.clientId ?? newClientId()
       await upload(id, clientId, photo)
@@ -365,11 +366,10 @@ export function createApi(client: DataClient): RemediationApi {
     deletePhoto: (id, photoId) =>
       claimCall('remove_photo', { p_claim_id: id, p_photo_id: photoId }),
     logHours: (id, hours) => claimCall('log_hours', { p_claim_id: id, p_hours: hours }),
-    submit: (id, stepsDone, notes) =>
-      claimCall('submit_claim', { p_id: id, p_steps_done: stepsDone, p_notes: notes }),
-    reviews: () => call('reviews'),
-    review: (id, verdict, note) =>
-      claimCall('review_claim', { p_id: id, p_verdict: verdict, p_note: note }),
+    finish: (id, stepsDone, notes) =>
+      claimCall('finish_claim', { p_id: id, p_steps_done: stepsDone, p_notes: notes }),
+    followUps: (rimsId) => call('site_follow_ups', { p_rims_id: rimsId }),
+    takeFollowUp: (id) => call('take_follow_up', { p_follow_up_id: id }),
     myHours: () => call('my_hours'),
   }
 }

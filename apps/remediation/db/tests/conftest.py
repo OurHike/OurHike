@@ -99,7 +99,7 @@ def db(database_url):
         yield Db(connection)
         connection.execute(
             "truncate remediation.site, remediation.site_load, remediation.profile, remediation.site_list, remediation.site_list_item, remediation.club_weights,"
-            " remediation.claim, remediation.claim_member, remediation.photo, remediation.photo_receipt, remediation.hours,"
+            " remediation.claim, remediation.follow_up, remediation.photo, remediation.photo_receipt,"
             " storage.objects, auth.users cascade"
         )
 
@@ -153,7 +153,7 @@ class Db:
 
     def upload(self, who: str, claim_id: str, client_id: str = "photo-1") -> str:
         """What Storage does with a photo upload: insert its object row as the uploader."""
-        name = self.object_name(who, claim_id, client_id)
+        name = self.object_name(claim_id, client_id)
         with self.acting(who) as connection:
             connection.execute(
                 "insert into storage.objects (bucket_id, name, owner, owner_id) values (%s, %s, %s, %s)",
@@ -161,17 +161,9 @@ class Db:
             )
         return name
 
-    def folder(self, who: str, claim_id: str) -> str:
-        """`who`'s folder on the claim in the bucket; for someone off the crew,
-        one made up, which the bucket refuses."""
-        found = self.connection.execute(
-            "select folder::text from remediation.claim_member where claim_id = %s and user_id = %s", (claim_id, uid(who))
-        ).fetchone()
-        return found[0] if found else str(uuid.uuid5(uuid.NAMESPACE_URL, f"remediation-test-folder:{who}:{claim_id}"))
-
-    def object_name(self, who: str, claim_id: str, client_id: str) -> str:
-        """A photo's name in the bucket: its claim, its uploader's folder, the phone's id for it."""
-        return f"{claim_id}/{self.folder(who, claim_id)}/{client_id}.jpg"
+    def object_name(self, claim_id: str, client_id: str) -> str:
+        """A photo's name in the bucket: its claim, and the phone's id for it."""
+        return f"{claim_id}/{client_id}.jpg"
 
     def sees(self, who: str | None, name: str, *, anonymous: bool = False) -> bool:
         """Whether Storage would let `who` download the object, or sign a link to it."""

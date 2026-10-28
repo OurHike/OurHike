@@ -13,9 +13,10 @@
 --     PT409 not in this state or over a cap, PT412 the slot changed,
 --     PT422 not acceptable, PT429 too many today.
 --   - What is open, anyone may read: the open_* views, which carry names only
---     on verified work (decided 2026-10-27, by poll: "the public sees that a
---     site is claimed and when it is due, not who will be out there").
---   - Photos live in the public Storage bucket `remediation-photos`, under
+--     on done work (decided 2026-10-27, by poll: "the public sees that a site
+--     is claimed and when it is due, not who will be out there"; done is
+--     public at once since review went, 2026-10-28).
+--   - Photos live in the private Storage bucket `remediation-photos`, under
 --     `<claim id>/<the phone's id for the photo>.jpg`.
 
 create schema if not exists remediation;
@@ -42,29 +43,22 @@ grant usage on schema remediation to remediation_loader;
 -- limits.py: picked to sit well above what a club volunteer is expected to do
 -- and far below what would let one account fill the database. Nobody has
 -- measured real use; the numbers to compare against, once there is some, are
--- the largest list, the busiest weights history and the longest crew.
+-- the largest list, the busiest weights history and the most photos a claim.
 -- ---------------------------------------------------------------------------
 
 create function remediation.claim_days() returns int language sql immutable as 'select 14';
--- Days a crew gets after a send-back, at least: PLAN.md stops the clock at
--- Submitted and says nothing about restarting it.
-create function remediation.send_back_days() returns int language sql immutable as 'select 7';
--- Days whoever rejects a claim waits before claiming that site (the review's N2).
-create function remediation.rejecter_wait_days() returns int language sql immutable as 'select 30';
--- Sites one account holds at once, counting submitted claims, which hold
--- their sites too (the review's finding 2). High enough for a cluster: most
--- are 2-3 sites (2026-10-26).
+-- Sites one account holds at once. High enough for a cluster: most are 2-3
+-- sites (2026-10-26).
 create function remediation.live_claims_per_user() returns int language sql immutable as 'select 10';
 create function remediation.sites_per_claim_request() returns int language sql immutable as 'select 10';
-create function remediation.crew_max() returns int language sql immutable as 'select 12';
 create function remediation.photos_per_claim() returns int language sql immutable as 'select 40';
--- Objects one claim's folder may hold in the bucket: photos replaced or
--- removed stay until the crew deletes them, so twice the photo cap.
+-- Objects one claim may hold in the bucket: photos replaced or removed stay
+-- until the claimer's phone deletes them, so twice the photo cap.
 create function remediation.objects_per_claim() returns int language sql immutable as 'select 80';
 -- Photos one account may have uploaded and not yet put on a claim, and may
 -- upload in a day. Together they are what keeps the bucket from being anyone's
 -- file host (the sixth review pass, finding 1): a photo is uploaded and put on
--- its claim within seconds, and a busy crew day is a few photos per site.
+-- its claim within seconds, and a busy day is a few photos per site.
 create function remediation.pending_uploads_per_user() returns int language sql immutable as 'select 20';
 create function remediation.uploads_per_user_per_day() returns int language sql immutable as 'select 150';
 create function remediation.hours_max() returns int language sql immutable as 'select 72';
@@ -82,16 +76,11 @@ create function remediation.default_weights() returns jsonb language sql immutab
 create function remediation.rims_id_pattern() returns text language sql immutable as $$ select '^[A-Za-z0-9-]{1,64}$' $$;
 -- The phone's id for a photo (web/src/offline.ts newPhotoId).
 create function remediation.client_id_pattern() returns text language sql immutable as $$ select '^[A-Za-z0-9_-]{1,64}$' $$;
--- <claim id>/<the uploader's folder on that claim>/<the phone's id for the
--- photo>.jpg. The folder is a random id a crew member gets on joining a claim
--- (claim_member.folder), so no crew member can write under a crewmate's
--- (the sixth pass, finding 2), and it names nobody outside that claim. It
--- was the uploader's user id, which is their OurHike account's too, and which
--- every reviewer of a submitted claim saw while the crew's names were hidden
--- (the sixth pass's re-check).
+-- <claim id>/<the phone's id for the photo>.jpg. A claim is one person's
+-- (decided 2026-10-28), so the claim names the uploader, and the name names
+-- nobody.
 create function remediation.photo_object_pattern() returns text language sql immutable as
-  $$ select '^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}/[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}/[A-Za-z0-9_-]{1,64}\.jpg$' $$;
-
+  $$ select '^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}/[A-Za-z0-9_-]{1,64}\.jpg$' $$;
 
 -- ---------------------------------------------------------------------------
 -- Tables
@@ -152,46 +141,52 @@ create table remediation.club_weights (
 create index club_weights_club_changed on remediation.club_weights (club, changed_at desc, id desc);
 create index club_weights_changed_by on remediation.club_weights (changed_by, changed_at);
 
+-- One person's claim on one site (PLAN.md §6, decided 2026-10-28: one person,
+-- no review). A follow-up visit is a claim too, with follow_up_id set.
 create table remediation.claim (
   id uuid primary key default gen_random_uuid(),
   rims_id text not null check (rims_id ~ '^[A-Za-z0-9-]{1,64}$'),
   claimer_id uuid references remediation.profile (user_id) on delete set null,
-  state text not null check (state in ('claimed', 'in_progress', 'submitted', 'verified', 'released')),
+  state text not null check (state in ('claimed', 'in_progress', 'done', 'released')),
   claimed_at timestamptz not null default now(),
   due_at timestamptz not null,
   started_at timestamptz,
-  submitted_at timestamptz,
-  -- After photos older than this do not count toward the next submission.
-  sent_back_at timestamptz,
-  verified_at timestamptz,
+  done_at timestamptz,
   released_at timestamptz,
   steps_done text[] not null default '{}',
   notes text,
-  review_note text,
-  reviewed_by uuid references remediation.profile (user_id) on delete set null,
-  reviewed_by_name text,
-  rejected_by uuid references remediation.profile (user_id) on delete set null,
-  invite_token_sha256 text unique
+  -- The claimer's hours on the site, in tenths. Null until logged, and after
+  -- the claimer deletes their data.
+  hours_tenths int check (hours_tenths > 0 and hours_tenths <= 720)
 );
 -- One claim holds a site at a time; it is what refuses the second of two
 -- claims made at the same moment.
 create unique index claim_one_holder_per_site on remediation.claim (rims_id)
-  where state in ('claimed', 'in_progress', 'submitted');
+  where state in ('claimed', 'in_progress');
 create index claim_state_due on remediation.claim (state, due_at);
+create index claim_claimer on remediation.claim (claimer_id);
 
-create table remediation.claim_member (
-  claim_id uuid not null references remediation.claim (id) on delete cascade,
-  user_id uuid not null references remediation.profile (user_id) on delete cascade,
-  joined_at timestamptz not null default now(),
-  -- Set when the person deletes their data. A left place gives no access and
-  -- is not listed, but still bars its holder from reviewing the claim (the
-  -- review's third pass, N7).
-  left_at timestamptz,
-  -- Their folder in the remediation-photos bucket for this claim.
-  folder uuid not null default gen_random_uuid(),
-  primary key (claim_id, user_id)
+-- A restored site's follow-up visits (PLAN.md §6; decided 2026-10-28): three,
+-- made when the work is marked done. Visit 1 opens the day after the first
+-- Labor Day after that, visits 2 and 3 the day after each of the next two.
+-- Each is open until the next one opens, the third for a year, and anyone
+-- may take one as a claim of its own.
+create table remediation.follow_up (
+  id uuid primary key default gen_random_uuid(),
+  rims_id text not null,
+  done_claim_id uuid not null references remediation.claim (id) on delete cascade,
+  visit int not null check (visit between 1 and 3),
+  opens_on date not null,
+  closes_on date not null,
+  unique (done_claim_id, visit),
+  check (closes_on > opens_on)
 );
-create index claim_member_user on remediation.claim_member (user_id);
+create index follow_up_site on remediation.follow_up (rims_id, opens_on);
+
+alter table remediation.claim add column follow_up_id uuid references remediation.follow_up (id) on delete cascade;
+-- A follow-up is taken by one claim at a time and done once.
+create unique index claim_one_per_follow_up on remediation.claim (follow_up_id)
+  where follow_up_id is not null and state in ('claimed', 'in_progress', 'done');
 
 create table remediation.photo (
   id uuid primary key default gen_random_uuid(),
@@ -200,14 +195,13 @@ create table remediation.photo (
   point int check (point in (1, 2)),
   -- Its name in the remediation-photos bucket.
   object_name text not null,
-  uploaded_by uuid references remediation.profile (user_id) on delete set null,
   created_at timestamptz not null default now(),
   check ((phase = 'extra') = (point is null))
 );
 -- One before and one after per photo point; a new one replaces it.
 create unique index photo_one_per_slot on remediation.photo (claim_id, phase, point) where point is not null;
--- An object is one photo's: its name carries the claim, the uploader and the
--- phone's id, and a phone's id is taken once per claim (photo_receipt).
+-- An object is one photo's: its name carries the claim and the phone's id,
+-- and a phone's id is taken once per claim (photo_receipt).
 create unique index photo_object on remediation.photo (object_name);
 
 -- Every photo a claim has received, by the phone's id for it, kept after the
@@ -219,14 +213,6 @@ create table remediation.photo_receipt (
   client_id text not null,
   received_at timestamptz not null default now(),
   primary key (claim_id, client_id)
-);
-
-create table remediation.hours (
-  claim_id uuid not null references remediation.claim (id) on delete cascade,
-  user_id uuid not null references remediation.profile (user_id) on delete cascade,
-  tenths int not null check (tenths > 0 and tenths <= 720),
-  verified boolean not null default false,
-  primary key (claim_id, user_id)
 );
 
 -- Every load's size for 90 days, so a load is held against the month's
@@ -246,10 +232,9 @@ alter table remediation.site_list enable row level security;
 alter table remediation.site_list_item enable row level security;
 alter table remediation.club_weights enable row level security;
 alter table remediation.claim enable row level security;
-alter table remediation.claim_member enable row level security;
+alter table remediation.follow_up enable row level security;
 alter table remediation.photo enable row level security;
 alter table remediation.photo_receipt enable row level security;
-alter table remediation.hours enable row level security;
 
 
 -- ---------------------------------------------------------------------------
@@ -360,27 +345,12 @@ $$;
 create function remediation._release_overdue() returns void
 language sql security definer set search_path = '' as $$
   update remediation.claim
-     set state = 'released', released_at = due_at, invite_token_sha256 = null
+     set state = 'released', released_at = due_at
    where state in ('claimed', 'in_progress') and due_at < now();
 $$;
 
 create function remediation._working(state text) returns boolean
 language sql immutable as $$ select state in ('claimed', 'in_progress') $$;
-
-create function remediation._is_crew(claim_id uuid, uid uuid) returns boolean
-language sql stable security definer set search_path = '' as $$
-  select exists (
-    select from remediation.claim_member m
-     where m.claim_id = _is_crew.claim_id and m.user_id = uid and m.left_at is null
-  )
-$$;
-
--- Anyone who is or was on the crew, places left by deleting one's data
--- included: none of them may review the claim.
-create function remediation._was_crew(claim_id uuid, uid uuid) returns boolean
-language sql stable security definer set search_path = '' as $$
-  select exists (select from remediation.claim_member m where m.claim_id = _was_crew.claim_id and m.user_id = uid)
-$$;
 
 -- The claim, locked for the rest of the transaction, or 404.
 create function remediation._claim_for_update(claim_id uuid) returns remediation.claim
@@ -396,15 +366,15 @@ begin
 end
 $$;
 
--- The claim, locked, if the caller is on its crew and it is in one of `states`.
-create function remediation._crew_claim(claim_id uuid, uid uuid, states text[] default array['claimed', 'in_progress'])
+-- The claim, locked, if the caller made it and it is in one of `states`.
+create function remediation._own_claim(claim_id uuid, uid uuid, states text[] default array['claimed', 'in_progress'])
 returns remediation.claim
 language plpgsql security definer set search_path = '' as $$
 declare
   c remediation.claim := remediation._claim_for_update(claim_id);
 begin
-  if not remediation._is_crew(c.id, uid) then
-    perform remediation._refuse('PT403', 'Only this claim''s crew can do that');
+  if c.claimer_id is distinct from uid then
+    perform remediation._refuse('PT403', 'Only the person who claimed this site can do that');
   end if;
   if not (c.state = any (states)) then
     perform remediation._refuse('PT409', 'This claim is ' || replace(c.state, '_', ' ') || ', so that cannot be done now');
@@ -413,99 +383,80 @@ begin
 end
 $$;
 
--- Names on a claim show to its crew, and to everyone once the work is
--- verified; before that, nobody else learns who will be out at the site.
-create function remediation._shows_names(c remediation.claim, uid uuid) returns boolean
-language sql stable security definer set search_path = '' as $$
-  select c.state = 'verified' or (uid is not null and remediation._is_crew(c.id, uid))
-$$;
-
 create function remediation._display_name(uid uuid) returns text
 language sql stable security definer set search_path = '' as $$
   select display_name from remediation.profile where user_id = uid
 $$;
 
+-- What anyone signed in may know of a claim. The claimer's name shows to the
+-- claimer, and to everyone once the work is done; before that, nobody else
+-- learns who will be out at the site (decided 2026-10-27, and kept when
+-- review went on 2026-10-28: done is public at once).
 create function remediation._claim_summary(c remediation.claim, uid uuid) returns jsonb
 language sql stable security definer set search_path = '' as $$
   select jsonb_build_object(
     'id', c.id,
     'rims_id', c.rims_id,
+    'kind', case when c.follow_up_id is null then 'restore' else 'follow_up' end,
+    'visit', (select f.visit from remediation.follow_up f where f.id = c.follow_up_id),
     'state', c.state,
     'claimed_at', c.claimed_at,
     'due_at', c.due_at,
-    'submitted_at', c.submitted_at,
-    'claimer', case when remediation._shows_names(c, uid) then remediation._display_name(c.claimer_id) end,
-    'crew_size', (select count(*) from remediation.claim_member m where m.claim_id = c.id and m.left_at is null),
-    'you_are_crew', uid is not null and remediation._is_crew(c.id, uid)
+    'done_at', c.done_at,
+    'claimer', case when c.state = 'done' or c.claimer_id = uid then remediation._display_name(c.claimer_id) end,
+    'yours', uid is not null and c.claimer_id is not distinct from uid
   )
 $$;
 
--- What a caller sees of one claim. Its crew sees all of it, and so does
--- everyone once the work is verified, anyone who may review it while it is
--- submitted, and whoever rejected it, which closed it, so they still see the
--- verdict they gave and nothing they had not seen. Not whoever sent it back:
--- any account may, and kept the view of the crew's next round of work (the
--- re-check). Anyone else sees what the open views show, with `full` false,
--- so a screen cannot read the empty lists as a claim with no photos and no
--- report (the sixth pass, finding 3: the notes, the review note and every
--- photo's address were any signed-in account's).
+-- A claim's photos, oldest first, as their paths in the bucket.
+create function remediation._photos(claim_id uuid) returns jsonb
+language sql stable security definer set search_path = '' as $$
+  select coalesce(jsonb_agg(jsonb_build_object(
+           'id', ph.id, 'phase', ph.phase, 'point', ph.point,
+           'path', ph.object_name, 'created_at', ph.created_at
+         ) order by ph.created_at), '[]'::jsonb)
+    from remediation.photo ph where ph.claim_id = _photos.claim_id
+$$;
+
+-- What a caller sees of one claim. The claimer sees all of it, and so does
+-- everyone once it is done. Anyone else sees what the open views show, with
+-- `full` false, so a screen cannot read the empty lists as a claim with no
+-- photos and no report (the sixth pass, finding 3). A follow-up also carries
+-- the restoration's after photos, to line the new ones up with: that work is
+-- done, so they are public.
 create function remediation._claim_detail(claim_id uuid, uid uuid) returns jsonb
 language plpgsql stable security definer set search_path = '' as $$
 declare
   c remediation.claim;
-  names boolean;
+  reference jsonb;
 begin
   select * into c from remediation.claim where id = claim_id;
+  select coalesce(jsonb_agg(p.photo) filter (where p.photo ->> 'phase' = 'after'), '[]'::jsonb) into reference
+    from remediation.follow_up f
+    cross join lateral jsonb_array_elements(remediation._photos(f.done_claim_id)) as p(photo)
+   where f.id = c.follow_up_id;
   -- Fails closed: anything unknown here is the outside view.
-  if not coalesce(c.state = 'verified'
-                  or (uid is not null and remediation._is_crew(c.id, uid))
-                  or (uid is not null and c.state = 'submitted' and not remediation._was_crew(c.id, uid))
-                  or (uid is not null and c.state = 'released' and c.rejected_by is not distinct from uid), false) then
+  if not coalesce(c.state = 'done' or (uid is not null and c.claimer_id = uid), false) then
     return remediation._claim_summary(c, uid) || jsonb_build_object(
       'full', false,
       'started_at', null,
-      'sent_back_at', null,
-      'verified_at', c.verified_at,
       'released_at', c.released_at,
       'steps_done', '[]'::jsonb,
       'notes', null,
-      'review_note', null,
-      'reviewed_by', null,
-      'crew', '[]'::jsonb,
+      'hours', null,
       'photos', '[]'::jsonb,
-      'you_may_review', false
+      'reference', coalesce(reference, '[]'::jsonb)
     );
   end if;
-  names := remediation._shows_names(c, uid);
   return remediation._claim_summary(c, uid) || jsonb_build_object(
     'full', true,
     'started_at', c.started_at,
-    'sent_back_at', c.sent_back_at,
-    'verified_at', c.verified_at,
     'released_at', c.released_at,
     'steps_done', to_jsonb(c.steps_done),
     'notes', c.notes,
-    'review_note', c.review_note,
-    'reviewed_by', c.reviewed_by_name,
-    'crew', coalesce((
-      select jsonb_agg(jsonb_build_object(
-               'name', case when names then p.display_name end,
-               'you', m.user_id = uid,
-               'hours', h.tenths / 10.0
-             ) order by m.joined_at)
-        from remediation.claim_member m
-        join remediation.profile p on p.user_id = m.user_id
-        left join remediation.hours h on h.claim_id = m.claim_id and h.user_id = m.user_id
-       where m.claim_id = c.id and m.left_at is null
-    ), '[]'::jsonb),
-    'photos', coalesce((
-      select jsonb_agg(jsonb_build_object(
-               'id', ph.id, 'phase', ph.phase, 'point', ph.point,
-               'path', ph.object_name, 'created_at', ph.created_at
-             ) order by ph.created_at)
-        from remediation.photo ph where ph.claim_id = c.id
-    ), '[]'::jsonb),
-    'you_may_review', uid is not null and c.state = 'submitted' and not remediation._was_crew(c.id, uid)
+    'hours', c.hours_tenths / 10.0,
+    'photos', remediation._photos(c.id),
+    'reference', coalesce(reference, '[]'::jsonb)
   );
 end
 $$;
@@ -537,12 +488,10 @@ $$;
 
 -- Deletes what is the caller's own: their name (here and on every history
 -- entry it was copied to), their lists and their hours. Claims they were
--- working on go back to Open, and they leave every crew they were on.
--- What stays, without a name: the claims and weights changes they made, which
--- are other people's history too, and their crew places, marked left, which
--- give no access but keep them from ever reviewing work they were part of.
--- Signing in again starts an empty account. The Supabase account is
--- OurHike's, and is not touched.
+-- working on go back to Open. What stays, without a name: their done work and
+-- weights changes, which are the sites' history and the clubs'. Signing in
+-- again starts an empty account. The Supabase account is OurHike's, and is
+-- not touched.
 create function remediation.delete_my_data() returns void
 language plpgsql security definer set search_path = '' as $$
 declare
@@ -550,17 +499,14 @@ declare
 begin
   perform remediation._lock(uid);
   update remediation.claim
-     set state = 'released', released_at = now(), invite_token_sha256 = null
+     set state = 'released', released_at = now()
    where claimer_id = uid and state in ('claimed', 'in_progress');
-  update remediation.claim_member set left_at = now() where user_id = uid and left_at is null;
+  update remediation.claim set hours_tenths = null where claimer_id = uid;
   update remediation.club_weights set changed_by_name = null where changed_by = uid;
-  update remediation.claim set reviewed_by_name = null where reviewed_by = uid;
   delete from remediation.site_list where owner_id = uid;
-  delete from remediation.hours where user_id = uid;
   update remediation.profile set display_name = null, deleted_at = now() where user_id = uid;
 end
 $$;
-
 
 -- ---------------------------------------------------------------------------
 -- Lists and share links. A list is its owner's alone: anyone else asking for
@@ -860,17 +806,35 @@ $$;
 
 
 -- ---------------------------------------------------------------------------
--- Claims (PLAN.md §6, #1910):
+-- Claims (PLAN.md §6; one person, no review, decided 2026-10-28):
 --
---   claimed ──first before photo──► in_progress ──submit──► submitted ──verify──► verified
---      │                                │                       ├──send back──► in_progress
---      └──── release, or due_at passes ─┴──► released ◄──reject──┘
+--   claimed ──first photo──► in_progress ──mark as done──► done ──► three follow-up visits
+--      │                          │
+--      └── release, or due_at passes ──► released
 --
--- The clock is due_at. It stops at submitted, so a slow reviewer never costs
--- a crew its claim. A send-back gives back what the crew had left, at least
--- send_back_days(); the after photos must then be retaken. A reject releases
--- the site, and the rejecter may not claim it for rejecter_wait_days().
+-- The clock is due_at, 14 days. Done is public at once: the photos, the
+-- steps, the notes, the hours and the claimer's name.
 -- ---------------------------------------------------------------------------
+
+-- The day after Labor Day (the first Monday in September) of a year: when
+-- peak season ends, everywhere on the trail (decided 2026-10-28).
+create function remediation._day_after_labor_day(y int) returns date
+language sql immutable as $$
+  select make_date(y, 9, 1) + ((8 - extract(isodow from make_date(y, 9, 1))::int) % 7) + 1
+$$;
+
+-- Sites restored recently enough that their follow-ups are still to come or
+-- open: those are taken as follow-ups, not claimed again from scratch.
+create function remediation._in_follow_up(rims_id text) returns boolean
+language sql stable security definer set search_path = '' as $$
+  select exists (select from remediation.follow_up f where f.rims_id = _in_follow_up.rims_id and f.closes_on > current_date)
+$$;
+
+-- Claims this account holds now.
+create function remediation._held(uid uuid) returns int
+language sql stable security definer set search_path = '' as $$
+  select count(*)::int from remediation.claim where claimer_id = uid and state in ('claimed', 'in_progress')
+$$;
 
 -- One site, or several at once (a site and its cluster). All or none.
 create function remediation.claim_sites(p_rims_ids text[]) returns jsonb
@@ -879,7 +843,6 @@ declare
   uid uuid := remediation._caller();
   sites text[];
   refused text;
-  held int;
   made jsonb := '[]'::jsonb;
   c remediation.claim;
   rims text;
@@ -895,27 +858,17 @@ begin
   if refused is not null then
     perform remediation._refuse('PT422', 'Not a site the latest analysis says needs work: ' || refused);
   end if;
+  select string_agg(r, ', ') into refused from unnest(sites) r where remediation._in_follow_up(r);
+  if refused is not null then
+    perform remediation._refuse('PT409', 'Restored already, and waiting for its follow-up visits: ' || refused);
+  end if;
   perform remediation._release_overdue();
   perform remediation._lock(uid);
-  select string_agg(distinct cl.rims_id, ', ' order by cl.rims_id) into refused from remediation.claim cl
-   where cl.rims_id = any (sites) and cl.rejected_by = uid
-     and cl.released_at > now() - make_interval(days => remediation.rejecter_wait_days());
-  if refused is not null then
-    perform remediation._refuse('PT409', 'You rejected the last claim on ' || refused || ', so someone else gets the next '
-      || remediation.rejecter_wait_days() || ' days to claim it');
-  end if;
-  -- A place left by deleting one's data still counts on a claim this account
-  -- made: its submitted claims hold their sites until reviewed (the fourth
-  -- pass's B). Other crews' claims it left do not count.
-  select count(*) into held from remediation.claim cl join remediation.claim_member m on m.claim_id = cl.id
-   where m.user_id = uid and (m.left_at is null or cl.claimer_id = uid)
-     and cl.state in ('claimed', 'in_progress', 'submitted');
-  if held + cardinality(sites) > remediation.live_claims_per_user() then
-    perform remediation._refuse('PT409', 'One account holds at most ' || remediation.live_claims_per_user()
-      || ' sites at a time, counting ones waiting for review');
+  if remediation._held(uid) + cardinality(sites) > remediation.live_claims_per_user() then
+    perform remediation._refuse('PT409', 'One account holds at most ' || remediation.live_claims_per_user() || ' sites at a time');
   end if;
   select string_agg(cl.rims_id, ', ' order by cl.rims_id) into refused from remediation.claim cl
-   where cl.rims_id = any (sites) and cl.state in ('claimed', 'in_progress', 'submitted');
+   where cl.rims_id = any (sites) and remediation._working(cl.state);
   if refused is not null then
     perform remediation._refuse('PT409', 'Already claimed: ' || refused);
   end if;
@@ -924,7 +877,6 @@ begin
       insert into remediation.claim (rims_id, claimer_id, state, due_at)
       values (rims, uid, 'claimed', now() + make_interval(days => remediation.claim_days()))
       returning * into c;
-      insert into remediation.claim_member (claim_id, user_id) values (c.id, uid);
       made := made || jsonb_build_array(remediation._claim_summary(c, uid));
     end loop;
   exception when unique_violation then
@@ -944,7 +896,7 @@ declare
 begin
   perform remediation._release_overdue();
   select * into c from remediation.claim
-   where rims_id = remediation._rims_id(p_rims_id) and state in ('claimed', 'in_progress', 'submitted');
+   where rims_id = remediation._rims_id(p_rims_id) and remediation._working(state);
   if not found then
     return null;
   end if;
@@ -961,8 +913,8 @@ begin
   return coalesce((
     select jsonb_agg(summary order by claimed_at desc) from (
       select remediation._claim_summary(cl, uid) as summary, cl.claimed_at
-        from remediation.claim cl join remediation.claim_member m on m.claim_id = cl.id
-       where m.user_id = uid and m.left_at is null
+        from remediation.claim cl
+       where cl.claimer_id = uid
        order by cl.claimed_at desc limit 100) mine
   ), '[]'::jsonb);
 end
@@ -985,59 +937,103 @@ create function remediation.release_claim(p_id uuid) returns jsonb
 language plpgsql security definer set search_path = '' as $$
 declare
   uid uuid := remediation._caller();
-  c remediation.claim;
 begin
   perform remediation._release_overdue();
-  c := remediation._crew_claim(p_id, uid);
-  if c.claimer_id is distinct from uid then
-    perform remediation._refuse('PT403', 'Only the person who claimed the site can release it');
-  end if;
-  update remediation.claim set state = 'released', released_at = now(), invite_token_sha256 = null where id = p_id;
+  perform remediation._own_claim(p_id, uid);
+  update remediation.claim set state = 'released', released_at = now() where id = p_id;
   return remediation._claim_detail(p_id, uid);
 end
 $$;
 
--- A crew invite link, replacing any earlier one.
-create function remediation.make_invite(p_id uuid) returns jsonb
-language plpgsql security definer set search_path = '' as $$
-declare
-  uid uuid := remediation._caller();
-  token text := remediation._token();
+
+-- ---------------------------------------------------------------------------
+-- Follow-up visits
+-- ---------------------------------------------------------------------------
+
+-- One definition of how a follow-up stands, in the open view below.
+create function remediation._follow_up_state(f remediation.follow_up) returns text
+language plpgsql stable security definer set search_path = '' as $$
 begin
-  perform remediation._release_overdue();
-  perform remediation._crew_claim(p_id, uid);
-  update remediation.claim set invite_token_sha256 = remediation._sha256(token) where id = p_id;
-  return jsonb_build_object('token', token);
+  return (select v.state from remediation.open_follow_ups v where v.id = f.id);
 end
 $$;
 
-create function remediation.join_claim(p_token text) returns jsonb
+create function remediation._follow_up_json(f remediation.follow_up) returns jsonb
+language sql stable security definer set search_path = '' as $$
+  select jsonb_build_object(
+    'id', f.id, 'rims_id', f.rims_id, 'done_claim_id', f.done_claim_id, 'visit', f.visit,
+    'opens_on', f.opens_on, 'closes_on', f.closes_on,
+    'state', remediation._follow_up_state(f)
+  )
+$$;
+
+-- Makes a done restoration's three follow-up visits.
+create function remediation._schedule_follow_ups(c remediation.claim) returns void
+language plpgsql security definer set search_path = '' as $$
+declare
+  first_year int := extract(year from c.done_at)::int;
+  n int;
+begin
+  if remediation._day_after_labor_day(first_year) <= c.done_at::date then
+    first_year := first_year + 1;
+  end if;
+  for n in 1..3 loop
+    insert into remediation.follow_up (rims_id, done_claim_id, visit, opens_on, closes_on)
+    values (c.rims_id, c.id, n,
+            remediation._day_after_labor_day(first_year + n - 1),
+            remediation._day_after_labor_day(first_year + n));
+  end loop;
+end
+$$;
+
+-- A site's follow-up visits, from its latest restoration.
+create function remediation.site_follow_ups(p_rims_id text) returns jsonb
+language plpgsql security definer set search_path = '' as $$
+begin
+  perform remediation._caller();
+  perform remediation._release_overdue();
+  return coalesce((
+    select jsonb_agg(remediation._follow_up_json(f) order by f.visit)
+      from remediation.follow_up f
+     where f.done_claim_id = (
+       select c.id from remediation.claim c
+        where c.rims_id = remediation._rims_id(p_rims_id) and c.state = 'done' and c.follow_up_id is null
+        order by c.done_at desc limit 1)
+  ), '[]'::jsonb);
+end
+$$;
+
+-- Anyone may take an open follow-up: a claim of its own, for claim_days().
+create function remediation.take_follow_up(p_follow_up_id uuid) returns jsonb
 language plpgsql security definer set search_path = '' as $$
 declare
   uid uuid := remediation._caller();
+  f remediation.follow_up;
   c remediation.claim;
-  place remediation.claim_member;
 begin
   perform remediation._release_overdue();
-  if p_token is null or char_length(p_token) not between 16 and 128 then
-    perform remediation._refuse('PT422', 'That is not an invite link');
+  select * into f from remediation.follow_up where id = p_follow_up_id for update;
+  if not found then
+    perform remediation._refuse('PT404', 'No such follow-up visit');
   end if;
-  select * into c from remediation.claim where invite_token_sha256 = remediation._sha256(p_token) for update;
-  if not found or not remediation._working(c.state) then
-    perform remediation._refuse('PT404', 'This invite is not valid any more. Ask the crew for a new one.');
+  case remediation._follow_up_state(f)
+    when 'waiting' then perform remediation._refuse('PT409', 'This visit opens on ' || to_char(f.opens_on, 'FMMonth FMDD, YYYY'));
+    when 'taken' then perform remediation._refuse('PT409', 'Someone has taken this visit');
+    when 'done' then perform remediation._refuse('PT409', 'This visit is done');
+    when 'missed' then perform remediation._refuse('PT409', 'This visit closed on ' || to_char(f.closes_on, 'FMMonth FMDD, YYYY'));
+    else null;
+  end case;
+  perform remediation._lock(uid);
+  if remediation._held(uid) + 1 > remediation.live_claims_per_user() then
+    perform remediation._refuse('PT409', 'One account holds at most ' || remediation.live_claims_per_user() || ' sites at a time');
   end if;
-  if not remediation._is_crew(c.id, uid) then
-    if (select count(*) from remediation.claim_member m where m.claim_id = c.id and m.left_at is null) >= remediation.crew_max() then
-      perform remediation._refuse('PT409', 'This crew is full at ' || remediation.crew_max());
-    end if;
-    select * into place from remediation.claim_member m where m.claim_id = c.id and m.user_id = uid;
-    if found then
-      -- Someone who deleted their data and was invited back.
-      update remediation.claim_member m set left_at = null where m.claim_id = c.id and m.user_id = uid;
-    else
-      insert into remediation.claim_member (claim_id, user_id) values (c.id, uid);
-    end if;
-  end if;
+  begin
+    insert into remediation.claim (rims_id, claimer_id, state, due_at, follow_up_id)
+    values (f.rims_id, uid, 'claimed', now() + make_interval(days => remediation.claim_days()), f.id)
+    returning * into c;
+  exception when unique_violation then
+    perform remediation._refuse('PT409', 'Someone is working on this site now');
+  end;
   return remediation._claim_summary(c, uid);
 end
 $$;
@@ -1045,10 +1041,9 @@ $$;
 
 -- ---------------------------------------------------------------------------
 -- Photos. The phone uploads the JPEG to the private remediation-photos bucket
--- first, at `<claim id>/<their folder on the claim>/<its id for the photo>.jpg`
--- (photo_folder() names the folder; the bucket's insert policy, below, lets
--- only the claim's crew upload, each into their own folder, while the claim
--- is open), then calls add_photo() to put it on the claim.
+-- first, at `<claim id>/<its id for the photo>.jpg` (the bucket's insert
+-- policy, below, lets only the claimer upload, while the claim is open),
+-- then calls add_photo() to put it on the claim.
 --
 -- The phone redraws every photo before it leaves, which strips the location
 -- a camera writes into it (web/src/photo.ts). With no server in between,
@@ -1064,46 +1059,42 @@ $$;
 -- photo stops being reachable the moment a claim closes.
 -- ---------------------------------------------------------------------------
 
--- An object's claim, folder and photo id, from its name in the bucket; all
--- three null for a name that is not a photo's. The pattern is checked before
--- any cast, so a stray name makes a policy refuse rather than raise.
-create function remediation._photo_object(object_name text, out claim_id uuid, out folder uuid, out client_id text)
+-- An object's claim and photo id, from its name in the bucket; both null for
+-- a name that is not a photo's. The pattern is checked before any cast, so a
+-- stray name makes a policy refuse rather than raise.
+create function remediation._photo_object(object_name text, out claim_id uuid, out client_id text)
 language sql immutable set search_path = '' as $$
   select case when object_name ~ remediation.photo_object_pattern() then split_part(object_name, '/', 1)::uuid end,
-         case when object_name ~ remediation.photo_object_pattern() then split_part(object_name, '/', 2)::uuid end,
-         case when object_name ~ remediation.photo_object_pattern() then left(split_part(object_name, '/', 3), -4) end
+         case when object_name ~ remediation.photo_object_pattern() then left(split_part(object_name, '/', 2), -4) end
 $$;
 
--- This account's objects in its folders on claims still being worked that
--- are not on their claim yet and never were: no photo uses them and no
--- photo receipt names them. One left by a claim that has closed stops
--- counting, so a phone that lost a few answers is not locked out for good.
+-- This account's objects on its claims still being worked that are not on
+-- their claim yet and never were: no photo uses them and no photo receipt
+-- names them. One left by a claim that has closed stops counting, so a phone
+-- that lost a few answers is not locked out for good.
 create function remediation._pending_uploads(uid uuid) returns int
 language sql stable security definer set search_path = '' as $$
   select count(*)::int
-    from remediation.claim_member m
-    join remediation.claim c on c.id = m.claim_id and remediation._working(c.state)
-    join storage.objects o
-      on o.bucket_id = 'remediation-photos' and o.name like m.claim_id::text || '/' || m.folder::text || '/%'
+    from remediation.claim c
+    join storage.objects o on o.bucket_id = 'remediation-photos' and o.name like c.id::text || '/%'
     cross join lateral remediation._photo_object(o.name) n
-   where m.user_id = uid
+   where c.claimer_id = uid and remediation._working(c.state)
      and not exists (select from remediation.photo p where p.object_name = o.name)
      and not exists (select from remediation.photo_receipt r where r.claim_id = n.claim_id and r.client_id = n.client_id)
 $$;
 
--- What this account has uploaded in the last day, to any claim.
+-- What this account has uploaded in the last day, to any of its claims.
 create function remediation._uploads_today(uid uuid) returns int
 language sql stable security definer set search_path = '' as $$
   select count(*)::int
-    from remediation.claim_member m
-    join storage.objects o
-      on o.bucket_id = 'remediation-photos' and o.name like m.claim_id::text || '/' || m.folder::text || '/%'
-   where m.user_id = uid and o.created_at > now() - interval '1 day'
+    from remediation.claim c
+    join storage.objects o on o.bucket_id = 'remediation-photos' and o.name like c.id::text || '/%'
+   where c.claimer_id = uid and o.created_at > now() - interval '1 day'
 $$;
 
--- The bucket's insert policy asks this: a crew member of a claim still being
--- worked and not overdue, writing into their own folder, within the claim's
--- object cap and their own (the sixth pass, findings 1 and 2).
+-- The bucket's insert policy asks this: the claimer of a claim still being
+-- worked and not overdue, within the claim's object cap and their own (the
+-- sixth pass, finding 1).
 --
 -- The caps count, then Storage inserts, so uploads whose last steps overlap
 -- all see the same count (the re-check's new problem 1). A lock here cannot
@@ -1127,9 +1118,8 @@ begin
   select * into o from remediation._photo_object(object_name);
   return o.claim_id is not null
      and exists (
-           select from remediation.claim_member m join remediation.claim c on c.id = m.claim_id
-            where m.claim_id = o.claim_id and m.user_id = uid and m.folder = o.folder and m.left_at is null
-              and remediation._working(c.state) and c.due_at >= now())
+           select from remediation.claim c
+            where c.id = o.claim_id and c.claimer_id = uid and remediation._working(c.state) and c.due_at >= now())
      and (select count(*) from storage.objects s
            where s.bucket_id = 'remediation-photos' and s.name like o.claim_id::text || '/%') < remediation.objects_per_claim()
      and remediation._pending_uploads(uid) < remediation.pending_uploads_per_user()
@@ -1137,30 +1127,9 @@ begin
 end
 $$;
 
--- The phone asks this before an upload: the caller's folder on the claim, for
--- any crew member, whatever the claim's state. A photo sent again after the
--- claim was submitted then finds its object already there and goes on to
--- add_photo(), which answers it.
-create function remediation.photo_folder(p_claim_id uuid) returns text
-language plpgsql security definer set search_path = '' as $$
-declare
-  uid uuid := remediation._caller();
-  found_folder uuid;
-begin
-  select m.folder into found_folder
-    from remediation.claim_member m where m.claim_id = p_claim_id and m.user_id = uid and m.left_at is null;
-  if found_folder is null then
-    perform remediation._refuse('PT403', 'Only this claim''s crew can do that');
-  end if;
-  return found_folder::text;
-end
-$$;
-
--- The bucket's delete policy asks this: the crew of a claim still being
+-- The bucket's delete policy asks this: the claimer of a claim still being
 -- worked may delete an object that was put on the claim and that no photo
--- uses now, because it was replaced or removed. Never one still on its way
--- to the claim: that is its uploader's, and deleting it would have their
--- photo refused as not arrived (the sixth pass, finding 2).
+-- uses now, because it was replaced or removed.
 create function remediation.may_delete_photo_object(object_name text) returns boolean
 language plpgsql stable security definer set search_path = '' as $$
 declare
@@ -1173,52 +1142,50 @@ begin
   end if;
   return exists (
            select from remediation.claim c
-            where c.id = o.claim_id and remediation._working(c.state) and remediation._is_crew(c.id, uid))
+            where c.id = o.claim_id and remediation._working(c.state) and c.claimer_id = uid)
      and exists (select from remediation.photo_receipt r where r.claim_id = o.claim_id and r.client_id = o.client_id)
      and not exists (select from remediation.photo p where p.object_name = may_delete_photo_object.object_name);
 end
 $$;
 
 -- The bucket's select policy asks this, signed in or not: who may download
--- a photo, and so who may make a link to one. A photo on verified work is
--- open data, like the claim's names. One on a submitted claim is for its
--- reviewers, who are anyone signed in with an account of their own. The
--- claim's crew sees its photos in every state. An object no photo uses is
--- nobody's to read, except as the delete policy needs: Storage reads a row
--- before it deletes it (the sixth pass, finding 1).
+-- a photo, and so who may make a link to one. A photo on done work is open
+-- data, like the claimer's name; until then it is the claimer's. An object
+-- no photo uses is nobody's to read, except as the delete policy needs:
+-- Storage reads a row before it deletes it (the sixth pass, finding 1).
 create function remediation.may_read_photo_object(object_name text) returns boolean
 language plpgsql stable security definer set search_path = '' as $$
 declare
   uid uuid := auth.uid();
-  claim_id uuid;
   state text;
+  claimer uuid;
 begin
-  select c.id, c.state into claim_id, state
+  select c.state, c.claimer_id into state, claimer
     from remediation.photo p join remediation.claim c on c.id = p.claim_id
    where p.object_name = may_read_photo_object.object_name;
-  if claim_id is null then
+  if state is null then
     return remediation.may_delete_photo_object(object_name);
   end if;
-  return state = 'verified'
-      or (uid is not null and state = 'submitted' and not coalesce((auth.jwt() ->> 'is_anonymous')::boolean, false))
-      or (uid is not null and remediation._is_crew(claim_id, uid));
+  return state = 'done' or (uid is not null and claimer = uid);
 end
 $$;
 
--- This crew member's phone already delivered this photo. Asked before the
--- claim's state: a photo that arrived before the claim was submitted is still
--- there afterwards, and the phone should hear that, not a refusal.
+-- The claimer's phone already delivered this photo. Asked before the
+-- claim's state: a photo that arrived before the claim was marked done is
+-- still there afterwards, and the phone should hear that, not a refusal.
 create function remediation._sent_before(claim_id uuid, uid uuid, client_id text) returns boolean
 language sql stable security definer set search_path = '' as $$
-  select client_id is not null and remediation._is_crew(claim_id, uid)
+  select client_id is not null
+     and exists (select from remediation.claim c where c.id = _sent_before.claim_id and c.claimer_id = uid)
      and exists (select from remediation.photo_receipt r where r.claim_id = _sent_before.claim_id and r.client_id = _sent_before.client_id)
 $$;
 
 -- `p_replaces`, for a before or after photo the phone queued with no signal:
 -- the id of the photo in its slot when it was taken, or 'nothing'. If the
 -- slot holds anything else now, the photo is refused with PT412 rather than
--- put over the newer one; the phone keeps it. Phones' clocks are not trusted
--- to say which photo is newer.
+-- put over the newer one; the phone keeps it. One person's claim can still
+-- have two phones. Phones' clocks are not trusted to say which photo is newer.
+-- A follow-up takes after photos and extras only: it re-photographs the points.
 create function remediation.add_photo(
   p_claim_id uuid, p_phase text, p_point int, p_client_id text, p_replaces text default null
 ) returns jsonb
@@ -1245,10 +1212,11 @@ begin
   if remediation._sent_before(c.id, uid, p_client_id) then
     return remediation._claim_detail(c.id, uid);
   end if;
-  c := remediation._crew_claim(p_claim_id, uid);
-  object_path := c.id::text || '/'
-              || (select m.folder::text from remediation.claim_member m where m.claim_id = c.id and m.user_id = uid)
-              || '/' || p_client_id || '.jpg';
+  c := remediation._own_claim(p_claim_id, uid);
+  if p_phase = 'before' and c.follow_up_id is not null then
+    perform remediation._refuse('PT422', 'A follow-up visit takes the after photos again, not before photos');
+  end if;
+  object_path := c.id::text || '/' || p_client_id || '.jpg';
   if not exists (select from storage.objects o where o.bucket_id = 'remediation-photos' and o.name = object_path) then
     perform remediation._refuse('PT422', 'The photo has not arrived. Send it again.');
   end if;
@@ -1264,20 +1232,22 @@ begin
     end if;
     delete from remediation.photo p where p.claim_id = c.id and p.phase = p_phase and p.point = p_point;
   end if;
-  insert into remediation.photo (claim_id, phase, point, object_name, uploaded_by) values (c.id, p_phase, p_point, object_path, uid);
+  insert into remediation.photo (claim_id, phase, point, object_name) values (c.id, p_phase, p_point, object_path);
   insert into remediation.photo_receipt (claim_id, client_id) values (c.id, p_client_id);
-  if p_phase = 'before' and c.state = 'claimed' then
+  -- The first photo starts the work: a before photo for a restoration, any
+  -- photo for a follow-up, which has no before.
+  if c.state = 'claimed' and (p_phase = 'before' or c.follow_up_id is not null) then
     update remediation.claim set state = 'in_progress', started_at = now() where id = c.id;
   end if;
   -- The object the new photo replaced, which no photo uses now: the app
-  -- deletes it, so a retake (someone was in the frame) does not stay in the
-  -- bucket for the claim's audience to read once the claim is submitted.
+  -- deletes it, so a retake (someone was in the frame) does not become
+  -- public when the work is done.
   return remediation._claim_detail(c.id, uid) || jsonb_build_object('unused_path', replaced);
 end
 $$;
 
 -- The photo comes off the claim, and the answer names its object, which
--- may_delete_photo_object() now lets the crew delete and the app does.
+-- may_delete_photo_object() now lets the claimer delete and the app does.
 create function remediation.remove_photo(p_claim_id uuid, p_photo_id uuid) returns jsonb
 language plpgsql security definer set search_path = '' as $$
 declare
@@ -1285,7 +1255,7 @@ declare
   removed text;
 begin
   perform remediation._release_overdue();
-  perform remediation._crew_claim(p_claim_id, uid);
+  perform remediation._own_claim(p_claim_id, uid);
   delete from remediation.photo where id = p_photo_id and claim_id = p_claim_id returning object_name into removed;
   if removed is null then
     perform remediation._refuse('PT404', 'No such photo on this claim');
@@ -1296,10 +1266,10 @@ $$;
 
 
 -- ---------------------------------------------------------------------------
--- Hours, submitting, reviewing
+-- Hours, and marking the work done
 -- ---------------------------------------------------------------------------
 
--- Your own hours on this claim, across all your visits, in half hours.
+-- Your hours on this claim, across all your visits to the site, in half hours.
 create function remediation.log_hours(p_claim_id uuid, p_hours numeric) returns jsonb
 language plpgsql security definer set search_path = '' as $$
 declare
@@ -1309,28 +1279,27 @@ begin
     perform remediation._refuse('PT422', 'Hours are in half hours, from 0.5 to ' || remediation.hours_max());
   end if;
   perform remediation._release_overdue();
-  perform remediation._crew_claim(p_claim_id, uid);
-  insert into remediation.hours (claim_id, user_id, tenths) values (p_claim_id, uid, (p_hours * 10)::int)
-  on conflict (claim_id, user_id) do update set tenths = excluded.tenths;
+  perform remediation._own_claim(p_claim_id, uid);
+  update remediation.claim set hours_tenths = (p_hours * 10)::int where id = p_claim_id;
   return remediation._claim_detail(p_claim_id, uid);
 end
 $$;
 
--- Each photo point needs a before and an after. After a send-back, only after
--- photos taken since count: resubmitting the same pictures is not a fix.
+-- What the claim still needs before it can be marked done: a before and an
+-- after at each photo point for a restoration, a new after at each for a
+-- follow-up.
 create function remediation._missing_photos(c remediation.claim) returns text
 language sql stable security definer set search_path = '' as $$
-  select string_agg(phase || ' at point ' || point
-                    || case when phase = 'after' and c.sent_back_at is not null then ' (retaken since it was sent back)' else '' end,
-                    ', ' order by point, phase desc)
+  select string_agg(phase || ' at point ' || point, ', ' order by point, phase desc)
     from (values ('before', 1), ('after', 1), ('before', 2), ('after', 2)) need(phase, point)
-   where not exists (
-     select from remediation.photo p
-      where p.claim_id = c.id and p.phase = need.phase and p.point = need.point
-        and not (p.phase = 'after' and c.sent_back_at is not null and p.created_at <= c.sent_back_at))
+   where (need.phase = 'after' or c.follow_up_id is null)
+     and not exists (
+       select from remediation.photo p where p.claim_id = c.id and p.phase = need.phase and p.point = need.point)
 $$;
 
-create function remediation.submit_claim(p_id uuid, p_steps_done text[] default '{}', p_notes text default null) returns jsonb
+-- Marks the work done. It is public at once (decided 2026-10-28: no review),
+-- and a restoration's three follow-up visits are scheduled.
+create function remediation.finish_claim(p_id uuid, p_steps_done text[] default '{}', p_notes text default null) returns jsonb
 language plpgsql security definer set search_path = '' as $$
 declare
   uid uuid := remediation._caller();
@@ -1349,80 +1318,20 @@ begin
     end if;
   end loop;
   perform remediation._release_overdue();
-  c := remediation._crew_claim(p_id, uid, array['in_progress']);
+  c := remediation._own_claim(p_id, uid, array['in_progress']);
   missing := remediation._missing_photos(c);
   if missing is not null then
-    perform remediation._refuse('PT422', 'Still needed before submitting: ' || missing);
+    perform remediation._refuse('PT422', 'Still needed before it is done: ' || missing);
   end if;
   update remediation.claim
      set steps_done = steps, notes = remediation._text('The notes', p_notes, 1000, true),
-         state = 'submitted', submitted_at = now(), invite_token_sha256 = null
-   where id = p_id;
+         state = 'done', done_at = now()
+   where id = p_id
+  returning * into c;
+  if c.follow_up_id is null then
+    perform remediation._schedule_follow_ups(c);
+  end if;
   return remediation._claim_detail(p_id, uid);
-end
-$$;
-
--- Submitted claims this caller may review: oldest first, none of their own crew's.
-create function remediation.reviews() returns jsonb
-language plpgsql security definer set search_path = '' as $$
-declare
-  uid uuid := remediation._caller();
-begin
-  perform remediation._release_overdue();
-  return coalesce((
-    select jsonb_agg(summary order by submitted_at) from (
-      select remediation._claim_summary(c, uid) as summary, c.submitted_at
-        from remediation.claim c
-       where c.state = 'submitted' and not remediation._was_crew(c.id, uid)
-       order by c.submitted_at limit 50) waiting
-  ), '[]'::jsonb);
-end
-$$;
-
--- Never by anyone who is or was on the crew.
---   verify: confirms the crew's hours;
---   send_back: needs a note; the crew gets back the time it had left when it
---     submitted, and at least send_back_days(), so one reviewer cannot shorten
---     a crew's clock (the review's finding 9); the after photos are retaken;
---   reject: needs a note; the site is released, the hours are not counted,
---     and the reviewer may not claim it for rejecter_wait_days().
-create function remediation.review_claim(p_id uuid, p_verdict text, p_note text default null) returns jsonb
-language plpgsql security definer set search_path = '' as $$
-declare
-  uid uuid := remediation._caller();
-  c remediation.claim;
-  note text := remediation._text('The note', p_note, 500, true);
-begin
-  if p_verdict is null or p_verdict not in ('verify', 'send_back', 'reject') then
-    perform remediation._refuse('PT422', 'A review is verify, send_back or reject');
-  end if;
-  c := remediation._claim_for_update(p_id);
-  if remediation._was_crew(c.id, uid) then
-    perform remediation._refuse('PT403', 'Someone off the crew has to review this');
-  end if;
-  if c.state <> 'submitted' then
-    perform remediation._refuse('PT409', 'Only a submitted claim can be reviewed');
-  end if;
-  if p_verdict <> 'verify' and note is null then
-    perform remediation._refuse('PT422', 'Say what is missing when sending back or rejecting');
-  end if;
-  update remediation.claim
-     set reviewed_by = uid, reviewed_by_name = remediation._display_name(uid), review_note = note
-   where id = c.id;
-  if p_verdict = 'verify' then
-    update remediation.claim set state = 'verified', verified_at = now() where id = c.id;
-    update remediation.hours set verified = true where claim_id = c.id;
-  elsif p_verdict = 'send_back' then
-    update remediation.claim
-       set state = 'in_progress', sent_back_at = now(), submitted_at = null,
-           due_at = now() + greatest(c.due_at - coalesce(c.submitted_at, now()), make_interval(days => remediation.send_back_days()))
-     where id = c.id;
-  else
-    update remediation.claim
-       set state = 'released', released_at = now(), rejected_by = uid, invite_token_sha256 = null
-     where id = c.id;
-  end if;
-  return remediation._claim_detail(c.id, uid);
 end
 $$;
 
@@ -1431,12 +1340,13 @@ language plpgsql security definer set search_path = '' as $$
 declare
   uid uuid := remediation._caller();
 begin
+  perform remediation._release_overdue();
   return (
     select jsonb_build_object(
-      'verified', coalesce(sum(tenths) filter (where verified), 0) / 10.0,
-      'waiting', coalesce(sum(tenths) filter (where not verified), 0) / 10.0,
-      'claims', count(*))
-      from remediation.hours where user_id = uid
+      'done', coalesce(sum(hours_tenths) filter (where state = 'done'), 0) / 10.0,
+      'in_progress', coalesce(sum(hours_tenths) filter (where remediation._working(state)), 0) / 10.0,
+      'claims', count(*) filter (where state = 'done'))
+      from remediation.claim where claimer_id = uid
   );
 end
 $$;
@@ -1446,30 +1356,42 @@ $$;
 -- What is open: anyone may read these, through Supabase's REST API with the
 -- public key, or as the files the analysis job publishes beside sites.json.
 -- They read the tables as their owner, so they are the whole of what an
--- anonymous reader sees. Names appear only on verified work.
+-- anonymous reader sees. Names appear only on done work.
 -- ---------------------------------------------------------------------------
 
 create view remediation.open_claims as
 select c.id,
        c.rims_id,
+       case when c.follow_up_id is null then 'restore' else 'follow_up' end as kind,
+       (select f.visit from remediation.follow_up f where f.id = c.follow_up_id) as visit,
        case when c.state in ('claimed', 'in_progress') and c.due_at < now() then 'released' else c.state end as state,
        c.claimed_at,
-       case when c.state in ('claimed', 'in_progress', 'submitted') then c.due_at end as due_at,
-       c.submitted_at,
-       c.verified_at,
+       case when c.state in ('claimed', 'in_progress') and c.due_at >= now() then c.due_at end as due_at,
+       c.done_at,
        coalesce(c.released_at, case when c.state in ('claimed', 'in_progress') and c.due_at < now() then c.due_at end) as released_at,
-       (select count(*) from remediation.claim_member m where m.claim_id = c.id and m.left_at is null) as crew_size,
-       case when c.state = 'verified' then (select p.display_name from remediation.profile p where p.user_id = c.claimer_id) end as claimer,
-       case when c.state = 'verified' then c.reviewed_by_name end as verified_by,
-       case when c.state = 'verified' then c.steps_done end as steps_done,
-       case when c.state = 'verified' then (select sum(h.tenths) / 10.0 from remediation.hours h where h.claim_id = c.id and h.verified) end as verified_hours
+       case when c.state = 'done' then (select p.display_name from remediation.profile p where p.user_id = c.claimer_id) end as claimer,
+       case when c.state = 'done' then c.steps_done end as steps_done,
+       case when c.state = 'done' then c.hours_tenths / 10.0 end as hours
   from remediation.claim c;
 
--- The before and after photos of verified work.
+-- The before and after photos of done work.
 create view remediation.open_photos as
 select p.claim_id, c.rims_id, p.phase, p.point, p.object_name as path, p.created_at
   from remediation.photo p join remediation.claim c on c.id = p.claim_id
- where c.state = 'verified';
+ where c.state = 'done';
+
+-- Every follow-up visit: when it opens and closes, and how it stands.
+create view remediation.open_follow_ups as
+select f.id, f.rims_id, f.done_claim_id, f.visit, f.opens_on, f.closes_on,
+       case
+         when exists (select from remediation.claim c where c.follow_up_id = f.id and c.state = 'done') then 'done'
+         when exists (select from remediation.claim c
+                       where c.follow_up_id = f.id and c.state in ('claimed', 'in_progress') and c.due_at >= now()) then 'taken'
+         when current_date < f.opens_on then 'waiting'
+         when current_date < f.closes_on then 'open'
+         else 'missed'
+       end as state
+  from remediation.follow_up f;
 
 create view remediation.open_weights as
 select w.id, w.club, w.deficit, w.water, w.trail, w.cluster, w.restricted, w.note, w.restored_from,
@@ -1552,15 +1474,15 @@ values ('remediation-photos', 'remediation-photos', false, 3145728, array['image
 on conflict (id) do update
   set public = excluded.public, file_size_limit = excluded.file_size_limit, allowed_mime_types = excluded.allowed_mime_types;
 
-create policy "remediation: crews upload their own photos to their claims"
+create policy "remediation: claimers upload photos to their open claims"
   on storage.objects for insert to authenticated
   with check (bucket_id = 'remediation-photos' and remediation.may_upload_photo(name));
 
-create policy "remediation: a photo is read by its claim's audience"
+create policy "remediation: a photo is read by its claimer, and by anyone once done"
   on storage.objects for select to anon, authenticated
   using (bucket_id = 'remediation-photos' and remediation.may_read_photo_object(name));
 
-create policy "remediation: crews delete objects no photo uses"
+create policy "remediation: claimers delete objects no photo uses"
   on storage.objects for delete to authenticated
   using (bucket_id = 'remediation-photos' and remediation.may_delete_photo_object(name));
 -- No update policy: an uploaded object is never overwritten.
@@ -1575,7 +1497,8 @@ revoke all on all tables in schema remediation from public, anon, authenticated;
 revoke all on all sequences in schema remediation from public, anon, authenticated;
 revoke all on all functions in schema remediation from public, anon, authenticated;
 
-grant select on remediation.open_claims, remediation.open_photos, remediation.open_weights to anon, authenticated;
+grant select on remediation.open_claims, remediation.open_photos, remediation.open_follow_ups, remediation.open_weights
+  to anon, authenticated;
 grant execute on function remediation.read_weights(text), remediation.may_read_photo_object(text) to anon, authenticated;
 grant execute on function remediation.may_upload_photo(text), remediation.may_delete_photo_object(text) to authenticated;
 grant execute on function
@@ -1585,9 +1508,8 @@ grant execute on function
   remediation.share_list(uuid), remediation.unshare_list(uuid), remediation.open_shared_list(text),
   remediation.change_weights(text, int, int, int, int, int, text), remediation.restore_weights(bigint, text),
   remediation.claim_sites(text[]), remediation.claim_for_site(text), remediation.my_claims(), remediation.read_claim(uuid),
-  remediation.release_claim(uuid), remediation.make_invite(uuid), remediation.join_claim(text),
-  remediation.photo_folder(uuid), remediation.add_photo(uuid, text, int, text, text), remediation.remove_photo(uuid, uuid),
-  remediation.log_hours(uuid, numeric), remediation.submit_claim(uuid, text[], text), remediation.reviews(),
-  remediation.review_claim(uuid, text, text), remediation.my_hours()
+  remediation.release_claim(uuid), remediation.site_follow_ups(text), remediation.take_follow_up(uuid),
+  remediation.add_photo(uuid, text, int, text, text), remediation.remove_photo(uuid, uuid),
+  remediation.log_hours(uuid, numeric), remediation.finish_claim(uuid, text[], text), remediation.my_hours()
   to authenticated;
 grant execute on function remediation.load_sites(jsonb) to remediation_loader;

@@ -4,8 +4,8 @@
 //
 // Two things are kept in IndexedDB, on this phone only, each under the
 // account it belongs to:
-// - each claim the phone has opened that this account is on the crew of, as
-//   the API last returned it, so the claim screen still opens on the trail
+// - each claim of this account's that the phone has opened, as the API last
+//   returned it, so the claim screen still opens on the trail
 //   (the site's detail and plan are already in the precached sites.json, and
 //   the checklist ticks in claims.ts);
 // - photos taken while the API could not be reached, until it can, and photos
@@ -87,12 +87,11 @@ export function queuedBlob(queued: QueuedPhoto): Blob {
   return new Blob([queued.bytes], { type: queued.type })
 }
 
-/** Keeps a claim for offline, if this account is on its crew. A claim seen
- *  as a reviewer holds other people's names and notes and has no use on the
- *  trail, so it is not kept (the third pass's P6). */
+/** Keeps a claim for offline, if it is this account's. Anyone else's claim
+ *  has no use on the trail, so it is not kept (the third pass's P6). */
 export async function saveClaim(userId: string, claim: ClaimDetail): Promise<void> {
   try {
-    if (claim.crew.some((member) => member.you)) {
+    if (claim.yours) {
       await set(
         claimKey(userId, claim.id),
         { claim, savedAt: new Date().toISOString() } satisfies SavedClaim,
@@ -244,7 +243,7 @@ function notNow(error: unknown): boolean {
   return isOffline(error) || [401, 429].includes(error.status) || error.status >= 500
 }
 
-/** Answers about the claim rather than the photo (no longer the crew's, no
+/** Answers about the claim rather than the photo (not this account's, no
  *  longer open, full): every other photo for that claim would get the same. */
 const ABOUT_THE_CLAIM = [403, 404, 409]
 

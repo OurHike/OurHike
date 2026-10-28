@@ -124,6 +124,24 @@ export const CLOSE_AND_RESTORE: Step[] = [
   },
 ]
 
+/** A follow-up visit's work (PLAN.md §6: "re-photograph the points, and redo
+ *  the debris if it has been moved"). */
+export const FOLLOW_UP: Step[] = [
+  {
+    title: 'Re-photograph both points',
+    detail:
+      'Stand where the photos at the restoration were taken and face the same way, so the two can be compared.',
+    source: 'bmp2019',
+  },
+  {
+    title: 'Redo the cover where it has moved',
+    detail:
+      'Spread the debris again where campers have moved it, and block the way in again if it has been opened.',
+    quote: 'The bulk of this work will occur during the first three years.',
+    source: 'marion2003',
+  },
+]
+
 export const HARDEN: Step[] = [
   {
     title: 'Consult before any work',

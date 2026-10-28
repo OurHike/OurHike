@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useState, type ChangeEvent } from 'react'
 import { useAccount } from '../account'
-import type { ClaimDetail, PhotoPhase, RemediationApi } from '../api'
+import type { ClaimDetail, FollowUp, PhotoPhase, RemediationApi } from '../api'
 import {
   PHOTO_POINTS,
   STATE_LABEL,
@@ -8,13 +8,14 @@ import {
   isWorking,
   loadTicks,
   missingPhotos,
+  phasesOf,
   photoAt,
-  reminder,
   saveTicks,
 } from '../claims'
+import { FollowUpList } from '../components/FollowUps'
 import { SignInForm } from '../components/SignInForm'
 import { siteName } from '../format'
-import { BEFORE_YOU_GO, SOURCES, planFor } from '../guide'
+import { BEFORE_YOU_GO, FOLLOW_UP, SOURCES, planFor } from '../guide'
 import {
   discardPhoto,
   dropWaiting,
@@ -34,7 +35,7 @@ import {
   type QueuedPhoto,
 } from '../offline'
 import { prepareForUpload } from '../photo'
-import { joinHref, siteHref } from '../route'
+import { claimHref, siteHref } from '../route'
 import type { Site } from '../types'
 
 const when = new Intl.DateTimeFormat('en-US', { dateStyle: 'medium', timeStyle: 'short' })
@@ -46,7 +47,7 @@ interface Props {
   prepare?: (photo: Blob) => Promise<Blob>
 }
 
-/** One claim: the crew's workspace while it is open, and the reviewer's view once submitted. */
+/** One claim: the claimer's workspace while it is open, and the record once it is done. */
 export function ClaimScreen({ id, sites, prepare = prepareForUpload }: Props) {
   const { api, session } = useAccount()
   const userId = session.state === 'signed_in' ? session.userId : ''
@@ -132,12 +133,14 @@ export function ClaimScreen({ id, sites, prepare = prepareForUpload }: Props) {
           {site ? siteName(site) : 'A site no longer in ATC’s inventory'}
         </h1>
         <div className="chips">
-          <span className={`pill ${claim.state === 'verified' ? '' : 'plain'}`}>
+          <span className={`pill ${claim.state === 'done' ? '' : 'plain'}`}>
             {STATE_LABEL[claim.state]}
           </span>
           <span className="muted">
-            Claimed by {claim.claimer ?? 'a volunteer'}{' '}
-            {when.format(new Date(claim.claimed_at))}
+            {claim.kind === 'follow_up' ? `Follow-up visit ${claim.visit} of 3 · ` : ''}
+            {claim.state === 'done' && claim.done_at
+              ? `Done ${when.format(new Date(claim.done_at))} by ${claim.claimer ?? 'a volunteer'}`
+              : `Claimed by ${claim.claimer ?? 'a volunteer'} ${when.format(new Date(claim.claimed_at))}`}
           </span>
         </div>
       </header>
@@ -153,18 +156,7 @@ export function ClaimScreen({ id, sites, prepare = prepareForUpload }: Props) {
           sent when there is signal.
         </p>
       )}
-      {claim.state === 'released' && claim.review_note && (
-        <p className="note" style={{ margin: 0 }}>
-          <b>Rejected by {claim.reviewed_by ?? 'a reviewer'}:</b> “{claim.review_note}”
-        </p>
-      )}
-      {claim.review_note && claim.state === 'in_progress' && (
-        <p className="note" style={{ margin: 0 }}>
-          <b>Sent back by {claim.reviewed_by ?? 'a reviewer'}:</b> “{claim.review_note}”
-          Retake the after photos, then submit again.
-        </p>
-      )}
-      {claim.you_are_crew && isWorking(claim) ? (
+      {claim.yours && isWorking(claim) ? (
         <Workspace
           claim={claim}
           site={site}
@@ -206,7 +198,7 @@ const slotName = (photo: QueuedPhoto) =>
 /**
  * Photos the API refused, kept on the phone until their owner decides: shown
  * whatever state the claim is in, since the usual reason is that it closed
- * (ran out, was submitted or released) while the phone had no signal.
+ * (ran out, was marked done or released) while the phone had no signal.
  */
 function NotSent({
   claimId,
@@ -329,12 +321,12 @@ interface PartProps {
   act: (step: () => Promise<ClaimDetail>) => Promise<void>
 }
 
+/** Days left on the claim. No reminders (decided 2026-10-28): just the clock. */
 function Clock({ claim }: { claim: ClaimDetail }) {
   const left = daysLeft(claim.due_at)
-  const nudge = reminder(claim.due_at)
   return (
     <section
-      className={nudge ? 'note' : 'card'}
+      className="card"
       aria-label="Time left"
       style={{
         display: 'flex',
@@ -344,81 +336,13 @@ function Clock({ claim }: { claim: ClaimDetail }) {
         padding: 14,
       }}
     >
-      <b
-        className="mono"
-        style={{ fontSize: 28, color: nudge === 'warning' ? '#c23d17' : undefined }}
-      >
+      <b className="mono" style={{ fontSize: 28 }}>
         {left} {left === 1 ? 'day' : 'days'}
       </b>
       <span>
-        left. Due {when.format(new Date(claim.due_at))}; not submitted by then, the site
-        is released for someone else to claim.
+        left. Due {when.format(new Date(claim.due_at))}; not done by then, the site opens
+        for someone else.
       </span>
-      {nudge === 'warning' && (
-        <b style={{ flexBasis: '100%' }}>
-          Submit today, or release the site so someone else can.
-        </b>
-      )}
-      {nudge === 'nudge' && (
-        <span style={{ flexBasis: '100%' }}>Under five days left.</span>
-      )}
-    </section>
-  )
-}
-
-function Crew({ claim, api, act }: PartProps) {
-  const [link, setLink] = useState<string | null>(null)
-  const invite = async () => {
-    try {
-      const { token } = await api.invite(claim.id)
-      setLink(`${window.location.origin}${window.location.pathname}${joinHref(token)}`)
-    } catch (error) {
-      await act(() => Promise.reject(error))
-    }
-  }
-  return (
-    <section
-      className="card"
-      aria-labelledby="crew"
-      style={{ display: 'flex', flexDirection: 'column', gap: 8 }}
-    >
-      <h2 id="crew" className="eyebrow">
-        Crew
-      </h2>
-      <ul style={{ margin: 0, paddingLeft: 20 }}>
-        {claim.crew.map((member, i) => (
-          <li key={i}>
-            {member.you ? 'You' : (member.name ?? 'A volunteer')}
-            {member.hours !== null && <span className="muted"> · {member.hours} h</span>}
-          </li>
-        ))}
-      </ul>
-      <div>
-        <button type="button" className="button" onClick={() => void invite()}>
-          Invite someone
-        </button>
-      </div>
-      {link && (
-        <p className="note" style={{ margin: 0 }}>
-          Anyone signed in who opens this link joins the crew. A new link stops this one
-          working.{' '}
-          <span className="mono" style={{ wordBreak: 'break-all' }}>
-            {link}
-          </span>{' '}
-          <button
-            type="button"
-            className="button"
-            onClick={() => void navigator.clipboard?.writeText(link)}
-          >
-            Copy
-          </button>
-        </p>
-      )}
-      <p className="muted" style={{ margin: 0, fontSize: 13 }}>
-        ATC’s volunteer protections cover people working through a maintaining club.
-        Everyone going signs the club’s volunteer agreement (
-        <a href="#/guide">the guide</a>).
-      </p>
     </section>
   )
 }
@@ -475,6 +399,11 @@ function BeforeYouGo({
       <span className="muted" style={{ fontSize: 13 }}>
         Saved on this phone. The photo buttons open once everything is ticked.
       </span>
+      <span className="muted" style={{ fontSize: 13 }}>
+        ATC’s volunteer protections cover people working through a maintaining club, so
+        sign the club’s volunteer agreement before you go (<a href="#/guide">the guide</a>
+        ).
+      </span>
     </section>
   )
 }
@@ -493,7 +422,8 @@ function PhotoSlot({
   point: number | null
   /** A photo for this slot waiting on the phone for signal. */
   queued?: QueuedPhoto
-  /** For an after photo: the before photo to line up with (the photo-point outline, #1911). */
+  /** For an after photo: the photo to line up with (the photo-point outline,
+   *  #1911): the before photo, or for a follow-up the restoration's after. */
   reference?: string | null
   disabled: boolean
   onPick: (file: File) => void
@@ -544,7 +474,7 @@ function PhotoSlot({
         <figure className="photo-reference">
           <PhotoImage
             url={reference}
-            alt={`The before photo at point ${point}, to line up with`}
+            alt={`The earlier photo at point ${point}, to line up with`}
           />
           <figcaption>Stand where this was taken and face the same way.</figcaption>
         </figure>
@@ -564,14 +494,13 @@ function Workspace({
   const [ticks, setTicks] = useState<number[]>(() => loadTicks(claim.id))
   const [steps, setSteps] = useState<string[]>(claim.steps_done)
   const [notes, setNotes] = useState(claim.notes ?? '')
-  const you = claim.crew.find((m) => m.you)
-  const [hours, setHours] = useState(you?.hours ? String(you.hours) : '')
+  const [hours, setHours] = useState(claim.hours ? String(claim.hours) : '')
   const [busy, setBusy] = useState(false)
   const queued = waitingPhotos(useKept(userId, claim.id))
   const [notice, setNotice] = useState<string | null>(null)
   const ready = ticks.length === BEFORE_YOU_GO.length || claim.photos.length > 0
   const missing = missingPhotos(claim)
-  const plan = planFor(site?.action ?? 'unknown')
+  const plan = claim.kind === 'follow_up' ? FOLLOW_UP : planFor(site?.action ?? 'unknown')
 
   // Photos taken with no signal wait in queue (src/offline.ts) and go when
   // the phone is back online, or when this screen next opens with signal.
@@ -618,8 +547,9 @@ function Workspace({
           return updated
         } catch (error) {
           if (!isOffline(error)) throw error
-          // What the slot held as this phone last saw it: if someone else
-          // photographs the point before this is sent, theirs is kept.
+          // What the slot held as this phone last saw it: if the point is
+          // photographed again from another phone before this is sent, that
+          // newer photo is kept.
           const replaces =
             claim.photos.find((p) => p.phase === phase && p.point === point)?.id ??
             'nothing'
@@ -650,10 +580,7 @@ function Workspace({
   return (
     <>
       <Clock claim={claim} />
-      <div className="grid2">
-        <BeforeYouGo claimId={claim.id} ticks={ticks} onChange={setTicks} />
-        <Crew claim={claim} site={site} api={api} act={act} />
-      </div>
+      <BeforeYouGo claimId={claim.id} ticks={ticks} onChange={setTicks} />
 
       <section
         className="card"
@@ -664,30 +591,41 @@ function Workspace({
           Photos
         </h2>
         <p className="muted" style={{ margin: 0 }}>
-          Two photo points: stand in the same place and face the same way for the before
-          and the after, so a reviewer can compare them. Keep people out of the frame.
-          Photos are shrunk and stripped of their location on this phone before they are
-          sent.
+          {claim.kind === 'follow_up'
+            ? 'Two photo points: stand where the earlier photo was taken, face the same way, and take it again.'
+            : 'Two photo points: stand in the same place and face the same way for the before and the after, so anyone can compare them.'}{' '}
+          Keep people out of the frame. Photos are shrunk and stripped of their location
+          on this phone before they are sent.
         </p>
         {PHOTO_POINTS.map((point) => (
           <div key={point} className="photo-row">
-            <PhotoSlot
-              claim={claim}
-              phase="before"
-              point={point}
-              queued={waiting('before', point)}
-              disabled={!ready || busy}
-              onPick={(f) => void upload('before', point, f)}
-            />
-            <PhotoSlot
-              claim={claim}
-              phase="after"
-              point={point}
-              queued={waiting('after', point)}
-              reference={photoAt(claim, 'before', point)?.url}
-              disabled={!ready || busy}
-              onPick={(f) => void upload('after', point, f)}
-            />
+            {claim.kind === 'follow_up' && (
+              // The restoration's after photo is what this visit lines up
+              // with, so it gets the left column, as "Then and now" does.
+              <figure className="photo-slot" style={{ margin: 0 }}>
+                <PhotoImage
+                  url={claim.reference.find((p) => p.point === point)?.url ?? null}
+                  alt={`At the restoration, point ${point}`}
+                />
+                <figcaption>At the restoration, point {point}</figcaption>
+              </figure>
+            )}
+            {phasesOf(claim).map((phase) => (
+              <PhotoSlot
+                key={phase}
+                claim={claim}
+                phase={phase}
+                point={point}
+                queued={waiting(phase, point)}
+                reference={
+                  phase === 'after' && claim.kind === 'restore'
+                    ? photoAt(claim, 'before', point)?.url
+                    : undefined
+                }
+                disabled={!ready || busy}
+                onPick={(f) => void upload(phase, point, f)}
+              />
+            ))}
           </div>
         ))}
         <div className="photo-row">
@@ -758,7 +696,7 @@ function Workspace({
           </label>
         ))}
         <div className="field">
-          <label htmlFor="notes">Notes for the reviewer</label>
+          <label htmlFor="notes">Notes, public once the work is done</label>
           <textarea
             id="notes"
             rows={3}
@@ -791,8 +729,7 @@ function Workspace({
             </button>
           </div>
           <span className="muted" style={{ fontSize: 13 }}>
-            Each person on the crew logs their own. They count once someone off the crew
-            verifies the work.
+            They count when you mark the work done.
           </span>
         </form>
       </section>
@@ -806,13 +743,19 @@ function Workspace({
           className="button primary"
           disabled={missing.length > 0 || claim.state !== 'in_progress'}
           onClick={() =>
-            void act(() => api.submit(claim.id, steps, notes.trim() || null))
+            void act(() => api.finish(claim.id, steps, notes.trim() || null))
           }
         >
-          Submit for review
+          Mark as done
         </button>
-        {missing.length > 0 && (
+        {missing.length > 0 ? (
           <span className="muted">Still needed: {missing.join(', ')}.</span>
+        ) : (
+          <span className="muted">
+            Done is public at once: the photos, the notes and your name.
+            {claim.kind === 'restore' &&
+              ' The site’s three follow-up visits are scheduled.'}
+          </span>
         )}
         <button
           type="button"
@@ -842,43 +785,48 @@ function PhotoImage({ url, alt }: { url: string | null; alt: string }) {
   )
 }
 
-/** A claim seen from outside the crew, or after the work: the photos side by side, and the review when it is waiting. */
-function Record({ claim, api, act }: PartProps) {
-  const [note, setNote] = useState('')
+/** A claim seen by anyone but its claimer, or after the work: the photos side by side. */
+function Record({ claim, api }: PartProps) {
   const extras = claim.photos.filter((p) => p.phase === 'extra')
   if (!claim.full)
     return (
       <p className="note" style={{ margin: 0 }}>
         {claim.state === 'released'
           ? 'This claim has ended, and the site is open to claim again.'
-          : 'A crew is working on this site.'}{' '}
-        Its photos and report are the crew’s until they submit it; then anyone signed in
-        can review it, and once verified it is public.
+          : 'Someone is working on this site. Its photos and report are theirs until they mark it done; then they are public.'}
       </p>
     )
+  type Photo = ClaimDetail['photos'][number]
+  const columns: { label: string; photo: (point: number) => Photo | null }[] =
+    claim.kind === 'follow_up'
+      ? [
+          {
+            label: 'At the restoration',
+            photo: (point) => claim.reference.find((p) => p.point === point) ?? null,
+          },
+          { label: 'This visit', photo: (point) => photoAt(claim, 'after', point) },
+        ]
+      : [
+          { label: 'Before', photo: (point) => photoAt(claim, 'before', point) },
+          { label: 'After', photo: (point) => photoAt(claim, 'after', point) },
+        ]
   return (
     <>
-      {claim.state === 'submitted' && claim.you_are_crew && (
-        <p className="note" style={{ margin: 0 }}>
-          Submitted {claim.submitted_at ? when.format(new Date(claim.submitted_at)) : ''}.
-          The clock has stopped; someone off the crew will review it.
-        </p>
-      )}
       <section
         className="card"
         aria-labelledby="compare"
         style={{ display: 'flex', flexDirection: 'column', gap: 10 }}
       >
         <h2 id="compare" className="eyebrow">
-          Before and after
+          {claim.kind === 'follow_up' ? 'Then and now' : 'Before and after'}
         </h2>
         {PHOTO_POINTS.map((point) => (
           <div key={point} className="photo-row">
-            {(['before', 'after'] as const).map((phase) => {
-              const photo = photoAt(claim, phase, point)
-              const label = `${phase === 'before' ? 'Before' : 'After'}, point ${point}`
+            {columns.map((column) => {
+              const photo = column.photo(point)
+              const label = `${column.label}, point ${point}`
               return (
-                <figure className="photo-slot" key={phase} style={{ margin: 0 }}>
+                <figure className="photo-slot" key={column.label} style={{ margin: 0 }}>
                   {photo ? (
                     <PhotoImage url={photo.url} alt={label} />
                   ) : (
@@ -906,7 +854,7 @@ function Record({ claim, api, act }: PartProps) {
         style={{ display: 'flex', flexDirection: 'column', gap: 8 }}
       >
         <h2 id="reported" className="eyebrow">
-          What the crew reported
+          What was reported
         </h2>
         {claim.steps_done.length > 0 ? (
           <ul style={{ margin: 0, paddingLeft: 20 }}>
@@ -921,80 +869,39 @@ function Record({ claim, api, act }: PartProps) {
         )}
         {claim.notes && <p style={{ margin: 0 }}>“{claim.notes}”</p>}
         <p className="muted" style={{ margin: 0 }}>
-          Crew of {claim.crew_size}; hours logged:{' '}
-          {claim.crew.map((m) => (m.hours === null ? '—' : `${m.hours} h`)).join(', ')}
+          {claim.hours === null ? 'No hours logged.' : `${claim.hours} h on the site.`}
         </p>
       </section>
-      {claim.you_may_review && (
-        <section
-          className="card"
-          aria-labelledby="review"
-          style={{ display: 'flex', flexDirection: 'column', gap: 10 }}
-        >
-          <h2 id="review" className="eyebrow">
-            Your review
-          </h2>
-          <p className="muted" style={{ margin: 0 }}>
-            You can review this because you are not on its crew. Verify when the after
-            photos show the site hidden and the way in blocked; it confirms the crew’s
-            hours.
-          </p>
-          <div className="field">
-            <label htmlFor="review-note">
-              Note to the crew (needed to send back or reject)
-            </label>
-            <textarea
-              id="review-note"
-              rows={2}
-              maxLength={500}
-              value={note}
-              onChange={(e) => setNote(e.target.value)}
-            />
-          </div>
-          <div style={{ display: 'flex', gap: 8 }}>
-            <button
-              type="button"
-              className="button primary"
-              onClick={() =>
-                void act(() => api.review(claim.id, 'verify', note.trim() || null))
-              }
-            >
-              Verify
-            </button>
-            <button
-              type="button"
-              className="button"
-              disabled={!note.trim()}
-              onClick={() =>
-                void act(() => api.review(claim.id, 'send_back', note.trim()))
-              }
-            >
-              Send back
-            </button>
-            <button
-              type="button"
-              className="button"
-              style={{ marginLeft: 'auto' }}
-              disabled={!note.trim()}
-              onClick={() => void act(() => api.review(claim.id, 'reject', note.trim()))}
-            >
-              Reject: the work was not done
-            </button>
-          </div>
-          <p className="muted" style={{ margin: 0, fontSize: 13 }}>
-            Send back when it is nearly there: the crew retakes the after photos. Reject
-            when the photos do not show this site restored: the site opens for someone
-            else and no hours count.
-          </p>
-        </section>
-      )}
-      {claim.state === 'verified' && (
-        <p className="note" style={{ margin: 0 }}>
-          Verified by {claim.reviewed_by ?? 'a volunteer'}
-          {claim.verified_at ? ` on ${when.format(new Date(claim.verified_at))}` : ''}.
-          {claim.review_note && ` “${claim.review_note}”`}
-        </p>
+      {claim.state === 'done' && claim.kind === 'restore' && (
+        <SiteFollowUps rimsId={claim.rims_id} api={api} />
       )}
     </>
   )
+}
+
+/** A done restoration's follow-up visits, with a way to take an open one. */
+function SiteFollowUps({ rimsId, api }: { rimsId: string; api: RemediationApi }) {
+  const [followUps, setFollowUps] = useState<FollowUp[] | null>(null)
+  const [problem, setProblem] = useState<string | null>(null)
+  useEffect(() => {
+    let live = true
+    api.followUps(rimsId).then(
+      (found) => live && setFollowUps(found),
+      (error: Error) => live && setProblem(isOffline(error) ? null : error.message),
+    )
+    return () => {
+      live = false
+    }
+  }, [api, rimsId])
+  if (problem) return <p role="alert">{problem}</p>
+  if (!followUps || followUps.length === 0) return null
+  const take = async (followUp: FollowUp) => {
+    try {
+      const taken = await api.takeFollowUp(followUp.id)
+      window.location.hash = claimHref(taken.id)
+    } catch (error) {
+      setProblem((error as Error).message)
+    }
+  }
+  return <FollowUpList followUps={followUps} onTake={(f) => void take(f)} />
 }

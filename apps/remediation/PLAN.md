@@ -1,15 +1,17 @@
 # Site Remediation — build plan
 
-**Status: phases 0 and 1 built; phases 2 and 3 built but not deployed** (§9): the
-analysis job, the read-only web app, and sign-in, lists, club weights and claims. Since
-2026-10-27 those live in a `remediation` schema in OurHike's Supabase project, which the app
-talks to directly: there is no API server (decided by poll; the decisions table). The
-schema is written and tested but not yet applied to the project (§11). Phase 4's first
-part is built too: the app installs, opens with no signal and queues photos (#1911);
-follow-up visits wait on a decision (§11). Five adversarial review passes on 2026-10-27
-proved 33 problems in the Python API and the offline layer, all fixed, and their tests
-were carried into the SQL (§10); the SQL itself has not yet had a pass of its own. This
-file began as the
+**Status: phases 0 and 1 built; phases 2 to 4 built but not deployed** (§9):
+- the analysis job and the read-only web app;
+- sign-in, lists and club weights;
+- one-person claims with no review, since 2026-10-28;
+- follow-up visits;
+- the offline app (#1911).
+
+They live in a `remediation` schema in OurHike's Supabase project, which the app talks
+to directly: there is no API server (decided by poll, 2026-10-27). The schema is written
+and tested but not yet applied to the project (§11). Six adversarial review passes and a
+re-check on 2026-10-27 proved problems in the retired Python API, the offline layer and
+the SQL, all fixed or written down (§10). This file began as the
 deliverable of **#1899 — Plan Campsite Steward, a separate app that ranks the A.T.
 campsites needing restoration and lets volunteers claim them**, written 2026-10-24 to
 2026-10-26 from a planning session with the maintainer: a first-pass analysis, then
@@ -439,14 +441,13 @@ directions.
 |---|---|---|
 | Sign-in | The same Supabase project, so an OurHike account works here. A six-digit code by email, typed back: the shared project's email template sends a code, not a link, and `client/src/lib/auth.ts` (#1600) records why asking it for a link fails. A code also needs no redirect address registered with Supabase | Reused: the project's own sign-in; PostgREST checks the token before any remediation function runs |
 | Data | A `remediation` schema in the same project, under `apps/remediation/db/`: tables nothing reaches directly, one Postgres function per action holding its rule, and three open views anyone may read. The app calls the functions through supabase-js. Decided 2026-10-27 in place of a FastAPI service on Render with its own database, which was built, reviewed five times and retired the same day; its tests were carried into the SQL | New |
-| Photos | A private Supabase Storage bucket, `remediation-photos`, under `<claim id>/<the uploader's folder on the claim>/<the phone's id for the photo>.jpg`, the folder a random id each crew member gets on joining. Only a claim's crew may upload, each into their own folder, only while the claim is open, at most 20 photos waiting to go on a claim and 150 a day per account; nothing is overwritten; JPEG only, at most 3 MB. A photo is read through a link Storage signs for an hour, by its crew, by anyone signed in while its claim waits for review, and by anyone once verified (§10, the sixth pass). The phone redraws every photo before it leaves, which strips its location. Nothing redraws it again: the retired API did, against a tampered phone (§10) | Pattern new |
-| Open data | The volunteer work as CSV and Parquet beside `sites.json`, written daily from the open views with the public anon key (`remediation_analysis/open_data.py`); each verified photo with its path and a link signed for eight days | New |
+| Photos | A private Supabase Storage bucket, `remediation-photos`, under `<claim id>/<the phone's id for the photo>.jpg`. Only the claimer may upload, only while the claim is open, at most 20 photos waiting to go on a claim and 150 a day per account; nothing is overwritten; JPEG only, at most 3 MB. A photo is read through a link Storage signs for an hour, by its claimer, and by anyone once the work is done (§10, the sixth pass). The phone redraws every photo before it leaves, which strips its location. Nothing redraws it again: the retired API did, against a tampered phone (§10) | Pattern new |
+| Open data | The volunteer work as CSV and Parquet beside `sites.json`, written daily from the open views with the public anon key (`remediation_analysis/open_data.py`): claims, photos, follow-up visits and weights, each done photo with its path and a link signed for eight days | New |
 | Club sections | Which club owns which mile | Reused: `pipeline/export_club_sections.py`'s output |
 | ArcGIS reading | Paging an ArcGIS layer | Reused: `pipeline/lib/arcgis.py` |
 | Basemap | The map under the sites | Not reused: OpenFreeMap's OpenStreetMap tiles (`tiles.openfreemap.org`), free and keyless at every zoom. OurHike's basemap is a PMTiles file with OurHike's own style and protocol handler, which would have had to be copied in. `@unvalidated`: nobody has checked OpenFreeMap's uptime; if it fails, the table and every site page still work |
 | Web app | React, Vite and MapLibre under `apps/remediation/web/`, on its own Cloudflare Pages project. Static: hash routes, no server. Built in phase 1 (#1904); the PWA manifest and offline cache come in phase 4 | New |
-| Invites | An email invite that is claimed on first sign-in | Copied as a pattern from `RoleInvite`, not a shared table |
-| Hours | Hours per person per verified submission | Copied as a pattern from VOLUNTEERING.md's `VolunteerHoursRecord` |
+| Hours | The claimer's hours on each claim, counted once it is done | Copied as a pattern from VOLUNTEERING.md's `VolunteerHoursRecord` |
 
 **Because this folder is in OurHike's repository, OurHike's CLAUDE.md applies to it:**
 
@@ -464,8 +465,8 @@ Its CI jobs need their own workflow file, with the folder in its path scope, so
 
 | Who | Sees |
 |---|---|
-| Anyone, signed out | Every site with its location and scores, the Analysis summary and the Guide; through Supabase's REST API or the daily open files, every claim's site, state and dates, every club's weights history, and, on verified work only, who did it, who verified it, the steps, the hours and the photos |
-| Any signed-in user | Also: lists, reviews, their own hours, and a claim's report and photos once it is submitted, so anyone may review it. Before that a claim's report and photos are its crew's. Names on a claim show only to its crew until the work is verified (decided 2026-10-27) |
+| Anyone, signed out | Every site with its location and scores, the Analysis summary and the Guide; through Supabase's REST API or the daily open files, every claim's site, state and dates, every follow-up visit, every club's weights history, and, on done work, who did it, the steps, the notes, the hours and the photos |
+| Any signed-in user | Also: lists, their own hours, and done work in the app. Before a claim is done its report and photos are the claimer's, and their name is shown to nobody else (decided 2026-10-27; done is public at once since 2026-10-28) |
 
 Decided 2026-10-27 (opening section). The fallbacks, should ATC or a land manager object:
 
@@ -498,34 +499,40 @@ on OurHike's sign-in and storage. Not an ATC or OurHike product."
 | Club dashboard | desktop | Club and section pickers, filters for tier, action and crew size, a summary line, the map and the site table side by side, save-to-list and CSV export, and a ranking bar showing the current weights, who last changed them, a history link and "Edit weights" |
 | Analysis summary | desktop, public | The four headline counts, the priority-by-crew table, P1 by club, the CSI formula and need score, and "What this doesn't know yet" |
 | Site detail | phone | The tier, action and crew chips; a complex nudge ("1 of 3 sites less than 200 ft apart"); "Where it is", with mile, bearing, coordinates and a copy button; "Why it ranks", with the indicator bars and raw values; the plan from the guide; Claim and Invite |
-| Claim | phone | The 14-day countdown and due date; the release rule; the other sites in the complex, with "Claim all 3"; crew progress against the suggested size; invites by email or link; the note that ATC's cover applies to people working through a club |
+| Claim | phone | The 14-day countdown and due date; the release rule; the other sites in the complex, with "Claim all 3"; the note that ATC's cover applies to people working through a club. No crew and no invites since 2026-10-28 |
 | Before you go | phone | Seven checklist items, each linked to its ATC source (§7), and "Saved on this phone". Start work stays disabled until everything is ticked |
 | At the site | phone | The no-signal banner with the queued-photo count; the camera with a dashed outline of the before photo to line up on; the four required photos; extra photos; what got done; volunteer hours |
-| Review | phone | Before and after photos side by side for each photo point, the reported steps, extras and hours, a note to the volunteer, and Send back or Verify. It says why this user may review |
-| My claims | phone | Hours this year, verified and waiting; claims in progress with a countdown; submissions waiting for review; follow-up visits; "3 submissions near you need a reviewer"; lists with Share link |
+| Done work | phone | Before and after photos side by side for each photo point (a follow-up: the restoration's after beside this visit's), the reported steps, notes, extras and hours, who did it and when, and the site's three follow-up visits with "Take visit 1" when one is open. Review screens went on 2026-10-28 |
+| My claims | phone | Hours on done work, sites done, claims in progress with a countdown, earlier claims |
 
 ---
 
 ## 6. The claim workflow
 
+Reshaped by the maintainer on 2026-10-28 (the decisions table): one person, no crew, no
+review, no reminders.
+
 ```
-Open ──claim──► Claimed ──before photos──► In progress ──after photos──► Submitted ──review──► Verified ──► Follow-ups
-                (14 days start)                                          (the clock stops)                 (3 seasons)
+Open ──claim──► Claimed ──first before photo──► In progress ──mark as done──► Done ──► three follow-up visits
+                (14 days start)                                (public at once)
    ▲
-   └────────── not submitted by the end of day 14: released on day 15 (reminders on days 10 and 13)
+   └────────── not done by the end of day 14: released
 ```
 
-- **The clock stops at Submitted**, not at Verified, so a slow reviewer never costs a
-  volunteer their claim.
-- **Reviewing:** any signed-in user except the claimer and their crew. Verifying
-  confirms the hours and schedules the first follow-up.
-- **Follow-ups:** one after each peak season for three years, each a claimable task with
-  its own 14 days: re-photograph the points, and redo the debris if it has been moved.
-  The three years come from Marion 2003 (§7): "the bulk of this work will occur during
-  the first three years". Visiting after peak season follows its advice to redo the
-  hiding "immediately after busy or peak use weekends".
-- **Invites:** by email or link. An invitee joins the claim's crew, and their hours count
-  toward the submission.
+- **Done is done.** Marking a claim done needs a before and an after at both photo
+  points. It makes the photos, the steps, the notes, the hours and the claimer's name
+  public at once, and schedules the follow-ups. Nobody reviews it.
+- **Follow-ups:** three, made when a restoration is done.
+  - **When:** each opens the day after Labor Day, everywhere, in each of the three years
+    after the work (decided 2026-10-28). Each is open until the next one opens, the
+    third for a year; a visit nobody took is missed.
+  - **Who:** anyone may take one, as a claim of its own with 14 days: re-photograph both
+    points against the restoration's after photos, and redo the debris if it has been
+    moved.
+  - **Why three years:** Marion 2003 (§7): "the bulk of this work will occur during the
+    first three years". Visiting after peak season follows its advice to redo the
+    hiding "immediately after busy or peak use weekends".
+  - **While they run,** the site is not claimed again from scratch.
 - `@unvalidated`: 14 days, which came from the original request. What would settle it:
   how many claims are released unfinished, by season, once the app runs. A January
   claim in Vermont is the case most likely to show it is wrong.
@@ -623,21 +630,26 @@ returns excerpts; their quotes are near-verbatim.
 
 ---
 
-## 8. Data model sketch
+## 8. Data model
+
+What `apps/remediation/db/migrations/0001_remediation.sql` holds, as of 2026-10-28. The
+sketch this section began as had crews, submissions and reviews, which went with the
+maintainer's decisions of that day.
 
 | Table | Holds | Note |
 |---|---|---|
-| `site` | `RIMS_ID`, `GlobalID`, club, mile, coordinates, indicator scores, action, crew, tier, complex id, camping regime | Loaded from the job's weekly `sites.json`; read-only to the app |
-| `club_weights` | club, the four weights, changed_by, changed_at | Every change is a new row, so the history and undo come free |
-| `camping_rule` | land unit, regime, rule text, quote, source URL, read_on, reviewed_by, reviewed_on | Replaces the "?" placeholder |
-| `list`, `list_item` | named lists of sites, owner, share token | Opening a share link requires sign-in |
-| `claim` | site, claimer, state, kind (restore or follow-up), claimed_at, due_at, released_at | One live claim per site, held by a unique index |
-| `claim_member` | claim, user, invited_by, joined_at | The crew |
-| `photo_point` | site, number, position, set_on | Set on the first visit; reused by follow-ups |
-| `submission` | claim, steps done, notes, submitted_at, reviewed_by, verdict | `reviewed_by` is never the claimer or a crew member |
-| `photo` | submission, phase (before, after or follow-up), photo point (none for an extra), taken_at | R2 key derived from the id |
-| `hours` | submission, user, hours, state (claimed or verified) | The volunteer hours log |
-| `membership` | user, club (self-declared) | Rolls hours up per club; grants no permissions |
+| `site` | `RIMS_ID`, club, workable | Loaded daily from `sites.json` by `load_sites()`; the rest of a site's data stays in `sites.json` |
+| `site_load` | each load's size, 90 days of them | A load is held against the month's largest |
+| `profile` | account id, display name | Kept as a tombstone after `delete_my_data()` |
+| `club_weights` | club, the five weights, changed_by and their name then, changed_at | Every change is a new row, so the history and undo come free |
+| `site_list`, `site_list_item` | named lists of sites, owner, share token | Opening a share link requires sign-in |
+| `claim` | site, claimer, state (claimed, in progress, done, released), dates, steps, notes, hours, follow-up | One live claim per site, held by a unique index |
+| `follow_up` | site, the restoration it follows, visit 1 to 3, opens_on, closes_on | Made when a restoration is done |
+| `photo` | claim, phase (before, after or extra), photo point, object name | One per point and phase |
+| `photo_receipt` | claim, the phone's id for each photo | So a photo sent twice is stored once |
+
+Not built: `camping_rule` (the hand-typed table §2e waits on) and `membership` (hours
+per club).
 
 ---
 
@@ -648,8 +660,8 @@ returns excerpts; their quotes are near-verbatim.
 | 0 | Analysis job | **Built, #1901:** the scoring job, its tests and CI, `summary.json` and `sites.json`, and the weekly run that attaches them to itself until the app can serve them | 1–2 weeks |
 | 1 | Read-only app | **Built, #1904:** the dashboard with club, mile-range, tier, action and crew filters, the map and CSV export; the site page with directions, the indicator bars and the plan; the Analysis screen; the guide. Deployed by the weekly job | 2–3 weeks |
 | 2 | Sign-in and lists | **Built, not deployed, #1906:** email-code sign-in; lists and share links; club weights with history and restore, re-ranking the dashboard through each site's `need_parts`. Behind them, the `remediation` schema in `apps/remediation/db/`, tested on Postgres. The web app switches accounts on when the Supabase variables are set | 2 weeks |
-| 3 | Claims | **Built, not deployed, #1910:** claims of one site or a cluster, the 14-day clock (reminders in the app; email needs a provider), before you go, crew invite links, photo points and extras, submit, review (verify, send back, or reject), hours | 3–4 weeks |
-| 4 | Field-ready | **First part built, #1911:** installable, opens with no signal (the app and this week's analysis precached together), claims saved on the phone, photos queued until there is signal, the before photo shown to line up the after. CSV export came with phase 1. **Not built:** follow-up visits | 2–3 weeks |
+| 3 | Claims | **Built, not deployed, #1910:** claims of one site or a cluster, the 14-day clock, before you go, photo points and extras, hours, and **Mark as done**, public at once. Crews, invites, reminders and review were built and then taken out on 2026-10-28 | 3–4 weeks |
+| 4 | Field-ready | **Built, #1911 and follow-ups:** installable, opens with no signal (the app and this week's analysis precached together), claims saved on the phone, photos queued until there is signal, the before photo shown to line up the after; and three follow-up visits per restored site, each opening the day after Labor Day. CSV export came with phase 1 | 2–3 weeks |
 
 `@unvalidated`: the sizes assume one developer working with an agent. Nobody has
 measured them. Each phase gets its own issue once this plan is merged; this file does not
@@ -671,8 +683,15 @@ below are where the evidence is thinnest.
   user-created sites from OurHike's infrastructure, with no sign-in. ATC already
   publishes them, so this adds a second host rather than new exposure, but it is the
   thing `pipeline/SOURCE_SURVEY.md` §3b keeps OurHike itself from doing.
-- **Open review.** With anyone able to verify, "Verified" means another account looked at
-  the photos, not that a club did. The CSV export should name the reviewer of each site.
+- **No review (decided 2026-10-28).** "Done" means the claimer says so, and nothing
+  else.
+  - **The record trusts the claimer.** A site marked done is restored only as far as its
+    photos show, and the open data says done, not checked.
+  - **The bucket can be misused.** One account can claim a site, upload 40 files typed as
+    JPEG, and mark it done, which publishes them, linkable for years, from OurHike's
+    project (the sixth pass's re-check, with two accounts and a fake verify then).
+  - **What limits it:** the per-account caps (150 uploads a day), the one live claim per
+    site, and three years of follow-ups before a done site can be claimed again.
 - **Open weights.** Anyone can re-rank a club's sites. The history makes a change visible
   and undoable; nothing prevents it. The API caps one account at 30 changes a day and
   refuses a change that changes nothing, which keeps the history readable and does
@@ -811,25 +830,22 @@ Each is the maintainer's: a setting, an account or a decision this build cannot 
 - **Whether Supabase's `postgres` role bypasses row-level security**, which the photo
   functions rely on to read `storage.objects`. Assumed, and checked by the migration
   runner before it changes anything.
-- **The Cloudflare Pages project** named by `REMEDIATION_PAGES_PROJECT`, and a GitHub
-  environment that only `main` may deploy to, holding the Cloudflare token, so the
-  deploy job's "main only" holds even against an edited workflow.
-- **Email**, for the day-10 and day-13 reminders and for invites by email. Reminders are
-  in the app until a provider exists.
-- **How long claim photos are kept**, and a sweep for orphaned objects. Neither exists.
-  The app deletes a photo's object when the photo is retaken or removed. An object
-  uploaded and never put on a claim stays, readable by nobody, as does a replaced one
-  once its claim closes. The caps bound how fast they gather: 80 objects a claim, 150
-  uploads an account a day. They do not bound the total.
+- **The Cloudflare Pages project** named by `REMEDIATION_PAGES_PROJECT`, and the GitHub
+  environment `remediation-deploy` (decided 2026-10-28), which only `main` may use. The
+  deploy job already names it. Until the maintainer creates it with that branch rule,
+  GitHub makes it on the first run with no rule.
+- **A sweep for orphaned objects.** Photos are kept for good (decided 2026-10-28), but
+  some objects are no photo's:
+  - an object uploaded and never put on a claim stays, readable by nobody;
+  - a replaced one stays once its claim closes.
+
+  The caps bound how fast they gather (80 objects a claim, 150 uploads an account a
+  day), not the total.
 - **A signed link outlives the access it was made with.** Storage checks a link's
-  signature, not the policy, and takes its lifetime from whoever asks. So a crew
-  member can sign their claim's photos for years and share the links (at most 80
-  objects a claim), and anyone can do the same for a verified claim's photos.
-- **Who may review.** Today anyone signed in may verify a claim off their own crew.
-  Two accounts can therefore publish any 40 JPEG-typed uploads a claim: one claims
-  and uploads, the other verifies, and the photos are open data that anyone can link
-  to for years. Club-approved reviewers would close it. Proved by the re-check;
-  on the morning page.
+  signature, not the policy, and takes its lifetime from whoever asks. So a claimer can
+  sign their claim's photos for years and share the links (at most 80 objects a claim),
+  and anyone can do the same for done work's photos. With no review, one account can
+  publish anything it uploads (§10).
 - **Each upload counts the uploader's objects in the bucket.** One such count took
   83 ms over 50,000 objects, as a sequential scan (measured by the re-check). The
   count grows with the bucket, and orphans are never swept.
@@ -837,42 +853,36 @@ Each is the maintainer's: a setting, an account or a decision this build cannot 
 - **Which Supabase project.** The deploy uses OurHike's production project
   (`SUPABASE_URL`), as §3's "the same project" implies. The sign-in email will carry
   OurHike's template and name.
-- **A privacy statement for this app.** It holds a Supabase user id, a chosen display
-  name, lists, weights changes, claims, crew places, hours and photos. OurHike's privacy
-  policy does not cover a second app.
-- **Calls this build made that a poll did not:** a reviewer may reject, which releases
-  the site, and may not claim it for 30 days (added after review finding 2 and the
-  re-check's N2); a send-back gives the crew the time it had left, at least 7 days; one
-  account holds at most 10 sites; deleting your data keeps your weights changes and
-  your crew places (marked left, so they give no access), without your name, and a
-  later sign-in starts an empty account. From the third pass: signing out signs out
-  this browser only, not every device (the Supabase project is OurHike's, so the
-  default would sign the person out of OurHike too); a photo the API refuses stays on
-  the phone until its owner decides; a session that ends without a sign-out leaves
+- **The privacy statement.** Drafted at the maintainer's request: `PRIVACY.md`, with
+  the facts this build cannot know marked **[to fill]**. It is not linked from the app
+  until the maintainer has read it.
+- **Calls this build made that a poll did not:** one account holds at most 10 sites;
+  deleting your data keeps your done work and weights changes without your name, and
+  a later sign-in starts an empty account. From the third pass: a photo the API
+  refuses stays on the phone until its owner decides (confirmed 2026-10-28); a session that ends without a sign-out leaves
   that account's offline data on the phone, unseen by the next account, rather than
   deleting photos nobody else has; the API refuses a photo over 2048 px on either
   side rather than shrinking it; a new version waits for the person to reload. From
   the fourth: a phone stays signed in with no signal for as long as its stored
-  session lasts; a queued photo of a point someone else has photographed since is
-  kept as not sent, and **Try again** puts it over theirs. From the move to Supabase:
+  session lasts; a queued photo of a point photographed since from another phone is
+  kept as not sent, and **Try again** puts it over that one. From the move to Supabase:
   the open files are written daily while ATC's layers are fetched weekly. From the
   sixth pass:
   - photos are private, read through links signed for an hour;
-  - a submitted claim's photos and report are open to any signed-in account, so
-    anyone may review;
   - a load with under half the sites, or half the workable ones, of the largest load
     of the last 30 days is refused;
   - an account may have 20 uploads waiting to go on a claim and 150 a day;
-  - a photo's path carries a random folder per crew member per claim, not their
-    account id;
   - a name of default-ignorable characters, or of only spaces and variation
     selectors, is refused. An emoji's colour selector beside a visible character
     is allowed.
-- **When peak season ends, by section of the trail**, which decides when each of the
-  three years' follow-up visits opens (§6). Follow-ups are not built until it is set.
+
+  From the 2026-10-28 answers:
+  - a restored site is not claimed again from scratch while its follow-ups run;
+  - a follow-up visit nobody took before the next one opened is missed, not carried
+    over;
+  - the rejecter's 30-day bar, the send-back clock and the reviewer's view went
+    with review.
 
 - Who transcribes the camping rules (decided: the session, reviewed by the maintainer)
   and when. It blocks the "+10 restricted" weight, not phase 0.
-- Whether the remediation API shares OurHike's Supabase project or only trusts its tokens.
-  The plan assumes a shared project, which gives one account across both apps.
-- The real name. "Site Remediation" is a working name.
+- The name is Site Remediation (decided 2026-10-28).

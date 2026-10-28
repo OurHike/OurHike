@@ -26,12 +26,12 @@ afterEach(async () => {
 })
 
 const jpeg = () => new Blob(['pixels'], { type: 'image/jpeg' })
-const crewClaim = (id: string) =>
+const myClaim = (id: string) =>
   ({
     id,
     rims_id: 'example-0004',
     state: 'in_progress',
-    crew: [{ name: null, you: true, hours: null }],
+    yours: true,
   }) as unknown as ClaimDetail
 
 function uploads(responses: (() => Promise<unknown>)[]): RemediationApi {
@@ -41,23 +41,20 @@ function uploads(responses: (() => Promise<unknown>)[]): RemediationApi {
 }
 
 describe('saved claims', () => {
-  it('a claim the account is crew on comes back as it was, with when it was saved', async () => {
-    await saveClaim(ME, crewClaim('claim-1'))
+  it('a claim that is this account’s comes back as it was, with when it was saved', async () => {
+    await saveClaim(ME, myClaim('claim-1'))
     const kept = await savedClaim(ME, 'claim-1')
-    expect(kept?.claim).toEqual(crewClaim('claim-1'))
+    expect(kept?.claim).toEqual(myClaim('claim-1'))
     expect(Date.parse(kept!.savedAt)).not.toBeNaN()
     expect(await savedClaim(ME, 'never-opened')).toBeNull()
   })
 
-  it('a claim seen as a reviewer is not kept, nor shown to the next account', async () => {
-    // The third pass's P6 and P3: other people's names and notes have no use
-    // on the trail, and a phone's next account should not read the last one's.
-    await saveClaim(ME, {
-      ...crewClaim('theirs'),
-      crew: [{ name: 'A', you: false, hours: null }],
-    })
+  it('someone else’s claim is not kept, nor is a claim shown to the next account', async () => {
+    // The third pass's P6 and P3: other people's work has no use on the
+    // trail, and a phone's next account should not read the last one's.
+    await saveClaim(ME, { ...myClaim('theirs'), yours: false })
     expect(await savedClaim(ME, 'theirs')).toBeNull()
-    await saveClaim(ME, crewClaim('mine'))
+    await saveClaim(ME, myClaim('mine'))
     expect(await savedClaim(NEXT_PERSON, 'mine')).toBeNull()
   })
 })
@@ -205,7 +202,9 @@ describe('flushPhotos', () => {
   })
 
   it('a refused photo is not sent again until its owner says so, and goes only when they discard it', async () => {
-    const api = uploads([async () => Promise.reject(new ApiError(403, 'Only the crew'))])
+    const api = uploads([
+      async () => Promise.reject(new ApiError(403, 'Only the claimer')),
+    ])
     await queuePhoto({
       userId: ME,
       claimId: 'c',
@@ -295,9 +294,9 @@ it('a photo sent straight away whose answer was lost keeps the id it was first s
   expect((await api.claim(claim.id)).photos).toHaveLength(1)
 })
 
-it('keeps a queued photo of a point someone photographed since, and Try again sends it over theirs', async () => {
-  // The fourth pass's C: an older photo queued on one crew phone, delivered
-  // after a newer one from another, replaced the newer.
+it('keeps a queued photo of a point photographed since from another phone, and Try again sends it over that one', async () => {
+  // The fourth pass's C: an older photo queued on one phone, delivered after
+  // a newer one from another, replaced the newer.
   const api = fakeApi()
   const [claim] = await api.claimSites(['example-0004'])
   await queuePhoto({
@@ -406,7 +405,7 @@ describe('one account per phone at a time', () => {
   })
 
   it("signing out forgets that account's claims and photos, and nobody else's", async () => {
-    await saveClaim(ME, crewClaim('claim-1'))
+    await saveClaim(ME, myClaim('claim-1'))
     await queuePhoto({
       userId: ME,
       claimId: 'claim-1',

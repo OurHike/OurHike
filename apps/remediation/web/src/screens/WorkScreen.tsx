@@ -1,28 +1,26 @@
 import { useEffect, useState } from 'react'
 import { useAccount } from '../account'
 import type { ClaimSummary, HoursTotals } from '../api'
-import { STATE_LABEL, daysLeft, isWorking, reminder } from '../claims'
+import { STATE_LABEL, daysLeft, isWorking } from '../claims'
 import { SignInForm } from '../components/SignInForm'
 import { siteName } from '../format'
 import { claimHref } from '../route'
 import type { Site } from '../types'
 
-/** Your claims and hours, and the submissions waiting for a reviewer (PLAN.md §5, "My claims"). */
+/** Your claims and hours (PLAN.md §5, "My claims"). */
 export function WorkScreen({ sites }: { sites: Site[] }) {
   const { api } = useAccount()
   const [mine, setMine] = useState<ClaimSummary[] | null>(null)
-  const [waiting, setWaiting] = useState<ClaimSummary[]>([])
   const [hours, setHours] = useState<HoursTotals | null>(null)
   const [problem, setProblem] = useState<string | null>(null)
 
   useEffect(() => {
     if (!api) return
     let live = true
-    Promise.all([api.myClaims(), api.reviews(), api.myHours()]).then(
-      ([claims, reviews, totals]) => {
+    Promise.all([api.myClaims(), api.myHours()]).then(
+      ([claims, totals]) => {
         if (!live) return
         setMine(claims)
-        setWaiting(reviews)
         setHours(totals)
       },
       (error: Error) => live && setProblem(error.message),
@@ -55,12 +53,12 @@ export function WorkScreen({ sites }: { sites: Site[] }) {
       <h1 style={{ fontSize: 28 }}>Your work</h1>
       <div className="kpis">
         <div className="card kpi">
-          <div className="big">{hours.verified}</div>
-          <div className="muted">verified hours</div>
+          <div className="big">{hours.done}</div>
+          <div className="muted">hours on done work</div>
         </div>
         <div className="card kpi">
-          <div className="big">{hours.waiting}</div>
-          <div className="muted">hours waiting for review</div>
+          <div className="big">{hours.claims}</div>
+          <div className="muted">sites done</div>
         </div>
         <div className="card kpi">
           <div className="big">{working.length}</div>
@@ -89,34 +87,8 @@ export function WorkScreen({ sites }: { sites: Site[] }) {
             {working.map((claim) => (
               <li key={claim.id}>
                 <a href={claimHref(claim.id)}>{name(claim)}</a> ·{' '}
-                {STATE_LABEL[claim.state]} ·{' '}
-                <b
-                  style={{
-                    color: reminder(claim.due_at) === 'warning' ? '#c23d17' : undefined,
-                  }}
-                >
-                  {daysLeft(claim.due_at)} days left
-                </b>
-              </li>
-            ))}
-          </ul>
-        )}
-      </section>
-
-      <section className="card" aria-labelledby="waiting">
-        <h2 id="waiting" className="eyebrow" style={{ marginBottom: 8 }}>
-          Waiting for a reviewer · {waiting.length}
-        </h2>
-        {waiting.length === 0 ? (
-          <p className="muted" style={{ margin: 0 }}>
-            No one else’s work is waiting.
-          </p>
-        ) : (
-          <ul style={{ margin: 0, paddingLeft: 20 }}>
-            {waiting.map((claim) => (
-              <li key={claim.id}>
-                <a href={claimHref(claim.id)}>{name(claim)}</a> · by{' '}
-                {claim.claimer ?? 'a volunteer'}
+                {claim.kind === 'follow_up' ? `Follow-up visit ${claim.visit} · ` : ''}
+                {STATE_LABEL[claim.state]} · <b>{daysLeft(claim.due_at)} days left</b>
               </li>
             ))}
           </ul>

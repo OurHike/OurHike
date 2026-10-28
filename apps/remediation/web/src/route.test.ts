@@ -11,7 +11,8 @@ it('parseRoute reads every screen and sends anything else to the site list', () 
   expect(parseRoute('#/site/')).toEqual({ screen: 'sites' })
   expect(parseRoute('#/work')).toEqual({ screen: 'work' })
   expect(parseRoute('#/claim/abc')).toEqual({ screen: 'claim', id: 'abc' })
-  expect(parseRoute('#/join/t0k3n')).toEqual({ screen: 'join', token: 't0k3n' })
+  // Crew invites went with crews (2026-10-28): an old invite link lands on the list.
+  expect(parseRoute('#/join/t0k3n')).toEqual({ screen: 'sites' })
   expect(parseRoute('#/claim/')).toEqual({ screen: 'sites' })
 })
 

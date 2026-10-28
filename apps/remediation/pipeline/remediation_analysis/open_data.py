@@ -7,10 +7,13 @@ Reads the `remediation` schema's three open views through Supabase's REST API wi
 the project's public anon key, which is exactly what anyone can read, and
 writes each as CSV and as Parquet:
 
-    claims    every claim: its site, state and dates; names only on verified work
-    photos    the before and after photos of verified work, each with its
-              path in the remediation-photos bucket and a link to it
-    weights   every club's ranking-weight changes
+    claims      every claim and follow-up visit: its site, state and dates;
+                names, steps and hours only on done work
+    photos      the before and after photos of done work, each with its path
+                in the remediation-photos bucket and a link to it
+    follow_ups  every restored site's three follow-up visits, when each opens
+                and closes, and how it stands
+    weights     every club's ranking-weight changes
 
 plus manifest.json saying when and how many. Nothing here can read more than
 the public can: the views are the whole of what the anon key reaches
@@ -18,7 +21,7 @@ the public can: the views are the whole of what the anon key reaches
 
 The bucket is private (the SQL review's sixth pass, finding 1), so a photo's
 link is one Storage signs, asked with the same anon key, which the bucket's
-policy lets read a verified claim's photos and nothing else. A link lasts
+policy lets read a done claim's photos and nothing else. A link lasts
 LINK_DAYS; the path is the lasting name, and anyone can sign a new link to
 it with the public key, as this does.
 
@@ -55,6 +58,7 @@ SIGN_BATCH = 100
 VIEWS = {
     "open_claims": ("claims", "claimed_at.asc,id.asc"),
     "open_photos": ("photos", "created_at.asc,path.asc"),
+    "open_follow_ups": ("follow_ups", "opens_on.asc,rims_id.asc,visit.asc"),
     "open_weights": ("weights", "changed_at.asc,id.asc"),
 }
 
@@ -65,19 +69,19 @@ VIEW_COLUMNS = {
     "open_claims": [
         "id",
         "rims_id",
+        "kind",
+        "visit",
         "state",
         "claimed_at",
         "due_at",
-        "submitted_at",
-        "verified_at",
+        "done_at",
         "released_at",
-        "crew_size",
         "claimer",
-        "verified_by",
         "steps_done",
-        "verified_hours",
+        "hours",
     ],
     "open_photos": ["claim_id", "rims_id", "phase", "point", "path", "created_at"],
+    "open_follow_ups": ["id", "rims_id", "done_claim_id", "visit", "opens_on", "closes_on", "state"],
     "open_weights": [
         "id",
         "club",

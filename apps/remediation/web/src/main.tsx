@@ -28,7 +28,7 @@ if (import.meta.env.VITE_REMEDIATION_FAKE_ACCOUNT === '1') {
         'Water first this season',
       )
       await api.claimSites(['example-0004'])
-      await api.seedSubmittedByOther('example-0005', 'Ridge Runner')
+      await api.seedDoneByOther('example-0005', 'Ridge Runner', true)
       await api.seedWorkedByOther('example-0006', 'Blaze Orange')
       render(withAccount(fakeAccount(SIGNED_IN, api), <App />))
     },

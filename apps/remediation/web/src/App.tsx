@@ -6,7 +6,6 @@ import { AccountScreen } from './screens/AccountScreen'
 import { AnalysisScreen } from './screens/AnalysisScreen'
 import { ClaimScreen } from './screens/ClaimScreen'
 import { GuideScreen } from './screens/GuideScreen'
-import { JoinScreen } from './screens/JoinScreen'
 import { ListsScreen } from './screens/ListsScreen'
 import { SharedScreen } from './screens/SharedScreen'
 import { SitePage } from './screens/SitePage'
@@ -46,7 +45,6 @@ function Screen({ route, data }: { route: Route; data: RemediationData }) {
   if (route.screen === 'shared')
     return <SharedScreen token={route.token} sites={data.sites} />
   if (route.screen === 'claim') return <ClaimScreen id={route.id} sites={data.sites} />
-  if (route.screen === 'join') return <JoinScreen token={route.token} />
   if (route.screen === 'work') return <WorkScreen sites={data.sites} />
   return <SitesScreen sites={data.sites} summary={data.summary} />
 }

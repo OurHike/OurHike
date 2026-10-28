@@ -8,19 +8,19 @@ source data"), recorded in [PLAN.md](../PLAN.md)'s decisions table.
 - `migrations/0001_remediation.sql` is the whole schema, in plain SQL:
   - the tables, with row-level security on and no grants, so nothing reaches
     them directly;
-  - one function per action, holding the rules (the 14-day clock, the caps,
-    the crew, the review). Each is `SECURITY DEFINER` with an empty
-    `search_path`;
-  - three `open_*` views, which are everything a signed-out reader sees. Names
-    appear only on verified work;
-  - the private `remediation-photos` bucket and its policies. Only a claim's crew
-    uploads to it, each into their own folder on the claim (a random id
-    `photo_folder()` names, which names nobody), while the claim is open,
-    within a per-claim and a per-account cap; nothing is overwritten. A
-    photo is read by its crew, by any signed-in account while its claim
-    waits for review, and by anyone once the work is verified. Reading is
-    what lets someone make a signed link, and a link outlives the access it
-    was made with until it expires.
+  - one function per action, holding the rules: the 14-day clock, the caps,
+    one person per claim, marking work done and a site's three follow-up
+    visits (decided 2026-10-28: no crew, no review). Each is
+    `SECURITY DEFINER` with an empty `search_path`;
+  - four `open_*` views, which are everything a signed-out reader sees. Names
+    appear only on done work;
+  - the private `remediation-photos` bucket and its policies:
+    - only the claimer uploads to it, while the claim is open, within a
+      per-claim and a per-account cap, and nothing is overwritten;
+    - a photo is read by its claimer, and by anyone once the work is done.
+
+    Reading is what lets someone make a signed link, and a link outlives the
+    access it was made with until it expires.
 - `remediation_db/migrate.py` applies the migrations, each once.
 - `remediation_db/load_sites.py` is the analysis job's daily load of the scored
   sites, which every claim and every club's weights are checked against. It
@@ -97,24 +97,21 @@ header `Accept-Profile: remediation`:
 
 | View | Holds |
 |---|---|
-| `open_claims` | Every claim: site, state, dates and crew size; claimer, reviewer, steps and verified hours on verified work only |
-| `open_photos` | The before and after photos of verified work, by their path in `remediation-photos`: `<claim id>/<uploader's folder on the claim>/<photo id>.jpg` |
+| `open_claims` | Every claim and follow-up visit: site, kind, state and dates; the claimer's name, steps and hours on done work only |
+| `open_photos` | The before and after photos of done work, by their path in `remediation-photos`: `<claim id>/<photo id>.jpg` |
+| `open_follow_ups` | Every restored site's three follow-up visits: when each opens and closes, and how it stands |
 | `open_weights` | Every change to every club's ranking weights, with its changer's name as it was then |
 
 The bucket is private, so a photo is fetched through a link Storage signs:
 `POST /storage/v1/object/sign/remediation-photos` with the same key and the
-photo's path. The policy signs any verified claim's photo for anyone.
+photo's path. The policy signs any done claim's photo for anyone.
 
-The same three are written daily as CSV and Parquet to `data/work/` beside
+The same four are written daily as CSV and Parquet to `data/work/` beside
 `sites.json` (`apps/remediation/pipeline/remediation_analysis/open_data.py`). The
 photos file carries a link to each photo, signed for eight days.
 
-A photo's path carries its uploader's folder on that claim, a random UUID
-made when they joined it. It shows which of one claim's photos one person
-took, and links nothing across claims.
-
 **Anyone who may read a photo may sign a link to it for as long as they
-like.** Storage takes the lifetime from whoever asks. So a verified photo
-can be linked to for years, and two accounts can get any 40 JPEG-typed
-uploads verified and so published: one claims and uploads, the other
-verifies. Who may review is the maintainer's question (PLAN.md §11).
+like.** Storage takes the lifetime from whoever asks, so a done photo can be
+linked to for years. With no review, one account can get any 40 JPEG-typed
+uploads published by claiming a site, uploading them and marking it done
+(PLAN.md §10).

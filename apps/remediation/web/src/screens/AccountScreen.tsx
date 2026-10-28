@@ -163,9 +163,9 @@ function SignedIn() {
             className="note"
             style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}
           >
-            Your name, lists and hours are deleted, you leave every crew you are on, and
-            you are signed out. Weights you changed and claims you worked on stay in their
-            histories, without your name. Signing in again starts an empty account.
+            Your name, lists and hours are deleted, sites you hold are opened for others,
+            and you are signed out. Weights you changed and work you finished stay in
+            their histories, without your name. Signing in again starts an empty account.
             {kept > 0 && ` ${keptLine(kept)} They are deleted from this phone too.`}
             <button
               type="button"

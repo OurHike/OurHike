@@ -55,29 +55,33 @@ class Project:
 CLAIM = {
     "id": "c1",
     "rims_id": "4d9ce529-d198-40ee-9a11-02b0184b5270",
-    "state": "verified",
+    "kind": "restore",
+    "state": "done",
     "claimer": '=HYPERLINK("https://evil.example")',
     "steps_done": ["Hide the site", "Block the way in"],
-    "verified_hours": 2.5,
+    "hours": 2.5,
 }
-PHOTO = {"claim_id": "c1", "rims_id": CLAIM["rims_id"], "phase": "before", "point": 1, "path": "c1/u1/p.jpg"}
+PHOTO = {"claim_id": "c1", "rims_id": CLAIM["rims_id"], "phase": "before", "point": 1, "path": "c1/p.jpg"}
 
 
 def test_each_view_is_written_as_csv_and_parquet_with_a_manifest(tmp_path):
-    project = Project({"open_claims": [CLAIM], "open_photos": [PHOTO], "open_weights": []})
+    visit = {"id": "f1", "rims_id": CLAIM["rims_id"], "done_claim_id": "c1", "visit": 1, "state": "waiting"}
+    project = Project({"open_claims": [CLAIM], "open_photos": [PHOTO], "open_follow_ups": [visit], "open_weights": []})
     manifest = open_data.export("https://p.example", "anon", tmp_path, session=project)
-    assert manifest["rows"] == {"claims": 1, "photos": 1, "weights": 0}
+    assert manifest["rows"] == {"claims": 1, "photos": 1, "follow_ups": 1, "weights": 0}
     assert {p.name for p in tmp_path.iterdir()} == {
         "claims.csv",
         "claims.parquet",
         "photos.csv",
         "photos.parquet",
+        "follow_ups.csv",
+        "follow_ups.parquet",
         "weights.csv",
         "weights.parquet",
         "manifest.json",
     }
     photos = pd.read_csv(tmp_path / "photos.csv")
-    assert photos["url"][0] == "https://p.example/storage/v1/object/sign/remediation-photos/c1/u1/p.jpg?token=t"
+    assert photos["url"][0] == "https://p.example/storage/v1/object/sign/remediation-photos/c1/p.jpg?token=t"
     assert duckdb.sql(f"select steps_done from '{tmp_path / 'claims.parquet'}'").fetchone()[0] == CLAIM["steps_done"]
 
 
@@ -118,8 +122,8 @@ def test_photo_links_are_signed_with_the_public_key_for_a_week_and_a_day(tmp_pat
     # The bucket is private (the sixth pass, finding 1): a link is one Storage
     # signs for whoever its policy lets read the photo, here anyone.
     monkeypatch.setattr(open_data, "SIGN_BATCH", 2)
-    photos = [dict(PHOTO, path=f"c1/u1/p{n}.jpg") for n in range(3)]
-    project = Project({"open_photos": photos}, unsigned=("c1/u1/p1.jpg",))
+    photos = [dict(PHOTO, path=f"c1/p{n}.jpg") for n in range(3)]
+    project = Project({"open_photos": photos}, unsigned=("c1/p1.jpg",))
     manifest = open_data.export("https://p.example", "the-anon-key", tmp_path, session=project)
     assert [(url, seconds, key, len(paths)) for url, seconds, key, paths in project.signed] == [
         ("https://p.example/storage/v1/object/sign/remediation-photos", 8 * 86400, "the-anon-key", 2),

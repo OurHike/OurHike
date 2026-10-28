@@ -180,6 +180,11 @@ jobs:
     name: Deploy the app and its scores
     needs: score
     if: github.ref == 'refs/heads/main'
+    # Only main may deploy to this environment (decided 2026-10-28; the
+    # maintainer creates it with that branch rule). The `if:` above is in
+    # this file, which a branch can edit; the environment's rule is not.
+    # Until it exists, GitHub makes it on the first run with no rule.
+    environment: remediation-deploy
     runs-on: ubuntu-latest
     timeout-minutes: 10
     permissions:

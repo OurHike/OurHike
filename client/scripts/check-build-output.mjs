@@ -432,7 +432,19 @@ if (serviceWorker !== undefined) {
 // absolute line still cannot do is tell organic growth from a drift smaller
 // than the room left; a check against `main`'s own figure would, and is
 // #1591's open half.
-const EAGER_JS_BUDGET_BYTES = 240 * 1024
+//
+// 100 bytes more on 2026-10-28, the maintainer's choice by poll that day
+// ("Move the line"), for #1916 - A signed-in hiker's app sends its token on
+// the three edge-cached reads, so they either skip the cache or hide the
+// hiker's own queued report. Its fix measured 245,795 bytes in the preview
+// build against `main`'s 245,736, and no form of it fitted the 24 bytes left:
+// the smallest, two reads calling `apiFetch` instead of `readFetch`, measured
+// 245,765 by this walk over a build with the preview's `VITE_*` values. The
+// other remedy offered, deferring a #1735 surface first, was not chosen. 100
+// rather than the 35 the fix needed, because the figure moves a few bytes
+// between builds; that leaves about 65 over the fix, and the next string the
+// shell grows meets the line again.
+const EAGER_JS_BUDGET_BYTES = 240 * 1024 + 100
 const MAPLIBRE_MARKERS = ['fill-extrusion-vertical-gradient', 'maplibregl-']
 
 /**

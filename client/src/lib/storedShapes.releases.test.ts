@@ -176,6 +176,9 @@ describe('a phone that stopped on v1.1.1', () => {
     expect(await preferencesSyncState()).toEqual({
       dirty: true,
       syncedAt: '2026-08-26T21:14:03.512Z',
+      // Not in a v1.1.1 record: read as no consent answer changed on this
+      // device, which is the truth for a build that had none to change.
+      consentTouched: [],
     })
     expect(await syncEnabled()).toBe(false)
 

@@ -1023,6 +1023,76 @@ describe("a row's point, at the file's precision (the review of 2026-10-15, thre
   });
 });
 
+describe("OurHike's own database's size (the maintainer's poll of 2026-10-28, \"Hourly dbt check, with megabytes\")", () => {
+  const sizeView = () => page(MISSING, read(examples.hourlyDatabaseNearItsLimit(), "hourly"));
+  const sizeRow = (view) => view.sections.items.find((item) => item.table === "base_ourhike__database_size");
+  const sizeChart = (view) =>
+    view.sections.charts.get(seriesKey({ ...examples.hourlyDatabaseNearItsLimit().series[0], lane: "hourly" }));
+
+  it("reads the two sizes a measured series carries, and gives every other series none", () => {
+    const { file } = readQualityFile(examples.hourlyDatabaseNearItsLimit(), "hourly");
+    expect(file.series.map((series) => series.limits)).toEqual([{ warn: 400, fail: 475 }]);
+    const many = readQualityFile(examples.hourlyManyProblems(), "hourly").file;
+    expect(many.series.every((series) => series.limits === null)).toBe(true);
+  });
+
+  it("refuses a file whose size is not a number, as it refuses any other bad measure", () => {
+    const json = examples.hourlyDatabaseNearItsLimit();
+    json.series[0].fail_at = "475";
+    expect(readQualityFile(json, "hourly")).toEqual({ ok: false, why: "series[0].fail_at is not a number" });
+  });
+
+  it("words its row as a Volume check in megabytes against the size it fails at", () => {
+    const row = sizeRow(sizeView());
+    expect([row.kind, row.status, row.sentence]).toEqual(["Volume", "Warned", "415 MB in this build · limit 475 MB."]);
+    expect(row.chart).toBe(sizeChart(sizeView()).key);
+  });
+
+  it("names it on the Volume card in the same words, without the build", () => {
+    expect(tile(sizeView(), "volume").note).toEqual([
+      { code: "base_ourhike__database_size" },
+      ": 415 MB · limit 475 MB.",
+      "",
+    ]);
+  });
+
+  it("charts it against its two lines, with no band, no triangle and no word of Elementary", () => {
+    const chart = sizeChart(sizeView());
+    expect(chart.limits).toEqual({ warn: 400, fail: 475 });
+    expect(chart.points.every((point) => point.min === null && point.max === null && point.outside === null)).toBe(true);
+    expect(chart.summary).toBe(
+      "168 hourly runs, from 305 MB on 1 Oct 2026 to 415 MB on 7 Oct 2026. The check warns from 400 MB and fails from 475 MB.",
+    );
+    expect(chart.caption).toBe("The dashed lines are the sizes at which the check warns and fails.");
+    expect(`${chart.summary} ${chart.caption}`).not.toMatch(/Elementary|usual range|band/);
+  });
+
+  it("says in its table what the check made of each point, by the same two lines", () => {
+    const chart = sizeChart(sizeView());
+    const verdicts = chart.rows.map((row) => row.expected);
+    expect(new Set(verdicts)).toEqual(new Set(["Passes", "Warns"]));
+    const firstWarn = chart.points.findIndex((point) => point.value >= 400);
+    expect(verdicts.slice(0, firstWarn).every((verdict) => verdict === "Passes")).toBe(true);
+    expect(verdicts.slice(firstWarn).every((verdict) => verdict === "Warns")).toBe(true);
+    const file = examples.hourlyDatabaseNearItsLimit();
+    file.series[0].points.at(-1).value = 475;
+    const failing = page(MISSING, read(file, "hourly")).sections.charts.get(chart.key);
+    expect(failing.rows.at(-1).expected).toBe("Fails");
+  });
+
+  it("files a passing size under OurHike's own database, after every finished table, and a warned one under Volume", () => {
+    expect(sizeView().sections.menu.map((group) => group.label)).toEqual(["Needs a look · Volume"]);
+    const file = examples.hourlyDatabaseNearItsLimit();
+    file.needs_a_look = file.needs_a_look.filter((item) => item.metric !== "database_mb");
+    file.series[0].in_needs_a_look = false;
+    const menu = page(MISSING, read(file, "hourly")).sections.menu;
+    expect(menu.map((group) => group.label)).toEqual(["OurHike's own database"]);
+    expect(menu[0].options.map((option) => option.label)).toEqual([
+      "Database size in base_ourhike__database_size · Hourly",
+    ]);
+  });
+});
+
 describe("each source's last post (no gap warning, the last post shown)", () => {
   const POSTS = [
     { source: "dec_hiking_trails", title: "DEC hiking trails", edited_on: "2026-09-18" },

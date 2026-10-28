@@ -47,7 +47,10 @@ import yaml
 from tests.test_client_report_contract import CLIENT_FILES_READ as REPORT_FILES
 from tests.test_client_response_contract import CLIENT_FILES_READ as RESPONSE_FILES
 from tests.test_conditions_publisher_contract import PIPELINE_FILES_READ
+from tests.test_database_size_agrees import PIPELINE_FILES_READ as SIZE_FILES
 from tests.test_preferences_contract import CLIENT_MODEL
+from tests.test_usage_golden_batch import CLIENT_FILES_READ as GOLDEN_FILES
+from tests.test_usage_registry_contract import CLIENT_FILES_READ as USAGE_FILES
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
 WORKFLOW = REPO_ROOT / ".github" / "workflows" / "backend-tests.yml"
@@ -59,8 +62,17 @@ ACTION = ".github/actions/changed-paths"
 # `outbox.ts` by two - and what the scope list needs is the union, not the
 # count. Since #446 the set also carries the pipeline's conditions publisher,
 # which test_conditions_publisher_contract.py reads for the same reason the
-# client contract tests read client source.
-CLIENT_FILES = {*REPORT_FILES, *RESPONSE_FILES, CLIENT_MODEL, *PIPELINE_FILES_READ}
+# client contract tests read client source, and since 2026-10-28 the three
+# pipeline files test_database_size_agrees.py reads.
+CLIENT_FILES = {
+    *REPORT_FILES,
+    *RESPONSE_FILES,
+    CLIENT_MODEL,
+    *PIPELINE_FILES_READ,
+    *SIZE_FILES,
+    *USAGE_FILES,
+    *GOLDEN_FILES,
+}
 
 
 def scope_prefixes() -> list[str]:

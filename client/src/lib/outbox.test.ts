@@ -6,6 +6,7 @@ import {
   enqueue,
   enqueueAppFailure,
   hasWorkThatNeedsNoAccount,
+  sendableNow,
   listQueued,
   removeQueued,
   retryQueued,
@@ -14,6 +15,7 @@ import {
   MAX_UNDO_HOLD_MS,
   OUTBOX_KEY,
   type AppFailureDraft,
+  type OutboxItem,
 } from './outbox'
 import { BUILD_INFO } from './buildInfo'
 
@@ -675,6 +677,40 @@ describe('an app-failure report in the queue', () => {
 
 // The predicate lib/outboxSync.ts consults before declining to flush while
 // signed out. Without it the one report that needs no account waited for one.
+describe('sendableNow', () => {
+  const REPORT: OutboxItem = {
+    id: 'r-1',
+    authoredAt: '2026-07-27T08:00:00.000Z',
+  } as OutboxItem
+  const APP_FAILURE: OutboxItem = {
+    id: 'f-1',
+    authoredAt: '2026-07-27T09:00:00.000Z',
+    appFailure: {
+      what_happened: 'It stopped drawing my position.',
+      harms: [],
+      build: 'OurHike 1.0.0 · commit 6e23f12 · built 2026-06-01 00:00 UTC',
+      was_offline: true,
+    },
+  }
+
+  it('counts every unfailed item while signed in', () => {
+    expect(sendableNow([REPORT, APP_FAILURE], true)).toBe(2)
+  })
+
+  it('counts only app-failure reports while signed out, the one write that needs no account', () => {
+    expect(sendableNow([REPORT, APP_FAILURE], false)).toBe(1)
+    expect(sendableNow([REPORT], false)).toBe(0)
+  })
+
+  it('never counts an item already marked failed', () => {
+    const failed = {
+      ...REPORT,
+      failure: { reason: 'refused', at: '2026-07-27T10:00:00.000Z', build: 'x' },
+    } as OutboxItem
+    expect(sendableNow([failed], true)).toBe(0)
+  })
+})
+
 describe('hasWorkThatNeedsNoAccount', () => {
   const FAILURE: AppFailureDraft = {
     what_happened: 'It stopped drawing my position.',

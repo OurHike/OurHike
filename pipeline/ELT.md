@@ -233,6 +233,8 @@ Every mart carries `club` (the folder that extracted the row), `source_key` (tes
 
 **The data-quality page** at `/data/quality/` is OurHike's own page, built from Elementary's tables: every failure listed, warnings folded one line per kind, and a chart of each mart's row counts drawn against the band from the builds before each point. Each lane writes its own `data_quality.json` sidecar. `edr`, Elementary's own CLI, is not used: it brings a second dbt and sends usage events.
 
+**OurHike's own database's size is on the page too**, by the maintainer's poll of 2026-10-28: each conditions leg reads it (`extract/_shared/ourhike/database_size.py`), a dbt test under Volume warns from 400 MB and fails from 475 MB of the Free plan's 500, and the page charts its week against those two lines rather than a band, since no range is learned. A failed read stops nothing but itself. `macros/data_quality.sql`'s "A MEASURED TEST" says how the file carries it.
+
 **Hourly parity** compares the six `conditions/*` files with today's exporters on the same hour's upstream answers, recorded once (`extract/_answers.py`) so no upstream is asked twice. An unexplained difference turns that hour's checks run red after everything has published; a store with no comparison bundle for 2.5 hours does too.
 
 ## Who may publish

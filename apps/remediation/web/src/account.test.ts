@@ -16,10 +16,10 @@ function storedSession() {
   window.localStorage.setItem(`${AUTH_STORAGE_KEY}-user`, '{"id":"user-1"}')
 }
 
-it('signs out of this browser only, never every device the person uses OurHike on', async () => {
+it('signs out everywhere, every time, as decided on 2026-10-28', async () => {
   const signOut = vi.fn(async () => ({ error: null }))
   await endSession({ signOut }, window.localStorage)
-  expect(signOut).toHaveBeenCalledWith({ scope: 'local' })
+  expect(signOut).toHaveBeenCalledWith({ scope: 'global' })
 })
 
 it('removes the stored session itself when supabase-js could not sign out for lack of signal', async () => {

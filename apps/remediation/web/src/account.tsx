@@ -210,11 +210,10 @@ function sessionOf(user: { id: string; email?: string } | null | undefined): Ses
 }
 
 /**
- * Signs this browser out, signal or none.
- *
- * Only this browser ('local'): the Supabase project is OurHike's, and the
- * default ('global') would also sign the person out of OurHike, on every
- * device they use it on.
+ * Signs the person out everywhere ('global'), signal or none: every device,
+ * and OurHike too, whose Supabase project this is (decided 2026-10-28, over
+ * this browser only). With no signal Supabase cannot be told, so only this
+ * browser is signed out, and the other devices stay signed in until it can be.
  *
  * supabase-js removes the stored session only once it has told Supabase. With
  * an expired access token and no signal it cannot refresh, returns an error,
@@ -224,7 +223,7 @@ function sessionOf(user: { id: string; email?: string } | null | undefined): Ses
  * supabase-js 2.118). On any error, the session is removed here instead.
  */
 export async function endSession(
-  auth: { signOut(options: { scope: 'local' }): Promise<{ error: unknown }> },
+  auth: { signOut(options: { scope: 'global' }): Promise<{ error: unknown }> },
   storage: Pick<Storage, 'removeItem'>,
 ): Promise<void> {
   let failed: boolean
@@ -233,7 +232,7 @@ export async function endSession(
     failed = true
   } else {
     try {
-      failed = Boolean((await auth.signOut({ scope: 'local' })).error)
+      failed = Boolean((await auth.signOut({ scope: 'global' })).error)
     } catch {
       failed = true
     }

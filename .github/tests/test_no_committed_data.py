@@ -175,27 +175,27 @@ REFERENCE_DIR = "pipeline/reference/"
 MAX_REFERENCE_LINES = 12_000
 
 
-# Campsite Steward's analysis job (apps/steward/pipeline/, #1901) writes JSON:
+# Site Remediation's analysis job (apps/remediation/pipeline/, #1901) writes JSON:
 # summary.json, and sites.json holding the location of every user-created
 # campsite in ATC's inventory. Those files are public by the maintainer's choice
 # (2026-10-27), but public is not committed: they are rebuilt weekly and
-# published beside the web app by steward-analysis.yml, and CONTRIBUTING.md's
+# published beside the web app by remediation-analysis.yml, and CONTRIBUTING.md's
 # "Data does not go in commits" holds for them as for everything else. Both
-# places they land are gitignored (apps/steward/pipeline/.gitignore, and
-# apps/steward/web/public/data/ in apps/steward/web/.gitignore); this is the
-# check that nothing was committed anyway. The only JSON under apps/steward/
+# places they land are gitignored (apps/remediation/pipeline/.gitignore, and
+# apps/remediation/web/public/data/ in apps/remediation/web/.gitignore); this is the
+# check that nothing was committed anyway. The only JSON under apps/remediation/
 # that is source is the web app's tool configuration, named one by one below.
-STEWARD_DIR = "apps/steward/"
-STEWARD_JSON_SOURCE = frozenset(
+REMEDIATION_DIR = "apps/remediation/"
+REMEDIATION_JSON_SOURCE = frozenset(
     {
-        "apps/steward/web/package.json",
-        "apps/steward/web/package-lock.json",
-        "apps/steward/web/tsconfig.json",
-        "apps/steward/web/tsconfig.app.json",
-        "apps/steward/web/tsconfig.node.json",
-        "apps/steward/web/tsconfig.test.json",
-        "apps/steward/web/.oxlintrc.json",
-        "apps/steward/web/.prettierrc.json",
+        "apps/remediation/web/package.json",
+        "apps/remediation/web/package-lock.json",
+        "apps/remediation/web/tsconfig.json",
+        "apps/remediation/web/tsconfig.app.json",
+        "apps/remediation/web/tsconfig.node.json",
+        "apps/remediation/web/tsconfig.test.json",
+        "apps/remediation/web/.oxlintrc.json",
+        "apps/remediation/web/.prettierrc.json",
     }
 )
 
@@ -227,10 +227,10 @@ def is_pipeline_json_outside_the_allowlist(path: str) -> bool:
     )
 
 
-def is_steward_output(path: str) -> bool:
-    if not path.startswith(STEWARD_DIR):
+def is_remediation_output(path: str) -> bool:
+    if not path.startswith(REMEDIATION_DIR):
         return False
-    return "/data/" in path or (Path(path).suffix.lower() == ".json" and path not in STEWARD_JSON_SOURCE)
+    return "/data/" in path or (Path(path).suffix.lower() == ".json" and path not in REMEDIATION_JSON_SOURCE)
 
 
 @pytest.fixture(scope="module")
@@ -300,16 +300,16 @@ def test_no_exported_json_is_tracked_under_pipeline(tracked):
     )
 
 
-def test_nothing_campsite_steward_scored_is_tracked(tracked):
-    """The steward job's fetched layers and scored sites, including every
+def test_nothing_site_remediation_scored_is_tracked(tracked):
+    """The remediation job's fetched layers and scored sites, including every
     user-created campsite's location, are rebuilt weekly and published by a
     deploy. A commit would freeze a copy into every fork's history, permanently,
     where no later run can correct or withdraw it."""
-    committed = [path for path in tracked if is_steward_output(path)]
+    committed = [path for path in tracked if is_remediation_output(path)]
 
     assert committed == [], (
-        "Campsite Steward's fetched and scored data must never be tracked: it carries the "
-        "location of every user-created campsite in ATC's inventory (apps/steward/PLAN.md, "
+        "Site Remediation's fetched and scored data must never be tracked: it carries the "
+        "location of every user-created campsite in ATC's inventory (apps/remediation/PLAN.md, "
         f"opening section). Tracked: {committed[:5]}"
     )
 
@@ -330,13 +330,13 @@ def test_nothing_campsite_steward_scored_is_tracked(tracked):
         ("ci.duckdb", "suffix"),
         ("pipeline/trail_miles.json", "json"),
         ("pipeline/dbt/manifest.json", "json"),
-        ("apps/steward/pipeline/data/out/sites/example-trail-club.json", "steward"),
-        ("apps/steward/pipeline/data/raw/csi.json", "steward"),
-        ("apps/steward/pipeline/data/raw/padus.geojson", "steward"),
-        ("apps/steward/pipeline/data/out/sites.json", "steward"),
-        ("apps/steward/web/public/data/sites.json", "steward"),
-        ("apps/steward/web/dist/data/summary.json", "steward"),
-        ("apps/steward/web/src/sites.json", "steward"),
+        ("apps/remediation/pipeline/data/out/sites/example-trail-club.json", "remediation"),
+        ("apps/remediation/pipeline/data/raw/csi.json", "remediation"),
+        ("apps/remediation/pipeline/data/raw/padus.geojson", "remediation"),
+        ("apps/remediation/pipeline/data/out/sites.json", "remediation"),
+        ("apps/remediation/web/public/data/sites.json", "remediation"),
+        ("apps/remediation/web/dist/data/summary.json", "remediation"),
+        ("apps/remediation/web/src/sites.json", "remediation"),
         # What they must leave alone: the reviewed seeds and joins, the
         # registry, fixtures, and JSON that is source outside pipeline/.
         ("pipeline/dbt/seeds/dbt_project_evaluator_exceptions.csv", None),
@@ -348,12 +348,12 @@ def test_nothing_campsite_steward_scored_is_tracked(tracked):
         ("pipeline/tests/fixtures/example.json", None),
         ("client/package.json", None),
         ("backend/openapi_baselines/v1.json", None),
-        ("apps/steward/PLAN.md", None),
-        ("apps/steward/pipeline/steward_analysis/build.py", None),
-        ("apps/steward/pipeline/requirements.txt", None),
-        ("apps/steward/web/package.json", None),
-        ("apps/steward/web/tsconfig.app.json", None),
-        ("apps/steward/web/src/fixtures.ts", None),
+        ("apps/remediation/PLAN.md", None),
+        ("apps/remediation/pipeline/remediation_analysis/build.py", None),
+        ("apps/remediation/pipeline/requirements.txt", None),
+        ("apps/remediation/web/package.json", None),
+        ("apps/remediation/web/tsconfig.app.json", None),
+        ("apps/remediation/web/src/fixtures.ts", None),
     ],
 )
 def test_each_rule_catches_what_it_names_and_leaves_the_rest(path, flagged_by):
@@ -364,7 +364,7 @@ def test_each_rule_catches_what_it_names_and_leaves_the_rest(path, flagged_by):
         "dbt": is_dbt_generated(path),
         "suffix": is_data_shaped_outside_the_allowlist(path),
         "json": is_pipeline_json_outside_the_allowlist(path),
-        "steward": is_steward_output(path),
+        "remediation": is_remediation_output(path),
     }
 
     if flagged_by is None:

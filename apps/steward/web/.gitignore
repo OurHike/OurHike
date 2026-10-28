@@ -1,5 +1,0 @@
-node_modules
-dist
-# The job's output, copied in for a local run or a deploy (apps/steward/pipeline/data/out/).
-# Never committed: .github/tests/test_no_committed_data.py holds it.
-public/data

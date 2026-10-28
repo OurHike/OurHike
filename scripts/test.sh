@@ -193,7 +193,7 @@ scope_for_suite_workflows() {
 # every PR" is "run it whenever anything changed", and the suite is cheap
 # enough to carry that.
 
-suite_names=(client backend pipeline dbt steward steward-web steward-db settings)
+suite_names=(client backend pipeline dbt remediation remediation-web remediation-db settings)
 
 scope_for_suite() {
   scope_for_suite_workflows "$1"
@@ -441,22 +441,22 @@ if selected_has backend; then
   step "backend ruff check"    "$PY" -m ruff check backend
   step "backend ruff format"   "$PY" -m ruff format --check backend
 fi
-if selected_has steward; then
-  step "steward ruff check"    "$PY" -m ruff check apps/steward/pipeline
-  step "steward ruff format"   "$PY" -m ruff format --check apps/steward/pipeline
+if selected_has remediation; then
+  step "remediation ruff check"    "$PY" -m ruff check apps/remediation/pipeline
+  step "remediation ruff format"   "$PY" -m ruff format --check apps/remediation/pipeline
 fi
-if selected_has steward-db; then
-  step "steward-db ruff check"   "$PY" -m ruff check apps/steward/db
-  step "steward-db ruff format"  "$PY" -m ruff format --check apps/steward/db
+if selected_has remediation-db; then
+  step "remediation-db ruff check"   "$PY" -m ruff check apps/remediation/db
+  step "remediation-db ruff format"  "$PY" -m ruff format --check apps/remediation/db
 fi
 if selected_has settings; then
   step "settings ruff check"   "$PY" -m ruff check .github/tests
   step "settings ruff format"  "$PY" -m ruff format --check .github/tests
 fi
-if selected_has steward-web; then
-  step "steward-web lint"          npm --prefix apps/steward/web run lint
-  step "steward-web format:check"  npm --prefix apps/steward/web run format:check
-  step "steward-web typecheck"     npm --prefix apps/steward/web run typecheck
+if selected_has remediation-web; then
+  step "remediation-web lint"          npm --prefix apps/remediation/web run lint
+  step "remediation-web format:check"  npm --prefix apps/remediation/web run format:check
+  step "remediation-web typecheck"     npm --prefix apps/remediation/web run typecheck
 fi
 if selected_has client; then
   step "client lint"           npm --prefix client run lint
@@ -475,22 +475,22 @@ fi
 if selected_has backend; then
   step "backend tests"  env -C backend "$PY" -m pytest -q "${PYTEST_PARALLEL[@]}" "${PYTEST_COVERAGE[@]}"
 fi
-if selected_has steward; then
+if selected_has remediation; then
   # About a second of tests, so no xdist workers and no coverage report.
-  step "steward tests"  env -C apps/steward/pipeline "$PY" -m pytest -q
+  step "remediation tests"  env -C apps/remediation/pipeline "$PY" -m pytest -q
 fi
-if selected_has steward-db; then
+if selected_has remediation-db; then
   # Against the local Postgres backend/scripts/local-postgres.sh starts, in a
-  # steward_test database the suite creates; STEWARD_TEST_DATABASE_URL overrides.
-  # Supabase's roles come from apps/steward/db/scripts/local-roles.sh, which the
+  # remediation_test database the suite creates; REMEDIATION_TEST_DATABASE_URL overrides.
+  # Supabase's roles come from apps/remediation/db/scripts/local-roles.sh, which the
   # session-start hook runs.
-  step "steward-db tests"  env -C apps/steward/db "$PY" -m pytest -q
+  step "remediation-db tests"  env -C apps/remediation/db "$PY" -m pytest -q
 fi
-if selected_has steward-web; then
+if selected_has remediation-web; then
   # `run`, not `exec`, for the reason CLIENT_TEST's note gives: the script has
-  # to run with apps/steward/web/ as its directory to load its vite.config.ts.
-  step "steward-web tests"  npm --prefix apps/steward/web run test
-  step "steward-web build"  npm --prefix apps/steward/web run build
+  # to run with apps/remediation/web/ as its directory to load its vite.config.ts.
+  step "remediation-web tests"  npm --prefix apps/remediation/web run test
+  step "remediation-web build"  npm --prefix apps/remediation/web run build
 fi
 
 # pipeline-tests.yml's `dbt` job, in its order, with four differences and

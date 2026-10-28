@@ -98,8 +98,9 @@ def _row_tables() -> frozenset[str]:
     terms, OurHike's own conditions queries, whose closures, reports and notes give a place as lat/lon, the
     Hike Finder's pages, whose one coordinate is a lat/lon pair in `start`, ATC's Trail Updates pages,
     which give one as an A.T. mile, a guide's section pages (the guide_pages kind), whose entries carry
-    NYNJTC's own coordinates and miles inside their JSON, and a club PDF (ClubPdf: GATC's water list), whose
-    rows give a place as a club's mile and nothing else."""
+    NYNJTC's own coordinates and miles inside their JSON, a club PDF (ClubPdf: GATC's water list), whose
+    rows give a place as a club's mile and nothing else, and OurHike's own database's size (DatabaseSize), one
+    number with no place at all."""
     from extract._contract import all_resources, discover, discover_shared
     from extract._json_apis import (
         DcnrParkAdvisories,
@@ -112,6 +113,7 @@ def _row_tables() -> frozenset[str]:
         AtcTrailUpdatePages,
         ClubPdf,
         ConditionsQuery,
+        DatabaseSize,
         FeedNotices,
         GuidePages,
         PageNotice,
@@ -122,7 +124,7 @@ def _row_tables() -> frozenset[str]:
 
     resources = all_resources(discover() + discover_shared())
     kinds = WordpressPosts | WordpressTerms | ConditionsQuery | PublishedHikes | AtcTrailUpdatePages | GuidePages
-    kinds |= ClubPdf
+    kinds |= ClubPdf | DatabaseSize
     # The notice readers whose rows carry no geometry (pipeline/generate_notice_models.py's READERS).
     kinds |= FeedNotices | PageNotice | NpsAlerts | DcnrParkAdvisories | UsgsElevatedVolcanoes | MediawikiAnnouncements
     kinds |= SheetCsvSegments
@@ -245,6 +247,7 @@ def test_the_row_kinds_models_read_no_geometry():
         "base_ourhike__reports",
         "base_ourhike__notes",
         "base_ourhike__disputes",
+        "base_ourhike__database_size",
         "base_atc__atc_trail_updates_pages",
         "base_nynjtc__nynjtc_hike_finder",
         "stg_nynjtc__long_path_guide",

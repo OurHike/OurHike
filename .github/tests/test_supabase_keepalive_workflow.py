@@ -169,6 +169,10 @@ SCHEDULED_ROSTER = {
     "reduces the values to the names that came back non-empty, before anything could connect. Nothing in it "
     "reaches the project. It reads them one name at a time since 2026-09-17 because `toJSON(secrets)` was what "
     "kept it from ever running at all (test_settings_configured_workflow.py)",
+    "remediation-analysis.yml": "not a road either, on the roster for the same reason: it builds the project's public URL "
+    "and anon key into Site Remediation's static web app (#1906), which browsers then sign in with. The workflow "
+    "itself makes no request to the project; its only network calls are to ATC's and USGS's ArcGIS layers and "
+    "to Cloudflare Pages",
 }
 
 

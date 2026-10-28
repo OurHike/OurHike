@@ -116,12 +116,25 @@ echo "[session-start] local postgres for the backend"
 # database, and a hook that aborts here would take them down too.
 bash backend/scripts/local-postgres.sh || \
   echo "[session-start] WARNING: no local postgres - backend tests will not run"
+# Site Remediation's schema grants to the roles a Supabase project has (anon,
+# authenticated); its tests need them, and the backend's login may not create
+# roles. Not fatal, for the same reason.
+bash apps/remediation/db/scripts/local-roles.sh || \
+  echo "[session-start] WARNING: no Supabase roles - remediation-db tests will not run"
 
 echo "[session-start] repository-settings test deps"
 # Through the same helper as the other two: this suite pins PyYAML, which is
 # one of the Debian-shadowed five. It happens to work today only because the
 # pipeline install already shadowed it, and that is not a thing to depend on.
 pip_install_pinned .github/tests/requirements-dev.txt
+
+echo "[session-start] site remediation deps"
+# apps/remediation/pipeline/ (#1901). Its requirements are compiled against
+# pipeline/requirements-dev.txt, so this adds pandas and changes nothing the
+# pipeline suite already pinned. apps/remediation/db/ (#1906) pins backend's psycopg
+# and the pipeline's tools, so it adds nothing new.
+pip_install_pinned apps/remediation/db/requirements-dev.txt
+pip_install_pinned apps/remediation/pipeline/requirements-dev.txt
 
 echo "[session-start] seeding the duckdb spatial extension"
 # ONE HOME, shared with pipeline-tests.yml (#321). This was an inline heredoc
@@ -164,6 +177,10 @@ echo "[session-start] client deps"
 # enough to drop `libc` in the first place. The image chooses node, not this
 # repository, so #1354 records the mismatch rather than pretending it away.
 (cd client && npm ci --no-audit --no-fund)
+
+echo "[session-start] site remediation web deps"
+# apps/remediation/web/ (#1904), the same `npm ci` for the same reason as above.
+(cd apps/remediation/web && npm ci --no-audit --no-fund)
 
 # THE GATE: prove what this script claims, or fail saying which part is missing.
 #

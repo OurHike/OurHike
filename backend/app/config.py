@@ -359,8 +359,28 @@ class Settings(BaseSettings):
     # the move is prompted before a batch is turned away. Poll 5 the same day:
     # a closed month's unlinked rows move to Parquet in a private R2 bucket
     # (#1923), which moves that point to about 600-1,100 phones a day once built.
+    #
+    # Change these here, not as an environment variable on one side: the
+    # intake gate runs in the API server and the warning below in the nightly
+    # workflow (.github/workflows/analytics-rollup.yml), and only this default
+    # reaches both. Set in one place alone, the warning measures a ceiling the
+    # gate is not using.
     analytics_daily_row_budget: int = 50_000
     analytics_storage_ceiling_mb: int = 250
+
+    # The whole database's size at which writes stop. Supabase turns a Free
+    # plan project read-only once its database size - every database in the
+    # project, data and indexes, not the disk - passes 500 MB
+    # (supabase.com/docs/guides/platform/database-size, read 2026-10-27), and
+    # every write the app makes fails with it, not only usage rows. The
+    # nightly checks raise `database_near_quota` at `STORAGE_WARN_SHARE` of
+    # it (app/core/analytics_quality.py), and the usage report draws it
+    # beside the usage ceiling (app/core/analytics_storage.py). A warning
+    # only: nothing is refused at this line. On a paid plan the limit is the
+    # disk instead - 8 GB on Pro with its spend cap on, which also holds the
+    # write-ahead log - so moving plans means changing this with the ceiling
+    # above, here, for the same reason.
+    database_quota_mb: int = 500
 
     # NOTHING IS COLLECTED THAT NOTHING WOULD DELETE. Six-month retention is a
     # promise the nightly rollup keeps (app/core/analytics_rollup.py deletes a

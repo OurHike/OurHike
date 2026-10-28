@@ -64,18 +64,26 @@ export const PUSH_SETTLE_MS = 1_500
  *                     idle launch both leave what is on screen alone. Must
  *                     be stable across renders.
  * @param onSettled    called after EVERY attempt, including the ones that
- *                     adopt nothing. #894's panel reads the sync bookkeeping
- *                     out of IndexedDB, which no React state watches - so a
- *                     successful push would clear "not sent yet" with
- *                     nothing on screen noticing, and the panel would go on
- *                     saying it until something else re-rendered. Optional,
- *                     and must be stable across renders.
+ *                     adopt nothing, with whether it reached the account
+ *                     (`SyncOutcome.reached`). #894's panel reads the sync
+ *                     bookkeeping out of IndexedDB, which no React state
+ *                     watches - so a successful push would clear "not sent
+ *                     yet" with nothing on screen noticing, and the panel
+ *                     would go on saying it until something else
+ *                     re-rendered. Optional, and must be stable across renders.
+ * @param online       whether the device has signal. A pull that could not
+ *                     reach the account is tried again when this turns true,
+ *                     once per sign-in: a launch with no signal - the
+ *                     ordinary launch on a trail - otherwise never heard the
+ *                     account's answers until the next launch (#1903's
+ *                     second review). Defaults to true.
  */
 export function usePreferencesSync(
   preferences: UserPreferences,
   signedIn: boolean,
   onAdopt: (preferences: UserPreferences) => void,
-  onSettled?: () => void,
+  onSettled?: (reached: boolean) => void,
+  online = true,
 ): void {
   // Read inside the effects rather than depended upon, so a preference
   // changing does not re-run the sign-in pull.
@@ -83,24 +91,33 @@ export function usePreferencesSync(
   latest.current = preferences
   const settled = useRef(onSettled)
   settled.current = onSettled
+  // Whether this sign-in's pull has reached the account. Until it has, each
+  // return of signal tries it again; after, a dropped and returned signal
+  // spends nothing.
+  const reached = useRef(false)
 
   useEffect(() => {
-    if (!signedIn) return
+    if (!signedIn) {
+      reached.current = false
+      return
+    }
+    if (reached.current || !online) return
     let live = true
 
     void reconciliation()
-      .then(({ syncPreferences }) => syncPreferences(latest.current))
-      .catch(() => null)
-      .then((adopted) => {
+      .then(({ reconcilePreferences }) => reconcilePreferences(latest.current))
+      .catch(() => ({ adopted: null, reached: false }))
+      .then((outcome) => {
         if (!live) return
-        if (adopted !== null) onAdopt(adopted)
-        settled.current?.()
+        if (outcome.reached) reached.current = true
+        if (outcome.adopted !== null) onAdopt(outcome.adopted)
+        settled.current?.(outcome.reached)
       })
 
     return () => {
       live = false
     }
-  }, [signedIn, onAdopt])
+  }, [signedIn, onAdopt, online])
 
   // The push half. Driven off the rendered `preferences` because that is
   // what changes when a hiker touches something - but what it actually sends
@@ -112,13 +129,13 @@ export function usePreferencesSync(
 
     const timer = setTimeout(() => {
       void reconciliation()
-        .then(({ pushPreferencesIfChanged }) => pushPreferencesIfChanged(latest.current))
-        .catch(() => null)
-        .then((adopted) => {
+        .then(({ pushIfChanged }) => pushIfChanged(latest.current))
+        .catch(() => ({ adopted: null, reached: false }))
+        .then((outcome) => {
           // A consent answer this device did not give, and the account holds
           // differently, comes back with the push (lib/preferencesSync.ts).
-          if (adopted !== null) onAdopt(adopted)
-          settled.current?.()
+          if (outcome.adopted !== null) onAdopt(outcome.adopted)
+          settled.current?.(outcome.reached)
         })
     }, PUSH_SETTLE_MS)
 

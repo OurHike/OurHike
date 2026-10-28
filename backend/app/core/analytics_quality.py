@@ -76,13 +76,20 @@ from collections import defaultdict
 from dataclasses import dataclass
 from datetime import date, timedelta
 
-from sqlalchemy import text
+from sqlalchemy import func, text
 from sqlalchemy.dialects.postgresql import insert
 from sqlalchemy.orm import Session
 
-from app.core.analytics_rollup import ALL, add_months, closes_on, retention_start
-from app.core.analytics_storage import ceiling_rows, rows_held
-from app.models.analytics import AnalyticsAnomaly, AnalyticsMonth, AnalyticsMonthly, MonthStatus, UsagePlatform
+from app.core import analytics_storage
+from app.core.analytics_rollup import ALL, CLUBS_NAMED, MAX_CLUBS_PER_MONTH, add_months, closes_on, retention_start
+from app.models.analytics import (
+    AnalyticsAnomaly,
+    AnalyticsMonth,
+    AnalyticsMonthly,
+    AnalyticsSealKey,
+    MonthStatus,
+    UsagePlatform,
+)
 
 # @unvalidated - see the module docstring for what would settle each.
 Z = 4.0
@@ -113,6 +120,11 @@ REFUSED_SHARE_VERSION = 0.05
 MIN_REFUSED_ROWS = 10
 DUPLICATE_SHARE = 0.2
 MIN_INTAKE_ROWS = 100
+# The share of a day's rows the phones say they dropped - at their queue's cap
+# or with a batch refused whole - at which it is a warning: below it, a count
+# that came in low is less use, and above it, it may be phones that
+# overflowed. The same line as refused rows, and @unvalidated like them.
+DROPPED_SHARE = REFUSED_SHARE
 LATE_SHARE = 0.02
 OVERDUE_GRACE_DAYS = 2
 # How long after its close a month's sums are still judged. A fortnight, the
@@ -121,15 +133,26 @@ OVERDUE_GRACE_DAYS = 2
 # the rest: what would settle it is how long after a close the maintainer
 # still acts on a finding about that month.
 MONTH_JUDGED_DAYS = 14
-# The share of the storage ceiling at which rows held are a warning
-# (app/core/analytics_storage.py). The maintainer chose to keep six months of
-# rows and move to a paid plan before the ceiling binds (poll, 2026-10-27),
-# so this is the notice to move, given while batches still go in. The last
-# fifth of 250 MB is about 137,000 rows: six to eleven weeks at 300 phones a
-# day, four to eight days at §8's 3,000 (6 to 11 rows a phone a day, itself
-# @unvalidated). @unvalidated, like the rest: what would settle it is how long
-# a move to a paid plan takes, against how fast the table grows.
+# The share of a storage limit at which it is a warning: the usage ceiling,
+# read as rows held or as the usage tables' size on disk, whichever is nearer
+# (app/core/analytics_storage.py `Storage`), and the database's plan quota
+# (`database_quota_mb`, app/config.py). The maintainer chose to keep six
+# months of rows and move to a paid plan before the ceiling binds (poll,
+# 2026-10-27), so this is the notice to move, given while batches still go in
+# and while the database still takes writes. The last fifth of 250 MB is about
+# 137,000 rows: six to eleven weeks at 300 phones a day, four to eight days at
+# §8's 3,000 (6 to 11 rows a phone a day, itself @unvalidated). @unvalidated,
+# like the rest: what would settle it is how long a move to a paid plan
+# takes, against how fast the database grows.
 STORAGE_WARN_SHARE = 0.8
+# Months of sealing keys published ahead of today, below which it is a
+# warning. Past the last month with a key, `POST /usage-events` throws each
+# row's fix and account away (scripts/analytics_keys.py), so this is the
+# notice to publish more while months remain. Three is the number the
+# report's data-health line used when the page worked this out itself;
+# @unvalidated, like the rest: what would settle it is how long a finding
+# waits before the maintainer acts on it.
+SEAL_KEY_NOTICE_MONTHS = 3
 
 # Every daily series, by name. Each is a column of `_DAILY` below. Screens
 # (`pageviews`) are loaded for `pageviews_per_session` and drawn by nothing
@@ -430,6 +453,11 @@ def _intake_findings(db: Session, today: date) -> list[Finding]:
         for outcome, check in _TURNED_AWAY:
             if versions["*"][outcome]:
                 findings.append(Finding(day, check, ALL, "warn", float(versions["*"][outcome])))
+        whole = versions["*"]
+        dropped = whole["dropped_full"] + whole["dropped_refused"]
+        offered = dropped + whole["stored"] + whole["duplicate"]
+        if dropped >= MIN_REFUSED_ROWS and dropped / offered >= DROPPED_SHARE:
+            findings.append(Finding(day, "rows_dropped_on_phone", ALL, "warn", dropped / offered, DROPPED_SHARE))
     return findings
 
 
@@ -442,10 +470,44 @@ def _pipeline_findings(db: Session, today: date) -> list[Finding]:
         status = getattr(state.status, "value", state.status)
         if status == MonthStatus.provisional.value and today > closes_on(state.month) + timedelta(days=OVERDUE_GRACE_DAYS):
             findings.append(Finding(state.month, "month_not_closed", ALL, "warn"))
-    ceiling = ceiling_rows()
-    held = rows_held(db)
-    if ceiling and held >= STORAGE_WARN_SHARE * ceiling:
-        findings.append(Finding(today, "storage_near_ceiling", ALL, "warn", held / ceiling, STORAGE_WARN_SHARE))
+    return findings
+
+
+def _club_cap_findings(db: Session, today: date) -> list[Finding]:
+    """A month whose events named more clubs than the rollup keeps rows for
+    (`MAX_CLUBS_PER_MONTH`): the least-named went uncounted per club. Either
+    real clubs outgrew the cap, or somebody is sending made-up ones."""
+    frozen = frozen_months(db, today)
+    findings = []
+    for state in db.query(AnalyticsMonth).all():
+        if state.month in frozen or state.raw_deleted_at is not None:
+            continue
+        bounds = {"start": state.month, "end": add_months(state.month, 1)}
+        named = db.execute(CLUBS_NAMED, bounds).scalar_one()
+        if named > MAX_CLUBS_PER_MONTH:
+            findings.append(Finding(state.month, "clubs_over_cap", ALL, "warn", float(named), float(MAX_CLUBS_PER_MONTH)))
+    return findings
+
+
+def _key_findings(db: Session, today: date) -> list[Finding]:
+    """Sealing keys running out. None published at all is left to
+    `rows_unsealed_no_key`, which fires only when rows are actually thrown
+    away - an environment collecting nothing yet has nothing to lose."""
+    newest = db.query(func.max(AnalyticsSealKey.month)).scalar()
+    if newest is None:
+        return []
+    left = (newest.year - today.year) * 12 + newest.month - today.month
+    if left < SEAL_KEY_NOTICE_MONTHS:
+        return [Finding(today, "seal_keys_running_out", ALL, "warn", float(left), float(SEAL_KEY_NOTICE_MONTHS))]
+    return []
+
+
+def _storage_findings(db: Session, today: date) -> list[Finding]:
+    storage = analytics_storage.measure(db)
+    findings = []
+    for check, share in (("storage_near_ceiling", storage.ceiling_share), ("database_near_quota", storage.quota_share)):
+        if share is not None and share >= STORAGE_WARN_SHARE:
+            findings.append(Finding(today, check, ALL, "warn", share, STORAGE_WARN_SHARE))
     return findings
 
 
@@ -560,6 +622,9 @@ def run_checks(db: Session, *, today: date, rollup_failed: bool = False) -> list
         *_version_findings(db, today),
         *_intake_findings(db, today),
         *_pipeline_findings(db, today),
+        *_storage_findings(db, today),
+        *_key_findings(db, today),
+        *_club_cap_findings(db, today),
         *failed_rollup,
         *invariant_findings(db, today=today),
     ]
@@ -578,6 +643,7 @@ MONTH_CHECKS = (
     "hikers_within_phones",
     "late_rows_after_close",
     "month_not_closed",
+    "clubs_over_cap",
 )
 
 
@@ -596,6 +662,9 @@ NAMED_CHECKS = (
     "rows_unsealed_no_key",
     "rollup_failed",
     "storage_near_ceiling",
+    "database_near_quota",
+    "seal_keys_running_out",
+    "rows_dropped_on_phone",
     *MONTH_CHECKS,
 )
 
@@ -620,6 +689,9 @@ def one_per_key(findings: list[Finding]) -> list[Finding]:
     return list(kept.values())
 
 
+_RECORD_CHUNK = 1000
+
+
 def record(db: Session, findings: list[Finding], *, today: date) -> list[Finding]:
     """Store tonight's findings, and return them.
 
@@ -641,8 +713,15 @@ def record(db: Session, findings: list[Finding], *, today: date) -> list[Finding
             rejudged = stored.day >= window_start
         if rejudged and (stored.day, stored.check_name, stored.scope) not in tonight:
             db.delete(stored)
-    if findings:
-        table = AnalyticsAnomaly.__table__
+    table = AnalyticsAnomaly.__table__
+    ordered = sorted(findings, key=lambda f: f.key)
+    # In chunks: one statement of 10 values a finding passes Postgres's
+    # 65,535-parameter limit at 6,554 findings, and a night of made-up
+    # versions once reached it, failing every finding with it (#1903's second
+    # review). The caps on versions and clubs keep a night far below that;
+    # this keeps a night that is not from failing whole.
+    for start in range(0, len(ordered), _RECORD_CHUNK):
+        chunk = ordered[start : start + _RECORD_CHUNK]
         statement = insert(table).values(
             [
                 {
@@ -657,7 +736,7 @@ def record(db: Session, findings: list[Finding], *, today: date) -> list[Finding
                     "first_seen_on": today,
                     "last_seen_on": today,
                 }
-                for finding in sorted(findings, key=lambda f: f.key)
+                for finding in chunk
             ]
         )
         db.execute(

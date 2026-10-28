@@ -253,6 +253,15 @@ class IntakeOutcome(str, enum.Enum):
     `declined` came with the token of an account that has synced
     "Share usage statistics" off: nothing in the batch is stored, and the
     phone is told every row was refused, so it drops them.
+
+    Two were never sent at all, and the phone says so with its next batch:
+    `dropped_full` at its queue's cap, `dropped_refused` with a batch the
+    server refused whole. Counted under no version.
+
+    `held` is not an outcome but a snapshot: how many rows `analytics_events`
+    held when the nightly rollup finished, written by it under no version on
+    the day it ran (app/core/analytics_storage.py says why rows held are
+    counted from it).
     """
 
     stored = "stored"
@@ -263,6 +272,9 @@ class IntakeOutcome(str, enum.Enum):
     over_budget = "over_budget"
     paused = "paused"
     declined = "declined"
+    dropped_full = "dropped_full"
+    dropped_refused = "dropped_refused"
+    held = "held"
 
 
 class AnalyticsIntake(Base):
@@ -283,7 +295,7 @@ class AnalyticsIntake(Base):
     received_on = Column(Date, primary_key=True)
     # The row's own version when it carried a readable one, otherwise "".
     app_version = Column(String(40), primary_key=True)
-    outcome = Column(Enum(IntakeOutcome, native_enum=False, length=12), primary_key=True)
+    outcome = Column(Enum(IntakeOutcome, native_enum=False, length=16), primary_key=True)
     rows = Column(Integer, nullable=False, default=0)
 
 

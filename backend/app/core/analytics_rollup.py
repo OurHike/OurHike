@@ -155,6 +155,28 @@ _SLICE_METRICS = text(
     """
 )
 
+# The most clubs one month keeps rows for, the ones its events name most. A
+# club id is any short word a phone sends, and each one a month names is
+# twelve `analytics_monthly` rows kept for good: 25 requests of made-up clubs
+# made 720,000 of them, 124 MiB (#1903's second review). Twice the A.T.'s 31
+# club ids (30 clubs and `_unrecorded`), leaving room for organizations'
+# slugs. @unvalidated: a month of real batches naming more than this would
+# settle it, and the nightly `clubs_over_cap` check says when one does.
+MAX_CLUBS_PER_MONTH = 64
+
+# The clubs a month keeps rows for: the most-named first, then by id, so two
+# runs over the same rows keep the same ones.
+_KEPT_CLUBS = """
+    kept as (
+      select c.key as club
+      from analytics_events e cross join lateral json_each_text(e.clubs) c
+      where e.clubs is not null and e.local_date >= :start and e.local_date < :end
+      group by c.key
+      order by count(*) desc, c.key
+      limit :max_clubs
+    )
+"""
+
 # A club's share of each event it was about. Plans are split by their miles
 # in each club ("assigned by # miles specific for each club", poll
 # 2026-10-27), so a 30-mile plan with 20 miles in one club counts as two
@@ -162,7 +184,8 @@ _SLICE_METRICS = text(
 # Totals across clubs therefore add up to the events that had a club, rather
 # than to more than that.
 _CLUB_METRICS = text(
-    """
+    f"""
+    with {_KEPT_CLUBS}
     select
       c.club,
       count(distinct e.user_key) as hikers_active,
@@ -181,6 +204,7 @@ _CLUB_METRICS = text(
       select key as club, value::float as share from json_each_text(e.clubs)
     ) c
     where e.clubs is not null and e.local_date >= :start and e.local_date < :end
+      and c.club in (select club from kept)
     group by c.club
     """
 )
@@ -189,11 +213,13 @@ _CLUB_METRICS = text(
 # month in this club" answer - EVENTING.md §2's trick, per club, so it counts
 # hikers who said no as exactly as hikers who said yes.
 _CLUB_DEVICES = text(
-    """
+    f"""
+    with {_KEPT_CLUBS}
     select f.club, count(*) as devices_active
     from analytics_events e
     cross join lateral json_array_elements_text(e.club_firsts) as f(club)
     where e.club_firsts is not null and e.local_date >= :start and e.local_date < :end
+      and f.club in (select club from kept)
     group by f.club
     """
 )
@@ -223,6 +249,27 @@ def support_metric(cents: int) -> str:
     return f"{SUPPORT_METRIC}{int(cents)}"
 
 
+# How many clubs a month's events name, kept or not - for the nightly check
+# that says when `MAX_CLUBS_PER_MONTH` turned some away.
+CLUBS_NAMED = text(
+    """
+    select count(distinct c.key)
+    from analytics_events e cross join lateral json_each_text(e.clubs) c
+    where e.clubs is not null and e.local_date >= :start and e.local_date < :end
+    """
+)
+
+# How many rows the table holds once tonight's deletes are done, kept as the
+# day's `held` row: rows held, for the storage ceiling, are counted from it
+# (app/core/analytics_storage.py).
+_SNAPSHOT_HELD = text(
+    """
+    insert into analytics_intake (received_on, app_version, outcome, rows)
+    values (:today, '', 'held', (select count(*) from analytics_events))
+    on conflict (received_on, app_version, outcome) do update set rows = excluded.rows
+    """
+)
+
 # Hikers counted new in a month: by `new_month`, which the User table sets
 # once and never moves (app/models/analytics.py), not by `first_seen_on`,
 # which a late row moves earlier - out of an open month and into a closed
@@ -241,9 +288,9 @@ _MONTH_ROWS = text("select count(*) from analytics_events where local_date >= :s
 # a line; if only the wording changed, replace the current line. Whitespace
 # is ignored, so reformatting is free.
 DEFINITION_FINGERPRINTS = {
-    1: "9ebd66799cb5fe2b9f62265d661d81642385b1d92b7e9bd07468b392e470d647",
+    1: "a822a3f76e359da42ef6cdffc238428e850d051b3cf014025c1819356e4c894b",
     # 2: support choices by level (#1876), and `events` now counts them too.
-    2: "57006b29778413b90957c1fbd195e8067ddc34b622dccf1f7a4b40f75e6a7ed8",
+    2: "be811ad90496505efc5738a9dcf173408708b74dfa2861bfabfd1c50b5566281",
 }
 
 
@@ -287,9 +334,10 @@ def compute_month(db: Session, month: date) -> list[AnalyticsMonthly]:
         rows.extend(_metric_rows(month, ALL, platform, values))
 
     by_club: dict[str, dict] = {}
-    for row in db.execute(_CLUB_METRICS, bounds).mappings():
+    capped = {**bounds, "max_clubs": MAX_CLUBS_PER_MONTH}
+    for row in db.execute(_CLUB_METRICS, capped).mappings():
         by_club[row["club"]] = dict(row)
-    for row in db.execute(_CLUB_DEVICES, bounds).mappings():
+    for row in db.execute(_CLUB_DEVICES, capped).mappings():
         by_club.setdefault(row["club"], {})["devices_active"] = row["devices_active"]
     for club, values in sorted(by_club.items()):
         values.setdefault("devices_active", 0)
@@ -403,6 +451,7 @@ def run(db: Session, *, today: date | None = None, now: datetime | None = None) 
 
     db.query(AnalyticsIntake).filter(AnalyticsIntake.received_on < cutoff).delete(synchronize_session=False)
     db.query(AnalyticsAnomaly).filter(AnalyticsAnomaly.day < cutoff).delete(synchronize_session=False)
+    db.execute(_SNAPSHOT_HELD, {"today": today})
 
     db.commit()
     return result

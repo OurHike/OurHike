@@ -118,6 +118,18 @@ def _area(degrees: float) -> float:
 _REFUSED = frozenset({IntakeOutcome.invalid, IntakeOutcome.too_old, IntakeOutcome.future})
 _VERSION = re.compile(VERSION_BODY)
 
+# The most versions one day's counts are kept under; past it, a version not
+# already seen that day is counted as `OTHER_VERSION`. A version is any
+# release-shaped string a phone sends, and each was its own counter row, kept
+# six months: 50 requests of refused rows made 10,001, and 6,554 versions in a
+# night broke the nightly checks' insert of their findings (#1903's second
+# review). A PWA updates itself within days of a release, so a handful of
+# versions arrive on any real day. @unvalidated: a day of real traffic
+# naming more than this would settle it.
+MAX_VERSIONS_PER_DAY = 24
+OTHER_VERSION = "(other)"
+_VERSIONS_TODAY = text("select distinct app_version from analytics_intake where received_on = :today")
+
 
 def _version_of(raw: Any) -> str:
     """A refused row's version when it carried a readable one, for the intake count.
@@ -180,10 +192,17 @@ def _synced_consent(db: Session, account: Profile | None) -> tuple[bool, bool]:
     No token: on, and not linked - there is no account to ask, and counts are
     on by default. A token whose account never synced: the same, because
     `measurement_linked` reads as no until it is a stored yes.
+
+    READ UNDER A SHARE LOCK, held to this batch's commit. Read without one, a
+    batch in flight while the hiker took back their yes - or deleted their
+    account - committed linked rows after the unlink or the deletion had run,
+    and nothing would ever unlink them (#1903's second review). Now the
+    preferences write (app/routers/preferences.py) and the deletion, which
+    removes the preferences first, wait for this batch, and then find its rows.
     """
     if account is None:
         return True, False
-    stored = db.get(UserPreferences, account.id)
+    stored = db.query(UserPreferences).filter(UserPreferences.profile_id == account.id).with_for_update(read=True).one_or_none()
     data = stored.data if stored is not None and isinstance(stored.data, dict) else {}
     return data.get("measurement_enabled", True) is not False, data.get("measurement_linked") is True
 
@@ -235,10 +254,22 @@ def _count_intake(db: Session, today: date, outcomes: Counter) -> None:
     """Add this batch's outcomes to the day's counts, in one statement.
 
     Sorted, so two batches arriving together take the counters' row locks in
-    the same order and cannot deadlock each other.
+    the same order and cannot deadlock each other. A version the day has not
+    seen, once it has seen `MAX_VERSIONS_PER_DAY`, is counted as
+    `OTHER_VERSION`.
     """
     if not outcomes:
         return
+    seen = set(db.execute(_VERSIONS_TODAY, {"today": today}).scalars())
+    kept: Counter = Counter()
+    for (version, outcome), count in outcomes.items():
+        if version not in seen:
+            if len(seen) >= MAX_VERSIONS_PER_DAY:
+                version = OTHER_VERSION
+            else:
+                seen.add(version)
+        kept[(version, outcome)] += count
+    outcomes = kept
     table = AnalyticsIntake.__table__
     values = [
         {"received_on": today, "app_version": version, "outcome": outcome.value, "rows": count}
@@ -455,10 +486,29 @@ def receive_usage_events(
         return UsageBatchAck(accepted=0, duplicates=0, refused=len(payload.events))
 
     events, outcomes = _sort_rows(payload.events, today)
+    if payload.dropped is not None:
+        outcomes[("", IntakeOutcome.dropped_full)] += payload.dropped.full
+        outcomes[("", IntakeOutcome.dropped_refused)] += payload.dropped.refused
+        outcomes = +outcomes
 
     linked = payload.identified and said_yes and current_user is not None and bool(settings.analytics_user_key_secret)
     key = user_key(settings.analytics_user_key_secret, current_user.id) if linked else None
     account_id = current_user.id if linked else None
+
+    # A RESEND IS FOUND BEFORE IT IS SEALED. Sealing is the expensive part of
+    # a row - an X25519 exchange each - and a resent batch of 200 sealed in
+    # full only for the insert to keep none of it cost 153 ms of CPU against
+    # 8 ms for a 503: a stranger resending one batch could keep the server
+    # busy (#1903's second review). The insert below still decides; this only
+    # spares the work for rows already held.
+    held_ids = (
+        set(db.execute(select(AnalyticsEvent.id).where(AnalyticsEvent.id.in_([str(event.id) for event in events]))).scalars())
+        if events
+        else set()
+    )
+    for event in [event for event in events if str(event.id) in held_ids]:
+        outcomes[(event.app_version or "", IntakeOutcome.duplicate)] += 1
+    events = [event for event in events if str(event.id) not in held_ids]
 
     stored_ids: set[str] = set()
     if events:

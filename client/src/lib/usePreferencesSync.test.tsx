@@ -1,7 +1,7 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import { renderHook, act } from '@testing-library/react'
 import { usePreferencesSync, PUSH_SETTLE_MS } from './usePreferencesSync'
-import { pushPreferencesIfChanged, syncPreferences } from './preferencesSync'
+import { pushIfChanged, reconcilePreferences, type SyncOutcome } from './preferencesSync'
 import { DEFAULT_PREFERENCES, type UserPreferences } from './userPreferences'
 
 // WHEN the reconciliation runs (#891) - "pull on sign-in, push on change".
@@ -15,16 +15,20 @@ import { DEFAULT_PREFERENCES, type UserPreferences } from './userPreferences'
 //     re-render of the app into a PUT.
 
 vi.mock('./preferencesSync', () => ({
-  syncPreferences: vi.fn(),
-  pushPreferencesIfChanged: vi.fn(),
+  reconcilePreferences: vi.fn(),
+  pushIfChanged: vi.fn(),
 }))
 
 const NOOP = () => {}
+/** The account answered, and there was nothing to adopt. */
+const REACHED: SyncOutcome = { adopted: null, reached: true }
+/** No signal: nothing heard from the account. */
+const UNREACHED: SyncOutcome = { adopted: null, reached: false }
 
 beforeEach(() => {
   vi.useFakeTimers()
-  vi.mocked(syncPreferences).mockReset().mockResolvedValue(null)
-  vi.mocked(pushPreferencesIfChanged).mockReset().mockResolvedValue(null)
+  vi.mocked(reconcilePreferences).mockReset().mockResolvedValue(REACHED)
+  vi.mocked(pushIfChanged).mockReset().mockResolvedValue(REACHED)
 })
 
 afterEach(() => {
@@ -45,11 +49,29 @@ async function arrived(): Promise<void> {
   })
 }
 
-function mount(preferences: UserPreferences, signedIn: boolean, onAdopt = NOOP) {
+function mount(
+  preferences: UserPreferences,
+  signedIn: boolean,
+  onAdopt = NOOP,
+  onSettled?: (reached: boolean) => void,
+) {
   return renderHook(
-    ({ prefs, signed }: { prefs: UserPreferences; signed: boolean }) =>
-      usePreferencesSync(prefs, signed, onAdopt),
-    { initialProps: { prefs: preferences, signed: signedIn } },
+    ({
+      prefs,
+      signed,
+      online,
+    }: {
+      prefs: UserPreferences
+      signed: boolean
+      online?: boolean
+    }) => usePreferencesSync(prefs, signed, onAdopt, onSettled, online),
+    {
+      initialProps: { prefs: preferences, signed: signedIn } as {
+        prefs: UserPreferences
+        signed: boolean
+        online?: boolean
+      },
+    },
   )
 }
 
@@ -57,14 +79,14 @@ describe('pulling on sign-in', () => {
   it('asks the account for nothing while signed out', () => {
     mount(DEFAULT_PREFERENCES, false)
 
-    expect(syncPreferences).not.toHaveBeenCalled()
+    expect(reconcilePreferences).not.toHaveBeenCalled()
   })
 
   it('reconciles once when the app opens already signed in', async () => {
     mount(DEFAULT_PREFERENCES, true)
     await arrived()
 
-    expect(syncPreferences).toHaveBeenCalledOnce()
+    expect(reconcilePreferences).toHaveBeenCalledOnce()
   })
 
   it('reconciles when a signed-out hiker signs in', async () => {
@@ -73,7 +95,7 @@ describe('pulling on sign-in', () => {
     view.rerender({ prefs: DEFAULT_PREFERENCES, signed: true })
     await arrived()
 
-    expect(syncPreferences).toHaveBeenCalledOnce()
+    expect(reconcilePreferences).toHaveBeenCalledOnce()
   })
 
   it('does not reconcile again because a preference changed', async () => {
@@ -86,12 +108,12 @@ describe('pulling on sign-in', () => {
     view.rerender({ prefs: { ...DEFAULT_PREFERENCES, theme: 'dark' }, signed: true })
     await arrived()
 
-    expect(syncPreferences).toHaveBeenCalledOnce()
+    expect(reconcilePreferences).toHaveBeenCalledOnce()
   })
 
   it('hands the account’s preferences to the caller when they win', async () => {
     const adopted = { ...DEFAULT_PREFERENCES, theme: 'dark' as const }
-    vi.mocked(syncPreferences).mockResolvedValue(adopted)
+    vi.mocked(reconcilePreferences).mockResolvedValue({ adopted, reached: true })
     const onAdopt = vi.fn()
 
     mount(DEFAULT_PREFERENCES, true, onAdopt)
@@ -100,7 +122,7 @@ describe('pulling on sign-in', () => {
     // a duration is what stops this passing on an idle machine and failing
     // in CI.
     await act(async () => {
-      await vi.mocked(syncPreferences).mock.results[0]?.value
+      await vi.mocked(reconcilePreferences).mock.results[0]?.value
     })
 
     expect(onAdopt).toHaveBeenCalledWith(adopted)
@@ -112,15 +134,15 @@ describe('pulling on sign-in', () => {
     mount(DEFAULT_PREFERENCES, true, onAdopt)
     await arrived()
     await act(async () => {
-      await vi.mocked(syncPreferences).mock.results[0]?.value
+      await vi.mocked(reconcilePreferences).mock.results[0]?.value
     })
 
     expect(onAdopt).not.toHaveBeenCalled()
   })
 
   it('does not adopt into an unmounted app', async () => {
-    let settle: (value: UserPreferences | null) => void = NOOP
-    vi.mocked(syncPreferences).mockReturnValue(
+    let settle: (value: SyncOutcome) => void = NOOP
+    vi.mocked(reconcilePreferences).mockReturnValue(
       new Promise((resolve) => {
         settle = resolve
       }),
@@ -131,10 +153,65 @@ describe('pulling on sign-in', () => {
     await arrived()
     view.unmount()
     await act(async () => {
-      settle({ ...DEFAULT_PREFERENCES, theme: 'dark' })
+      settle({ adopted: { ...DEFAULT_PREFERENCES, theme: 'dark' }, reached: true })
     })
 
     expect(onAdopt).not.toHaveBeenCalled()
+  })
+})
+
+describe('a launch with no signal', () => {
+  it('spends no request while the phone says it has no signal', async () => {
+    renderHook(() =>
+      usePreferencesSync(DEFAULT_PREFERENCES, true, NOOP, undefined, false),
+    )
+    await arrived()
+
+    expect(reconcilePreferences).not.toHaveBeenCalled()
+  })
+
+  it('pulls when signal returns, and tells the caller the account answered', async () => {
+    const onSettled = vi.fn()
+    const view = mount(DEFAULT_PREFERENCES, false, NOOP, onSettled)
+    view.rerender({ prefs: DEFAULT_PREFERENCES, signed: true, online: false })
+    await arrived()
+    expect(reconcilePreferences).not.toHaveBeenCalled()
+
+    view.rerender({ prefs: DEFAULT_PREFERENCES, signed: true, online: true })
+    await arrived()
+
+    expect(reconcilePreferences).toHaveBeenCalledOnce()
+    expect(onSettled).toHaveBeenLastCalledWith(true)
+  })
+
+  it('tries again when signal returns after an attempt that did not reach the account', async () => {
+    // navigator.onLine says true on a captive portal or one bar that drops
+    // the request: the attempt fails, and the next return of signal is the
+    // next chance - not the next launch (#1903's second review).
+    vi.mocked(reconcilePreferences).mockResolvedValueOnce(UNREACHED)
+    const onSettled = vi.fn()
+    const view = mount(DEFAULT_PREFERENCES, true, NOOP, onSettled)
+    await arrived()
+    expect(onSettled).toHaveBeenLastCalledWith(false)
+
+    view.rerender({ prefs: DEFAULT_PREFERENCES, signed: true, online: false })
+    view.rerender({ prefs: DEFAULT_PREFERENCES, signed: true, online: true })
+    await arrived()
+
+    expect(reconcilePreferences).toHaveBeenCalledTimes(2)
+    expect(onSettled).toHaveBeenLastCalledWith(true)
+  })
+
+  it('pulls once a sign-in, however often signal comes and goes after it reached the account', async () => {
+    const view = mount(DEFAULT_PREFERENCES, true)
+    await arrived()
+
+    for (const online of [false, true, false, true]) {
+      view.rerender({ prefs: DEFAULT_PREFERENCES, signed: true, online })
+      await arrived()
+    }
+
+    expect(reconcilePreferences).toHaveBeenCalledOnce()
   })
 })
 
@@ -145,7 +222,7 @@ describe('pushing on change', () => {
     view.rerender({ prefs: { ...DEFAULT_PREFERENCES, theme: 'dark' }, signed: false })
     act(() => vi.advanceTimersByTime(PUSH_SETTLE_MS * 4))
 
-    expect(pushPreferencesIfChanged).not.toHaveBeenCalled()
+    expect(pushIfChanged).not.toHaveBeenCalled()
   })
 
   it('lets a burst of toggles settle into one push', async () => {
@@ -157,13 +234,13 @@ describe('pushing on change', () => {
       view.rerender({ prefs: { ...DEFAULT_PREFERENCES, theme }, signed: true })
       act(() => vi.advanceTimersByTime(PUSH_SETTLE_MS / 3))
     }
-    expect(pushPreferencesIfChanged).not.toHaveBeenCalled()
+    expect(pushIfChanged).not.toHaveBeenCalled()
 
     // Advancing the timer runs the callback synchronously; the call itself
     // lands once the reconciliation's module has, which `arrived` waits on.
     act(() => vi.advanceTimersByTime(PUSH_SETTLE_MS))
     await arrived()
-    expect(pushPreferencesIfChanged).toHaveBeenCalledOnce()
+    expect(pushIfChanged).toHaveBeenCalledOnce()
   })
 
   it('sends the values as they stand when the burst settles, not as they were', async () => {
@@ -173,9 +250,7 @@ describe('pushing on change', () => {
     act(() => vi.advanceTimersByTime(PUSH_SETTLE_MS + 1))
     await arrived()
 
-    expect(pushPreferencesIfChanged).toHaveBeenCalledWith(
-      expect.objectContaining({ theme: 'dark' }),
-    )
+    expect(pushIfChanged).toHaveBeenCalledWith(expect.objectContaining({ theme: 'dark' }))
   })
 
   it('sends nothing after the app closes mid-burst', () => {
@@ -185,6 +260,6 @@ describe('pushing on change', () => {
     view.unmount()
     act(() => vi.advanceTimersByTime(PUSH_SETTLE_MS * 4))
 
-    expect(pushPreferencesIfChanged).not.toHaveBeenCalled()
+    expect(pushIfChanged).not.toHaveBeenCalled()
   })
 })

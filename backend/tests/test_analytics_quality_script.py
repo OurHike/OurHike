@@ -126,3 +126,19 @@ def test_a_quiet_night_writes_an_empty_verdict(script, tmp_path, capsys):
 
     assert json.loads(verdict.read_text())["open"] == []
     assert "Nothing out of the ordinary" in capsys.readouterr().out
+
+
+def test_the_verdict_names_at_most_its_cap_and_counts_the_rest(script, tmp_path, monkeypatch):
+    """A night of made-up versions once made 2,001 findings and an issue body
+    GitHub would not take, so the real faults never reached the issue
+    (#1903's second review)."""
+    from app.core.analytics_quality import Finding
+
+    many = [Finding(TODAY, "rows_refused", f"version:9.9.{n}", "warn", 1.0, 0.05) for n in range(script.MAX_PUBLIC_FINDINGS + 5)]
+    monkeypatch.setattr(script, "run_checks", lambda db, **_: many)
+    verdict = tmp_path / "verdict.json"
+
+    assert script.main(["--today", TODAY.isoformat(), "--verdict", str(verdict)]) == 0
+
+    written = json.loads(verdict.read_text())
+    assert (len(written["open"]), written["more"]) == (script.MAX_PUBLIC_FINDINGS, 5)

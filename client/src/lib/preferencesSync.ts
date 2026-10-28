@@ -44,6 +44,24 @@ import type { UserPreferences } from './userPreferences'
  *  launch where nobody changed anything anywhere. */
 export type SyncPlan = 'push' | 'pull' | 'idle'
 
+/** What one attempt came to. */
+export interface SyncOutcome {
+  /** The preferences to switch to, or null when nothing on screen changes. */
+  adopted: UserPreferences | null
+  /**
+   * The account answered, and every consent answer given on this device has
+   * reached it. Only then are the consent answers on screen the account's
+   * word, which is what usage measurement waits for before it sends
+   * (lib/useUsageMeasurement.ts `consentSettled`). An attempt with no signal
+   * is not one: settling on it let a phone that launched offline send the
+   * moment signal returned, before the "off" given on another phone arrived
+   * (#1903's second review).
+   */
+  reached: boolean
+}
+
+const NOT_REACHED: SyncOutcome = { adopted: null, reached: false }
+
 /**
  * The conflict rule, as a function of two facts and nothing else.
  *
@@ -203,17 +221,26 @@ function reportSyncFailure(error: unknown): void {
 export async function syncPreferences(
   local: UserPreferences,
 ): Promise<UserPreferences | null> {
+  return (await reconcilePreferences(local)).adopted
+}
+
+/**
+ * `syncPreferences`, saying also whether the account answered - which
+ * lib/usePreferencesSync.ts needs and the null of "nothing to adopt" cannot
+ * carry. Never rejects, for the same reason.
+ */
+export async function reconcilePreferences(local: UserPreferences): Promise<SyncOutcome> {
   try {
     const remote = await fetchSyncedPreferences()
     const state = await preferencesSyncState()
     const plan = planPreferencesSync(remote?.updated_at ?? null, state)
 
-    if (plan === 'idle') return null
+    if (plan === 'idle') return { adopted: null, reached: true }
     if (plan === 'pull') {
       // `remote` cannot be null on this branch - `planPreferencesSync` answers
       // 'push' for a missing row - but the compiler does not know the rule,
       // and asserting it here would be a claim rather than a check.
-      if (remote === null) return null
+      if (remote === null) return NOT_REACHED
       // The account wins, except for a consent answer given on this device
       // since the last sync: that is the hiker's newest word, and it goes up.
       const merged: UserPreferences = adoptable(remote)
@@ -225,14 +252,14 @@ export async function syncPreferences(
         )
         await recordPreferencesPush(pushed.updated_at)
       }
-      return adopted
+      return { adopted, reached: true }
     }
 
-    return await pushAndSettle(local, state, remote === null)
+    return { adopted: await pushAndSettle(local, state, remote === null), reached: true }
   } catch (error) {
     if (!isOrdinarySilence(error)) reportSyncFailure(error)
   }
-  return null
+  return NOT_REACHED
 }
 
 /**
@@ -250,21 +277,26 @@ export async function syncPreferences(
 export async function pushPreferencesIfChanged(
   local: UserPreferences,
 ): Promise<UserPreferences | null> {
+  return (await pushIfChanged(local)).adopted
+}
+
+/** `pushPreferencesIfChanged`, saying also whether the push reached the account. */
+export async function pushIfChanged(local: UserPreferences): Promise<SyncOutcome> {
   const state = await preferencesSyncState()
   // Never before this device's first reconciliation: that is `syncPreferences`'
   // job, and its rule is that a first sign-in ADOPTS the account. A change
   // made before it, pushed by this timer, could beat the pull and write a
   // fresh install's defaults over the account (#1903's review).
-  if (!state.dirty || state.syncedAt === null) return null
+  if (!state.dirty || state.syncedAt === null) return NOT_REACHED
 
   try {
-    return await pushAndSettle(local, state, false)
+    return { adopted: await pushAndSettle(local, state, false), reached: true }
   } catch (error) {
     // Still dirty either way, deliberately. The next launch or the next
     // change tries again, which is what makes an offline stretch cost
     // nothing - and what makes a schema mismatch retry rather than lose the
     // hiker's setting while somebody fixes it.
     if (!isOrdinarySilence(error)) reportSyncFailure(error)
-    return null
+    return NOT_REACHED
   }
 }

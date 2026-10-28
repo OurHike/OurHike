@@ -58,12 +58,21 @@ export function apiUrl(path: string): string {
 export class ApiError extends Error {
   readonly status: number
   readonly detail: unknown
+  /** The response's `Retry-After` header as sent, or null - how long the
+   *  server asked to be left alone (lib/usageQueue.ts reads it). */
+  readonly retryAfter: string | null
 
-  constructor(status: number, message: string, detail?: unknown) {
+  constructor(
+    status: number,
+    message: string,
+    detail?: unknown,
+    retryAfter?: string | null,
+  ) {
     super(message)
     this.name = 'ApiError'
     this.status = status
     this.detail = detail
+    this.retryAfter = retryAfter ?? null
   }
 }
 
@@ -117,9 +126,24 @@ export async function apiFetch(path: string, init: RequestInit = {}): Promise<Re
       response.status,
       `${init.method ?? 'GET'} ${path} failed: ${response.status}`,
       await errorBody(response),
+      retryAfterOf(response),
     )
   }
   return response
+}
+
+/**
+ * The refusal's `Retry-After`, or null. Read inside a `try` for the same
+ * reason as `errorBody`: this runs while building the error for a request
+ * that has already failed, and a response with no readable headers - a test
+ * double, a proxy's oddity - must not replace the `ApiError` with another.
+ */
+function retryAfterOf(response: Response): string | null {
+  try {
+    return response.headers.get('Retry-After')
+  } catch {
+    return null
+  }
 }
 
 /**

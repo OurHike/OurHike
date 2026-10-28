@@ -472,6 +472,7 @@ import {
   listQueued,
   removeQueued,
   retryQueued,
+  sendableNow,
   type AppFailureDraft,
   type FlushResult,
   type OutboxItem,
@@ -1424,6 +1425,11 @@ function App() {
   const queuedCount = useMemo(
     () => queuedItems.filter((item) => item.failure === undefined).length,
     [queuedItems],
+  )
+  /** What the outbox can send now, which usage measurement waits behind. */
+  const sendableCount = useMemo(
+    () => sendableNow(queuedItems, account !== null),
+    [account, queuedItems],
   )
   const stuckReports = useMemo<StuckReport[]>(
     () =>
@@ -9504,22 +9510,28 @@ function App() {
   /**
    * The account whose preferences have been reconciled this launch - when it
    * is the one signed in, its consent answers are the ones on screen, and
-   * usage measurement may send (#1903's review). Set by the first attempt,
-   * whatever it found: an attempt that could not reach the server has no
-   * newer answer to wait for.
+   * usage measurement may send (#1903's review). Set only by an attempt that
+   * REACHED the account: settling on one with no signal let a phone that
+   * launched on the trail send the moment signal returned, before the "off"
+   * given on another phone arrived, and the pull was never tried again that
+   * launch (#1903's second review). It is now, when signal returns.
    */
   const [preferencesSettledFor, setPreferencesSettledFor] = useState<string | null>(null)
   const settledAccount = account === null ? null : account.email
-  const notePreferencesSettled = useCallback(() => {
-    setPreferencesSettledFor(settledAccount)
-    noteSyncRan()
-  }, [settledAccount, noteSyncRan])
+  const notePreferencesSettled = useCallback(
+    (reached: boolean) => {
+      if (reached) setPreferencesSettledFor(settledAccount)
+      noteSyncRan()
+    },
+    [settledAccount, noteSyncRan],
+  )
 
   usePreferencesSync(
     preferences,
     account !== null && syncOn,
     handleAdoptPreferences,
     notePreferencesSettled,
+    online,
   )
 
   /**
@@ -9581,8 +9593,9 @@ function App() {
     accountEmail: account === null ? null : account.email,
     newInstall: !preferences.onboarding_completed,
     version: BUILD_INFO.version,
+    consentSyncs: account !== null && syncOn,
     online,
-    reportsWaiting: queuedCount,
+    reportsWaiting: sendableCount,
     screen: JSON.stringify([activeTab, nav.top]),
     mapInView: mapShownNow,
     gps,

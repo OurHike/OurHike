@@ -399,8 +399,37 @@ def test_intake_counts_and_findings_go_with_the_raw_rows(db_session):
 
     run(db_session, today=today)
 
-    assert [row.received_on for row in db_session.query(AnalyticsIntake).all()] == [cutoff]
+    counts = db_session.query(AnalyticsIntake).filter(AnalyticsIntake.outcome != IntakeOutcome.held).all()
+    assert [row.received_on for row in counts] == [cutoff]
     assert [row.day for row in db_session.query(AnalyticsAnomaly).all()] == [cutoff]
+
+
+def test_the_rollup_leaves_its_own_count_of_the_rows_held_after_its_deletes(db_session):
+    """Rows held, for the storage ceiling, start from this count
+    (app/core/analytics_storage.py): rows are deleted by the month they
+    describe, while their `stored` counts are kept by the day they arrived."""
+    for day in (date(2026, 4, 3), date(2026, 10, 3), date(2026, 10, 4)):
+        _event(db_session, day, received=date(2026, 10, 5))
+
+    run(db_session, today=date(2026, 11, 2))
+
+    held = db_session.query(AnalyticsIntake).filter(AnalyticsIntake.outcome == IntakeOutcome.held).one()
+    assert (held.received_on, held.rows) == (date(2026, 11, 2), 2), "April left retention; October's two stay"
+
+
+def test_a_month_keeps_rows_for_its_most_named_clubs_and_no_others(db_session, monkeypatch):
+    """A club id is any short word a phone sends, and each one a month named
+    was twelve monthly rows kept for good: 25 requests of made-up clubs made
+    720,000 of them (#1903's second review)."""
+    monkeypatch.setattr(analytics_rollup, "MAX_CLUBS_PER_MONTH", 2)
+    for club, times in (("GATC", 3), ("NOC", 2), ("MADEUP1", 1)):
+        for _ in range(times):
+            _event(db_session, date(2026, 10, 3), clubs={club: 1.0}, club_firsts=[club])
+
+    run(db_session, today=date(2026, 10, 20))
+
+    clubs = {row.club for row in db_session.query(AnalyticsMonthly).filter(AnalyticsMonthly.club != ALL)}
+    assert clubs == {"GATC", "NOC"}
 
 
 def test_a_month_that_never_closed_is_refused_deletion(db_session, monkeypatch):

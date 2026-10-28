@@ -16,6 +16,7 @@ import pytest
 from sqlalchemy.dialects.postgresql import insert
 
 from app.core import analytics_quality as quality
+from app.core import analytics_storage
 from app.core.analytics_report import K_FLOOR, build_report_data, mask_cells
 from app.models.analytics import AnalyticsEvent, AnalyticsMonth, AnalyticsMonthly, AnalyticsUser, MonthStatus
 
@@ -31,6 +32,22 @@ def report_script():
     return module
 
 
+def test_a_clubs_plans_under_the_floor_are_masked_with_their_miles_though_the_club_has_enough_phones():
+    """A club cell counts no phones per kind of event, so `FOLLOWERS` cannot
+    reach its plans: "1 plan, 12.5 miles" was one hiker's (#1903's second review)."""
+    masked, _ = mask_cells({"2026-10|GATC|*": {"devices_active": 30, "plans_made": 1.0, "plan_miles": 12.5, "map_views": 40}})
+
+    assert masked["2026-10|GATC|*"] == {"devices_active": 30, "plans_made": None, "plan_miles": None, "map_views": 40}
+
+
+def test_one_session_length_under_the_floor_masks_all_four_since_they_add_up_to_the_visits():
+    lengths = {"sessions_under_1m": 10, "sessions_m1_to_5": 9, "sessions_m5_to_20": 5, "sessions_over_20m": 2}
+    masked, _ = mask_cells({"2026-10|*|web": {"devices_active": 26, "sessions": 26, **lengths}})
+
+    assert all(masked["2026-10|*|web"][part] is None for part in lengths)
+    assert masked["2026-10|*|web"]["sessions"] == 26
+
+
 def test_a_cell_describing_fewer_than_the_floor_is_masked_whole():
     masked, whole = mask_cells({"2026-10|GMC|*": {"devices_active": K_FLOOR - 1, "plans_made": 3.5, "map_views": 40}})
 
@@ -39,9 +56,16 @@ def test_a_cell_describing_fewer_than_the_floor_is_masked_whole():
 
 
 def test_a_cell_at_the_floor_is_shown():
-    masked, whole = mask_cells({"2026-10|*|*": {"devices_active": K_FLOOR, "plans_made": 4}})
+    masked, whole = mask_cells({"2026-10|*|*": {"devices_active": K_FLOOR, "map_views": 40}})
 
-    assert masked["2026-10|*|*"]["plans_made"] == 4 and not whole
+    assert masked["2026-10|*|*"]["map_views"] == 40 and not whole
+
+
+def test_an_event_count_under_the_floor_is_masked_in_a_shown_cell():
+    """Four plans were made by four people at most, whatever the cell's size."""
+    masked, _ = mask_cells({"2026-10|*|*": {"devices_active": K_FLOOR, "plans_made": 4}})
+
+    assert masked["2026-10|*|*"]["plans_made"] is None
 
 
 def test_a_small_count_of_hikers_who_said_yes_is_masked_inside_a_shown_cell():
@@ -382,6 +406,42 @@ def test_the_quality_panel_publishes_no_band_edges_and_no_share_below_the_floor(
     assert {key for points in panel["series"].values() for point in points for key in point} == {"day", "status", "share"}
     assert panel["series"]["sessions"][-1] == {"day": "2026-11-19", "status": "ok", "share": 1.0}
     assert panel["series"]["plans_made"][-1] == {"day": "2026-11-19", "status": "ok", "share": None}, "12 expected"
+
+
+@pytest.mark.parametrize("months", [False, True], ids=["before-the-first-month", "with-months"])
+def test_the_storage_strip_publishes_shares_and_whole_megabytes_never_a_row_count(db_session, monkeypatch, months):
+    """Two reports a day apart would otherwise give the rows stored between them."""
+    monkeypatch.setattr(analytics_storage.settings, "analytics_storage_ceiling_mb", 250)
+    monkeypatch.setattr(analytics_storage.settings, "database_quota_mb", 500)
+    monkeypatch.setattr(analytics_storage, "rows_held", lambda db: 123_457)
+    monkeypatch.setattr(analytics_storage, "usage_tables_bytes", lambda db: int(47.6 * 1024 * 1024))
+    monkeypatch.setattr(analytics_storage, "database_bytes", lambda db: int(130.2 * 1024 * 1024))
+    if months:
+        db_session.add(AnalyticsMonth(month=OCTOBER, status=MonthStatus.closed, definition_version=1))
+        db_session.commit()
+
+    storage = build_report_data(db_session, environment="Test")["quality"]["storage"]
+
+    assert storage == {
+        "rows": {"share": 0.18, "status": "ok"},
+        "usage": {"mb": 48, "of_mb": 250, "share": 0.19, "status": "ok"},
+        "database": {"mb": 130, "of_mb": 500, "share": 0.26, "status": "ok"},
+        "warn_share": 0.8,
+    }
+
+
+def test_the_storage_strip_is_judged_by_the_nightly_checks_line_not_by_the_page(db_session, monkeypatch):
+    """A share that rounds to 0.80 is not a warning unless the check would raise one."""
+    monkeypatch.setattr(analytics_storage.settings, "analytics_storage_ceiling_mb", 100)
+    monkeypatch.setattr(analytics_storage.settings, "database_quota_mb", 100)
+    monkeypatch.setattr(analytics_storage, "rows_held", lambda db: 0)
+    monkeypatch.setattr(analytics_storage, "usage_tables_bytes", lambda db: int(79.6 * 1024 * 1024))
+    monkeypatch.setattr(analytics_storage, "database_bytes", lambda db: 80 * 1024 * 1024)
+
+    storage = build_report_data(db_session, environment="Test")["quality"]["storage"]
+
+    assert (storage["usage"]["share"], storage["usage"]["status"]) == (0.8, "ok")
+    assert (storage["database"]["share"], storage["database"]["status"]) == (0.8, "warn")
 
 
 def test_every_check_the_nightly_job_names_has_a_label_in_the_page(report_script):

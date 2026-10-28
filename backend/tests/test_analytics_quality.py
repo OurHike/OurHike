@@ -22,6 +22,7 @@ from app.models.analytics import (
     AnalyticsIntake,
     AnalyticsMonth,
     AnalyticsMonthly,
+    AnalyticsSealKey,
     IntakeOutcome,
     MonthStatus,
 )
@@ -290,6 +291,86 @@ def test_rows_held_near_the_storage_ceiling_are_a_warning_before_a_batch_is_turn
     found = quality.run_checks(db_session, today=TODAY)
 
     assert (quality.Finding(TODAY, "storage_near_ceiling", ALL, "warn", held / 10, 0.8) in found) is warned
+
+
+@pytest.mark.parametrize(("tenths", "warned"), [(7, False), (8, True)], ids=["seven-tenths", "eight-tenths"])
+def test_usage_tables_on_disk_near_the_storage_ceiling_are_a_warning_while_few_rows_are_held(
+    db_session, monkeypatch, tenths, warned
+):
+    """A table's file keeps the room of the rows deleted from it, and real rows
+    can run larger than the measured 382 bytes: either way the plan holds the
+    room, and rows held alone would not say so."""
+    monkeypatch.setattr(settings, "analytics_storage_ceiling_mb", 10)
+    monkeypatch.setattr(analytics_storage, "usage_tables_bytes", lambda db: tenths * 1024 * 1024)
+
+    found = quality.run_checks(db_session, today=TODAY)
+
+    assert (quality.Finding(TODAY, "storage_near_ceiling", ALL, "warn", tenths / 10, 0.8) in found) is warned
+
+
+@pytest.mark.parametrize(("tenths", "warned"), [(7, False), (8, True)], ids=["seven-tenths", "eight-tenths"])
+def test_a_database_near_its_plans_quota_is_a_warning_before_it_stops_taking_writes(db_session, monkeypatch, tenths, warned):
+    """Supabase turns a Free-plan database read-only past 500 MB - every
+    write the app makes, not only usage rows."""
+    monkeypatch.setattr(settings, "database_quota_mb", 10)
+    monkeypatch.setattr(analytics_storage, "database_bytes", lambda db: tenths * 1024 * 1024)
+
+    found = quality.run_checks(db_session, today=TODAY)
+
+    assert (quality.Finding(TODAY, "database_near_quota", ALL, "warn", tenths / 10, 0.8) in found) is warned
+
+
+@pytest.mark.parametrize(
+    ("through", "warned"), [(date(2027, 1, 1), True), (date(2027, 2, 1), False)], ids=["two-months-ahead", "three"]
+)
+def test_sealing_keys_published_less_than_three_months_ahead_are_a_warning(db_session, through, warned):
+    """Past the last month with a key, every fix and account is thrown away
+    (scripts/analytics_keys.py). The report's data-health line used to work
+    this out in the page, where only somebody opening the file would see it."""
+    db_session.add(AnalyticsSealKey(month=through, public_key=bytes(32)))
+    db_session.commit()
+
+    found = {(f.check_name, f.observed) for f in quality.run_checks(db_session, today=TODAY)}
+
+    assert (("seal_keys_running_out", 2.0) in found) is warned
+
+
+def test_no_sealing_keys_at_all_is_left_to_the_rows_it_costs(db_session):
+    """An environment collecting nothing yet loses nothing; one collecting
+    with no key raises `rows_unsealed_no_key` for the rows thrown away."""
+    found = {f.check_name for f in quality.run_checks(db_session, today=TODAY)}
+
+    assert "seal_keys_running_out" not in found
+
+
+@pytest.mark.parametrize(("dropped", "warned"), [(9, False), (10, True)], ids=["nine-of-a-thousand", "ten"])
+def test_rows_the_phones_had_to_drop_are_a_warning_past_a_share_of_the_day(db_session, dropped, warned):
+    """Before the phones said so, a count that came in low could not be told
+    from phones that overflowed while offline (#1903's second review)."""
+    yesterday = TODAY - timedelta(days=1)
+    db_session.add(AnalyticsIntake(received_on=yesterday, app_version="", outcome=IntakeOutcome.stored, rows=1000 - dropped))
+    db_session.add(AnalyticsIntake(received_on=yesterday, app_version="", outcome=IntakeOutcome.dropped_full, rows=dropped))
+    db_session.commit()
+
+    found = {f.check_name for f in quality.run_checks(db_session, today=TODAY)}
+
+    assert ("rows_dropped_on_phone" in found) is warned
+
+
+def test_a_month_naming_more_clubs_than_it_keeps_rows_for_is_a_warning(db_session, monkeypatch):
+    monkeypatch.setattr(quality, "MAX_CLUBS_PER_MONTH", 2)
+    month = date(2026, 11, 1)
+    for club in ("GATC", "NOC", "MADEUP1"):
+        _rows(db_session, date(2026, 11, 3), {"map_screen_viewed": 1})
+        db_session.query(AnalyticsEvent).filter(AnalyticsEvent.clubs.is_(None)).update(
+            {"clubs": {club: 1.0}}, synchronize_session=False
+        )
+        db_session.commit()
+    run(db_session, today=TODAY)
+
+    found = {(f.check_name, f.day) for f in quality.run_checks(db_session, today=TODAY)}
+
+    assert ("clubs_over_cap", month) in found
 
 
 def test_a_rollup_that_failed_tonight_is_a_finding_tonight(db_session):

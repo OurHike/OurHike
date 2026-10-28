@@ -69,7 +69,9 @@ from pathlib import Path
 import requests
 
 from lib.freshness_state import utc_today
+from lib.releases import RELEASE_MANIFEST_NAME, release_key
 from smoke_published import HTTP_TIMEOUT, fetch_manifest
+from verify_release import fetch_pointed_release
 
 # The published keys this check joins, spelled once. NOTES_KEY pairs with
 # PUBLISHED_NOTES_KEY in client/src/lib/publishedConditions.ts — the check
@@ -195,13 +197,39 @@ def anchor_rows(notes_document: dict) -> dict[str, dict]:
     return anchors
 
 
-def check_anchors(base: str, session=None) -> dict | None:
-    """The whole verdict, or None when there is no manifest to check against."""
+def check_anchors(base: str, session=None, environment: str = "production", schema_version: str = "v1") -> dict | None:
+    """The whole verdict, or None when there is no manifest to check against.
+
+    THE POI FILES ARE READ FROM THE RELEASE `channels.json` NAMES, as a phone
+    reads them (#1862). Since the 2026-10-02 bucket swap, promotion writes
+    production only as `releases/<id>/` plus `channels.json`, so the root
+    `latest.json` there names only `conditions/*` and holds no `poi_*.geojson`
+    to join against. `conditions/notes.json` stays at the root, where
+    `export_conditions.py` still writes it. A bucket with no `channels.json`
+    falls back to the root manifest, which is what this check read before.
+    """
     manifest = fetch_manifest(base, session)
     if manifest is None:
         return None
 
     problems: list[dict] = []
+    poi_base = base
+    release = fetch_pointed_release(base, environment, schema_version, session)
+    if release:
+        poi_base = f"{base}/{release_key(release, '').rstrip('/')}"
+        manifest = fetch_manifest(poi_base, session, key=RELEASE_MANIFEST_NAME)
+        if manifest is None:
+            # The pointer names a folder that holds no manifest: a phone
+            # refuses it too (dataChannel.ts's `resolves`), and an empty id
+            # set here would read as every anchor orphaning at once.
+            problems.append(
+                {
+                    "key": f"channels.json -> {release}",
+                    "state": FAILED,
+                    "detail": f"{environment}'s channels.json names release {release}, whose manifest.json could not be read",
+                }
+            )
+            manifest = {}
     notes_document, why_not = fetch_json(base, NOTES_KEY, session)
     if notes_document is None:
         # No notes artifact is not "no orphans" — it is "nothing could be
@@ -212,10 +240,10 @@ def check_anchors(base: str, session=None) -> dict | None:
     else:
         anchors = anchor_rows(notes_document)
 
-    ids, poi_problems = published_poi_ids(base, manifest, session)
+    ids, poi_problems = published_poi_ids(poi_base, manifest, session)
     problems.extend(poi_problems)
 
-    tombstones = retired_dispositions(base, manifest, session)
+    tombstones = retired_dispositions(poi_base, manifest, session)
 
     # Per-anchor claims are made only over a COMPLETE id set. A poi file that
     # did not answer, or answered without ids, may be exactly the file an
@@ -299,6 +327,8 @@ def render(verdict: dict) -> str:
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__.split("\n", 1)[0])
     parser.add_argument("--base", required=True, help="Bucket base URL, e.g. https://data.example.org")
+    parser.add_argument("--environment", default="production", help="The channels.json entry naming the release to read")
+    parser.add_argument("--schema-version", default="v1", help="The channels.json schema version to read")
     parser.add_argument("--json", type=Path, help="Also write the verdict as JSON here")
     parser.add_argument(
         "--exit-zero",
@@ -307,7 +337,7 @@ def main(argv: list[str] | None = None) -> int:
     )
     args = parser.parse_args(argv)
 
-    verdict = check_anchors(args.base.rstrip("/"))
+    verdict = check_anchors(args.base.rstrip("/"), environment=args.environment, schema_version=args.schema_version)
     if verdict is None:
         print(f"No {json.dumps('latest.json')} at {args.base} — nothing is published to check.")
         return 2

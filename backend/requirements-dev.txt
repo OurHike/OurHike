@@ -55,6 +55,7 @@ coverage==7.15.4
 cryptography==50.0.0
     # via
     #   -c backend/requirements.txt
+    #   -r backend/requirements.in
     #   moto
     #   pyjwt
 execnet==2.1.2
@@ -125,6 +126,8 @@ psycopg-binary==3.3.6 ; implementation_name != 'pypy'
     #   psycopg
 py-partiql-parser==0.6.3
     # via moto
+pyarrow==26.0.0
+    # via -r backend/requirements-dev.in
 pycparser==3.0 ; implementation_name != 'PyPy' and platform_python_implementation != 'PyPy'
     # via
     #   -c backend/requirements.txt

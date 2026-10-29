@@ -220,3 +220,137 @@ def test_the_wrong_secret_opens_nothing(db_session, keys, tmp_path):
 
     assert opened == 0
     assert "41.3" not in out.read_text()
+
+
+# --- a month whose unlinked rows are in the usage archive (#1923) ------------------
+
+
+@pytest.fixture()
+def archived_october(db_session, keys):
+    """October closed and archived: two unlinked sealed rows in a part in R2,
+    one linked sealed row still in Postgres. Returns the secret, the store and the ids."""
+    import boto3
+    from moto import mock_aws
+
+    from app.core import analytics_archive, analytics_rollup
+    from app.core.analytics_archive import R2Store
+
+    archive_script = importlib.util.module_from_spec(
+        spec := importlib.util.spec_from_file_location("analytics_archive_script", SCRIPT.with_name("analytics_archive.py"))
+    )
+    spec.loader.exec_module(archive_script)
+    secret = new_secret()
+    unlinked = [_sealed_event(db_session, secret, {"lat": 41.3 + n / 10, "lon": -74.2}).id for n in range(2)]
+    linked = _sealed_event(db_session, secret, {"account": "acct-9", "lat": 41.9, "lon": -74.9}, user_key="k" * 32).id
+    analytics_rollup.run(db_session, today=date(2026, 11, 20))
+    with mock_aws():
+        client = boto3.client("s3", region_name="us-east-1")
+        client.create_bucket(Bucket="ourhike-usage-test")
+        store = R2Store(client, "ourhike-usage-test")
+        analytics_archive.run(db_session, store, archive_script.write_parquet, today=date(2026, 11, 21))
+        yield secret, store, unlinked, linked
+
+
+def test_a_whole_month_opening_reads_its_archived_parts_beside_postgres(db_session, keys, archived_october, tmp_path):
+    secret, store, unlinked, linked = archived_october
+    out = tmp_path / "opened.csv"
+
+    opened = keys.open_rows(
+        db_session,
+        secret,
+        month=OCTOBER,
+        opened_by="Test Maintainer",
+        reason="checking an archived month opens",
+        event_id=None,
+        key=None,
+        out=out,
+        store=store,
+    )
+
+    assert opened == 3
+    text = out.read_text()
+    assert all(row_id in text for row_id in (*unlinked, linked))
+    assert "41.4" in text and "acct-9" in text
+
+
+def test_an_archived_row_opens_by_its_event_id(db_session, keys, archived_october, tmp_path):
+    secret, store, unlinked, _ = archived_october
+    out = tmp_path / "opened.csv"
+
+    opened = keys.open_rows(
+        db_session,
+        secret,
+        month=OCTOBER,
+        opened_by="Test Maintainer",
+        reason="one archived row",
+        event_id=unlinked[1],
+        key=None,
+        out=out,
+        store=store,
+    )
+
+    assert opened == 1 and unlinked[1] in out.read_text() and unlinked[0] not in out.read_text()
+
+
+def test_a_part_that_is_not_the_file_the_archive_wrote_is_not_opened(db_session, keys, archived_october, tmp_path):
+    """The record is still written first: an opening that stops halfway is on it."""
+    secret, store, _, _ = archived_october
+    store.put("2026-10/part-0001.parquet", b"not the file the archive wrote")
+
+    with pytest.raises(keys.KeysError, match="not the file the archive wrote"):
+        keys.open_rows(
+            db_session,
+            secret,
+            month=OCTOBER,
+            opened_by="Test Maintainer",
+            reason="a tampered part",
+            event_id=None,
+            key=None,
+            out=tmp_path / "opened.csv",
+            store=store,
+        )
+
+    db_session.rollback()
+    assert db_session.query(AnalyticsOpening).one().rows_opened is None
+
+
+def test_an_archived_month_with_no_archive_settings_is_refused_before_the_record(
+    db_session, keys, archived_october, tmp_path, monkeypatch
+):
+    secret, _, _, _ = archived_october
+    for name in ("USAGE_ARCHIVE_R2_ENDPOINT_URL", "USAGE_ARCHIVE_R2_BUCKET", "USAGE_ARCHIVE_R2_ACCESS_KEY_ID"):
+        monkeypatch.delenv(name, raising=False)
+
+    with pytest.raises(keys.KeysError, match="Nothing was recorded"):
+        keys.open_rows(
+            db_session,
+            secret,
+            month=OCTOBER,
+            opened_by="Test Maintainer",
+            reason="no token for the archive",
+            event_id=None,
+            key=None,
+            out=tmp_path / "opened.csv",
+        )
+
+    assert db_session.query(AnalyticsOpening).count() == 0
+
+
+def test_a_user_key_opening_never_reads_the_archive(db_session, keys, archived_october, tmp_path, monkeypatch):
+    """A linked row is never archived, so `--user-key` needs no archive token."""
+    secret, _, _, linked = archived_october
+    monkeypatch.delenv("USAGE_ARCHIVE_R2_BUCKET", raising=False)
+    out = tmp_path / "opened.csv"
+
+    opened = keys.open_rows(
+        db_session,
+        secret,
+        month=OCTOBER,
+        opened_by="Test Maintainer",
+        reason="one hiker's rows",
+        event_id=None,
+        key="k" * 32,
+        out=out,
+    )
+
+    assert opened == 1 and linked in out.read_text()

@@ -97,6 +97,10 @@ USAGE_TABLES = (
     "analytics_users",
     "analytics_seal_keys",
     "analytics_openings",
+    # The usage archive's ledger and daily counts (#1923): small, but in the
+    # database the plan counts.
+    "analytics_archive_parts",
+    "analytics_archived_daily",
 )
 
 # A table's size with its indexes and TOAST. `pg_total_relation_size` needs

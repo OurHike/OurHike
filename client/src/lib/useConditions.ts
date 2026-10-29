@@ -561,10 +561,12 @@ export function useConditions(
   }, [online, refreshCount, ready, hikePlanned])
 
   // The map's own reads (#232), deliberately not gated on an account: browsing
-  // has never needed one, and the reads send a token only if there is one
-  // (lib/api.ts).
+  // has never needed one. `/closures`, `/reports` and `/disputes` send no
+  // token even when there is one (THE SHARED READS in lib/api.ts, #1916), and
+  // `/field-notes` sends one only if there is one (`readFetch`). The hiker's
+  // own reports, the one read that needs an account, are the next effect.
   //
-  // Both settle independently. A closures read that succeeds while reports
+  // Each settles independently. A closures read that succeeds while reports
   // fails should still warn about the closure - pairing them would mean one
   // failure silencing both, and closures are the half a hiker walks into.
   useEffect(() => {

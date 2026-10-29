@@ -1,11 +1,12 @@
-// What a signed-in hiker's app sends on its conditions reads (#1916 - A
+// What a signed-in hiker's app reads for the map's conditions (#1916 - A
 // signed-in hiker's app sends its token on the three edge-cached reads, so
 // they either skip the cache or hide the hiker's own queued report).
 //
-// Held at the hook rather than only at the three fetchers in api.test.ts,
-// because the hook is what decides which fetcher each read goes through: a
-// later edit that read `/closures` through `readFetch` again would pass every
-// test over there.
+// Held at the hook as well as at the fetchers in api.test.ts. Those tests say
+// what each fetcher sends when it is called; these say which requests the
+// hook makes when signed in, and test the merge of the hiker's own reports
+// (`fetchMyReports`) into the shared list (`fetchReports`), which happens in
+// useConditions.ts and in no fetcher.
 
 import { act, cleanup, renderHook, waitFor } from '@testing-library/react'
 import { afterEach, expect, it, vi } from 'vitest'

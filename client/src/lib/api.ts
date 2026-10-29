@@ -190,10 +190,13 @@ async function authedFetch(path: string, init: RequestInit = {}): Promise<Respon
  * server would refuse anyway. A read must not: browsing has never needed an
  * account in this app, and every read here answers an anonymous caller.
  *
- * But the token still goes when it exists, and that is not a nicety:
- * `list_field_notes` and the report photo links answer a signed-in caller
- * with more of their own. The three conditions reads do not use this any
- * more, and THE SHARED READS below says why.
+ * The token still goes when it exists, and two of its three callers need it:
+ * `list_field_notes` (`fetchFieldNotes`) and the report photo links
+ * (`fetchReportPhotoLink`) answer a signed-in caller with more of their own.
+ * The third, `fetchPoiPhotos`, reads `list_photos`
+ * (backend/app/routers/poi_photos.py), which takes no caller, so the token
+ * changes nothing there. The three conditions reads do not use this any more,
+ * and THE SHARED READS below says why.
  */
 async function readFetch(path: string, signal?: AbortSignal): Promise<Response> {
   const token = await accessToken()
@@ -220,9 +223,11 @@ async function readFetch(path: string, signal?: AbortSignal): Promise<Response> 
  * it either goes past it to the API, or is answered from it, and Cloudflare's
  * docs do not say which. The first spends the API's free tier on every
  * signed-in hiker. The second hides a reporter's own waiting report. The
- * server never reads the caller on `/closures` or `/disputes`, and the one
- * thing a token bought on `/reports` comes from `/reports/mine` instead
- * (`fetchMyReports`).
+ * server never reads the caller on `/closures` or `/disputes`. On `/reports`
+ * a token adds the caller's own reports at any status, and unmasks fields
+ * this app never reads (`ReportOut.for_viewer` in
+ * backend/app/schemas/report.py); the own reports come from `/reports/mine`
+ * instead (`fetchMyReports`).
  */
 
 /**

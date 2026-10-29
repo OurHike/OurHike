@@ -223,6 +223,17 @@ _THANKS = {
 }
 
 
+def _credit(db, report_id):
+    """Who a stored report is credited to, as (maintainer_id, club_id).
+
+    Read off the row: it is what every inbox delivers from, and the filer's
+    own response no longer says whose account a thanks went to (see
+    test_the_filer_is_not_told_whose_account_a_thanks_was_credited_to)."""
+    db.expire_all()
+    row = db.get(Report, report_id)
+    return row.maintainer_id, row.club_id
+
+
 def test_a_thanks_is_club_only_never_public(client):
     user_id = str(uuid.uuid4())
 
@@ -248,17 +259,16 @@ def test_a_thanks_can_name_the_maintainer_it_is_for(client, db_session):
 
     body = client.post("/reports", json=payload, headers=auth_headers(str(uuid.uuid4()))).json()
 
-    assert body["maintainer_id"] == pat.id
-    assert body["club_id"] == club.id
+    assert _credit(db_session, body["id"]) == (pat.id, club.id)
 
 
-def test_a_thanks_with_no_attribution_at_all_is_still_accepted(client):
+def test_a_thanks_with_no_attribution_at_all_is_still_accepted(client, db_session):
     """ "Someone cleared forty blowdowns and I have no idea who" is a
     complete thanks - it resolves by location rather than being refused."""
     response = client.post("/reports", json=_THANKS, headers=auth_headers(str(uuid.uuid4())))
 
     assert response.status_code == 201
-    assert response.json()["maintainer_id"] is None
+    assert _credit(db_session, response.json()["id"]) == (None, None)
 
 
 def test_a_condition_report_is_unaffected_and_still_public(client):
@@ -350,8 +360,7 @@ def test_a_thanks_resolves_to_whoever_had_the_stretch(client, db_session):
 
     body = _thanks_at(client, 1043, _JUNE)
 
-    assert body["maintainer_id"] == pat.id
-    assert body["club_id"] == club.id
+    assert _credit(db_session, body["id"]) == (pat.id, club.id)
 
 
 def test_it_resolves_against_the_authored_date_not_today(client, db_session):
@@ -371,7 +380,7 @@ def test_it_resolves_against_the_authored_date_not_today(client, db_session):
 
     body = _thanks_at(client, 1043, _JUNE)
 
-    assert body["maintainer_id"] == pat.id
+    assert _credit(db_session, body["id"])[0] == pat.id
 
 
 def test_a_hiker_who_knows_the_name_is_not_overruled_by_the_lookup(client, db_session):
@@ -391,9 +400,8 @@ def test_a_hiker_who_knows_the_name_is_not_overruled_by_the_lookup(client, db_se
 
     body = _thanks_at(client, 1043, _JUNE, maintainer_id=pat.id)
 
-    assert body["maintainer_id"] == pat.id
-    # ...and the half they left blank is still resolved.
-    assert body["club_id"] == club.id
+    # Pat, and the half they left blank is still resolved.
+    assert _credit(db_session, body["id"]) == (pat.id, club.id)
 
 
 def test_overlapping_stretches_name_the_club_but_not_a_person(client, db_session):
@@ -411,8 +419,7 @@ def test_overlapping_stretches_name_the_club_but_not_a_person(client, db_session
 
     body = _thanks_at(client, 1050, _JUNE)
 
-    assert body["maintainer_id"] is None
-    assert body["club_id"] == club.id
+    assert _credit(db_session, body["id"]) == (None, club.id)
 
 
 def test_a_thanks_with_no_mile_resolves_to_nobody_rather_than_guessing(client, db_session):
@@ -424,8 +431,7 @@ def test_a_thanks_with_no_mile_resolves_to_nobody_rather_than_guessing(client, d
 
     body = client.post("/reports", json=_THANKS, headers=auth_headers(str(uuid.uuid4()))).json()
 
-    assert body["maintainer_id"] is None
-    assert body["club_id"] is None
+    assert _credit(db_session, body["id"]) == (None, None)
 
 
 def test_a_condition_report_cannot_carry_a_profile_id_it_names_itself(client, db_session):
@@ -449,8 +455,31 @@ def test_a_condition_report_cannot_carry_a_profile_id_it_names_itself(client, db
 
     body = client.post("/reports", json=payload, headers=auth_headers(pat.id)).json()
 
-    assert body["maintainer_id"] is None
-    assert body["club_id"] is None
+    assert _credit(db_session, body["id"]) == (None, None)
+
+
+def test_the_filer_is_not_told_whose_account_a_thanks_was_credited_to(client, db_session):
+    """The server resolves a thanks with no name from its mile and authored
+    date, and the credited account id used to come back to whoever filed it
+    - on the 201, on `GET /reports/{id}` and in `GET /reports`. One thanks per
+    mile from any account rebuilt the map of volunteers' account ids along
+    the trail that #641 (GET /maintainer-assignments serves volunteer account
+    ids to anonymous callers) took away (the review of #1926). A moderator
+    still reads the credit, and the filer still reads the club, whose id is
+    public on `GET /clubs`."""
+    club = _club(db_session)
+    pat = _maintainer(db_session)
+    _assign(db_session, maintainer=pat, club=club, start=1000, end=1100, frm=_JUNE)
+    hiker = str(uuid.uuid4())
+    moderator = make_profile(db_session, Role.club_admin)
+
+    filed = _thanks_at(client, 1043, _JUNE, hiker=hiker)
+    reread = client.get(f"/reports/{filed['id']}", headers=auth_headers(hiker)).json()
+    listed = next(row for row in client.get("/reports", headers=auth_headers(hiker)).json() if row["id"] == filed["id"])
+
+    assert [filed["maintainer_id"], reread["maintainer_id"], listed["maintainer_id"]] == [None, None, None]
+    assert filed["club_id"] == club.id
+    assert client.get(f"/reports/{filed['id']}", headers=auth_headers(moderator.id)).json()["maintainer_id"] == pat.id
 
 
 # --- GET /reports/thanks: the delivery ------------------------------------
@@ -533,7 +562,7 @@ def test_the_maintainer_who_did_the_work_keeps_it_after_handing_over(client, db_
     # Sam shares the club, so they see it as club mail rather than as theirs -
     # which is the club-level default, not a leak. What they must not be is
     # the resolved individual.
-    assert filed["maintainer_id"] == pat.id
+    assert _credit(db_session, filed["id"])[0] == pat.id
 
 
 def test_a_thanks_written_on_the_last_day_of_an_assignment_is_still_theirs(client, db_session):
@@ -575,7 +604,7 @@ def test_a_name_the_record_does_not_stand_behind_reaches_nobodys_inbox(client, d
     stranger = make_profile(db_session).id
     filed = _thanks_at(client, 1043, _JUNE, maintainer_id=stranger, note="I know where you hike.")
 
-    assert filed["maintainer_id"] is None
+    assert _credit(db_session, filed["id"])[0] is None
     assert _inbox(client, stranger) == []
 
 

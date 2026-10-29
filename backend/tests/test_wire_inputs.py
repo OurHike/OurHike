@@ -133,7 +133,7 @@ def _assign(db, *, maintainer, club, start, end):
     return assignment
 
 
-def test_a_thanks_naming_an_id_nobody_stands_behind_is_credited_by_location(client):
+def test_a_thanks_naming_an_id_nobody_stands_behind_is_credited_by_location(client, db_session):
     """It used to be a 422 naming the field, because the id reached the
     foreign key. Since #1914 (GET /clubs publishes every admin's account id
     and decline reason to anyone, and an account id is all it takes to write
@@ -153,7 +153,9 @@ def test_a_thanks_naming_an_id_nobody_stands_behind_is_credited_by_location(clie
     )
 
     assert response.status_code == 201
-    assert response.json()["maintainer_id"] is None
+    # Off the stored row: the filer is not told whose account a thanks was
+    # credited to (ReportOut.for_viewer).
+    assert db_session.get(Report, response.json()["id"]).maintainer_id is None
 
 
 def test_a_named_maintainers_thanks_never_borrows_another_clubs_credit(client, db_session):
@@ -174,9 +176,9 @@ def test_a_named_maintainers_thanks_never_borrows_another_clubs_credit(client, d
     )
 
     assert response.status_code == 201
-    body = response.json()
-    assert body["maintainer_id"] == pat.id
-    assert body["club_id"] == pats_club.id, "the named maintainer's own club, never the overlap's"
+    stored = db_session.get(Report, response.json()["id"])
+    assert stored.maintainer_id == pat.id
+    assert stored.club_id == pats_club.id, "the named maintainer's own club, never the overlap's"
 
 
 def test_a_named_maintainer_with_no_covering_assignment_keeps_the_name_and_falls_back_to_the_stretchs_club(client, db_session):

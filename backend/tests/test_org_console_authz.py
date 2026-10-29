@@ -113,8 +113,10 @@ def test_a_self_registered_orgs_own_assignment_does_not_open_other_hikers_thanks
     assert filed.status_code == 201, filed.text
 
     # Neither resolved to them when it arrived, nor delivered to them after.
-    assert filed.json()["maintainer_id"] is None
-    assert filed.json()["club_id"] is None
+    # Off the stored row: the filer is not told whose account a thanks was
+    # credited to (ReportOut.for_viewer).
+    stored = db_session.get(Report, filed.json()["id"])
+    assert (stored.maintainer_id, stored.club_id) == (None, None)
     assert client.get("/reports/thanks", headers=headers).json() == []
 
 

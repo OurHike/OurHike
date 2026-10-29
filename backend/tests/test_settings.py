@@ -3,7 +3,7 @@
 Both make `Settings()` refuse to build, and app/config.py builds it at import,
 so a deployment carrying either mistake never starts rather than starting and
 serving it. The project refs below are made up; the real ones are in
-LAUNCH_CHECKLIST.md §6.
+LAUNCH_CHECKLIST.md §5.
 """
 
 import pytest
@@ -12,6 +12,11 @@ from pydantic import ValidationError
 from app.config import Settings
 
 PASSWORD = "hunter2-not-a-real-password"
+
+# Made up, in the shape a real ref has (app/config.py's _PROJECT_REF): a label
+# of any other shape names no project, so the guard would not compare it.
+PROJECT = "aaaabbbbccccddddeeee"
+OTHER_PROJECT = "ffffgggghhhhiiiijjjj"
 
 
 def _pooled(ref: str) -> str:
@@ -40,19 +45,19 @@ def _settings(monkeypatch, *, database_url: str, supabase_url: str) -> Settings:
 
 
 def test_supabase_url_over_https_is_accepted(monkeypatch):
-    built = _settings(monkeypatch, database_url=_pooled("aaaa1111"), supabase_url="https://aaaa1111.supabase.co")
+    built = _settings(monkeypatch, database_url=_pooled(PROJECT), supabase_url=f"https://{PROJECT}.supabase.co")
 
-    assert built.supabase_url == "https://aaaa1111.supabase.co"
+    assert built.supabase_url == f"https://{PROJECT}.supabase.co"
 
 
 @pytest.mark.parametrize(
     "url",
     [
-        "http://aaaa1111.supabase.co",
+        f"http://{PROJECT}.supabase.co",
         # Starts with an allowed host's name and is somebody else's machine.
         "http://localhost.example.com",
         "http://127.0.0.1.nip.io",
-        "aaaa1111.supabase.co",
+        f"{PROJECT}.supabase.co",
         "",
     ],
 )
@@ -61,7 +66,7 @@ def test_supabase_url_that_is_not_https_is_refused(monkeypatch, url):
     with. Over plain http, anyone on the network path can answer with their
     own keys and sign in as anybody, moderators included."""
     with pytest.raises(ValidationError) as caught:
-        _settings(monkeypatch, database_url=_pooled("aaaa1111"), supabase_url=url)
+        _settings(monkeypatch, database_url=_pooled(PROJECT), supabase_url=url)
 
     assert "SUPABASE_URL has to be https://" in str(caught.value)
 
@@ -69,22 +74,22 @@ def test_supabase_url_that_is_not_https_is_refused(monkeypatch, url):
 @pytest.mark.parametrize("url", ["http://localhost:54321", "http://127.0.0.1:54321", "http://[::1]:54321"])
 def test_plain_http_is_accepted_for_a_supabase_on_this_machine(monkeypatch, url):
     """What `supabase start` serves on a developer's machine, where nothing sits on the path."""
-    assert _settings(monkeypatch, database_url=_pooled("aaaa1111"), supabase_url=url).supabase_url == url
+    assert _settings(monkeypatch, database_url=_pooled(PROJECT), supabase_url=url).supabase_url == url
 
 
 # --- DATABASE_URL and SUPABASE_URL name one project --------------------------
 
 
-@pytest.mark.parametrize("database_url", [_pooled("aaaa1111"), _direct("aaaa1111")], ids=["pooled", "direct"])
+@pytest.mark.parametrize("database_url", [_pooled(PROJECT), _direct(PROJECT)], ids=["pooled", "direct"])
 def test_a_database_in_one_project_and_sign_in_in_another_refuses_to_start(monkeypatch, database_url):
     """Production's database string pasted beside UA's SUPABASE_URL, or the
     reverse. Without this the process boots, `SELECT 1` passes, and hikers
     are served the other project's closures as live."""
     with pytest.raises(ValidationError) as caught:
-        _settings(monkeypatch, database_url=database_url, supabase_url="https://bbbb2222.supabase.co")
+        _settings(monkeypatch, database_url=database_url, supabase_url=f"https://{OTHER_PROJECT}.supabase.co")
 
     message = str(caught.value)
-    assert "DATABASE_URL is Supabase project aaaa1111, but SUPABASE_URL is project bbbb2222" in message
+    assert f"DATABASE_URL is Supabase project {PROJECT}, but SUPABASE_URL is project {OTHER_PROJECT}" in message
 
 
 def test_the_refusal_prints_no_part_of_the_connection_string(monkeypatch):
@@ -93,7 +98,7 @@ def test_the_refusal_prints_no_part_of_the_connection_string(monkeypatch):
     its two ends) unless the model hides it, and the guard's own message
     names the two projects and nothing else."""
     with pytest.raises(ValidationError) as caught:
-        _settings(monkeypatch, database_url=_pooled("aaaa1111"), supabase_url="https://bbbb2222.supabase.co")
+        _settings(monkeypatch, database_url=_pooled(PROJECT), supabase_url=f"https://{OTHER_PROJECT}.supabase.co")
 
     message = str(caught.value)
     assert PASSWORD not in message
@@ -101,9 +106,9 @@ def test_the_refusal_prints_no_part_of_the_connection_string(monkeypatch):
     assert "input_value" not in message
 
 
-@pytest.mark.parametrize("database_url", [_pooled("aaaa1111"), _direct("aaaa1111")], ids=["pooled", "direct"])
+@pytest.mark.parametrize("database_url", [_pooled(PROJECT), _direct(PROJECT)], ids=["pooled", "direct"])
 def test_one_project_on_both_starts(monkeypatch, database_url):
-    built = _settings(monkeypatch, database_url=database_url, supabase_url="https://aaaa1111.supabase.co")
+    built = _settings(monkeypatch, database_url=database_url, supabase_url=f"https://{PROJECT}.supabase.co")
 
     assert built.database_url == database_url
 
@@ -112,16 +117,16 @@ def test_one_project_on_both_starts(monkeypatch, database_url):
     ("database_url", "supabase_url"),
     [
         # The suite's own database, and any developer's.
-        ("postgresql+psycopg://ourhike:ourhike@localhost:5432/ourhike_test", "https://aaaa1111.supabase.co"),
+        ("postgresql+psycopg://ourhike:ourhike@localhost:5432/ourhike_test", f"https://{PROJECT}.supabase.co"),
         # A pooler string missing its project names none, so nothing is compared.
         (
             "postgresql+psycopg://postgres:pw@aws-0-us-east-1.pooler.supabase.com:6543/postgres",
-            "https://aaaa1111.supabase.co",
+            f"https://{PROJECT}.supabase.co",
         ),
         # migrate.yml and schema-drift.yml pass this beside the real DATABASE_URL.
-        (_pooled("aaaa1111"), "https://migrations-never-call-this.invalid"),
+        (_pooled(PROJECT), "https://migrations-never-call-this.invalid"),
         # pages.yml's OpenAPI dump.
-        (_pooled("aaaa1111"), "https://openapi-dump.invalid"),
+        (_pooled(PROJECT), "https://openapi-dump.invalid"),
         # A self-hosted Supabase names no project in either string.
         ("postgresql+psycopg://postgres:pw@db.example.org:5432/postgres", "https://supabase.example.org"),
     ],
@@ -131,3 +136,14 @@ def test_a_pair_that_names_no_project_on_one_side_is_not_compared(monkeypatch, d
     """The guard compares only what both strings state. It cannot tell a
     self-hosted project from a wrong paste, and does not guess."""
     assert _settings(monkeypatch, database_url=database_url, supabase_url=supabase_url).supabase_url == supabase_url
+
+
+@pytest.mark.parametrize("label", ["my-example-brand", "ourhike"])
+def test_a_correct_vanity_subdomain_starts_because_its_label_names_no_project(monkeypatch, label):
+    """A paid project can answer at `my-example-brand.supabase.co` as well as
+    at its ref (supabase.com/docs/guides/platform/custom-domains). The label
+    is not the ref the database string carries, so comparing the two refused a
+    correct pair; the guard now compares only a label shaped like a ref."""
+    url = f"https://{label}.supabase.co"
+
+    assert _settings(monkeypatch, database_url=_pooled(PROJECT), supabase_url=url).supabase_url == url

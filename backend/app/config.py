@@ -11,6 +11,7 @@ an empty string standing in for a real credential.
 """
 
 import os
+import re
 from pathlib import Path
 from urllib.parse import urlsplit
 
@@ -21,12 +22,25 @@ from pydantic_settings import BaseSettings, SettingsConfigDict
 # Where plain http is what a developer actually has: a Supabase on this machine.
 _LOCAL_HOSTS = frozenset({"localhost", "127.0.0.1", "::1"})
 
+# The shape of a project ref, which is what the default API host carries. A
+# paid project can also answer at a vanity subdomain, `my-example-brand.supabase.co`
+# beside "the default, randomly assigned `abcdefghijklmnopqrst.supabase.co`"
+# (supabase.com/docs/guides/platform/custom-domains, read 2026-10-29), and that
+# label is no ref. Supabase's docs show a ref only by example, never by rule;
+# that example and both real refs LAUNCH_CHECKLIST.md §5 names are 20 lowercase
+# letters. Digits are let through so a ref carrying one is still compared, at
+# the cost that a 20-character vanity label with no hyphen would be compared
+# too. The default host keeps working beside a vanity one, by the same page.
+_PROJECT_REF = re.compile(r"[a-z0-9]{20}")
+
 
 def _supabase_ref_from_api_url(url: str) -> str | None:
-    """`abcd1234` out of `https://abcd1234.supabase.co`, or None for any other host."""
+    """`abcdefghijklmnopqrst` out of `https://abcdefghijklmnopqrst.supabase.co`,
+    or None for any host that is not a project ref on `supabase.co`, a vanity
+    subdomain included."""
     host = (urlsplit(url.strip()).hostname or "").lower()
     ref = host.removesuffix(".supabase.co") if host.endswith(".supabase.co") else ""
-    return ref if ref and "." not in ref else None
+    return ref if _PROJECT_REF.fullmatch(ref) else None
 
 
 def _supabase_ref_from_database_url(url: str) -> str | None:
@@ -435,8 +449,9 @@ class Settings(BaseSettings):
         reads them. Every online spot-check looks fine. Both strings name their
         project, so the mismatch is checkable here; a host that is not
         Supabase's (local Postgres, a self-hosted Supabase) names none and is
-        not checked. The message names the two projects and nothing else -
-        never the credentials.
+        not checked, and nor is a `SUPABASE_URL` on a vanity subdomain, whose
+        label is not the project's ref (`_PROJECT_REF`). The message names the
+        two projects and nothing else - never the credentials.
         """
         database = _supabase_ref_from_database_url(self.database_url)
         api = _supabase_ref_from_api_url(self.supabase_url)

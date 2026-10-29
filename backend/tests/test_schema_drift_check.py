@@ -222,14 +222,16 @@ def test_settings_from_two_projects_are_reported_as_refused_not_as_missing():
         {
             "PATH": os.environ["PATH"],
             "DATABASE_URL": SESSION_POOLER_URL,
-            "SUPABASE_URL": "https://someotherproject.supabase.co",
+            # Shaped like a project ref, 20 lowercase letters: a label of any
+            # other shape names no project, and the guard would not compare it.
+            "SUPABASE_URL": "https://someotherprojectrefs.supabase.co",
         }
     )
 
     combined = result.stdout + result.stderr
     assert result.returncode == 2, combined
     assert "refused these settings" in result.stdout
-    assert "project abc, but SUPABASE_URL is project someotherproject" in result.stdout
+    assert "project abc, but SUPABASE_URL is project someotherprojectrefs" in result.stdout
     assert "hunter2" not in combined, "the password leaked"
     assert "Traceback" not in combined
 

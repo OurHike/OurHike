@@ -187,6 +187,12 @@ KEEPALIVE_TABLES: tuple[str, ...] = (
     # A volunteer's own logbook (#761), locations and free-text notes - the
     # resource whose whole design is that it is private.
     "volunteer_hours",
+    # Each waypoint's mile from the published export (#1917 - A maintainer's
+    # note settles a water dispute anywhere on the trail, because the
+    # covering check reads the mile the note's author typed, not where the
+    # waypoint is). Public facts, copied from a public file; locked like
+    # every other table all the same.
+    "waypoint_miles",
     # Workdays are public by design; who put their hand up for one is not
     # (features/ORG_ONBOARDING.md rule 4). The pair is listed together so
     # a reader sees that only one of them is a public resource.

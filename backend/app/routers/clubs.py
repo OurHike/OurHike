@@ -97,11 +97,18 @@ def _revoke_the_registrants_unverified_seat(db: Session, club: Club, *, verified
     anybody else at the organization.
 
     A no-op when the person who just proved the domain IS the registrant
-    (their own seat is the one being kept, not revoked) or when nobody
-    registered this club in the first place (an `unclaimed` row a maintainer
-    wrote by hand, which has no founder seat to revisit).
+    (their own seat is the one being kept, not revoked) or when a maintainer
+    wrote this row (`Club.maintainer_written`: an `unclaimed` row with no
+    founder seat to revisit).
+
+    Not keyed on `created_by` being null, which is what it used to read, and
+    what made it skippable: account deletion nulls `created_by`, so a
+    registrant who deleted their account before the real domain holder
+    approved left every seat they had handed out in place (#1913 - Deleting
+    the registrant's account turns a self-registered organization into a
+    maintainer-written one, and lets an accomplice keep an admin seat).
     """
-    if club.created_by is None or club.created_by == verified_by:
+    if club.maintainer_written or (club.created_by is not None and club.created_by == verified_by):
         return
     # NOT ONLY THE FOUNDER'S OWN SEAT: everything that rested on the
     # registration's authority goes with it. The form takes a second address
@@ -506,6 +513,10 @@ def approve_seat(
         club.state = OrgState.claimed
         club.verified_by = VerifiedBy.email
         _revoke_the_registrants_unverified_seat(db, club, verified_by=current_user.id)
+        # As in `claim_org`, and after the revocation, which reads it: from
+        # here the admins are whoever proved the domain, which no maintainer
+        # reviewed.
+        club.maintainer_written = False
     db.commit()
     return _with_admins(db, club)
 
@@ -619,16 +630,32 @@ def claim_org(
     club.state = OrgState.claimed
     club.verified_by = VerifiedBy.email
     club.created_by = club.created_by or current_user.id
-    db.add(
-        OrgAdmin(
-            club_id=club.id,
-            person_id=current_user.id,
-            title=payload.title,
-            is_codeowner=True,
-            invited_at=now,
-            approved_at=now,
+    # After the revocation above, which reads it. From here the admins are
+    # whoever proved the domain, which no maintainer reviewed.
+    club.maintainer_written = False
+    # A domain holder a held registration named already has a seat: signing
+    # in seated them from the invitation, and the revocation above keeps the
+    # seat of whoever is proving the domain. A second row was a 500
+    # (`uq_club_admins_club_person`), found by the 2026-10-29 review; claiming
+    # is their agreement, as approving would have been.
+    seat = db.query(OrgAdmin).filter(OrgAdmin.club_id == club.id, OrgAdmin.person_id == current_user.id).one_or_none()
+    if seat is None:
+        db.add(
+            OrgAdmin(
+                club_id=club.id,
+                person_id=current_user.id,
+                title=payload.title,
+                is_codeowner=True,
+                invited_at=now,
+                approved_at=now,
+            )
         )
-    )
+    else:
+        seat.title = payload.title or seat.title
+        seat.is_codeowner = True
+        seat.approved_at = seat.approved_at or now
+        seat.declined_at = None
+        seat.decline_reason = None
     db.commit()
     return _with_admins(db, club)
 

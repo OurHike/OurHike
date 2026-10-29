@@ -25,6 +25,7 @@ from app.models.maintainer_assignment import MaintainerAssignment
 from app.models.nomination import NominationContact, NominationRefusal, OrgNomination
 from app.models.org_role import RoleInvite
 from app.models.profile import Profile
+from app.models.waypoint_mile import WaypointMile
 from tests.factories import make_admin, make_assignment, make_org, make_profile, make_role, make_section
 from tests.tokens import auth_headers
 
@@ -47,6 +48,16 @@ def _self_registered(client, db_session, *, domain="freemail.example"):
 
 
 def _note(db, reporter_id, *, mile, days_ago=1):
+    # The waypoint sits where the note says it is. These tests are about whose
+    # word counts, so where the waypoint is must not be what decides them.
+    # Since #1917 (A maintainer's note settles a water dispute anywhere on the
+    # trail, because the covering check reads the mile the note's author
+    # typed, not where the waypoint is), the covering check reads a waypoint's
+    # loaded mile, and this row puts these tests on that path. Without it, a
+    # `not_found` like the ones below would fall back to the mile typed on the
+    # note (`list_disputes`, app/routers/field_notes.py), the path for a
+    # waypoint no release has placed yet.
+    db.merge(WaypointMile(poi_id=_POI, mile=mile, loaded_at=datetime.now(timezone.utc).replace(tzinfo=None)))
     db.add(
         FieldNote(
             id=str(uuid.uuid4()),

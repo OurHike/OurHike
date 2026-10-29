@@ -49,7 +49,12 @@ EXPOSE 8000
 
 # --no-access-log: uvicorn's access log writes every raw path, and a path can
 # carry a capability. GET /nominations/{token} is a vote that lasts TOKEN_DAYS
-# (45). app/core/logs.py already logs each 401 and 5xx, by route template and
-# with a request id. What goes is a line for each request that succeeded. The
-# maintainer chose this by poll on 2026-10-27, while standing the backend up.
+# (45). app/core/logs.py logs each 401 and 5xx, by route template and with a
+# request id, and no other status (tests/test_logs.py pins that a 403 and a 200
+# leave no line). So what goes is the only line every other request had: each
+# success and redirect, and each 403, 404, 409, 422 and 429, a run of 404s from
+# somebody guessing tokens on /nominations/{token} included. A few handlers log
+# an event of their own (app/routers/profiles.py's refused deletion, for one),
+# never the request. The maintainer chose this by poll on 2026-10-27, while
+# standing the backend up.
 CMD ["sh", "-c", "uvicorn app.main:app --host 0.0.0.0 --port ${PORT} --no-access-log"]

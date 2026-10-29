@@ -20,6 +20,16 @@ WHAT GOES IN. Two custom-format archives, because `pg_dump --table` overrides
   Auth user id (backend/README.md), so a restore without these turns every
   hiker who signs in again into a stranger with an empty profile.
 
+Nothing else goes in, so `dump` refuses, before pg_dump runs, when a table in
+any other schema may hold rows - unless the schema is one Supabase runs itself
+(SUPABASE_SCHEMAS). App data in a schema these archives do not reach was
+otherwise left out of every backup without a word: the review of #1930 - Back
+production's database up nightly: dump, restore and compare, encrypt with age,
+upload to a private bucket - found a 500-row `analytics.events` absent from
+both archives while `verify` passed. Refusing stops the nightly upload until
+the schema is dumped or listed; that is the price of never uploading a backup
+that silently leaves data out.
+
 WHY THE RESTORE IS PART OF THE BACKUP. Row-level security is on for every table
 (alembic/versions/b3d1c7a94e02_enable_row_level_security.py), and a role it
 applies to can produce a dump that looks fine and holds nothing: plain pg_dump
@@ -100,6 +110,43 @@ ENCRYPTED_SSLMODES = ("require", "verify-ca", "verify-full")
 DUMPED_SCHEMA = "public"
 AUTH_TABLES = ("auth.users", "auth.identities")
 
+#: Schemas Supabase creates and runs itself. Their tables hold the platform's
+#: state - Auth's sessions, Storage's object index, Realtime's messages, an
+#: extension's jobs or queues - not this app's rows, so rows in them do not
+#: stop `dump`; `auth.users` and `auth.identities` are dumped all the same.
+#: Each one is named on the page given, all under supabase.com/docs/guides/
+#: and read 2026-10-29:
+#:   auth, storage        "Supabase-managed schemas such as `auth` and `storage`"
+#:                        (local-development/declarative-database-schemas)
+#:   realtime             `realtime.messages`, which its policies sit on
+#:                        (realtime/authorization)
+#:   extensions           "Most extensions are installed under the `extensions`
+#:                        schema" (database/extensions)
+#:   graphql              `graphql.resolve(...)` (database/extensions/pg_graphql)
+#:   graphql_public       "core schemas like public and graphql_public"
+#:                        (queues/expose-self-hosted-queues)
+#:   vault                `vault.secrets` (database/vault)
+#:   net                  pg_net "creates its own schema/namespace named "net""
+#:                        (database/extensions/pg_net)
+#:   cron                 "The extension creates a `cron` schema" (cron)
+#:   supabase_migrations  `supabase_migrations.schema_migrations`
+#:                        (deployment/database-migrations)
+#:   supabase_functions   `supabase_functions.http_request` (database/webhooks)
+#:   pgmq                 "Every new Queue creates two tables in the `pgmq`
+#:                        schema" (queues/quickstart)
+#:   pgmq_public          helper functions "in the `pgmq_public` schema"
+#:                        (queues/api)
+#:   etl                  "The `etl` schema is reserved for Pipelines"
+#:                        (database/replication/pipelines-faq)
+#: @unvalidated against production itself: nobody has listed its schemas. One
+#: of Supabase's that is missing here - pgsodium's, say, which no page names -
+#: stops the dump and is named in the log, the loud direction to be wrong in,
+#: and adding it to this tuple is the fix.
+SUPABASE_SCHEMAS = (
+    "auth", "storage", "realtime", "extensions", "graphql", "graphql_public", "vault", "net", "cron",
+    "supabase_migrations", "supabase_functions", "pgmq", "pgmq_public", "etl",
+)  # fmt: skip
+
 #: An age X25519 recipient: "age1" and 58 bech32 characters.
 AGE_RECIPIENT = re.compile(r"age1[02-9ac-hj-np-z]{58}")
 
@@ -116,6 +163,30 @@ from pg_class c
 join pg_namespace n on n.oid = c.relnamespace
 where c.relkind in ('r', 'p')
   and (n.nspname = 'public' or (n.nspname = 'auth' and c.relname in ('users', 'identities')))
+order by 1
+"""
+
+#: Tables outside `public` that may hold rows, in schemas that are not
+#: Supabase's own: what `dump` refuses over. "May hold rows" is read from the
+#: catalog, because the backup role has no grant on a schema nobody told it
+#: about and so cannot count one: `reltuples` above 0, or any page on disk
+#: (`pg_relation_size`), which also catches a table never analyzed, whose
+#: `reltuples` is -1. Both are readable without any grant on the table -
+#: measured 2026-10-29 on postgres:17 (17.11), where a role with no grant on
+#: its schema read `reltuples` -1 and 24576 bytes for a 500-row table.
+#: A table emptied by DELETE keeps its pages until VACUUM, so it can stop a
+#: dump it need not: the safe direction to be wrong in.
+UNCOVERED_TABLES_SQL = f"""
+select n.nspname || '.' || c.relname, c.reltuples::bigint, pg_relation_size(c.oid)
+from pg_class c
+join pg_namespace n on n.oid = c.relnamespace
+where c.relkind = 'r'
+  and c.relpersistence <> 't'
+  and n.nspname <> '{DUMPED_SCHEMA}'
+  and n.nspname <> 'information_schema'
+  and n.nspname !~ '^pg_'
+  and n.nspname <> all (array[{", ".join(f"'{schema}'" for schema in SUPABASE_SCHEMAS)}])
+  and (c.reltuples > 0 or pg_relation_size(c.oid) > 0)
 order by 1
 """
 
@@ -338,6 +409,11 @@ class HeldTransaction:
                 process.stdout.close()
 
 
+def _rows_by_catalog(reltuples: int) -> str:
+    """`pg_class.reltuples` as a reader should take it: -1 means never counted, not minus one row."""
+    return "never counted by the catalog" if reltuples < 0 else f"about {reltuples:,} row(s) by the catalog"
+
+
 def _counting_sql(tables: list[list[str]]) -> str:
     """One query counting every `(label, quoted name)` in `tables` exactly."""
     return " union all ".join(
@@ -386,6 +462,15 @@ def dump(workdir: Path, tools: Tools, source_env: Mapping[str, str]) -> dict[str
     workdir.mkdir(parents=True, exist_ok=True)
     with HeldTransaction(tools, source_env) as held:
         [[snapshot]] = held.query("select pg_export_snapshot()")
+        uncovered = held.query(UNCOVERED_TABLES_SQL)
+        if uncovered:
+            raise Refused(
+                "these tables may hold rows in a schema the backup does not dump, so it would leave them out: "
+                + "; ".join(
+                    f"{label} ({_rows_by_catalog(int(rows))}, {int(size):,} bytes on disk)" for label, rows, size in uncovered
+                )
+                + f". Dump the schema, or, if Supabase runs it, add it to SUPABASE_SCHEMAS in {Path(__file__).name}."
+            )
         tables = held.query(DUMPED_TABLES_SQL)
         if not any(label.startswith(f"{DUMPED_SCHEMA}.") for label, _ in tables):
             raise Refused(f"the database has no tables in schema {DUMPED_SCHEMA}; is BACKUP_DATABASE_URL the right database?")

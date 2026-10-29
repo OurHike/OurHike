@@ -164,6 +164,11 @@ def test_a_held_transaction_keeps_psql_stdin_open_inside_docker(tmp_path):
     assert "--interactive" in argv[: argv.index("postgres:17")]
 
 
+def test_the_supabase_schemas_never_include_the_ones_this_backup_exists_for():
+    assert backup.DUMPED_SCHEMA not in backup.SUPABASE_SCHEMAS
+    assert "auth" in backup.SUPABASE_SCHEMAS, "auth's other tables are Supabase's; users and identities are dumped by name"
+
+
 # --- Sealing ----------------------------------------------------------------
 
 
@@ -454,6 +459,39 @@ def test_the_counts_are_exact_when_the_database_has_lost_its_statistics(postgres
     )
     assert run("verify") == 1
     assert "public.closures: 40 row(s) when it was dumped, 0 in the restore" in capsys.readouterr().err
+
+
+def test_a_table_with_rows_in_a_schema_the_backup_does_not_dump_stops_the_dump(postgres, run, capsys):
+    """The review's 500-row `analytics.events`, which used to be absent from
+    both archives while `verify` passed. Never analyzed, so the catalog's
+    `reltuples` is -1 and only its pages on disk give it away."""
+    postgres.reset(
+        FORTY_CLOSURES_SQL + "create schema analytics; create table analytics.events (id int);"
+        "insert into analytics.events select generate_series(1, 500);"
+    )
+
+    assert run("dump") == 1
+    said = capsys.readouterr().err
+    assert "analytics.events (never counted by the catalog" in said and "SUPABASE_SCHEMAS" in said
+    assert not (run.workdir / "public.dump").exists(), "pg_dump ran although the dump was refused"
+
+
+def test_rows_in_a_schema_supabase_runs_itself_do_not_stop_the_dump(postgres, run):
+    """Storage's object index is Supabase's, not this app's, and is left out on purpose."""
+    postgres.reset(
+        FORTY_CLOSURES_SQL + "create schema storage; create table storage.objects (id int);"
+        "insert into storage.objects select generate_series(1, 7); analyze storage.objects;"
+    )
+
+    assert run("dump") == 0
+    assert "storage.objects" not in backup._read_counts(run.workdir / backup.LIVE_ROWS)
+
+
+def test_an_empty_table_outside_public_does_not_stop_the_dump(postgres, run):
+    """Only rows are refused over: an app schema with nothing in it loses nothing."""
+    postgres.reset(FORTY_CLOSURES_SQL + "create schema analytics; create table analytics.events (id int);")
+
+    assert run("dump") == 0
 
 
 def test_a_write_between_the_count_and_the_dump_stays_out_of_the_archive(postgres, run, monkeypatch):

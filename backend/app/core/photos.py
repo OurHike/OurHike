@@ -27,7 +27,9 @@ than the edge one.
 **The direction of truth, stated once so it is not re-litigated per bug: the
 report row is authoritative, the R2 object is derived and disposable.** Never
 the reverse. A missing object degrades to "no photo". An orphaned object stays
-in the bucket until somebody deletes it by hand: no sweep exists to remove it.
+in the bucket until somebody deletes it by hand: no sweep exists to remove it,
+which is why an upload refused after its put deletes what it stored
+(`discard_refused_upload`).
 
 WHY THE BUCKET IS PRIVATE
 
@@ -347,6 +349,33 @@ def delete_photo_object(key: str) -> None:
         _client().delete_object(Bucket=settings.r2_photo_bucket, Key=key)
     except (BotoCoreError, ClientError) as error:  # pragma: no cover - re-raised as one
         raise _unavailable("delete_object", key, error) from error
+
+
+def discard_refused_upload(key: str) -> None:
+    """Delete the object an upload stored before its row refused it. Best effort.
+
+    The upload routes put the bytes first and record them second, and the
+    record step checks the row again - the share may have been withdrawn, or
+    the account deleted, while the phone was sending or R2 was storing. A
+    refusal there finds the object already in the bucket, and nothing would
+    ever remove it later, because no sweep exists. So it goes now, while the
+    key is in hand: a withdrawn photograph left in the bucket is exactly the
+    copy the withdrawal promised not to keep.
+
+    The caller decides that the key is nobody's. Keys are derived and a retry
+    overwrites, so "the object this upload put" can be a photo a row already
+    serves; such a key is never passed here.
+
+    A failed delete is never raised. The refusal is what the hiker needs to
+    hear, and a failed delete turning it into a 503 would say their photo did
+    not land when the trouble is that it did. A failure leaves one line naming
+    the key, the only way the orphan can be found again, and nothing else: the
+    reason is in the warning `_unavailable` has already written.
+    """
+    try:
+        delete_photo_object(key)
+    except PhotoStorageUnavailable:
+        logger.error("refused upload left %s in the bucket: deleting it failed, and nothing else will", key)
 
 
 def presigned_photo_url(

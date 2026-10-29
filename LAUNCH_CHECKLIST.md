@@ -530,16 +530,16 @@ What is left is account work, in this order. Secrets never pass through a sessio
 
 6. **Point the client at it**: set the `API_BASE_URL` repository variable to `https://api.ourhike.org`. `pages.yml` bakes it into the next build, and production builds from a tag (RELEASING.md §12), so hikers reach the backend from the next release onward. The app's Content-Security-Policy picks the origin up from the same variable (`client/scripts/csp.mjs`), so there is nothing to add there. Nothing goes on Supabase's redirect allow-list either: sign-in returns to the app's origin, never to the API's. `UA_API_BASE_URL` stays unset, and UA keeps queueing reports in its outbox, which `.github/expected-settings.yml` describes as a normal state.
 
-   Setting `API_BASE_URL` also arms the daily check — `check-deployment.yml` asks `/health` on every run, and whether the edge still serves `GET /closures` from its cache with a header a browser accepts, and reports both on **#738 — Deployed app reachability**, where they currently read `skipped` because there is nothing to ask (#1359). That is the difference between finding out the free tier was withdrawn on the day it happens and finding out when somebody's report fails to send.
+   Setting `API_BASE_URL` also arms the daily check — `check-deployment.yml` asks `/health` on every run, and whether the edge still serves `GET /closures` from a copy no older than its 300 s, carrying the API's own `Cache-Control` and a header a browser accepts, and reports both on **#738 — Deployed app reachability**, where they currently read `skipped` because there is nothing to ask (#1359). That is the difference between finding out the free tier was withdrawn on the day it happens and finding out when somebody's report fails to send.
 
 7. **Confirm it, in this order**, because each line tells you something the one before cannot. None of these needs a credential, so a session can run them for you once the domain resolves:
    ```
    curl -sS https://api.ourhike.org/health     # {"status":"ok"} - the app is up
    curl -sS https://api.ourhike.org/ready      # {"status":"ok"} - the pooled DATABASE_URL works
    curl -sS https://api.ourhike.org/closures   # [] - the tables are there
-   curl -sS -o /dev/null -D - https://api.ourhike.org/closures | grep -iE 'cache-control|cf-cache-status|access-control-allow-origin'
+   curl -sS -o /dev/null -D - https://api.ourhike.org/closures | grep -iE '^(age|cache-control|cf-cache-status|access-control-allow-origin):'
    ```
-   Run the last line twice. The second answer should carry `cf-cache-status: HIT`, `cache-control: public, max-age=0, s-maxage=300` and `access-control-allow-origin: *`. Then check that the ways round the cache are shut:
+   Run the last line twice. The second answer should carry `cf-cache-status: HIT`, `cache-control: public, max-age=0, s-maxage=300` and `access-control-allow-origin: *`, and an `age` of 300 or less if it carries one. A `HIT` alone does not prove step 5.1's rule: one that ignores the origin's header still answers `HIT`, with the API's own `cache-control` on it (backend/HOSTING.md, "What would undo it"). So run it once more five minutes later. Under step 5.1's rule that copy has expired, and with nobody else reading the API yet the answer is `EXPIRED` or `MISS`; a `HIT` with an `age` past 300 is a rule ignoring the origin's header. Then check that the ways round the cache are shut:
    ```
    curl -sS -o /dev/null -w '%{http_code}\n' 'https://api.ourhike.org/closures?n=1'   # 403 - step 5.2's rule
    curl -sS -o /dev/null -w '%{http_code}\n' https://ourhike-api.onrender.com/health  # 404 - step 4.4, if Render offered it

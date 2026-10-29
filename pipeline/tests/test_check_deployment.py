@@ -1053,18 +1053,29 @@ class TestBackendHealth:
 class TestBackendEdgeCache:
     """The edge in front of the backend (#600, backend/app/core/edge_cache.py).
 
-    `/health` stays green through both failures this exists for: the edge no
-    longer keeping the anonymous reads, which puts the free tier's quotas back
-    within a few thousand hikers, and a copy that carries no CORS header, which
-    every browser refuses while every Origin-less check passes.
+    `/health` stays green through all three failures this exists for: the edge
+    no longer keeping the anonymous reads, which puts the free tier's quotas
+    back within a few thousand hikers; a copy that carries no CORS header,
+    which every browser refuses while every Origin-less check passes; and a
+    rule that ignores the origin's Cache-Control, which keeps answering HIT.
     """
 
     API = "https://api.example.org"
     URL = f"{API}/closures"
     ORIGIN = "https://ourhike.org"
+    SHARED = check_deployment.BACKEND_SHARED_CACHE_CONTROL
 
     def _ask(self, session=None):
         return check_deployment.check_backend_edge_cache(self.API, self.ORIGIN, session=session)
+
+    def _edge(self, status, **changes):
+        """One answer as a healthy edge sends it - the API's own anonymous
+        Cache-Control and Access-Control-Allow-Origin - with `changes` applied
+        (header names spelled with underscores; None removes one)."""
+        headers = {"cf-cache-status": status, "Access-Control-Allow-Origin": "*", "Cache-Control": self.SHARED}
+        for name, value in changes.items():
+            headers[name.replace("_", "-")] = value
+        return {"json": [], "headers": {name: value for name, value in headers.items() if value is not None}}
 
     def test_an_unset_base_is_skipped_rather_than_failed(self):
         report = check_deployment.check_backend_edge_cache(None, self.ORIGIN)
@@ -1074,13 +1085,7 @@ class TestBackendEdgeCache:
         assert document["failed"] == [] and document["unreachable"] == []
 
     def test_a_copy_the_edge_serves_with_allow_origin_passes(self, requests_mock):
-        requests_mock.get(
-            self.URL,
-            [
-                {"json": [], "headers": {"cf-cache-status": "MISS", "Access-Control-Allow-Origin": "*"}},
-                {"json": [], "headers": {"cf-cache-status": "HIT", "Access-Control-Allow-Origin": "*"}},
-            ],
-        )
+        requests_mock.get(self.URL, [self._edge("MISS"), self._edge("HIT")])
 
         report = self._ask()
 
@@ -1091,13 +1096,7 @@ class TestBackendEdgeCache:
         """Cloudflare keeps a copy per Origin, so only a read that carries the
         app's own Origin reads the copy hikers get. A query string would read a
         copy nobody gets, and LAUNCH_CHECKLIST.md §6 refuses one on this path."""
-        requests_mock.get(
-            self.URL,
-            [
-                {"json": [], "headers": {"cf-cache-status": "MISS", "Access-Control-Allow-Origin": "*"}},
-                {"json": [], "headers": {"cf-cache-status": "HIT", "Access-Control-Allow-Origin": "*"}},
-            ],
-        )
+        requests_mock.get(self.URL, [self._edge("MISS"), self._edge("HIT")])
 
         self._ask()
 
@@ -1110,8 +1109,8 @@ class TestBackendEdgeCache:
         requests_mock.get(
             self.URL,
             [
-                {"json": [], "headers": {"cf-cache-status": "MISS"}},
-                {"json": [], "headers": {"cf-cache-status": "HIT"}},
+                self._edge("MISS", Access_Control_Allow_Origin=None),
+                self._edge("HIT", Access_Control_Allow_Origin=None),
             ],
         )
 
@@ -1148,14 +1147,69 @@ class TestBackendEdgeCache:
     def test_one_unlucky_miss_after_the_fill_does_not_fail_the_run(self, requests_mock):
         """Two machines in one data centre can each miss once before the copy
         reaches both. A monitor that fires on that gets muted."""
-        requests_mock.get(
-            self.URL,
-            [
-                {"json": [], "headers": {"cf-cache-status": "MISS", "Access-Control-Allow-Origin": "*"}},
-                {"json": [], "headers": {"cf-cache-status": "MISS", "Access-Control-Allow-Origin": "*"}},
-                {"json": [], "headers": {"cf-cache-status": "HIT", "Access-Control-Allow-Origin": "*"}},
-            ],
-        )
+        requests_mock.get(self.URL, [self._edge("MISS"), self._edge("MISS"), self._edge("HIT")])
+
+        assert self._ask()["state"] == OK
+
+    # --- A rule that ignores the origin's Cache-Control ---------------------
+    #
+    # The first three are what an Edge TTL set to "Ignore cache-control header"
+    # serves, and its shortest TTL on a Free plan is 2 hours. Each of them read
+    # `ok` until this check looked at the copy itself.
+
+    def test_a_signed_in_answer_the_edge_stored_fails_on_its_cache_control(self, requests_mock):
+        """The API answers a signed-in read `private, no-store`, and only a rule
+        ignoring that header would store it. Cloudflare passes the origin's
+        header on even then, so the copy says what it is."""
+        requests_mock.get(self.URL, [self._edge("HIT", Age="6900", Cache_Control="private, no-store")])
+
+        report = self._ask()
+
+        assert report["state"] == FAILED
+        assert "'private, no-store'" in report["detail"]
+        assert "signed-in reader's" in report["detail"]
+
+    def test_an_anonymous_copy_older_than_s_maxage_fails_on_its_age(self, requests_mock):
+        """The right header, kept 6,900 s by a rule that ignores its
+        `s-maxage=300`: a HIT, and nearly two hours old."""
+        requests_mock.get(self.URL, [self._edge("HIT", Age="6900")])
+
+        report = self._ask()
+
+        assert report["state"] == FAILED
+        assert "6900 s old, past the 300 s" in report["detail"]
+
+    def test_a_day_old_stale_copy_fails(self, requests_mock):
+        """The origin down and the edge answering from a copy a day old."""
+        requests_mock.get(self.URL, [self._edge("STALE", Age="86400", Cache_Control=None)])
+
+        report = self._ask()
+
+        assert report["state"] == FAILED
+        assert "STALE" in report["detail"]
+
+    @pytest.mark.parametrize("status", ["STALE", "UPDATING"])
+    def test_an_expired_copy_fails_even_carrying_the_apis_own_header(self, requests_mock, status):
+        """`s-maxage` rules out serving an expired copy, and Cloudflare's docs
+        say that with it present an expired copy is refreshed (`EXPIRED`)
+        rather than served (`UPDATING`). No `Age`, so nothing else fails it."""
+        requests_mock.get(self.URL, [self._edge(status)])
+
+        report = self._ask()
+
+        assert report["state"] == FAILED
+        assert "from a copy that had expired" in report["detail"]
+
+    @pytest.mark.parametrize("age", ["0", "300", None, "soon"], ids=["fresh", "at-s-maxage", "absent", "not-a-number"])
+    def test_a_copy_no_older_than_s_maxage_passes(self, requests_mock, age):
+        """Cloudflare leaves `Age` off the first HIT a data centre serves from
+        an upper tier, so an absent one is not a failure."""
+        requests_mock.get(self.URL, [self._edge("HIT", Age=age)])
+
+        assert self._ask()["state"] == OK
+
+    def test_the_apis_header_in_another_order_and_case_still_passes(self, requests_mock):
+        requests_mock.get(self.URL, [self._edge("HIT", Cache_Control="S-MaxAge=300, Public,max-age=0")])
 
         assert self._ask()["state"] == OK
 

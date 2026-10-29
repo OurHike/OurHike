@@ -3,8 +3,13 @@
 Each of these would otherwise be invisible until production, where a
 Cloudflare cache sits between every hiker and this process: which routes are
 shared, that a signed-in answer never is, that a shared copy answers a browser
-whatever request filled it, and that an error is never kept.
+whatever request filled it, that an error is never marked shareable, and that
+the daily check in pipeline/check_deployment.py expects the header these
+routes send.
 """
+
+import ast
+from pathlib import Path
 
 from fastapi.routing import APIRoute
 from fastapi.testclient import TestClient
@@ -21,6 +26,16 @@ from tests.factories import make_profile
 from tests.tokens import auth_headers
 
 SHARED_ROUTES = {("GET", "/closures"), ("GET", "/reports"), ("GET", "/disputes")}
+
+REPO_ROOT = Path(__file__).resolve().parents[2]
+
+# Read as text, the way tests/test_conditions_publisher_contract.py reads the
+# conditions publisher: the pipeline is not importable from here (its own
+# package and dependencies). Declared as a set so tests/test_ci_scope.py can
+# hold the workflow's scope list to it.
+PIPELINE_FILES_READ = {REPO_ROOT / "pipeline" / "check_deployment.py"}
+
+CHECK_DEPLOYMENT = next(iter(PIPELINE_FILES_READ))
 
 
 def _api_routes(routes):
@@ -60,6 +75,27 @@ def test_the_route_walk_reaches_the_routers_so_the_list_above_is_not_vacuous():
 def test_the_shared_policy_lets_only_the_edge_keep_a_copy_for_five_minutes():
     assert EDGE_TTL_SECONDS == 300
     assert SHARED == "public, max-age=0, s-maxage=300"
+
+
+def _pinned_in_check_deployment(name: str):
+    for node in ast.parse(CHECK_DEPLOYMENT.read_text()).body:
+        if isinstance(node, ast.Assign) and any(getattr(target, "id", None) == name for target in node.targets):
+            return ast.literal_eval(node.value)
+    raise AssertionError(
+        f"{name} not found in {CHECK_DEPLOYMENT}. If the daily check stopped pinning the shared reads' "
+        "Cache-Control, or renamed it, fix this test rather than deleting it - it is what keeps that check "
+        "expecting the header these routes send."
+    )
+
+
+def test_the_daily_edge_check_expects_the_cache_control_these_reads_send():
+    """pipeline/check_deployment.py fails a copy of GET /closures carrying any
+    Cache-Control but SHARED, and takes its Age bound from SHARED's s-maxage.
+    It cannot import this module (the pipeline's requirements carry no
+    FastAPI), so it pins the string. A change to SHARED or EDGE_TTL_SECONDS
+    made here alone would turn that check red every day from the deploy on,
+    or hold the edge to a lifetime the API no longer asks for."""
+    assert _pinned_in_check_deployment("BACKEND_SHARED_CACHE_CONTROL") == SHARED
 
 
 def test_anonymous_closures_reports_and_disputes_reads_are_marked_shareable(client):

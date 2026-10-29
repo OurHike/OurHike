@@ -118,10 +118,18 @@ BACKEND_COLD_START_TIMEOUT = 110
 # shareable for 300 s, and backend/HOSTING.md says why that matters: without
 # it the free tier's 5 GB of bandwidth and egress a month run out at a few
 # thousand hikers (reasoned from a cost model, #600). The three share one
-# dependency and one cache rule, so /closures stands for all three. HIT is
-# what a second request right after a first should get; STALE, UPDATING and
-# REVALIDATED are Cloudflare serving its copy while it refreshes, which is the
-# edge still doing its job.
+# dependency and one cache rule, so /closures stands for all three.
+#
+# EDGE_SERVED is every status that means Cloudflare answered from a copy it
+# holds, which ends the reading. HIT is what a second request right after a
+# first should get, and REVALIDATED is the origin confirming the copy
+# unchanged. STALE and UPDATING are a copy that has expired, and the API's
+# `s-maxage` rules both out: Cloudflare's docs say it "implies
+# `proxy-revalidate` semantics, so shared caches cannot serve stale content",
+# and that with it present "requests will return `EXPIRED` instead of
+# `UPDATING`" (developers.cloudflare.com/cache/concepts/revalidation, read
+# 2026-10-29). Either one means a rule at the edge is overriding the origin's
+# Cache-Control, so check_backend_edge_cache fails on it.
 #
 # Three tries rather than two because a back-to-back pair can land on two
 # machines in the same data centre before the copy reaches both. A cache that
@@ -130,6 +138,26 @@ BACKEND_COLD_START_TIMEOUT = 110
 BACKEND_EDGE_PATH = "/closures"
 BACKEND_EDGE_TRIES = 3
 EDGE_SERVED = frozenset({"HIT", "STALE", "UPDATING", "REVALIDATED"})
+EDGE_SERVED_EXPIRED = frozenset({"STALE", "UPDATING"})
+
+# The Cache-Control the API sends an anonymous read of those three paths:
+# backend/app/core/edge_cache.py's SHARED, character for character. Pinned
+# rather than imported, because that module needs FastAPI and the pipeline's
+# requirements carry none. backend/tests/test_edge_cache.py reads this line
+# and fails when the two differ.
+#
+# A copy the edge serves has to carry this. Under LAUNCH_CHECKLIST.md §6's
+# cache rule (Browser TTL *Respect origin*) Cloudflare passes the origin's
+# header on as sent, and it keeps doing so under an Edge TTL rule that
+# overrides it: "the original `Cache-Control` header passes downstream from
+# our edge even if Edge Cache TTL overrides are present", with Origin Cache
+# Control on, which a Free plan cannot turn off
+# (developers.cloudflare.com/cache/concepts/cache-control, read 2026-10-29).
+# So a copy carrying anything else is not the API's anonymous answer:
+# `private, no-store` is a signed-in reader's, stored by a rule that ignores
+# the header. Reasoned from those docs; there is no live zone yet to measure
+# it against (#600), and §6 step 7 reads the same header by hand first.
+BACKEND_SHARED_CACHE_CONTROL = "public, max-age=0, s-maxage=300"
 
 # The prefix the hourly bake writes under, and how old its newest file may be
 # before this says so (#1129).
@@ -922,6 +950,20 @@ def hiker_facing_origin(manifest: dict) -> str | None:
     return None
 
 
+def cache_directives(value: str | None) -> dict[str, str | None]:
+    """A Cache-Control value as `{directive: argument}`.
+
+    `public, max-age=0` is `{"public": None, "max-age": "0"}`. Case, spacing
+    and order do not make a different policy, so they do not count as one.
+    """
+    directives: dict[str, str | None] = {}
+    for part in (value or "").split(","):
+        name, _, argument = part.partition("=")
+        if name.strip():
+            directives[name.strip().lower()] = argument.strip() or None
+    return directives
+
+
 def check_backend_edge_cache(
     api_base: str | None,
     origin: str | None,
@@ -929,8 +971,8 @@ def check_backend_edge_cache(
 ) -> dict:
     """Is the edge keeping the backend's anonymous reads - the assumption its free tier rests on.
 
-    Two things can go wrong while `/health` stays green, and this is the only
-    check that sees either:
+    Three things can go wrong while `/health` stays green, and this is the
+    only check that sees any of them:
 
     **The cache stops answering.** A cache rule deleted, the record switched to
     DNS-only, or `API_BASE_URL` pointed at the `onrender.com` host: every
@@ -947,6 +989,21 @@ def check_backend_edge_cache(
     here is the one every hiker on that origin is handed. There is no query
     string: LAUNCH_CHECKLIST.md §6 refuses one on these paths, and a unique one
     would read a copy no hiker ever gets.
+
+    **A copy kept past what the API allows.** A cache rule that ignores the
+    origin's `Cache-Control` (an Edge TTL set to ignore it, or a status-code
+    TTL) still answers HIT, and Cloudflare still passes the origin's header on
+    under it, so neither failure above shows one. What it changes is the copy:
+    older than the shared reads' `s-maxage` (its `Age`), served after it
+    expired (`STALE` or `UPDATING`), or a signed-in reader's answer stored for
+    everybody (`Cache-Control: private, no-store`). Each of those fails here.
+    A copy such a rule filled less than `s-maxage` ago looks healthy, so this
+    misses the rule whenever the copy it reads is that young - on a quiet zone,
+    whenever its own first read is the one that fills it. On a Free plan the
+    shortest Edge Cache TTL is 2 hours
+    (developers.cloudflare.com/cache/how-to/edge-browser-cache-ttl, read
+    2026-10-29), so under such a rule a copy a hiker's read filled between
+    300 s and 2 hours before this one is still being served, and is reported.
 
     The first read may be the one that fills the copy, so it reads until the
     edge serves one or the tries run out.
@@ -1001,6 +1058,55 @@ def check_backend_edge_cache(
             f"{BACKEND_EDGE_PATH} (Cache-Control was {response.headers.get('Cache-Control')!r})"
         )
 
+    cache_control = response.headers.get("Cache-Control")
+    age_header = response.headers.get("Age")
+    said = f"cf-cache-status {seen[-1]}, Age {age_header if age_header is not None else 'absent'}"
+
+    directives = cache_directives(cache_control)
+    if directives != cache_directives(BACKEND_SHARED_CACHE_CONTROL):
+        why = (
+            "it is a signed-in reader's answer, which only a rule ignoring the origin's header would store, handed to anybody"
+            if "private" in directives
+            else "a rule at the edge is rewriting the origin's header, or the build answering does not send it"
+        )
+        return failed(
+            f"the edge's copy of {BACKEND_EDGE_PATH} carries Cache-Control {cache_control!r}, where the API "
+            f"answers an anonymous read {BACKEND_SHARED_CACHE_CONTROL!r}: {why} ({said})"
+        )
+
+    if seen[-1] in EDGE_SERVED_EXPIRED:
+        return failed(
+            f"the edge served {BACKEND_EDGE_PATH} from a copy that had expired, which the API's s-maxage rules "
+            f"out, so a rule at the edge is overriding the origin's Cache-Control ({said})"
+        )
+
+    # `Age` is how long the copy has been in Cloudflare's cache network-wide:
+    # with Tiered Cache "a `HIT` served locally can carry an `Age` inherited
+    # from an upper tier", and the header is absent on the first HIT a data
+    # centre serves from an upper tier (developers.cloudflare.com/cache/concepts/cache-responses
+    # and /cache/troubleshooting/investigating-uncached-responses, read
+    # 2026-10-29). So an absent `Age` is not a failure, and nor is one that
+    # is not a whole number of seconds.
+    #
+    # @unvalidated: whether a lower tier counts that inherited age against
+    # s-maxage, which neither page says. If it does not, a healthy copy could
+    # read up to about twice s-maxage while Tiered Cache is on, and this would
+    # fail on it. Nothing in this repository records whether the ourhike.org
+    # zone has Tiered Cache on. The first runs against the live zone settle it:
+    # a failure here beside a HIT, the API's own Cache-Control and an Age under
+    # twice s-maxage is that case rather than an override.
+    max_age = int(cache_directives(BACKEND_SHARED_CACHE_CONTROL)["s-maxage"])
+    try:
+        age = int(age_header) if age_header is not None else None
+    except ValueError:
+        age = None
+    if age is not None and age > max_age:
+        return failed(
+            f"the edge's copy of {BACKEND_EDGE_PATH} is {age} s old, past the {max_age} s the API's s-maxage "
+            f"allows: a rule at the edge is keeping it longer than the origin says, so a hiker's live read of "
+            f"closures can be that old ({said})"
+        )
+
     if response.headers.get("Access-Control-Allow-Origin") not in ("*", origin):
         return failed(
             f"the edge's copy of {BACKEND_EDGE_PATH} carries no Access-Control-Allow-Origin for {origin}, "
@@ -1012,7 +1118,10 @@ def check_backend_edge_cache(
         "key": url,
         "state": OK,
         "hiker_facing": False,
-        "detail": f"served from the edge ({', '.join(seen)}) with a header a browser accepts",
+        "detail": (
+            f"served from the edge ({', '.join(seen)}; Age {age_header if age_header is not None else 'absent'}) "
+            "with the API's own Cache-Control and a header a browser accepts"
+        ),
     }
 
 

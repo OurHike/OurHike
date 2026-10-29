@@ -165,9 +165,17 @@ edge's misses. The fix is a client change, so it ships with a release:
 
 **What would undo it.** Narrowing CORS from `*` (a shared copy can carry only one answer),
 or a cache rule that stops honouring the origin's `Cache-Control`. The second is the one to
-watch: `cf-cache-status: HIT` on a repeated anonymous `GET /closures` is the check. §6
-step 7 runs it once by hand, and `pipeline/check_deployment.py` asks it every day, the way
-a hiker's browser does, with the app's own `Origin`.
+watch, and a `HIT` does not show it: a rule that ignores the origin's header still answers
+`HIT`, and Cloudflare passes the origin's `Cache-Control` on under it ("the original
+`Cache-Control` header passes downstream from our edge even if Edge Cache TTL overrides are
+present", developers.cloudflare.com/cache/concepts/cache-control, read 2026-10-29). The copy
+itself shows it. `pipeline/check_deployment.py` reads `GET /closures` every day the way a
+hiker's browser does, with the app's own `Origin`, and fails on a copy older than the 300 s
+its `s-maxage` allows (its `Age`), on `cf-cache-status: STALE` or `UPDATING` (an expired
+copy, which `s-maxage` rules out), and on any `Cache-Control` but the API's anonymous one (a
+stored signed-in answer carries `private, no-store`). It misses such a rule while the copy
+it reads is under 300 s old, which on a quiet zone is whenever its own first read filled
+it. §6 step 7 runs the same reads once by hand.
 
 ## What a stranger can do to the free tier
 

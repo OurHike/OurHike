@@ -263,6 +263,13 @@ class TestSubmitting:
             ("https://gmail.com", "mallory@gmail.com"),
             ("https://www.outlook.com", "mallory@outlook.com"),
             ("https://com", "a@b.com"),
+            # Five providers the first list of 22 missed: before they were
+            # listed, a nomination on each one was accepted (201).
+            ("https://duck.com", "mallory@duck.com"),
+            ("https://hotmail.co.uk", "mallory@hotmail.co.uk"),
+            ("https://web.de", "mallory@web.de"),
+            ("https://gmx.de", "mallory@gmx.de"),
+            ("https://email.com", "mallory@email.com"),
         ],
     )
     def test_a_website_whose_domain_proves_nothing_is_refused_and_nothing_is_stored(self, client, db_session, website, contact):
@@ -272,7 +279,7 @@ class TestSubmitting:
         takes any verified address there as the proof of who runs it, so a
         webmail provider or a bare top-level domain would make that proof
         anybody's. Every contact here is at the domain, so the contact gate
-        alone let all three through."""
+        alone let every one of them through."""
         hiker = make_profile(db_session)
         contacts = [{"email": contact, "source_page": "x", "proposed_by": "hiker"}]
         response = client.post(

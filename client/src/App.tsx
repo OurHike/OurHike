@@ -12300,6 +12300,7 @@ function App() {
           openRequest={supportAskRequest}
           onSignIn={() => setAuthFlow({ screen: 'choose', afterReport: false })}
           onSummary={setSupportSummary}
+          usageCounts={preferences.measurement_enabled}
         />
       )}
 

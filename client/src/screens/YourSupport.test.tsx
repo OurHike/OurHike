@@ -204,6 +204,38 @@ describe('Your support', () => {
   })
 })
 
+// The fourth #1885 review's probes, kept as the regressions for what each
+// one found.
+describe('Your support, after the fourth review', () => {
+  it('does not promise an email about the stop when the hiker switched those emails off', () => {
+    setup({
+      server: {
+        ...ACTIVE,
+        status: 'stop_requested',
+        stop_requested_at: '2026-10-23T12:00:00Z',
+        can_stop: false,
+        can_choose: true,
+        support_emails: false,
+      },
+    })
+
+    expect(screen.queryByText(/we email you when it/)).not.toBeInTheDocument()
+    expect(screen.getByText(/this page says so when it.s done/)).toBeInTheDocument()
+  })
+
+  it('moves keyboard focus to the confirm when Stop opens it, and back to Stop on "Keep it"', async () => {
+    setup()
+    const user = userEvent.setup()
+    await user.click(screen.getByRole('button', { name: 'Stop my support' }))
+    expect(document.activeElement).toHaveTextContent('Stop $60 a year?')
+
+    await user.click(screen.getByRole('button', { name: 'Keep it' }))
+    expect(document.activeElement).toBe(
+      screen.getByRole('button', { name: 'Stop my support' }),
+    )
+  })
+})
+
 describe('the More row line', () => {
   it('names the amount, its state, or that $0 is an answer', () => {
     expect(supportSummaryLine(ACTIVE, null, NOW)).toBe('$60 a year')

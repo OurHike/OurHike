@@ -30,13 +30,16 @@
 // (2026-10-27): Stripe's checkout shows OurHike's name, not Stripe's, so
 // naming Stripe would point at a brand the hiker never sees.
 
-import { useState } from 'react'
+import { useEffect, useRef, useState, type RefObject } from 'react'
 import { Capacitor } from '@capacitor/core'
 import { SignInWindow } from '../chrome/SignInWindow'
+import { ApiError } from '../lib/api'
 import { chooseSupport, type SupportChoiceReceipt } from '../lib/supportApi'
 import { nudgeFor } from '../lib/supportNudges'
 import {
   dollars,
+  LOCAL_CHOICE_KEY,
+  readLocalChoice,
   TIERS,
   writeZeroChoice,
   type PaidTier,
@@ -65,6 +68,9 @@ export interface SupportAskProps {
   onChosen: (support: SupportSummary) => void
   /** The window is done: $0 kept, a paid choice sent on, or emailed. */
   onClose: () => void
+  /** "Share usage statistics" is on: a paid choice's level may be counted
+   *  (backend core/analytics_support.py). App.tsx's preference, passed down. */
+  usageCounts: boolean
   /** Injected for tests; the store apps are `true`. */
   native?: boolean
   now?: () => Date
@@ -83,6 +89,25 @@ const ARROW_STEPS: Partial<Record<string, number>> = {
   ArrowLeft: -1,
 }
 
+/**
+ * What a refused paid choice says. Only a request that never reached the
+ * server blames the signal; a server that answered gets its reason (the
+ * fourth #1885 review: a 503 read "Check your signal" to a hiker with five
+ * bars). The statuses are backend app/routers/support.py's `choose_support`.
+ */
+function refusalMessage(error: unknown): string {
+  if (!(error instanceof ApiError)) {
+    return "That didn't go through. Check your signal and try again; nothing was charged."
+  }
+  if (error.status === 503) {
+    return "OurHike isn't taking payments just now. Nothing was charged; $0 still works."
+  }
+  if (error.status === 409) {
+    return 'Your account already gives OurHike something. To change the amount, stop it first in More → Your support. Nothing was charged.'
+  }
+  return "That didn't go through, and trying again won't change it. Nothing was charged."
+}
+
 const TIER_LINES: Record<Tier, string> = {
   1200: 'Pay what you can.',
   6000: 'Pay what you want.',
@@ -99,6 +124,7 @@ export function SupportAsk({
   onSignIn,
   onChosen,
   onClose,
+  usageCounts,
   native = Capacitor.isNativePlatform(),
   now = () => new Date(),
   navigate = (url) => window.location.assign(url),
@@ -110,10 +136,45 @@ export function SupportAsk({
   )
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  const heading = useRef<HTMLHeadingElement>(null)
+  const firstView = useRef(true)
+
+  // A new view's heading takes focus. The button that changed the view is
+  // gone with the old one, and focus left on a removed node falls to the
+  // page body, outside the window (the fourth #1885 review). The first view
+  // is skipped: SignInWindow focuses its own panel on mount.
+  useEffect(() => {
+    if (firstView.current) {
+      firstView.current = false
+      return
+    }
+    heading.current?.focus()
+  }, [view])
+
+  // $0 kept in another tab of this app while this one was asking: the
+  // question has its answer, so the two answerable views close. Not the
+  // paid confirmation, which the hiker reached on purpose.
+  useEffect(() => {
+    if (view.kind !== 'choose' && view.kind !== 'nudge') return
+    const answered = (event: StorageEvent) => {
+      if (event.key !== LOCAL_CHOICE_KEY) return
+      if (readLocalChoice()?.year === now().getFullYear()) onClose()
+    }
+    window.addEventListener('storage', answered)
+    return () => window.removeEventListener('storage', answered)
+  }, [view.kind, now, onClose])
 
   function keepZero() {
     writeZeroChoice(now())
     onClose()
+  }
+
+  // $0 already kept this year (from the ask, then again from More → Your
+  // support → Choose an amount): no second nudge - it is once a year - and
+  // no second announcement, which usage measurement would count as a
+  // second $0 answer (the fourth #1885 review).
+  function zeroAgain(): boolean {
+    return readLocalChoice()?.year === now().getFullYear()
   }
 
   async function submit(tier: PaidTier) {
@@ -132,12 +193,11 @@ export function SupportAsk({
         // claim nobody stands behind. The field stays, so it can return.
         accounting_email: false,
         delivery: native ? 'email' : 'redirect',
+        usage_counts: usageCounts,
       })
-    } catch {
+    } catch (failure) {
       setBusy(false)
-      setError(
-        "That didn't go through. Check your signal and try again; nothing was charged.",
-      )
+      setError(refusalMessage(failure))
       return
     }
     onChosen(receipt.support)
@@ -145,6 +205,11 @@ export function SupportAsk({
       // Only ever a payment page over https: the URL comes from the server,
       // and `javascript:` or plain http is not somewhere a payment goes.
       if (receipt.checkout_url?.startsWith('https://')) {
+        // Closed before leaving, so Back from the payment page - which a
+        // browser may restore from its back/forward cache with this state
+        // as it was - finds the map rather than a "Continue to payment"
+        // still disabled (the fourth #1885 review).
+        onClose()
         navigate(receipt.checkout_url)
         return
       }
@@ -184,7 +249,7 @@ export function SupportAsk({
     <SignInWindow label={label} onClose={onWindowClose}>
       {view.kind === 'choose' && (
         <section className="support-ask">
-          <h1 className="support-ask__title">
+          <h1 className="support-ask__title" ref={heading} tabIndex={-1}>
             OurHike runs on what hikers choose to give
           </h1>
           <p className="support-ask__body">
@@ -235,8 +300,9 @@ export function SupportAsk({
             disabled={picked === null}
             onClick={() => {
               if (picked === null) return
-              if (picked === 0) setView({ kind: 'nudge' })
-              else setView({ kind: 'confirm', tier: picked })
+              if (picked !== 0) setView({ kind: 'confirm', tier: picked })
+              else if (zeroAgain()) onClose()
+              else setView({ kind: 'nudge' })
             }}
           >
             Continue
@@ -252,6 +318,7 @@ export function SupportAsk({
 
       {view.kind === 'nudge' && (
         <ZeroNudge
+          heading={heading}
           now={now()}
           onPick={(tier) => {
             setPicked(tier)
@@ -263,7 +330,9 @@ export function SupportAsk({
 
       {view.kind === 'confirm' && (
         <section className="support-ask">
-          <h1 className="support-ask__title">{dollars(view.tier)} a year</h1>
+          <h1 className="support-ask__title" ref={heading} tabIndex={-1}>
+            {dollars(view.tier)} a year
+          </h1>
           <p className="support-ask__body">
             Recurring once a year. Stop any time: More → Your support → Stop, and we
             cancel it for you.
@@ -313,13 +382,18 @@ export function SupportAsk({
 
       {view.kind === 'sent' && (
         <section className="support-ask">
-          <h1 className="support-ask__title">Check your email</h1>
+          <h1 className="support-ask__title" ref={heading} tabIndex={-1}>
+            Check your email
+          </h1>
           <p className="support-ask__body">
             We sent the link to set up {dollars(view.tier)} a year to{' '}
             <strong>{accountEmail}</strong>. The app stops asking now.
           </p>
           <p className="support-ask__fine">
-            No link here on purpose: app stores don&rsquo;t allow one.
+            {/* Not "app stores don't allow one": this view shows only on a US
+                store account, where both stores allow a link. Email is
+                OurHike's choice (the maintainer, 2026-10-29). */}
+            Paying happens from your email and on the web, never in this app.
           </p>
           <button type="button" className="support-ask__primary" onClick={onClose}>
             Back to the map
@@ -331,18 +405,23 @@ export function SupportAsk({
 }
 
 interface ZeroNudgeProps {
+  heading: RefObject<HTMLHeadingElement | null>
   now: Date
   onPick: (tier: PaidTier) => void
   onKeepZero: () => void
 }
 
 /** The once-a-year screen after "$0" - this year's line for this phone. */
-function ZeroNudge({ now, onPick, onKeepZero }: ZeroNudgeProps) {
+function ZeroNudge({ heading, now, onPick, onKeepZero }: ZeroNudgeProps) {
   const nudge = nudgeFor(now)
   return (
     <section className="support-nudge">
-      <p className="support-nudge__eyebrow">Day five · you picked $0</p>
-      <h1 className="support-nudge__title">{nudge.title}</h1>
+      {/* Not "Day five": the ask opens on the first launch from day five
+          on, and "Choose an amount" reaches this on any day. */}
+      <p className="support-nudge__eyebrow">You picked $0</p>
+      <h1 className="support-nudge__title" ref={heading} tabIndex={-1}>
+        {nudge.title}
+      </h1>
       <p className="support-nudge__body">{nudge.body}</p>
       <button type="button" className="support-nudge__low" onClick={() => onPick(1200)}>
         {nudge.low}

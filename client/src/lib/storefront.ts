@@ -69,6 +69,12 @@ export async function paidChoiceAllowed(
   return Promise.race([asked, timeout])
 }
 
+// One answer per launch, shared: the gate and the Your support page each
+// asked separately, and a store that answered one in time and timed out on
+// the other left "Choose an amount" showing and doing nothing (the fourth
+// #1885 review).
+let launchAnswer: Promise<boolean> | null = null
+
 /** `paidChoiceAllowed` as state: null while the store is being asked. */
 export function usePaidChoiceAllowed(
   native: boolean = Capacitor.isNativePlatform(),
@@ -77,7 +83,8 @@ export function usePaidChoiceAllowed(
   useEffect(() => {
     if (!native) return
     let live = true
-    void paidChoiceAllowed(native).then((answer) => {
+    launchAnswer ??= paidChoiceAllowed(native)
+    void launchAnswer.then((answer) => {
       if (live) setAllowed(answer)
     })
     return () => {

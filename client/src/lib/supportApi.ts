@@ -8,7 +8,7 @@
 // Apart from lib/api.ts so that only the deferred support screens carry them;
 // see the note above `SupportSummary` there.
 
-import { authedFetch, type SupportSummary } from './api'
+import { apiFetch, authedFetch, type SupportSummary } from './api'
 import type { PaidTier } from './support'
 
 /** The signed-in account's support. `status: 'none'` when there is none. */
@@ -37,6 +37,12 @@ export interface SupportChoiceRequest {
    * lib/support.ts).
    */
   delivery: 'redirect' | 'email'
+  /**
+   * "Share usage statistics" is on on this phone. Off, the backend never
+   * counts this choice's level, even before that answer reaches the account
+   * (the fourth #1885 review: Settings says off "stops all of it").
+   */
+  usage_counts: boolean
 }
 
 /** Record a paid choice as `pending` and get the way to complete it. */
@@ -63,4 +69,20 @@ export async function setSupportMail(on: boolean): Promise<SupportSummary> {
 export async function stopSupport(): Promise<SupportSummary> {
   const response = await authedFetch('/support/me/stop', { method: 'POST' })
   return (await response.json()) as SupportSummary
+}
+
+/**
+ * Whether the server takes a paid choice now - the public total's
+ * `accepting`. The day-5 ask opens only when it does: a required question
+ * every answer to which fails would be worse than none (the fourth #1885
+ * review). Never rejects; anything but a clear yes is no.
+ */
+export async function supportAccepting(signal?: AbortSignal): Promise<boolean> {
+  try {
+    const response = await apiFetch('/support/total', { method: 'GET', signal })
+    const body = (await response.json()) as { accepting?: unknown }
+    return body.accepting === true
+  } catch {
+    return false
+  }
 }

@@ -33,10 +33,23 @@ export interface SupportState {
   replace: (next: SupportSummary) => void
 }
 
+/**
+ * Fired on this window when an action answers a new summary. The ask's gate
+ * and the Your support page each hold a `useSupport`; a Stop on the page
+ * used to leave the More row reading "$60 a year" until the window next
+ * gained focus (the fourth #1885 review). Every instance takes the answer.
+ */
+const SUMMARY_CHANGED = 'ourhike:support-summary'
+
 export function useSupport(signedIn: boolean): SupportState {
   const [server, setServer] = useState<SupportSummary | null>(null)
   const [local, setLocal] = useState<LocalChoice | null>(readLocalChoice)
-  const [settled, setSettled] = useState(!signedIn || !API_CONFIGURED)
+  const wanted = signedIn && API_CONFIGURED
+  // Which answer `settled` is about: false for "nobody to fetch", true for
+  // the signed-in account's fetch. A plain boolean stayed true for one
+  // render after a sign-in landed - the signed-out answer - and the ask
+  // decided on it with no account answer yet (the fourth #1885 review).
+  const [settledFor, setSettledFor] = useState<boolean | null>(wanted ? null : false)
   const [error, setError] = useState(false)
   const [generation, setGeneration] = useState(0)
 
@@ -45,13 +58,25 @@ export function useSupport(signedIn: boolean): SupportState {
   useEffect(() => onLocalChoiceChanged(() => setLocal(readLocalChoice())), [])
 
   useEffect(() => {
+    const take = (event: Event) => {
+      const next = (event as CustomEvent<SupportSummary>).detail
+      if (next !== undefined && next !== null) setServer(next)
+    }
+    window.addEventListener(SUMMARY_CHANGED, take)
+    return () => window.removeEventListener(SUMMARY_CHANGED, take)
+  }, [])
+
+  const replace = useCallback((next: SupportSummary) => {
+    window.dispatchEvent(new CustomEvent(SUMMARY_CHANGED, { detail: next }))
+  }, [])
+
+  useEffect(() => {
     if (!signedIn || !API_CONFIGURED) {
       setServer(null)
-      setSettled(true)
+      setSettledFor(false)
       return
     }
     const abort = new AbortController()
-    setSettled(false)
     fetchSupport(abort.signal)
       .then((summary) => {
         setServer(summary)
@@ -61,7 +86,7 @@ export function useSupport(signedIn: boolean): SupportState {
         if (!abort.signal.aborted) setError(true)
       })
       .finally(() => {
-        if (!abort.signal.aborted) setSettled(true)
+        if (!abort.signal.aborted) setSettledFor(true)
       })
     return () => abort.abort()
   }, [signedIn, generation])
@@ -72,5 +97,5 @@ export function useSupport(signedIn: boolean): SupportState {
     return () => window.removeEventListener('focus', refresh)
   }, [signedIn, refresh])
 
-  return { server, local, settled, error, refresh, replace: setServer }
+  return { server, local, settled: settledFor === wanted, error, refresh, replace }
 }

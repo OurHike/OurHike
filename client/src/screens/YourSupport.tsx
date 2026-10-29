@@ -15,7 +15,7 @@
 // No reason is asked and no "are you sure you want to leave" is shown. The
 // confirm says what stopping does - no more charges - and that $0 is fine.
 
-import { useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { Capacitor } from '@capacitor/core'
 import { setSupportMail, stopSupport } from '../lib/supportApi'
 import { usePaidChoiceAllowed } from '../lib/storefront'
@@ -76,6 +76,22 @@ export function YourSupport({
   const [busy, setBusy] = useState(false)
   const [stopError, setStopError] = useState(false)
 
+  // Where focus goes after Stop swaps this page's controls. The button
+  // pressed is gone with the old ones, and focus left on a removed node
+  // falls to the page body (the fourth #1885 review).
+  const confirmTitle = useRef<HTMLParagraphElement>(null)
+  const stopButton = useRef<HTMLButtonElement>(null)
+  const stoppedLine = useRef<HTMLParagraphElement>(null)
+  const focusNext = useRef<'confirm' | 'stop' | 'stopped' | null>(null)
+  useEffect(() => {
+    const next = focusNext.current
+    if (next === null) return
+    focusNext.current = null
+    const target =
+      next === 'confirm' ? confirmTitle : next === 'stop' ? stopButton : stoppedLine
+    target.current?.focus()
+  })
+
   // Every "Choose" below waits on this. Stop never does: stopping a payment
   // is not a call to buy, in any store.
   const canChoose = paidAllowed === true
@@ -100,6 +116,7 @@ export function YourSupport({
     try {
       onStopped(await stop())
       setConfirming(false)
+      focusNext.current = 'stopped'
     } catch {
       setStopError(true)
     } finally {
@@ -164,7 +181,7 @@ export function YourSupport({
               role="group"
               aria-label="Stop your support"
             >
-              <p className="your-support__confirm-title">
+              <p className="your-support__confirm-title" ref={confirmTitle} tabIndex={-1}>
                 Stop {dollars(server.amount_cents)} a year?
               </p>
               <p className="settings__note">
@@ -187,7 +204,10 @@ export function YourSupport({
               <button
                 type="button"
                 className="support-ask__secondary"
-                onClick={() => setConfirming(false)}
+                onClick={() => {
+                  setConfirming(false)
+                  focusNext.current = 'stop'
+                }}
               >
                 Keep it
               </button>
@@ -196,7 +216,11 @@ export function YourSupport({
             <button
               type="button"
               className="your-support__stop"
-              onClick={() => setConfirming(true)}
+              ref={stopButton}
+              onClick={() => {
+                setConfirming(true)
+                focusNext.current = 'confirm'
+              }}
             >
               Stop my support
             </button>
@@ -212,17 +236,26 @@ export function YourSupport({
         </>
       ) : server !== null && server.status === 'stop_requested' ? (
         <div className="your-support__card">
-          <p className="your-support__amount">Stop requested</p>
+          <p className="your-support__amount" ref={stoppedLine} tabIndex={-1}>
+            Stop requested
+          </p>
           <p className="your-support__meta">
-            {day(server.stop_requested_at)}. We&rsquo;re cancelling it for you, and we
-            email you when it&rsquo;s done. If a charge lands after today, write to
-            hello@ourhike.org and we refund it.
+            {/* The "stopped" email is an optional one, so the switch below
+                turns it off (backend core/support_mail.py); with it off,
+                this page is where the hiker sees it done. */}
+            {day(server.stop_requested_at)}. We&rsquo;re cancelling it for you, and{' '}
+            {server.support_emails
+              ? 'we email you when it’s done'
+              : 'this page says so when it’s done'}
+            . If a charge lands after today, write to hello@ourhike.org and we refund it.
           </p>
         </div>
       ) : server !== null && server.status === 'stopped' ? (
         <>
           <div className="your-support__card">
-            <p className="your-support__amount">Stopped</p>
+            <p className="your-support__amount" ref={stoppedLine} tabIndex={-1}>
+              Stopped
+            </p>
             <p className="your-support__meta">
               {server.started_at === null
                 ? `${day(server.ended_at)}. Nothing was paid, so nothing needed cancelling. If you did pay, it shows up here once it's confirmed.`
@@ -266,7 +299,7 @@ export function YourSupport({
           <span className="your-support__mail-text">
             <span id="your-support-mail-label">Emails about my support</span>
             <span className="settings__link-hint">
-              Receipts, and word when a payment stops
+              When it starts and when it stops. Payment receipts still come.
             </span>
           </span>
           <button

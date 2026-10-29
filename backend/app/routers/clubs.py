@@ -76,17 +76,23 @@ def _with_admins(db: Session, club: Club, viewer: Profile | None) -> OrgOut:
     and reason (the review of #1926), which also told them which account
     that address belongs to. Until somebody at the domain approves a seat
     the registrant reads their own seat only, like any other seat holder.
+
+    The seats' dates go wider: to moderators and to everybody holding a seat
+    here, approved or not, held org or not. `OrgAdminOut.for_viewer` says
+    which console screens need that.
     """
     admins = db.query(OrgAdmin).filter(OrgAdmin.club_id == club.id).order_by(OrgAdmin.invited_at).all()
-    sees_every_seat = viewer is not None and (
-        viewer.role in MODERATOR_ROLES
-        or (
-            club.state != OrgState.pending
-            and any(admin.person_id == viewer.id and admin.approved_at is not None for admin in admins)
-        )
+    is_moderator = viewer is not None and viewer.role in MODERATOR_ROLES
+    own_seat = next((admin for admin in admins if viewer is not None and admin.person_id == viewer.id), None)
+    sees_every_holder = is_moderator or (
+        club.state != OrgState.pending and own_seat is not None and own_seat.approved_at is not None
     )
+    sees_every_date = is_moderator or own_seat is not None
     out = OrgOut.model_validate(club)
-    out.admins = [OrgAdminOut.for_viewer(admin, viewer, sees_every_seat=sees_every_seat) for admin in admins]
+    out.admins = [
+        OrgAdminOut.for_viewer(admin, viewer, sees_every_holder=sees_every_holder, sees_every_date=sees_every_date)
+        for admin in admins
+    ]
     return out
 
 

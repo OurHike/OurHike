@@ -867,9 +867,25 @@ def test_nobody_outside_the_organization_reads_a_seats_holder_or_decline_reason(
     for headers in ({}, auth_headers(str(uuid.uuid4()))):  # anonymous, then a stranger signed in
         body = client.get(path, headers=headers).json()
         seats = body["admins"] if path != "/clubs" else body[0]["admins"]
-        assert len(seats) == 2, "the seats are still listed, with their titles and dates"
+        assert len(seats) == 2, "the seats are still listed, with their titles"
         assert {seat["person_id"] for seat in seats} == {None}
         assert {seat["decline_reason"] for seat in seats} == {None}
+
+
+@pytest.mark.parametrize("path", ["/clubs/ramapo-trail-conference", "/clubs"])
+def test_nobody_outside_the_organization_reads_when_a_seat_was_offered_or_answered(client, path):
+    """#1914 asked for the seats' dates to reach the console only, and nothing
+    outside the console reads them - the site's embed reads an org's name and
+    giving links. With the dates public, anybody could read that the seat
+    titled Secretary had declined, and when."""
+    _a_seat_declined_with_a_reason(client)
+
+    for headers in ({}, auth_headers(str(uuid.uuid4()))):  # anonymous, then a stranger signed in
+        body = client.get(path, headers=headers).json()
+        seats = body["admins"] if path != "/clubs" else body[0]["admins"]
+        assert len(seats) == 2, "the seats are still listed, with their titles"
+        for field in ("invited_at", "approved_at", "declined_at"):
+            assert {seat[field] for seat in seats} == {None}, field
 
 
 def test_an_approved_admin_and_a_moderator_read_every_seat(client, db_session):
@@ -889,6 +905,21 @@ def test_a_seat_holder_who_is_not_an_approved_admin_reads_only_their_own_seat(cl
 
     assert {seat["person_id"] for seat in seats} == {colleague, None}
     assert founder not in {seat["person_id"] for seat in seats}
+
+
+def test_every_seat_holder_reads_where_every_seat_stands(client):
+    """The dates go wider than the holders, on purpose: the approval screen
+    shows an invited admin where the other seats stand, and the setup hub and
+    sign-off screen count approvals from `approved_at`, for viewers who are
+    not approved admins yet. The colleague who declined still reads that the
+    founder approved."""
+    _, colleague, _ = _a_seat_declined_with_a_reason(client)
+
+    seats = client.get("/clubs/ramapo-trail-conference", headers=auth_headers(colleague)).json()["admins"]
+
+    assert all(seat["invited_at"] is not None for seat in seats)
+    assert sum(seat["approved_at"] is not None for seat in seats) == 1, "the founder's"
+    assert sum(seat["declined_at"] is not None for seat in seats) == 1, "the colleague's own"
 
 
 def test_a_held_registrations_registrant_reads_only_their_own_seat(client):

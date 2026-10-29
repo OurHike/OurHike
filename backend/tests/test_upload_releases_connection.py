@@ -383,3 +383,19 @@ def test_a_note_deleted_while_its_photo_arrives_is_not_written_to(client, db_eng
 
     assert response.status_code == 404
     assert _stored(r2) == []
+
+
+# --- The R2 client ------------------------------------------------------------
+
+
+def test_the_r2_client_uses_this_apps_timeouts_and_retries_not_botocores(r2):
+    """botocore's defaults - 60 s to connect, 60 s per read, five tries - let a
+    silent R2 hold an upload for minutes, and an upload in the put, though it
+    holds no connection now, holds one of the forty worker threads every `def`
+    route shares. The numbers and their basis are app/core/photos.py's; this
+    holds that they are wired in."""
+    config = photos_core._client().meta.config
+
+    assert config.connect_timeout == photos_core.R2_CONNECT_TIMEOUT_SECONDS
+    assert config.read_timeout == photos_core.R2_READ_TIMEOUT_SECONDS
+    assert config.retries == {"mode": "standard", "total_max_attempts": photos_core.R2_ATTEMPTS}

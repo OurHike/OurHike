@@ -168,6 +168,40 @@ MAX_PHOTO_BYTES = 2 * 1024 * 1024
 # reverses it ever being written down.
 PHOTO_URL_TTL_SECONDS = 300
 
+# How long one call to R2 may stall, and how many times it is tried.
+#
+# @unvalidated. Picked: nothing has timed an R2 call from the host this backend
+# will run on, and that host does not exist yet (backend/HOSTING.md).
+#
+# What they replace is measured. boto3's defaults are 60 s to connect, 60 s per
+# read and the "legacy" retry mode's five attempts. Against a local socket that
+# accepts and never answers (2026-10-29), a put through a default client raised
+# after 309.9 s, on its fifth connection; through this one, after 22.3 s, on its
+# second: two attempts, each abandoned 10 s after the body is sent (5 s if the
+# connection never opens, and botocore first waits a second for `100 Continue`),
+# with under a second between them.
+#
+# Why that matters is reasoned. Since #1915 - A photo upload holds a pooled
+# database connection inside an open transaction while the phone sends the
+# bytes, so fifteen slow uploads make every other read 500 - the put holds no
+# database connection, but it still holds a worker thread, and those are forty,
+# shared with every `def` route (#1764 - The connection pool is the default
+# five plus ten overflow under a forty-thread request pool, and no figure exists
+# for what a cold-start outbox burst needs). Forty uploads waiting on a silent
+# R2 stall the whole API for as long as R2 stays silent: five minutes with the
+# defaults, about twenty seconds with these.
+#
+# Bounds on a stall, not on a call: botocore applies both timeouts to each
+# socket operation, so an R2 that keeps trickling bytes back is not cut off.
+#
+# What would settle them: put and delete times for a 2 MiB object, measured
+# from the production host to R2, with the read timeout set well above the
+# slowest; and how often a first attempt fails in a way a second one fixes,
+# which is what decides whether one retry is the right number.
+R2_CONNECT_TIMEOUT_SECONDS = 5
+R2_READ_TIMEOUT_SECONDS = 10
+R2_ATTEMPTS = 2
+
 
 # The two sentences a response may carry about the bucket. Fixed strings,
 # because the exception's own message is not one of them - see the class.
@@ -281,6 +315,9 @@ def _client():
     round trip, and a module-level client would capture credentials at import
     time - which makes the settings above untestable and a rotated key
     unnoticed until a restart.
+
+    Its timeouts and retries are the constants above, never botocore's
+    defaults; tests/test_upload_releases_connection.py holds that.
     """
     return boto3.client(
         "s3",
@@ -290,7 +327,15 @@ def _client():
         # R2 ignores the region but boto3 insists on one; `auto` is what
         # Cloudflare's own documentation uses.
         region_name="auto",
-        config=Config(signature_version="s3v4"),
+        config=Config(
+            signature_version="s3v4",
+            connect_timeout=R2_CONNECT_TIMEOUT_SECONDS,
+            read_timeout=R2_READ_TIMEOUT_SECONDS,
+            # `total_max_attempts` counts the first try, so 2 is one retry.
+            # "standard" mode waits under a second before it (botocore's
+            # `ExponentialBackoff`: rand(0, 1) x 2^0 for the first retry).
+            retries={"mode": "standard", "total_max_attempts": R2_ATTEMPTS},
+        ),
     )
 
 

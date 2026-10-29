@@ -134,26 +134,69 @@ def test_a_maintainer_outside_their_miles_is_just_a_hiker(client, db_session):
     assert client.get("/disputes").json() == []
 
 
-def test_a_waypoint_with_no_known_mile_is_covered_by_nobody(client, db_session):
-    """An assignment is a range along the centerline. Treating "no mile" as
-    covered would hand every maintainer a veto over every unplaced waypoint -
-    and the mile written on the note no longer stands in for one."""
+def _maintainer_of(db, start_mile, end_mile):
     club = Club(id=str(uuid.uuid4()), name="NYNJTC")
-    db_session.add(club)
-    maintainer = make_profile(db_session, Role.maintainer)
-    db_session.add(
+    db.add(club)
+    maintainer = make_profile(db, Role.maintainer)
+    db.add(
         MaintainerAssignment(
             id=str(uuid.uuid4()),
             maintainer_id=maintainer.id,
             club_id=club.id,
-            start_mile=0,
-            end_mile=2200,
+            start_mile=start_mile,
+            end_mile=end_mile,
             effective_from=date(2020, 1, 1),
         )
     )
-    db_session.commit()
-    # No `waypoint_miles` row, and a note claiming a mile the stretch covers.
-    _note(db_session, maintainer.id, days_ago=2, mile=1000)
+    db.commit()
+    return maintainer
+
+
+def test_a_maintainers_not_found_on_an_unloaded_waypoint_still_puts_it_in_dispute(client, db_session):
+    """No `waypoint_miles` row - every waypoint before the first load, and
+    each one a release adds until the next. A covering maintainer's lone
+    `not_found` still marks it, from the mile they typed: a wrong one sends a
+    hiker on with extra water, and staying silent is the missing warning."""
+    maintainer = _maintainer_of(db_session, 1400, 1410)
+    _note(db_session, maintainer.id, days_ago=2, mile=1405)
+
+    body = client.get("/disputes").json()
+
+    assert [row["poi_id"] for row in body] == [_POI]
+    assert body[0]["maintainer_said"] is True
+
+
+def test_a_maintainers_confirmation_on_an_unloaded_waypoint_does_not_clear_a_dispute(client, db_session):
+    """The other direction stays shut without a loaded mile: one maintainer's
+    "flowing" on a spring two hikers could not find, claiming a mile inside
+    their stretch, is #1917's harm wherever the spring really is."""
+    maintainer = _maintainer_of(db_session, 1400, 1410)
+    for hiker in (make_profile(db_session, Role.hiker), make_profile(db_session, Role.hiker)):
+        _note(db_session, hiker.id, days_ago=3)
+    _note(db_session, maintainer.id, days_ago=1, observation="flowing", mile=1405)
+
+    body = client.get("/disputes").json()
+
+    assert [row["poi_id"] for row in body] == [_POI], "an unplaced waypoint's dispute needs two confirmations"
+    assert body[0]["maintainer_said"] is False
+
+
+def test_a_note_with_no_mile_on_an_unloaded_waypoint_is_covered_by_nobody(client, db_session):
+    """An assignment is a range along the centerline. Treating "no mile" as
+    covered would hand every maintainer a veto over every unplaced waypoint."""
+    maintainer = _maintainer_of(db_session, 0, 2200)
+    _note(db_session, maintainer.id, days_ago=2, mile=None)
+
+    assert client.get("/disputes").json() == []
+
+
+def test_a_loaded_mile_outranks_the_mile_typed_on_a_not_found(client, db_session):
+    """Once the waypoint has a row, the typed mile stops mattering in both
+    directions: a `not_found` claiming a mile inside the stretch, on a spring
+    the export puts 600 miles away, is one hiker's note."""
+    maintainer = _maintainer_of(db_session, 1400, 1410)
+    _waypoint(db_session, 800)
+    _note(db_session, maintainer.id, days_ago=2, mile=1405)
 
     assert client.get("/disputes").json() == []
 
@@ -268,3 +311,33 @@ def test_the_disputes_query_bounds_observed_at_in_sql(client, db_session):
     notes_query = [s for s in statements if "field_notes" in s and "observation IS NOT NULL" in s]
     assert notes_query, statements
     assert "observed_at >=" in notes_query[0]
+
+
+def test_the_waypoint_mile_read_binds_no_parameter_per_waypoint(client, db_session):
+    """An `IN` over the window's `poi_id`s binds one parameter each, and
+    Postgres refuses past 65,535 - measured by the 2026-10-29 review, which
+    turned `GET /disputes` into a 500 with 65,536 distinct ids. `poi_id` is
+    free text and nothing throttles notes, so the read takes the whole table
+    (one row per published waypoint) instead."""
+    from sqlalchemy import event
+
+    hikers = (make_profile(db_session, Role.hiker), make_profile(db_session, Role.hiker))
+    for index in range(3):
+        for hiker in hikers:
+            _note(db_session, hiker.id, days_ago=1, poi_id=f"atc_water:{index}")
+
+    statements = []
+
+    def capture(conn, cursor, statement, parameters, context, executemany):
+        statements.append(statement)
+
+    engine = db_session.get_bind()
+    event.listen(engine, "before_cursor_execute", capture)
+    try:
+        assert len(client.get("/disputes").json()) == 3
+    finally:
+        event.remove(engine, "before_cursor_execute", capture)
+
+    waypoint_reads = [s for s in statements if "FROM waypoint_miles" in s]
+    assert waypoint_reads, statements
+    assert all(" IN " not in s.upper() for s in waypoint_reads), waypoint_reads

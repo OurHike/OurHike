@@ -333,20 +333,24 @@ def list_disputes(db: Session = Depends(get_db)) -> list[DisputeOut]:
     # make about any waypoint by typing a mile inside their own stretch.
     # `waypoint_miles` is loaded from the published export instead
     # (`load_waypoint_miles.py`).
-    poi_ids = {note.poi_id for note in notes}
-    waypoint_mile = (
-        dict(db.query(WaypointMile.poi_id, WaypointMile.mile).filter(WaypointMile.poi_id.in_(poi_ids)).all()) if poi_ids else {}
-    )
+    #
+    # The whole table rather than an `IN` over this window's ids: it is one
+    # row per published waypoint (3,024 in release 2026-10-10-2), and `IN`
+    # binds a parameter per id, which Postgres caps at 65,535 - so a window
+    # holding that many distinct `poi_id`s, which nothing stops one account
+    # writing, would turn this read into a 500.
+    waypoint_mile = dict(db.query(WaypointMile.poi_id, WaypointMile.mile).all())
 
     def covers(reporter_id: str, mile: float | None) -> bool:
         """Whether this reporter looks after the stretch this waypoint is on.
 
-        A waypoint with no known mile cannot be covered by anybody: an
+        No mile at all - an unloaded waypoint's confirmation, or a
+        `not_found` that carried none - cannot be covered by anybody: an
         assignment is a range along the centerline, and treating "no mile" as
         covered would hand every maintainer a veto over every unplaced
-        waypoint in the country. Its notes count as anybody's, so it goes into
-        dispute on two people's `not_found` and comes out on two people's
-        confirmations (`app/core/disputes.py`).
+        waypoint in the country. Such a note counts as anybody's, so it takes
+        two people's notes to put a dispute on or take one off
+        (`app/core/disputes.py`).
         """
         if mile is None:
             return False
@@ -357,12 +361,26 @@ def list_disputes(db: Session = Depends(get_db)) -> list[DisputeOut]:
 
     by_poi: dict[str, list[DisputeInput]] = {}
     for note in notes:
+        disputes = note.observation is Observation.not_found
+        mile = waypoint_mile.get(note.poi_id)
+        # A WAYPOINT WITH NO LOADED MILE - every waypoint until the first load,
+        # and each one a release adds until the next - is where the two
+        # directions part. A maintainer's `not_found` may still put "reported
+        # missing" on it from the mile they typed: the worst a wrong one does
+        # is send a hiker on with extra water, the error app/core/disputes.py
+        # accepts by design. Their confirmation may not take one off: that is
+        # #1917's harm, a warning gone from a spring two people could not
+        # find. Without this, a covering maintainer's lone `not_found` on an
+        # unloaded waypoint said nothing at all - the missing warning, which
+        # is the dangerous half.
+        if mile is None and disputes:
+            mile = note.mile
         by_poi.setdefault(note.poi_id, []).append(
             DisputeInput(
                 reporter_id=note.reporter_id,
                 observed_at=note.observed_at,
-                disputes=note.observation is Observation.not_found,
-                maintainer=covers(note.reporter_id, waypoint_mile.get(note.poi_id)),
+                disputes=disputes,
+                maintainer=covers(note.reporter_id, mile),
             )
         )
 

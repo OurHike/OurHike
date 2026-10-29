@@ -10,7 +10,9 @@ where the waypoint is).
 
 Nothing writes this over HTTP. `load_waypoint_miles.py` loads it from the
 published GeoJSON, the same reviewed-file posture as `load_assignments.py`.
-A waypoint with no row is one nobody covers: its notes count as anybody's.
+A waypoint with no row is unplaced: a covering maintainer's `not_found`
+still marks it from the mile they typed, and no one maintainer's confirmation
+clears a dispute on it (app/routers/field_notes.py says why each way).
 """
 
 from sqlalchemy import Column, DateTime, Float, String
@@ -31,6 +33,6 @@ class WaypointMile(Base):
     # gets no row here.
     mile = Column(Float, nullable=False)
 
-    # When the loader last wrote this row, so "how stale is this table" has
-    # an answer.
+    # When the loader last ran over this row. Every run stamps every row it
+    # keeps, so `max(loaded_at)` is when the table last matched a release.
     loaded_at = Column(DateTime, nullable=False)

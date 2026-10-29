@@ -147,6 +147,12 @@ SUPABASE_SCHEMAS = (
     "supabase_migrations", "supabase_functions", "pgmq", "pgmq_public", "etl",
 )  # fmt: skip
 
+#: The only hosts `verify` restores into. It drops schemas `public` and `auth`
+#: and switches row-level security off in whatever database it is given, so a
+#: `--scratch-url` naming anywhere else - production's string pasted into the
+#: wrong field, say - is refused before it is touched.
+LOCAL_HOSTS = ("localhost", "127.0.0.1", "::1")
+
 #: An age X25519 recipient: "age1" and 58 bech32 characters.
 AGE_RECIPIENT = re.compile(r"age1[02-9ac-hj-np-z]{58}")
 
@@ -486,8 +492,20 @@ def dump(workdir: Path, tools: Tools, source_env: Mapping[str, str]) -> dict[str
     return counts
 
 
+def refuse_unless_local(scratch_env: Mapping[str, str]) -> None:
+    """Refuse a scratch database that is not on this machine (LOCAL_HOSTS)."""
+    host = scratch_env.get("PGHOST", "")
+    if host not in LOCAL_HOSTS:
+        raise Refused(
+            f"--scratch-url names host {host}, and verify restores only into a database on this machine "
+            f"({', '.join(LOCAL_HOSTS)}): it drops schemas public and auth and switches row-level security off "
+            "in the database it is given"
+        )
+
+
 def verify(workdir: Path, tools: Tools, scratch_env: Mapping[str, str]) -> list[str]:
     """Restore both archives into the scratch database, count, and compare. Returns the problems."""
+    refuse_unless_local(scratch_env)
     # A fresh database's own `public` is dropped so the archive's CREATE SCHEMA
     # restores as written, and `auth` is created because a `--table` dump
     # carries its tables and not their schema.

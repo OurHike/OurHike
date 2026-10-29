@@ -94,6 +94,28 @@ def test_a_connection_string_that_cannot_be_used_is_refused_without_being_quoted
     assert "secret" not in str(refusal.value)
 
 
+@pytest.mark.parametrize("host", ["localhost", "127.0.0.1", "[::1]"])
+def test_verify_restores_into_a_scratch_database_on_this_machine(host):
+    backup.refuse_unless_local(
+        backup.libpq_environment(f"postgresql://postgres:scratch@{host}:5432/postgres", require_encryption=False)
+    )
+
+
+@pytest.mark.parametrize("host", ["aws-0-us-east-1.pooler.supabase.com", "db.example.org", "10.0.0.5", "localhost.example.org"])
+def test_verify_refuses_a_scratch_database_anywhere_else_before_touching_it(host, tmp_path, monkeypatch, capsys):
+    """verify drops `public` and `auth` in the database it is given; the review
+    found row-level security off on every table of one it was pointed at."""
+
+    def touched(*args, **kwargs):
+        raise AssertionError("verify ran a tool against a database it should have refused")
+
+    monkeypatch.setattr(backup.Tools, "run", touched)
+    scratch_url = f"postgresql://postgres:scratch@{host}:5432/postgres"
+
+    assert backup.main(["verify", "--workdir", str(tmp_path), "--scratch-url", scratch_url]) == 1
+    assert f"--scratch-url names host {host}" in capsys.readouterr().err
+
+
 # --- Secrets stay out of argv -----------------------------------------------
 
 

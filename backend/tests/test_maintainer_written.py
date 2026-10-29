@@ -11,9 +11,13 @@ account touches it.
 """
 
 import uuid
-from datetime import UTC, datetime, timedelta
+from datetime import UTC, date, datetime, timedelta
 
-from app.models.club import Club
+import pytest
+
+from app.core.assignments import assignments_covering
+from app.models.club import Club, OrgAdmin, OrgState, VerifiedBy
+from app.models.maintainer_assignment import MaintainerAssignment
 from load_assignments import apply, parse
 from tests.factories import make_org, make_profile
 from tests.tokens import auth_headers
@@ -176,3 +180,103 @@ def test_claiming_a_maintainers_org_hands_it_to_whoever_proved_the_domain(client
 
     db_session.expire_all()
     assert db_session.query(Club).one().maintainer_written is False
+
+
+def _console_confirmed_assignment(db_session, club, *, start_mile=400.0, end_mile=600.0):
+    """An assignment an admin confirmed in the console: both stamps set, which
+    is what makes it count only through `stood_behind()`'s second condition."""
+    volunteer, admin = make_profile(db_session), make_profile(db_session)
+    now = datetime.now(UTC).replace(tzinfo=None)
+    assignment = MaintainerAssignment(
+        id=_new_id(),
+        maintainer_id=volunteer.id,
+        club_id=club.id,
+        start_mile=start_mile,
+        end_mile=end_mile,
+        effective_from=date(2020, 1, 1),
+        proposed_by=admin.id,
+        confirmed_by=admin.id,
+        confirmed_at=now,
+    )
+    db_session.add(assignment)
+    db_session.commit()
+    return assignment
+
+
+def test_a_console_confirmed_assignment_counts_at_an_org_a_maintainer_wrote(db_session):
+    """The positive half of `stood_behind()`'s second condition, which no test
+    pinned: deleting it left 353 tests green (the 2026-10-29 review)."""
+    club = make_org(db_session)
+    assignment = _console_confirmed_assignment(db_session, club)
+
+    covering = assignments_covering(db_session, 500.0, date.today())
+
+    assert [row.id for row, _, _ in covering] == [assignment.id]
+
+
+@pytest.mark.parametrize(
+    "fields",
+    [
+        {"maintainer_written": False},
+        # A claim by code from before the flag existed leaves it true, and a
+        # claimed organization always has `verified_by`.
+        {"state": OrgState.claimed, "maintainer_written": True, "verified_by": VerifiedBy.email},
+    ],
+    ids=["self-registered", "claimed-by-old-code"],
+)
+def test_a_console_confirmed_assignment_does_not_count_anywhere_else(db_session, fields):
+    club = make_org(db_session, **fields)
+    _console_confirmed_assignment(db_session, club)
+
+    assert assignments_covering(db_session, 500.0, date.today()) == []
+
+
+def _held_registration(client, chair_email="chair@ramapotrails.org"):
+    """A gmail address registering a real organization's domain and naming the
+    real chair: `pending` until somebody at the domain agrees."""
+    registered = client.post(
+        "/clubs",
+        json={
+            "name": "Ramapo Trail Conference",
+            "slug": "ramapo",
+            "domain": "ramapotrails.org",
+            "admins": [{"email": chair_email}],
+        },
+        headers=auth_headers(_new_id(), email="someone@gmail.com"),
+    )
+    assert registered.status_code == 201 and registered.json()["state"] == "pending", registered.text
+
+
+def test_approving_a_held_registration_clears_the_flag(client, db_session):
+    """The other release of a held registration besides `claim_org`, which used
+    to leave the flag as the backfill found it."""
+    _held_registration(client)
+    db_session.query(Club).update({Club.maintainer_written: True})
+    db_session.commit()
+    chair = _new_id()
+    chair_headers = auth_headers(chair, email="chair@ramapotrails.org")
+    client.get("/clubs/ramapo/access", headers=chair_headers)
+    mine = next(a for a in client.get("/clubs/ramapo").json()["admins"] if a["person_id"] == chair)
+
+    approved = client.post(f"/clubs/ramapo/admins/{mine['id']}/approve", headers=chair_headers)
+
+    assert approved.status_code == 200 and approved.json()["state"] == "claimed", approved.text
+    db_session.expire_all()
+    assert db_session.query(Club).one().maintainer_written is False
+
+
+def test_a_domain_holder_seated_from_the_invitation_can_still_claim(client, db_session):
+    """Signing in seated the chair from the registration's invitation, and the
+    claim used to insert a second seat for them: a 500 on
+    `uq_club_admins_club_person`, found by the 2026-10-29 review on `main`."""
+    _held_registration(client)
+    chair = _new_id()
+    chair_headers = auth_headers(chair, email="chair@ramapotrails.org")
+    client.get("/clubs/ramapo/access", headers=chair_headers)
+
+    claimed = client.post("/clubs/ramapo/claim", json={"title": "Trails chair"}, headers=chair_headers)
+
+    assert claimed.status_code == 200, claimed.text
+    assert claimed.json()["state"] == "claimed"
+    seats = db_session.query(OrgAdmin).filter(OrgAdmin.person_id == chair).all()
+    assert len(seats) == 1 and seats[0].approved_at is not None and seats[0].is_codeowner

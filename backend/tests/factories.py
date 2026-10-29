@@ -77,16 +77,20 @@ def make_org(db_session, slug="ramapo-trail-conference", **fields) -> Club:
     `state=OrgState.claimed` and an admin, which is then the only thing on the
     line and readable as the point.
     """
+    state = fields.pop("state", OrgState.unclaimed)
     club = Club(
         slug=slug,
         **{
             "name": "Ramapo Trail Conference",
             "domain": "ramapotrails.org",
-            "state": OrgState.unclaimed,
-            # A maintainer's row, which is what every org this factory
-            # stands for is. A test about a self-registered org passes False,
-            # or registers one through `POST /clubs`.
-            "maintainer_written": True,
+            "state": state,
+            # A maintainer's row while nobody has claimed it, which is what
+            # the default org is. Claiming or approving clears the flag in
+            # real code, so a claimed, held or frozen org here is not
+            # maintainer-written unless a test says so - it used to default to
+            # true whatever the state, a combination only the misread backfill
+            # of #1913's fix could produce (the 2026-10-29 review).
+            "maintainer_written": state == OrgState.unclaimed,
             **fields,
         },
     )

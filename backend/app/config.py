@@ -298,6 +298,106 @@ class Settings(BaseSettings):
     # vendor library rather than two.
     ses_region: str = "us-east-1"
 
+    # USAGE MEASUREMENT (#1902, features/EVENTING.md). The key the account id
+    # is hashed under before a usage event is stored, so a report reads
+    # `user_key` and never an account (app/core/analytics_seal.py).
+    #
+    # EMPTY MEANS NO ROW IS EVER LINKED TO AN ACCOUNT, and that is a valid
+    # deployment rather than a broken one: every event is stored as if the
+    # hiker had said no, the counts still work, and the User table stays
+    # empty. The same posture as `nominate_challenge_secret` - refuse the
+    # feature rather than run it with a guessable key.
+    #
+    # ROTATING IT: put the new secret here and move the old one into
+    # `analytics_user_key_previous_secrets` below - never drop an old secret
+    # while any row stored under it exists. New events are keyed under the
+    # new secret only, so a hiker's old rows and their old User-table row stop
+    # matching their new events (the User table then holds two rows for one
+    # hiker); account deletion, the export and unlinking find the old ones
+    # through the previous list. Raw rows go within seven months, but a
+    # User-table row lasts until its account is deleted, so in practice an
+    # old secret stays on the list for good.
+    analytics_user_key_secret: str = ""
+    # Every secret the key above was made with before, comma-separated (a
+    # secret holding a comma cannot go on this list). Never used to key a new
+    # row - only to find old ones (app/core/analytics_accounts.py).
+    analytics_user_key_previous_secrets: str = ""
+
+    # HOW MUCH `POST /usage-events` WILL STORE. The endpoint takes no account,
+    # so without a ceiling anybody could fill this database with made-up rows.
+    # Two bounds, checked before a batch is read (app/routers/analytics.py):
+    # rows stored in one UTC day, read from that day's `stored` count in
+    # `analytics_intake`, and rows held at all, against the ceiling below
+    # turned into rows (app/core/analytics_storage.py, which says why it
+    # counts rows and not the table's size on disk). Past either, a batch is
+    # counted as `over_budget` and answered 503, and the phone keeps its rows
+    # and sends them later (client/src/lib/usageQueue.ts `sendUsageBatch`).
+    #
+    # @unvalidated, both. The budget is about one and a half times
+    # EVENTING.md §8's estimate of 33,000 rows a day, itself never measured.
+    # The ceiling is half the 500 MB LAUNCH_CHECKLIST.md 4.1 gives the free
+    # plan, so usage rows alone cannot fill the database the rest of the app
+    # lives in: about 690,000 rows at the measured 380-382 bytes a row, which
+    # is three weeks at §8's estimate against six months of retention.
+    #
+    # The maintainer's decision (poll, 2026-10-27): keep six months of raw
+    # rows, and move to a paid database plan before daily phones near 300 -
+    # roughly where six months of rows outgrow 250 MB at 6 to 11 rows a phone
+    # a day - raising this ceiling to the new plan's room. The nightly checks
+    # warn at `STORAGE_WARN_SHARE` of it (app/core/analytics_quality.py), so
+    # the move is prompted before a batch is turned away. Poll 5 the same day:
+    # a closed month's unlinked rows move to Parquet in a private R2 bucket
+    # (#1923), which moves that point to about 600-1,100 phones a day once built.
+    #
+    # Change these here, not as an environment variable on one side: the
+    # intake gate runs in the API server and the warning below in the nightly
+    # workflow (.github/workflows/analytics-rollup.yml), and only this default
+    # reaches both. Set in one place alone, the warning measures a ceiling the
+    # gate is not using.
+    analytics_daily_row_budget: int = 50_000
+    analytics_storage_ceiling_mb: int = 250
+
+    # The whole database's size at which writes stop. Supabase turns a Free
+    # plan project read-only once its database size - every database in the
+    # project, data and indexes, not the disk - passes 500 MB
+    # (supabase.com/docs/guides/platform/database-size, read 2026-10-27), and
+    # every write the app makes fails with it, not only usage rows. The
+    # nightly checks raise `database_near_quota` at `STORAGE_WARN_SHARE` of
+    # it (app/core/analytics_quality.py), and the usage report draws it
+    # beside the usage ceiling (app/core/analytics_storage.py). A warning
+    # only: nothing is refused at this line. On a paid plan the limit is the
+    # disk instead - 8 GB on Pro with its spend cap on, which also holds the
+    # write-ahead log - so moving plans means changing this with the ceiling
+    # above, here, for the same reason.
+    database_quota_mb: int = 500
+
+    # NOTHING IS COLLECTED THAT NOTHING WOULD DELETE. Six-month retention is a
+    # promise the nightly rollup keeps (app/core/analytics_rollup.py deletes a
+    # month's raw rows), so `POST /usage-events` reads that job's heartbeat -
+    # the newest `analytics_months.computed_at`, which every run refreshes,
+    # rows or none - and once it is older than this many days, counts each
+    # batch as `paused` and answers 503. The phone keeps the rows, so nothing
+    # is lost while the job is mended; what stops is collection with no delete
+    # behind it.
+    #
+    # Reasoned from the schedule: the job runs once a day
+    # (.github/workflows/analytics-rollup.yml), so three days from the last
+    # good run is two missed nights and a third run that is late, or three
+    # missed nights. @unvalidated as a trade: how late GitHub actually starts
+    # this cron, and how long a broken run goes unnoticed, would settle it.
+    analytics_rollup_stale_days: int = 3
+
+    @property
+    def analytics_user_key_secrets(self) -> tuple[str, ...]:
+        """The current user-key secret, then every previous one: empty ones skipped, none twice.
+
+        The current one exactly as set, because that is how app/routers/
+        analytics.py keys a row with it; the previous ones trimmed of the
+        spaces a comma-separated list collects.
+        """
+        previous = (part.strip() for part in self.analytics_user_key_previous_secrets.split(","))
+        return tuple(dict.fromkeys(secret for secret in (self.analytics_user_key_secret, *previous) if secret))
+
     @property
     def mail_allowed(self) -> tuple[str, ...]:
         """The suffix list as `app/core/mail.py` wants it."""

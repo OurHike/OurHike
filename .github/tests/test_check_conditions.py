@@ -136,8 +136,8 @@ def test_the_production_leg_runs_only_while_productions_hourly_leg_is_on_the_dbt
     step = _step(CHECKS, "check", "Check the production leg only while production's hourly leg is on the dbt path")
     workflows = tmp_path / ".github" / "workflows"
     workflows.mkdir(parents=True)
-    text = BAKE.read_text(encoding="utf-8").replace(
-        "  PRODUCTION_PHONE_FILES: exporters\n", f"  PRODUCTION_PHONE_FILES: {line}\n"
+    text = re.sub(
+        r"^  PRODUCTION_PHONE_FILES: .*$", f"  PRODUCTION_PHONE_FILES: {line}", BAKE.read_text(encoding="utf-8"), flags=re.M
     )
     (workflows / BAKE.name).write_text(text, encoding="utf-8")
     output = tmp_path / "output"

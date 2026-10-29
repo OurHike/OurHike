@@ -18,7 +18,13 @@
 // inclusive direction that question already leans.
 import Base from '../layouts/Base.astro'
 import Contours from '../components/Contours.astro'
-import { ORGS, orgCountLine } from '../lib/heroOrgs.mjs'
+import { orgCountLine, rotationOrgs } from '../lib/heroOrgs.mjs'
+import { readRegistry, registeredOrgs, shipping } from '../lib/orgRoster.mjs'
+
+// THE ROSTER (#1877): every registered organization, read from
+// pipeline/sources.json when the site is built. The headline counts those
+// with data that ships; the link under it, and /organizations/, all of them.
+const ROSTER = registeredOrgs(readRegistry())
 
 // Base.astro's `docs`, for the data pages' line under "What works today":
 // a home page is never a /data/ page, so it is PUBLIC_DOCS_ORIGIN or nothing.
@@ -38,18 +44,21 @@ const docs = import.meta.env.PUBLIC_DOCS_ORIGIN ?? ''
 // also still true: features/NEARBY_TRAILS.md keeps the centerline as the
 // chosen trail, one at a time, and the mile axis is the A.T.'s. "Nearby
 // trails" rather than a count or a region because it is the honest shape of
-// what shipped and the feature's own name. Not a region: four of the five
-// stewards are New York organizations, but NYNJTC's Highlands Trail extract
-// is registered as "(NY and NJ sections)" in pipeline/sources.json, so "New
-// York's trails" would be the wrong claim by twelve section features.
+// what shipped and the feature's own name. Not a region: when this was
+// written four of the five stewards were New York organizations, and the
+// roster now spans the country (#1877), so no region was ever the right
+// claim.
 const title = 'OurHike — The Appalachian Trail and nearby trails, offline'
-const description =
-  "A free, open-source offline map inspired by the Appalachian Trail and drawn from five organizations' own published trail data: topo, water, shelters and elevation, working with no bars and no data plan."
+// The count is the shipping roster's, so it moves with the registry; it was
+// "five" typed in until #1877.
+const description = `A free, open-source offline map inspired by the Appalachian Trail and drawn from ${shipping(ROSTER).length} organizations' own published trail data: topo, water, shelters and elevation, working with no bars and no data plan.`
 
-// The organization roster and its copy live in lib/heroOrgs.mjs, imported
-// rather than inlined here, so heroOrgs.test.mjs can hold the rotation to
-// "every organization's lines show up" without needing to render this page.
-const ORG_COUNT_LINE = orgCountLine(ORGS)
+// The rotation's hand-written copy lives in lib/heroOrgs.mjs and the roster
+// in lib/orgRoster.mjs, imported rather than inlined here, so their tests can
+// hold the count line and the rotation without needing to render this page.
+// rotationOrgs() keeps only the lines whose organization has data that ships.
+const ORG_COUNT_LINE = orgCountLine(ROSTER)
+const ROTATION = rotationOrgs(ROSTER)
 ---
 
 <Base title={title} description={description}>
@@ -86,6 +95,15 @@ const ORG_COUNT_LINE = orgCountLine(ORGS)
       <div class="hero__inner">
         <span class="eyebrow"><span class="blaze"></span>HIKE YOUR OWN HIKE</span>
         <h1><span id="hero-rotator">{ORG_COUNT_LINE}</span></h1>
+        {
+          /* THE WAY TO THE WHOLE ROSTER (#1877). The list sat on this page
+             for one build and the maintainer rejected it on sight - 4,195 px
+             of names on a phone, pushing the offline promise five screens
+             down - and chose a page of its own, an A-Z index, by poll on
+             2026-10-23. Outside the rotator, so it stays put while the
+             headline above it changes. */
+        }
+        <a class="hero__roster" href="/organizations/">See all {ROSTER.length} organizations</a>
         <p class="hero__tagline">
           Download it once over wifi. After that the map works with no bars and
           no data plan — the way the trail actually is. Free, open source, and
@@ -138,14 +156,13 @@ const ORG_COUNT_LINE = orgCountLine(ORGS)
           <span class="stat__figure">280</span>
           <span class="stat__label">shelters, from ATC's own inventory</span>
         </div>
-        <!-- Added rather than replacing one of the three above, which are all
-             true and all about the A.T. Three A.T. figures with nothing beside
-             them read as an A.T.-only product even though not one of them says
-             so - measured 2026-08-25 on a live fetch, pipeline/README.md. -->
-        <div class="stat">
-          <span class="stat__figure">21,805</span>
-          <span class="stat__label">trail lines, from five organizations</span>
-        </div>
+        <!-- A fourth stat, "21,805 trail lines, from five organizations",
+             stood here from 2026-08-25 so three A.T. figures did not read as
+             an A.T.-only product. #1877 took it out by the maintainer's
+             choice (poll, 2026-10-23): it was measured for the first five
+             organizations, the headline above now counts the registry, and nobody has
+             counted the lines again. The headline's count and the link under
+             it now do the job the stat was added for. -->
       </div>
       <p class="prose" style="color: var(--fg-chrome-3); font-size: 13.5px; margin-top: 14px">
         Where the data comes from matters, so the app never flattens it: ATC
@@ -275,7 +292,7 @@ const ORG_COUNT_LINE = orgCountLine(ORGS)
     </div>
   </section>
 
-  <script define:vars={{ orgs: ORGS, countLine: ORG_COUNT_LINE }} is:inline>
+  <script define:vars={{ orgs: ROTATION, countLine: ORG_COUNT_LINE }} is:inline>
     // Rotates the H1 through the count line and one line per organization,
     // every few seconds, ordered by a rough client-side location estimate.
     //
@@ -308,7 +325,7 @@ const ORG_COUNT_LINE = orgCountLine(ORGS)
       }
 
       // Flat-earth approximation of squared distance - fine at this scale,
-      // where the only question is "which of five nearby points is
+      // where the only question is "which of these points is roughly
       // closest", not an actual distance, and never displayed.
       function roughDistance(lat1, lon1, lat2, lon2) {
         var dLat = lat1 - lat2
@@ -392,5 +409,24 @@ const ORG_COUNT_LINE = orgCountLine(ORGS)
 
   .card svg {
     stroke: var(--brand-primary);
+  }
+
+  /* 44px tall, the site's phone target (client/e2e/sitePages.spec.ts), with
+     the extra height taken back out of the hero's gap so the link sits as
+     close under the headline as a line of text would. */
+  .hero__roster {
+    align-self: flex-start;
+    display: inline-flex;
+    align-items: center;
+    min-height: 44px;
+    margin: -10px 0;
+    font-weight: 600;
+    font-size: 17px;
+    color: var(--brand-primary);
+    text-underline-offset: 4px;
+  }
+
+  .hero__roster:hover {
+    color: var(--brand-primary-hover);
   }
 </style>

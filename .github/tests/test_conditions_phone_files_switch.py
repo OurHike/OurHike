@@ -3,10 +3,9 @@
 `PHONE_FILES` chooses which pipeline writes a leg's phone files: `exporters`,
 today's Python bake, or `dbt`, pipeline/ELT.md's hourly lane (dlt into the raw
 store, then the closures and warnings marts and their pub_ writers). The
-maintainer (2026-10-06: "UA on dbt, prod on exporters") made it one setting per environment, at the
-top of the workflow: `UA_PHONE_FILES: dbt`, so UA's scheduled leg keeps the
-dbt path the soak ran, and `PRODUCTION_PHONE_FILES: exporters` until the
-cutover, which is changing that one line. A dispatch's `phone_files` wins for
+maintainer made it one setting per environment, at the top of the workflow:
+`UA_PHONE_FILES: dbt` since 2026-10-06, and `PRODUCTION_PHONE_FILES: dbt` since
+the cutover of 2026-10-23 (#1880); the rollback is changing that one line. A dispatch's `phone_files` wins for
 that run; its default, `scheduled`, takes each leg's own line. The job's
 "Choose which pipeline writes this leg's phone files" step turns the leg's
 line into PHONE_FILES, so these tests run that step's script under bash for
@@ -31,8 +30,8 @@ PATHS = ("exporters", "dbt")
 #: The dispatch's `phone_files` choice that leaves each leg on its own line, as the schedule does.
 SCHEDULED = "scheduled"
 CHOOSE_STEP = "Choose which pipeline writes this leg's phone files"
-#: Each environment's line, as the maintainer set them on 2026-10-06.
-SETTINGS = {"production": ("PRODUCTION_PHONE_FILES", "exporters"), "ua": ("UA_PHONE_FILES", "dbt")}
+#: Each environment's line: UA's set on 2026-10-06, production's at the cutover of 2026-10-23.
+SETTINGS = {"production": ("PRODUCTION_PHONE_FILES", "dbt"), "ua": ("UA_PHONE_FILES", "dbt")}
 
 
 def _workflow(path: Path = WORKFLOW) -> dict:
@@ -88,13 +87,12 @@ def _phone_files(
     return env.get("PHONE_FILES")
 
 
-def test_the_schedule_runs_uas_leg_on_the_dbt_path_and_productions_on_the_exporters(tmp_path):
-    """UA's scheduled leg keeps the soak's dbt path on main's code, and production's keeps today's bake
-    until the cutover. Before it, one workflow-wide `inputs.phone_files || 'exporters'` put both scheduled legs on
-    the exporters, so after the merge no schedule ran the dbt path and UA's conditions/notices.json and
-    hazard_areas.json, which only dbt writes, froze."""
+def test_the_schedule_runs_both_legs_on_the_dbt_path(tmp_path):
+    """Only dbt writes conditions/notices.json and hazard_areas.json, so a scheduled leg on the exporters serves
+    neither: production's did until the cutover (#1880), and every club notice beyond ATC's and NYNJTC's reached UA
+    alone."""
     assert _phone_files(tmp_path, "ua") == "dbt", "UA's scheduled leg runs today's bake, so nothing rewrites its dbt files"
-    assert _phone_files(tmp_path, "production") == "exporters", "production's scheduled leg left the exporters"
+    assert _phone_files(tmp_path, "production") == "dbt", "production's scheduled leg is back on the exporters"
 
 
 def test_a_dispatch_left_at_scheduled_runs_each_leg_on_its_own_line(tmp_path):
@@ -103,7 +101,7 @@ def test_a_dispatch_left_at_scheduled_runs_each_leg_on_its_own_line(tmp_path):
     assert choice["type"] == "choice" and set(choice["options"]) == {SCHEDULED, *PATHS}
     assert choice["default"] == SCHEDULED, "a dispatch that picks nothing would run another path than the schedule"
     assert _phone_files(tmp_path, "ua", "workflow_dispatch", SCHEDULED) == "dbt"
-    assert _phone_files(tmp_path, "production", "workflow_dispatch", SCHEDULED) == "exporters"
+    assert _phone_files(tmp_path, "production", "workflow_dispatch", SCHEDULED) == "dbt"
 
 
 @pytest.mark.parametrize("leg", ["production", "ua"])
@@ -150,16 +148,14 @@ def test_a_line_that_names_neither_path_stops_its_leg_before_either_path_runs(tm
     assert _phone_files(tmp_path, "ua", workflow=broken) == "dbt", "one leg's typo is its own"
 
 
-def test_a_scheduled_production_leg_on_the_exporters_never_reads_a_notices_copy_so_no_notices_step_turns_it_red(tmp_path):
+def test_a_production_leg_rolled_back_to_the_exporters_never_reads_a_notices_copy_so_no_notices_step_turns_it_red():
     """extract-notices.yml skips its production leg while production is on the exporters, so production's
-    notices store has no copy, which counts as overdue after 8 hours. The production leg must not go red for a copy it
-    never reads: on the exporters path the notices read is skipped, a skipped step has no outputs, and every step that
+    notices store gets no new copy, which counts as overdue after 8 hours. The production leg must not go red for a copy
+    it never reads: on the exporters path the notices read is skipped, a skipped step has no outputs, and every step that
     reads them, the red ones among them, evaluates false."""
     from test_conditions_production_leg_needs_main import _evaluate
 
-    phone_files = _phone_files(tmp_path, "production")
-    assert phone_files == "exporters"
-    context = {"env": {"PHONE_FILES": phone_files}, "matrix": {"data_environment": "production"}, "steps": {}}
+    context = {"env": {"PHONE_FILES": "exporters"}, "matrix": {"data_environment": "production"}, "steps": {}}
     (add,) = [step for step in _steps() if step.get("name") == ADD_STEP]
     assert not _evaluate(str(add["if"]), context), "the production leg reads the notices copy on the exporters path"
     readers = [step for step in _steps() if "steps.notices.outputs" in str(step.get("if", ""))]

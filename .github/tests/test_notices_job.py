@@ -196,9 +196,12 @@ def _production_phone_files_line(text: str) -> list[str]:
     return re.findall(r"^  PRODUCTION_PHONE_FILES: .*$", text, re.M)
 
 
-def _notices_steps_that_run(tmp_path: Path, leg: str, production_line: str | None) -> tuple[list[str], str]:
-    """The names of the notices job's steps that run for `leg` on a schedule from main, with publish-conditions.yml's
-    PRODUCTION_PHONE_FILES line made `production_line` (None leaves the line out), and what the steps printed.
+def _notices_steps_that_run(
+    tmp_path: Path, leg: str, production_line: str | None, asked: str | None = None
+) -> tuple[list[str], str]:
+    """The names of the notices job's steps that run for `leg` from main, with publish-conditions.yml's
+    PRODUCTION_PHONE_FILES line made `production_line` (None leaves the line out), and what the steps printed. On a
+    schedule when `asked` is None, else on a dispatch whose `data_environment` is `asked`.
 
     The steps' `if:`s are evaluated in order with the evaluator test_conditions_production_leg_needs_main.py holds to
     GitHub's rules. Every step with an `id` that reads no secret has its own script run under bash, in a copy of the
@@ -214,8 +217,8 @@ def _notices_steps_that_run(tmp_path: Path, leg: str, production_line: str | Non
     line = "" if production_line is None else f"  PRODUCTION_PHONE_FILES: {production_line}"
     (workflows / CONDITIONS.name).write_text(re.sub(r"^  PRODUCTION_PHONE_FILES: .*$\n?", line and line + "\n", text, flags=re.M))
     context = {
-        "github": {"event_name": "schedule", "ref": "refs/heads/main"},
-        "inputs": {},
+        "github": {"event_name": "schedule" if asked is None else "workflow_dispatch", "ref": "refs/heads/main"},
+        "inputs": {} if asked is None else {"data_environment": asked},
         "matrix": {"data_environment": leg},
         "steps": {},
     }
@@ -245,21 +248,22 @@ def _notices_steps_that_run(tmp_path: Path, leg: str, production_line: str | Non
     return ran, printed
 
 
-def test_the_production_notices_leg_extracts_nothing_while_production_is_on_the_exporters(tmp_path):
-    """Production's conditions leg stays on the exporters until the
-    cutover, and the exporters read no notices store. So the production notices leg asked every club's host and filled
-    a store and a served copy every 4 hours for no reader: about 9 runner-minutes and at least 197 upstream requests
-    a run. It is skipped by its own
-    condition, read off publish-conditions.yml's line, and says so."""
-    ran, printed = _notices_steps_that_run(tmp_path, "production", "exporters")
+@pytest.mark.parametrize("asked", [None, "both", "production"])
+def test_the_production_notices_leg_extracts_nothing_while_production_is_on_the_exporters(tmp_path, asked):
+    """Production's conditions leg ran the exporters until the cutover, and would again on a rollback, and the
+    exporters read no notices store. So the production notices leg asked every club's host and filled a store and a
+    served copy every 4 hours for no reader: about 9 runner-minutes and at least 197 upstream requests a run. It is
+    skipped by its own condition, read off publish-conditions.yml's line, and says so, however it was started."""
+    ran, printed = _notices_steps_that_run(tmp_path, "production", "exporters", asked)
     assert EXTRACT_STEP not in ran and SERVE_STEP not in ran, f"the production leg ran {ran}"
     assert "::notice title=Production notices leg skipped::" in printed
 
 
-def test_the_production_notices_leg_runs_once_production_is_on_the_dbt_path(tmp_path):
+@pytest.mark.parametrize("asked", [None, "production"])
+def test_the_production_notices_leg_runs_once_production_is_on_the_dbt_path(tmp_path, asked):
     """The cutover is changing that one line, and this leg switches on with it: its first run after the cutover
     starts filling the store production's hourly leg reads from then on."""
-    ran, printed = _notices_steps_that_run(tmp_path, "production", "dbt")
+    ran, printed = _notices_steps_that_run(tmp_path, "production", "dbt", asked)
     assert EXTRACT_STEP in ran and SERVE_STEP in ran, printed
     assert "skipped" not in printed
 
@@ -270,11 +274,12 @@ def test_the_ua_notices_leg_runs_whatever_production_is_on(tmp_path, production)
     assert EXTRACT_STEP in ran and SERVE_STEP in ran, printed
 
 
+@pytest.mark.parametrize("asked", [None, "production"])
 @pytest.mark.parametrize("production_line", [None, '"dbt"', "dbt # the cutover", "DBT"])
-def test_a_production_line_the_notices_job_cannot_read_stops_its_production_leg_red(tmp_path, production_line):
+def test_a_production_line_the_notices_job_cannot_read_stops_its_production_leg_red(tmp_path, production_line, asked):
     """Neither skipped nor run on a guess: a line that is missing, or written in a shape this step does not read, fails
-    the leg by name, so a cutover commit that wrote it differently is seen on its first run."""
-    ran, printed = _notices_steps_that_run(tmp_path, "production", production_line)
+    the leg by name, so a commit that wrote it differently is seen on its first run."""
+    ran, printed = _notices_steps_that_run(tmp_path, "production", production_line, asked)
     assert EXTRACT_STEP not in ran and SERVE_STEP not in ran
     assert "::error title=" in printed and printed.rstrip().endswith("(exit 1)"), printed
 

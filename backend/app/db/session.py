@@ -57,14 +57,18 @@ def engine_options(database_url: str, *, prepared_statements: bool) -> dict[str,
 
     **`hide_parameters`** keeps the values a statement was bound to out of
     SQLAlchemy's exception messages. Without it, a database error's message
-    ends `[parameters: {...}]`, and uvicorn prints that traceback to the
-    host's log - so a failed `POST /reports` would log the hiker's note,
-    coordinates and signed name, which app/core/logs.py promises never
-    happens. The statement and the error still print, which is what a reader
-    debugging it needs. What this cannot hide is Postgres's own message, which
-    quotes the one value it rejected - an invalid cast's input, a duplicate
-    key's `DETAIL` (tests/test_engine_options.py pins the cast). That is a
-    single value at the site of a bug, where the dump was every value of every
+    ends `[parameters: {...}]`, and that text reaches two logs that must not
+    hold it. uvicorn prints the API's traceback to the host's log, so a
+    failed `POST /reports` would log the hiker's note, coordinates and signed
+    name, which app/core/logs.py promises never happens. A scheduled job's
+    traceback lands in a public Actions log - for the usage rollup and quality
+    jobs, a month's counts. The statement and the error still print, which is
+    what a reader debugging it needs, and app/core/logs.py's
+    `describe_failure` goes further, naming a failure without even the
+    statement. What this cannot hide is Postgres's own message, which quotes
+    the one value it rejected - an invalid cast's input, a duplicate key's
+    `DETAIL` (tests/test_engine_options.py pins the cast). That is a single
+    value at the site of a bug, where the dump was every value of every
     failing statement.
     """
     options: dict[str, Any] = {"pool_pre_ping": True, "hide_parameters": True}

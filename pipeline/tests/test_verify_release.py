@@ -673,21 +673,45 @@ class TestVectorContent:
         maintainer's 2026-08-25 "don't limit data from orgs based on
         geography" decision applied to a source that actually leaves the
         corridor. A point in Arizona from that source is not a projection
-        bug; the same point from an unlisted source still is."""
+        bug; the same point from an unlisted source in a corridor-scoped
+        file still is."""
         requests_mock.get(
-            f"{BASE}/nearby_trails.geojson",
-            json=self._collection([self._point(-110.98, 34.34, source="usfs_trails")]),
+            f"{BASE}/trails.geojson",
+            json=self._collection([self._point(-110.98, 34.34, source="usfs_trails", blaze_color="#fff")]),
         )
         requests_mock.get(
-            f"{BASE}/nearby_poi.geojson",
+            f"{BASE}/poi_shelter.geojson",
             json=self._collection([self._point(-110.98, 34.34, source="some_other_org")]),
         )
 
-        exempt = {r["check"]: r["state"] for r in check_vector(BASE, ["nearby_trails.geojson"])}
-        not_exempt = {r["check"]: r["state"] for r in check_vector(BASE, ["nearby_poi.geojson"])}
+        exempt = {r["check"]: r["state"] for r in check_vector(BASE, ["trails.geojson"])}
+        not_exempt = {r["check"]: r["state"] for r in check_vector(BASE, ["poi_shelter.geojson"])}
 
         assert exempt[15] == OK
         assert not_exempt[15] == FAILED
+
+    def test_any_organizations_nearby_feature_may_leave_the_corridor(self, requests_mock):
+        """#1873: nearby_poi and nearby_trails carry every organization,
+        nationwide, so an Arizona point from an unlisted source is intended."""
+        requests_mock.get(f"{BASE}/nearby_poi.geojson", json=self._collection([self._point(-110.98, 34.34, source="x")]))
+
+        assert {r["check"]: r["state"] for r in check_vector(BASE, ["nearby_poi.geojson"])}[15] == OK
+
+    def test_a_nearby_feature_on_null_island_or_in_metres_is_still_caught(self, requests_mock):
+        requests_mock.get(f"{BASE}/nearby_poi.geojson", json=self._collection([self._point(0.2, -0.3)]))
+        requests_mock.get(f"{BASE}/nearby_trails.geojson", json=self._collection([self._point(1_500_000.0, 2_000_000.0)]))
+
+        assert {r["check"]: r["state"] for r in check_vector(BASE, ["nearby_poi.geojson"])}[15] == FAILED
+        assert {r["check"]: r["state"] for r in check_vector(BASE, ["nearby_trails.geojson"])}[15] == FAILED
+
+    def test_a_versioned_trailhead_file_may_be_empty_like_its_v1_twin(self, requests_mock):
+        """#1873: `v2/poi_trailhead.geojson` read as type `v2/poi_trailhead`, which
+        ALLOWED_EMPTY_POI_TYPES does not name, so the empty-by-design file failed."""
+        requests_mock.get(f"{BASE}/v2/poi_trailhead.geojson", json=self._collection([]))
+
+        states = [r for r in check_vector(BASE, ["v2/poi_trailhead.geojson"]) if r["check"] == 14]
+
+        assert states[0]["state"] == OK
 
     def test_a_trail_without_a_blaze_colour_is_caught(self, requests_mock):
         requests_mock.get(f"{BASE}/trails.geojson", json=self._collection([self._point()]))
@@ -1769,3 +1793,31 @@ class TestAnArtifactAPhoneCannotParse:
     def test_the_stdlib_would_have_let_it_through(self):
         """The premise, pinned: without the strict reader this document parses."""
         assert json.loads(self.NAN_COLLECTION)["features"][0]["geometry"]["coordinates"][0] != 0
+
+
+class TestReleaseFolderMode:
+    """#1873: since promotion `latest.json` lists only conditions files, so the
+    battery has to be pointed at the release folder phones actually read."""
+
+    def test_the_pointer_names_the_environments_v1_release(self, requests_mock):
+        requests_mock.get(f"{BASE}/channels.json", json={"production": {"v1": "2026-10-17-2", "v2": "2026-10-20-1"}})
+
+        assert verify_release.fetch_pointed_release(BASE, "production", "v1") == "2026-10-17-2"
+
+    def test_a_missing_or_foreign_pointer_names_nothing(self, requests_mock):
+        requests_mock.get(f"{BASE}/channels.json", json={"ua": {"v1": "2026-10-18-2"}})
+        assert verify_release.fetch_pointed_release(BASE, "production", "v1") is None
+
+        requests_mock.get(f"{BASE}/channels.json", status_code=404)
+        assert verify_release.fetch_pointed_release(BASE, "production", "v1") is None
+
+    def test_check_all_reads_the_folders_manifest_not_latest_json(self, requests_mock):
+        """Latest.json is never requested; the folder's manifest is, and an
+        unreadable one fails check 1 rather than reading the conditions bake."""
+        folder = requests_mock.get(f"{BASE}/releases/2026-10-17-2/manifest.json", status_code=404)
+
+        reports = verify_release.check_all(BASE, hash_artifacts=False, release="2026-10-17-2")
+
+        assert folder.called
+        assert [r["state"] for r in reports if r["check"] == 1] == [FAILED]
+        assert all(request.path != "/latest.json" for request in requests_mock.request_history)

@@ -44,6 +44,37 @@ def test_pre_ping_is_always_on():
         assert options["pool_pre_ping"] is True
 
 
+def test_bound_values_never_reach_an_exceptions_text():
+    """A traceback from a scheduled job is a public Actions log line, and
+    `[parameters: ...]` would put a month's counts in it."""
+    for prepared_statements in (True, False):
+        assert engine_options(DIRECT_URL, prepared_statements=prepared_statements)["hide_parameters"] is True
+
+
+def test_the_apps_engine_was_built_with_hidden_parameters():
+    from app.db.session import engine
+
+    assert engine.hide_parameters is True
+
+
+def test_a_failed_statement_on_such_an_engine_does_not_name_its_values(db_engine):
+    from sqlalchemy import create_engine, text
+    from sqlalchemy.exc import DBAPIError
+
+    from app.config import settings
+
+    engine = create_engine(db_engine.url, **engine_options(settings.database_url, prepared_statements=False))
+    try:
+        with engine.connect() as connection:
+            connection.execute(text("select 1 / (:visits - :visits)"), {"visits": 4242})
+    except DBAPIError as failure:
+        assert "4242" not in str(failure)
+    else:
+        raise AssertionError("dividing by zero did not fail")
+    finally:
+        engine.dispose()
+
+
 def test_a_non_psycopg_driver_is_not_handed_a_psycopg_argument():
     """`connect_args` is passed straight to the DBAPI.
 

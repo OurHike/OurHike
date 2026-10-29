@@ -14,7 +14,8 @@ what needs a look, since when, which series are charted, their window and
 their cap, the bands an earlier build's kept run gives them (row_history.py's
 "THE BANDS"), the learning count, and that no row value, sample, coordinate,
 check message or held table's name reaches either. A second warehouse holds no
-result at all.
+result at all, and a third only the database size's test (macros/data_quality.sql's
+"A MEASURED TEST").
 
 Run by the dbt job, which sets OURHIKE_DBT, as the other *_builds.py files are;
 the pytest job, which has no dbt, skips.
@@ -80,6 +81,7 @@ ATC_CHALLENGES = "source.ourhike.atc.raw_atc__challenges_atc"
 OPRHP = "source.ourhike.oprhp.raw_nysparks__oprhp_trail_closures"
 CLUB = "source.ourhike.club.raw_club__club_news"
 DERIVED = "source.ourhike.derived.osm_water"
+DATABASE_SIZE = "source.ourhike.ourhike.raw_ourhike__database_size"
 SOURCES = {
     DEC: ("dec", "raw_nysdec__dec_hiking_trails"),
     SECRET: ("secret", "raw_secret__secret_layer"),
@@ -90,6 +92,7 @@ SOURCES = {
     OPRHP: ("oprhp", "raw_nysparks__oprhp_trail_closures"),
     CLUB: ("club", "raw_club__club_news"),
     DERIVED: ("derived", "osm_water"),
+    DATABASE_SIZE: ("ourhike", "raw_ourhike__database_size"),
 }
 # int_sources__publication's rows. club_news publishes by name, but the club's notice_readers row names its key
 # club_notices, which is held, and that row wins. osm_water publishes, and derived.osm_water is a step's table
@@ -142,6 +145,10 @@ MODELS = {
     CLOSURES: ("models/marts/closures/closures.sql", ["model.ourhike.stg_nws__alerts"]),
     AFTER: ("models/intermediate/trail_lines/int_trail_lines__after_the_mart.sql", [MART]),
     "model.ourhike.pub_trails_geojson": ("models/publish/pub_trails_geojson.sql", [MART]),
+    "model.ourhike.base_ourhike__database_size": (
+        "models/staging/ourhike/base/base_ourhike__database_size.sql",
+        [DATABASE_SIZE],
+    ),
 }
 SNAPSHOTS = {"snapshot.ourhike.int_trail_lines__history": ("snapshots/trail_lines/int_trail_lines__history.sql", [UNION])}
 
@@ -188,6 +195,13 @@ TESTS = {
     "not_null_checked_id": ("not_null", CHECKED, None, "models/intermediate/trail_lines/_x.yml"),
     "unique_history_id": ("unique", "snapshot.ourhike.int_trail_lines__history", None, "snapshots/trail_lines/_x.yml"),
     "not_null_writer_document": ("not_null", "model.ourhike.pub_trails_geojson", None, "models/publish/_x.yml"),
+    # Results only in the measured warehouse (_measured_history()).
+    "assert_the_database_stays_under_its_plan": (
+        "assert_the_database_stays_under_its_plan",
+        None,
+        ["model.ourhike.base_ourhike__database_size"],
+        "tests/singular/assert_the_database_stays_under_its_plan.sql",
+    ),
 }
 #: Each test's error_if and meta in Elementary's dbt_tests, where one is not dbt_project.yml's `>0` and `{}` (decision
 #: 204): a warning past its error_if is failed on the page, unless it stays at warn, and a level is no count of rows.
@@ -196,7 +210,11 @@ THRESHOLDS = {
     "assert_lines_match_checks": (">0", {"stays_at_warn": "decision 197"}),
     # A level (macros/test_levels.sql): warned at 1, an error only at 2, and never a count.
     "not_null_challenges_id": (">1", {"scores_a_level": True}),
+    # A size in megabytes, the test's own config() (macros/data_quality.sql's "A MEASURED TEST").
+    "assert_the_database_stays_under_its_plan": (">474", {"measures": "database_mb"}),
 }
+#: Each test's warn_if where it is not the project's `>0`: only a measured test's is read, for its series.
+WARN_IFS = {"assert_the_database_stays_under_its_plan": ">399"}
 
 
 def _uid(name: str) -> str:
@@ -592,9 +610,22 @@ def _history() -> tuple[list[dict], list[dict], list[dict]]:
     return results, rows, metrics
 
 
-def _warehouse(path: Path, *, empty: bool = False) -> None:
-    results, rows, metrics = ([], [], []) if empty else _history()
-    freshness = [] if empty else FRESHNESS
+def _measured_history() -> tuple[list[dict], list[dict], list[dict]]:
+    """The database size's test alone, across the three builds: 380 MB in build 1, no row read in build 2 (a leg that
+    had not landed the size, which the test scores as 0), and 480 MB in this build's stage A, past its error_if of 474
+    and warned, as production's switch warns, so failed on the page."""
+    name = "assert_the_database_stays_under_its_plan"
+    results = [
+        _result(name, invocation="b1-stage-a", at=B1, status="pass", sub_type="singular", failures=380),
+        _result(name, invocation="b2-stage-a", at=B2, status="pass", sub_type="singular", failures=0),
+        _result(name, invocation="b3-stage-a", at="2026-10-08 07:01:00", status="warn", sub_type="singular", failures=480),
+    ]
+    return results, [], []
+
+
+def _warehouse(path: Path, *, empty: bool = False, measured: bool = False) -> None:
+    results, rows, metrics = ([], [], []) if empty else _measured_history() if measured else _history()
+    freshness = [] if empty or measured else FRESHNESS
     with duckdb.connect(str(path)) as con:
         for schema in ("elementary", "intermediate", "seeds"):
             con.execute(f"create schema {schema}")
@@ -658,13 +689,22 @@ def _warehouse(path: Path, *, empty: bool = False) -> None:
             con.execute("insert into elementary.dbt_sources values (?, ?, ?, ?)", [uid, group, table, table])
         con.execute(
             """create table elementary.dbt_tests (unique_id varchar, original_path varchar, depends_on_nodes varchar,
-                parent_model_unique_id varchar, short_name varchar, error_if varchar, meta varchar)"""
+                parent_model_unique_id varchar, short_name varchar, warn_if varchar, error_if varchar, meta varchar)"""
         )
         for name, (short, parent, depends, path_) in TESTS.items():
             error_if, meta = THRESHOLDS.get(name, (">0", {}))
             con.execute(
-                "insert into elementary.dbt_tests values (?, ?, ?, ?, ?, ?, ?)",
-                [_uid(name), path_, json.dumps(depends or [parent]), parent, short, error_if, json.dumps(meta)],
+                "insert into elementary.dbt_tests values (?, ?, ?, ?, ?, ?, ?, ?)",
+                [
+                    _uid(name),
+                    path_,
+                    json.dumps(depends or [parent]),
+                    parent,
+                    short,
+                    WARN_IFS.get(name, ">0"),
+                    error_if,
+                    json.dumps(meta),
+                ],
             )
         # Elementary 0.26.0's columns for it, as they read on dbt 2.0.6 and DuckDB (measured 2026-10-15).
         con.execute(
@@ -688,11 +728,11 @@ def _warehouse(path: Path, *, empty: bool = False) -> None:
         con.executemany("insert into intermediate.int_sources__data_edited values (?, ?)", DATA_EDITED)
 
 
-def _build(root: Path, *, empty: bool = False) -> dict[str, dict]:
+def _build(root: Path, *, empty: bool = False, measured: bool = False) -> dict[str, dict]:
     """Both writers, built by dbt over a warehouse of Elementary-shaped tables; their two files, read back."""
     warehouse, processed = root / "warehouse.duckdb", root / "processed"
     processed.mkdir(parents=True)
-    _warehouse(warehouse, empty=empty)
+    _warehouse(warehouse, empty=empty, measured=measured)
     env = {
         **os.environ,
         "OURHIKE_WAREHOUSE": str(warehouse),
@@ -728,6 +768,11 @@ def files(tmp_path_factory) -> dict[str, dict]:
 @pytest.fixture(scope="module")
 def empty_files(tmp_path_factory) -> dict[str, dict]:
     return _build(tmp_path_factory.mktemp("data_quality_empty"), empty=True)
+
+
+@pytest.fixture(scope="module")
+def measured_files(tmp_path_factory) -> dict[str, dict]:
+    return _build(tmp_path_factory.mktemp("data_quality_measured"), measured=True)
 
 
 def _counts(checks: int, passed: int, warned: int, failed: int, errored: int) -> dict:
@@ -1087,3 +1132,48 @@ def test_last_posts_date_each_published_source_by_its_own_layer_and_warn_about_n
         item for item in files["monthly"]["needs_a_look"] if item["table"] in ("dec_hiking_trails", "oprhp_trail_closures")
     ]
     assert empty_files["hourly"]["last_posts"] == []
+
+
+def test_the_databases_size_is_a_volume_check_in_megabytes_with_the_size_it_fails_at_and_its_history(measured_files):
+    """The maintainer's poll of 2026-10-28, "Hourly dbt check, with megabytes": the size is the test's `failures`, a
+    Volume check measuring database_mb; past its error_if it fails, with 475, the size it fails at, as the limit; and
+    its history is every run the lane holds but the one that read no row, whether or not it needs a look, with the
+    sizes it warns and fails at, which no other series carries."""
+    for document in (measured_files["monthly"], measured_files["hourly"]):
+        assert document["totals"] == _counts(1, 0, 0, 1, 0)
+        assert {kind["kind"]: kind["checks"] for kind in document["kinds"]} == {
+            "freshness": 0,
+            "volume": 1,
+            "schema": 0,
+            "dbt_tests": 0,
+            "anomalies": 0,
+        }
+        assert document["needs_a_look"] == [
+            {
+                "kind": "volume",
+                "table": "base_ourhike__database_size",
+                "column": None,
+                "status": "fail",
+                "value": 480,
+                "expected_min": None,
+                "expected_max": 475.0,
+                "since": document["built_at"],
+                "metric": "database_mb",
+                "test": "assert_the_database_stays_under_its_plan",
+            }
+        ]
+        assert document["series"] == [
+            {
+                "table": "base_ourhike__database_size",
+                "column": None,
+                "metric": "database_mb",
+                "mart": None,
+                "in_needs_a_look": True,
+                "points": [
+                    {"at": "2026-10-06T07:05:00Z", "value": 380, "expected_min": None, "expected_max": None},
+                    {"at": "2026-10-08T07:01:00Z", "value": 480, "expected_min": None, "expected_max": None},
+                ],
+                "warn_at": 400,
+                "fail_at": 475,
+            }
+        ]

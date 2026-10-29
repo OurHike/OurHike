@@ -1,7 +1,7 @@
 # Builds the dbt docs site served at ourhike.org/data/ (pipeline/ELT.md,
-# "Docs and charts at https://ourhike.org/data/") for the two workflows that
-# assemble a site: pages.yml (production, at a v* tag) and pr-preview.yml.
-# ua.yml has no site and does not call it. One action rather than two
+# "Docs and charts at https://ourhike.org/data/") for the three workflows that
+# assemble a site: pages.yml (production, at a v* tag), pr-preview.yml, and
+# ua.yml since #1887. One action rather than three
 # copies, so the Python version, the cache key and the telemetry opt-out
 # cannot drift apart. The caller copies `dir` into `_site/data/` and runs
 # pipeline/check_docs_site.py --served on that copy, because the copy is what

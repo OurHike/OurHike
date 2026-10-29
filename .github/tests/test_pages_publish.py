@@ -846,14 +846,14 @@ class TestTheDataDocs:
     contracted marts, a monthly refresh, published docs, and lighter phone
     downloads**. Every preview serves the page beside the app, and so does
     production until docs.ourhike.org serves it (`TestTheDocsHost` below), each copy built by `.github/actions/dbt-docs-site`
-    and checked by `pipeline/check_docs_site.py` as copied; UA has no site and
-    gets none. The first three tests are the three assertions ELT.md names;
+    and checked by `pipeline/check_docs_site.py` as copied; UA carries them too
+    since #1887. The first three tests are the three assertions ELT.md names;
     the fourth is its "the docs step needs no secret".
     """
 
     ACTION = REPO_ROOT / ".github" / "actions" / "dbt-docs-site"
     CHECKER = REPO_ROOT / "pipeline" / "check_docs_site.py"
-    SITE_BUILDS = [("pages.yml", "Assemble the site"), ("pr-preview.yml", "Assemble the preview")]
+    SITE_BUILDS = [("pages.yml", "Assemble the site"), ("pr-preview.yml", "Assemble the preview"), ("ua.yml", "Assemble UA")]
 
     @staticmethod
     def _steps(workflow: str) -> list[dict]:
@@ -915,14 +915,76 @@ class TestTheDataDocs:
         assert "_site/app/data" not in yaml.safe_dump(steps)
         assert not (REPO_ROOT / "client" / "public" / "data").exists()
 
-    def test_ua_still_deploys_client_dist_alone(self):
-        """UA has no site, and giving it one is a separate decision (ELT.md)."""
+    def test_ua_is_laid_out_like_production(self):
+        """The site at `/`, the app at `/app/`, as pages.yml and every preview serve them (#1887).
+
+        Until #1887 UA uploaded `client/dist` alone, built for `/`: the one
+        environment between a pull request and a tag that could not show a
+        change to ourhike.org, and the one serving the app at a path
+        production does not. The maintainer chose this layout by poll,
+        2026-10-24.
+        """
         steps = self._steps("ua.yml")
+        names = [step.get("name") for step in steps]
+        base = next(step for step in steps if step.get("name") == "Build the app")["env"]["VITE_BASE_PATH"]
+        production = next(step for step in self._steps("pages.yml") if step.get("name") == "Build the app")
+        assert base == production["env"]["VITE_BASE_PATH"] == "/app/"
+        assert "Build the site" in names
+        run = next(step for step in steps if step.get("name") == "Assemble UA")["run"]
+        assert "cp -r site/dist/. _site/" in run
+        assert "cp -r client/dist/. _site/app/" in run
+        # Cloudflare Pages, like a preview: the console's deep links resolve.
+        assert "/app/index.html  200" in run
+        assert "cp _site/app/index.html _site/404.html" in run
         deploy = next(step for step in steps if "wrangler-action" in step.get("uses", ""))
-        assert "pages deploy client/dist" in deploy["with"]["command"]
-        assert "_site" not in yaml.safe_dump(steps)
-        assert all(step.get("uses") != "./.github/actions/dbt-docs-site" for step in steps)
-        assert "check_docs_site" not in yaml.safe_dump(steps)
+        assert "pages deploy _site" in deploy["with"]["command"]
+        assert "pages deploy client/dist" not in deploy["with"]["command"]
+        assert names.index("Assemble UA") < names.index("Publish UA")
+
+    def test_ua_keeps_a_door_where_its_root_app_registered_a_worker(self):
+        """Only UA ever served the app at its root, so only UA ships this `/sw.js`.
+
+        The root app registered `/sw.js` with scope `/`. With the site at the
+        root that script would 404, a registration whose update fails is kept,
+        and it would go on serving the old app at `/` and `/app/`. The file UA
+        serves there replaces that worker with a door: an old app address goes
+        to the same address under `/app/` until the new app is installed, and
+        to `/app/` when offline after that, so an old install's icon still
+        opens the map. It reloads no window, never unregisters (the old icon
+        has nothing else to open it offline), drops only the root scope's
+        precache, and never touches IndexedDB. Measured in Chromium against
+        real builds, online and offline (#1887's pull request).
+        """
+        run = next(step for step in self._steps("ua.yml") if step.get("name") == "Assemble UA")["run"]
+        assert "cp .github/scripts/retire_root_service_worker.js _site/sw.js" in run
+        worker = (REPO_ROOT / ".github" / "scripts" / "retire_root_service_worker.js").read_text(encoding="utf-8")
+        code = "\n".join(line for line in worker.splitlines() if not line.strip().startswith("//"))
+        assert "self.skipWaiting()" in code, "it must take over from the old worker on the update"
+        assert "Response.redirect(underApp(url)" in code
+        assert "const ROOT_PRECACHE = `-${scope}`" in code and "name.endsWith(ROOT_PRECACHE)" in code
+        assert "unregister(" not in code, "the old icon has nothing else to open it offline"
+        assert ".navigate(" not in code, "no window is reloaded under anyone (#311)"
+        assert "indexedDB" not in code
+        assert "register(" not in code
+        for workflow in ("pages.yml", "pr-preview.yml"):
+            assert "retire_root_service_worker" not in (WORKFLOW_DIR / workflow).read_text(encoding="utf-8")
+
+    def test_ua_builds_its_docs_in_a_job_holding_no_secret_and_only_where_it_can_deploy(self):
+        """The preview's split, for UA (#1887): the docs job only reads, holds no
+        secret, and hands the directory over; and it runs only where a Pages
+        project is set, so an unconfigured UA still skips rather than failing a merge."""
+        jobs = yaml.safe_load((WORKFLOW_DIR / "ua.yml").read_text(encoding="utf-8"))["jobs"]
+        docs = jobs["docs"]
+        assert docs.get("permissions") == {"contents": "read"}
+        assert "secrets." not in yaml.safe_dump(docs)
+        assert "vars." not in yaml.safe_dump(docs["steps"]), "nothing reaches dbt but the code"
+        assert docs["if"] == "vars.CLOUDFLARE_PAGES_PROJECT != ''"
+        checkout = next(s for s in docs["steps"] if str(s.get("uses", "")).startswith("actions/checkout@"))
+        assert checkout.get("with", {}).get("persist-credentials") is False
+        ua = jobs["ua"]
+        assert ua["needs"] == "docs"
+        assert ua["if"] == "${{ !cancelled() && needs.docs.result != 'failure' }}"
+        assert not any(step.get("uses") == "./.github/actions/dbt-docs-site" for step in ua["steps"])
 
     def test_the_docs_build_reads_no_secret_and_passes_no_vars(self):
         """`dbt_rt.invocations` publishes `args` and `vars_override` with the page.

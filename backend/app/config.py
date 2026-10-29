@@ -313,7 +313,11 @@ class Settings(BaseSettings):
     # warn at `STORAGE_WARN_SHARE` of it (app/core/analytics_quality.py), so
     # the move is prompted before a batch is turned away. Poll 5 the same day:
     # a closed month's unlinked rows move to Parquet in a private R2 bucket
-    # (#1923), which moves that point to about 600-1,100 phones a day once built.
+    # (#1923, app/core/analytics_archive.py). Once an environment's archive is
+    # configured, that moves the point to about 600-1,100 phones a day -
+    # reasoned in the issue on the same unmeasured rows a phone, and 35% of
+    # rows linked, also @unvalidated. The ceiling then counts only what
+    # Postgres holds: open months and linked rows.
     #
     # Change these here, not as an environment variable on one side: the
     # intake gate runs in the API server and the warning below in the nightly

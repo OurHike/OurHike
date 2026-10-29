@@ -1,0 +1,33 @@
+// ourhike.org/Privacy/'s usage-statistics list on a phone, at the bullet
+// saying how long counts are kept (#1923 - Move each closed month's unlinked
+// usage rows out of Postgres into a Parquet file in a private R2 bucket).
+//
+// WHAT TO LOOK FOR: the bullet opening "Counts and positions are kept for
+// the six whole months after the month they were recorded, then deleted."
+// now goes on "Counts not linked to an account move to private files at
+// Cloudflare about two weeks after their month ends, and are deleted on the
+// same schedule." - the one line the maintainer chose by poll on 2026-10-29,
+// over two sentences that also named sealed positions and the lifecycle
+// backstop. The rest of the bullet is unchanged. The page's new date, "Last
+// updated October 29, 2026", is at its top and not in this frame.
+import {
+  openSitePage,
+  scrollToTop,
+  serveMarketingSite,
+} from './fixtures/marketingSite.mjs'
+
+export const caption =
+  'ourhike.org/Privacy/ on a phone: the bullet on how long usage counts are kept now says counts not linked to an account move to private files at Cloudflare about two weeks after their month ends'
+export const alt =
+  'The Privacy Policy at phone width, scrolled to a bullet in the list about usage statistics. It begins "Counts and positions are kept for the six whole months after the month they were recorded, then deleted. Counts not linked to an account move to private files at Cloudflare about two weeks after their month ends, and are deleted on the same schedule." It goes on to say a backup of the database can hold them until the backup expires, that a sealed position the maintainer has opened stays in a file on their own computer until they delete it, that collection stops within three days if the deleting job stops, and that monthly totals are kept with no figure shown for fewer than 25 people.'
+
+export const before = serveMarketingSite
+
+export default async function drive(page) {
+  await openSitePage(page, '/Privacy/')
+  const bullet = page.locator('li', {
+    hasText: 'Counts not linked to an account move to private files',
+  })
+  await bullet.waitFor()
+  await scrollToTop(bullet)
+}

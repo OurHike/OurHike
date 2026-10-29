@@ -11,6 +11,8 @@ somewhere reachable from here... before autogenerate will see it."
 
 from app.models.analytics import (
     AnalyticsAnomaly,
+    AnalyticsArchivedDaily,
+    AnalyticsArchivePart,
     AnalyticsEvent,
     AnalyticsIntake,
     AnalyticsMonth,
@@ -100,6 +102,8 @@ from app.models.work_project import (
 
 __all__ = [
     "AnalyticsAnomaly",
+    "AnalyticsArchivedDaily",
+    "AnalyticsArchivePart",
     "AnalyticsEvent",
     "AnalyticsIntake",
     "AnalyticsMonth",

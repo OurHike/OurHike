@@ -297,6 +297,34 @@ class TestSubmitting:
         assert db_session.query(Club).count() == 0
         assert db_session.query(OrgNomination).count() == 0
 
+    @pytest.mark.parametrize("org_name", ["Admin", "New", "ATC"])
+    def test_a_nominated_organization_never_takes_a_slug_post_clubs_refuses(self, client, db_session, org_name):
+        """`POST /clubs` refuses `admin` and `new` (RESERVED_SLUGS: each
+        already means something under /org/) and refuses `atc` to any domain
+        but appalachiantrail.org (PUBLISHER_DOMAINS). A nomination derived its
+        slug from the name and checked neither, so each of these took the bare
+        slug. Nobody typed the slug, so nothing is refused: the name with the
+        domain's first label is the next candidate, as for a taken slug."""
+        hiker = make_profile(db_session)
+        response = client.post("/clubs/nominations", json=a_submission(org_name=org_name), headers=auth_headers(hiker.id))
+
+        assert response.status_code == 201
+        assert response.json()["club_slug"] == f"{org_name.lower()}-carolinamountainclub"
+
+    def test_the_publisher_a_slug_is_held_for_still_gets_it_by_nomination(self, client, db_session):
+        """The same rule as `POST /clubs`: `atc` is held FOR
+        appalachiantrail.org, so nominating "ATC" on that domain takes it."""
+        hiker = make_profile(db_session)
+        contacts = [{"email": "info@appalachiantrail.org", "source_page": "x", "proposed_by": "hiker"}]
+        response = client.post(
+            "/clubs/nominations",
+            json=a_submission(website="https://appalachiantrail.org", org_name="ATC", contacts=contacts),
+            headers=auth_headers(hiker.id),
+        )
+
+        assert response.status_code == 201
+        assert response.json()["club_slug"] == "atc"
+
     HOSTILE_ADDRESSES = [
         "javascript:alert(1)",
         "JavaScript:alert(1)",

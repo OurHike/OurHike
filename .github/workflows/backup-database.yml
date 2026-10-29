@@ -92,6 +92,25 @@ jobs:
           --health-retries 12
 
     steps:
+      # First, before the checkout and every step that reads a secret. A
+      # dispatch can name any branch, and this job hands production's database
+      # credential to whatever code that branch holds - the lock migrate.yml
+      # and publish-conditions.yml put on their production legs. A schedule
+      # always runs from main. Through env, never interpolated: git allows
+      # quotes and semicolons in a branch name. It stops a dispatch naming the
+      # wrong ref; a branch that edits this file can still delete it, the same
+      # limit migrate.yml's guard has, because repository secrets reach every
+      # branch's runs.
+      - name: Refuse any ref but main
+        id: ref
+        env:
+          REF: ${{ github.ref }}
+        run: |
+          if [ "$REF" != "refs/heads/main" ]; then
+            echo "::error title=Backup refused::$REF is not refs/heads/main, and only main's code may read production's database. Nothing was dumped, and the tracking issue was left alone."
+            exit 1
+          fi
+
       # Before the checkout, so no working directory: the rule
       # test_workflow_working_directory.py holds every workflow to.
       - name: Are the backup settings there
@@ -191,8 +210,11 @@ jobs:
           fi
           echo "Stored $KEY, $stored_size bytes, encrypted."
 
+      # Every outcome of a run from main, and nothing from a refused ref: a
+      # branch's run is not news about production's backup, and must not be
+      # able to close the issue either.
       - name: Open, update, or close the tracking issue
-        if: always()
+        if: always() && steps.ref.outcome == 'success'
         uses: actions/github-script@v9
         env:
           RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}

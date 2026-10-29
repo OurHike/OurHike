@@ -327,8 +327,46 @@ def test_nothing_ever_asks_pg_dump_to_apply_row_level_security():
     assert not [run for run in runs if "enable-row-security" in run]
 
 
-def test_the_tracking_issue_hears_about_every_outcome():
-    assert _steps()["Open, update, or close the tracking issue"]["if"] == "always()"
+def _workflow_steps() -> list[dict]:
+    return yaml.safe_load(WORKFLOW.read_text(encoding="utf-8"))["jobs"]["backup"]["steps"]
+
+
+def _run_step(step: dict, env: dict[str, str], tmp_path: Path) -> subprocess.CompletedProcess:
+    """A step's `run` script under bash as GitHub runs it: `bash -e`, no profile, no rc file."""
+    script = tmp_path / "step.sh"
+    script.write_text(step["run"], encoding="utf-8")
+    return subprocess.run(
+        ["bash", "--noprofile", "--norc", "-e", str(script)],
+        env={"PATH": os.environ["PATH"], **env},
+        capture_output=True,
+        text=True,
+    )
+
+
+def test_the_main_branch_guard_runs_before_any_step_that_reads_a_secret():
+    steps = _workflow_steps()
+
+    assert steps[0].get("id") == "ref"
+    assert "secrets." not in str(steps[0]), "the guard itself must not need production's credentials"
+
+
+@pytest.mark.parametrize(
+    "ref", ["refs/heads/claude/nightly-db-backup", "refs/heads/main-copy", "refs/tags/v1.0.0", "refs/pull/1930/merge"]
+)
+def test_a_run_from_any_ref_but_main_is_refused(ref, tmp_path):
+    """A dispatch can name any branch, and this job hands that branch's code production's credentials."""
+    refused = _run_step(_steps()["ref"], {"REF": ref}, tmp_path)
+
+    assert refused.returncode == 1
+    assert f"::error title=Backup refused::{ref} is not refs/heads/main" in refused.stdout
+
+
+def test_a_run_from_main_goes_on(tmp_path):
+    assert _run_step(_steps()["ref"], {"REF": "refs/heads/main"}, tmp_path).returncode == 0
+
+
+def test_the_tracking_issue_hears_every_outcome_of_a_run_from_main_and_nothing_from_a_refused_ref():
+    assert _steps()["Open, update, or close the tracking issue"]["if"] == "always() && steps.ref.outcome == 'success'"
 
 
 # --- Against a real Postgres --------------------------------------------------

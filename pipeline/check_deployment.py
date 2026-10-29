@@ -1010,7 +1010,9 @@ def check_backend_edge_cache(
 
     Not hiker-facing, for `check_backend_health`'s reason: a refused live read
     falls back to the published baseline, so this failing costs money and
-    freshness, not the map.
+    freshness, not the map. The one failure that costs more is a stored
+    signed-in answer: the same cache rule covers `GET /reports`, whose
+    signed-in answer holds the reader's own reports still in the queue.
     """
     if not api_base:
         return {

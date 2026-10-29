@@ -507,6 +507,14 @@ def test_the_issue_blames_the_step_that_failed_and_none_after_it(tmp_path, step,
 
 
 @needs_node
+def test_a_failed_night_says_the_lifecycle_rule_deletes_the_last_backup_at_90_days_regardless(tmp_path):
+    """It used to say the last good backup was "kept 90 days", which reads as kept until a new one arrives."""
+    [created] = _issue_calls(tmp_path, {"DUMP": "failure", "VERIFY": "skipped", "SEAL": "skipped", "UPLOAD": "skipped"})
+
+    assert "deletes every backup 90 days after its upload, newer one or not" in created["body"]
+
+
+@needs_node
 def test_the_issue_carries_the_label_the_night_shift_queue_ranks_first(tmp_path):
     [created] = _issue_calls(tmp_path, {"DUMP": "failure", "VERIFY": "skipped", "SEAL": "skipped", "UPLOAD": "skipped"})
     issue = {"number": 1, "title": created["title"], "labels": created["labels"], "updated_at": "2026-10-29T05:30:00Z"}

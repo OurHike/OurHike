@@ -25,7 +25,10 @@
 # owner, and not the transaction pooler, which pg_dump cannot use. The bucket
 # is used for nothing else, and its token reaches nothing else: a dump holds
 # people's data, so the set of keys that can read it should be one. Retention
-# is the bucket's lifecycle rule (90 days), so this job never deletes.
+# is the bucket's lifecycle rule (90 days), so this job never deletes, and a
+# bucket lock rule stops the token deleting or overwriting a backup inside
+# those 90 days (LAUNCH_CHECKLIST.md 5b, step 3, which also says what 90
+# broken nights in a row do to the last good backup).
 # LAUNCH_CHECKLIST.md 5b is how each is made.
 #
 # HOW IT ALARMS. Like check-deployment.yml, through one tracking issue: opening
@@ -286,7 +289,7 @@ jobs:
               allClear: `Production was backed up again on ${checkedAt}: \`${env.KEY}\`, restored and compared before it was encrypted and uploaded. Closing.`,
               render: (firstSeen, cell) => [
                 failed
-                  ? `**Production's database was not backed up on ${checkedAt}.** The last good backup is the newest object under \`postgres/\` in the backup bucket, kept 90 days.`
+                  ? `**Production's database was not backed up on ${checkedAt}.** The last good backup is the newest object under \`postgres/\` in the backup bucket. The lifecycle rule deletes every backup 90 days after its upload, newer one or not, so if this stays open until that one is 90 days old, the bucket holds none.`
                   : `**Production was backed up on ${checkedAt}** (\`${env.KEY}\`), **and a dump this size every night threatens Supabase's egress quota.**`,
                 '',
                 '| stage | first seen | what it means |',

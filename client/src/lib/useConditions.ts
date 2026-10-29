@@ -229,7 +229,9 @@ export interface Conditions {
   /** When something last actually reached the server. Null until it has. */
   lastSyncedAt: Date | null
   /** Stamp that clock. Exposed because the outbox flush is the other thing
-   *  that reaches the server, and one clock has to serve both. */
+   *  that reaches the server, and one clock has to serve both. Also re-reads
+   *  the hiker's own reports, and nothing else, so a report a flush has just
+   *  sent is on their map without waiting for the next hourly read. */
   markSynced(): void
 }
 
@@ -303,11 +305,15 @@ export function useConditions(
   // strip said "never synced" on every device forever, which was true and
   // looked like a bug in the strip rather than a missing feature.
   const [lastSyncedAt, setLastSyncedAt] = useState<Date | null>(null)
-  // The signed-in hiker's own reports (#1916); the effect that reads them
-  // says why they are a state of their own.
+  // The signed-in hiker's own reports (#1916), and a count `markSynced` moves
+  // to read them again; the effect that reads them says why.
   const [ownReports, setOwnReports] = useState(NO_OWN_REPORTS)
+  const [ownReadCount, setOwnReadCount] = useState(0)
 
-  const markSynced = useCallback(() => setLastSyncedAt(new Date()), [])
+  const markSynced = useCallback(() => {
+    setLastSyncedAt(new Date())
+    setOwnReadCount((count) => count + 1)
+  }, [])
 
   // WHY THERE IS A CLOCK HERE AT ALL (#720).
   //
@@ -620,10 +626,13 @@ export function useConditions(
   }, [online, refreshCount, ready])
 
   // The hiker's own reports at any status (`fetchMyReports`, #1916), merged
-  // into `reports` below. An effect of its own, so the public list above
-  // never waits on it: while `fetchReports` awaited both requests, a serious
-  // warning that had already arrived waited for this private read to answer,
-  // and was dropped if the phone went offline first.
+  // into `reports` below. An effect of its own, for two reasons. The public
+  // list above never waits on it: while `fetchReports` awaited both requests,
+  // a serious warning that had already arrived waited for this private read
+  // to answer, and was dropped if the phone went offline first. And
+  // `markSynced` runs this read again, alone, after an outbox flush sends
+  // something, so a report the hiker has just filed shows without waiting for
+  // the next hourly read.
   //
   // A failure keeps the last list: a 5xx or a dropped request says nothing
   // about the hiker's reports, and emptying the list would tell "Your reports"
@@ -648,7 +657,7 @@ export function useConditions(
     return () => {
       cancelled = true
     }
-  }, [online, refreshCount, ready])
+  }, [online, refreshCount, ready, ownReadCount])
 
   // A Map keeps each id where it first appeared and the last value given for
   // it, so the hiker's own copy of a report replaces the shared copy in place

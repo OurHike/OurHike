@@ -255,3 +255,31 @@ it.each([
     expect(result.current.reports).toBe(landed)
   },
 )
+
+it('markSynced reads /reports/mine again and nothing else, so a report a flush just sent shows at once', async () => {
+  // App.tsx calls markSynced after every outbox flush that sent something.
+  // Without this read the new report reached the hiker's map at the next
+  // hourly or visibility read, where #1916 asks for it "straight after they
+  // submit it".
+  signIn('a-real-token')
+  const useConditions = await configuredHook()
+  let mine: object[] = []
+  const spy = serve({
+    '/reports': () => answer([HAZARD]),
+    '/reports/mine': () => answer(mine),
+  })
+  const { result } = renderHook(() => useConditions(true))
+  await waitFor(() => expect(requestsTo(spy, '/reports/mine')).toBe(1))
+  await waitFor(() => expect(result.current.reports).toEqual([HAZARD]))
+
+  // The flush's POST /reports has landed, so the server now lists it.
+  mine = [OWN]
+  act(() => result.current.markSynced())
+
+  await waitFor(() => expect(result.current.reports).toEqual([HAZARD, OWN]))
+  expect(
+    ['/reports', '/closures', '/disputes', '/field-notes'].map((path) =>
+      requestsTo(spy, path),
+    ),
+  ).toEqual([1, 1, 1, 1])
+})

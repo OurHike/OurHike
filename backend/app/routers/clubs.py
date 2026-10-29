@@ -776,6 +776,18 @@ def export_org(
     def row(obj: object, fields: tuple[str, ...]) -> dict[str, object]:
         return {field: getattr(obj, field) for field in fields}
 
+    def seat(admin: OrgAdmin) -> dict[str, object]:
+        exported = row(admin, ("id", "person_id", "title", "is_codeowner", "approved_at", "declined_at"))
+        # `_with_admins`'s rule for a held registration, here too: its
+        # registrant passes `require_org_admin` on a seat that registering
+        # approved, against an address they typed for somebody else, so the
+        # only holder this file names for them is themselves. Without it the
+        # export handed them the secretary's account id that GET /clubs/{slug}
+        # withholds (measured while fixing the review of #1926).
+        if club.state == OrgState.pending and admin.person_id != access.person_id:
+            exported["person_id"] = None
+        return exported
+
     return {
         "org": row(club, ("id", "slug", "name", "domain", "website", "region", "membership_url", "donation_url")),
         "parks": [row(p, ("id", "name", "kind")) for p in parks],
@@ -799,10 +811,7 @@ def export_org(
             row(c, ("challenge_id", "definition", "window_closes", "takes_entries", "pr_url", "updated_at"))
             for c in db.query(ClubChallenge).filter(ClubChallenge.club_id == club.id).order_by(ClubChallenge.challenge_id).all()
         ],
-        "admins": [
-            row(a, ("id", "person_id", "title", "is_codeowner", "approved_at", "declined_at"))
-            for a in db.query(OrgAdmin).filter(OrgAdmin.club_id == club.id).all()
-        ],
+        "admins": [seat(a) for a in db.query(OrgAdmin).filter(OrgAdmin.club_id == club.id).all()],
         # Assembled by the roster endpoint rather than re-queried here, so the
         # file an organization downloads and the screen they read it on cannot
         # answer differently. Two assemblies of the same list is how an export

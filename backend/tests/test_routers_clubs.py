@@ -939,6 +939,21 @@ def test_a_held_registrations_registrant_reads_only_their_own_seat(client):
     assert {seat["decline_reason"] for seat in seats} == {None}
 
 
+def test_a_held_registrations_registrant_cannot_read_the_other_holders_from_the_org_export(client):
+    """The same stranger passes `require_org_admin`, because registering
+    approved their seat, so `GET /clubs/{slug}/export` answers them - and its
+    `admins` section listed every seat's account id, the secretary's
+    included, after GET /clubs/{slug} had stopped."""
+    stranger, secretary, _ = _a_seat_declined_with_a_reason(client, founder_email="stranger@gmail.com")
+
+    exported = client.get("/clubs/ramapo-trail-conference/export", headers=auth_headers(stranger))
+
+    assert exported.status_code == 200, exported.text
+    holders = {seat["person_id"] for seat in exported.json()["admins"]}
+    assert holders == {stranger, None}
+    assert secretary not in holders
+
+
 def test_declining_answers_the_decliner_with_only_their_own_seat(client):
     """`decline_seat` is the one write here whose caller is never an approved
     admin, so its answer goes through the same rule as a read. The review of

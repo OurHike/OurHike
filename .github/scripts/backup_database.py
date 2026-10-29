@@ -26,13 +26,41 @@ applies to can produce a dump that looks fine and holds nothing: plain pg_dump
 refuses, but `pg_dump --enable-row-security` succeeds with zero rows. Nothing
 here passes that flag, and the dumping role holds BYPASSRLS (LAUNCH_CHECKLIST.md
 section 5b). `verify` is what catches it if either ever stops being true: it
-restores both archives into a throwaway database and fails on any table the
-live statistics (`pg_stat_user_tables.n_live_tup`) say has rows and the restore
-holds none of. Statistics rather than `count(*)` on the live side, because a
-role RLS hides rows from would count zero on both sides and pass.
+restores both archives into a throwaway database and fails unless every table
+comes back holding exactly the rows `dump` counted in it.
 
-`n_live_tup` is an estimate, so only "has rows" against "has none" is compared,
-never the numbers themselves. Both are printed, for the person reading the log.
+THE COUNT IS EXACT, AND TAKEN IN THE SNAPSHOT pg_dump DUMPS. `dump` holds one
+REPEATABLE READ transaction open (`HeldTransaction`), exports its snapshot with
+`pg_export_snapshot()`, counts every table there with `count(*)` under
+`row_security = off`, and passes the snapshot to both pg_dump runs
+(`--snapshot`). The counts and the archives therefore describe the same
+instant, so a restored count must EQUAL its source count, and a write landing
+between the count and the dump can neither fail a good backup nor hide a short
+one. `row_security = off` makes `count(*)` exact for a role with BYPASSRLS and
+an error for one without - the same refusal pg_dump gives, which is the safe
+failure - where the default would count zero on both sides and pass.
+
+Measured 2026-10-29 on postgres:17 (17.11), as a BYPASSRLS role that is not a
+superuser: `count(*)` under `row_security = off` read all 40 rows of an RLS
+table, a role without BYPASSRLS got "query would be affected by row-level
+security policy", and pg_dump 17 given the held transaction's snapshot dumped
+the 40 rows it had counted while a 41st, inserted after the count, was left
+out (41 without `--snapshot`). `test_backup_database.py` holds the same on the
+local Postgres 16.
+
+The count used to be `pg_stat_user_tables.n_live_tup`, which reads 0 after
+crash recovery or a statistics reset, so an empty dump compared against it
+passed (the review of #1930 - Back production's database up nightly: dump,
+restore and compare, encrypt with age, upload to a private bucket).
+
+@unvalidated: that Supabase's session pooler (Supavisor, port 5432) lets
+pg_dump's connection import a snapshot the held connection exported. Session
+mode gives each client connection a server connection of its own for its whole
+life, which is what an import needs, but nobody has tried it there. If it does
+not work, pg_dump stops with `snapshot "..." does not exist` (Postgres 17.11's
+message for a snapshot it cannot import, seen 2026-10-29), the dump step fails
+and the tracking issue opens: loud rather than wrong. The first configured run
+settles it.
 
 SECRETS STAY OUT OF ARGV. The connection string is split into libpq's own
 environment variables (PGHOST, PGPASSWORD...) for each tool, and a Docker-run
@@ -51,9 +79,12 @@ import re
 import subprocess
 import sys
 import tarfile
+import tempfile
+import uuid
 from collections.abc import Mapping
 from dataclasses import dataclass
 from pathlib import Path
+from typing import NoReturn
 from urllib.parse import parse_qsl, unquote, urlsplit
 
 #: Supavisor's transaction pooler. pg_dump sets session state a transaction
@@ -77,17 +108,31 @@ RESTORED_ROWS = "restored-rows.tsv"
 MANIFEST = "manifest.json"
 ARCHIVES = ("public.dump", "auth.dump")
 
-#: Every table that gets dumped, with what the statistics say it holds. Listed
-#: from pg_class rather than from the statistics view, so a table the
-#: statistics have never counted is still a table the restore has to contain.
-LIVE_ROWS_SQL = """
-select n.nspname || '.' || c.relname, coalesce(s.n_live_tup, 0)
+#: Every table the two pg_dump runs write, each with its label and its quoted
+#: name, so `dump` can count each one.
+DUMPED_TABLES_SQL = """
+select n.nspname || '.' || c.relname, format('%I.%I', n.nspname, c.relname)
 from pg_class c
 join pg_namespace n on n.oid = c.relnamespace
-left join pg_stat_user_tables s on s.relid = c.oid
 where c.relkind in ('r', 'p')
   and (n.nspname = 'public' or (n.nspname = 'auth' and c.relname in ('users', 'identities')))
 order by 1
+"""
+
+#: What `HeldTransaction` runs first: the same five settings pg_dump 17.11 sends
+#: for its own session (logged with `log_statement = all`, 2026-10-29). The
+#: timeouts matter more here than there, because this transaction sits idle
+#: while both dumps run, and a timeout that ended it would invalidate the
+#: snapshot the second dump has yet to import. `transaction_timeout` exists from
+#: Postgres 17 only, hence the guard rather than a plain SET, which a 16 server
+#: refuses.
+HOLD_SQL = """
+begin isolation level repeatable read, read only;
+set statement_timeout = 0;
+set lock_timeout = 0;
+set idle_in_transaction_session_timeout = 0;
+set row_security = off;
+select set_config('transaction_timeout', '0', false) where current_setting('server_version_num')::int >= 170000
 """
 
 #: The restored tables, each with its label and its quoted name.
@@ -157,8 +202,14 @@ class Tools:
     workdir: Path
     image: str | None = None
 
-    def command(self, tool: str, args: list[str], pg_env: Mapping[str, str]) -> tuple[list[str], dict[str, str]]:
-        """The argv and environment for one tool. Values travel in the environment only."""
+    def command(
+        self, tool: str, args: list[str], pg_env: Mapping[str, str], *, interactive: bool = False
+    ) -> tuple[list[str], dict[str, str]]:
+        """The argv and environment for one tool. Values travel in the environment only.
+
+        `interactive` keeps the tool's stdin open inside Docker, which
+        `HeldTransaction` needs to go on feeding psql statements.
+        """
         inherited = {key: value for key, value in os.environ.items() if not key.startswith("PG") and key != "BACKUP_DATABASE_URL"}
         env = {**inherited, **pg_env}
         if self.image is None:
@@ -169,6 +220,8 @@ class Tools:
             "--volume", f"{self.workdir}:{self.workdir}",
             "--workdir", str(self.workdir),
         ]  # fmt: skip
+        if interactive:
+            docker.append("--interactive")
         for name in sorted(pg_env):
             docker += ["--env", name]
         return [*docker, self.image, tool, *args], env
@@ -183,14 +236,113 @@ class Tools:
         return result.stdout if capture else ""
 
 
+#: psql as a machine reads it: tab-separated rows, no headers, no footers, no
+#: ~/.psqlrc, and the first error ends it.
+PSQL_FLAGS = ("--no-psqlrc", "--no-align", "--tuples-only", "--field-separator=\t", "--set=ON_ERROR_STOP=1")
+
+
 def _query(tools: Tools, pg_env: Mapping[str, str], sql: str) -> list[list[str]]:
-    out = tools.run(
-        "psql",
-        ["--no-psqlrc", "--no-align", "--tuples-only", "--field-separator=\t", "--set=ON_ERROR_STOP=1", "--command", sql],
-        pg_env,
-        capture=True,
-    )
+    out = tools.run("psql", [*PSQL_FLAGS, "--command", sql], pg_env, capture=True)
     return [line.split("\t") for line in out.splitlines() if line]
+
+
+class HeldTransaction:
+    """One psql process holding one transaction open, fed statements on its stdin.
+
+    `pg_dump --snapshot` can import a snapshot only while the transaction that
+    exported it is still open, and `psql --command` ends its transaction when
+    it returns. So this keeps one psql running for the length of `dump`: each
+    `query` writes its SQL followed by `\\echo <marker>`, and reads rows up to
+    the marker line. Leaving the `with` block commits and closes the session;
+    leaving it on an exception just closes stdin, and Postgres rolls the
+    transaction back when the connection goes.
+    """
+
+    def __init__(self, tools: Tools, pg_env: Mapping[str, str]) -> None:
+        self._tools = tools
+        self._pg_env = pg_env
+        self._marker = f"ourhike-backup-{uuid.uuid4().hex}"
+        self._process: subprocess.Popen[str] | None = None
+        self._stderr = None
+
+    def __enter__(self) -> HeldTransaction:
+        argv, env = self._tools.command("psql", [*PSQL_FLAGS, "--quiet"], self._pg_env, interactive=True)
+        # A file rather than a pipe, so a chatty stderr can never fill a pipe
+        # nobody is reading and stall psql mid-answer.
+        self._stderr = tempfile.TemporaryFile(mode="w+", encoding="utf-8")
+        self._process = subprocess.Popen(
+            argv, env=env, text=True, encoding="utf-8", stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=self._stderr
+        )
+        try:
+            self.query(HOLD_SQL)
+        except BaseException:
+            self._close(commit=False)
+            self._stderr.close()
+            raise
+        return self
+
+    def query(self, sql: str) -> list[list[str]]:
+        """Run `sql` inside the held transaction and return its rows."""
+        process = self._process
+        assert process is not None and process.stdin is not None and process.stdout is not None
+        try:
+            process.stdin.write(f"{sql};\n\\echo {self._marker}\n")
+            process.stdin.flush()
+        except BrokenPipeError:
+            self._exited()
+        rows = []
+        for line in process.stdout:
+            line = line.rstrip("\n")
+            if line == self._marker:
+                return rows
+            if line:
+                rows.append(line.split("\t"))
+        self._exited()
+
+    def _exited(self) -> NoReturn:
+        """psql stopped answering: say why, as `Tools.run` does, without quoting a secret."""
+        assert self._process is not None and self._stderr is not None
+        code = self._process.wait()
+        self._stderr.seek(0)
+        said = self._stderr.read()
+        if said:
+            print(said, file=sys.stderr, end="")
+        raise Refused(f"psql exited {code}")
+
+    def __exit__(self, kind: object, value: object, traceback: object) -> None:
+        code = self._close(commit=kind is None)
+        try:
+            if kind is None and code != 0:
+                self._exited()
+        finally:
+            if self._stderr is not None:
+                self._stderr.close()
+
+    def _close(self, *, commit: bool) -> int:
+        """End the session, committing only when asked, and return psql's exit status."""
+        process = self._process
+        assert process is not None and process.stdin is not None
+        try:
+            if commit:
+                process.stdin.write("commit;\n")
+            process.stdin.close()
+        except BrokenPipeError:
+            pass
+        try:
+            return process.wait(timeout=60)
+        except subprocess.TimeoutExpired:
+            process.kill()
+            return process.wait()
+        finally:
+            if process.stdout is not None:
+                process.stdout.close()
+
+
+def _counting_sql(tables: list[list[str]]) -> str:
+    """One query counting every `(label, quoted name)` in `tables` exactly."""
+    return " union all ".join(
+        f"select '{label.replace(chr(39), chr(39) * 2)}', count(*) from {quoted}" for label, quoted in tables
+    )
 
 
 def _read_counts(path: Path) -> dict[str, int]:
@@ -202,47 +354,51 @@ def _write_counts(path: Path, counts: Mapping[str, int]) -> None:
     path.write_text("".join(f"{table}\t{count}\n" for table, count in sorted(counts.items())), encoding="utf-8")
 
 
-def compare(live: Mapping[str, int], restored: Mapping[str, int]) -> list[str]:
-    """Why this restore does not count as a backup, one line per reason. Empty when it does."""
+def compare(dumped: Mapping[str, int], restored: Mapping[str, int]) -> list[str]:
+    """Why this restore does not count as a backup, one line per reason. Empty when it does.
+
+    Exact equality, because `dump` counted in the very snapshot it dumped: one
+    row short is a backup missing a row, not an estimate being off.
+    """
     problems = []
     if not restored:
         problems.append("the restore holds no tables at all")
-    for table, estimate in sorted(live.items()):
+    for table, count in sorted(dumped.items()):
         if table not in restored:
             problems.append(f"{table} is in the database and missing from the restore")
-        elif estimate > 0 and restored[table] == 0:
-            problems.append(f"{table}: the live statistics say about {estimate} row(s), and the restore holds none")
+        elif restored[table] != count:
+            problems.append(f"{table}: {count} row(s) when it was dumped, {restored[table]} in the restore")
     return problems
 
 
-def report(live: Mapping[str, int], restored: Mapping[str, int]) -> str:
+def report(dumped: Mapping[str, int], restored: Mapping[str, int]) -> str:
     """Every table side by side, for the log."""
-    lines = [f"{'table':40} {'live (estimate)':>16} {'restored':>9}"]
-    for table in sorted(set(live) | set(restored)):
-        estimate = live.get(table)
-        count = restored.get(table)
-        lines.append(f"{table:40} {'-' if estimate is None else estimate:>16} {'-' if count is None else count:>9}")
+    lines = [f"{'table':40} {'dumped':>12} {'restored':>12}"]
+    for table in sorted(set(dumped) | set(restored)):
+        before = dumped.get(table)
+        after = restored.get(table)
+        lines.append(f"{table:40} {'-' if before is None else before:>12} {'-' if after is None else after:>12}")
     return "\n".join(lines)
 
 
 def dump(workdir: Path, tools: Tools, source_env: Mapping[str, str]) -> dict[str, int]:
-    """Read the live statistics, then write both archives. Returns the statistics."""
+    """Count every table, then write both archives, all in one snapshot. Returns the counts."""
     workdir.mkdir(parents=True, exist_ok=True)
-    live = {table: int(count) for table, count in _query(tools, source_env, LIVE_ROWS_SQL)}
-    if not any(table.startswith(f"{DUMPED_SCHEMA}.") for table in live):
-        raise Refused(f"the database has no tables in schema {DUMPED_SCHEMA}; is BACKUP_DATABASE_URL the right database?")
-    _write_counts(workdir / LIVE_ROWS, live)
+    with HeldTransaction(tools, source_env) as held:
+        [[snapshot]] = held.query("select pg_export_snapshot()")
+        tables = held.query(DUMPED_TABLES_SQL)
+        if not any(label.startswith(f"{DUMPED_SCHEMA}.") for label, _ in tables):
+            raise Refused(f"the database has no tables in schema {DUMPED_SCHEMA}; is BACKUP_DATABASE_URL the right database?")
+        counts = {label: int(count) for label, count in held.query(_counting_sql(tables))}
+        _write_counts(workdir / LIVE_ROWS, counts)
 
-    # Never --enable-row-security: with it, a role RLS applies to dumps
-    # nothing and succeeds. Without it, the same role makes pg_dump refuse.
-    tools.run(
-        "pg_dump",
-        ["--format=custom", "--no-password", f"--schema={DUMPED_SCHEMA}", f"--file={workdir / 'public.dump'}"],
-        source_env,
-    )
-    tables = [f"--table={table}" for table in AUTH_TABLES]
-    tools.run("pg_dump", ["--format=custom", "--no-password", *tables, f"--file={workdir / 'auth.dump'}"], source_env)
-    return live
+        # Never --enable-row-security: with it, a role RLS applies to dumps
+        # nothing and succeeds. Without it, the same role makes pg_dump refuse.
+        common = ["--format=custom", "--no-password", f"--snapshot={snapshot}"]
+        tools.run("pg_dump", [*common, f"--schema={DUMPED_SCHEMA}", f"--file={workdir / 'public.dump'}"], source_env)
+        auth_tables = [f"--table={table}" for table in AUTH_TABLES]
+        tools.run("pg_dump", [*common, *auth_tables, f"--file={workdir / 'auth.dump'}"], source_env)
+    return counts
 
 
 def verify(workdir: Path, tools: Tools, scratch_env: Mapping[str, str]) -> list[str]:
@@ -270,15 +426,12 @@ def verify(workdir: Path, tools: Tools, scratch_env: Mapping[str, str]) -> list[
             scratch_env,
             "; ".join(f"alter table {quoted} disable row level security, no force row level security" for _, quoted in tables),
         )
-        counting = " union all ".join(
-            f"select '{label.replace(chr(39), chr(39) * 2)}', count(*) from {quoted}" for label, quoted in tables
-        )
-        restored = {table: int(count) for table, count in _query(tools, scratch_env, counting)}
+        restored = {table: int(count) for table, count in _query(tools, scratch_env, _counting_sql(tables))}
     _write_counts(workdir / RESTORED_ROWS, restored)
 
-    live = _read_counts(workdir / LIVE_ROWS)
-    print(report(live, restored))
-    return compare(live, restored)
+    dumped = _read_counts(workdir / LIVE_ROWS)
+    print(report(dumped, restored))
+    return compare(dumped, restored)
 
 
 def seal(workdir: Path, recipient: str, now: datetime.datetime) -> tuple[Path, str]:
@@ -332,8 +485,10 @@ def main(argv: list[str] | None = None) -> int:
 
     try:
         if args.stage == "dump":
-            live = dump(workdir, tools, libpq_environment(os.environ.get("BACKUP_DATABASE_URL", "")))
-            print(f"Dumped {len(live)} table(s); the statistics say {sum(live.values())} row(s) between them.")
+            counts = dump(workdir, tools, libpq_environment(os.environ.get("BACKUP_DATABASE_URL", "")))
+            print(
+                f"Dumped {len(counts)} table(s) holding {sum(counts.values())} row(s) between them, counted in the dump's snapshot."
+            )
         elif args.stage == "verify":
             if not args.scratch_url:
                 parser.error("verify needs --scratch-url")
@@ -343,7 +498,7 @@ def main(argv: list[str] | None = None) -> int:
                 for problem in problems:
                     print(f"  - {problem}", file=sys.stderr)
                 return 1
-            print("\nEvery table the statistics say has rows came back with rows.")
+            print("\nEvery table came back holding exactly the rows it held when it was dumped.")
         else:
             now = datetime.datetime.now(datetime.UTC).replace(microsecond=0)
             sealed, key = seal(workdir, os.environ.get("BACKUP_AGE_RECIPIENT", ""), now)

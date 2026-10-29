@@ -14,9 +14,9 @@
 #
 # THE ORDER IS THE POINT: dump, restore, compare, encrypt, upload. A dump is
 # only uploaded once a throwaway Postgres 17 has restored it and every table
-# the live statistics say has rows came back with rows -
-# .github/scripts/backup_database.py says why the comparison reads statistics
-# rather than count(*). And it is encrypted before it leaves the runner: the
+# came back holding exactly the rows `count(*)` found in it, counted in the
+# snapshot pg_dump dumped - .github/scripts/backup_database.py says why that
+# snapshot is shared. And it is encrypted before it leaves the runner: the
 # job holds the public `age` recipient only, and the private key stays offline
 # with the maintainer, so a leaked bucket token exposes ciphertext.
 #
@@ -213,8 +213,8 @@ jobs:
             // after it never ran, and listing them would read as four faults.
             const stages = [
               ['settings', env.GO === 'true', `Not set: ${env.MISSING || 'unknown'}. Until they are, production has no backup at all.`],
-              ['dump', env.DUMP === 'success', 'pg_dump or the statistics read failed. A role without BYPASSRLS makes pg_dump refuse, which is the safe failure.'],
-              ['restore check', env.VERIFY === 'success', 'The dump did not restore, or a table the live statistics say has rows came back empty. The log has the table-by-table comparison.'],
+              ['dump', env.DUMP === 'success', 'The row count or pg_dump failed. A role without BYPASSRLS makes the count refuse, which is the safe failure.'],
+              ['restore check', env.VERIFY === 'success', 'The dump did not restore, or a table came back with a different number of rows than it held when it was dumped. The log has the table-by-table comparison.'],
               ['encrypt', env.SEAL === 'success', 'age did not seal the dump, or BACKUP_AGE_RECIPIENT is not an age public key.'],
               ['upload', env.UPLOAD === 'success', 'The encrypted dump did not reach the bucket at full size.'],
             ]

@@ -433,7 +433,7 @@ settings:
       nothing else - not the migration owner, so a leaked copy can read but
       never write or drop. BYPASSRLS is the point rather than a convenience:
       every table has row-level security on, and a role without it makes
-      pg_dump refuse. Through the session pooler on 5432; the transaction
+      the dump refuse. Through the session pooler on 5432; the transaction
       pooler is refused by name. Optional only in the sense that nothing else
       breaks without it - while it is unset, the backup job's tracking issue
       says production has no backup, which is then the truth.

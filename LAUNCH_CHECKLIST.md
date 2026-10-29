@@ -444,7 +444,7 @@ It mattered because email/password was a real sign-in path here — `VITE_AUTH_P
 
 **Supabase Free keeps no backups** (supabase.com/pricing, read 2026-10-23), and the maintainer chose a nightly dump to a private R2 bucket over Supabase Pro ([#1908 — Back production's database up nightly to a private R2 bucket, because Supabase Free keeps no backups](https://github.com/OurHike/OurHike/issues/1908)). A lost database is worse than lost data: `publish-conditions.yml` bakes the closures every phone reads from it, so one that came back empty would tell hikers no trail is closed.
 
-`.github/workflows/backup-database.yml` runs at 05:12 UTC. It dumps `public` and Supabase's `auth.users` and `auth.identities`, restores the dump into a throwaway Postgres 17, and fails if any table the live statistics say has rows came back empty. Only then does it encrypt the dump with `age` and upload it. Until everything below is set, its tracking issue, **Nightly database backup**, says production has no backup.
+`.github/workflows/backup-database.yml` runs at 05:12 UTC. It dumps `public` and Supabase's `auth.users` and `auth.identities`, restores the dump into a throwaway Postgres 17, and fails unless every table comes back holding exactly the rows `count(*)` found in it, counted in the same snapshot `pg_dump` dumped. Only then does it encrypt the dump with `age` and upload it. Until everything below is set, its tracking issue, **Nightly database backup**, says production has no backup.
 
 ### Set it up
 
@@ -471,7 +471,7 @@ It mattered because email/password was a real sign-in path here — `VITE_AUTH_P
    ```
 
    It prints the public key, `age1…`. Save that as the repository **variable** `BACKUP_AGE_RECIPIENT`. It can only seal, so a build log may show it. Keep `ourhike-backups.key` offline, in a password manager or on paper. **Losing it loses every backup made to it, and anyone holding it and a bucket token can read every hiker's data.**
-6. **Run it once**: Actions → Back up the database → Run workflow. The restore step prints every table with its live estimate and its restored count. The upload step ends `Stored postgres/YYYY/MM/DD/ourhike-<stamp>.tar.age`. Then do the drill below once with that file.
+6. **Run it once**: Actions → Back up the database → Run workflow. The restore step prints every table with the rows it held when it was dumped and the rows the restore holds, which should be equal. The upload step ends `Stored postgres/YYYY/MM/DD/ourhike-<stamp>.tar.age`. Then do the drill below once with that file.
 7. **Prove the trap is caught**, which is #1908's acceptance. Create a second role exactly like step 1, but without `bypassrls`, point `BACKUP_DATABASE_URL` at it, and run the workflow. The dump step should fail with `query would be affected by row-level security policy`, and the tracking issue should open. Then put the real secret back, run it again so the issue closes, and drop the second role.
 
 ### The restore drill
@@ -488,7 +488,7 @@ pg_restore --no-owner --no-privileges --exit-on-error -d ourhike_restore_drill p
 pg_restore --no-owner --no-privileges --exit-on-error -d ourhike_restore_drill auth.dump
 ```
 
-`drop schema public` comes first because a fresh database already has one, and the archive's own `create schema public` otherwise stops the restore. Then compare a few tables' `count(*)` with `restored-rows.tsv`, and `select version_num from alembic_version` with the head the backup was taken at.
+`drop schema public` comes first because a fresh database already has one, and the archive's own `create schema public` otherwise stops the restore. Then compare each table's `count(*)` with `live-rows.tsv`, which holds exactly the rows the dump held, and `select version_num from alembic_version` with the head the backup was taken at.
 
 ### Restoring into production
 

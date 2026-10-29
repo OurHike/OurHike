@@ -64,11 +64,26 @@ def _with_admins(db: Session, club: Club, viewer: Profile | None) -> OrgOut:
     Every seat's holder and decline reason go to moderators and to this org's
     approved admins (`OrgAdminOut.for_viewer` says why). "Approved admin" is
     `resolve_access`'s rule, an `approved_at`, read off the seats already
-    loaded here rather than queried again.
+    loaded here rather than queried again - with one exception that rule does
+    not make.
+
+    **A HELD REGISTRATION'S REGISTRANT IS NOT ONE OF THEM.** `register_org`
+    approves the registrant's seat on the spot, and an org is `pending`
+    exactly when the only address at its domain was one that registrant
+    typed for somebody else - #1635's unverified stranger. Counting that seat
+    let a stranger name `sec@ramapotrails.org` on the form, wait for the
+    secretary to sign in and decline, and read the secretary's account id
+    and reason (the review of #1926), which also told them which account
+    that address belongs to. Until somebody at the domain approves a seat
+    the registrant reads their own seat only, like any other seat holder.
     """
     admins = db.query(OrgAdmin).filter(OrgAdmin.club_id == club.id).order_by(OrgAdmin.invited_at).all()
     sees_every_seat = viewer is not None and (
-        viewer.role in MODERATOR_ROLES or any(admin.person_id == viewer.id and admin.approved_at is not None for admin in admins)
+        viewer.role in MODERATOR_ROLES
+        or (
+            club.state != OrgState.pending
+            and any(admin.person_id == viewer.id and admin.approved_at is not None for admin in admins)
+        )
     )
     out = OrgOut.model_validate(club)
     out.admins = [OrgAdminOut.for_viewer(admin, viewer, sees_every_seat=sees_every_seat) for admin in admins]

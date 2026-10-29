@@ -828,17 +828,21 @@ def test_a_challenge_publishers_org_id_is_not_a_slug_a_stranger_may_register(cli
 # --- whose seat it is, and why they declined (#1914) ---------------------------
 
 
-def _a_seat_declined_with_a_reason(client) -> tuple[str, str]:
+def _a_seat_declined_with_a_reason(client, *, founder_email="chair@ramapotrails.org") -> tuple[str, str, dict]:
     """The review's reproduction for #1914 (GET /clubs publishes every admin's
     account id and decline reason to anyone, and an account id is all it takes
     to write into that person's private thanks inbox): a founder, and a
     colleague who signs in, finds the seat waiting for them and declines it
-    with a reason meant for their own organization. Returns both account ids."""
+    with a reason meant for their own organization.
+
+    A `founder_email` off the domain makes the registration a held one
+    (`pending`), because the colleague's is then the only address at it.
+    Returns both account ids and the decline's own response body."""
     founder, colleague = str(uuid.uuid4()), str(uuid.uuid4())
     registered = _register(
         client,
         founder,
-        email="chair@ramapotrails.org",
+        email=founder_email,
         admins=[{"email": "sec@ramapotrails.org", "title": "Secretary"}],
     )
     assert registered.status_code == 201, registered.text
@@ -853,7 +857,7 @@ def _a_seat_declined_with_a_reason(client) -> tuple[str, str]:
         headers=colleague_headers,
     )
     assert declined.status_code == 200, declined.text
-    return founder, colleague
+    return founder, colleague, declined.json()
 
 
 @pytest.mark.parametrize("path", ["/clubs/ramapo-trail-conference", "/clubs"])
@@ -869,7 +873,7 @@ def test_nobody_outside_the_organization_reads_a_seats_holder_or_decline_reason(
 
 
 def test_an_approved_admin_and_a_moderator_read_every_seat(client, db_session):
-    founder, colleague = _a_seat_declined_with_a_reason(client)
+    founder, colleague, _ = _a_seat_declined_with_a_reason(client)
     moderator = make_profile(db_session, Role.maintainer).id
 
     for viewer in (founder, moderator):
@@ -879,9 +883,26 @@ def test_an_approved_admin_and_a_moderator_read_every_seat(client, db_session):
 
 
 def test_a_seat_holder_who_is_not_an_approved_admin_reads_only_their_own_seat(client):
-    founder, colleague = _a_seat_declined_with_a_reason(client)
+    founder, colleague, _ = _a_seat_declined_with_a_reason(client)
 
     seats = client.get("/clubs/ramapo-trail-conference", headers=auth_headers(colleague)).json()["admins"]
 
     assert {seat["person_id"] for seat in seats} == {colleague, None}
     assert founder not in {seat["person_id"] for seat in seats}
+
+
+def test_a_held_registrations_registrant_reads_only_their_own_seat(client):
+    """The review of #1926's scenario. A stranger registers ramapotrails.org
+    from an address elsewhere, naming the secretary's; the org is held at
+    `pending`. The secretary signs in and declines with a personal reason.
+    Registering approved the stranger's own seat, so "an approved admin reads
+    every seat" handed them the secretary's account id and that reason - and
+    with it, which account the address they typed belongs to."""
+    stranger, secretary, _ = _a_seat_declined_with_a_reason(client, founder_email="stranger@gmail.com")
+    assert client.get("/clubs/ramapo-trail-conference").json()["state"] == "pending"
+
+    seats = client.get("/clubs/ramapo-trail-conference", headers=auth_headers(stranger)).json()["admins"]
+
+    assert {seat["person_id"] for seat in seats} == {stranger, None}
+    assert secretary not in {seat["person_id"] for seat in seats}
+    assert {seat["decline_reason"] for seat in seats} == {None}

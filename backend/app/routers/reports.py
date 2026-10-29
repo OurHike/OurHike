@@ -16,8 +16,8 @@ from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from app.core.assignments import assignments_covering, stood_behind
-from app.core.auth import get_current_user, get_current_user_optional
-from app.core.orm import commit_and_refresh, get_or_404
+from app.core.auth import get_current_user, get_current_user_optional, still_signed_in
+from app.core.orm import commit_and_refresh, release_before_waiting
 from app.core.photos import (
     ALLOWED_CONTENT_TYPE,
     FIRST_PHOTO_INDEX,
@@ -26,6 +26,7 @@ from app.core.photos import (
     MAX_REPORT_PHOTOS,
     PHOTO_URL_TTL_SECONDS,
     PhotoStorageUnavailable,
+    discard_refused_upload,
     photo_storage_configured,
     photo_uploads_enabled,
     presigned_photo_url,
@@ -603,20 +604,8 @@ async def upload_report_photo_at(
     cap enforced as the body arrives, the row written last - is unchanged from
     the single-photo endpoint below, and is shared with it rather than copied.
     """
-    report = await run_in_threadpool(_report_this_caller_may_upload_to, db, report_id, current_user)
-
-    if index < FIRST_PHOTO_INDEX or index > MAX_REPORT_PHOTOS:
-        raise HTTPException(
-            status_code=status.HTTP_409_CONFLICT,
-            detail=f"A report holds photos {FIRST_PHOTO_INDEX} to {MAX_REPORT_PHOTOS}.",
-        )
-    if index > report.photo_count + 1:
-        raise HTTPException(
-            status_code=status.HTTP_409_CONFLICT,
-            detail=f"This report has {report.photo_count} photos; the next one is {report.photo_count + 1}.",
-        )
-
-    return await _store_report_photo(report, index, request, db, current_user)
+    uploader_id = await run_in_threadpool(_checked_then_released, db, report_id, index, current_user)
+    return await _store_report_photo(report_id, index, request, db, uploader_id)
 
 
 @router.put(
@@ -655,16 +644,52 @@ async def upload_report_photo(
     `GET /reports/{id}/photo` below, which checks the report's own visibility
     and status first. Nothing here makes a photo reachable.
     """
-    return await _store_report_photo(
-        await run_in_threadpool(_report_this_caller_may_upload_to, db, report_id, current_user),
-        FIRST_PHOTO_INDEX,
-        request,
-        db,
-        current_user,
-    )
+    uploader_id = await run_in_threadpool(_checked_then_released, db, report_id, FIRST_PHOTO_INDEX, current_user)
+    return await _store_report_photo(report_id, FIRST_PHOTO_INDEX, request, db, uploader_id)
 
 
-def _report_this_caller_may_upload_to(db: Session, report_id: str, current_user: Profile) -> Report:
+def _checked_then_released(db: Session, report_id: str, index: int, current_user: Profile) -> str:
+    """Every check that needs no bytes, then the connection handed back.
+
+    Run before the body is read, so a refusal costs the phone nothing but the
+    headers. The connection goes back to the pool before the wait
+    (`release_before_waiting`), and `_record_stored_photo` runs the same
+    checks again, on the row as it is once the photo is in the bucket.
+
+    Returns the caller's id as a plain string, because nothing may read
+    `current_user` again before then: the release expires it, and reading an
+    expired row is a query that takes a connection back out of the pool and
+    keeps it (app/core/orm.py).
+    """
+    uploader_id = current_user.id
+    _upload_target(db.get(Report, report_id), index, uploader_id)
+    release_before_waiting(db)
+    return uploader_id
+
+
+def _upload_target(report: Report | None, index: int, uploader_id: str) -> Report:
+    """The report photo `index` may be written to, or the refusal that says why not.
+
+    Handed the row rather than looking it up, because its two callers look it
+    up differently: plainly before the body is read, and locked once the photo
+    is in the bucket (`_record_stored_photo`).
+    """
+    report = _report_this_caller_may_upload_to(report, uploader_id)
+
+    if index < FIRST_PHOTO_INDEX or index > MAX_REPORT_PHOTOS:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail=f"A report holds photos {FIRST_PHOTO_INDEX} to {MAX_REPORT_PHOTOS}.",
+        )
+    if index > report.photo_count + 1:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail=f"This report has {report.photo_count} photos; the next one is {report.photo_count + 1}.",
+        )
+    return report
+
+
+def _report_this_caller_may_upload_to(report: Report | None, uploader_id: str) -> Report:
     """The report, if there is a bucket to store into and this caller filed it.
 
     BOTH CHECKS, WHICH IS WHY THE NAME IS NOT `_owned_report_or_404`. It was,
@@ -689,18 +714,17 @@ def _report_this_caller_may_upload_to(db: Session, report_id: str, current_user:
             detail="Photo uploads are not configured on this server.",
         )
 
-    report = get_or_404(db, Report, report_id, detail="Report not found")
-    if report.reporter_id != current_user.id:
+    if report is None or report.reporter_id != uploader_id:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Report not found")
     return report
 
 
 async def _store_report_photo(
-    report: Report,
+    report_id: str,
     index: int,
     request: Request,
     db: Session,
-    current_user: Profile,
+    uploader_id: str,
 ) -> ReportOut:
     """Read, check and store one photo, then record it. One code path for both
     endpoints above, because the checks are the part worth not copying."""
@@ -724,25 +748,97 @@ async def _store_report_photo(
             detail=f"Report photos must be {ALLOWED_CONTENT_TYPE}.",
         )
 
-    # Everything after the read is blocking I/O (an R2 put_object, then a
-    # synchronous commit), so it leaves the event loop for the threadpool, as
-    # every `def` handler already does. Left on the loop, a 2 MiB put stalled
-    # every other request, /health included (#1753).
-    stored = await run_in_threadpool(_store_and_record_photo, report, index, body, db)
-    return ReportOut.for_viewer(stored, current_user)
+    # Everything after the read is blocking I/O (the R2 put, then the record
+    # step's queries), so it leaves the event loop for the threadpool, as every
+    # `def` handler already does. Left on the loop, a 2 MiB put stalled every
+    # other request, /health included (#1753 - The four async upload handlers
+    # run synchronous SQLAlchemy and boto3 calls on the event loop, so one
+    # 2 MiB photo put stalls every other request, /health included).
+    report, viewer = await run_in_threadpool(_store_then_record_photo, db, report_id, index, body, uploader_id)
+    return ReportOut.for_viewer(report, viewer)
 
 
-def _store_and_record_photo(report: Report, index: int, body: bytes, db: Session) -> Report:
+def _store_then_record_photo(db: Session, report_id: str, index: int, body: bytes, uploader_id: str) -> tuple[Report, Profile]:
+    """Put the photo in the bucket holding no database connection, then record it.
+
+    The put comes before any query, and that order is the point. It used to
+    run inside the transaction the re-check had just opened, so a slow R2 held
+    a pooled connection `idle in transaction` exactly as a slow phone had
+    before the release (#1915 - A photo upload holds a pooled database
+    connection inside an open transaction while the phone sends the bytes, so
+    fifteen slow uploads make every other read 500). With R2 slow instead of
+    the phone, the outage came back one step later; the review of #1925 - Hand
+    the database connection back before a photo upload waits for its bytes -
+    found it, and tests/test_upload_releases_connection.py now holds both
+    waits.
+    """
     try:
-        key = store_photo(report.id, body, index)
+        key = store_photo(report_id, body, index)
     except PhotoStorageUnavailable as error:
         # `error.detail`, never `str(error)`: the message names the endpoint
         # the write failed against, and the endpoint names the account (see
         # PhotoStorageUnavailable).
         raise HTTPException(status_code=status.HTTP_503_SERVICE_UNAVAILABLE, detail=error.detail) from error
 
+    return _record_stored_photo(db, report_id, index, key, uploader_id)
+
+
+def _record_stored_photo(db: Session, report_id: str, index: int, key: str, uploader_id: str) -> tuple[Report, Profile]:
+    """Record a photo that is already in the bucket, or refuse it and take the object back out.
+
+    ONE SHORT TRANSACTION, ON A LOCKED ROW: the report read `FOR UPDATE`, the
+    account and `_upload_target` checked again, then the write, then the
+    commit that releases the lock. Nothing in it waits on anything but
+    Postgres: the put is before it, and a refusal's delete after it.
+
+    What can really change in the meantime is the account. `DELETE
+    /profiles/me` sent while the photo is in flight keeps the report, so its
+    ownership still passes, and only `still_signed_in` stops a deleted
+    account's photo landing. Of what `_upload_target` reads, little can change
+    for a report - nothing in the API deletes one, and the count only rises,
+    so the index rule cannot newly fail - but a row gone by any means has to
+    be a 404 here, not an UPDATE of nothing.
+
+    WHY A LOCK AND NOT `GREATEST`. The count used to be computed from a copy
+    of the row read before the put, so a slow put could shrink it: photo 2's
+    first put finishing after its own retry and photo 3 took `photo_count`
+    from 3 back to 2, with all three objects in the bucket (found in review of
+    #1925 - Hand the database connection back before a photo upload waits for
+    its bytes; tests/test_upload_releases_connection.py reproduces it).
+    `SET photo_count = GREATEST(photo_count, :index)` would fix the count and
+    nothing else: the checks would still read a row that could change before
+    the write, unless they moved into the UPDATE's WHERE clause, where "0
+    rows" cannot say which of the 404 and the 409 to answer. The lock makes
+    the checks and the write one step, and leaves `_record_photo` the only
+    writer of the two columns. Its cost is that two uploads to one report
+    record one after the other.
+
+    A REFUSAL TAKES THE OBJECT BACK OUT (`discard_refused_upload`), because
+    nothing else ever would - unless a recorded photo is still using it. The
+    key is derived, so a refused upload at an index already in the set has
+    overwritten that photo, and deleting it would leave the row pointing at
+    nothing, the one direction of drift app/core/photos.py refuses. That photo
+    keeps this upload's bytes: a retry's are the same bytes, and a
+    replacement's are the photo its hiker chose.
+    """
+    report = db.get(Report, report_id, with_for_update=True, populate_existing=True)
+    try:
+        uploader = still_signed_in(db, uploader_id)
+        _upload_target(report, index, uploader_id)
+    except HTTPException:
+        unrecorded = report is None or index > report.photo_count
+        # The transaction ends, and the lock with it, before R2 is asked for
+        # anything.
+        db.rollback()
+        if unrecorded:
+            discard_refused_upload(key)
+        raise
+
     _record_photo(report, index, key)
-    return commit_and_refresh(db, report)
+    commit_and_refresh(db, report)
+    # Read again here, off the event loop, for `ReportOut.for_viewer` to use.
+    db.refresh(uploader)
+    return report, uploader
 
 
 def _record_photo(report: Report, index: int, key: str) -> None:

@@ -31,14 +31,15 @@ from fastapi.concurrency import run_in_threadpool
 from sqlalchemy import Date, cast, func, or_
 from sqlalchemy.orm import Session
 
-from app.core.auth import get_current_user
-from app.core.orm import commit_and_refresh
+from app.core.auth import get_current_user, still_signed_in
+from app.core.orm import commit_and_refresh, release_before_waiting
 from app.core.photos import (
     ALLOWED_CONTENT_TYPE,
     JPEG_MAGIC,
     MAX_PHOTO_BYTES,
     PhotoStorageUnavailable,
     delete_photo_object,
+    discard_refused_upload,
     photo_storage_configured,
     photo_uploads_enabled,
     poi_photo_key,
@@ -261,7 +262,10 @@ async def upload_shared_photo(
     chose over refusing the thirteenth share.
     """
     poi_id = _checked_poi_id(poi_id)
-    photo = await run_in_threadpool(_photo_this_caller_may_upload, db, poi_id, current_user)
+    # The checks, then the connection handed back before the wait for the
+    # bytes (`release_before_waiting` says why). `_record_stored_share` looks
+    # the share up again once the photo is in the bucket.
+    uploader_id = await run_in_threadpool(_share_checked_then_released, db, poi_id, current_user)
 
     if request.headers.get("content-type", "").split(";")[0].strip() != ALLOWED_CONTENT_TYPE:
         raise HTTPException(
@@ -281,17 +285,34 @@ async def upload_shared_photo(
     # The R2 put, the commits and the eviction's deletes are all blocking, so
     # they run off the event loop; `read_capped_body` is the only awaited part
     # (#1753).
-    return await run_in_threadpool(_store_and_record, db, photo, poi_id, body, current_user)
+    return await run_in_threadpool(_store_then_record, db, poi_id, body, uploader_id)
 
 
-def _photo_this_caller_may_upload(db: Session, poi_id: str, current_user: Profile) -> PoiPhoto:
+def _share_checked_then_released(db: Session, poi_id: str, current_user: Profile) -> str:
+    """The checks, then the connection handed back; the caller's id, as a
+    plain string for the reason `reports._checked_then_released` gives."""
+    uploader_id = current_user.id
+    _photo_this_caller_may_upload(_the_callers_share(db, poi_id, uploader_id))
+    release_before_waiting(db)
+    return uploader_id
+
+
+def _the_callers_share(db: Session, poi_id: str, uploader_id: str, *, lock: bool = False) -> PoiPhoto | None:
+    """The caller's share row at this waypoint, if there is one; read `FOR
+    UPDATE` when `lock`, so a withdrawal cannot delete it under the write."""
+    query = db.query(PoiPhoto).filter(PoiPhoto.poi_id == poi_id, PoiPhoto.contributor_id == uploader_id)
+    if lock:
+        query = query.with_for_update().populate_existing()
+    return query.one_or_none()
+
+
+def _photo_this_caller_may_upload(photo: PoiPhoto | None) -> PoiPhoto:
     if not photo_uploads_enabled():
         raise HTTPException(
             status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
             detail="Photo storage is not configured on this server.",
         )
 
-    photo = db.query(PoiPhoto).filter(PoiPhoto.poi_id == poi_id, PoiPhoto.contributor_id == current_user.id).one_or_none()
     if photo is None:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
@@ -300,20 +321,60 @@ def _photo_this_caller_may_upload(db: Session, poi_id: str, current_user: Profil
     return photo
 
 
-def _store_and_record(db: Session, photo: PoiPhoto, poi_id: str, body: bytes, current_user: Profile) -> PoiPhotoOut:
+def _store_then_record(db: Session, poi_id: str, body: bytes, uploader_id: str) -> PoiPhotoOut:
+    """The put, holding no database connection, then the record step - the
+    order `reports._store_then_record_photo` explains."""
+    key = poi_photo_key(poi_id, uploader_id)
     try:
-        store_photo_object(poi_photo_key(poi_id, current_user.id), body)
+        store_photo_object(key, body)
     except PhotoStorageUnavailable as error:
         # `error.detail`, never `str(error)` - the message names the endpoint
         # and the endpoint names the account (app/core/photos.py).
         raise HTTPException(status_code=status.HTTP_503_SERVICE_UNAVAILABLE, detail=error.detail) from error
 
-    photo.uploaded_at = utc_now()
-    commit_and_refresh(db, photo)
+    photo = _record_stored_share(db, poi_id, key, uploader_id)
 
     _evict_beyond_rolling_window(db, poi_id)
 
     return PoiPhotoOut.from_row(photo, url=_url_or_placeholder(photo))
+
+
+def _record_stored_share(db: Session, poi_id: str, key: str, uploader_id: str) -> PoiPhoto:
+    """Record a photo already in the bucket, in one short transaction on the
+    locked share row, or refuse it and take the object back out.
+
+    The same step as `reports._record_stored_photo`, which argues the lock
+    and the refusal, and the one where the refusal is reachable through the
+    API: `DELETE .../photos/mine` withdraws a share with a hard delete, and
+    can land while the bytes are arriving or while R2 stores them. While the
+    put ran between the check and the write, a withdrawal during it made the
+    write an UPDATE of a deleted row - a 500 - and left the photograph its
+    hiker had just withdrawn in the bucket. Now the write finds no row, the
+    answer is a 404, and the object goes. Locked, because a withdrawal landing
+    between this read and the write would otherwise be that 500 again.
+
+    The account is checked again too (`still_signed_in`): account deletion
+    keeps shared photos, with the trail name they were credited under, so a
+    deleted account's in-flight upload used to land here and go public once
+    its cooling-off window ended.
+
+    The object stays only where a recorded photo is still using it: one key
+    per hiker per waypoint, so a refused upload to a share whose bytes
+    already landed has overwritten them.
+    """
+    photo = _the_callers_share(db, poi_id, uploader_id, lock=True)
+    try:
+        still_signed_in(db, uploader_id)
+        _photo_this_caller_may_upload(photo)
+    except HTTPException:
+        unrecorded = photo is None or photo.uploaded_at is None
+        db.rollback()
+        if unrecorded:
+            discard_refused_upload(key)
+        raise
+
+    photo.uploaded_at = utc_now()
+    return commit_and_refresh(db, photo)
 
 
 def _evict_beyond_rolling_window(db: Session, poi_id: str) -> None:
@@ -326,8 +387,9 @@ def _evict_beyond_rolling_window(db: Session, poi_id: str) -> None:
     ban, it is recency doing its job.
 
     Rows first, objects second, per the direction of truth: an object whose
-    delete fails is an orphan for the reconciliation sweep, never a served
-    row pointing at nothing.
+    delete fails is an orphan, never a served row pointing at nothing. No
+    sweep exists to reclaim it, so it stays until somebody deletes it by hand
+    (`delete_photo_object` says what record of its key there is).
     """
     excess = (
         db.query(PoiPhoto)
@@ -358,7 +420,7 @@ def _evict_beyond_rolling_window(db: Session, poi_id: str) -> None:
             delete_photo_object(key)
         except PhotoStorageUnavailable:
             # The row is gone, which is the authoritative half; the object
-            # is now an orphan the set-difference sweep reclaims.
+            # is now an orphan, and nothing reclaims it (see the docstring).
             pass
 
 
@@ -446,8 +508,11 @@ def withdraw_photo(
     try:
         delete_photo_object(poi_photo_key(poi_id, current_user.id))
     except PhotoStorageUnavailable:
-        # Row gone, object orphaned; the sweep reclaims it. The promise kept
-        # is "no longer served", and that is true the moment the row is gone.
+        # Row gone, object orphaned. Half the promise is kept: "no longer
+        # served" is true the moment the row is gone. "No longer held" is
+        # broken until somebody deletes the object by hand, because no sweep
+        # exists to do it (`delete_photo_object` says what record of its key
+        # there is).
         pass
 
     return Response(status_code=status.HTTP_204_NO_CONTENT)

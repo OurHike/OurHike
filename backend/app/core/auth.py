@@ -246,6 +246,12 @@ def _get_or_create_profile(db: Session, user_id: str, email: str | None = None) 
     return profile
 
 
+# What a deleted account is told, by `get_current_user` as a request arrives
+# and by `still_signed_in` for a route that checks again after a wait. One
+# sentence in one place, so the two cannot drift into different wording.
+ACCOUNT_DELETED_DETAIL = "This account has been deleted"
+
+
 def get_current_user(
     credentials: HTTPAuthorizationCredentials | None = Depends(bearer_scheme),
     db: Session = Depends(get_db),
@@ -307,8 +313,34 @@ def get_current_user(
     # this", which would imply the account is still there. The client's
     # `NotSignedInError` path already treats 401 as sign-out (lib/api.ts).
     if profile.deleted_at is not None:
-        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="This account has been deleted")
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail=ACCOUNT_DELETED_DETAIL)
 
+    return profile
+
+
+def still_signed_in(db: Session, profile_id: str) -> Profile:
+    """The caller's profile as it is now, or the same 401 `get_current_user` gives a deleted account.
+
+    `get_current_user` reads `deleted_at` once, as the request arrives. A
+    route that then waits on something slow - a photo upload waits for the
+    phone's bytes and then for R2 - can outlive that answer: `DELETE
+    /profiles/me`, sent while the upload is in flight, keeps the hiker's
+    reports, notes and shared photos (app/core/account_deletion.py), so every
+    ownership check still passes afterwards. Found in review of #1925 - Hand
+    the database connection back before a photo upload waits for its bytes:
+    the in-flight upload landed after the deletion, and the waypoint gallery
+    went on to credit that photo to the deleted account's trail name.
+
+    Read, not locked. The photo record steps call this while holding their
+    row's lock, and account deletion writes this row before the hiker's
+    reports (measured 2026-10-29: its commit issues `UPDATE profiles` and then
+    `UPDATE reports`), so a lock here could deadlock against it. Unlocked, a
+    deletion that commits after this read is ordered after the upload, which
+    is when it happened.
+    """
+    profile = db.get(Profile, profile_id, populate_existing=True)
+    if profile is None or profile.deleted_at is not None:
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail=ACCOUNT_DELETED_DETAIL)
     return profile
 
 

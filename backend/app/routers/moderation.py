@@ -466,7 +466,8 @@ def dismiss_photo(
         delete_photo_object(poi_photo_key(photo.poi_id, photo.contributor_id))
     except PhotoStorageUnavailable:
         # The row's status is the authoritative half and it is already
-        # dismissed; the object is an orphan for the sweep.
+        # dismissed; the object is an orphan, and no sweep exists to reclaim
+        # it (`delete_photo_object` says what record of its key there is).
         pass
 
     return _moderation_row(db, photo)

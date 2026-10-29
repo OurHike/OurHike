@@ -9,12 +9,14 @@
 //
 // features/CONDITIONS_DELIVERY.md is the design.
 
-import { useCallback, useEffect, useRef, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import {
   API_CONFIGURED,
+  NotSignedInError,
   fetchClosures,
   fetchDisputes,
   fetchFieldNotes,
+  fetchMyReports,
   fetchReports,
   type ClosureSummary,
   type ReportSummary,
@@ -82,6 +84,13 @@ export interface Conditions {
    * status strip's sync age is what tells those apart (lib/syncAge.ts).
    */
   closures: readonly ClosureSummary[] | null
+  /**
+   * `reportState`'s list with the signed-in hiker's own reports merged in
+   * (`fetchMyReports`, #1916): each replaces the shared copy of the same id in
+   * place, and their other reports follow the shared list. Null whenever
+   * `reportState` holds no list, own reports or not, because a list here
+   * claims the public set was read.
+   */
   reports: readonly ReportSummary[] | null
   /**
    * Visible field notes - the map's working set, each place's most recent
@@ -220,13 +229,25 @@ export interface Conditions {
   /** When something last actually reached the server. Null until it has. */
   lastSyncedAt: Date | null
   /** Stamp that clock. Exposed because the outbox flush is the other thing
-   *  that reaches the server, and one clock has to serve both. */
+   *  that reaches the server, and one clock has to serve both. Also re-reads
+   *  the hiker's own reports, and nothing else, so a report a flush has just
+   *  sent is on their map without waiting for the next hourly read. */
   markSynced(): void
 }
 
 /**
+ * The one empty list of the hiker's own reports. Every empty answer is stored
+ * as this constant, so a signed-out phone's `NotSignedInError` on each
+ * refresh, or a hiker with no reports, sets the state the hook already holds
+ * and React skips the update. A new `[]` each time would re-render App.tsx
+ * and re-place every warning on the map (its memos over `reports`) once more
+ * per refresh, for nothing.
+ */
+const NO_OWN_REPORTS: readonly ReportSummary[] = []
+
+/**
  * @param ready Whether the launch is past its first frame (#1302,
- *   lib/useAfterFirstFrame.ts). The nine published reads and the four live
+ *   lib/useAfterFirstFrame.ts). The nine published reads and the five live
  *   ones below wait for it; nothing they feed changes what the first frame
  *   is, and every line they fill renders "unknown" until they land anyway.
  *   Defaults to true so a screen or a test that mounts this hook alone
@@ -284,8 +305,15 @@ export function useConditions(
   // strip said "never synced" on every device forever, which was true and
   // looked like a bug in the strip rather than a missing feature.
   const [lastSyncedAt, setLastSyncedAt] = useState<Date | null>(null)
+  // The signed-in hiker's own reports (#1916), and a count `markSynced` moves
+  // to read them again; the effect that reads them says why.
+  const [ownReports, setOwnReports] = useState(NO_OWN_REPORTS)
+  const [ownReadCount, setOwnReadCount] = useState(0)
 
-  const markSynced = useCallback(() => setLastSyncedAt(new Date()), [])
+  const markSynced = useCallback(() => {
+    setLastSyncedAt(new Date())
+    setOwnReadCount((count) => count + 1)
+  }, [])
 
   // WHY THERE IS A CLOCK HERE AT ALL (#720).
   //
@@ -533,10 +561,12 @@ export function useConditions(
   }, [online, refreshCount, ready, hikePlanned])
 
   // The map's own reads (#232), deliberately not gated on an account: browsing
-  // has never needed one, and the reads send a token only if there is one
-  // (lib/api.ts).
+  // has never needed one. `/closures`, `/reports` and `/disputes` send no
+  // token even when there is one (THE SHARED READS in lib/api.ts, #1916), and
+  // `/field-notes` sends one only if there is one (`readFetch`). The hiker's
+  // own reports, the one read that needs an account, are the next effect.
   //
-  // Both settle independently. A closures read that succeeds while reports
+  // Each settles independently. A closures read that succeeds while reports
   // fails should still warn about the closure - pairing them would mean one
   // failure silencing both, and closures are the half a hiker walks into.
   useEffect(() => {
@@ -597,9 +627,61 @@ export function useConditions(
     // backend said when the app opened.
   }, [online, refreshCount, ready])
 
+  // The hiker's own reports at any status (`fetchMyReports`, #1916), merged
+  // into `reports` below. An effect of its own, for two reasons. The public
+  // list above never waits on it: while `fetchReports` awaited both requests,
+  // a serious warning that had already arrived waited for this private read
+  // to answer, and was dropped if the phone went offline first. And
+  // `markSynced` runs this read again, alone, after an outbox flush sends
+  // something, so a report the hiker has just filed shows without waiting for
+  // the next hourly read.
+  //
+  // A failure keeps the last list: a 5xx or a dropped request says nothing
+  // about the hiker's reports, and emptying the list would tell "Your reports"
+  // they had gone. Only `NotSignedInError` empties it, because with nobody
+  // signed in there are no own reports to show. So a sign-out or a change of
+  // account reaches this list at its next read, not before, as it reached the
+  // signed-in `/reports` list before #1916.
+  //
+  // No `stamp()`: the sync age vouches for the public picture, and this read
+  // landing says nothing about that.
+  useEffect(() => {
+    if (!ready || !online || !API_CONFIGURED) return
+    let cancelled = false
+    void fetchMyReports().then(
+      (mine) => {
+        if (!cancelled) setOwnReports(mine.length > 0 ? mine : NO_OWN_REPORTS)
+      },
+      (error) => {
+        if (!cancelled && error instanceof NotSignedInError) setOwnReports(NO_OWN_REPORTS)
+      },
+    )
+    return () => {
+      cancelled = true
+    }
+  }, [online, refreshCount, ready, ownReadCount])
+
+  // A Map keeps each id where it first appeared and the last value given for
+  // it, so the hiker's own copy of a report replaces the shared copy in place
+  // and their reports the shared list lacks follow it. A kept own list can be
+  // older than the shared list it is merged into, and its copy still wins:
+  // after a failed own read, the hiker's own report shows its previous status
+  // and severity until the next own read lands. Memoised because App.tsx's
+  // memos over `reports` re-place the map's warnings for every new array.
+  const sharedReports = itemsOf(reportState)
+  const reports = useMemo(
+    () =>
+      sharedReports && [
+        ...new Map(
+          [...sharedReports, ...ownReports].map((report) => [report.id, report]),
+        ).values(),
+      ],
+    [sharedReports, ownReports],
+  )
+
   return {
     closures: itemsOf(closureState),
-    reports: itemsOf(reportState),
+    reports,
     notes: itemsOf(noteState),
     disputes: itemsOf(disputeState),
     closureState,

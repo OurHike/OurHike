@@ -906,3 +906,16 @@ def test_a_held_registrations_registrant_reads_only_their_own_seat(client):
     assert {seat["person_id"] for seat in seats} == {stranger, None}
     assert secretary not in {seat["person_id"] for seat in seats}
     assert {seat["decline_reason"] for seat in seats} == {None}
+
+
+def test_declining_answers_the_decliner_with_only_their_own_seat(client):
+    """`decline_seat` is the one write here whose caller is never an approved
+    admin, so its answer goes through the same rule as a read. The review of
+    #1926 made it answer with every seat and the suite stayed green."""
+    founder, colleague, answered = _a_seat_declined_with_a_reason(client)
+
+    seats = answered["admins"]
+
+    assert {seat["person_id"] for seat in seats} == {colleague, None}
+    assert founder not in {seat["person_id"] for seat in seats}
+    assert "stepping back" in next(seat["decline_reason"] for seat in seats if seat["person_id"] == colleague)

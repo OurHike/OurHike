@@ -144,7 +144,7 @@ describe('Your photos and notes', () => {
     })
     const user = userEvent.setup()
     await openMore(user)
-    await user.click(await screen.findByRole('button', { name: /^You/ }))
+    await user.click(await screen.findByRole('button', { name: /^You(?!r support)/ }))
     await user.click(screen.getByRole('button', { name: 'Your photos and notes' }))
 
     const row = await screen.findByRole('button', { name: /Brink Road spring/ })

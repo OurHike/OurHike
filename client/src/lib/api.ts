@@ -165,7 +165,10 @@ async function errorBody(response: Response): Promise<unknown> {
 }
 
 /** Like `apiFetch`, but refuses before spending a request when signed out. */
-async function authedFetch(path: string, init: RequestInit = {}): Promise<Response> {
+export async function authedFetch(
+  path: string,
+  init: RequestInit = {},
+): Promise<Response> {
   const token = await accessToken()
   // Checked here rather than left to the server's 401, because the round trip
   // is the expensive part on a metered connection with one bar - and the
@@ -1604,4 +1607,66 @@ export interface DeletionReceipt {
 export async function deleteAccount(): Promise<DeletionReceipt> {
   const response = await authedFetch('/profiles/me', { method: 'DELETE' })
   return (await response.json()) as DeletionReceipt
+}
+
+// ---- Supporting OurHike (#1876) ----
+//
+// The shape the server answers with lives here, beside the other response
+// types, so backend/tests/test_client_response_contract.py can hold it to
+// `GET /support/me`. The three calls that use it live in lib/supportApi.ts,
+// which only deferred screens import: this file is in the launch closure,
+// and LAUNCH_BUDGET.md §3 has no room for code a launch never runs.
+
+/**
+ * `GET /support/me`'s `status` (#1876). Provider-neutral: which provider
+ * holds the payment is `provider`, and nothing here depends on it.
+ *
+ * - `none`: no paid choice on this account.
+ * - `pending`: chosen in the app; the provider has not confirmed a payment.
+ * - `active`: the provider says the recurring payment started.
+ * - `payment_failed`: a renewal failed and the provider is retrying the
+ *   card. Still running: Stop cancels it at once, so no retry can charge.
+ * - `paused`: the provider says it exists and is not charging.
+ * - `cancel_scheduled`: no more charges; it ends at `period_end`.
+ * - `stop_requested`: the hiker pressed Stop and the provider has not yet
+ *   said it ended. The backend asks Stripe to stop renewing (or the founder,
+ *   by email, if Stripe cannot be reached), and the hiker is emailed when it
+ *   is done.
+ * - `stopped`: ended - or a pending choice cleared, with nothing charged.
+ */
+export type SupportStatus =
+  | 'none'
+  | 'pending'
+  | 'active'
+  | 'payment_failed'
+  | 'paused'
+  | 'cancel_scheduled'
+  | 'stop_requested'
+  | 'stopped'
+
+export interface SupportSummary {
+  status: SupportStatus
+  amount_cents: number | null
+  cadence: 'year' | 'month' | null
+  provider: string | null
+  /** The provider's name, for the website app only: the store apps never
+   *  name a payment provider. */
+  provider_label: string | null
+  /** The address the provider will know the supporter by. */
+  email: string | null
+  chosen_at: string | null
+  started_at: string | null
+  period_end: string | null
+  stop_requested_at: string | null
+  ended_at: string | null
+  /** A recurring payment exists and nothing has ended it. The server's
+   *  answer, so the app keeps no copy of the state machine. */
+  supporting: boolean
+  /** Stop does something. */
+  can_stop: boolean
+  /** A new choice would be accepted. */
+  can_choose: boolean
+  /** The "Emails about my support" switch for this support's address: false
+   *  when the hiker turned it off, here or from an email's page. */
+  support_emails: boolean
 }

@@ -55,7 +55,7 @@ from collections.abc import Iterable
 from dataclasses import dataclass, field
 from datetime import date, datetime, timedelta
 
-from sqlalchemy import text
+from sqlalchemy import func, text
 from sqlalchemy.orm import Session
 
 from app.core.time import utc_now
@@ -77,7 +77,7 @@ CLOSE_AFTER_DAYS = 14
 
 # Bumped whenever a metric below changes what it counts. A closed month keeps
 # the version it was closed under.
-DEFINITION_VERSION = 1
+DEFINITION_VERSION = 2
 
 ALL = "*"
 
@@ -145,7 +145,7 @@ _SLICE_METRICS = text(
       count(*) filter (where session_length = 'm1_to_5') as sessions_m1_to_5,
       count(*) filter (where session_length = 'm5_to_20') as sessions_m5_to_20,
       count(*) filter (where session_length = 'over_20m') as sessions_over_20m,
-      count(*) as events,
+      count(*) filter (where event <> 'support_chosen') as events,
       count(*) filter (where user_key is not null) as events_identified,
       count(*) filter (where has_fix) as fixes,
       count(*) filter (where seal = 'no_key') as unsealed_no_key
@@ -224,6 +224,31 @@ _CLUB_DEVICES = text(
     """
 )
 
+# Support choices by level (#1876 on #1902): how many answers a month had at
+# each level, $0 included - "track once for each dollar level, even 0" (the
+# maintainer, 2026-10-27). One row per choice already (a phone's $0 when it
+# was kept, the server's paid row when Stripe confirmed it, app/core/
+# analytics_support.py), so this is a plain count. On the all-clubs,
+# all-platforms slice only: the rows carry no club, and a paid row's platform
+# says where the money was taken, not which app the hiker used.
+_SUPPORT_LEVELS = text(
+    """
+    select support_cents, count(*) as choices
+    from analytics_events
+    where event = 'support_chosen' and support_cents is not null
+      and local_date >= :start and local_date < :end
+    group by support_cents
+    """
+)
+
+SUPPORT_METRIC = "support_chosen_"
+
+
+def support_metric(cents: int) -> str:
+    """`support_chosen_6000`: the month's choices at $60 a year."""
+    return f"{SUPPORT_METRIC}{int(cents)}"
+
+
 # How many clubs a month's events name, kept or not - for the nightly check
 # that says when `MAX_CLUBS_PER_MONTH` turned some away.
 CLUBS_NAMED = text(
@@ -251,7 +276,18 @@ _SNAPSHOT_HELD = text(
 # one, so the hiker was new in neither.
 _HIKERS_NEW = text("select count(*) from analytics_users where new_month = :start")
 
-_MONTH_ROWS = text("select count(*) from analytics_events where local_date >= :start and local_date < :end")
+# The six kinds of event only. A support choice is left out of `events` and
+# out of this, so the report's event total cannot be subtracted back into a
+# support level masked under the floor - the fourth #1885 review read a "<25"
+# back as exactly 3 that way. Support rows that arrive after a close are
+# counted apart (`_MONTH_SUPPORT_ROWS`, `support_after_close`).
+_MONTH_ROWS = text(
+    "select count(*) from analytics_events where local_date >= :start and local_date < :end and event <> 'support_chosen'"
+)
+_MONTH_SUPPORT_ROWS = text(
+    "select count(*) from analytics_events"
+    " where local_date >= :start and local_date < :end and event = 'support_chosen' and support_cents is not null"
+)
 
 # What every stored metric means is the SQL above, the close window that
 # decides which rows a month froze with, and the User-table upsert that
@@ -264,6 +300,8 @@ _MONTH_ROWS = text("select count(*) from analytics_events where local_date >= :s
 # is ignored, so reformatting is free.
 DEFINITION_FINGERPRINTS = {
     1: "a822a3f76e359da42ef6cdffc238428e850d051b3cf014025c1819356e4c894b",
+    # 2: support choices by level (#1876), counted apart from `events`.
+    2: "040e79d6d91f25ba493debcc18c6a51fcbb74def53430c4f03641d399c6afe58",
 }
 
 
@@ -279,7 +317,16 @@ def definition_fingerprint() -> str:
     # Here, not at the top: the router imports this module.
     from app.routers.analytics import _UPSERT_USER
 
-    queries = (_SLICE_METRICS, _CLUB_METRICS, _CLUB_DEVICES, _HIKERS_NEW, _MONTH_ROWS, _UPSERT_USER)
+    queries = (
+        _SLICE_METRICS,
+        _CLUB_METRICS,
+        _CLUB_DEVICES,
+        _HIKERS_NEW,
+        _MONTH_ROWS,
+        _UPSERT_USER,
+        _SUPPORT_LEVELS,
+        _MONTH_SUPPORT_ROWS,
+    )
     normalised = "\n".join(" ".join(str(query).split()) for query in queries)
     normalised += f"\nCLOSE_AFTER_DAYS={CLOSE_AFTER_DAYS}"
     return hashlib.sha256(normalised.encode()).hexdigest()
@@ -302,6 +349,8 @@ def compute_month(db: Session, month: date) -> list[AnalyticsMonthly]:
         platform = values["platform"] or ALL
         if platform == ALL:
             values["hikers_new"] = db.execute(_HIKERS_NEW, bounds).scalar_one()
+            for level in db.execute(_SUPPORT_LEVELS, bounds).mappings():
+                values[support_metric(level["support_cents"])] = level["choices"]
         rows.extend(_metric_rows(month, ALL, platform, values))
 
     by_club: dict[str, dict] = {}
@@ -343,13 +392,27 @@ def _count_late(db: Session, state: AnalyticsMonth) -> None:
         .scalar()
     )
     late = max(0, held - int(frozen or 0))
-    db.query(AnalyticsMonthly).filter(
-        AnalyticsMonthly.month == month,
-        AnalyticsMonthly.metric == "events_after_close",
-        AnalyticsMonthly.club == ALL,
-        AnalyticsMonthly.platform == ALL,
-    ).delete(synchronize_session=False)
-    db.add(AnalyticsMonthly(month=month, metric="events_after_close", club=ALL, platform=ALL, value=float(late)))
+    # Support choices the same way, against the levels the month froze.
+    support_held = db.execute(_MONTH_SUPPORT_ROWS, {"start": month, "end": add_months(month, 1)}).scalar_one()
+    support_frozen = (
+        db.query(func.coalesce(func.sum(AnalyticsMonthly.value), 0))
+        .filter(
+            AnalyticsMonthly.month == month,
+            AnalyticsMonthly.metric.like(f"{SUPPORT_METRIC}%"),
+            AnalyticsMonthly.club == ALL,
+            AnalyticsMonthly.platform == ALL,
+        )
+        .scalar()
+    )
+    support_late = max(0, support_held - int(support_frozen or 0))
+    for metric, value in (("events_after_close", late), ("support_after_close", support_late)):
+        db.query(AnalyticsMonthly).filter(
+            AnalyticsMonthly.month == month,
+            AnalyticsMonthly.metric == metric,
+            AnalyticsMonthly.club == ALL,
+            AnalyticsMonthly.platform == ALL,
+        ).delete(synchronize_session=False)
+        db.add(AnalyticsMonthly(month=month, metric=metric, club=ALL, platform=ALL, value=float(value)))
 
 
 # One run at a time. Without it, a manual dispatch beside the schedule could

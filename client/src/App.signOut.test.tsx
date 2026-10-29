@@ -82,7 +82,7 @@ beforeEach(() => {
 
 async function signOut(user: ReturnType<typeof userEvent.setup>) {
   await user.click(screen.getByRole('tab', { name: 'More' }))
-  await user.click(await screen.findByRole('button', { name: /^you/i }))
+  await user.click(await screen.findByRole('button', { name: /^you(?!r support)/i }))
   await user.click(await screen.findByRole('button', { name: /sign out/i }))
 }
 

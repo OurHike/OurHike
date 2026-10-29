@@ -167,6 +167,19 @@ KEEPALIVE_TABLES: tuple[str, ...] = (
     # volunteer published, and this is the table that breaks that first.
     "role_invites",
     "roster_sync_runs",
+    # What hikers chose to give OurHike (#1876): every supporter's email and
+    # amount. A readable one would publish the list of who pays and how much,
+    # which the published total exists precisely not to do.
+    "support_choices",
+    # And every event a payment provider sent about them (#1876): redacted
+    # of names and notes, but still a per-supporter amount and date history.
+    "support_events",
+    # And each charge (#1876): an amount and a date per supporter, which the
+    # published total sums so that nobody has to read these.
+    "support_charges",
+    # And which addresses turned support emails off (#1876): an address per
+    # row, the same claim as the two above.
+    "support_mail_preferences",
     # A hiker's own day hikes (#976): the same private-planning claim as the
     # #892 pair below - a route somebody intends to walk, served to nobody
     # else.

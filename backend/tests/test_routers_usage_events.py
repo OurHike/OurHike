@@ -760,3 +760,93 @@ def test_a_second_batch_in_the_same_month_adds_no_second_month(client, db_sessio
 
     row = db_session.get(AnalyticsUser, user_key(SERVER_SECRET, hiker.id))
     assert row.active_months == [today.year * 100 + today.month]
+
+
+# --- a support choice, by its level only (#1876 on #1902) -------------------
+#
+# The maintainer, poll 2026-10-27: "track once for each dollar level, even 0",
+# counted when paid ($0 when chosen), carrying the level only. A phone sends
+# the $0; a paid level is the server's, from Stripe's confirmation
+# (app/core/analytics_support.py, tested in tests/test_routers_support.py).
+
+
+def _zero(today, **fields):
+    return _event(today, event="support_chosen", platform="ios", support_cents=0, **fields)
+
+
+def test_a_kept_zero_is_stored_with_its_level(client, db_session, today):
+    event = _zero(today)
+
+    response = _post(client, [event])
+
+    assert response.json() == {"accepted": 1, "duplicates": 0, "refused": 0}
+    stored = db_session.get(AnalyticsEvent, event["id"])
+    assert stored.event.value == "support_chosen" and stored.support_cents == 0
+
+
+def test_a_support_choice_is_never_linked_even_in_a_linked_batch(client, db_session, today, seal_secret):
+    """The other rows of the batch are linked - the hiker said yes - and the
+    support row beside them still carries no key, seals nothing, and moves
+    nothing in the User table."""
+    hiker = _hiker_who_said_yes(db_session)
+    view, zero = _event(today), _zero(today)
+
+    _post(client, [view, zero], identified=True, headers=auth_headers(hiker.id))
+
+    assert db_session.get(AnalyticsEvent, view["id"]).user_key == user_key(SERVER_SECRET, hiker.id)
+    stored = db_session.get(AnalyticsEvent, zero["id"])
+    assert stored.user_key is None and stored.sealed is None and stored.seal.value == "none"
+    users = db_session.query(AnalyticsUser).all()
+    assert len(users) == 1 and users[0].map_views == 1
+
+
+def test_a_linked_batch_of_nothing_but_a_support_choice_makes_no_user_row(client, db_session, today):
+    hiker = _hiker_who_said_yes(db_session)
+
+    _post(client, [_zero(today)], identified=True, headers=auth_headers(hiker.id))
+
+    assert db_session.query(AnalyticsUser).count() == 0
+
+
+@pytest.mark.parametrize(
+    "fields",
+    [
+        {"support_cents": 1200},
+        {"support_cents": None},
+        {"fix": {"lat": 41.3, "lon": -74.2}},
+        {"clubs": {"NYNJTC": 1.0}},
+        {"club_firsts": ["NYNJTC"]},
+        {"week_first": True},
+        {"month_first": True},
+        {"kind_month_first": True},
+        {"signed_in": True},
+    ],
+    ids=[
+        "a-paid-level-from-a-phone",
+        "no-level-at-all",
+        "a-fix",
+        "a-club",
+        "a-club-first",
+        "a-week-first-flag",
+        "a-month-first-flag",
+        "a-kind-first-flag",
+        "a-signed-in-flag",
+    ],
+)
+def test_a_support_choice_carrying_more_than_its_level_is_refused(client, db_session, today, fields):
+    """Refused rather than stripped, as everything in the registry is. A
+    paid level from a phone is a claim nobody has paid."""
+    bad = {**_zero(today), **fields}
+
+    response = _post(client, [bad])
+
+    assert response.json() == {"accepted": 0, "duplicates": 0, "refused": 1}
+    assert db_session.get(AnalyticsEvent, bad["id"]) is None
+
+
+def test_a_level_on_any_other_event_is_refused(client, db_session, today):
+    bad = _event(today, support_cents=0)
+
+    response = _post(client, [bad])
+
+    assert response.json() == {"accepted": 0, "duplicates": 0, "refused": 1}

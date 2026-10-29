@@ -124,6 +124,8 @@ import {
   NextTurnCard,
   RouteStopPicker,
   StepAwaySheet,
+  SupportGate,
+  YourSupportPage,
 } from './screens/deferred'
 import { useAfterFirstFrame } from './lib/useAfterFirstFrame'
 import {
@@ -168,7 +170,7 @@ import { forgetDayHikeSync } from './lib/dayHikesSync'
 import { RemovedPoiCard } from './chrome/RemovedPoiCard'
 import { resolvePoiId, tombstoneFor } from './lib/poiIdentity'
 import { buildAccountArchive, downloadArchive } from './lib/accountArchive'
-import { deleteAccount, type DeletionReceipt } from './lib/api'
+import { API_CONFIGURED, deleteAccount, type DeletionReceipt } from './lib/api'
 import {
   DEFAULT_PREFERENCES,
   type BackgroundSource,
@@ -2545,6 +2547,15 @@ function App() {
       (activeTab === 'plan' && !planStepBeside) ||
       (activeTab === 'today' && !isDesktop))
   const mapShownNow = mapMounted && !flowOpen && !tabOverMap
+
+  // ---- Supporting OurHike (#1876) ----
+  //
+  // Two pieces of state, and nothing else: the rest lives in the deferred
+  // screens/SupportGate.tsx, which says why (the launch budget). A counter
+  // the Your support page bumps to open the ask, and the More row's line,
+  // which the gate reports.
+  const [supportAskRequest, setSupportAskRequest] = useState(0)
+  const [supportSummary, setSupportSummary] = useState<string | undefined>(undefined)
   /**
    * Bring the map on screen for something a tap asked to see on it - and
    * leave the tabs alone where the map is already beside the screen the tap
@@ -10965,6 +10976,17 @@ function App() {
                   challengesScreen={challengesScreenNode}
                   challengesUp={challengesUp}
                   challengesSummary={challengesSummary}
+                  supportSummary={supportSummary}
+                  supportScreen={
+                    <YourSupportPage
+                      apiConfigured={API_CONFIGURED}
+                      signedIn={account !== null}
+                      onSignIn={() =>
+                        setAuthFlow({ screen: 'choose', afterReport: false })
+                      }
+                      onChoose={() => setSupportAskRequest((n) => n + 1)}
+                    />
+                  }
                   volunteerScreen={
                     <Volunteer
                       contributeConditions={preferences.contribute_conditions}
@@ -12267,6 +12289,21 @@ function App() {
           window both are raised from, since a report is saved first and this
           asks how to send it. Its own z-index says the same thing; the order
           here is what makes that true even if a later layer forgets to. */}
+      {/* THE DAY-5 ASK (#1876), under the sign-in window it can hand off to
+          and held while that window or a flow is up, so the two never
+          stack. Not loaded at all in a build with no backend. */}
+      {API_CONFIGURED && afterFirstFrame && (
+        <SupportGate
+          accountEmail={account?.email ?? null}
+          online={online}
+          held={entering || flowOpen || authFlow !== null}
+          openRequest={supportAskRequest}
+          onSignIn={() => setAuthFlow({ screen: 'choose', afterReport: false })}
+          onSummary={setSupportSummary}
+          usageCounts={preferences.measurement_enabled}
+        />
+      )}
+
       {authWindowNode}
     </>
   )

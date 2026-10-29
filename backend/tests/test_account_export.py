@@ -65,6 +65,8 @@ SECTION_FOR_TABLE = {
     "challenge_tags": "places_you_tagged_on_challenges",
     "challenge_entries": "challenge_entries_you_sent",
     "club_challenges": "challenges_you_saved_for_an_organization",
+    # --- Supporting OurHike (#1876). ---
+    "support_choices": "what_you_give_ourhike",
 }
 
 

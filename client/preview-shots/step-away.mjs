@@ -16,7 +16,7 @@ export const alt =
 export default async function drive(page) {
   await seedLongHike(page)
   await page.getByRole('tab', { name: 'More' }).click()
-  await page.getByRole('button', { name: /^You/ }).click()
+  await page.getByRole('button', { name: /^You(?!r support)/ }).click()
   await page.getByRole('button', { name: 'Springer → Katahdin' }).click()
   await page.getByRole('dialog', { name: 'Step away from this hike' }).waitFor()
 }

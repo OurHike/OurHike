@@ -198,6 +198,10 @@ SEAMS = [
     ("QueuedClosure", "/moderation/queue", "closures"),
     ("PoiPhotoSummary", "/waypoints/{poi_id}/photos", None),
     ("PoiPhotoQueueEntry", "/moderation/poi-photos", None),
+    # Supporting OurHike (#1876): the answer the day-5 ask reads to decide
+    # whether to ask, so a field it declares and the server drops would make
+    # it ask somebody who already pays.
+    ("SupportSummary", "/support/me", None),
 ]
 
 

@@ -291,6 +291,21 @@ export const ShareHike = screen(
   () => import('./ShareHike').then((m) => m.ShareHike),
   'ShareHike',
 )
+// Supporting OurHike (#1876): the gate that counts days and opens the
+// day-5 window, and the Your support page. Eager, they put the launch 4,341
+// bytes over §3's line: 250,101 against 245,760 in CI's `check:build` on
+// bff389d1 (2026-10-24). screens/SupportGate.tsx has the rest.
+export const SupportGate = screen(
+  () => import('./SupportGate').then((m) => m.SupportGate),
+  'SupportGate',
+)
+// Through the gate's module rather than its own, so the pair is one chunk
+// and one entry in the shell's preload map: each separate chunk costs the
+// launch its file name and dependency list, and this pair had no room.
+export const YourSupportPage = screen(
+  () => import('./SupportGate').then((m) => m.YourSupportPage),
+  'YourSupportPage',
+)
 
 // THE SHEETS, PANELS AND CARDS A TAP OPENS, deferred for the reason the
 // screens above are (#1735). App.tsx and two panel hooks rendered each of

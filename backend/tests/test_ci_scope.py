@@ -44,6 +44,7 @@ from pathlib import Path
 
 import yaml
 
+from tests.test_analytics_rollup_role import DOCS_FILES_READ as ROLE_FILES
 from tests.test_client_report_contract import CLIENT_FILES_READ as REPORT_FILES
 from tests.test_client_response_contract import CLIENT_FILES_READ as RESPONSE_FILES
 from tests.test_conditions_publisher_contract import PIPELINE_FILES_READ
@@ -72,6 +73,7 @@ CLIENT_FILES = {
     *SIZE_FILES,
     *USAGE_FILES,
     *GOLDEN_FILES,
+    *ROLE_FILES,
 }
 
 

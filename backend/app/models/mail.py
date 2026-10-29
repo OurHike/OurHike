@@ -39,12 +39,26 @@ class MailPurpose(str, enum.Enum):
 
     There is no `marketing` and there is not going to be: every value here is
     a message somebody at an organization needs in order to answer a question
-    that was asked about them.
+    that was asked about them, or one a person needs to finish something they
+    asked for themselves (the two `support_*` values, #1876).
     """
 
     nomination_proposal = "nomination_proposal"
     nomination_reminder = "nomination_reminder"
     nomination_outcome = "nomination_outcome"
+    # Supporting OurHike (#1876). None is cold: the first goes to a hiker
+    # who pressed "Email me how to set it up" in a store app, the second to
+    # the founder when a hiker presses Stop, the third to that hiker once the
+    # payment has actually stopped. All fit the rule above - a message
+    # somebody needs to finish something they asked for.
+    support_setup_link = "support_setup_link"
+    support_stop_request = "support_stop_request"
+    support_stopped = "support_stopped"
+    # The receipt a supporter gets when a payment starts - the amount, the
+    # renewal date and how to stop - and the founder's note about a payment
+    # the app could not place (#1876, the third #1885 review).
+    support_started = "support_started"
+    support_payment_note = "support_payment_note"
 
 
 class MailState(str, enum.Enum):
@@ -97,6 +111,8 @@ class SuppressionReason(str, enum.Enum):
     complained = "complained"
     refused = "refused"
     manual = "manual"
+    # A hiker pressing the unsubscribe link in a support email (#1876).
+    unsubscribed = "unsubscribed"
 
 
 class EmailSuppression(Base):

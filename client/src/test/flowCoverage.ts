@@ -639,6 +639,21 @@ export const FLOW_COVERAGE: Readonly<Record<string, FlowSurface>> = {
     step: 'F13 More',
     flow: { status: 'covered', spec: 'e2e/more.spec.ts' },
   },
+  // Supporting OurHike (#1876). PLANNED, and the reason is not a missing
+  // fixture: both screens' paid halves need a backend, and the flow suite
+  // builds with none (pr-preview.yml leaves VITE_API_BASE_URL unset), which
+  // keeps the ask dormant by design. The rules are held by
+  // lib/support.test.ts, SupportAsk.test.tsx and YourSupport.test.tsx; a flow
+  // spec needs a stubbed API the suite does not have yet.
+  'screens/SupportAsk.tsx': { step: 'F13 More', flow: { status: 'planned' } },
+  'screens/YourSupport.tsx': { step: 'F13 More', flow: { status: 'planned' } },
+  'screens/SupportGate.tsx': {
+    step: 'F13 More',
+    flow: {
+      status: 'unit-only',
+      why: 'Renders nothing of its own: it counts days and decides whether to open SupportAsk, whose rules lib/support.test.ts holds and whose flow is planned above. A browser would be driving the window, not this.',
+    },
+  },
   'screens/Settings.tsx': {
     step: 'F13 More',
     flow: { status: 'covered', spec: 'e2e/settingsRooms.spec.ts' },

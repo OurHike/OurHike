@@ -264,6 +264,51 @@ class Settings(BaseSettings):
     # vendor library rather than two.
     ses_region: str = "us-east-1"
 
+    # SUPPORTING OURHIKE (#1876), through Stripe since the maintainer chose it
+    # over Buy Me a Coffee (2026-10-27). Each empty value switches its half
+    # off, and says so rather than half-working:
+    #   - no payment links: a choice is refused (503), because a hiker sent
+    #     nowhere is worse than one told it is not ready;
+    #   - no webhook secret: every webhook delivery is refused (503), because
+    #     without it this cannot tell Stripe from anybody else posting
+    #     "checkout.session.completed" for an address of their choosing;
+    #   - no secret key: Stop cannot call Stripe, so it emails
+    #     `support_notify_address` to cancel by hand instead; with neither,
+    #     the Stop is recorded and waits in the retry queue
+    #     (`stop_notified_at` empty) until somebody can be reached.
+    #
+    # `support_provider` names where NEW choices go - a key in
+    # app/core/support_providers/. Changing it is how OurHike moves provider:
+    # every provider there keeps receiving its own webhooks, so supporters on
+    # the old one are still recorded until they move.
+    support_provider: str = "stripe"
+    # One Stripe Payment Link per yearly tier, as `cents=url` pairs:
+    # "1200=https://buy.stripe.com/...,6000=https://...,12000=https://...".
+    # A link rather than a Checkout Session made per choice because a link
+    # never expires - the store apps' setup email can sit unread for a week -
+    # and needs no secret key to make.
+    stripe_payment_links: str = ""
+    # The endpoint's signing secret (`whsec_...`), from the webhook's page in
+    # the Stripe dashboard.
+    stripe_webhook_secret: str = ""
+    # A RESTRICTED key with Subscriptions: Write and nothing else - all this
+    # backend ever asks Stripe to do is stop a subscription renewing, or
+    # cancel one whose renewal is failing.
+    stripe_secret_key: str = ""
+    # "live" or "test": which of Stripe's two worlds this backend believes.
+    # Explicit, because a test-mode UA must not lose every event to a key it
+    # does not hold (the #1885 architecture review), and production must
+    # never believe a test event. A key from the other mode switches support
+    # off rather than half-working (Stripe.ready()).
+    stripe_mode: str = "live"
+    support_notify_address: str = ""
+    # This API's own public address, e.g. https://api.ourhike.org - where a
+    # support email's one-click unsubscribe link points (RFC 8058 wants a
+    # URL that takes a POST, which the static app pages cannot). Empty sends
+    # the link to the app's "Your support" page instead, which stops the
+    # payment but not the mail.
+    api_public_url: str = ""
+
     # USAGE MEASUREMENT (#1902, features/EVENTING.md). The key the account id
     # is hashed under before a usage event is stored, so a report reads
     # `user_key` and never an account (app/core/analytics_seal.py).

@@ -424,6 +424,25 @@ footer.foot .wrap{display:flex;flex-wrap:wrap;gap:6px 20px;justify-content:space
     return '<div class="scroll"><table><tr><th>Month</th><th>State</th><th class="n">Events</th><th class="n">Linked</th><th class="n">Fixes</th><th class="n">Thrown away (no key)</th><th class="n">After close</th></tr>' + body + '</table></div><p class="note">' + keyLine + '</p>';
   }
 
+  // ---- support choices, by level ------------------------------------------------
+  // One row per answer (app/core/analytics_rollup.py `_SUPPORT_LEVELS`): $0 when
+  // a phone kept it, a paid level when Stripe confirmed the first payment.
+  // All clubs only - the rows carry no club. No total column: the levels are
+  // masked one by one, and a total beside them would give a hidden one back.
+  function supportHtml() {
+    var levels = DATA.support_levels || [];
+    if (!levels.length) return '<p class="note">No support choice has been counted yet.</p>';
+    var head = '<tr><th>Month</th>' + levels.map(function (cents) {
+      return '<th class="n">$' + fmt(cents / 100) + (cents ? ' a year' : '') + '</th>';
+    }).join('') + '</tr>';
+    var body = rangeMonths().slice().reverse().map(function (m) {
+      return '<tr><td>' + monthName(m, true) + '</td>' + levels.map(function (cents) {
+        return '<td class="n">' + fmt(figure(m, 'support_chosen_' + cents).value) + '</td>';
+      }).join('') + '</tr>';
+    }).join('');
+    return '<div class="scroll"><table>' + head + body + '</table></div>';
+  }
+
   // ---- every phone, with no identifier ----------------------------------------
   // New, returning and back-again phones add up to the month's active phones
   // (app/core/analytics_rollup.py); a phone counted last month and not this
@@ -673,6 +692,7 @@ footer.foot .wrap{display:flex;flex-wrap:wrap;gap:6px 20px;justify-content:space
           : '<section class="panel"><h2>Platforms and session length</h2><p class="note">Shown for all clubs only: a club split by platform is a cell too small to show at this app’s size, so those figures are never computed.</p></section>') +
         '<section class="panel"><h2>Retention by first month</h2><div class="sub">All clubs: the User table holds no place · hikers who said yes, by the month first seen · share active N months later · read from the User table, which outlives the six-month raw rows</div>' + cohortsHtml() +
           '<p class="note">User table today: ' + fmt(DATA.users.hikers) + ' hikers who said yes · ' + fmt(DATA.users.ever_planned) + ' ever made a plan · ' + fmt(DATA.users.ever_completed) + ' ever completed one.</p></section>' +
+        (all ? '<section class="panel"><h2>Support choices by level</h2><div class="sub">All clubs · one count per answer: $0 when a phone kept it, a paid level when Stripe confirmed the first payment · no account and no place on either · paid levels leave out accounts that turned usage statistics off, so the money itself is in the support tables, not here</div>' + supportHtml() + '</section>' : '') +
         '<section class="panel"><h2>Data health</h2><div class="sub">All clubs · whether the numbers above can be trusted, month by month</div>' + healthHtml() + '</section>' +
         '<section class="panel wide"><h2>Data quality</h2><div class="sub">Every warning the nightly checks raise shows here, with its figures; the tracking issue they open names the checks and nothing more</div>' + qualityHtml() + '</section>' +
       '</div>';

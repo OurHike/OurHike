@@ -71,6 +71,7 @@ from app.models.preferences import UserPreferences
 from app.models.profile import Profile
 from app.models.report import Report
 from app.models.ridge_runner import RidgeRunnerCommitment
+from app.models.support import SupportCharge, SupportChoice, SupportEvent
 from app.models.synced_day_hike import SyncedDayHike
 from app.models.synced_hike import SyncedActiveHike, SyncedHike
 from app.models.synced_trip import SyncedPlannedHike, SyncedTrip
@@ -234,6 +235,30 @@ def build_export(db: Session, profile: Profile) -> dict[str, Any]:
             db, PoiPhotoDismissal, PoiPhotoDismissal.contributor_id == profile_id
         ),
         "volunteer_hours": _rows(db, VolunteerHoursRecord, VolunteerHoursRecord.user_id == profile_id),
+        # What they chose to give OurHike (#1876): amounts, dates, the email
+        # receipts went to, and the provider's ids - theirs to see, and what
+        # they would need to chase a charge themselves.
+        # Without `link_token`: it opens the email switches of whatever
+        # address the row is under, so in a file it works like a password
+        # (the fourth #1885 review).
+        "what_you_give_ourhike": [
+            {column: value for column, value in row.items() if column != "link_token"}
+            for row in _rows(db, SupportChoice, SupportChoice.profile_id == profile_id)
+        ],
+        # What the payment provider told us about it, as stored: the
+        # provider's own redaction, without a name, a note or the email.
+        "what_your_payment_provider_told_us": _rows(
+            db,
+            SupportEvent,
+            SupportEvent.choice_id.in_(db.query(SupportChoice.id).filter(SupportChoice.profile_id == profile_id)),
+        ),
+        # Each charge that arrived: amount, currency, date, the period it
+        # paid for, and the provider's id for it.
+        "what_you_were_charged": _rows(
+            db,
+            SupportCharge,
+            SupportCharge.choice_id.in_(db.query(SupportChoice.id).filter(SupportChoice.profile_id == profile_id)),
+        ),
         "trail_sections_you_maintain": _rows(db, MaintainerAssignment, MaintainerAssignment.maintainer_id == profile_id),
         "app_problems_you_reported": _rows(db, AppFailure, AppFailure.reporter_id == profile_id),
         # Usage measurement (#1902): only what was linked to this account

@@ -128,6 +128,10 @@ jobs:
           # memory - so tests/test_ci_scope.py reads this line back and fails
           # if a contract test starts reading a client file that is not on it.
           # It did, when api.ts and closureBanner.ts joined the list.
+          #
+          # features/EVENTING.md for the same rule: the rollup role's column
+          # grant is SQL written there, and tests/test_analytics_rollup_role.py
+          # checks it names every usage column but `sealed`.
           paths: >-
             backend/
             pipeline/export_conditions.py
@@ -142,6 +146,7 @@ jobs:
             client/src/lib/usageBatch.golden.json
             client/src/lib/usageEvents.ts
             client/src/lib/userPreferences.ts
+            features/EVENTING.md
             .github/workflows/backend-tests.yml
             .github/actions/changed-paths/
 

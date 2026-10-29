@@ -381,7 +381,9 @@ describe('the publisher’s paper map (#1574)', () => {
         'The park is on sheets 118 and 119 of the New York-New Jersey Trail Conference’s',
       ),
     ).toBeInTheDocument()
-    expect(screen.getByText(/takes no cut and holds no money/)).toBeInTheDocument()
+    expect(
+      screen.getByText(/takes no cut and never touches that money/),
+    ).toBeInTheDocument()
   })
 
   it('prints no map line for a park no sheet names', () => {

@@ -120,13 +120,15 @@ def test_deleting_the_registrants_account_does_not_spare_the_seats_they_handed_o
     assert registered.status_code == 201 and registered.json()["state"] == "pending", registered.text
 
     client.get("/clubs/ramapo/access", headers=accomplice_headers)
-    seat = next(a for a in client.get("/clubs/ramapo").json()["admins"] if a["person_id"] == accomplice)
+    seat = next(
+        a for a in client.get("/clubs/ramapo", headers=accomplice_headers).json()["admins"] if a["person_id"] == accomplice
+    )
     assert client.post(f"/clubs/ramapo/admins/{seat['id']}/approve", headers=accomplice_headers).status_code == 200
 
     assert client.delete("/profiles/me", headers=registrant_headers).status_code == 200
 
     client.get("/clubs/ramapo/access", headers=chair_headers)
-    mine = next(a for a in client.get("/clubs/ramapo").json()["admins"] if a["person_id"] == chair)
+    mine = next(a for a in client.get("/clubs/ramapo", headers=chair_headers).json()["admins"] if a["person_id"] == chair)
     approved = client.post(f"/clubs/ramapo/admins/{mine['id']}/approve", headers=chair_headers)
     assert approved.status_code == 200, approved.text
     assert approved.json()["state"] == "claimed"
@@ -256,7 +258,7 @@ def test_approving_a_held_registration_clears_the_flag(client, db_session):
     chair = _new_id()
     chair_headers = auth_headers(chair, email="chair@ramapotrails.org")
     client.get("/clubs/ramapo/access", headers=chair_headers)
-    mine = next(a for a in client.get("/clubs/ramapo").json()["admins"] if a["person_id"] == chair)
+    mine = next(a for a in client.get("/clubs/ramapo", headers=chair_headers).json()["admins"] if a["person_id"] == chair)
 
     approved = client.post(f"/clubs/ramapo/admins/{mine['id']}/approve", headers=chair_headers)
 

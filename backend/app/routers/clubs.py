@@ -484,14 +484,6 @@ def approve_seat(
             detail="Nobody at this organization invited you as an admin, so there is no seat to accept",
         )
 
-    if seat.approved_at is None:
-        seat.approved_at = utc_now()
-    # A decline is reversible, so approving after declining clears the
-    # refusal rather than leaving a row that says both. The audit trail is
-    # the endpoint's caller list, not two contradictory columns.
-    seat.declined_at = None
-    seat.decline_reason = None
-
     # THE ONE THING THAT RELEASES A HELD REGISTRATION. `pending` means the
     # only address at this org's domain was one the registrant typed for
     # somebody else (see `register_org`), so it waits for that somebody to
@@ -503,7 +495,34 @@ def approve_seat(
     #
     # The registrant approving their own seat cannot release it, because
     # their address is the one that failed the check at registration.
-    if club.state == OrgState.pending and club.domain and _somebody_holds_the_domain(club.domain, [email]):
+    #
+    # Decided BEFORE anything is written, because the release rests on the
+    # proof `claim_org` takes - a verified address at the org's domain - and
+    # is refused on the same terms: at a domain anybody can get an address
+    # at, that address proves nothing (#1909 - A nomination and a claim make
+    # a free webmail account the codeowner of any organization name, the seat
+    # #1635 closed on POST /clubs). `OrgCreate` refuses such a domain now, but
+    # a `pending` row registered before `PUBLIC_EMAIL_DOMAINS` named its
+    # provider still carries one - v1.3.2 to v1.3.4 held registrations and
+    # checked them against no list at all - and the registrant's typed invite
+    # to a second address there would otherwise release it.
+    releases = club.state == OrgState.pending and bool(club.domain) and _somebody_holds_the_domain(club.domain, [email])
+    problem = why_domain_proves_nothing(club.domain) if releases else None
+    if problem:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail=f"{problem} An address there cannot show you run this organization, so a person has to pick it up.",
+        )
+
+    if seat.approved_at is None:
+        seat.approved_at = utc_now()
+    # A decline is reversible, so approving after declining clears the
+    # refusal rather than leaving a row that says both. The audit trail is
+    # the endpoint's caller list, not two contradictory columns.
+    seat.declined_at = None
+    seat.decline_reason = None
+
+    if releases:
         club.state = OrgState.claimed
         club.verified_by = VerifiedBy.email
         _revoke_the_registrants_unverified_seat(db, club, verified_by=current_user.id)

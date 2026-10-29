@@ -525,6 +525,36 @@ def test_a_held_organization_stays_held_when_the_approver_is_not_on_its_domain(c
     assert club.verified_by is None
 
 
+def test_approving_a_seat_does_not_release_a_held_organization_on_a_domain_that_proves_nothing(client, db_session):
+    """`approve_seat` is the second way out of `pending`, and it rests on the
+    proof `claim_org` takes: a verified address at the org's domain. A held
+    registration on gmail.com can still be in the table - v1.3.2 to v1.3.4
+    held registrations and checked their domain against no list - and the
+    registrant's own typed invite to a second gmail.com address released it,
+    `claimed` with `verified_by: email`, the moment that address approved.
+    Refused the way the claim is, and before the seat or the org is written."""
+    registrant = make_profile(db_session)
+    org = make_org(db_session, domain="gmail.com", state=OrgState.pending, created_by=registrant.id)
+    make_admin(db_session, org, registrant)
+    db_session.add(RoleInvite(club_id=org.id, email="mallory2@gmail.com", invited_by=registrant.id, grants_admin_seat=True))
+    db_session.commit()
+    accomplice = make_profile(db_session)
+    headers = auth_headers(accomplice.id, email="mallory2@gmail.com")
+    client.get("/clubs/ramapo-trail-conference/access", headers=headers)
+    seat = db_session.query(OrgAdmin).filter(OrgAdmin.person_id == accomplice.id).one()
+
+    response = client.post(f"/clubs/ramapo-trail-conference/admins/{seat.id}/approve", headers=headers)
+
+    assert response.status_code == 409
+    assert "a person has to pick it up" in response.json()["detail"]
+    db_session.expire_all()
+    club = db_session.query(Club).one()
+    assert club.state == OrgState.pending
+    assert club.verified_by is None
+    assert db_session.query(OrgAdmin).filter(OrgAdmin.person_id == accomplice.id).one().approved_at is None
+    assert db_session.query(OrgAdmin).filter(OrgAdmin.person_id == registrant.id).one_or_none() is not None
+
+
 def test_the_real_organization_can_still_claim_a_held_registration(client, db_session):
     """The recourse, and the reason holding is enough rather than refusing.
 

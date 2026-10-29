@@ -532,7 +532,11 @@ What is left is account work, in this order. Secrets never pass through a sessio
 
    Setting `API_BASE_URL` also arms the daily check — `check-deployment.yml` asks `/health` on every run, and whether the edge still serves `GET /closures` from a copy no older than its 300 s, carrying the API's own `Cache-Control` and a header a browser accepts, and reports both on **#738 — Deployed app reachability**, where they currently read `skipped` because there is nothing to ask (#1359). That is the difference between finding out the free tier was withdrawn on the day it happens and finding out when somebody's report fails to send.
 
-7. **Confirm it, in this order**, because each line tells you something the one before cannot. None of these needs a credential, so a session can run them for you once the domain resolves:
+7. **Confirm it, in this order**, because each line tells you something the one before cannot.
+
+   **First, which build is answering**, which only Render's dashboard shows: the service → **Deploys**, where Render shows a service's "current live deploy", has to show the newest commit on `main` as that deploy. Render deploys with zero downtime: the build already running keeps all the traffic while a new one starts, and a new one that has not passed its health check within 15 minutes is cancelled with the old one still serving (render.com/docs/deploys and render.com/docs/health-checks, read 2026-10-29; neither page says whether a Free instance differs). `backend/app/config.py` refuses to start on purpose, on a plain-http `SUPABASE_URL` or on a `DATABASE_URL` and a `SUPABASE_URL` from two different Supabase projects, so from outside a refused deploy is invisible: the older build answers every line below, and any line it already passes will pass. The API reports no commit of its own (nothing under `backend/app` exposes one, checked 2026-10-29), so the Deploys page is the only place to read it. If the newest deploy failed or was cancelled, its log names the setting it refused; fix it in step 2 and redeploy before going on.
+
+   Then these. None of them needs a credential, so a session can run them for you once the domain resolves:
    ```
    curl -sS https://api.ourhike.org/health     # {"status":"ok"} - the app is up
    curl -sS https://api.ourhike.org/ready      # {"status":"ok"} - the pooled DATABASE_URL works

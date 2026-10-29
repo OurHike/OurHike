@@ -261,6 +261,18 @@ only then publish the draft. With it, the ordering holds by construction and the
 stays four buttons — which is the reason to set it at creation rather than to discover
 later that it was worth setting.
 
+**"Always ahead" holds only while deploys succeed.** Render deploys with zero downtime, so a
+new build that has not passed its health check within 15 minutes is cancelled and the one
+before keeps serving (render.com/docs/deploys and render.com/docs/health-checks, read
+2026-10-29). The startup guards in `app/config.py` turn a plain-http `SUPABASE_URL`, or a
+`DATABASE_URL` and a `SUPABASE_URL` from two different projects, into exactly that: every
+merge after the setting went wrong is refused the same way until it is fixed, and neither
+`/health` nor the daily edge check notices, because the older build answers both. The API
+reports no commit of its own, so the service's **Deploys** page is where it shows, and
+LAUNCH_CHECKLIST.md §6 step 7 starts there. Of a deploy cancelled that way, Render says it
+"notifies you according to your settings" (render.com/docs/health-checks), which are worth
+leaving on for this service.
+
 ### The gap this does not close: backend code against an unmigrated schema
 
 **"Always ahead of the app" is a claim about the client/backend pair. It says nothing

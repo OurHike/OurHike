@@ -440,6 +440,88 @@ It mattered because email/password was a real sign-in path here — `VITE_AUTH_P
 
 ---
 
+## 5b. Back the database up nightly
+
+**Supabase Free keeps no backups** (supabase.com/pricing, read 2026-10-23), and the maintainer chose a nightly dump to a private R2 bucket over Supabase Pro ([#1908 — Back production's database up nightly to a private R2 bucket, because Supabase Free keeps no backups](https://github.com/OurHike/OurHike/issues/1908)). A lost database is worse than lost data: `publish-conditions.yml` bakes the closures every phone reads from it, so one that came back empty would tell hikers no trail is closed.
+
+`.github/workflows/backup-database.yml` runs at 05:12 UTC. It dumps `public` and Supabase's `auth.users` and `auth.identities`, restores the dump into a throwaway Postgres 17, and fails unless every table comes back holding exactly the rows `count(*)` found in it, counted in the same snapshot `pg_dump` dumped. Only then does it encrypt the dump with `age` and upload it. Until everything below is set, its tracking issue, **Nightly database backup**, says production has no backup.
+
+### Set it up
+
+1. **The role**, in the production project's SQL editor, as `postgres`. Generate the password; it goes nowhere but the secret in step 2.
+
+   ```sql
+   create role ourhike_backup with login password '<generated>' bypassrls;
+   grant usage on schema public, auth to ourhike_backup;
+   grant select on all tables in schema public to ourhike_backup;
+   grant select on all sequences in schema public to ourhike_backup;
+   grant select on auth.users, auth.identities to ourhike_backup;
+   alter default privileges for role postgres in schema public grant select on tables to ourhike_backup;
+   alter default privileges for role postgres in schema public grant select on sequences to ourhike_backup;
+   ```
+
+   Measured on UA, 2026-10-27, which runs the same Postgres 17.6 build as production: `postgres` may create a role with `BYPASSRLS`, and may grant `SELECT` on both `auth` tables. `BYPASSRLS` is what makes the dump complete, because every table has row-level security on (5a). Without it, the dump step refuses at its row count, and the tracking issue opens. The default privileges name `postgres` because that is the role migrations run as (5). If that ever changes, name the new role there. Otherwise the first table a migration adds will make the dump step refuse, loudly.
+2. **The connection string**: Settings → Database → Connection string → **Session pooler** (port 5432, never the transaction pooler on 6543, which the job refuses by name). The username is `ourhike_backup.<project-ref>`, in the shape 5 explains. Save it as the repository secret `BACKUP_DATABASE_URL`. The job insists on an encrypted connection: it defaults to `sslmode=require`, and refuses a weaker setting.
+3. **The bucket**: R2 → Create bucket, named for this alone, for example `ourhike-db-backups`. Give it no public access and no custom domain. Then, on its **Settings** tab, two rules, both on the prefix `postgres/` and both 90 days, the retention the maintainer chose:
+   - **Object lifecycle rules**: delete objects under `postgres/` 90 days after upload. The job never deletes anything.
+   - **Bucket lock rules → Add rule**: a rule name, the prefix `postgres/`, and a retention period of 90 days. Cloudflare's [bucket locks page](https://developers.cloudflare.com/r2/buckets/bucket-locks/) (last updated 2026-10-28, read 2026-10-29) says that once a rule is saved, "changes to protected objects are blocked from that point on. This includes overwrites, deletes, completing uploads that started earlier, and removal by lifecycle rules"; that it protects "both existing objects and objects created after the rule is enabled"; that lock rules "take precedence over lifecycle rules"; and that a blocked single-object request fails with HTTP `409` and `ObjectLockedByBucketPolicy`. The lock is there because the token in step 4 can delete and overwrite, and as a repository secret any branch's workflow could use it to wipe every backup. R2's [token page](https://developers.cloudflare.com/r2/api/tokens/) (read 2026-10-29) lists "edit bucket configuration" under Admin Read & Write and not under Object Read & Write, so that token should not be able to remove the lock either. That is reasoned from the table, not tried (@unvalidated): a delete of a backup with the job's own token, expected to fail with `409`, would settle it. The same page warns that "a bucket cannot be emptied while any bucket lock rules are configured".
+
+   Save the bucket's name as the secret `BACKUP_R2_BUCKET`.
+
+   **What the lifecycle rule does when the job stays broken: it deletes by age alone.** Each backup is deleted 90 days after its upload whether or not a newer one exists, and R2 says objects are "typically removed from a bucket within 24 hours" of expiring ([object lifecycles](https://developers.cloudflare.com/r2/buckets/object-lifecycles/), read 2026-10-29). So if every night fails for 90 days in a row, the last good backup is deleted like the rest and the bucket holds no backup at all. The lock does not prevent that: it also ends at 90 days, and only keeps a backup from going sooner. The clock starts at the newest key under `postgres/`, which carries its date: fix the job, or switch the lifecycle rule off, before that backup is 90 days old. The tracking issue opens on the first failed night and says the same.
+4. **The token**: R2 → Manage API tokens → Create API token, **Object Read & Write**, applied to that bucket only. Save it as `BACKUP_R2_ACCESS_KEY_ID` and `BACKUP_R2_SECRET_ACCESS_KEY`. R2 offers no write-only token, so this one can read the dumps back. That is why they are encrypted before they leave the runner. It can delete them too, which is what the lock in step 3 is for. `R2_ENDPOINT_URL` is already set (1).
+5. **The key**, on your own machine, never in a session or a CI job:
+
+   ```
+   age-keygen -o ourhike-backups.key
+   ```
+
+   It prints the public key, `age1…`. Save that as the repository **variable** `BACKUP_AGE_RECIPIENT`. It can only seal, so a build log may show it. Keep `ourhike-backups.key` offline, in a password manager or on paper. **Losing it loses every backup made to it, and anyone holding it and a bucket token can read every hiker's data.**
+6. **Run it once**: Actions → Back up the database → Run workflow. The restore step prints every table with the rows it held when it was dumped and the rows the restore holds, which should be equal. The upload step ends `Stored postgres/YYYY/MM/DD/ourhike-<stamp>.tar.age`. Then do the drill below once with that file.
+7. **Prove the trap is caught**, which is #1908's acceptance. Create a second role exactly like step 1, but without `bypassrls`, point `BACKUP_DATABASE_URL` at it, and run the workflow. The dump step should fail with `query would be affected by row-level security policy`, and the tracking issue should open. Then put the real secret back, run it again so the issue closes, and drop the second role.
+
+### The restore drill
+
+Followed on 2026-10-27 against a local rehearsal: a Postgres 16.15 database built to Alembic head with row-level security on, a stand-in `auth` schema, and age 1.1.1. It was followed twice: once with Postgres 16's own tools, and once with Postgres 17's from the `postgres:17` image the job uses, restoring into a Postgres 17 database. Not yet followed against a real backup.
+
+**It needs Postgres 17 twice: the client tools and the server you restore into.** Production's dumps are written by `pg_dump` 17, and measured 2026-10-29 against an archive `pg_dump` 17.11 wrote: `pg_restore` 16.15 refuses the file (`unsupported version (1.16) in file header`), and `pg_restore` 17.11 restoring into a Postgres 16.15 server stops at its first statement (`unrecognized configuration parameter "transaction_timeout"`). A throwaway server is one command, and the commands below then reach it through the libpq variables:
+
+```
+docker run -d --rm --name ourhike-drill -e POSTGRES_PASSWORD=drill -p 5433:5432 postgres:17
+export PGHOST=localhost PGPORT=5433 PGUSER=postgres PGPASSWORD=drill    # with Postgres 17's client tools on PATH
+age --decrypt --identity ourhike-backups.key --output backup.tar ourhike-<stamp>.tar.age
+tar -xf backup.tar      # public.dump, auth.dump, live-rows.tsv, restored-rows.tsv, manifest.json
+sha256sum public.dump auth.dump live-rows.tsv restored-rows.tsv    # against manifest.json
+createdb ourhike_restore_drill
+psql -d ourhike_restore_drill -c 'drop schema public cascade; create schema auth'
+pg_restore --no-owner --no-privileges --exit-on-error -d ourhike_restore_drill public.dump
+pg_restore --no-owner --no-privileges --exit-on-error -d ourhike_restore_drill auth.dump
+```
+
+`drop schema public` comes first because a fresh database already has one, and the archive's own `create schema public` otherwise stops the restore. Then compare each table's `count(*)` with `live-rows.tsv`, which holds exactly the rows the dump held, and `select version_num from alembic_version` with the head the backup was taken at.
+
+### Restoring into production
+
+**@unvalidated: nobody has done this, and it is the step a real loss needs.** Restore into the **existing** production project whenever it still exists, which it does when the data is lost or damaged rather than the project itself. Its URL, its keys, the keys it signs sessions with, its OAuth providers and its redirect list then all stay as they are, and only the data comes back:
+
+1. Drop the damaged `public` schema and restore `public.dump` with `pg_restore --no-owner --no-privileges --exit-on-error`, as in the drill.
+2. Only if Supabase Auth's rows were lost too: restore `auth.dump` with `--data-only` into the tables Supabase Auth already has, emptied first, since a row already there stops the restore at its duplicate key. Their columns may have grown since the dump; a column the target has and the dump lacks takes its default.
+3. Grant again. `--no-privileges` restores no grants, and dropping `public` drops the default privileges set on it (measured 2026-10-29 on Postgres 17.11: a schema's `pg_default_acl` row is gone after it is dropped and re-created), so re-run step 1's grants and default privileges for `ourhike_backup`, and the grants for `ourhike_conditions_reader` ([features/CONDITIONS_DELIVERY.md](features/CONDITIONS_DELIVERY.md)) and `ourhike_analytics_rollup` ([features/EVENTING.md](features/EVENTING.md)). The roles themselves survive: no dump carries roles, and none was dropped.
+4. Compare `select version_num from alembic_version` with the head the backup was taken at; `migrate.yml` brings a restore taken before a later revision forward.
+
+**Only when the project itself is gone** does a new one have to be made, and then everything that names the project changes with it, not only the connection strings. Miss one and sign-in breaks everywhere:
+
+- the repository variables `SUPABASE_URL` and `SUPABASE_ANON_KEY` (4.2, 4.3a), which `pages.yml` and `pr-preview.yml` bake into the client, so a new client has to be built and released, and an installed app keeps the old project until it updates;
+- the backend's `SUPABASE_URL`, from which it fetches the project's signing keys at `/auth/v1/.well-known/jwks.json` (`backend/app/core/auth.py`). A new project signs with new keys, so every session the old one issued stops verifying and every hiker signs in again. `SUPABASE_JWT_SECRET` stays unset, as for any hosted project (4.2);
+- the OAuth providers (4.3): the callback URL `https://<new-ref>.supabase.co/auth/v1/callback` at Google and at GitHub, and their client IDs and secrets entered into the new project;
+- the Site URL and redirect allow-list (4.3b), the SMTP sender (4.3c) and the email templates (4.3d);
+- every secret holding a connection string: `PRODUCTION_MIGRATION_DATABASE_URL`, `PRODUCTION_CONDITIONS_DATABASE_URL`, `PRODUCTION_ANALYTICS_DATABASE_URL`, `BACKUP_DATABASE_URL`, and the backend host's own;
+- the three roles, created again with new passwords before their grants: `ourhike_conditions_reader`, `ourhike_analytics_rollup` and `ourhike_backup`. Supabase's own guide says a custom role with `LOGIN` needs its password set by hand in a new project ([Backup and Restore using the CLI](https://supabase.com/docs/guides/platform/migrating-within-supabase/backup-restore), read 2026-10-29).
+
+What would settle it is the drill above, run against a scratch Supabase project rather than a local Postgres.
+
+---
+
 ## 6. Host the backend
 
 The host type is picked and there is no config file to write: `backend/Dockerfile` is the whole of it, and it reads `PORT` from the environment so any Dockerfile host runs it unchanged. [backend/HOSTING.md](backend/HOSTING.md) is the reasoning — **a free scale-to-zero tier, revised 2026-08-09**, after [features/CONDITIONS_DELIVERY.md](features/CONDITIONS_DELIVERY.md) moved the safety read off this service and the always-on requirement that had ruled out every free tier went with it. Fly was the previous answer, nothing was ever deployed to it, and `fly.toml` is gone.

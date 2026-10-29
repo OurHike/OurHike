@@ -257,7 +257,8 @@ gathered rather than restated.
 | When | | |
 |---|---|---|
 | `7,37 * * * *` | twice an hour | `check-pending-approvals.yml` — the tightest cadence here, because its worst case is a production publish expiring unapproved at 30 days |
-| `15 5 3 * *` | the 3rd of each month | `refresh-reference.yml` — the 05:00 hour holds no other daily or weekly job, `:15` misses the four hourly slots, and the 3rd is off the 1st by analogy with the `:00` rule only. The `build-reference.yml` run it dispatches has no schedule of its own |
+| `12 5 * * *` | daily | `backup-database.yml` — production's nightly dump, in the middle of the night across the US; `:12` is a minute nothing else here uses |
+| `15 5 3 * *` | the 3rd of each month | `refresh-reference.yml` — the 05:00 hour's only other daily or weekly job is `backup-database.yml` at `:12`, which shares nothing with it, `:15` misses the four hourly slots, and the 3rd is off the 1st by analogy with the `:00` rule only. The `build-reference.yml` run it dispatches has no schedule of its own |
 | `25 6 * * 1` | Mondays | `build-data-release.yml` — early, because the answer is most useful before the week's work is planned; gives way once the monthly lane's build has refreshed UA |
 | `20 7 * * *` | daily | `check-upstream-freshness.yml` |
 | `35 7 * * 1` | Mondays | `settings-configured.yml` |

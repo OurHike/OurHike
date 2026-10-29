@@ -477,17 +477,17 @@ def list_my_thanks(
     )
 
     # Named directly, and only a name the trail record stands behind:
-    # `_the_record_stands_behind`, the test `_credit_for` puts a name to when
-    # a thanks is written (#1914 - GET /clubs publishes every admin's account
-    # id and decline reason to anyone, and an account id is all it takes to
-    # write into that person's private thanks inbox). Asked again here because
-    # the stored column is no proof of it: a row written before that rule
-    # shipped, or by an instance still running the old code during a rolling
-    # deploy, names whatever account id its hiker sent. Any of the caller's
-    # believed assignments counts, past ones included, so a maintainer between
-    # sections still gets a thanks addressed to them. Someone holding no
-    # believed assignment at all - one whose club has not been loaded yet, too
-    # - is not reachable by name.
+    # `_the_record_stands_behind`, the same check `_credit_for` makes of a
+    # named `maintainer_id` when a thanks is written (#1914 - GET /clubs
+    # publishes every admin's account id and decline reason to anyone, and an
+    # account id is all it takes to write into that person's private thanks
+    # inbox). Asked again here because the stored column is no proof of it: a
+    # row written before that rule shipped, or by an instance still running
+    # the old code during a rolling deploy, names whatever account id its
+    # hiker sent. Any of the caller's believed assignments counts, past ones
+    # included, so a maintainer between sections still gets a thanks
+    # addressed to them. Someone holding no believed assignment at all - one
+    # whose club has not been loaded yet, too - is not reachable by name.
     recipient = [Report.maintainer_id == current_user.id] if _the_record_stands_behind(db, current_user.id) else []
 
     # Club membership is judged now, not ever (#642). The stretch clause

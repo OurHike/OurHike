@@ -154,13 +154,27 @@ list carries no signature, which is
 
 **Signed-in reads are the open question.** The app sends a signed-in hiker's token on all
 three shared reads (`readFetch` in `client/src/lib/api.ts`), and the API answers any request
-carrying one `private, no-store`. Cloudflare's docs say what it stores in that case, not
-whether it answers such a request from the anonymous copy it already holds, and §6 step 7's
-last check finds out. If it does, nothing private leaks, because the anonymous copy holds
-less, but a reporter's own queued report drops out of their app for up to 300 s. If it does
-not, every signed-in hiker's reads reach this service, so the origin carries the signed-in
-share of all reads (1 in 5 hikers sign in, in the cost model, @unvalidated) on top of the
-edge's misses. The fix is a client change, so it ships with a release:
+carrying one `private, no-store`. Cloudflare's docs say it does not store that answer. They
+do not say outright whether it answers such a request from the anonymous copy it already
+holds, and §6 step 7's last check finds out, but they point to yes: the default cache key
+has no `Authorization` in it, and only Enterprise can add a header to it
+(developers.cloudflare.com/cache/how-to/cache-keys), and `Authorization` is listed among
+the reasons not to store a response, not among the reasons to skip the lookup
+(developers.cloudflare.com/cache/concepts/cache-responses; both read 2026-10-29).
+
+If it does, nothing private leaks, because the anonymous copy holds less, but a reporter's
+own report is missing from every signed-in read answered from that copy, and the 300 s TTL
+does not bound it. Only anonymous reads refill the copy, and an anonymous caller is given
+only public reports that are verified or resolved (`list_reports` in
+`app/routers/reports.py`). So wherever anonymous reads keep the copy warm, a report waiting
+in the queue stays missing until a moderator verifies it, and one dismissed is never in the
+copy at all. The app then says the list it read does not hold them: "sent under a different
+account, or read before they went" (`client/src/screens/YourReports.tsx`). That is reasoned
+from the code and those docs; there is no live zone to watch it on yet. If it does not,
+every signed-in hiker's reads reach this service, so the origin carries the signed-in share
+of all reads (1 in 5 hikers sign in, in the cost model, @unvalidated) on top of the edge's
+misses. Either way the fix is a client change, so it ships with a release, and it is what
+removes both:
 [#1916 — A signed-in hiker's app sends its token on the three edge-cached reads, so they either skip the cache or hide the hiker's own queued report](https://github.com/OurHike/OurHike/issues/1916).
 
 **What would undo it.** Narrowing CORS from `*` (a shared copy can carry only one answer),

@@ -23,7 +23,7 @@ from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from app.core.assignments import stood_behind
-from app.core.auth import get_current_user, get_current_user_optional, require_role
+from app.core.auth import get_current_user, get_current_user_optional, require_role, still_signed_in
 from app.core.disputes import DISPUTE_DECAY_DAYS, DisputeInput, dispute_state
 from app.core.orm import commit_and_refresh, get_or_404, release_before_waiting
 from app.core.photos import (
@@ -465,13 +465,15 @@ def _record_stored_note_photo(db: Session, note_id: str, key: str, uploader_id: 
     """Record a photo already in the bucket, in one short transaction on the
     locked note, or refuse it and take the object back out.
 
-    The same step as `reports._record_stored_photo`, which argues the lock
-    and the refusal. The object stays only where a recorded photo is still
-    using it: `notes/{id}.jpg` has one photo per note, so a refused upload to
-    a note whose photo already landed has overwritten that photo.
+    The same step as `reports._record_stored_photo`, which argues the lock,
+    the account check and the refusal; account deletion keeps a hiker's notes
+    as it keeps their reports. The object stays only where a recorded photo
+    is still using it: `notes/{id}.jpg` has one photo per note, so a refused
+    upload to a note whose photo already landed has overwritten that photo.
     """
     note = db.get(FieldNote, note_id, with_for_update=True, populate_existing=True)
     try:
+        uploader = still_signed_in(db, uploader_id)
         _note_this_caller_may_upload_to(note, uploader_id)
     except HTTPException:
         unrecorded = note is None or note.photo_uploaded_at is None
@@ -482,7 +484,7 @@ def _record_stored_note_photo(db: Session, note_id: str, key: str, uploader_id: 
 
     note.photo_uploaded_at = utc_now()
     commit_and_refresh(db, note)
-    return FieldNoteOut.for_viewer(note, db.get(Profile, uploader_id))
+    return FieldNoteOut.for_viewer(note, uploader)
 
 
 @router.post("/field-notes/{note_id}/photo/review", response_model=FieldNoteOut)

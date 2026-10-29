@@ -31,7 +31,7 @@ from fastapi.concurrency import run_in_threadpool
 from sqlalchemy import Date, cast, func, or_
 from sqlalchemy.orm import Session
 
-from app.core.auth import get_current_user
+from app.core.auth import get_current_user, still_signed_in
 from app.core.orm import commit_and_refresh, release_before_waiting
 from app.core.photos import (
     ALLOWED_CONTENT_TYPE,
@@ -353,12 +353,18 @@ def _record_stored_share(db: Session, poi_id: str, key: str, uploader_id: str) -
     answer is a 404, and the object goes. Locked, because a withdrawal landing
     between this read and the write would otherwise be that 500 again.
 
+    The account is checked again too (`still_signed_in`): account deletion
+    keeps shared photos, with the trail name they were credited under, so a
+    deleted account's in-flight upload used to land here and go public once
+    its cooling-off window ended.
+
     The object stays only where a recorded photo is still using it: one key
     per hiker per waypoint, so a refused upload to a share whose bytes
     already landed has overwritten them.
     """
     photo = _the_callers_share(db, poi_id, uploader_id, lock=True)
     try:
+        still_signed_in(db, uploader_id)
         _photo_this_caller_may_upload(photo)
     except HTTPException:
         unrecorded = photo is None or photo.uploaded_at is None

@@ -16,7 +16,7 @@ from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from app.core.assignments import assignments_covering, stood_behind
-from app.core.auth import get_current_user, get_current_user_optional
+from app.core.auth import get_current_user, get_current_user_optional, still_signed_in
 from app.core.orm import commit_and_refresh, release_before_waiting
 from app.core.photos import (
     ALLOWED_CONTENT_TYPE,
@@ -786,12 +786,16 @@ def _store_then_record_photo(db: Session, report_id: str, index: int, body: byte
 def _record_stored_photo(db: Session, report_id: str, index: int, key: str, uploader_id: str) -> tuple[Report, Profile]:
     """Record a photo that is already in the bucket, or refuse it and take the object back out.
 
-    ONE SHORT TRANSACTION, ON A LOCKED ROW: the report read `FOR UPDATE`,
-    `_upload_target` run again on it - the same checks as before the body was
-    read - then the write, then the commit that releases the lock. Nothing in
-    it waits on anything but Postgres: the put is before it, and a refusal's
-    delete after it. For a report, little those checks read can change in the
-    meantime - nothing in the API deletes a report, and the count only rises,
+    ONE SHORT TRANSACTION, ON A LOCKED ROW: the report read `FOR UPDATE`, the
+    account and `_upload_target` checked again, then the write, then the
+    commit that releases the lock. Nothing in it waits on anything but
+    Postgres: the put is before it, and a refusal's delete after it.
+
+    What can really change in the meantime is the account. `DELETE
+    /profiles/me` sent while the photo is in flight keeps the report, so its
+    ownership still passes, and only `still_signed_in` stops a deleted
+    account's photo landing. Of what `_upload_target` reads, little can change
+    for a report - nothing in the API deletes one, and the count only rises,
     so the index rule cannot newly fail - but a row gone by any means has to
     be a 404 here, not an UPDATE of nothing.
 
@@ -819,6 +823,7 @@ def _record_stored_photo(db: Session, report_id: str, index: int, key: str, uplo
     """
     report = db.get(Report, report_id, with_for_update=True, populate_existing=True)
     try:
+        uploader = still_signed_in(db, uploader_id)
         _upload_target(report, index, uploader_id)
     except HTTPException:
         unrecorded = report is None or index > report.photo_count
@@ -831,8 +836,9 @@ def _record_stored_photo(db: Session, report_id: str, index: int, key: str, uplo
 
     _record_photo(report, index, key)
     commit_and_refresh(db, report)
-    # Read here, off the event loop, for `ReportOut.for_viewer` to use.
-    return report, db.get(Profile, uploader_id)
+    # Read again here, off the event loop, for `ReportOut.for_viewer` to use.
+    db.refresh(uploader)
+    return report, uploader
 
 
 def _record_photo(report: Report, index: int, key: str) -> None:

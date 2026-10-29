@@ -23,7 +23,9 @@ transaction on a locked row. What is asserted here:
     slow put cannot take the photo count back, and a waypoint share withdrawn
     mid-upload - a hard delete the API really can make while an upload is in
     flight - is a 404 that leaves nothing in the bucket, not a 500 that leaves
-    the withdrawn photograph there.
+    the withdrawn photograph there. An account deleted mid-upload records
+    nothing either: deletion keeps the hiker's rows, so ownership alone
+    still passed.
   - **A refused upload deletes the object it put**, because nothing else
     would: no sweep exists (app/core/photos.py).
 """
@@ -37,6 +39,7 @@ from moto import mock_aws
 
 from app.config import settings
 from app.core import photos as photos_core
+from app.core.auth import ACCOUNT_DELETED_DETAIL
 from app.core.photos import poi_photo_key
 from app.models.field_note import FieldNote
 from app.models.poi_photo import PoiPhoto
@@ -338,6 +341,67 @@ def test_a_cleanup_delete_that_fails_is_logged_and_the_refusal_stands(client, db
     assert _stored(r2) == [key]
     assert [line for line in errors if key in line], errors
     assert not [line for line in errors if "cloudflarestorage" in line], errors
+
+
+# --- An account deleted while its photo is in flight --------------------------
+#
+# Account deletion keeps a hiker's reports, notes and shared photos
+# (app/core/account_deletion.py), so ownership still passes after it. The
+# review sent the real `DELETE /profiles/me` while an upload's body
+# was arriving: the deletion answered 200, and so did the upload, with the
+# photo recorded and stored - and on the waypoint route served, once the
+# cooling-off ended, under the deleted account's trail name. The record step
+# now asks `still_signed_in` and answers what the account's next request would
+# get anyway.
+
+
+def _delete_the_account(client, hiker: str):
+    """The hiker deleting their account, through the route Settings uses."""
+
+    def delete():
+        assert client.delete("/profiles/me", headers=auth_headers(hiker)).status_code == 200
+
+    return delete
+
+
+def test_a_report_photo_from_an_account_deleted_mid_upload_is_refused(client, db_engine, db_session, r2, monkeypatch):
+    hiker = str(uuid.uuid4())
+    report_id = _file_report(client, hiker)
+    _watch_the_body_read(monkeypatch, reports_router, db_engine, while_waiting=_delete_the_account(client, hiker))
+
+    response = client.put(f"/reports/{report_id}/photos/1", content=_JPEG, headers=_jpeg(hiker))
+
+    assert response.status_code == 401
+    assert response.json()["detail"] == ACCOUNT_DELETED_DETAIL
+    assert _stored(r2) == []
+    assert db_session.get(Report, report_id).photo_count == 0
+
+
+def test_a_note_photo_from_an_account_deleted_mid_upload_is_refused(client, db_engine, db_session, r2, monkeypatch):
+    hiker = str(uuid.uuid4())
+    note_id = _file_note(client, hiker)
+    _watch_the_body_read(monkeypatch, field_notes_router, db_engine, while_waiting=_delete_the_account(client, hiker))
+
+    response = client.put(f"/field-notes/{note_id}/photo", content=_JPEG, headers=_jpeg(hiker))
+
+    assert response.status_code == 401
+    assert _stored(r2) == []
+    assert db_session.get(FieldNote, note_id).photo_uploaded_at is None
+
+
+def test_a_waypoint_photo_from_an_account_deleted_mid_upload_is_never_served(client, db_engine, db_session, r2, monkeypatch):
+    # Publish at once, so "never served" is not just the two-hour window.
+    monkeypatch.setattr(poi_photos_router, "COOLING_OFF_HOURS", 0)
+    hiker = _share(client, db_session)
+    _watch_the_body_read(monkeypatch, poi_photos_router, db_engine, while_waiting=_delete_the_account(client, hiker))
+
+    response = client.put(f"/waypoints/{_POI}/photos/mine", content=_JPEG, headers=_jpeg(hiker))
+
+    assert response.status_code == 401
+    assert _stored(r2) == []
+    # The share row stays, as deletion keeps it, with no bytes recorded.
+    assert db_session.query(PoiPhoto).one().uploaded_at is None
+    assert client.get(f"/waypoints/{_POI}/photos").json() == []
 
 
 # --- Rows no route deletes ----------------------------------------------------

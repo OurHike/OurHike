@@ -131,6 +131,7 @@ jobs:
           paths: >-
             backend/
             pipeline/export_conditions.py
+            pipeline/check_deployment.py
             pipeline/lib/database_size.py
             pipeline/dbt/models/staging/ourhike/base/base_ourhike__database_size.sql
             pipeline/dbt/tests/singular/assert_the_database_stays_under_its_plan.sql

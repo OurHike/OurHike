@@ -169,6 +169,19 @@ class SupportChoice(Base):
 
     # A move between providers: the row this one replaces.
     replaces_choice_id = Column(String, ForeignKey("support_choices.id"), nullable=True)
+    # A payment for a choice that no longer wanted one - two tabs, or a setup
+    # email paid after paying on the website: the choice it duplicated. Such a
+    # row is stopped at once (core/support.py `_unwanted`), never describes the
+    # hiker's support while another of their payments is charging, and is not
+    # a second supporter in the published count (the fourth #1885 review).
+    duplicate_of = Column(String, ForeignKey("support_choices.id"), nullable=True)
+    # When this choice's level was counted as a usage event, once
+    # (core/analytics_support.py). Kept here, on the locked row, so the count
+    # needs no id anybody could join back to this row.
+    counted_at = Column(DateTime, nullable=True)
+    # "Share usage statistics" was off on the phone that made this choice, so
+    # its level is never counted, even before that answer reaches the account.
+    uncounted = Column(Boolean, nullable=False, default=False)
 
     # The token in this hiker's one-click unsubscribe link. Random and per row,
     # so a link stops mail to the address it was sent to and nothing else.

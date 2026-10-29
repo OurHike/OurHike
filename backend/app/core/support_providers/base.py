@@ -109,6 +109,10 @@ class ProviderEvent:
     # cannot be the payment for that choice.
     started_at: datetime | None = None
     amount_cents: int | None = None
+    # The tier OurHike's own link was for, in cents a year - not the amount
+    # charged, which a tax or a discount could move. The level a paid choice
+    # is counted at (core/analytics_support.py).
+    tier_cents: int | None = None
     currency: str | None = None
     cadence: SupportCadence | None = None
     period_end: datetime | None = None
@@ -141,3 +145,11 @@ class SupportProvider(Protocol):
     def normalise(self, envelope: Mapping[str, Any]) -> list[ProviderEvent]: ...
 
     def request_cancel(self, db: Session, choice: SupportChoice, mail_provider: Any) -> bool: ...
+
+    def refund_from_log(self, payload: Mapping[str, Any], occurred_at: datetime | None) -> ProviderEvent | None:
+        """A `refunded` event rebuilt from its logged payload, or None.
+
+        For a refund that arrived before the charge it reverses, and was
+        logged as not OurHike's: once the charge lands, core/support.py asks
+        for it back, so the provider's field names stay in its own module."""
+        return None

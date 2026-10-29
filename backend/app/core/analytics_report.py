@@ -115,8 +115,9 @@ FOLLOWERS = {
 
 # Support choices at each level (`support_chosen_<cents>`, app/core/
 # analytics_rollup.py) are counts of people too - rule 2, each level alone.
-# No total of the levels is published, so a masked level cannot come back by
-# subtraction inside the report. Outside it, the /support/ page publishes the
+# No total of the levels is published, and `events` counts the six other
+# kinds only, so a masked level cannot come back by subtraction inside the
+# report - it could, through `events`, until the fourth #1885 review. Outside it, the /support/ page publishes the
 # year's count of paying supporters (app/core/support.py `year_total`); its
 # definition differs from these (charges in a year, renewals included, against
 # choices begun in a month), so subtracting one from the other is a rough
@@ -150,6 +151,7 @@ EVENT_COUNTS = frozenset(
         "fixes",
         "unsealed_no_key",
         "events_after_close",
+        "support_after_close",
     }
 )
 # What an event count carries with it, masked whenever it is.

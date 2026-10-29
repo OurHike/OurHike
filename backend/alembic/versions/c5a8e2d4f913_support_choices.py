@@ -20,7 +20,11 @@ hiker told once), and `support_charges`, one row per provider charge, which
 the published total sums and whose unique key stops a charge being counted
 twice. And once more that day, still unreleased, for the maintainer's
 answers: `support_charges.customer_ref` (how a refund is recognised) and
-`support_mail_preferences` (the "Emails about my support" switch).
+`support_mail_preferences` (the "Emails about my support" switch). Edited
+a last time on 2026-10-29, still unreleased, for the fourth review:
+`duplicate_of` (a payment for a choice that was already paid), and
+`counted_at` and `uncounted` (the level counted once as a usage event, and
+never for a choice made with usage statistics off).
 
 Indexed on `profile_id` (the signed-in "my support" read), `email` and
 `provider_ref` (the keys a webhook can match on), `status`, `link_token` (the
@@ -114,10 +118,14 @@ def upgrade() -> None:
         sa.Column("ended_at", sa.DateTime(), nullable=True),
         sa.Column("last_event_at", sa.DateTime(), nullable=True),
         sa.Column("replaces_choice_id", sa.String(), nullable=True),
+        sa.Column("duplicate_of", sa.String(), nullable=True),
+        sa.Column("counted_at", sa.DateTime(), nullable=True),
+        sa.Column("uncounted", sa.Boolean(), nullable=False),
         sa.Column("link_token", sa.String(length=64), nullable=False),
         sa.Column("updated_at", sa.DateTime(), nullable=False),
         sa.ForeignKeyConstraint(["profile_id"], ["profiles.id"]),
         sa.ForeignKeyConstraint(["replaces_choice_id"], ["support_choices.id"]),
+        sa.ForeignKeyConstraint(["duplicate_of"], ["support_choices.id"]),
         sa.PrimaryKeyConstraint("id"),
         sa.UniqueConstraint("provider", "provider_ref", name="uq_support_choices_provider_ref"),
     )

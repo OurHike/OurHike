@@ -137,7 +137,7 @@ def _simulate(client, db_session, monkeypatch) -> dict:
             snapshots[closed] = {
                 (r.metric, r.club, r.platform): r.value
                 for r in db_session.query(AnalyticsMonthly).filter(AnalyticsMonthly.month == closed).all()
-                if r.metric != "events_after_close"
+                if r.metric not in LATE_COUNTS
             }
         clock["now"] = datetime.combine(day, time(15))
 
@@ -216,14 +216,23 @@ def _closed_months_count_exactly_the_phones_that_were_there(db_session, simulate
     assert checked >= 6, "the simulation closed fewer months than it was built to"
 
 
+# The two counts a closed month still takes: rows that arrive after it closed,
+# and support rows that do (counted apart from `events` since the fourth
+# #1885 review, so a masked level cannot be subtracted back out).
+LATE_COUNTS = ("events_after_close", "support_after_close")
+
+
 def _closed_months_never_move_and_count_their_late_rows_exactly(db_session, simulated):
     for month, frozen in simulated["snapshots"].items():
         later = {
             (r.metric, r.club, r.platform): r.value
             for r in db_session.query(AnalyticsMonthly).filter(AnalyticsMonthly.month == month).all()
-            if r.metric != "events_after_close"
+            if r.metric not in LATE_COUNTS
         }
         assert later == frozen, f"{month:%Y-%m} moved after it closed"
+        # These phones never answer the support ask, so none of its rows
+        # can be late.
+        assert _value(db_session, month, "support_after_close") == 0, month
         if month < retention_start(END + timedelta(days=1)):
             continue  # raw rows gone: its late count stopped with them
         late = sum(1 for day in simulated["truth"]["posted_on"][month] if day >= closes_on(month))

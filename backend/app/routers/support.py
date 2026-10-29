@@ -53,8 +53,16 @@ log = logging.getLogger(__name__)
 router = APIRouter(prefix="/support", tags=["support"])
 
 
-def _rows(db: Session, profile_id: str) -> list[SupportChoice]:
-    return db.query(SupportChoice).filter(SupportChoice.profile_id == profile_id).all()
+def _rows(db: Session, profile_id: str, *, lock: bool = False) -> list[SupportChoice]:
+    """The caller's rows. `lock` holds them until the commit, so a Stop, a
+    new choice or a deletion cannot read a choice as unpaid while a payment
+    confirmation is committing it as paid, then write its stale reading over
+    it - the fourth #1885 review measured a Stop leaving a $60 subscription
+    charging under a row that said "stopped"."""
+    query = db.query(SupportChoice).filter(SupportChoice.profile_id == profile_id)
+    if lock:
+        query = query.order_by(SupportChoice.id).with_for_update().populate_existing()
+    return query.all()
 
 
 def _blocked(rows: list[SupportChoice]) -> bool:
@@ -64,9 +72,11 @@ def _blocked(rows: list[SupportChoice]) -> bool:
 
 def _summary(db: Session, profile_id: str) -> SupportOut:
     row = summary_row(db, profile_id)
+    rows = _rows(db, profile_id)
     return SupportOut.from_row(
         row,
-        blocked=_blocked(_rows(db, profile_id)),
+        blocked=_blocked(rows),
+        stoppable=any(r.status in STOPPABLE for r in rows),
         support_emails=support_mail_on(db, row.email if row is not None else None),
     )
 
@@ -119,7 +129,7 @@ def choose_support(
         )
 
     now = utc_now()
-    rows = _rows(db, current_user.id)
+    rows = _rows(db, current_user.id, lock=True)
     if _blocked(rows):
         raise HTTPException(
             status_code=status.HTTP_409_CONFLICT,
@@ -127,6 +137,24 @@ def choose_support(
         )
     pending = [row for row in rows if row.provider == provider.key and row.status == SupportStatus.pending]
     row = max(pending, key=lambda r: r.chosen_at or datetime.min) if pending else None
+    if row is None:
+        # A choice stopped before anything was paid is taken up again rather
+        # than a new row made: choose-and-Stop in a loop added a row each
+        # time, for good (the fourth #1885 review). Its id stays recognisable
+        # to a link still waiting to be paid.
+        unpaid = [
+            r
+            for r in rows
+            if r.provider == provider.key
+            and r.status == SupportStatus.stopped
+            and r.provider_ref is None
+            and r.started_at is None
+            and r.duplicate_of is None
+        ]
+        row = max(unpaid, key=lambda r: r.chosen_at or datetime.min) if unpaid else None
+        if row is not None:
+            row.stop_requested_at = row.stop_notified_at = row.stop_attempted_at = None
+            row.stop_confirmed_at = row.ended_at = None
     if row is None:
         row = SupportChoice(profile_id=current_user.id, provider=provider.key)
         db.add(row)
@@ -147,6 +175,7 @@ def choose_support(
     row.migrate_notice_at = now
     row.terms_version = SUPPORT_TERMS_VERSION
     row.delivery = choice.delivery
+    row.uncounted = not choice.usage_counts
     row.chosen_at = now
     db.flush()
 
@@ -184,13 +213,18 @@ def set_my_support_mail(
     db: Session = Depends(get_db),
 ) -> SupportOut:
     """The app's "Emails about my support" switch, for the verified address
-    on the caller's token - the same address the emails go to."""
+    on the caller's token and every address their support rows are under -
+    the one the emails actually go to, which an earlier sign-in address may
+    still be (the fourth #1885 review: the switch read back off and stopped
+    nothing)."""
     if email is None:
         raise HTTPException(
             status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
             detail="Your sign-in carries no email address.",
         )
-    set_support_mail(db, email, choice.support_emails)
+    addresses = {email, *(row.email for row in _rows(db, current_user.id) if row.email)}
+    for address in sorted(addresses):
+        set_support_mail(db, address, choice.support_emails)
     db.commit()
     return _summary(db, current_user.id)
 
@@ -211,7 +245,7 @@ def stop_support(
     anybody, at most every `RETRY_EVERY`. Nothing running and nothing waiting
     is 404.
     """
-    rows = _rows(db, current_user.id)
+    rows = _rows(db, current_user.id, lock=True)
     if not any(row.status in STOPPABLE or row.status == SupportStatus.stop_requested for row in rows):
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Nothing is running to stop.")
 
@@ -250,7 +284,15 @@ def support_total(response: Response, db: Session = Depends(get_db)) -> SupportT
     cached = _total_cache.get(now.year)
     if cached is None or now - cached[0] >= TOTAL_CACHE_FOR:
         cents, supporters = year_total(db, now.year)
-        cached = (now, SupportTotalOut(year=now.year, total_cents=cents, supporters=supporters))
+        cached = (
+            now,
+            SupportTotalOut(
+                year=now.year,
+                total_cents=max(0, cents),
+                supporters=supporters,
+                accepting=current_provider() is not None,
+            ),
+        )
         _total_cache[now.year] = cached
     response.headers["Cache-Control"] = f"public, max-age={int(TOTAL_CACHE_FOR.total_seconds())}"
     return cached[1]
@@ -373,7 +415,7 @@ def _switches_page(db: Session, row: SupportChoice, *, saved: bool = False) -> H
         f'<a href="{escape(manage_url())}">More → Your support → Stop</a> in the app.</p>'
         + ('<p role="status"><strong>Saved.</strong></p>' if saved else "")
         + '<form method="post"><input type="hidden" name="form" value="1">'
-        '<label class="switch"><span>Emails about my support<small>Receipts, and word when a payment stops</small></span>'
+        '<label class="switch"><span>Emails about my support<small>When it starts and when it stops. Payment receipts still come.</small></span>'
         f'<input type="checkbox" role="switch" name="support"{" checked" if support_on else ""}></label>'
         '<label class="switch"><span>Every other email from OurHike<small>Including a setup link you ask for</small></span>'
         f'<input type="checkbox" role="switch" name="everything"{" checked" if everything_on else ""}'

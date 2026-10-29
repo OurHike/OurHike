@@ -27,6 +27,10 @@ class SupportChoiceIn(BaseModel):
     # `redirect` from the website app; `email` from the iOS and Android apps,
     # which may not link to a payment outside the store's own.
     delivery: Literal["redirect", "email"]
+    # "Share usage statistics" was on on the phone that chose. Off, the
+    # level is never counted (core/analytics_support.py), even before that
+    # answer has synced to the account.
+    usage_counts: bool = True
 
 
 SupportStatusOut = Literal[
@@ -67,10 +71,19 @@ class SupportOut(BaseModel):
     support_emails: bool
 
     @classmethod
-    def from_row(cls, row: SupportChoice | None, *, blocked: bool | None = None, support_emails: bool = True) -> "SupportOut":
+    def from_row(
+        cls,
+        row: SupportChoice | None,
+        *,
+        blocked: bool | None = None,
+        stoppable: bool | None = None,
+        support_emails: bool = True,
+    ) -> "SupportOut":
         """`blocked` is whether ANY of the caller's rows blocks a new choice
-        (see core/support.BLOCKS_CHOICE); the router knows, a single row may
-        not. Left None, it is read off this row."""
+        (see core/support.BLOCKS_CHOICE), and `stoppable` whether any of them
+        could still be stopped; the router knows, a single row may not - a
+        stopped duplicate beside a payment still charging is the fourth
+        review's case. Left None, each is read off this row."""
         if row is None:
             return cls(
                 status="none",
@@ -106,7 +119,7 @@ class SupportOut(BaseModel):
             stop_requested_at=row.stop_requested_at,
             ended_at=row.ended_at,
             supporting=row.status in RUNNING,
-            can_stop=row.status in STOPPABLE,
+            can_stop=row.status in STOPPABLE if stoppable is None else stoppable,
             can_choose=current_provider() is not None and not blocked,
             support_emails=support_emails,
         )
@@ -128,8 +141,15 @@ class SupportTotalOut(BaseModel):
     before fees."""
 
     year: int
+    # Never below zero: a refund is dated when the money went back (the
+    # maintainer, 2026-10-29), so a December charge refunded in January
+    # would otherwise print as minus that much.
     total_cents: int
     supporters: int
+    # Whether this server takes a paid choice now. The app asks nobody while
+    # it does not - a required question every answer to which fails is worse
+    # than none (the fourth #1885 review).
+    accepting: bool
 
 
 class WebhookAck(BaseModel):

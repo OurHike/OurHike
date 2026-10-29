@@ -1445,6 +1445,7 @@ def test_a_charge_that_arrives_before_its_checkout_still_counts_and_joins_it(cli
         "year": utc_now().year,
         "total_cents": 12000,
         "supporters": 1,
+        "accepting": True,
     }
 
     user_id = str(uuid.uuid4())
@@ -1467,7 +1468,7 @@ def test_a_refund_comes_off_the_total_and_a_second_partial_refund_updates_it(cli
     assert _deliver(client, _refund(refunded=6000)).json() == {"result": "refunded"}
     assert _deliver(client, _refund(refunded=6000)).json() == {"result": "duplicate"}
     clear_total_cache()
-    assert client.get("/support/total").json() == {"year": utc_now().year, "total_cents": 0, "supporters": 1}
+    assert client.get("/support/total").json() == {"year": utc_now().year, "total_cents": 0, "supporters": 1, "accepting": True}
 
 
 def test_a_refund_of_anything_else_on_the_stripe_account_is_left_alone(client, configured, db_session):

@@ -178,6 +178,14 @@ def _is_ourhike(obj: Mapping[str, Any]) -> bool:
     return MARKER in _mapping(details.get("metadata"))
 
 
+def _tier(obj: Mapping[str, Any]) -> int | None:
+    """The tier in cents a year that OurHike's link set as `MARKER`, or None."""
+    value = _mapping(obj.get("metadata")).get(MARKER)
+    if isinstance(value, str) and value.isdigit() and 0 < len(value) <= 7:
+        return int(value)
+    return None
+
+
 def payment_links() -> dict[int, str]:
     """`settings.stripe_payment_links` as {cents: url}, https links only."""
     links: dict[int, str] = {}
@@ -308,6 +316,7 @@ class Stripe:
                     choice_ref=choice if isinstance(choice, str) and _CHOICE_ID.match(choice) else None,
                     email=_email(details.get("email")) or _email(obj.get("customer_email")),
                     amount_cents=_cents(obj.get("amount_total")),
+                    tier_cents=_tier(obj),
                     currency=_currency(obj.get("currency")),
                     started_at=_when(obj.get("created")),
                     payload=_payload(kind, obj),
@@ -378,6 +387,24 @@ class Stripe:
                 payload=_payload(kind, obj, subscription=subscription, amount_paid=amount),
             )
         ]
+
+    def refund_from_log(self, payload: Mapping[str, Any], occurred_at: datetime | None) -> ProviderEvent | None:
+        """A `charge.refunded` rebuilt from the fields `_payload` logged for it."""
+        if payload.get("type") != "charge.refunded":
+            return None
+        charge, customer = _ref(payload.get("object_id")), _ref(payload.get("customer"))
+        refunded = _cents(payload.get("amount_refunded"))
+        if charge is None or customer is None or refunded is None:
+            return None
+        return ProviderEvent(
+            kind=EventKind.refunded,
+            occurred_at=occurred_at,
+            charge_ref=charge,
+            customer_ref=customer,
+            amount_cents=refunded,
+            currency=_currency(payload.get("currency")),
+            payload=dict(payload),
+        )
 
     def request_cancel(self, db: Session, choice: SupportChoice, mail_provider: Any) -> bool:
         """Stop one subscription, as the hiker's Stop asked.

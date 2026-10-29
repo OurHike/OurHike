@@ -65,7 +65,7 @@ from dataclasses import dataclass, field
 from sqlalchemy.orm import Session
 
 from app.core.analytics_accounts import keys_or_refuse
-from app.core.support import mark_stop
+from app.core.support import forget_addresses, mark_stop
 from app.core.time import utc_now
 from app.models.analytics import AnalyticsEvent, AnalyticsUser
 from app.models.app_failure import AppFailure
@@ -370,6 +370,13 @@ def delete_account(db: Session, profile: Profile, now=None) -> DeletionSummary:
     # as Stop would - nobody deleting their account means "keep charging
     # me". Whoever cancels it is asked by the router once the deletion has
     # committed.
+    # Locked first, every row of this account's, so a payment confirmation
+    # committing meanwhile is read as paid rather than written over as
+    # emptied (the fourth #1885 review measured a deletion leave a $60
+    # subscription charging under a row with no account and no address).
+    db.query(SupportChoice).filter(SupportChoice.profile_id == profile_id).order_by(
+        SupportChoice.id
+    ).with_for_update().populate_existing().all()
     unpaid = (
         db.query(SupportChoice)
         .filter(
@@ -379,6 +386,7 @@ def delete_account(db: Session, profile: Profile, now=None) -> DeletionSummary:
         )
         .all()
     )
+    forgotten = [choice.email for choice in unpaid]
     for choice in unpaid:
         choice.profile_id = None
         choice.email = ""
@@ -389,6 +397,8 @@ def delete_account(db: Session, profile: Profile, now=None) -> DeletionSummary:
         choice.replaces_choice_id = None
         choice.link_token = secrets.token_urlsafe(32)
     db.flush()
+    # And the mail log and switch rows that still name those addresses.
+    forget_addresses(db, forgotten)
     stopping = [
         choice
         for choice in db.query(SupportChoice).filter(SupportChoice.profile_id == profile_id).all()

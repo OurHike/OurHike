@@ -130,10 +130,19 @@ def suppress(
     are replayed; a second bounce must not fail the handler recording it. The
     first reason is kept because why somebody originally said stop is the more
     useful fact - a complaint followed by a bounce is still a complaint.
+
+    Except over `unsubscribed`, which any other reason replaces. That one is
+    the address owner's own, and the only one `lift_unsubscribe` lets them
+    undo; kept over a later complaint or a manual entry, it let the email
+    page's switch lift those too (the fourth #1885 review).
     """
     address = normalise(address)
     existing = db.query(EmailSuppression).filter(EmailSuppression.address == address).first()
     if existing is not None:
+        if existing.reason == SuppressionReason.unsubscribed and reason != SuppressionReason.unsubscribed:
+            existing.reason = reason
+            existing.note = note
+            db.flush()
         return existing
     row = EmailSuppression(address=address, reason=reason, note=note)
     db.add(row)

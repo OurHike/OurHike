@@ -238,7 +238,13 @@ def build_export(db: Session, profile: Profile) -> dict[str, Any]:
         # What they chose to give OurHike (#1876): amounts, dates, the email
         # receipts went to, and the provider's ids - theirs to see, and what
         # they would need to chase a charge themselves.
-        "what_you_give_ourhike": _rows(db, SupportChoice, SupportChoice.profile_id == profile_id),
+        # Without `link_token`: it opens the email switches of whatever
+        # address the row is under, so in a file it works like a password
+        # (the fourth #1885 review).
+        "what_you_give_ourhike": [
+            {column: value for column, value in row.items() if column != "link_token"}
+            for row in _rows(db, SupportChoice, SupportChoice.profile_id == profile_id)
+        ],
         # What the payment provider told us about it, as stored: the
         # provider's own redaction, without a name, a note or the email.
         "what_your_payment_provider_told_us": _rows(

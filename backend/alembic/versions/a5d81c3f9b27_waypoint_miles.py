@@ -1,7 +1,7 @@
 """waypoint_miles: where each waypoint sits on the A.T., for GET /disputes
 
 Revision ID: a5d81c3f9b27
-Revises: b4d8e1f7a263
+Revises: c3a9e5d27f18
 Create Date: 2026-10-27 16:00:00.000000
 
 **#1917 — A maintainer's note settles a water dispute anywhere on the trail,
@@ -27,7 +27,7 @@ import sqlalchemy as sa
 from alembic import op
 
 revision: str = "a5d81c3f9b27"
-down_revision: str | Sequence[str] | None = "b4d8e1f7a263"
+down_revision: str | Sequence[str] | None = "c3a9e5d27f18"
 branch_labels: str | Sequence[str] | None = None
 depends_on: str | Sequence[str] | None = None
 

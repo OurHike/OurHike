@@ -109,9 +109,9 @@ python load_waypoint_miles.py ../pipeline/data/processed/poi/*.geojson          
 python load_waypoint_miles.py ../pipeline/data/processed/poi/*.geojson --commit  # does it
 ```
 
-- **Give it every type's file at once.** The files are the whole answer: a waypoint in the table and in no file given is deleted, and the dry run lists each deletion first.
-- **Run it after each waypoint publish**, against UA and against production. Until it has run against an environment, no waypoint there has a mile, so no maintainer's note carries a maintainer's weight: one note from a maintainer neither puts "reported missing" on a pin nor takes it off, and it still shows on the card as anybody's does. That is the state to load out of, not one to leave a deployment in.
-- **It refuses files that place no waypoint on the trail** rather than empty the table.
+- **Give it every type's file at once.** The files are the whole answer: a waypoint in the table and in no file given is deleted, and the dry run lists each deletion first. A load that would delete more than a tenth of the table is refused unless `--allow-shrink` says the release really retired them; one type's file alone would have deleted 2,592 of release 2026-10-10-2's 3,024 rows.
+- **Run it after each waypoint publish**, against UA and against production. Until it has run against an environment, no waypoint there has a loaded mile. A covering maintainer's `not_found` still marks a waypoint from the mile they typed; what waits for the load is one maintainer's confirmation taking a dispute off, which until then needs two people's. `max(loaded_at)` is when the table last matched a release, because every run stamps every row it keeps.
+- **It refuses** files that place no waypoint on the trail rather than empty the table, a file name given twice, a feature that is not a GeoJSON Feature, and a mile below 0 or above 5,000.
 
 ## Migrations
 

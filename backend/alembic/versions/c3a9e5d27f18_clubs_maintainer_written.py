@@ -1,7 +1,7 @@
 """clubs.maintainer_written: who wrote the row, kept apart from who registered it
 
 Revision ID: c3a9e5d27f18
-Revises: b4d8e1f7a263
+Revises: 897b71ad5fff
 Create Date: 2026-10-27 15:30:00.000000
 
 **#1913 — Deleting the registrant's account turns a self-registered
@@ -33,7 +33,7 @@ import sqlalchemy as sa
 from alembic import op
 
 revision = "c3a9e5d27f18"
-down_revision = "b4d8e1f7a263"
+down_revision = "897b71ad5fff"
 branch_labels = None
 depends_on = None
 

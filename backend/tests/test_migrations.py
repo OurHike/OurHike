@@ -380,7 +380,7 @@ def test_the_maintainer_written_backfill_keeps_what_created_by_meant(migration_e
     not. Rows after the upgrade default to false, which a maintainer's path
     has to change."""
     config = _alembic_config()
-    command.upgrade(config, "b4d8e1f7a263")
+    command.upgrade(config, "897b71ad5fff")
     with migration_engine.begin() as connection:
         connection.execute(sqlalchemy.text("insert into profiles (id, role, created_at) values ('person-1', 'hiker', now())"))
         connection.execute(

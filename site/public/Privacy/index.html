@@ -232,10 +232,9 @@
       <p class="updated">Last updated October 29, 2026</p>
 
       <p class="lede">
-        OurHike is a small, volunteer-built offline map for hikers,
-        currently in public beta. This page explains what
-        information we collect, why, and what you can do about it — in
-        plain language, not legalese. If something here is unclear,
+        OurHike is a small, volunteer-built offline map for hikers, in
+        public beta. This page says what we collect, why, and what you can
+        do about it. If anything is unclear,
         <a href="https://github.com/OurHike/OurHike/issues"
           >open an issue</a
         >
@@ -243,295 +242,207 @@
       </p>
 
       <div class="note">
-        You can use the core map — the trail, water, shelters, and
-        campsites, even offline — without creating an account or handing
-        over any personal information at all.
+        <strong>The short version</strong>
+        <ul>
+          <li>You can use the map, even offline, with no account and no personal information.</li>
+          <li>Your location stays on your phone, except in a report you send, or sealed inside usage counts while <em>Share usage statistics</em> is on.</li>
+          <li>Usage counts carry no ID unless you choose to link them to your account, and are deleted within seven months. Turn them off in More → Safety &amp; privacy.</li>
+          <li>No notifications, no ads, and nothing sold.</li>
+        </ul>
       </div>
 
       <h2>Information we collect</h2>
 
-      <h3>Account information</h3>
+      <h3>Your account, if you make one</h3>
       <p>
-        Creating an account is only needed to submit a trail report or
-        contribute in other ways — not to use the map. If you sign in, we
-        (through our authentication provider, Supabase) collect:
+        You only need an account to submit a report or contribute. Sign-in
+        runs through Supabase, with a 6-digit code emailed to you or with
+        your Google or GitHub account. There is no password; Supabase sends
+        and checks the code, and we never see it. We keep:
       </p>
       <ul>
         <li>
-          Your <strong>email address</strong>, whether you sign in with a
-          code we email you, or with a Google or GitHub account you already
-          have.
+          Your <strong>email address</strong>. With Google or GitHub, that
+          is usually all the profile they share.
         </li>
         <li>
-          If you sign in with Google or GitHub, the basic profile
-          information that service shares to verify your identity (your
-          email address, typically nothing beyond that).
-        </li>
-        <li>
-          There is no password. Signing in with email sends a 6-digit code
-          to your address, and typing it into the app is what signs you in.
-          Supabase issues and checks that code; we never see it.
-        </li>
-        <li>
-          A <strong>trail name</strong> you choose yourself, and the kind
-          of hiker you say you are (thru, section, day, or maintainer).
-          Your trail name — not your real name or email — is what other
-          hikers see if you post a report.
+          A <strong>trail name</strong> you choose and the kind of hiker you
+          are (thru, section, day or maintainer). Other hikers see your trail
+          name, never your real name or email.
         </li>
       </ul>
 
       <h3>Location</h3>
       <p>
-        OurHike can use your device's GPS to show your position on the
-        map. That position leaves your phone in two ways and no others:
-        when you choose to attach it to a report you submit — for example,
-        to mark exactly where a blowdown or a water source is — and, while
-        <em>Share usage statistics</em> is on, with the usage counts
-        described under <a href="#usage-analytics">Usage analytics</a>,
-        sealed so that our servers cannot read the exact position. Otherwise
-        it is used on your device only.
+        Your position is used on your device only, except in two cases:
+        when you attach it to a report you submit, and while
+        <em>Share usage statistics</em> is on, when it goes with the
+        <a href="#usage-analytics">usage counts</a> below, sealed so our
+        servers cannot read it. Location is read
+        only while the app is open on a screen that needs it, never in the
+        background, and your track is never uploaded. Usage statistics only
+        use a position the map already has; they never turn location on.
       </p>
       <p>
-        Nothing watches your position in the background. OurHike reads
-        your location while you have the app open and are using a screen
-        that needs it — the map, or a walk you are following — and it
-        does that entirely on your phone. Your track — the line your
-        position draws as you walk — is not uploaded and not stored on our
-        side. Usage statistics send one position per thing they count, and
-        only a position the map already has: they never switch location on.
-      </p>
-      <p>
-        <strong>One feature keeps a record rather than forgetting it.</strong>
-        Under More → Safety &amp; privacy there is <em>Record a GPS
-        trace</em>, a tool for measuring how accurate your phone's GPS
-        actually is on the trail. While it is running it writes down where
-        your phone thinks you are, several times a minute, and
-        <strong>keeps that list on your phone until you delete it</strong> —
-        which is the button directly beneath it. Everything else about
-        location on this page still holds: the trace is never uploaded, is
-        never attached to a report, and there is no way for us to ask for it.
-        The only way it leaves your phone is if you save it to a file and
-        send it somewhere yourself. It records nothing until you press start,
-        and nothing at all if you have not turned on <em>Use my location</em>.
+        <strong>One tool keeps a record:</strong> <em>Record a GPS
+        trace</em>, under More → Safety &amp; privacy, notes your position
+        several times a minute and keeps it on your phone until you delete
+        it. It starts only when you press start, with <em>Use my
+        location</em> on. It is never uploaded or attached to a report; it
+        leaves your phone only if you save the file and send it yourself.
       </p>
 
       <h3>Notifications</h3>
       <p>
-        <strong>OurHike sends no notifications at all.</strong> Not news,
-        not reminders, not marketing, not "come back and use the app" —
-        and not alerts either. Nothing this app does puts anything on
-        your lock screen. That is a rule in the code rather than a
-        promise here: an automated check reads every module the web app
-        ships and fails the build if any of them reaches for the browser's
-        notification or push machinery. It does not read the iOS and Android
-        wrappers, which are not written in the same language — so that is
-        the one place this page is telling you what we intend rather than
-        what a test proves.
-      </p>
-      <p>
-        This page used to say something weaker — that there was exactly
-        one notification, an off-trail alert. That feature was built and
-        then removed before anyone was using it, and this paragraph did
-        not come back for the sentence. It says so here rather than
-        quietly, because a privacy policy that overstates what an app
-        does with your attention and your position is wrong in the
-        direction that matters.
+        <strong>OurHike sends no notifications at all</strong> — no news,
+        reminders, marketing or alerts. (The off-trail alert this page once
+        described was removed before anyone used it.) An automated check fails the
+        build if the web app ever reaches for notifications. It does not
+        cover the iOS and Android wrappers, so there this is our intent
+        rather than a tested rule.
       </p>
 
       <h3>Reports you submit</h3>
       <p>
-        If you report a trail condition (a blowdown, flooding, a shelter
-        needing repair, and so on), we collect what you put in it: the
-        category, any note you write, the location if you include one,
-        and the time you wrote it. A report may in the future let you
-        attach a photo, in which case that photo is collected too.
-      </p>
-      <p>
-        Reports about other people ("bad hikers") are handled more
-        carefully than trail-condition reports: they go only to safety
-        moderators, never shown publicly.
+        A trail report holds what you put in it: the category, your note,
+        the location if you add one, and when you wrote it — and a photo, if
+        that feature arrives. Reports about other people go only to safety
+        moderators and are never public.
       </p>
 
-      <h3>Information kept only on your device</h3>
+      <h3>Kept only on your phone</h3>
       <p>
-        The downloaded map data, your app preferences, and any report
-        you've written but haven't yet been able to send (there's often no
-        signal on the trail) are stored locally on your phone using your
-        browser's on-device storage. We don't have access to this until a
-        report is actually sent.
+        Downloaded maps, your settings and reports waiting for signal stay
+        on your phone. We see a report only once it is sent.
       </p>
 
       <h3>Standard technical information</h3>
       <p>
-        Like almost any website, the infrastructure that serves OurHike
-        (GitHub Pages, Cloudflare, and similar) may log ordinary technical
-        details — such as IP address and browser type — as part of normal
-        operation. We don't collect this ourselves or use it to identify
-        you.
+        The services that serve OurHike (GitHub Pages, Cloudflare and
+        similar) may log ordinary details such as IP address and browser
+        type. We don't collect these or use them to identify you.
       </p>
 
-      <h3 id="usage-analytics">Usage analytics</h3>
+      <h3 id="usage-analytics">Usage statistics</h3>
       <p>
-        OurHike counts six things, so we can see what is used and what
-        helps: opening the app for the first time, signing in,
-        making a hike plan, finishing one, viewing the map, and each visit,
-        with how many screens it showed and roughly how long it lasted. These
-        counts are on unless you turn them off.
+        Unless you turn it off, OurHike counts six things: first opening the
+        app, signing in, making a hike plan, finishing one, viewing the map,
+        and each visit, with how many screens it showed and roughly how long
+        it lasted.
       </p>
       <ul>
         <li>
-          Each count carries the date (never the time of day), which kind of
-          phone, the app version, and — when it was about a stretch of trail —
-          the club that maintains that stretch.
+          Each count carries the date (not the time), the kind of phone, the
+          app version, and the club whose trail it was about, if any. It also
+          carries a few yes-or-no answers the phone works out about itself —
+          first count this week, this month or ever; used last month; whether
+          an account is signed in, never which account — so we can count
+          phones without giving any of them an ID.
         </li>
         <li>
-          Each count also carries a few yes-or-no answers your phone works out
-          about itself, so we can count phones without giving any of them an
-          ID: whether this is its first count this week, this month or ever,
-          whether it was used last month too, and whether an account is signed
-          in on it — never which account.
+          <strong>While location is on, each count carries your
+          position</strong>, sealed (encrypted) the moment it arrives with a
+          key our servers do not hold. Only the grid square it falls in,
+          roughly 8 to 11 km across, stays readable, and that is all our
+          reports use. OurHike's maintainer keeps the key, off our servers,
+          and every opening records who opened it and why.
         </li>
         <li>
-          <strong>While location is on, each count also carries your phone's
-          position.</strong> It is sealed (encrypted) the moment it arrives,
-          with a key our servers do not hold, so they cannot read it back.
-          What stays readable is only the grid square it falls in, roughly 8
-          to 11 km across, which is all our reports use. The key that opens a
-          sealed position is kept by
-          OurHike's maintainer, off our servers, and the tool that opens one
-          records who opened it and why.
-        </li>
-        <li>
-          After you sign in, we ask once whether to link these counts to your
-          account. If you say yes, a code made from your account — not your
-          name or email — goes with each count, beside that grid square, and
-          your account ID is sealed alongside the exact position. Our server
-          can match the code back to your account, which is how unlinking
-          and deleting your account find your counts, so with a yes the grid
-          squares of your counts are tied to your account for as long as the
-          counts are kept. Saying yes
-          also keeps a running total for your account: the dates you were
-          first and last counted and the kind of device each was on (iPhone,
-          Android or web), the dates of your first sign-in, first plan and
-          first finished hike, how many times you signed in, made and
-          finished plans and their miles, opened the map, and visited, how
-          many screens you viewed, which months you used the app, and the
-          day it last changed. It is kept until
-          you unlink or delete your account, and it holds no position. If
-          you say no, nothing that
-          identifies your account goes with them — only the yes-or-no answer
-          above, that some account is signed in — but positions are still
-          sent while location is on.
+          After you sign in, we ask once whether to link your counts to your
+          account. <strong>Yes</strong>: a code made from your account goes
+          with each count and your account ID is sealed with the position.
+          Our server can match that code to your account, so your counts'
+          grid squares are tied to it while they are kept. We also keep a
+          running total for you: when you were first and last counted and on
+          which kinds of device; the dates of your first sign-in, plan and
+          finished hike; how often you signed in, made and finished plans
+          (and their miles), opened the map, visited and viewed screens;
+          which months you used the app; and the day it last changed. It
+          holds no position and lasts until you unlink or delete your account.
+          <strong>No</strong>: nothing identifying your account goes with
+          your counts beyond whether some account is signed in, and positions
+          are still sent while location is on.
         </li>
         <li>
           Counts and positions are kept for the six whole months after the
           month they were recorded, then deleted. Counts not linked to an
           account move to private files at Cloudflare about two weeks after
-          their month ends, and are deleted on the same schedule. A backup of
-          our database
-          taken before that can hold them until the backup itself expires,
-          and a sealed position the maintainer has opened is kept in a file
-          on their own computer until they delete it.
-          If the job that deletes them stops running, we stop collecting
-          within three days, until it runs again.
-          Monthly totals are kept, and any figure that would describe fewer
-          than 25 people is never shown.
+          their month ends, and are deleted on the same schedule. A database
+          backup can hold them until the backup expires, and a position the
+          maintainer has opened stays in a file on their own computer until
+          they delete it. If the deletion job stops, we stop collecting
+          within three days. Monthly totals are kept, and no figure for fewer
+          than 25 people is ever shown.
         </li>
         <li>
-          Turn it all off in More → Safety &amp; privacy → Share usage
-          statistics. Off stops collection and deletes anything not yet
-          sent. If you're signed in, your other phones follow the next time
-          each one opens signed in and reaches our server — and none of them
-          sends anything before that — unless you have changed the setting on
-          that phone since, or switched off account sync on it.
+          Turn it off in More → Safety &amp; privacy → Share usage
+          statistics: collection stops and anything unsent is deleted. If
+          you're signed in, your other phones follow the next time each opens
+          signed in and reaches our server, sending nothing before then —
+          unless you changed the setting on that phone or turned off account
+          sync there.
         </li>
         <li>
-          Unlinking deletes the running total and takes your account off
-          the counts already sent: the code goes, and so does your sealed
-          account ID, with the exact position sealed beside it. The counts
-          themselves stay, with their grid square, like those of anyone who
-          said no. Deleting your account deletes the running total and
-          every count still linked to it.
+          Unlinking deletes the running total and removes the code and your
+          sealed account ID, with the position sealed beside it, from counts
+          already sent; the counts stay, like anyone's who said no. Deleting
+          your account deletes the running total and every count still linked
+          to it.
         </li>
         <li>
-          We don't record your IP address with these counts, and our
-          server leaves it out of its own logs for them; the hosting in
-          front of our server may still log it, as described under
-          Standard technical information. No third-party analytics tool is
-          involved.
+          We don't record your IP address with these counts or in our
+          server's logs for them (the hosting in front of our server may log
+          it, as above), and no third-party analytics tool is involved.
         </li>
       </ul>
 
-      <h2>How we use this information</h2>
+      <h2>How we use it</h2>
       <ul>
-        <li>To run the app: show your position, sync your account, and let you submit and track reports.</li>
-        <li>To keep the trail community trustworthy: moderators use report details to verify conditions and act on safety concerns.</li>
-        <li>To improve OurHike: understanding what's used and what isn't, from the usage counts above, in aggregate.</li>
+        <li>To run the app: show your position, sync your account, and send and track reports.</li>
+        <li>To keep the trail community trustworthy: moderators use reports to verify conditions and act on safety concerns.</li>
+        <li>To improve OurHike, from the usage counts, in aggregate.</li>
       </ul>
-      <p>
-        We do not sell your personal information, and we don't run
-        advertising in the app.
-      </p>
+      <p>We don't sell your information, and there is no advertising.</p>
 
       <h2>Who we share it with</h2>
       <ul>
+        <li><strong>Supabase</strong> runs sign-in and stores your account for us.</li>
         <li>
-          <strong>Supabase</strong>, our authentication provider — handles
-          sign-in and stores your account credentials on our behalf.
+          <strong>Trail clubs and maintainers</strong> see reports for the
+          sections they maintain, and public reports show your trail name to
+          anyone — never your real name or email.
         </li>
-        <li>
-          <strong>Trail clubs and maintainers</strong> may see reports
-          relevant to the sections they maintain, and public reports are
-          visible (by trail name, not real name or email) to anyone using
-          the app.
-        </li>
-        <li>
-          We may disclose information if required to by law, or to
-          protect the safety of someone on the trail.
-        </li>
+        <li>We may disclose information if the law requires it, or to protect someone's safety on the trail.</li>
       </ul>
       <p>
-        <strong>Map tiles come from three places, and asking for a tile
-        says roughly where you are looking.</strong> The trail data and
-        the downloadable offline maps come from our own storage at
-        Cloudflare. The default background map comes from
+        <strong>Map tiles come from three places, and each request shows
+        roughly where you are looking</strong>, though it carries nothing that
+        identifies you:
+        our own storage at Cloudflare (trail data and offline maps),
         <a href="https://openfreemap.org/">OpenFreeMap</a>
-        (<code>tiles.openfreemap.org</code>), and the hillshading and
-        contours from
+        (<code>tiles.openfreemap.org</code>, the background map) and
         <a href="https://registry.opendata.aws/terrain-tiles/"
           >AWS Terrain Tiles</a
         >
-        (<code>s3.amazonaws.com</code>). None of those requests carries
-        your account, your trail name
-        or anything else that identifies you — but the servers involved
-        do see which part of the map was fetched, in the ordinary way any
-        website sees which page you asked for.
-      </p>
-      <p>
-        If you would rather not fetch tiles at all while you walk,
-        downloading the map for offline use is the answer: once it is on
-        your phone, the map draws from your own device and asks nobody
-        anything.
+        (<code>s3.amazonaws.com</code>, hillshading and contours). Download
+        the map for offline use and it asks nobody anything.
       </p>
 
       <h2>Your choices</h2>
       <ul>
-        <li>Browse the map, water, shelters, and closures with no account at all.</li>
+        <li>Use the map, water, shelters and closures with no account.</li>
         <li>
-          Ask us to see, correct, or delete the account information we
-          hold by
-          <a
-            href="https://github.com/OurHike/OurHike/issues"
+          Ask to see, correct or delete your account information by
+          <a href="https://github.com/OurHike/OurHike/issues"
             >opening an issue</a
           >
-          — no need to put personal details in the issue itself, just ask
-          and we'll follow up.
+          — no personal details needed in the issue; we'll follow up.
         </li>
-        <li>Turn usage statistics off, or unlink them from your account, in More → Safety &amp; privacy.</li>
-        <li>Clear locally stored map data and preferences any time from your device or browser settings.</li>
+        <li>Turn usage statistics off, or unlink them, in More → Safety &amp; privacy.</li>
+        <li>Clear stored maps and settings any time from your device or browser.</li>
       </ul>
 
-      <h2>Children's privacy</h2>
+      <h2>Children</h2>
       <p>
         OurHike isn't directed at children, and we don't knowingly collect
         information from anyone under 13.
@@ -539,23 +450,15 @@
 
       <h2>Security</h2>
       <p>
-        We take reasonable steps to protect the information we hold, but
-        no method of storage or transmission is completely secure, and we
-        can't guarantee absolute security.
+        We take reasonable steps to protect what we hold, but no storage or
+        transmission is perfectly secure.
       </p>
 
-      <h2>Changes to this policy</h2>
+      <h2>Changes and contact</h2>
       <p>
-        We may update this policy as the app changes. We'll update the
-        date at the top when we do, and for meaningful changes we'll try
-        to call it out on the app's
-        <a href="https://github.com/OurHike/OurHike"
-          >GitHub page</a
-        >.
-      </p>
-
-      <h2>Contact</h2>
-      <p>
+        When this policy changes we update the date at the top, and we try
+        to call out meaningful changes on the app's
+        <a href="https://github.com/OurHike/OurHike">GitHub page</a>.
         Questions about this policy or your data:
         <a href="https://github.com/OurHike/OurHike/issues"
           >open an issue on GitHub</a

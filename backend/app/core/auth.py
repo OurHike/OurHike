@@ -40,6 +40,7 @@ import time
 from collections.abc import Iterable
 from functools import lru_cache
 
+import httpx
 import jwt
 from fastapi import Depends, HTTPException, status
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
@@ -357,6 +358,55 @@ def is_github_login(value: object) -> bool:
     return isinstance(value, str) and GITHUB_LOGIN.fullmatch(value) is not None
 
 
+# Seconds to wait on Supabase's `GET /auth/v1/user`. A request thread waits
+# here, like the JWKS fetch above. **@unvalidated:** 5 is copied from
+# JWKS_FETCH_TIMEOUT_SECONDS, not measured; what would settle it is that
+# endpoint's observed response time, which nobody has recorded here.
+USER_FETCH_TIMEOUT_SECONDS = 5.0
+
+
+def fetch_supabase_identities(token: str) -> list:
+    """The `identities` Supabase Auth holds for the token's owner.
+
+    Read from `GET {SUPABASE_URL}/auth/v1/user` with the caller's own token
+    rather than from the token's claims, because `identities[].identity_data`
+    is written by the provider and `user_metadata` is writable by the person
+    it describes (#1765). A seam of its own so tests supply identities
+    without a network.
+
+    **Refuses rather than guesses.** If the project's anon key is unset, or
+    Supabase does not answer 200 with a JSON object, this raises 503. Falling
+    back to the token's `user_metadata` would reopen the squatting hole
+    exactly when the check is unavailable, and a codeowner seat is the thing
+    that hole hands out.
+
+    **THE REQUEST AND RESPONSE SHAPE IS @unvalidated.** The `apikey` header
+    and `identities[].identity_data.user_name` are from Supabase's documented
+    shape; nobody has made this call against the live project, which has no
+    GitHub provider enabled. What would settle it is one GitHub sign-in
+    followed by this call with the response printed once.
+    """
+    unavailable = HTTPException(
+        status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+        detail="Could not confirm the GitHub account with the sign-in provider. Try again shortly.",
+    )
+    if not settings.supabase_anon_key:
+        raise unavailable
+    try:
+        response = httpx.get(
+            f"{settings.supabase_url}/auth/v1/user",
+            headers={"Authorization": f"Bearer {token}", "apikey": settings.supabase_anon_key},
+            timeout=USER_FETCH_TIMEOUT_SECONDS,
+        )
+        body = response.json() if response.status_code == 200 else None
+    except (httpx.HTTPError, ValueError):
+        raise unavailable from None
+    identities = body.get("identities") if isinstance(body, dict) else None
+    if not isinstance(identities, list):
+        raise unavailable
+    return identities
+
+
 def get_current_github_login(
     credentials: HTTPAuthorizationCredentials | None = Depends(bearer_scheme),
 ) -> str | None:
@@ -368,14 +418,14 @@ def get_current_github_login(
     over an organization's registry, so this is the only place a login may
     come from.
 
-    **WHERE SUPABASE PUTS IT IS @unvalidated.** `user_metadata.user_name` is
-    where a GitHub OAuth login is documented to land, and
+    **WHERE SUPABASE PUTS IT IS @unvalidated.** `identities[].identity_data.user_name`
+    is where a GitHub OAuth login is documented to land, and
     `preferred_username` is the OIDC spelling some providers use instead;
     both are read because the provider is not enabled on this project and
-    nobody here has seen a real token. What would settle it is one GitHub
-    sign-in against the live project, with the decoded claims printed once -
-    at which point the losing branch should be deleted rather than left as
-    a guess that looks like breadth.
+    nobody here has seen a real response. What would settle it is one GitHub
+    sign-in against the live project, with the `/auth/v1/user` body printed
+    once - at which point the losing branch should be deleted rather than
+    left as a guess that looks like breadth.
 
     The provider is checked as well as the claim: a token from some other
     provider that happens to carry a `user_name` is not a GitHub identity,
@@ -388,13 +438,14 @@ def get_current_github_login(
     rewrites it, and the token then carries the new value signed as if the
     provider had said it. `app_metadata.provider` is not user-writable, so
     "signed in with GitHub" still holds; "as THIS GitHub account" does not.
-    What is closed here is the worse half: a value that is not shaped like a
-    login - a newline and a second CODEOWNERS rule inside it - is refused
-    with a 422 rather than stored. What would close the rest is reading the
-    identity server-side, from `GET /auth/v1/user` with the caller's own
-    token, whose `identities[].identity_data` the user cannot edit. Nobody
-    has done that against the live project, for the reason the paragraph
-    above gives.
+    The login is now read server-side, from `fetch_supabase_identities`
+    (`GET /auth/v1/user` with the caller's own token), whose
+    `identities[].identity_data` the user cannot edit; `user_metadata` is no
+    longer consulted. A value not shaped like a login - a newline and a
+    second CODEOWNERS rule inside it - is still refused with a 422 rather
+    than stored. GitHub counts if it is anywhere in `app_metadata.providers`,
+    not only the first provider, so a hiker who signed in with Google and
+    linked GitHub later is seen.
     """
     if credentials is None:
         return None
@@ -404,22 +455,29 @@ def get_current_github_login(
         return None
 
     app_metadata = claims.get("app_metadata")
-    if not isinstance(app_metadata, dict) or app_metadata.get("provider") != "github":
+    providers = app_metadata.get("providers") if isinstance(app_metadata, dict) else None
+    if not isinstance(providers, list) and isinstance(app_metadata, dict):
+        # A token that lists no `providers` still names its first one.
+        providers = [app_metadata.get("provider")]
+    if not isinstance(providers, list) or "github" not in providers:
         return None
 
-    user_metadata = claims.get("user_metadata")
-    if not isinstance(user_metadata, dict):
-        return None
-    for claim in ("user_name", "preferred_username"):
-        value = user_metadata.get(claim)
-        if isinstance(value, str) and value.strip():
-            login = value.strip().lower()
-            if not is_github_login(login):
-                raise HTTPException(
-                    status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
-                    detail="The GitHub account on this sign-in is not a valid GitHub username.",
-                )
-            return login
+    for identity in fetch_supabase_identities(credentials.credentials):
+        if not isinstance(identity, dict) or identity.get("provider") != "github":
+            continue
+        identity_data = identity.get("identity_data")
+        if not isinstance(identity_data, dict):
+            continue
+        for claim in ("user_name", "preferred_username"):
+            value = identity_data.get(claim)
+            if isinstance(value, str) and value.strip():
+                login = value.strip().lower()
+                if not is_github_login(login):
+                    raise HTTPException(
+                        status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                        detail="The GitHub account on this sign-in is not a valid GitHub username.",
+                    )
+                return login
     return None
 
 

@@ -182,3 +182,15 @@ def test_main_refuses_a_file_name_given_twice(run, db_session, capsys):
 
     assert _table(db_session) == {}
     assert "given twice" in capsys.readouterr().err
+
+
+def test_main_explains_itself(capsys):
+    """`--help` renders every argument's help. argparse %-formats help text,
+    and a bare `10% of` in `--allow-shrink`'s was read as the conversion
+    `% o`: Python 3.13 failed only here, at render time, while CI's 3.14
+    refused the argument outright, failing every test that calls `main`."""
+    with pytest.raises(SystemExit) as exit_:
+        main(["--help"])
+
+    assert exit_.value.code == 0
+    assert "more than 10% of the table" in capsys.readouterr().out

@@ -170,7 +170,10 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument(
         "--allow-shrink",
         action="store_true",
-        help=f"Allow a load that deletes more than {MAX_SHRINK_SHARE:.0%} of the table, for a release that retired them.",
+        # `%%`, because argparse %-formats help text: a bare `10% of` is read as
+        # the conversion `% o`. Python 3.14 refuses that when the argument is
+        # added, so `main` could not start under CI's interpreter at all.
+        help=f"Allow a load that deletes more than {MAX_SHRINK_SHARE * 100:.0f}%% of the table, for a release that retired them.",
     )
     args = parser.parse_args(argv)
 

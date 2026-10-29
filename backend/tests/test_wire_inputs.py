@@ -29,6 +29,7 @@ from app.core import auth as core_auth
 from app.models.club import Club
 from app.models.maintainer_assignment import MaintainerAssignment
 from app.models.profile import Profile, Role
+from app.models.report import Report
 from app.schemas.common import NOTE_MAX_CHARS
 from tests.tokens import auth_headers
 
@@ -132,7 +133,15 @@ def _assign(db, *, maintainer, club, start, end):
     return assignment
 
 
-def test_a_thanks_naming_a_nonexistent_maintainer_is_a_422_naming_the_field(client):
+def test_a_thanks_naming_an_id_nobody_stands_behind_is_credited_by_location(client, db_session):
+    """It used to be a 422 naming the field, because the id reached the
+    foreign key. Since #1914 (GET /clubs publishes every admin's account id
+    and decline reason to anyone, and an account id is all it takes to write
+    into that person's private thanks inbox) a name counts only when the trail
+    record stands behind it, so an unknown id is dropped before the insert,
+    the same as any account that is not a maintainer. That also takes away a
+    way to ask "does this account id exist?", since 422 and 201 used to
+    answer it."""
     response = client.post(
         "/reports",
         json={
@@ -143,8 +152,10 @@ def test_a_thanks_naming_a_nonexistent_maintainer_is_a_422_naming_the_field(clie
         headers=auth_headers(str(uuid.uuid4())),
     )
 
-    assert response.status_code == 422, "a bad foreign key is the caller's error, not a 500"
-    assert "maintainer_id" in response.json()["detail"]
+    assert response.status_code == 201
+    # Off the stored row: the filer is not told whose account a thanks was
+    # credited to (ReportOut.for_viewer).
+    assert db_session.get(Report, response.json()["id"]).maintainer_id is None
 
 
 def test_a_named_maintainers_thanks_never_borrows_another_clubs_credit(client, db_session):
@@ -165,21 +176,28 @@ def test_a_named_maintainers_thanks_never_borrows_another_clubs_credit(client, d
     )
 
     assert response.status_code == 201
-    body = response.json()
-    assert body["maintainer_id"] == pat.id
-    assert body["club_id"] == pats_club.id, "the named maintainer's own club, never the overlap's"
+    stored = db_session.get(Report, response.json()["id"])
+    assert stored.maintainer_id == pat.id
+    assert stored.club_id == pats_club.id, "the named maintainer's own club, never the overlap's"
 
 
-def test_a_named_maintainer_with_no_covering_assignment_falls_back_to_the_stretch(client, db_session):
-    """Pat is real but nothing covers this mile for Pat, while one club does
-    cover it. The stretch's club still resolves - the reviewed #249 decision
-    ("the half they left blank is still resolved") that
-    test_a_hiker_who_knows_the_name_is_not_overruled_by_the_lookup pins:
-    the #658 fix bites only where the named person has covering assignments
-    of their own to prefer."""
+def test_a_named_maintainer_with_no_covering_assignment_keeps_the_name_and_falls_back_to_the_stretchs_club(client, db_session):
+    """Pat looks after a stretch elsewhere, so the trail record stands behind
+    the name (#1914), but nothing covers this mile for Pat, while one other
+    club does cover it. Pat keeps the credit, and the stretch's club still
+    resolves - the reviewed #249 decision ("the half they left blank is still
+    resolved") that test_a_hiker_who_knows_the_name_is_not_overruled_by_the_lookup
+    pins: the #658 fix bites only where the named person has covering
+    assignments of their own to prefer.
+
+    This used to give Pat no assignment at all and assert only the club.
+    Under #1914's rule that dropped Pat's name and credited the stranger who
+    covers the mile, and the test went on passing (the review of #1926)."""
+    pats_club = _club(db_session, "Pat's Club")
     other_club = _club(db_session, "The Other Club")
     pat = _maintainer(db_session, "Pat")
     stranger = _maintainer(db_session, "Stranger")
+    _assign(db_session, maintainer=pat, club=pats_club, start=900, end=910)
     _assign(db_session, maintainer=stranger, club=other_club, start=100, end=110)
 
     response = client.post(
@@ -189,7 +207,11 @@ def test_a_named_maintainer_with_no_covering_assignment_falls_back_to_the_stretc
     )
 
     assert response.status_code == 201
-    assert response.json()["club_id"] == other_club.id
+    # Read off the stored row rather than the filer's response, because the
+    # row is what `GET /reports/thanks` delivers from.
+    stored = db_session.get(Report, response.json()["id"])
+    assert stored.maintainer_id == pat.id, "the name the hiker gave, not the stranger covering the mile"
+    assert stored.club_id == other_club.id
 
 
 # --- The two check-then-insert races (#265's shape) ---------------------------

@@ -794,7 +794,9 @@ def test_the_receipt_time_is_withheld_as_well(client, db_session):
 
 def test_a_reporter_reading_their_own_report_still_gets_everything(client, db_session):
     """The nuance the fix had to preserve. "Waiting" needs something to
-    appear on, and their own report is theirs to see in full."""
+    appear on, and their own report is theirs to see in full - all but the
+    account a thanks was credited to, which only a moderator reads
+    (test_the_filer_is_not_told_whose_account_a_thanks_was_credited_to)."""
     reporter_id = str(uuid.uuid4())
     db_session.add(Profile(id=reporter_id, role=Role.hiker))
     db_session.commit()

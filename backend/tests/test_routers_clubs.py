@@ -21,6 +21,7 @@ import pytest
 from app.core.time import utc_now
 from app.models.club import Club, OrgAdmin, OrgState, VerifiedBy
 from app.models.org_role import RoleInvite
+from app.models.profile import Role
 from app.models.volunteer_hours import HoursActivity, VolunteerHoursRecord
 from tests.factories import make_admin, make_org, make_profile
 from tests.tokens import auth_headers
@@ -822,3 +823,145 @@ def test_a_challenge_publishers_org_id_is_not_a_slug_a_stranger_may_register(cli
 
     assert response.status_code == 409
     assert db_session.query(Club).filter(Club.slug == "atc").one_or_none() is None
+
+
+# --- whose seat it is, and why they declined (#1914) ---------------------------
+
+
+def _a_seat_declined_with_a_reason(client, *, founder_email="chair@ramapotrails.org") -> tuple[str, str, dict]:
+    """The review's reproduction for #1914 (GET /clubs publishes every admin's
+    account id and decline reason to anyone, and an account id is all it takes
+    to write into that person's private thanks inbox): a founder, and a
+    colleague who signs in, finds the seat waiting for them and declines it
+    with a reason meant for their own organization.
+
+    A `founder_email` off the domain makes the registration a held one
+    (`pending`), because the colleague's is then the only address at it.
+    Returns both account ids and the decline's own response body."""
+    founder, colleague = str(uuid.uuid4()), str(uuid.uuid4())
+    registered = _register(
+        client,
+        founder,
+        email=founder_email,
+        admins=[{"email": "sec@ramapotrails.org", "title": "Secretary"}],
+    )
+    assert registered.status_code == 201, registered.text
+    colleague_headers = auth_headers(colleague, email="sec@ramapotrails.org")
+    assert client.get("/clubs/ramapo-trail-conference/access", headers=colleague_headers).status_code == 200
+    # The colleague finds their own seat by their own id, which they are shown.
+    seats = client.get("/clubs/ramapo-trail-conference", headers=colleague_headers).json()["admins"]
+    mine = next(seat for seat in seats if seat["person_id"] == colleague)
+    declined = client.post(
+        f"/clubs/ramapo-trail-conference/admins/{mine['id']}/decline",
+        json={"reason": "Personal: I am stepping back for a while"},
+        headers=colleague_headers,
+    )
+    assert declined.status_code == 200, declined.text
+    return founder, colleague, declined.json()
+
+
+@pytest.mark.parametrize("path", ["/clubs/ramapo-trail-conference", "/clubs"])
+def test_nobody_outside_the_organization_reads_a_seats_holder_or_decline_reason(client, path):
+    _a_seat_declined_with_a_reason(client)
+
+    for headers in ({}, auth_headers(str(uuid.uuid4()))):  # anonymous, then a stranger signed in
+        body = client.get(path, headers=headers).json()
+        seats = body["admins"] if path != "/clubs" else body[0]["admins"]
+        assert len(seats) == 2, "the seats are still listed, with their titles"
+        assert {seat["person_id"] for seat in seats} == {None}
+        assert {seat["decline_reason"] for seat in seats} == {None}
+
+
+@pytest.mark.parametrize("path", ["/clubs/ramapo-trail-conference", "/clubs"])
+def test_nobody_outside_the_organization_reads_when_a_seat_was_offered_or_answered(client, path):
+    """#1914 asked for the seats' dates to reach the console only, and nothing
+    outside the console reads them - the site's embed reads an org's name and
+    giving links. With the dates public, anybody could read that the seat
+    titled Secretary had declined, and when."""
+    _a_seat_declined_with_a_reason(client)
+
+    for headers in ({}, auth_headers(str(uuid.uuid4()))):  # anonymous, then a stranger signed in
+        body = client.get(path, headers=headers).json()
+        seats = body["admins"] if path != "/clubs" else body[0]["admins"]
+        assert len(seats) == 2, "the seats are still listed, with their titles"
+        for field in ("invited_at", "approved_at", "declined_at"):
+            assert {seat[field] for seat in seats} == {None}, field
+
+
+def test_an_approved_admin_and_a_moderator_read_every_seat(client, db_session):
+    founder, colleague, _ = _a_seat_declined_with_a_reason(client)
+    moderator = make_profile(db_session, Role.maintainer).id
+
+    for viewer in (founder, moderator):
+        seats = client.get("/clubs/ramapo-trail-conference", headers=auth_headers(viewer)).json()["admins"]
+        assert {seat["person_id"] for seat in seats} == {founder, colleague}
+        assert "stepping back" in next(seat["decline_reason"] for seat in seats if seat["person_id"] == colleague)
+
+
+def test_a_seat_holder_who_is_not_an_approved_admin_reads_only_their_own_seat(client):
+    founder, colleague, _ = _a_seat_declined_with_a_reason(client)
+
+    seats = client.get("/clubs/ramapo-trail-conference", headers=auth_headers(colleague)).json()["admins"]
+
+    assert {seat["person_id"] for seat in seats} == {colleague, None}
+    assert founder not in {seat["person_id"] for seat in seats}
+
+
+def test_every_seat_holder_reads_where_every_seat_stands(client):
+    """The dates go wider than the holders, on purpose: the approval screen
+    shows an invited admin where the other seats stand, and the setup hub and
+    sign-off screen count approvals from `approved_at`, for viewers who are
+    not approved admins yet. The colleague who declined still reads that the
+    founder approved."""
+    _, colleague, _ = _a_seat_declined_with_a_reason(client)
+
+    seats = client.get("/clubs/ramapo-trail-conference", headers=auth_headers(colleague)).json()["admins"]
+
+    assert all(seat["invited_at"] is not None for seat in seats)
+    assert sum(seat["approved_at"] is not None for seat in seats) == 1, "the founder's"
+    assert sum(seat["declined_at"] is not None for seat in seats) == 1, "the colleague's own"
+
+
+def test_a_held_registrations_registrant_reads_only_their_own_seat(client):
+    """The review of #1926's scenario. A stranger registers ramapotrails.org
+    from an address elsewhere, naming the secretary's; the org is held at
+    `pending`. The secretary signs in and declines with a personal reason.
+    Registering approved the stranger's own seat, so "an approved admin reads
+    every seat" handed them the secretary's account id and that reason - and
+    with it, which account the address they typed belongs to."""
+    stranger, secretary, _ = _a_seat_declined_with_a_reason(client, founder_email="stranger@gmail.com")
+    assert client.get("/clubs/ramapo-trail-conference").json()["state"] == "pending"
+
+    seats = client.get("/clubs/ramapo-trail-conference", headers=auth_headers(stranger)).json()["admins"]
+
+    assert {seat["person_id"] for seat in seats} == {stranger, None}
+    assert secretary not in {seat["person_id"] for seat in seats}
+    assert {seat["decline_reason"] for seat in seats} == {None}
+
+
+def test_a_held_registrations_registrant_cannot_read_the_other_holders_from_the_org_export(client):
+    """The same stranger passes `require_org_admin`, because registering
+    approved their seat, so `GET /clubs/{slug}/export` answers them - and its
+    `admins` section listed every seat's account id, the secretary's
+    included, after GET /clubs/{slug} had stopped."""
+    stranger, secretary, _ = _a_seat_declined_with_a_reason(client, founder_email="stranger@gmail.com")
+
+    exported = client.get("/clubs/ramapo-trail-conference/export", headers=auth_headers(stranger))
+
+    assert exported.status_code == 200, exported.text
+    holders = {seat["person_id"] for seat in exported.json()["admins"]}
+    assert holders == {stranger, None}
+    assert secretary not in holders
+
+
+def test_declining_answers_the_decliner_with_only_their_own_seat(client):
+    """`decline_seat` is the one write here whose caller is never an approved
+    admin, so its answer goes through the same rule as a read. The review of
+    #1926 made it answer with every seat and the suite stayed green."""
+    founder, colleague, answered = _a_seat_declined_with_a_reason(client)
+
+    seats = answered["admins"]
+
+    assert {seat["person_id"] for seat in seats} == {colleague, None}
+    assert founder not in {seat["person_id"] for seat in seats}
+    assert "stepping back" in next(seat["decline_reason"] for seat in seats if seat["person_id"] == colleague)

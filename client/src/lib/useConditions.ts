@@ -12,6 +12,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import {
   API_CONFIGURED,
+  NotSignedInError,
   fetchClosures,
   fetchDisputes,
   fetchFieldNotes,
@@ -614,8 +615,12 @@ export function useConditions(
   // warning that had already arrived waited for this private read to answer,
   // and was dropped if the phone went offline first.
   //
-  // A failure empties the list, as a failed `/reports/mine` did inside
-  // `fetchReports`.
+  // A failure keeps the last list: a 5xx or a dropped request says nothing
+  // about the hiker's reports, and emptying the list would tell "Your reports"
+  // they had gone. Only `NotSignedInError` empties it, because with nobody
+  // signed in there are no own reports to show. So a sign-out or a change of
+  // account reaches this list at its next read, not before, as it reached the
+  // signed-in `/reports` list before #1916.
   //
   // No `stamp()`: the sync age vouches for the public picture, and this read
   // landing says nothing about that.
@@ -626,8 +631,8 @@ export function useConditions(
       (mine) => {
         if (!cancelled) setOwnReports(mine)
       },
-      () => {
-        if (!cancelled) setOwnReports([])
+      (error) => {
+        if (!cancelled && error instanceof NotSignedInError) setOwnReports([])
       },
     )
     return () => {
@@ -637,9 +642,11 @@ export function useConditions(
 
   // A Map keeps each id where it first appeared and the last value given for
   // it, so the hiker's own copy of a report replaces the shared copy in place
-  // and their reports the shared list lacks follow it. Memoised because
-  // App.tsx's memos over `reports` re-place the map's warnings for every new
-  // array.
+  // and their reports the shared list lacks follow it. A kept own list can be
+  // older than the shared list it is merged into, and its copy still wins:
+  // after a failed own read, the hiker's own report shows its previous status
+  // and severity until the next own read lands. Memoised because App.tsx's
+  // memos over `reports` re-place the map's warnings for every new array.
   const sharedReports = itemsOf(reportState)
   const reports = useMemo(
     () =>

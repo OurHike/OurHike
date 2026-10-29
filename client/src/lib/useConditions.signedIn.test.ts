@@ -7,7 +7,7 @@
 // later edit that read `/closures` through `readFetch` again would pass every
 // test over there.
 
-import { act, renderHook, waitFor } from '@testing-library/react'
+import { act, cleanup, renderHook, waitFor } from '@testing-library/react'
 import { afterEach, expect, it, vi } from 'vitest'
 import { getAuthClient } from './supabase'
 
@@ -62,6 +62,19 @@ async function configuredHook() {
   return (await import('./useConditions')).useConditions
 }
 
+/** The app coming back to the foreground, which re-reads everything: on a
+ *  fresh mount the last visibility read is at 0, so VISIBILITY_REFRESH_MIN_MS
+ *  has long passed. */
+async function comeBackToTheApp() {
+  Object.defineProperty(document, 'visibilityState', {
+    value: 'visible',
+    configurable: true,
+  })
+  await act(async () => {
+    document.dispatchEvent(new Event('visibilitychange'))
+  })
+}
+
 /** Lets every API read already started settle. Each is a promise chain over
  *  the fetch above with no timer in it, so one macrotask turn drains it. */
 async function settle() {
@@ -71,6 +84,10 @@ async function settle() {
 }
 
 afterEach(() => {
+  // Unmounted by hand: this suite runs without vitest's globals, so Testing
+  // Library registers no cleanup of its own, and a hook left mounted answers
+  // the next test's visibilitychange with reads of its own.
+  cleanup()
   vi.unstubAllEnvs()
   vi.resetModules()
   vi.restoreAllMocks()
@@ -155,4 +172,52 @@ it("reports puts the hiker's own copy of a report in place of the shared copy, a
       { id: 'own-1', reporter_id: 'p-1' },
     ]),
   )
+})
+
+it.each([
+  ['answers 500', () => answer(null, 500)],
+  ['is dropped', () => Promise.reject(new TypeError('Failed to fetch'))],
+  ['answers 200 with a body that is not a list', () => answer({})],
+])(
+  "reports keeps the hiker's own reports when a later /reports/mine %s, and takes the new /reports",
+  async (_how, failure: () => Response | Promise<Response>) => {
+    // A failed read says nothing about whether the hiker's reports still
+    // exist. Emptying the list would take their waiting report off the map,
+    // and "Your reports" would say it was sent under a different account.
+    signIn('a-real-token')
+    const useConditions = await configuredHook()
+    let shared: object[] = []
+    let mine: () => Response | Promise<Response> = () => answer([OWN])
+    const spy = serve({ '/reports': () => answer(shared), '/reports/mine': () => mine() })
+    const { result } = renderHook(() => useConditions(true))
+    await waitFor(() => expect(result.current.reports).toEqual([OWN]))
+
+    shared = [HAZARD]
+    mine = failure
+    await comeBackToTheApp()
+    await waitFor(() => expect(requestsTo(spy, '/reports/mine')).toBe(2))
+    await settle()
+
+    expect(result.current.reports).toEqual([HAZARD, OWN])
+  },
+)
+
+it("reports drops the hiker's own reports once a read finds nobody signed in", async () => {
+  // NotSignedInError is the one failure that empties the list: with nobody
+  // signed in there are no own reports, and the last account's must not stay
+  // on a phone somebody else may sign in to.
+  signIn('a-real-token')
+  const useConditions = await configuredHook()
+  const spy = serve({
+    '/reports': () => answer([HAZARD]),
+    '/reports/mine': () => answer([OWN]),
+  })
+  const { result } = renderHook(() => useConditions(true))
+  await waitFor(() => expect(result.current.reports).toEqual([HAZARD, OWN]))
+
+  signIn(null)
+  await comeBackToTheApp()
+
+  await waitFor(() => expect(result.current.reports).toEqual([HAZARD]))
+  expect(requestsTo(spy, '/reports/mine')).toBe(1)
 })

@@ -54,8 +54,15 @@ def engine_options(database_url: str, *, prepared_statements: bool) -> dict[str,
     driver: `connect_args` goes straight to the DBAPI, so handing it to any
     other driver would be a TypeError at connect time rather than a helpful
     message.
+
+    **`hide_parameters`** keeps the values a failed statement was bound to
+    out of the exception's text. Without it, `str()` of a database error ends
+    in `[parameters: ...]`, and a traceback printed by a scheduled job lands
+    in a public Actions log - for the usage rollup and quality jobs, a
+    month's counts. app/core/logs.py's `describe_failure` is the other half:
+    it names a failure without even the statement.
     """
-    options: dict[str, Any] = {"pool_pre_ping": True}
+    options: dict[str, Any] = {"pool_pre_ping": True, "hide_parameters": True}
 
     if not prepared_statements and make_url(database_url).get_driver_name() == "psycopg":
         options["connect_args"] = {"prepare_threshold": None}

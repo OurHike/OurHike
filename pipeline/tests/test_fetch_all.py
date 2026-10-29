@@ -95,6 +95,24 @@ def test_first_ever_run_fetches_unconditionally(tmp_path, monkeypatch, requests_
     assert manifest["fake"]["feature_count"] == 1
 
 
+def test_a_rows_where_is_sent_with_every_query(tmp_path, monkeypatch, requests_mock):
+    """The server applies the row's `where`, as the extract does (#1920), so
+    this file holds the rows the extract's as-landed copy holds."""
+    _setup(tmp_path, monkeypatch, prior_manifest=None)
+    sources = tmp_path / "sources.json"
+    sources.write_text(json.dumps({"sources": [{**json.loads(sources.read_text())["sources"][0], "where": "Status = 'Open'"}]}))
+    requests_mock.get(LAYER_URL, json={"editingInfo": {"dataLastEditDate": 42}})
+    requests_mock.get(
+        LAYER_URL + "/query",
+        [{"json": {"features": [{"type": "Feature", "properties": {}, "geometry": None}]}}, {"json": {"features": []}}],
+    )
+
+    fetch_all.main()
+
+    queries = [r.qs for r in requests_mock.request_history if r.path.endswith("/query")]
+    assert queries and all(qs["where"] == ["status = 'open'"] for qs in queries)
+
+
 def test_zero_feature_response_is_treated_as_a_failure(tmp_path, monkeypatch, requests_mock):
     # An ArcGIS FeatureServer query error can come back as HTTP 200 with an
     # empty features array rather than a non-2xx status - lib/arcgis.py's

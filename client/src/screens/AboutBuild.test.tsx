@@ -143,8 +143,9 @@ describe('how long this launch took (#1299)', () => {
   })
 
   it('says plainly that the numbers go nowhere on their own', () => {
-    // There is no telemetry in this client (TECHNICAL_ARCHITECTURE.md), and a
-    // screen full of timings is exactly where somebody would assume otherwise.
+    // No launch timing leaves this client (TECHNICAL_ARCHITECTURE.md) - the
+    // usage counts of #1902 carry none - and a screen full of timings is
+    // exactly where somebody would assume otherwise.
     render(<AboutBuild build={RELEASE} launch={TIMELINE} />)
 
     expect(

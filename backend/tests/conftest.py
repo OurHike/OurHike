@@ -187,6 +187,19 @@ def db_engine():
         engine.dispose()
 
 
+@pytest.fixture(autouse=True)
+def _database_size_pinned_to_nothing(request, monkeypatch):
+    """`database_near_quota` reads every database on the server, as Supabase's
+    quota does (app/core/analytics_storage.py), and the server under these
+    tests holds others - a developer's own, each xdist worker's. Measured
+    2026-10-27 in a web session: 357 MB, which is past four-fifths of the
+    500 MB quota before a test has written a row. Pinned to nothing, so the
+    warning fires only in a test that sets the size itself; a test marked
+    `real_database_size` reads the server as it is."""
+    if request.node.get_closest_marker("real_database_size") is None:
+        monkeypatch.setattr("app.core.analytics_storage.database_bytes", lambda db: 0)
+
+
 @pytest.fixture()
 def db_session(db_engine):
     """A SQLAlchemy session bound to the per-test engine."""

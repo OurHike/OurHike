@@ -160,7 +160,9 @@ def apply(db: Session, clubs: list[dict], assignments: list[dict]) -> list[str]:
     for row in clubs:
         club = db.get(Club, row["id"])
         if club is None:
-            db.add(Club(id=row["id"], name=row["name"], region=row.get("region")))
+            # `maintainer_written`: this file is reviewed, so the club is one a
+            # maintainer wrote, which is what `stood_behind()` believes on.
+            db.add(Club(id=row["id"], name=row["name"], region=row.get("region"), maintainer_written=True))
             changes.append(f"club + {row['name']}")
         elif club.name != row["name"] or club.region != row.get("region"):
             # In place, deliberately: a club's name is a fact about today,

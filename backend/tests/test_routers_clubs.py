@@ -273,6 +273,9 @@ def test_claiming_needs_an_address_at_the_organizations_domain(client, db_sessio
         ("", True),
         (" ", True),
         (".", True),
+        ("mallory.fastmail.com", True),
+        ("www.gmail.com", True),
+        ("trails.hotmail.co.uk", True),
     ],
 )
 def test_one_rule_says_which_domains_prove_nothing_about_who_runs_an_organization(domain, proves_nothing):
@@ -318,6 +321,9 @@ def test_registering_an_organization_on_a_provider_the_first_list_missed_is_refu
         ("gmail.com", "mallory@gmail.com"),
         ("com", "mallory@anything.com"),
         *[(provider, f"mallory@{provider}") for provider in _PROVIDERS_THE_FIRST_LIST_MISSED],
+        # Under a provider rather than at it: Fastmail delivers
+        # anything@mallory.fastmail.com to the account mallory@fastmail.com.
+        ("mallory.fastmail.com", "anything@mallory.fastmail.com"),
     ],
 )
 def test_an_organization_whose_stored_domain_proves_nothing_cannot_be_claimed(client, db_session, domain, address):

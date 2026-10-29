@@ -134,13 +134,21 @@ def why_domain_proves_nothing(domain: str) -> str | None:
       `com`, which every `.com` address holds.
     - **A public mail provider** (`PUBLIC_EMAIL_DOMAINS` above): anybody can
       get an address there.
+    - **A subdomain of one.** The claim takes an address at a subdomain of
+      the org's domain as being at it (`trails.ramapotrails.org`), so a
+      nominated `mallory.fastmail.com` would be proved by any address a
+      provider hands out under that name - and Fastmail's subdomain
+      addressing delivers `anything@mallory.fastmail.com` to the account
+      `mallory@fastmail.com` (general knowledge, not checked here). An
+      organization whose own domain really does sit under a mail
+      provider's would be refused too and wait for a person; none is known,
+      and that is the cheaper of the two mistakes.
 
     **`domain` is normalised here rather than trusted to arrive that way**:
     stripped, lowercased, and with any trailing dot removed. `claim_org` asks
     about a STORED domain, and the rows this check exists for are the ones
     today's validators did not write - by hand, or by an older version of a
-    door.
-    The address check after it (`_somebody_holds_the_domain` in
+    door. The address check after it (`_somebody_holds_the_domain` in
     routers/clubs.py) strips and lowercases before comparing, so a rule that
     read the row as stored passed `GMAIL.COM` and `gmail.com ` while
     `mallory@gmail.com` still matched both and was seated.
@@ -158,6 +166,14 @@ def why_domain_proves_nothing(domain: str) -> str | None:
             f"{normalised} is a public email provider, not an organization's own domain - "
             "anybody can get an address there, so it cannot prove who runs a club."
         )
+    labels = normalised.split(".")
+    for start in range(1, len(labels) - 1):
+        provider = ".".join(labels[start:])
+        if provider in PUBLIC_EMAIL_DOMAINS:
+            return (
+                f"{normalised} is part of {provider}, a public email provider, not an organization's own domain - "
+                "an address there cannot prove who runs a club."
+            )
     return None
 
 

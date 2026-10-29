@@ -270,6 +270,10 @@ class TestSubmitting:
             ("https://web.de", "mallory@web.de"),
             ("https://gmx.de", "mallory@gmx.de"),
             ("https://email.com", "mallory@email.com"),
+            # Under a provider rather than at it: a claim takes an address at
+            # a subdomain of the org's domain, and Fastmail delivers
+            # anything@mallory.fastmail.com to the account mallory@fastmail.com.
+            ("https://mallory.fastmail.com", "anything@mallory.fastmail.com"),
         ],
     )
     def test_a_website_whose_domain_proves_nothing_is_refused_and_nothing_is_stored(self, client, db_session, website, contact):

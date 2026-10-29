@@ -18,6 +18,8 @@ from __future__ import annotations
 
 import ast
 import datetime
+import importlib.util
+import json
 import os
 import shutil
 import subprocess
@@ -341,6 +343,151 @@ def _run_step(step: dict, env: dict[str, str], tmp_path: Path) -> subprocess.Com
         capture_output=True,
         text=True,
     )
+
+
+# --- The tracking issue -------------------------------------------------------
+#
+# The inline github-script run under `node` against a stubbed Octokit, with
+# the real tracking-issue.js, as test_pending_approvals_workflow.py does: the
+# script is a block string to YAML, so only running it shows what it writes.
+
+TRACKING_HARNESS = """
+const fs = require('fs')
+const body = fs.readFileSync(process.argv[1], 'utf8')
+const fixture = JSON.parse(process.argv[2])
+Object.assign(process.env, fixture.env)
+const calls = []
+const github = {
+  paginate: async (fn, args) => fn(args),
+  rest: {issues: {
+    listForRepo: async () => (fixture.existing ? [fixture.existing] : []),
+    create: async (a) => { calls.push({call: 'create', ...a}); return {data: {number: 1908}} },
+    update: async (a) => { calls.push({call: 'update', ...a}) },
+    createComment: async (a) => { calls.push({call: 'createComment', ...a}) },
+  }},
+}
+const context = {repo: {owner: 'OurHike', repo: 'OurHike'}}
+const core = {info: () => {}, warning: () => {}}
+const script = new Function('github', 'context', 'core', 'require', `return (async () => {${body}})()`)
+script(github, context, core, require)
+  .then(() => console.log(JSON.stringify(calls)))
+  .catch((error) => { console.error(error.stack); process.exit(1) })
+"""
+
+#: The outcomes of a night on which every step worked.
+GOOD_NIGHT = {
+    "GO": "true",
+    "MISSING": "",
+    "PYTHON": "success",
+    "AGE": "success",
+    "TOOLS": "success",
+    "DUMP": "success",
+    "VERIFY": "success",
+    "SEAL": "success",
+    "UPLOAD": "success",
+    "KEY": "postgres/2026/10/29/ourhike-20261029T051203Z.tar.age",
+    "EGRESS_WARNING": "",
+}
+
+needs_node = pytest.mark.skipif(shutil.which("node") is None, reason="node is not on PATH; CI runners always have it")
+
+
+def _issue_calls(tmp_path: Path, outcomes: dict[str, str], existing: dict | None = None) -> list[dict]:
+    workflow = yaml.safe_load(WORKFLOW.read_text(encoding="utf-8"))
+    script = tmp_path / "issue.js"
+    script.write_text(_steps()["Open, update, or close the tracking issue"]["with"]["script"], encoding="utf-8")
+    env = {**workflow["env"], "RUN_URL": "https://example.invalid/run", **GOOD_NIGHT, **outcomes}
+    completed = subprocess.run(
+        ["node", "-e", TRACKING_HARNESS, "--", str(script), json.dumps({"env": env, "existing": existing})],
+        capture_output=True,
+        text=True,
+        cwd=REPO_ROOT,
+        env={**os.environ, "GITHUB_WORKSPACE": str(REPO_ROOT)},
+    )
+    assert completed.returncode == 0, f"the script threw:\n{completed.stderr}"
+    return json.loads(completed.stdout)
+
+
+def _rows(body: str) -> list[list[str]]:
+    rows = [line for line in body.splitlines() if line.startswith("| ") and not line.startswith("| stage")]
+    return [[cell.strip() for cell in row.strip("|").split("|")] for row in rows]
+
+
+@needs_node
+@pytest.mark.parametrize(
+    ("step", "stage"),
+    [
+        ("GO", "settings"),
+        ("PYTHON", "set up Python"),
+        ("AGE", "install age"),
+        ("TOOLS", "fetch postgres:17"),
+        ("DUMP", "dump"),
+        ("VERIFY", "restore check"),
+        ("SEAL", "encrypt"),
+        ("UPLOAD", "upload"),
+    ],
+)
+def test_the_issue_blames_the_step_that_failed_and_none_after_it(tmp_path, step, stage):
+    """The review's case: a failed `Install age` or `docker pull` was reported as a dump failure."""
+    order = ["PYTHON", "AGE", "TOOLS", "DUMP", "VERIFY", "SEAL", "UPLOAD"]
+    if step == "GO":
+        # setup-python has no condition and still runs; every step gated on the settings is skipped.
+        outcomes = {"GO": "false", "MISSING": "BACKUP_DATABASE_URL", **{name: "skipped" for name in order[1:]}}
+    else:
+        outcomes = {step: "failure", **{name: "skipped" for name in order[order.index(step) + 1 :]}}
+
+    [created] = _issue_calls(tmp_path, outcomes)
+
+    assert created["call"] == "create"
+    assert [row[0] for row in _rows(created["body"])] == [stage]
+    assert "was not backed up" in created["body"]
+
+
+@needs_node
+def test_the_issue_carries_the_label_the_night_shift_queue_ranks_first(tmp_path):
+    [created] = _issue_calls(tmp_path, {"DUMP": "failure", "VERIFY": "skipped", "SEAL": "skipped", "UPLOAD": "skipped"})
+    issue = {"number": 1, "title": created["title"], "labels": created["labels"], "updated_at": "2026-10-29T05:30:00Z"}
+    spec = importlib.util.spec_from_file_location("night_queue", REPO_ROOT / "scripts" / "night_queue.py")
+    night_queue = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(night_queue)
+
+    assert night_queue.verdict(issue) == (True, (1, "2026-10-29T05:30:00Z", 1)), (
+        "scripts/night_queue.py does not put an open backup issue at the head of the night-shift queue"
+    )
+
+
+def test_no_other_workflow_opens_an_issue_with_the_backup_title():
+    """tracking-issue.js matches label AND title, so sharing deployment-health is safe and sharing a title is not."""
+    title = yaml.safe_load(WORKFLOW.read_text(encoding="utf-8"))["env"]["ISSUE_TITLE"]
+    others = [
+        path.name
+        for path in WORKFLOW.parent.glob("*.yml")
+        if path != WORKFLOW and f'ISSUE_TITLE: "{title}"' in path.read_text(encoding="utf-8")
+    ]
+
+    assert not others
+
+
+@needs_node
+def test_a_dump_too_large_for_the_egress_quota_opens_the_issue_as_a_warning_on_a_good_night(tmp_path):
+    warning = backup.egress_warning(170 * 10**6)
+
+    [created] = _issue_calls(tmp_path, {"EGRESS_WARNING": warning})
+
+    assert created["call"] == "create"
+    assert "**Production was backed up on" in created["body"] and "was not backed up" not in created["body"]
+    [[stage, _, meaning]] = _rows(created["body"])
+    assert (stage, meaning) == ("egress", warning)
+
+
+@needs_node
+def test_a_good_night_with_room_in_the_quota_closes_the_open_issue(tmp_path):
+    existing = {"number": 1908, "title": "Nightly database backup", "body": "the dump failed"}
+
+    calls = _issue_calls(tmp_path, {}, existing=existing)
+
+    assert [call["call"] for call in calls] == ["createComment", "update"]
+    assert calls[1]["state"] == "closed"
 
 
 def test_the_main_branch_guard_runs_before_any_step_that_reads_a_secret():

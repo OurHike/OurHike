@@ -29,9 +29,17 @@
 # LAUNCH_CHECKLIST.md 5b is how each is made.
 #
 # HOW IT ALARMS. Like check-deployment.yml, through one tracking issue: opening
-# it notifies, updating it does not, and the all-clear closes it. Unlike that
-# job, a configured backup that fails also turns the run red - the run listing
-# is the one place a missing backup must never look like a present one.
+# it notifies, updating it does not, and the all-clear closes it. It carries
+# the same `deployment-health` label, so scripts/night_queue.py puts an open
+# one at the head of the night-shift queue, and a title no other workflow
+# uses, so tracking-issue.js - which finds an issue by label AND title - never
+# confuses it with another monitor's. Each step that can stop a backup has
+# its own row, so the issue blames the step that failed. Unlike
+# check-deployment.yml, a configured backup that fails also turns the run
+# red - the run listing is the one place a missing backup must never look
+# like a present one. A dump big enough to threaten Supabase Free's egress
+# quota opens the issue too, as a warning, and leaves the run green: the
+# backup itself was taken.
 # Missing settings open the issue too, saying production has no backup, which
 # until they are set is simply true. They do not turn every night's run red:
 # that would be the same news by email every day, which #431 rules out.
@@ -61,7 +69,7 @@ concurrency:
 
 env:
   ISSUE_TITLE: "Nightly database backup"
-  ISSUE_LABEL: backup-health
+  ISSUE_LABEL: deployment-health
   # The client tools that dump and restore. pg_dump refuses a server newer
   # than itself, production is Postgres 17, and the runner's own client is 16.
   PG_IMAGE: postgres:17
@@ -138,6 +146,7 @@ jobs:
       - uses: actions/checkout@v7
 
       - uses: actions/setup-python@v7
+        id: python
         with:
           python-version: "3.14"
 
@@ -145,6 +154,7 @@ jobs:
       # repositories are dropped first, so their outages cannot fail a backup
       # (test_apt_update_is_not_fatal.py, #1361).
       - name: Install age
+        id: age
         if: steps.can.outputs.go == 'true'
         run: |
           sudo find /etc/apt/sources.list.d -maxdepth 1 -type f \
@@ -154,6 +164,7 @@ jobs:
           age --version
 
       - name: Fetch the Postgres 17 client tools
+        id: tools
         if: steps.can.outputs.go == 'true'
         run: docker pull --quiet "$PG_IMAGE"
 
@@ -220,41 +231,58 @@ jobs:
           RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
           GO: ${{ steps.can.outputs.go }}
           MISSING: ${{ steps.can.outputs.missing }}
+          PYTHON: ${{ steps.python.outcome }}
+          AGE: ${{ steps.age.outcome }}
+          TOOLS: ${{ steps.tools.outcome }}
           DUMP: ${{ steps.dump.outcome }}
           VERIFY: ${{ steps.verify.outcome }}
           SEAL: ${{ steps.seal.outcome }}
           UPLOAD: ${{ steps.upload.outcome }}
           KEY: ${{ steps.seal.outputs.key }}
+          EGRESS_WARNING: ${{ steps.dump.outputs.egress_warning }}
         with:
           script: |
             const trackingIssue = require(`${process.env.GITHUB_WORKSPACE}/.github/scripts/tracking-issue.js`)
             const env = process.env
             const checkedAt = new Date().toISOString().slice(0, 10)
 
-            // The first stage that did not succeed is the finding; the ones
-            // after it never ran, and listing them would read as four faults.
+            // Every step that can stop a backup, in the order they run. The
+            // first one that did not succeed is the finding; the ones after
+            // it were skipped, and listing them would read as several faults.
+            // A failed checkout is the one step with no row: without it this
+            // script cannot load tracking-issue.js, and the red run says so.
             const stages = [
               ['settings', env.GO === 'true', `Not set: ${env.MISSING || 'unknown'}. Until they are, production has no backup at all.`],
-              ['dump', env.DUMP === 'success', 'The row count or pg_dump failed. A role without BYPASSRLS makes the count refuse, which is the safe failure.'],
+              ['set up Python', env.PYTHON === 'success', 'actions/setup-python could not provide Python 3.14, so the backup script never ran. A GitHub outage is one cause; rerun the workflow first.'],
+              ['install age', env.AGE === 'success', 'apt-get could not install age, so the job stopped before dumping anything it could not have encrypted. An Ubuntu archive outage is one cause; rerun the workflow first.'],
+              ['fetch postgres:17', env.TOOLS === 'success', 'docker pull postgres:17 failed, so there were no Postgres 17 tools to dump with. Docker Hub being down or rate-limiting the runner is one cause; rerun the workflow first.'],
+              ['dump', env.DUMP === 'success', 'The row count or pg_dump failed, or a table outside public holds rows the backup does not dump: the log says which. A role without BYPASSRLS makes the count refuse, which is the safe failure.'],
               ['restore check', env.VERIFY === 'success', 'The dump did not restore, or a table came back with a different number of rows than it held when it was dumped. The log has the table-by-table comparison.'],
               ['encrypt', env.SEAL === 'success', 'age did not seal the dump, or BACKUP_AGE_RECIPIENT is not an age public key.'],
               ['upload', env.UPLOAD === 'success', 'The encrypted dump did not reach the bucket at full size.'],
             ]
             const failed = stages.find(([, ok]) => !ok)
+            // A warning rather than a failure: the backup was taken, and it is
+            // taking one every night at this size that would cost the quota.
+            const meaning = Object.fromEntries(failed ? [[failed[0], failed[2]]] : [])
+            if (env.EGRESS_WARNING) meaning.egress = env.EGRESS_WARNING
+            const keys = Object.keys(meaning)
 
             await trackingIssue({github, context, core}, {
               label: env.ISSUE_LABEL,
               title: env.ISSUE_TITLE,
               checkedAt,
-              keys: failed ? [failed[0]] : [],
-              healthy: !failed,
+              keys,
+              healthy: keys.length === 0,
               allClear: `Production was backed up again on ${checkedAt}: \`${env.KEY}\`, restored and compared before it was encrypted and uploaded. Closing.`,
               render: (firstSeen, cell) => [
-                `**Production's database was not backed up on ${checkedAt}.** The last good backup is the newest object under \`postgres/\` in the backup bucket, kept 90 days.`,
+                failed
+                  ? `**Production's database was not backed up on ${checkedAt}.** The last good backup is the newest object under \`postgres/\` in the backup bucket, kept 90 days.`
+                  : `**Production was backed up on ${checkedAt}** (\`${env.KEY}\`), **and a dump this size every night threatens Supabase's egress quota.**`,
                 '',
-                '| stage | first failing | what it means |',
+                '| stage | first seen | what it means |',
                 '|---|---|---|',
-                `| ${cell(failed[0])} | ${firstSeen[failed[0]]} | ${cell(failed[2])} |`,
+                ...keys.map((key) => `| ${cell(key)} | ${firstSeen[key]} | ${cell(meaning[key])} |`),
                 '',
                 `[The run](${env.RUN_URL}). How to fix each stage, and how to restore: LAUNCH_CHECKLIST.md 5b.`,
               ].join('\n'),

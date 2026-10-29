@@ -192,10 +192,10 @@ def response_schema(document: dict, path: str, *, unwrap: str | None = None) -> 
 # moderation queue's own wrapper is part of what is checked.
 SEAMS = [
     ("ReportSummary", "/reports", None),
-    # The reporter's own reports, which `fetchReports` merges into the shared
-    # list (#1916 - A signed-in hiker's app sends its token on the three
-    # edge-cached reads, so they either skip the cache or hide the hiker's
-    # own queued report).
+    # The reporter's own reports, which `fetchMyReports` reads and
+    # client/src/lib/useConditions.ts merges into the shared list (#1916 - A
+    # signed-in hiker's app sends its token on the three edge-cached reads, so
+    # they either skip the cache or hide the hiker's own queued report).
     ("ReportSummary", "/reports/mine", None),
     ("ClosureSummary", "/closures", None),
     ("ProfileSummary", "/profiles/me", None),

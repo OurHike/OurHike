@@ -222,7 +222,7 @@ async function readFetch(path: string, signal?: AbortSignal): Promise<Response> 
  * signed-in hiker. The second hides a reporter's own waiting report. The
  * server never reads the caller on `/closures` or `/disputes`, and the one
  * thing a token bought on `/reports` comes from `/reports/mine` instead
- * (`fetchReports`).
+ * (`fetchMyReports`).
  */
 
 /**
@@ -312,40 +312,40 @@ export interface ReportSummary {
 }
 
 /**
- * Reports visible to this hiker: the public, moderated set everybody gets,
- * plus their own at any status when they are signed in.
+ * The public, moderated reports everybody gets, from `GET /reports`, sent
+ * with no token even when the hiker is signed in (THE SHARED READS above,
+ * #1916).
  *
- * Two reads, so the shared one carries no token (THE SHARED READS above,
- * #1916). The hiker's own come from `GET /reports/mine`, and each replaces the
- * shared copy of the same report, because that is the one its reporter is
- * allowed to see all of. Without them, someone's own report would vanish from
- * the app between submitting it and a moderator reaching it, which is
- * precisely what "Waiting" on the More screen is describing.
+ * The hiker's own reports at any status are `fetchMyReports`, a read of its
+ * own that lib/useConditions.ts merges in. Kept apart so this list never
+ * waits on that one: a fresh warning is drawn the moment it arrives, and a
+ * slow or failed private read cannot hold it back.
  *
- * **Throws rather than returning `[]` when the shared read fails, and that is
- * the point.** An empty list and a failed fetch draw the same map and mean
- * opposite things on the ground - the wrong one of those tells a hiker a
- * closed stretch of trail is open. The caller has to be able to say it does
- * not know.
- *
- * **The hiker's own read failing does not.** It leaves out their waiting
- * reports and nothing else: the public list is still what everybody else is
- * told, and holding back a fresh one because of an expired token or a server
- * that predates `/reports/mine` would keep stale warnings on the map.
+ * **Throws rather than returning `[]` on failure, and that is the point.** An
+ * empty list and a failed fetch draw the same map and mean opposite things on
+ * the ground - the wrong one of those tells a hiker a closed stretch of trail
+ * is open. The caller has to be able to say it does not know.
  */
 export async function fetchReports(signal?: AbortSignal): Promise<ReportSummary[]> {
-  const reportsIn = (response: Response) => response.json() as Promise<ReportSummary[]>
-  const [shared, mine] = await Promise.all([
-    apiFetch('/reports', { signal }).then(reportsIn),
-    // `authedFetch` refuses before any request when nobody is signed in,
-    // which lands here as "none of their own" like any other failure.
-    authedFetch('/reports/mine', { signal })
-      .then(reportsIn)
-      .catch(() => []),
-  ])
-  // A Map keeps each id where it first appeared and the last value given for
-  // it, so the reporter's own copy replaces the shared one in place.
-  return [...new Map([...shared, ...mine].map((report) => [report.id, report])).values()]
+  const response = await apiFetch('/reports', { signal })
+  return (await response.json()) as ReportSummary[]
+}
+
+/**
+ * The signed-in hiker's own reports at any status, from `GET /reports/mine`.
+ * Without them, someone's own report would vanish from the app between
+ * submitting it and a moderator reaching it, which is what "Waiting" on the
+ * More screen describes.
+ *
+ * Through `authedFetch`, so it throws `NotSignedInError` before any request
+ * when nobody is signed in. Also throws on a 2xx body that is not a list, so
+ * a malformed answer fails this read alone instead of reaching the merge in
+ * lib/useConditions.ts, where spreading it would throw.
+ */
+export async function fetchMyReports(): Promise<ReportSummary[]> {
+  const mine: unknown = await (await authedFetch('/reports/mine')).json()
+  if (!Array.isArray(mine)) throw new TypeError('GET /reports/mine sent no list')
+  return mine as ReportSummary[]
 }
 
 /**

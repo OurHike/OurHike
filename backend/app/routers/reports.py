@@ -516,7 +516,8 @@ def list_my_reports(
     is what lets a shared cache in front of the API keep one copy of it, and
     a reporter's own report waiting for a moderator is the one thing on it
     that differs by caller. So the app reads `GET /reports` with no token and
-    this with one, and merges the two (`fetchReports` in client/src/lib/api.ts).
+    this with one, and merges the two (`reports` in
+    client/src/lib/useConditions.ts).
 
     `list_reports` still answers a token the way it always has, for every app
     installed before that change.

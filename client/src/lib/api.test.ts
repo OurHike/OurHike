@@ -535,7 +535,8 @@ describe('sendReport idempotency', () => {
 //     either skip the cache or hide the hiker's own queued report) a signed-in
 //     hiker's `/reports`, `/closures` and `/disputes` go out exactly as an
 //     anonymous one's do. Their own unmoderated report, which is what
-//     "Waiting" on the More screen means, comes from `/reports/mine`.
+//     "Waiting" on the More screen means, comes from `/reports/mine`
+//     (`fetchMyReports`), a read of its own that `fetchReports` never waits on.
 //  2. A failed read THROWS. An empty list and a failed fetch draw the same
 //     map and mean opposite things on the ground.
 
@@ -597,66 +598,89 @@ describe('reading reports and closures', () => {
     expect(spy).toHaveBeenCalledTimes(1)
   })
 
-  it('signed in, reads /reports with no token and asks /reports/mine with one', async () => {
+  it('fetchReports, signed in, requests /reports alone and resolves while /reports/mine would hang', async () => {
+    // When fetchReports also read /reports/mine and awaited both, a /reports
+    // list that had already arrived - a serious warning in it, on one bar of
+    // signal - waited as long as the private read did. The shared list has to
+    // land on its own.
+    withSession('a-real-token')
+    const api = await configuredApi()
+    const shared = { ok: true, status: 200, json: async () => [{ id: 'hazard-1' }] }
+    const spy = vi.spyOn(globalThis, 'fetch').mockImplementation(async (input) => {
+      if (new URL(String(input)).pathname === '/reports/mine') {
+        return new Promise<Response>(() => {})
+      }
+      return shared as Response
+    })
+
+    const outcome = await Promise.race([
+      api.fetchReports(),
+      new Promise((resolve) => setTimeout(() => resolve('still waiting at 200 ms'), 200)),
+    ])
+
+    expect(outcome).toEqual([{ id: 'hazard-1' }])
+    expect(spy.mock.calls.map(([input]) => new URL(String(input)).pathname)).toEqual([
+      '/reports',
+    ])
+  })
+
+  it('fetchMyReports asks /reports/mine with the token and returns its list', async () => {
     withSession('a-real-token')
     const api = await configuredApi()
     const spy = mockRoutes({
-      '/reports': { body: [{ id: 'shared-1' }] },
       '/reports/mine': { body: [{ id: 'mine-1', status: 'submitted' }] },
     })
 
-    await expect(api.fetchReports()).resolves.toEqual([
-      { id: 'shared-1' },
+    await expect(api.fetchMyReports()).resolves.toEqual([
       { id: 'mine-1', status: 'submitted' },
     ])
-    expect(headersFor(spy, '/reports').Authorization).toBeUndefined()
     expect(headersFor(spy, '/reports/mine').Authorization).toBe('Bearer a-real-token')
   })
 
-  it("keeps the reporter's own copy of a report that is on both lists", async () => {
-    // The shared copy is what a stranger may see of it. The reporter's own
-    // copy is the one `ReportOut.for_viewer` fills in for them.
-    withSession('a-real-token')
+  it('fetchMyReports throws NotSignedInError, sending nothing, when nobody is signed in', async () => {
+    withSession(null)
     const api = await configuredApi()
-    mockRoutes({
-      '/reports': { body: [{ id: 'r1', note: null }] },
-      '/reports/mine': { body: [{ id: 'r1', note: 'Large tree across the trail.' }] },
-    })
+    const spy = mockRoutes({})
 
-    await expect(api.fetchReports()).resolves.toEqual([
-      { id: 'r1', note: 'Large tree across the trail.' },
-    ])
+    await expect(api.fetchMyReports()).rejects.toBeInstanceOf(api.NotSignedInError)
+    expect(spy).not.toHaveBeenCalled()
   })
 
   it.each([
     ['refuses the token', 401],
     ['predates /reports/mine', 404],
     ['fails', 500],
-  ])('still returns the shared list when /reports/mine %s', async (_why, status) => {
-    // The shared list is what everybody else is told. Holding it back over
-    // the hiker's own waiting reports would leave stale warnings on the map.
-    withSession('a-real-token')
-    const api = await configuredApi()
-    mockRoutes({
-      '/reports': { body: [{ id: 'shared-1' }] },
-      '/reports/mine': { status, body: null },
-    })
+  ])(
+    'fetchMyReports throws ApiError, not NotSignedInError, when the server %s',
+    async (_why, status) => {
+      // lib/useConditions.ts keeps the hiker's last own list on every failure
+      // except NotSignedInError, so a refusal must not look like a sign-out.
+      withSession('a-real-token')
+      const api = await configuredApi()
+      mockRoutes({ '/reports/mine': { status, body: null } })
 
-    await expect(api.fetchReports()).resolves.toEqual([{ id: 'shared-1' }])
-  })
-
-  it("throws when the shared read fails, even with the hiker's own in hand", async () => {
-    withSession('a-real-token')
-    const api = await configuredApi()
-    mockRoutes({
-      '/reports': { status: 500, body: null },
-      '/reports/mine': { body: [{ id: 'mine-1' }] },
-    })
-
-    await expect(api.fetchReports()).rejects.toBeInstanceOf(api.ApiError)
-  })
+      await expect(api.fetchMyReports()).rejects.toBeInstanceOf(api.ApiError)
+    },
+  )
 
   it.each([
+    ['an object', {}],
+    ['null', null],
+  ])(
+    'fetchMyReports throws a TypeError on a 200 whose body is %s, instead of returning it',
+    async (_label, body) => {
+      // lib/useConditions.ts spreads this list into the shared one, and a body
+      // that is not a list has to fail this read rather than that render.
+      withSession('a-real-token')
+      const api = await configuredApi()
+      mockRoutes({ '/reports/mine': { body } })
+
+      await expect(api.fetchMyReports()).rejects.toBeInstanceOf(TypeError)
+    },
+  )
+
+  it.each([
+    ['fetchReports' as const, '/reports'],
     ['fetchClosures' as const, '/closures'],
     ['fetchDisputes' as const, '/disputes'],
   ])('%s sends no token even when the hiker is signed in', async (fn, path) => {

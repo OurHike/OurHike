@@ -41,6 +41,7 @@ vi.mock('./lib/api', () => ({
   permanentFailureReason: vi.fn(() => null),
   // The map's own reads, irrelevant here and required for App to mount.
   fetchReports: vi.fn(async () => []),
+  fetchMyReports: vi.fn(async () => []),
   fetchClosures: vi.fn(async () => []),
   fetchFieldNotes: vi.fn(async () => []),
   // Disputes ride the same read as the notes they are computed from (#876).

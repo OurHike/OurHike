@@ -9,12 +9,13 @@
 //
 // features/CONDITIONS_DELIVERY.md is the design.
 
-import { useCallback, useEffect, useRef, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import {
   API_CONFIGURED,
   fetchClosures,
   fetchDisputes,
   fetchFieldNotes,
+  fetchMyReports,
   fetchReports,
   type ClosureSummary,
   type ReportSummary,
@@ -82,6 +83,13 @@ export interface Conditions {
    * status strip's sync age is what tells those apart (lib/syncAge.ts).
    */
   closures: readonly ClosureSummary[] | null
+  /**
+   * `reportState`'s list with the signed-in hiker's own reports merged in
+   * (`fetchMyReports`, #1916): each replaces the shared copy of the same id in
+   * place, and their other reports follow the shared list. Null whenever
+   * `reportState` holds no list, own reports or not, because a list here
+   * claims the public set was read.
+   */
   reports: readonly ReportSummary[] | null
   /**
    * Visible field notes - the map's working set, each place's most recent
@@ -226,7 +234,7 @@ export interface Conditions {
 
 /**
  * @param ready Whether the launch is past its first frame (#1302,
- *   lib/useAfterFirstFrame.ts). The nine published reads and the four live
+ *   lib/useAfterFirstFrame.ts). The nine published reads and the five live
  *   ones below wait for it; nothing they feed changes what the first frame
  *   is, and every line they fill renders "unknown" until they land anyway.
  *   Defaults to true so a screen or a test that mounts this hook alone
@@ -284,6 +292,9 @@ export function useConditions(
   // strip said "never synced" on every device forever, which was true and
   // looked like a bug in the strip rather than a missing feature.
   const [lastSyncedAt, setLastSyncedAt] = useState<Date | null>(null)
+  // The signed-in hiker's own reports (#1916); the effect that reads them
+  // says why they are a state of their own.
+  const [ownReports, setOwnReports] = useState<readonly ReportSummary[]>([])
 
   const markSynced = useCallback(() => setLastSyncedAt(new Date()), [])
 
@@ -597,9 +608,52 @@ export function useConditions(
     // backend said when the app opened.
   }, [online, refreshCount, ready])
 
+  // The hiker's own reports at any status (`fetchMyReports`, #1916), merged
+  // into `reports` below. An effect of its own, so the public list above
+  // never waits on it: while `fetchReports` awaited both requests, a serious
+  // warning that had already arrived waited for this private read to answer,
+  // and was dropped if the phone went offline first.
+  //
+  // A failure empties the list, as a failed `/reports/mine` did inside
+  // `fetchReports`.
+  //
+  // No `stamp()`: the sync age vouches for the public picture, and this read
+  // landing says nothing about that.
+  useEffect(() => {
+    if (!ready || !online || !API_CONFIGURED) return
+    let cancelled = false
+    void fetchMyReports().then(
+      (mine) => {
+        if (!cancelled) setOwnReports(mine)
+      },
+      () => {
+        if (!cancelled) setOwnReports([])
+      },
+    )
+    return () => {
+      cancelled = true
+    }
+  }, [online, refreshCount, ready])
+
+  // A Map keeps each id where it first appeared and the last value given for
+  // it, so the hiker's own copy of a report replaces the shared copy in place
+  // and their reports the shared list lacks follow it. Memoised because
+  // App.tsx's memos over `reports` re-place the map's warnings for every new
+  // array.
+  const sharedReports = itemsOf(reportState)
+  const reports = useMemo(
+    () =>
+      sharedReports && [
+        ...new Map(
+          [...sharedReports, ...ownReports].map((report) => [report.id, report]),
+        ).values(),
+      ],
+    [sharedReports, ownReports],
+  )
+
   return {
     closures: itemsOf(closureState),
-    reports: itemsOf(reportState),
+    reports,
     notes: itemsOf(noteState),
     disputes: itemsOf(disputeState),
     closureState,

@@ -103,6 +103,7 @@ vi.mock('./lib/api', () => ({
   fetchFieldNotes: vi.fn(async () => []),
   fetchDisputes: vi.fn(async () => []),
   fetchReports: vi.fn(async () => []),
+  fetchMyReports: vi.fn(async () => []),
 }))
 
 // The instrumented six: everything the map screen mounts that is worth naming.

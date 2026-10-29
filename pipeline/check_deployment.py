@@ -156,7 +156,9 @@ EDGE_SERVED_EXPIRED = frozenset({"STALE", "UPDATING"})
 # So a copy carrying anything else is not the API's anonymous answer:
 # `private, no-store` is a signed-in reader's, stored by a rule that ignores
 # the header. Reasoned from those docs; there is no live zone yet to measure
-# it against (#600), and §6 step 7 reads the same header by hand first.
+# it against (#600 - Nothing owns standing up the production backend, and the
+# image has never run against a real Docker daemon), and §6 step 7 reads the
+# same header by hand first.
 BACKEND_SHARED_CACHE_CONTROL = "public, max-age=0, s-maxage=300"
 
 # The prefix the hourly bake writes under, and how old its newest file may be

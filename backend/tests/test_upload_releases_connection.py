@@ -18,7 +18,9 @@ back, reads the body, puts the photo, and only then records it, in one short
 transaction on a locked row. What is asserted here:
 
   - **No connection is checked out while the bytes arrive, or while R2 stores
-    them**, on every route, at the moment each wait begins.
+    them**, on every route, at the moment each wait begins - and the issue's
+    second acceptance criterion as a scenario: uploads parked on slow bodies,
+    then on a slow put, with `GET /closures` answered throughout.
   - **The record step checks again, on the row as it is after the put.** A
     slow put cannot take the photo count back, and a waypoint share withdrawn
     mid-upload - a hard delete the API really can make while an upload is in
@@ -30,21 +32,28 @@ transaction on a locked row. What is asserted here:
     would: no sweep exists (app/core/photos.py).
 """
 
+import asyncio
+import threading
 import uuid
 
 import boto3
+import httpx
 import pytest
 from botocore.exceptions import EndpointConnectionError
 from moto import mock_aws
+from sqlalchemy import create_engine
+from sqlalchemy.orm import sessionmaker
 
 from app.config import settings
 from app.core import photos as photos_core
 from app.core.auth import ACCOUNT_DELETED_DETAIL
 from app.core.photos import poi_photo_key
+from app.db.session import get_db
+from app.main import app
 from app.models.field_note import FieldNote
 from app.models.poi_photo import PoiPhoto
 from app.models.profile import Role
-from app.models.report import Report
+from app.models.report import Report, ReporterType, ReportType, Visibility
 from app.routers import field_notes as field_notes_router
 from app.routers import poi_photos as poi_photos_router
 from app.routers import reports as reports_router
@@ -447,6 +456,131 @@ def test_a_note_deleted_while_its_photo_arrives_is_not_written_to(client, db_eng
 
     assert response.status_code == 404
     assert _stored(r2) == []
+
+
+# --- The issue's second acceptance criterion ---------------------------------
+#
+# "The fifteen-upload scenario serves `GET /closures` normally." The issue's
+# fifteen ran against the default pool - five plus ten overflow, a 30 s wait
+# for a connection - and the review ran it again with the put slowed
+# instead of the body. This is the same shape at a size that passes in about
+# two seconds: a pool of 2 with no overflow, and 4 uploads, twice the pool, so
+# if each upload held a connection the pool would be gone with uploads still
+# queued behind it. The wait for a connection is cut to 10 s. Nothing in the
+# passing run comes near it - while the uploads are parked it checks nothing
+# out at all - and it bounds the failing run: measured 2026-10-29, 32 s with
+# the routers from main (aad6cd17), 17 s with those from 6153efcb.
+#
+# Deterministic rather than timed: every body sends its first bytes and then
+# waits on an event, every R2 put waits on another, and `GET /closures` is
+# asked only once all four uploads are parked at one of them (or 5 s have
+# passed, which happens only when some of them could not get that far).
+
+_POOL_SIZE = 2
+_UPLOADS = 2 * _POOL_SIZE
+_CHECKOUT_TIMEOUT_SECONDS = 10
+_PARKED_WITHIN_SECONDS = 5
+
+
+async def _until(condition, within: float) -> None:
+    """Wait until `condition()` holds or `within` seconds pass. Never raises:
+    the assertions after it say what was true when it stopped."""
+    loop = asyncio.get_running_loop()
+    deadline = loop.time() + within
+    while not condition() and loop.time() < deadline:
+        await asyncio.sleep(0.01)
+
+
+def test_get_closures_is_answered_while_uploads_wait_on_slow_phones_and_a_slow_r2(db_engine, db_session, r2, monkeypatch):
+    uploads = []
+    for _ in range(_UPLOADS):
+        hiker = make_profile(db_session, Role.hiker).id
+        report_id = str(uuid.uuid4())
+        db_session.add(
+            Report(
+                id=report_id,
+                reporter_id=hiker,
+                type=ReportType.blowdown,
+                reporter_type=ReporterType.thru,
+                visibility=Visibility.public,
+            )
+        )
+        db_session.commit()
+        uploads.append((hiker, report_id))
+    db_session.close()
+
+    small_pool = create_engine(
+        settings.database_url, pool_size=_POOL_SIZE, max_overflow=0, pool_timeout=_CHECKOUT_TIMEOUT_SECONDS
+    )
+    sessions = sessionmaker(autocommit=False, autoflush=False, bind=small_pool)
+
+    def small_pool_db():
+        session = sessions()
+        try:
+            yield session
+        finally:
+            session.close()
+
+    monkeypatch.setitem(app.dependency_overrides, get_db, small_pool_db)
+
+    # A slow R2: every put waits for the gate. Bounded, so a broken run
+    # cannot hang the suite.
+    put_gate = threading.Event()
+    parked_puts: list[int] = []
+    real_client = photos_core._client
+
+    def slow_put():
+        parked_puts.append(1)
+        put_gate.wait(timeout=60)
+
+    monkeypatch.setattr(photos_core, "_client", lambda: _WatchedR2(real_client(), slow_put, deletes_fail=False))
+
+    async def scenario():
+        body_gate = asyncio.Event()
+        parked_bodies: list[int] = []
+
+        async def slow_phone():
+            yield _JPEG[:4]
+            # The route has asked for more and is waiting, as it would on a
+            # phone with one bar.
+            parked_bodies.append(1)
+            await body_gate.wait()
+            yield _JPEG[4:]
+
+        async def probe(parked: list[int]) -> tuple[int, int, int]:
+            checked_out = small_pool.pool.checkedout()
+            response = await http.get("/closures")
+            return len(parked), checked_out, response.status_code
+
+        transport = httpx.ASGITransport(app=app, raise_app_exceptions=False)
+        async with httpx.AsyncClient(transport=transport, base_url="http://test") as http:
+            sent = [
+                asyncio.create_task(http.put(f"/reports/{report_id}/photos/1", content=slow_phone(), headers=_jpeg(hiker)))
+                for hiker, report_id in uploads
+            ]
+            try:
+                await _until(lambda: len(parked_bodies) == _UPLOADS, within=_PARKED_WITHIN_SECONDS)
+                while_the_bodies_arrive = await probe(parked_bodies)
+                body_gate.set()
+                await _until(lambda: len(parked_puts) == _UPLOADS, within=_PARKED_WITHIN_SECONDS)
+                while_r2_stores_them = await probe(parked_puts)
+            finally:
+                body_gate.set()
+                put_gate.set()
+                answers = await asyncio.gather(*sent, return_exceptions=True)
+        return while_the_bodies_arrive, while_r2_stores_them, answers
+
+    try:
+        while_the_bodies_arrive, while_r2_stores_them, answers = asyncio.run(scenario())
+    finally:
+        small_pool.dispose()
+
+    # (uploads parked, connections checked out, GET /closures status) at each
+    # probe. The routers from main answered (2, 2, 500) at the first; those
+    # from 6153efcb passed it and answered (2, 2, 500) at the second.
+    assert while_the_bodies_arrive == (_UPLOADS, 0, 200)
+    assert while_r2_stores_them == (_UPLOADS, 0, 200)
+    assert [getattr(answer, "status_code", repr(answer)) for answer in answers] == [200] * _UPLOADS
 
 
 # --- The R2 client ------------------------------------------------------------

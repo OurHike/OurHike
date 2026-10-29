@@ -27,10 +27,15 @@ import { seatName, type Org, type OrgPark, type OrgSection } from '../orgApi'
 export interface RegistrySignoffProps {
   readonly org: Org
   readonly registry: readonly OrgPark[]
-  /** Who has confirmed, by person id. */
+  /** Which seats have confirmed, by seat id (`OrgAdmin.id`). Not by holder:
+   *  `person_id` is null for every seat but their own to a viewer who is not
+   *  one of the org's approved admins (#1914), and a set of holders counted
+   *  nobody for them. */
   readonly confirmed: ReadonlySet<string>
-  /** Who is reading it now, by person id - shown as an honest in-between. */
+  /** Which seats are reading it now, by seat id - shown as an honest
+   *  in-between. */
   readonly reading?: ReadonlySet<string>
+  /** The caller's own profile id, so their own seat can be told apart. */
   readonly personId: string | null
   readonly approvalsRequired: number
   readonly onConfirm: () => void
@@ -66,7 +71,11 @@ export function RegistrySignoff({
     }
   }
   const unmapped = [...blazes.entries()].filter(([, mapped]) => mapped === null)
-  const alreadyConfirmed = personId !== null && confirmed.has(personId)
+  // A seat's own holder is always shown their `person_id`, so the caller's
+  // seat can be found by it even when every other seat's is withheld.
+  const ownSeat =
+    personId === null ? undefined : org.admins.find((seat) => seat.person_id === personId)
+  const alreadyConfirmed = ownSeat !== undefined && confirmed.has(ownSeat.id)
 
   return (
     <>
@@ -167,9 +176,8 @@ export function RegistrySignoff({
         </div>
         <div className="org-stack">
           {org.admins.map((seat) => {
-            const isConfirmed = seat.person_id !== null && confirmed.has(seat.person_id)
-            const isReading =
-              !isConfirmed && seat.person_id !== null && reading.has(seat.person_id)
+            const isConfirmed = confirmed.has(seat.id)
+            const isReading = !isConfirmed && reading.has(seat.id)
             return (
               <div className="org-inline" key={seat.id}>
                 <span className="org-table__name">{seatName(seat, names)}</span>

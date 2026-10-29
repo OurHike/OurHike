@@ -72,6 +72,17 @@ message for a snapshot it cannot import, seen 2026-10-29), the dump step fails
 and the tracking issue opens: loud rather than wrong. The first configured run
 settles it.
 
+WHAT CROSSES THE POOLER. Each night's dump is egress through Supavisor, which
+Supabase Free meters (FREE_EGRESS_QUOTA_BYTES). `dump` logs each archive's
+bytes on disk and uncompressed - the SQL text pg_restore writes from it - and
+hands the workflow the uncompressed total as `egress_bytes`, with a warning
+for the tracking issue when thirty nights like it would pass EGRESS_WARN_SHARE
+of the quota. Uncompressed, because pg_dump compresses the table data into the
+archive on the runner, after the rows crossed the pooler as uncompressed COPY
+text. The SQL text under-counts the egress too, by pg_dump's catalog queries
+and the protocol's framing: reasoned, not measured - nobody has set this figure
+beside Supabase's Shared Pooler Egress for the same night.
+
 SECRETS STAY OUT OF ARGV. The connection string is split into libpq's own
 environment variables (PGHOST, PGPASSWORD...) for each tool, and a Docker-run
 tool is passed their NAMES (`--env PGPASSWORD`), never their values. No error
@@ -159,6 +170,28 @@ LOCAL_HOSTS = ("localhost", "127.0.0.1", "::1")
 
 #: An age X25519 recipient: "age1" and 58 bech32 characters.
 AGE_RECIPIENT = re.compile(r"age1[02-9ac-hj-np-z]{58}")
+
+#: Supabase Free's egress quota: 5 GB of uncached egress a billing cycle, one
+#: quota every service draws on ("the Unified Egress Quota"), with traffic
+#: through Supavisor - this job's - counted as "Shared Pooler Egress"
+#: (supabase.com/docs/guides/platform/manage-your-usage/egress, read
+#: 2026-10-29). Taken as 5 x 10^9 bytes, the smaller of the two ways to read
+#: "GB". Going over brings a notice and a grace period; continually exceeding
+#: the Free Plan quota can bring restrictions under the Fair Use Policy, which
+#: lists switching databases to read-only and answering every API request with
+#: a 402 among them, "generally applied to all projects of the restricted
+#: organization" (supabase.com/docs/guides/platform/billing-faq, read
+#: 2026-10-29).
+FREE_EGRESS_QUOTA_BYTES = 5 * 10**9
+
+#: @unvalidated: the share of that quota thirty nights of dumps may take before
+#: the tracking issue warns. Half, so the backup alone cannot spend the quota
+#: the API, the hourly conditions bake and sign-in draw on too - picked, not
+#: measured. What would settle it: a month of the production project's Usage
+#: page, whose Shared Pooler Egress line is everything else plus these dumps,
+#: set beside the `egress_bytes` this job logs each night.
+EGRESS_WARN_SHARE = 0.5
+NIGHTS_A_MONTH = 30
 
 LIVE_ROWS = "live-rows.tsv"
 RESTORED_ROWS = "restored-rows.tsv"
@@ -544,6 +577,40 @@ def refuse_unless_local(scratch_env: Mapping[str, str]) -> None:
         )
 
 
+def archive_bytes(workdir: Path, tools: Tools) -> dict[str, tuple[int, int]]:
+    """Each archive's bytes on disk, and uncompressed: the SQL text pg_restore writes from it."""
+    sizes = {}
+    for name in ARCHIVES:
+        argv, env = tools.command("pg_restore", ["--file=-", str(workdir / name)], {})
+        uncompressed = 0
+        with subprocess.Popen(argv, env=env, stdout=subprocess.PIPE) as process:
+            assert process.stdout is not None
+            while chunk := process.stdout.read(1 << 20):
+                uncompressed += len(chunk)
+        if process.returncode != 0:
+            raise Refused(f"pg_restore exited {process.returncode} reading {name}")
+        sizes[name] = ((workdir / name).stat().st_size, uncompressed)
+    return sizes
+
+
+def egress_warning(night_bytes: int) -> str:
+    """A sentence for the tracking issue when thirty nights like this one pass EGRESS_WARN_SHARE of the quota.
+
+    Empty when they would not. A warning never fails the backup: the dump is
+    fine, it is the bill for taking it every night that is not.
+    """
+    month = night_bytes * NIGHTS_A_MONTH
+    if month <= EGRESS_WARN_SHARE * FREE_EGRESS_QUOTA_BYTES:
+        return ""
+    return (
+        f"Tonight's dump carried about {night_bytes / 10**6:,.0f} MB uncompressed through Supabase's session pooler. "
+        f"{NIGHTS_A_MONTH} nights of that is {month / 10**9:,.1f} GB, past the {EGRESS_WARN_SHARE:.0%} of Supabase "
+        f"Free's {FREE_EGRESS_QUOTA_BYTES / 10**9:,.0f} GB egress quota this job allows itself - a share picked "
+        "rather than measured (`EGRESS_WARN_SHARE` in .github/scripts/backup_database.py) - and the rest of the "
+        "app draws on the same quota."
+    )
+
+
 def verify(workdir: Path, tools: Tools, scratch_env: Mapping[str, str]) -> list[str]:
     """Restore both archives into the scratch database, count, and compare. Returns the problems."""
     refuse_unless_local(scratch_env)
@@ -633,6 +700,13 @@ def main(argv: list[str] | None = None) -> int:
             print(
                 f"Dumped {len(counts)} table(s) holding {sum(counts.values())} row(s) between them, counted in the dump's snapshot."
             )
+            sizes = archive_bytes(workdir, tools)
+            for name, (on_disk, uncompressed) in sizes.items():
+                print(f"{name}: {on_disk:,} bytes, {uncompressed:,} uncompressed")
+            night = sum(uncompressed for _, uncompressed in sizes.values())
+            _output("archive_bytes", str(sum(on_disk for on_disk, _ in sizes.values())))
+            _output("egress_bytes", str(night))
+            _output("egress_warning", egress_warning(night))
         elif args.stage == "verify":
             if not args.scratch_url:
                 parser.error("verify needs --scratch-url")

@@ -228,6 +228,27 @@ def test_the_supabase_schemas_never_include_the_ones_this_backup_exists_for():
     assert "auth" in backup.SUPABASE_SCHEMAS, "auth's other tables are Supabase's; users and identities are dumped by name"
 
 
+# --- Egress -----------------------------------------------------------------
+
+
+def _at_the_line() -> int:
+    """The largest night whose thirty copies stay within EGRESS_WARN_SHARE of the quota."""
+    return int(backup.EGRESS_WARN_SHARE * backup.FREE_EGRESS_QUOTA_BYTES) // backup.NIGHTS_A_MONTH
+
+
+def test_egress_warning_stays_quiet_up_to_the_share_and_speaks_past_it():
+    assert backup.egress_warning(_at_the_line()) == ""
+    assert backup.egress_warning(_at_the_line() + 1) != ""
+
+
+def test_egress_warning_names_the_night_the_month_and_the_quota():
+    said = backup.egress_warning(170 * 10**6)
+
+    assert "about 170 MB" in said and "5.1 GB" in said and "50%" in said and "5 GB egress quota" in said
+    assert "picked rather than measured" in said, "the share is ours, and the issue must not read it as Supabase's number"
+    assert "@" not in said, "an @word in an issue body notifies whoever owns that login"
+
+
 # --- Sealing ----------------------------------------------------------------
 
 
@@ -468,6 +489,37 @@ def test_a_good_backup_comes_back_row_for_row_through_dump_and_verify(postgres, 
     assert run("verify") == 0
     assert backup._read_counts(run.workdir / backup.LIVE_ROWS) == FORTY_CLOSURES
     assert backup._read_counts(run.workdir / backup.RESTORED_ROWS) == FORTY_CLOSURES
+
+
+def _outputs(run) -> dict[str, str]:
+    lines = (run.workdir.parent / "github_output").read_text(encoding="utf-8").splitlines()
+    return dict(line.split("=", 1) for line in lines)
+
+
+def test_the_dump_logs_each_archive_and_hands_the_workflow_its_bytes(postgres, run, capsys):
+    postgres.reset(FORTY_CLOSURES_SQL)
+
+    assert run("dump") == 0
+
+    said = capsys.readouterr().out
+    assert "public.dump: " in said and "auth.dump: " in said and " uncompressed" in said
+    outputs = _outputs(run)
+    on_disk = sum((run.workdir / name).stat().st_size for name in backup.ARCHIVES)
+    text = sum(
+        len(subprocess.run(["pg_restore", "--file=-", str(run.workdir / name)], capture_output=True, check=True).stdout)
+        for name in backup.ARCHIVES
+    )
+    assert (int(outputs["archive_bytes"]), int(outputs["egress_bytes"])) == (on_disk, text)
+    assert outputs["egress_warning"] == ""
+
+
+def test_a_night_too_large_for_the_quota_warns_and_still_succeeds(postgres, run, monkeypatch):
+    """Thirty nights past the share is a bill problem, not a broken backup: the dump still counts."""
+    postgres.reset(FORTY_CLOSURES_SQL)
+    monkeypatch.setattr(backup, "FREE_EGRESS_QUOTA_BYTES", 1000)
+
+    assert run("dump") == 0
+    assert "past the 50% of Supabase Free's" in _outputs(run)["egress_warning"]
 
 
 @pytest.mark.skipif(shutil.which("age-keygen") is None, reason="age is not installed here; the workflow installs it")

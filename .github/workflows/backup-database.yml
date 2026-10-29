@@ -48,10 +48,14 @@ name: Back up the database
 
 on:
   schedule:
-    # 05:12 UTC daily: the middle of the night across the US, off the hour
-    # because GitHub queues everything submitted at :00, and clear of every
-    # other schedule here (the nearest are publish-conditions at :40 and the
-    # Monday data release at 06:25).
+    # 05:12 UTC daily: the middle of the night across the US, and off the
+    # hour because GitHub queues everything submitted at :00. No other
+    # schedule here uses minute 12, though several run near it, none sharing
+    # anything this job holds: check-pending-approvals at :07 and :37 of
+    # every hour (it reads the Actions API); refresh-reference at 05:15 on
+    # the 3rd of each month (the raw store, not this bucket);
+    # publish-conditions at :40 (production's database too, through its own
+    # role); and publish-weather at :55.
     - cron: "12 5 * * *"
   workflow_dispatch:
 

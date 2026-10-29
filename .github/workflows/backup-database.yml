@@ -194,10 +194,14 @@ jobs:
       # when an operation requires one, so the upload does not depend on R2
       # accepting the CRC headers newer AWS clients add by default: R2's S3
       # compatibility page lists those checksum types without saying which
-      # operations take them (both pages read 2026-10-27). The size is read
-      # back after the upload, because "the command exited 0" and "the object
-      # is in the bucket at full size" are different facts, and only the
-      # second one is a backup.
+      # operations take them (both pages read 2026-10-27). The object is then
+      # read back whole and its SHA-256 compared with the sealed file's,
+      # because "the command exited 0" and "the bucket holds these exact
+      # bytes" are different facts, and only the second one is a backup. A
+      # size check, which this replaced, passes a same-size corruption. R2's
+      # pricing page says "There are no charges for egress bandwidth for any
+      # storage class" (read 2026-10-29), so the read-back costs one Class B
+      # operation a night and no transfer.
       - name: Upload
         id: upload
         if: steps.seal.outcome == 'success'
@@ -212,14 +216,15 @@ jobs:
           SEALED: ${{ steps.seal.outputs.file }}
           KEY: ${{ steps.seal.outputs.key }}
         run: |
+          set -o pipefail
           aws s3 cp "$SEALED" "s3://$BUCKET/$KEY" --endpoint-url "$R2_ENDPOINT_URL" --only-show-errors
-          local_size=$(stat -c %s "$SEALED")
-          stored_size=$(aws s3api head-object --bucket "$BUCKET" --key "$KEY" --endpoint-url "$R2_ENDPOINT_URL" --query ContentLength --output text)
-          if [ "$local_size" != "$stored_size" ]; then
-            echo "::error::Uploaded $local_size bytes and the bucket holds $stored_size under $KEY."
+          sealed_sha=$(sha256sum "$SEALED" | cut -d ' ' -f 1)
+          stored_sha=$(aws s3 cp "s3://$BUCKET/$KEY" - --endpoint-url "$R2_ENDPOINT_URL" --only-show-errors | sha256sum | cut -d ' ' -f 1)
+          if [ "$sealed_sha" != "$stored_sha" ]; then
+            echo "::error::The sealed file's SHA-256 is $sealed_sha and the copy read back from the bucket under $KEY hashes to $stored_sha."
             exit 1
           fi
-          echo "Stored $KEY, $stored_size bytes, encrypted."
+          echo "Stored $KEY, $(stat -c %s "$SEALED") bytes, encrypted, SHA-256 $stored_sha read back from the bucket."
 
       # Every outcome of a run from main, and nothing from a refused ref: a
       # branch's run is not news about production's backup, and must not be
@@ -259,7 +264,7 @@ jobs:
               ['dump', env.DUMP === 'success', 'The row count or pg_dump failed, or a table outside public holds rows the backup does not dump: the log says which. A role without BYPASSRLS makes the count refuse, which is the safe failure.'],
               ['restore check', env.VERIFY === 'success', 'The dump did not restore, or a table came back with a different number of rows than it held when it was dumped. The log has the table-by-table comparison.'],
               ['encrypt', env.SEAL === 'success', 'age did not seal the dump, or BACKUP_AGE_RECIPIENT is not an age public key.'],
-              ['upload', env.UPLOAD === 'success', 'The encrypted dump did not reach the bucket at full size.'],
+              ['upload', env.UPLOAD === 'success', 'The encrypted dump did not reach the bucket, or the copy read back from it does not hash to what was sealed.'],
             ]
             const failed = stages.find(([, ok]) => !ok)
             // A warning rather than a failure: the backup was taken, and it is

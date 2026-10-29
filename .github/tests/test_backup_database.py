@@ -298,6 +298,69 @@ def test_only_the_sealed_file_is_uploaded():
     assert 'aws s3 cp "$SEALED"' in upload["run"]
 
 
+#: `aws s3 cp` (and the `s3api head-object` the old size check used) against
+#: a directory standing in for the bucket. FAKE_DAMAGE overwrites the stored
+#: object's first byte after the upload, leaving its size exactly as it was -
+#: the corruption a size check cannot see.
+FAKE_AWS = r"""#!/usr/bin/env bash
+set -e
+stored() { echo "$FAKE_BUCKET/${1#s3://}"; }
+if [ "$1 $2" = "s3api head-object" ]; then
+  stat -c %s "$FAKE_BUCKET/$4/$6"
+  exit 0
+fi
+[ "$1 $2" = "s3 cp" ] || { echo "fake aws: unexpected $*" >&2; exit 2; }
+if [[ $4 == s3://* ]]; then
+  mkdir -p "$(dirname "$(stored "$4")")"
+  cp "$3" "$(stored "$4")"
+  if [ -n "$FAKE_DAMAGE" ]; then printf 'X' | dd of="$(stored "$4")" bs=1 count=1 conv=notrunc 2>/dev/null; fi
+elif [[ $3 == s3://* && $4 == - ]]; then
+  cat "$(stored "$3")"
+else
+  echo "fake aws: unexpected $*" >&2; exit 2
+fi
+"""
+
+
+def _upload(tmp_path: Path, **extra: str) -> subprocess.CompletedProcess:
+    bin_dir = tmp_path / "bin"
+    bin_dir.mkdir()
+    (bin_dir / "aws").write_text(FAKE_AWS, encoding="utf-8")
+    (bin_dir / "aws").chmod(0o755)
+    sealed = tmp_path / "ourhike-20261029T051203Z.tar.age"
+    sealed.write_bytes(b"age-encryption.org/v1\n" + bytes(range(256)) * 64)
+    env = {
+        "PATH": f"{bin_dir}:{os.environ['PATH']}",
+        "SEALED": str(sealed),
+        "KEY": "postgres/2026/10/29/ourhike-20261029T051203Z.tar.age",
+        "BUCKET": "ourhike-db-backups",
+        "R2_ENDPOINT_URL": "https://example.invalid",
+        "FAKE_BUCKET": str(tmp_path / "bucket"),
+        **extra,
+    }
+    script = tmp_path / "upload.sh"
+    script.write_text(_steps()["upload"]["run"], encoding="utf-8")
+    return subprocess.run(["bash", "--noprofile", "--norc", "-e", str(script)], env=env, capture_output=True, text=True)
+
+
+def test_the_upload_reads_the_object_back_and_matches_its_sha256(tmp_path):
+    uploaded = _upload(tmp_path)
+
+    assert uploaded.returncode == 0, uploaded.stderr
+    assert "Stored postgres/2026/10/29/ourhike-20261029T051203Z.tar.age" in uploaded.stdout
+    assert "SHA-256" in uploaded.stdout and "read back from the bucket" in uploaded.stdout
+
+
+def test_a_stored_copy_the_same_size_but_different_bytes_fails_the_upload(tmp_path):
+    """The size check this replaced would have passed it."""
+    damaged = _upload(tmp_path, FAKE_DAMAGE="1")
+
+    stored = tmp_path / "bucket" / "ourhike-db-backups" / "postgres/2026/10/29/ourhike-20261029T051203Z.tar.age"
+    assert stored.stat().st_size == (tmp_path / "ourhike-20261029T051203Z.tar.age").stat().st_size
+    assert damaged.returncode == 1
+    assert "::error::The sealed file's SHA-256 is" in damaged.stdout
+
+
 def test_the_database_credential_reaches_the_dump_and_nothing_after_it():
     holders = [name for name, step in _steps().items() if "secrets.BACKUP_DATABASE_URL" in str(step.get("env", {}))]
 

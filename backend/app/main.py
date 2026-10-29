@@ -15,6 +15,7 @@ from app.core.body_limit import MAX_REQUEST_BODY_BYTES, BodyLimitMiddleware
 from app.core.logs import RequestIdMiddleware, configure_logging
 from app.db.session import check_database, database_host
 from app.routers import (
+    analytics,
     app_failures,
     assist,
     closures,
@@ -119,11 +120,24 @@ def _json_safe(value):
     return value
 
 
+def _without_input(error: dict) -> dict:
+    """A validation error with what was sent taken out of it.
+
+    Pydantic puts the offending value in `input`, and on a list that is the
+    whole list: a 1 MiB field came back as 2 MiB, and a 16 MiB body as 16 MiB
+    more out of the server - outbound bandwidth is what the host bills, and
+    any caller can send the body (#1903's second review). Nothing reads it:
+    the client tells 422s apart by `loc` (client/src/lib/api.ts), and the
+    caller already holds what it sent.
+    """
+    return {key: value for key, value in error.items() if key != "input"}
+
+
 @app.exception_handler(RequestValidationError)
 async def _validation_error_survives_its_own_payload(request: Request, exc: RequestValidationError) -> JSONResponse:
     return JSONResponse(
         status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
-        content={"detail": _json_safe(jsonable_encoder(exc.errors()))},
+        content={"detail": _json_safe(jsonable_encoder([_without_input(error) for error in exc.errors()]))},
     )
 
 
@@ -155,6 +169,8 @@ app.include_router(closures.router)
 app.include_router(maintainer_assignments.router)
 app.include_router(moderation.router)
 app.include_router(app_failures.router)
+# Usage measurement (#1902, features/EVENTING.md): one write, no reads.
+app.include_router(analytics.router)
 app.include_router(field_notes.router)
 app.include_router(volunteer_hours.router)
 app.include_router(synced_trips.router)

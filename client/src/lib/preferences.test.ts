@@ -2,6 +2,7 @@ import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { get, set } from 'idb-keyval'
 import {
   adoptPreferences,
+  forgetMeasurementLink,
   forgetPreferencesSync,
   loadPreferences,
   normalisePreferences,
@@ -171,7 +172,11 @@ describe('the sync bookkeeping', () => {
   it('says a phone that has never synced has never synced', async () => {
     // Null `syncedAt` is what makes a first sign-in adopt the account rather
     // than overwrite it, so its absence is a fact rather than an empty value.
-    expect(await preferencesSyncState()).toEqual({ dirty: false, syncedAt: null })
+    expect(await preferencesSyncState()).toEqual({
+      dirty: false,
+      syncedAt: null,
+      consentTouched: [],
+    })
   })
 
   it('marks a local change dirty', async () => {
@@ -190,6 +195,7 @@ describe('the sync bookkeeping', () => {
     expect(await preferencesSyncState()).toEqual({
       dirty: true,
       syncedAt: '2026-08-21T10:00:00Z',
+      consentTouched: [],
     })
   })
 
@@ -204,8 +210,43 @@ describe('the sync bookkeeping', () => {
     expect(await preferencesSyncState()).toEqual({
       dirty: false,
       syncedAt: '2026-08-21T10:00:00Z',
+      consentTouched: [],
     })
     expect((await loadPreferences()).theme).toBe('dark')
+  })
+
+  it('remembers a consent answer changed here until the next sync, and only that kind of change', async () => {
+    await recordPreferencesPush('2026-08-21T10:00:00Z')
+    await savePreferences({ ...DEFAULT_PREFERENCES, theme: 'dark' })
+    expect((await preferencesSyncState()).consentTouched).toEqual([])
+
+    await savePreferences({
+      ...DEFAULT_PREFERENCES,
+      theme: 'dark',
+      measurement_enabled: false,
+    })
+    expect((await preferencesSyncState()).consentTouched).toEqual(['measurement_enabled'])
+
+    await recordPreferencesPush('2026-08-21T11:00:00Z')
+    expect((await preferencesSyncState()).consentTouched).toEqual([])
+  })
+
+  it('forgets the answer to linking at sign-out without making it a change to push', async () => {
+    await adoptPreferences(
+      { ...DEFAULT_PREFERENCES, measurement_linked: true },
+      '2026-08-21T10:00:00Z',
+    )
+    await forgetPreferencesSync()
+
+    const after = await forgetMeasurementLink()
+
+    expect(after.measurement_linked).toBeNull()
+    expect((await loadPreferences()).measurement_linked).toBeNull()
+    expect(await preferencesSyncState()).toEqual({
+      dirty: false,
+      syncedAt: null,
+      consentTouched: [],
+    })
   })
 
   it('signing out keeps the preferences and drops the claim to an account', async () => {
@@ -217,7 +258,11 @@ describe('the sync bookkeeping', () => {
     await forgetPreferencesSync()
 
     expect((await loadPreferences()).theme).toBe('dark')
-    expect(await preferencesSyncState()).toEqual({ dirty: false, syncedAt: null })
+    expect(await preferencesSyncState()).toEqual({
+      dirty: false,
+      syncedAt: null,
+      consentTouched: [],
+    })
   })
 
   it('reads a corrupt bookkeeping entry as never-synced rather than trusting it', async () => {
@@ -226,7 +271,11 @@ describe('the sync bookkeeping', () => {
     // "synced and dirty" would push those over the account instead.
     await set(PREFERENCES_SYNC_KEY, { dirty: 'yes', syncedAt: 17 })
 
-    expect(await preferencesSyncState()).toEqual({ dirty: false, syncedAt: null })
+    expect(await preferencesSyncState()).toEqual({
+      dirty: false,
+      syncedAt: null,
+      consentTouched: [],
+    })
   })
 })
 

@@ -327,10 +327,22 @@ test.describe('signing in with an emailed code', { tag: '@backend' }, () => {
       type: 'email',
     })
 
+    // ASKED ONCE, BECAUSE THIS APP STARTED THE SIGN-IN (#1902): whether to
+    // link usage counts to the account, over the screen, before anything
+    // else. Either answer is final until Safety & privacy changes it, so the
+    // map comes back the moment it is answered.
+    await expect(page.getByRole('heading', { name: 'Check your email' })).toHaveCount(0)
+    await expect(
+      page.getByRole('heading', { name: 'Link your usage to your account?' }),
+    ).toBeVisible()
+    await page.getByRole('button', { name: 'No thanks' }).click()
+    await expect(
+      page.getByRole('heading', { name: 'Link your usage to your account?' }),
+    ).toHaveCount(0)
+
     // SIGNED IN, as the app itself tells it: the code step closes, and the
     // map header's account button (chrome/AccountButton.tsx) names the
     // address Supabase's session carries rather than offering to sign in.
-    await expect(page.getByRole('heading', { name: 'Check your email' })).toHaveCount(0)
     await expect(
       page.getByRole('button', { name: 'Account, signed in as hiker@example.org' }),
     ).toBeVisible()

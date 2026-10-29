@@ -942,9 +942,60 @@ export function SafetyPrivacySettings({
         />
       </label>
       <p className="settings__note">
-        Draws where you are on the map and reads your mile. The fix is used on the device
-        and sent nowhere unless you file a report. Off, the map still works everywhere; it
-        just cannot say where you are on it.
+        Draws where you are on the map and reads your mile. The fix leaves this phone only
+        with a report you file, or sealed inside usage statistics while those are on
+        (below). Off, the map still works everywhere; it just cannot say where you are on
+        it.
+      </p>
+
+      {/* USAGE STATISTICS (#1902, features/EVENTING.md §0), placed here
+          rather than on a page of their own - the maintainer's choice of
+          2026-10-27 (poll 3, frame A) - because the first one depends on the
+          location switch just above it, and the note above now says so.
+
+          The wording is frame A's, approved as drawn. Both notes carry a
+          promise the backend keeps: "sealed as it arrives" is
+          app/core/analytics_seal.py's write-only sealing and "only the
+          rough area ... stays readable" its `area_lat`/`area_lon`, a 0.1-degree
+          square, 8 to 11 km across in this country - said without a number,
+          since a number here would need lib/units.ts to honour miles
+          (corrected after #1903's review: the square was in the clear while
+          the note said nothing could be read; the corrected wording was
+          approved in the maintainer's poll of 2026-10-27), "kept six months" is
+          app/core/analytics_rollup.py, and the running total going with a
+          no or a deletion is routers/preferences.py and
+          core/account_deletion.py. */}
+      <label className="settings__row">
+        <span className="settings__label">Share usage statistics</span>
+        <input
+          type="checkbox"
+          name="measurement_enabled"
+          checked={preferences.measurement_enabled}
+          onChange={(event) => onChange({ measurement_enabled: event.target.checked })}
+        />
+      </label>
+      <p className="settings__note">
+        Counts when you open OurHike, sign in, make or finish a hike plan, view the map,
+        and how long a visit lasts. With location on, your phone's position goes with each
+        count, sealed as it arrives; only the rough area it falls in, a grid square about
+        the size of a town, stays readable. Kept six months. Off stops all of it.
+      </p>
+      <label className="settings__row">
+        <span className="settings__label">Link them to my account</span>
+        <input
+          type="checkbox"
+          name="measurement_linked"
+          checked={
+            preferences.measurement_enabled && preferences.measurement_linked === true
+          }
+          disabled={!preferences.measurement_enabled}
+          onChange={(event) => onChange({ measurement_linked: event.target.checked })}
+        />
+      </label>
+      <p className="settings__note">
+        Adds a code made from your account, so we can see whether hikers come back and
+        finish what they plan. No name or email in it. Keeps a running total for your
+        account; turning this off, or deleting your account, deletes it.
       </p>
 
       <label className="settings__row settings__row--later">

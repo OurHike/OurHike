@@ -2,9 +2,10 @@
 
 `.github/scripts/tracking-issue.js` is what check-deployment.yml,
 check-deployed-app.yml, check-upstream-freshness.yml, smoke-published.yml,
-check-pending-approvals.yml, check-note-anchors.yml, route-disputes.yml and
-backup-database.yml all call to open, update and close their one issue. Before #678 it was four copies
-of about ninety lines, and this file did not exist.
+check-pending-approvals.yml, check-note-anchors.yml, route-disputes.yml,
+analytics-rollup.yml and backup-database.yml all call to open, update and
+close their one issue. Before #678 it was four copies of about ninety lines,
+and this file did not exist.
 
 The roster below has grown twice since and been wrong once: check-note-anchors
 (#878) called the shared module correctly and was never added here, so for two
@@ -377,6 +378,7 @@ def test_every_monitor_uses_the_shared_module():
             "check-pending-approvals.yml",
             "check-note-anchors.yml",
             "route-disputes.yml",
+            "analytics-rollup.yml",
             "backup-database.yml",
         )
         if "scripts/tracking-issue.js" not in (workflows / name).read_text(encoding="utf-8")

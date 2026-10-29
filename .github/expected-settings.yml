@@ -396,6 +396,34 @@ settings:
       way, because that one is baked from a reviewed file in git and needs no
       credential at all.
 
+  PRODUCTION_ANALYTICS_DATABASE_URL:
+    where: secret
+    required: false
+    why: >-
+      Production's Postgres, for analytics-rollup.yml to close each month of
+      usage events into analytics_monthly and delete raw events past six
+      months (#1902). It connects as `ourhike_analytics_rollup`, whose grants
+      features/EVENTING.md writes out: every usage column EXCEPT the sealed
+      one, plus the monthly tables - so the one scheduled job holding a
+      production credential for usage data cannot read a position or an
+      account even by mistake. Tenant-qualified username, exactly as the
+      conditions reader's entry above explains. Optional because unset is the
+      current state and the job warns and skips. Until it is set no month
+      closes and nothing is deleted at six months - so POST /usage-events
+      also collects nothing: with no rollup heartbeat it turns every batch
+      away as `paused` (EVENTING.md §0, Retention).
+
+  UA_ANALYTICS_DATABASE_URL:
+    where: secret
+    required: false
+    why: >-
+      UA's Postgres, the same role and grants as the production entry above,
+      for the rollup's UA job. Optional because unset is the current state:
+      UA's Supabase project exists (#371 - Stand up the UA environment, so a
+      candidate has somewhere to wait, closed 2026-08-13), but nobody has
+      created the rollup's role in it or set this secret, and the job warns
+      and skips until somebody does.
+
   BACKUP_DATABASE_URL:
     where: secret
     required: false

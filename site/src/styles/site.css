@@ -2414,6 +2414,18 @@ a:hover {
   fill: var(--warning);
 }
 
+/* A fixed limit (the database's size): a dashed rule in the colour of the
+ * pill it would raise, warning or failed. */
+.dq-key__limit {
+  width: 18px;
+  height: 0;
+  border-top: 2px dashed var(--warning);
+}
+
+.dq-key__limit--fail {
+  border-top-color: var(--danger);
+}
+
 .dq-chart {
   position: relative;
   border-radius: 8px;
@@ -2455,6 +2467,16 @@ a:hover {
   .dq-chart__band {
     fill-opacity: 0.3;
   }
+}
+
+.dq-chart__limit {
+  stroke: var(--warning);
+  stroke-width: 1.5;
+  stroke-dasharray: 6 4;
+}
+
+.dq-chart__limit--fail {
+  stroke: var(--danger);
 }
 
 .dq-chart__line {

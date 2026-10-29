@@ -27,6 +27,15 @@ database error by its names alone.
 @unvalidated: the 401-and-5xx filter on the request line is picked, not
 measured. It is the two classes the issue names as invisible; whether 403, 429
 or a slow 200 belong beside them is a question for the first week of real logs.
+
+AND ONE LINE UVICORN WRITES IS DROPPED. Uvicorn's access log (the
+`uvicorn.access` logger) opens every line with the client's address. For
+`POST /usage-events` that is an IP beside the moment a phone found signal -
+exactly what that endpoint promises never to keep (app/routers/analytics.py,
+and the Privacy Policy: no IP is recorded with these counts) - so
+`DropUnloggedPaths` removes those lines before any handler sees them. What it
+cannot reach, said rather than implied: the host's own edge, which may log
+the address of every request it forwards.
 """
 
 from __future__ import annotations
@@ -72,13 +81,39 @@ class JsonFormatter(logging.Formatter):
         return json.dumps(line, default=str)
 
 
+# Requests the access log must not record, by path (the module docstring says why).
+UNLOGGED_PATHS = ("/usage-events",)
+
+
+class DropUnloggedPaths(logging.Filter):
+    """Drop Uvicorn's access line for a request to one of `UNLOGGED_PATHS`.
+
+    Uvicorn 0.54 (requirements.txt) logs `'%s - "%s %s HTTP/%s" %d'` with the
+    client address, method, path-with-query, HTTP version and status as the
+    record's args, so the path is the third. A record of any other shape is
+    let through untouched: this decides about one line, not about logging.
+    """
+
+    def filter(self, record: logging.LogRecord) -> bool:
+        args = record.args if isinstance(record.args, tuple) else ()
+        if len(args) < 3:
+            return True
+        path = str(args[2]).split("?", 1)[0]
+        return not any(path == unlogged or path.startswith(f"{unlogged}/") for unlogged in UNLOGGED_PATHS)
+
+
 def configure_logging() -> None:
-    """Attach the JSON handler to the `app` logger, once.
+    """Attach the JSON handler to the `app` logger, and the access-log filter to Uvicorn's, once each.
 
     Idempotent because the module that calls it is imported by every test.
     `propagate` is off so a line is not also written by the root handler
-    Uvicorn installs, in a second format.
+    Uvicorn installs, in a second format. The filter sits on the logger, not
+    a handler, so it holds whatever handlers Uvicorn's own logging config
+    attaches - and that config removes handlers, never filters.
     """
+    access = logging.getLogger("uvicorn.access")
+    if not any(isinstance(existing, DropUnloggedPaths) for existing in access.filters):
+        access.addFilter(DropUnloggedPaths())
     if any(isinstance(handler.formatter, JsonFormatter) for handler in logger.handlers):
         return
     handler = logging.StreamHandler(sys.stderr)

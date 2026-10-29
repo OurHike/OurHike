@@ -62,7 +62,11 @@ def stood_behind() -> ColumnElement[bool]:
       the sync case, the one that used to write neither).
     - **An admin confirmed it at an organization a maintainer wrote**:
       `Club.maintainer_written`, set by the loader and by nothing
-      self-service. It used to be read off `created_by` being null, and
+      self-service, at an organization nobody has since proven a domain at
+      (`Club.verified_by`). Claiming and approving clear the flag, but code
+      from before the flag existed, serving against the migrated schema,
+      would claim without clearing it - and a claimed organization always
+      has `verified_by`. It used to be read off `created_by` being null, and
       account deletion nulls `created_by`, so a registrant deleting their own
       account made their organization "maintainer-written" (#1913 - Deleting
       the registrant's account turns a self-registered organization into a
@@ -85,6 +89,7 @@ def stood_behind() -> ColumnElement[bool]:
     confirmed_at_a_maintainer_written_org = and_(
         MaintainerAssignment.confirmed_at.isnot(None),
         Club.maintainer_written.is_(True),
+        Club.verified_by.is_(None),
     )
     return or_(loaded_from_a_file, confirmed_at_a_maintainer_written_org)
 

@@ -513,6 +513,10 @@ def approve_seat(
         club.state = OrgState.claimed
         club.verified_by = VerifiedBy.email
         _revoke_the_registrants_unverified_seat(db, club, verified_by=current_user.id)
+        # As in `claim_org`, and after the revocation, which reads it: from
+        # here the admins are whoever proved the domain, which no maintainer
+        # reviewed.
+        club.maintainer_written = False
     db.commit()
     return _with_admins(db, club)
 
@@ -629,16 +633,29 @@ def claim_org(
     # After the revocation above, which reads it. From here the admins are
     # whoever proved the domain, which no maintainer reviewed.
     club.maintainer_written = False
-    db.add(
-        OrgAdmin(
-            club_id=club.id,
-            person_id=current_user.id,
-            title=payload.title,
-            is_codeowner=True,
-            invited_at=now,
-            approved_at=now,
+    # A domain holder a held registration named already has a seat: signing
+    # in seated them from the invitation, and the revocation above keeps the
+    # seat of whoever is proving the domain. A second row was a 500
+    # (`uq_club_admins_club_person`), found by the 2026-10-29 review; claiming
+    # is their agreement, as approving would have been.
+    seat = db.query(OrgAdmin).filter(OrgAdmin.club_id == club.id, OrgAdmin.person_id == current_user.id).one_or_none()
+    if seat is None:
+        db.add(
+            OrgAdmin(
+                club_id=club.id,
+                person_id=current_user.id,
+                title=payload.title,
+                is_codeowner=True,
+                invited_at=now,
+                approved_at=now,
+            )
         )
-    )
+    else:
+        seat.title = payload.title or seat.title
+        seat.is_codeowner = True
+        seat.approved_at = seat.approved_at or now
+        seat.declined_at = None
+        seat.decline_reason = None
     db.commit()
     return _with_admins(db, club)
 

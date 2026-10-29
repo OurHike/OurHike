@@ -22,7 +22,7 @@ from datetime import date
 from app.models.club import Club
 from app.models.maintainer_assignment import MaintainerAssignment
 from app.models.profile import Profile, Role
-from app.models.report import ReportType, Visibility
+from app.models.report import Report, ReportType, Visibility
 from tests.factories import make_profile
 from tests.tokens import auth_headers
 
@@ -577,6 +577,29 @@ def test_a_name_the_record_does_not_stand_behind_reaches_nobodys_inbox(client, d
 
     assert filed["maintainer_id"] is None
     assert _inbox(client, stranger) == []
+
+
+def test_a_stored_thanks_naming_somebody_the_record_does_not_stand_behind_is_not_delivered(client, db_session):
+    """The delivery half of the rule above. Writing a thanks drops a name the
+    record does not stand behind, but a row stored before that rule shipped -
+    or by an instance still running the old code during a rolling deploy -
+    carries whatever account id its hiker sent. `GET /reports/thanks` used to
+    deliver on `Report.maintainer_id` alone, so the review of #1926 got a
+    row like this one into the named account's inbox."""
+    stranger = make_profile(db_session)
+    db_session.add(
+        Report(
+            reporter_id=make_profile(db_session).id,
+            type=ReportType.thanks,
+            reporter_type="thru",
+            visibility=Visibility.club_only,
+            maintainer_id=stranger.id,
+            note="I know where you hike.",
+        )
+    )
+    db_session.commit()
+
+    assert _inbox(client, stranger.id) == []
 
 
 def test_a_dismissed_thanks_leaves_every_inbox_it_was_delivered_to(client, db_session):

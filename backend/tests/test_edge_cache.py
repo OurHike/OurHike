@@ -11,6 +11,7 @@ routes send.
 import ast
 from pathlib import Path
 
+from fastapi import HTTPException
 from fastapi.routing import APIRoute
 from fastapi.testclient import TestClient
 from starlette.applications import Starlette
@@ -159,6 +160,24 @@ def test_an_error_on_a_shared_route_is_never_marked_shareable_so_the_edge_never_
 
     assert response.status_code == 500
     assert "public" not in response.headers.get("cache-control", "")
+
+
+def test_an_http_error_on_a_shared_route_is_marked_no_store(db_engine):
+    """An HTTPException is answered inside NoStoreByDefaultMiddleware, so it
+    leaves `no-store` on the error. (A crash's 500 is sent outside it and
+    carries no Cache-Control, which shared_at_edge's docstring covers.)"""
+
+    def database_paused():
+        raise HTTPException(status_code=503, detail="the database is paused")
+
+    app.dependency_overrides[get_db] = database_paused
+    try:
+        response = TestClient(app).get("/closures")
+    finally:
+        app.dependency_overrides.pop(get_db, None)
+
+    assert response.status_code == 503
+    assert response.headers["cache-control"] == NO_STORE
 
 
 def test_no_store_by_default_keeps_a_policy_the_route_already_set():

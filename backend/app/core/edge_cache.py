@@ -84,9 +84,19 @@ NO_STORE = "no-store"
 def shared_at_edge(request: Request, response: Response) -> None:
     """Route dependency: let the edge keep this answer, unless the caller signed in.
 
-    Headers set here reach a normal return only. An error the route raises is
-    answered without them and falls through to NoStoreByDefaultMiddleware, so
-    a 500 or a 503 is never kept for five minutes in front of every hiker.
+    Headers set here reach a normal return only, so no error is ever marked
+    shareable. Which header an error does carry depends on where it is
+    answered. An HTTPException the route or a dependency raises (a 404, a 503)
+    is answered inside NoStoreByDefaultMiddleware and gets `no-store`. A crash
+    is not: the 500 for an unhandled exception is sent by RequestIdMiddleware,
+    outside it (app/core/logs.py), and carries no Cache-Control at all
+    (measured 2026-10-29 with `get_db` raising, as tests/test_edge_cache.py
+    does). LAUNCH_CHECKLIST.md §6's cache rule still never keeps that 500:
+    its Edge TTL is "Use cache-control header if present, bypass cache if
+    not", which Cloudflare's docs describe as "If not, skip caching entirely"
+    (developers.cloudflare.com/cache/how-to/cache-rules/settings, read
+    2026-10-29). A rule that ignores the origin's header would keep it, which
+    is one more reason §6 forbids one.
     """
     if "authorization" in request.headers:
         response.headers["Cache-Control"] = PRIVATE

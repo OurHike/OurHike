@@ -39,6 +39,7 @@ DISTRIBUTION_OF: dict[str, str] = {
     "alembic": "alembic",
     "boto3": "boto3",
     "botocore": "botocore",
+    "cryptography": "cryptography",
     "dotenv": "python-dotenv",
     "fastapi": "fastapi",
     "httpcore": "httpcore",

@@ -13,6 +13,11 @@
 
 import { shortDate } from '../lib/hikeText'
 import '../screens/today.css'
+// For `.plan__primary` on "Move them to today". This card is on Today's first
+// frame, and it used to get the rule only because chrome/DayHikesHere.tsx and
+// chrome/SectionPlanner.tsx imported plan.css eagerly; both load on first use
+// since #1903, which would have drawn this button unstyled until they did.
+import '../screens/plan.css'
 
 export interface WelcomeBackCardProps {
   /** How many dated days are not yet walked - behind today included, since

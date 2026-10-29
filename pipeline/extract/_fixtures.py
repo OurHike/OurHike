@@ -128,6 +128,7 @@ from extract._kinds import (
     ArcgisLayer,
     AtcTrailUpdatePages,
     ConditionsQuery,
+    DatabaseSize,
     FeedNotices,
     GuidePages,
     NwsAlerts,
@@ -143,6 +144,7 @@ from extract._kinds import (
 )
 from extract._ogc import JsonFeatures, OgcFeatures
 from extract._pages_points import PagePoints
+from lib.database_size import DATABASE_SIZE_SQL
 from lib.nws_alerts import ALERTS_URL as NWS_ALERTS_URL
 from lib.socrata import dataset_url
 from lib.work_projects import FIXTURE_STAND_IN as WORK_PROJECTS_STAND_IN
@@ -162,6 +164,8 @@ CONDITIONS_DIR = "conditions"
 GUIDE_PAGES_DIR = "guide_pages"
 NWS_FIXTURE = "nws_alerts.json"
 POSTGRES_FIXTURE = "ourhike_postgres.json"
+# The entry of that file answering lib/database_size.py's DATABASE_SIZE_SQL, which DatabaseSize sends.
+DATABASE_SIZE_KEY = "database_size"
 # A website's pages, by the registry key they are read for: `{"answers": {url:
 # {"content_type": ..., "body": ...}}}`, served as the site would serve them.
 TEXT_FIXTURES = {"atc_trail_updates": "atc_trail_updates.json"}
@@ -297,12 +301,13 @@ class FixtureCursor:
 
 
 class FixtureConnection:
-    """OurHike's Postgres for fixture mode: answers the SQL ConditionsQuery sends from make_dbt_fixtures.py's rows.
+    """OurHike's Postgres for fixture mode: answers the SQL ConditionsQuery and DatabaseSize send from make_dbt_fixtures.py's rows.
 
     Only the connection is a stand-in. The SQL it recognises is the extract's
     own text (export_conditions.py's catalog questions and PUBLIC_*_SQL,
-    wrapped as _kinds.py wraps them), and anything else raises, so a change to
-    what the extract asks fails here rather than passing on a canned answer.
+    wrapped as _kinds.py wraps them, and lib/database_size.py's
+    DATABASE_SIZE_SQL), and anything else raises, so a change to what the
+    extract asks fails here rather than passing on a canned answer.
     """
 
     def __init__(self, document: dict):
@@ -341,6 +346,12 @@ class FixtureConnection:
             return [], [(catalog[text],)]
         if text == "SET TRANSACTION ISOLATION LEVEL REPEATABLE READ":
             return [], []
+        if text == DATABASE_SIZE_SQL.strip():
+            # As tuples, psycopg's default rows, which DatabaseSize reads: it asks for no dict_row.
+            if DATABASE_SIZE_KEY not in self.document:
+                raise RuntimeError(f"fixture mode's Postgres has no answer for {text[:80]!r}")
+            artifact = self.document[DATABASE_SIZE_KEY]
+            return self._description(artifact), [tuple(row[name] for name, _ in artifact["columns"]) for row in artifact["rows"]]
         for prefix, suffix, kind in (
             ("SELECT * FROM (", ") AS public_rows LIMIT 0", "describe"),
             ("SELECT count(*) FROM (", ") AS public_rows", "count"),
@@ -603,6 +614,11 @@ def fixture_resources(raw_dir: Path) -> tuple[list, FixtureAdapter]:
         if isinstance(resource, ConditionsQuery):
             # Served by FixtureConnection in build(); an artifact the file does not answer stays out.
             if postgres is not None and resource.key in postgres:
+                chosen.append(resource)
+            continue
+        if isinstance(resource, DatabaseSize):
+            # The same connection, and the same rule: a file with no size answer leaves the size out.
+            if postgres is not None and DATABASE_SIZE_KEY in postgres:
                 chosen.append(resource)
             continue
         if isinstance(resource, PublishedHikes):

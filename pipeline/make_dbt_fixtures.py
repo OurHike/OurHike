@@ -2435,7 +2435,8 @@ def _nynjtc_trail_alerts() -> dict:
 
 
 def _ourhike_postgres() -> dict:
-    """What OurHike's Postgres answers for each of export_conditions.py's queries: the columns and their types, then the rows.
+    """What OurHike's Postgres answers for each of export_conditions.py's queries, and for lib/database_size.py's: the
+    columns and their types, then the rows.
 
     The rows are the QUERY's answer, after its predicate and window: fixture
     mode stands in for the connection, not for the SQL (extract/_fixtures.py
@@ -2625,6 +2626,12 @@ def _ourhike_postgres() -> dict:
             "rows": [
                 {"poi_id": "atc_springs:fixture-dry", "accounts": 2, "latest_at": "2026-09-24T18:00:00", "maintainer_said": False}
             ],
+        },
+        # lib/database_size.py's DATABASE_SIZE_SQL, whose `sum` Postgres answers as numeric. 150 MB, well under
+        # the storage check's 400 MB warning, so the fixture build's check passes and charts one point.
+        "database_size": {
+            "columns": [["coalesce", "numeric"]],
+            "rows": [{"coalesce": 150 * 1024 * 1024}],
         },
     }
 

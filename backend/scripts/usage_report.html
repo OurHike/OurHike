@@ -1,0 +1,697 @@
+<!doctype html>
+<!--
+  The usage report's page (#1902). scripts/usage_report.py fills in the data
+  block below and writes the result as one self-contained file: no network,
+  no fonts fetched, nothing to install. Every figure arrives already masked
+  (app/core/analytics_report.py); this script only draws, filters and sums.
+-->
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>OurHike usage report</title>
+<style>
+:root{
+  color-scheme: light;
+  /* .claude/OurHike Design System/tokens/colors.css */
+  --pine-900:#122016; --pine-700:#284029; --forest-600:#355c3a; --forest-500:#47784b;
+  --moss-400:#6b9463; --moss-300:#96b98c; --sage-200:#c7dabd; --sage-100:#e3ecda;
+  --stone-900:#2b2620; --stone-700:#5a5346; --stone-500:#8a8271; --stone-300:#c3baa4; --stone-150:#e4ddca;
+  --paper-100:#f7f3e9; --paper-0:#fffdf7; --white:#ffffff;
+  --blaze-orange:#c1611a; --blaze-orange-dark:#994e15; --blaze-yellow:#d69a2d; --blaze-blue:#1c6ea4;
+  --fg-1:var(--stone-900); --fg-2:var(--stone-700); --fg-3:var(--stone-500);
+  --border-1:var(--stone-150); --border-2:var(--stone-300);
+  --font-display:'Bitter',ui-serif,Georgia,serif;
+  --font-body:'Public Sans',ui-sans-serif,system-ui,-apple-system,'Segoe UI',sans-serif;
+  --font-mono:'IBM Plex Mono',ui-monospace,SFMono-Regular,Menlo,monospace;
+  --shadow-card:0 1px 2px rgba(20,19,15,0.06),0 4px 12px rgba(20,19,15,0.07);
+  /* Chart slots, checked 2026-10-27 with the dataviz validator on white:
+     categorical blaze-orange, blaze-blue, trail-green (#3f8f4a is derived - no
+     OurHike green clears the 0.10 chroma floor); ordinal moss-300 > forest-500
+     > pine-700. */
+  --cat-1:#c1611a; --cat-2:#1c6ea4; --cat-3:#3f8f4a;
+  --ord-1:#96b98c; --ord-2:#6b9463; --ord-3:#47784b; --ord-4:#284029;
+  --grid:#ece6d6;
+}
+*{box-sizing:border-box}
+html,body{background:var(--paper-100)}
+body{margin:0;color:var(--fg-1);font-family:var(--font-body);font-size:15px;line-height:1.5}
+.wrap{max-width:1180px;margin:0 auto;padding:0 16px}
+header.top{background:linear-gradient(135deg,var(--pine-900),var(--pine-700));color:var(--paper-0)}
+header.top .wrap{display:flex;flex-wrap:wrap;gap:14px 20px;align-items:center;justify-content:space-between;padding-top:18px;padding-bottom:18px}
+.lockup{display:flex;align-items:center;gap:10px}
+.lockup .word{font-weight:800;letter-spacing:-0.02em;font-size:22px}
+.titles{flex:1 1 280px}
+.titles h1{font-family:var(--font-display);font-weight:600;font-size:1.35rem;margin:0}
+.titles .sub{color:var(--sage-200);font-size:12.5px}
+.pill{display:inline-flex;align-items:center;gap:6px;background:rgba(255,253,247,0.12);border:1px solid rgba(199,218,189,0.45);border-radius:999px;padding:3px 11px;font-size:12.5px}
+.pill i{width:8px;height:8px;border-radius:50%;display:inline-block;background:var(--moss-300)}
+.pill.provisional i{background:var(--blaze-yellow)}
+.filters{position:sticky;top:0;z-index:5;background:rgba(247,243,233,0.96);backdrop-filter:blur(4px);border-bottom:1px solid var(--border-2)}
+.filters .wrap{display:flex;flex-wrap:wrap;gap:10px 18px;align-items:end;padding-top:10px;padding-bottom:10px}
+.filters label{display:flex;flex-direction:column;font-size:11.5px;color:var(--fg-2);font-weight:600;letter-spacing:.02em}
+.filters select{margin-top:3px;font:inherit;font-size:14px;font-weight:500;color:var(--fg-1);background:var(--white);border:1px solid var(--border-2);border-radius:8px;padding:6px 30px 6px 10px;min-width:130px}
+.filters select:focus{outline:none;box-shadow:0 0 0 3px rgba(71,120,75,0.35);border-color:var(--forest-500)}
+.filters .reset{font:inherit;font-size:13px;color:var(--forest-600);background:none;border:0;padding:8px 2px;cursor:pointer;text-decoration:underline}
+.filters .scope{margin-left:auto;font-size:12.5px;color:var(--fg-2);align-self:center}
+main{padding:16px 0 40px}
+.tiles{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:10px}
+@media (max-width:900px){.tiles{grid-template-columns:repeat(2,minmax(0,1fr))}}
+.tile{background:var(--white);border:1px solid var(--border-1);border-radius:12px;box-shadow:var(--shadow-card);padding:11px 13px;min-width:0}
+.tile.hero{grid-row:span 2;border-top:4px solid var(--forest-600);display:flex;flex-direction:column;justify-content:center}
+@media (max-width:900px){.tile.hero{grid-row:auto;grid-column:1/-1}}
+.tile .lab{font-size:12px;color:var(--fg-2)}
+.tile .val{font-size:26px;font-weight:600;line-height:1.15;margin-top:2px}
+.tile.hero .val{font-size:52px;line-height:1.05}
+.tile .delta{font-size:12px;color:var(--fg-2);margin-top:2px}
+.tile .val.masked,.masked{color:var(--fg-3);font-style:italic}
+.panels{display:grid;grid-template-columns:3fr 2fr;gap:12px;margin-top:12px}
+@media (max-width:900px){.panels{grid-template-columns:1fr}}
+.panel{background:var(--white);border:1px solid var(--border-1);border-radius:12px;box-shadow:var(--shadow-card);padding:12px 14px 14px;min-width:0}
+.panel h2{font-family:var(--font-display);color:var(--pine-900);font-size:16px;margin:0}
+.panel .sub{font-size:12px;color:var(--fg-3);margin:2px 0 8px}
+.panel svg{display:block;width:100%;height:auto}
+.panel .note{font-size:12px;color:var(--fg-3);margin-top:6px}
+.legend{display:flex;flex-wrap:wrap;gap:12px;font-size:12px;color:var(--fg-2);margin-top:6px}
+.legend i{display:inline-block;width:10px;height:10px;border-radius:2px;margin-right:4px;vertical-align:-1px}
+table{border-collapse:collapse;width:100%;font-size:13px}
+.scroll{overflow-x:auto;margin:0 -2px}
+th{text-align:left;font-size:11.5px;color:var(--pine-700);background:var(--sage-100);padding:6px 8px;font-weight:600}
+td{padding:6px 8px;border-top:1px solid var(--border-1)}
+td.n,th.n{text-align:right;font-variant-numeric:tabular-nums;white-space:nowrap}
+td:first-child{white-space:nowrap}
+tr.pick{cursor:pointer}
+tr.pick:hover td{background:var(--paper-0)}
+td .bar{display:inline-block;height:9px;border-radius:0 4px 4px 0;background:var(--forest-600);vertical-align:middle;margin-left:6px}
+.heat td{text-align:center;font-variant-numeric:tabular-nums;border:2px solid var(--white);padding:6px 2px}
+.heat th{text-align:center;background:none;color:var(--fg-3);font-weight:500}
+.heat th.row{text-align:left}
+details summary{cursor:pointer;font-size:12px;color:var(--forest-600);margin-top:6px}
+.empty{background:var(--white);border:1px dashed var(--border-2);border-radius:12px;padding:28px;text-align:center;color:var(--fg-2)}
+footer.foot{border-top:1px solid var(--border-2);background:var(--paper-0);font-size:12px;color:var(--fg-3)}
+footer.foot .wrap{display:flex;flex-wrap:wrap;gap:6px 20px;justify-content:space-between;padding-top:12px;padding-bottom:16px}
+.warn{color:var(--blaze-orange-dark);font-weight:600}
+.panel.wide{grid-column:1/-1}
+.qgrid{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:10px}
+@media (max-width:900px){.qgrid{grid-template-columns:repeat(2,minmax(0,1fr))}}
+.qcell{border:1px solid var(--border-1);border-radius:10px;padding:8px 9px 6px;min-width:0}
+.qcell .qhead{display:flex;flex-wrap:wrap;justify-content:space-between;align-items:center;gap:4px 6px;font-size:12.5px;font-weight:600;color:var(--fg-1)}
+.qslice{display:block;font-size:11.5px;color:var(--fg-3);font-weight:400}
+.chip{font-size:11px;font-weight:600;border-radius:999px;padding:1px 8px;white-space:nowrap}
+.chip.ok{background:var(--sage-100);color:var(--pine-700)}
+.chip.low,.chip.zero,.chip.broken,.chip.warn{background:#f6e3d3;color:var(--blaze-orange-dark)}
+.chip.high{background:#dcebf5;color:#155580}
+.chip.learning,.chip.quiet{background:var(--paper-100);color:var(--fg-2)}
+.panel h2.part{font-size:14px;margin-top:16px}
+.panel h2.part.first{margin-top:6px}
+.sgrid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:10px}
+@media (max-width:900px){.sgrid{grid-template-columns:minmax(0,1fr)}}
+.scap{font-size:11.5px;color:var(--fg-2);margin-top:4px;line-height:1.4}
+</style>
+</head>
+<body>
+<header class="top">
+  <div class="wrap">
+    <div class="lockup">
+      <!-- The 4a dual-tone lockup, as .claude/OurHike Design System/assets/logo-icon.svg draws it. -->
+      <svg width="40" height="40" viewBox="0 0 96 96" aria-hidden="true" style="border-radius:8px;overflow:hidden;flex-shrink:0">
+        <defs>
+          <linearGradient id="ourhike-icon-split" x1="0" y1="0" x2="1" y2="1"><stop offset="50%" stop-color="#355c3a"/><stop offset="50%" stop-color="#5a5346"/></linearGradient>
+          <clipPath id="ourhike-icon-round"><rect width="96" height="96" rx="20"/></clipPath>
+          <filter id="ourhike-blaze-jag" x="-40%" y="-15%" width="180%" height="130%"><feTurbulence type="fractalNoise" baseFrequency="0.03 0.09" numOctaves="2" seed="7" result="n"/><feDisplacementMap in="SourceGraphic" in2="n" scale="10" xChannelSelector="R" yChannelSelector="G"/></filter>
+        </defs>
+        <g clip-path="url(#ourhike-icon-round)"><rect width="96" height="96" fill="url(#ourhike-icon-split)"/><svg x="31" y="8" width="34" height="80" viewBox="0 0 40 100"><rect x="10" y="8" width="20" height="84" rx="10" fill="#ffffff" filter="url(#ourhike-blaze-jag)"/></svg></g>
+      </svg>
+      <span class="word">OurHike</span>
+    </div>
+    <div class="titles">
+      <h1 id="title">Usage report</h1>
+      <div class="sub" id="subtitle"></div>
+    </div>
+    <span class="pill" id="status"><i></i><span></span></span>
+  </div>
+</header>
+
+<nav class="filters" aria-label="Filters">
+  <div class="wrap">
+    <label>From <select id="from"></select></label>
+    <label>To <select id="to"></select></label>
+    <label>Club <select id="club"></select></label>
+    <button class="reset" id="reset" type="button">Reset</button>
+    <span class="scope" id="scope"></span>
+  </div>
+</nav>
+
+<main>
+  <div class="wrap" id="root"></div>
+</main>
+
+<footer class="foot">
+  <div class="wrap">
+    <span id="generated"></span>
+    <span id="floor"></span>
+  </div>
+</footer>
+
+<script type="application/json" id="usage-data">/*__USAGE_DATA__*/</script>
+<script>
+(function () {
+  'use strict';
+  var DATA = JSON.parse(document.getElementById('usage-data').textContent);
+  var ALL = '*';
+  var FLOOR = DATA.floor;
+  var MONTHS = DATA.months.map(function (m) { return m.month; });
+  var MONTH_INFO = {};
+  DATA.months.forEach(function (m) { MONTH_INFO[m.month] = m; });
+  var MASKED = {};
+  DATA.masked.forEach(function (key) { MASKED[key] = true; });
+  var NOT_RECORDED = '_unrecorded';
+  var STORE = 'ourhike-usage-report-filters';
+
+  var state = { from: MONTHS[Math.max(0, MONTHS.length - 12)], to: MONTHS[MONTHS.length - 1], club: ALL };
+  try {
+    var saved = JSON.parse(window.localStorage.getItem(STORE) || 'null');
+    if (saved && MONTHS.indexOf(saved.from) >= 0 && MONTHS.indexOf(saved.to) >= 0) {
+      state.from = saved.from; state.to = saved.to;
+      if (saved.club === ALL || DATA.clubs.indexOf(saved.club) >= 0) state.club = saved.club;
+    }
+  } catch (e) { /* storage unavailable: the defaults stand */ }
+
+  // ---- reading figures ---------------------------------------------------
+  function key(month, club, platform) { return month + '|' + (club || ALL) + '|' + (platform || ALL); }
+
+  // {value, masked}: a masked figure has value null; a figure never computed is 0.
+  function figure(month, metric, club, platform) {
+    var k = key(month, club, platform);
+    if (MASKED[k]) return { value: null, masked: true };
+    var c = DATA.cells[k];
+    if (!c || c[metric] === undefined) return { value: 0, masked: false };
+    if (c[metric] === null) return { value: null, masked: true };
+    return { value: c[metric], masked: false };
+  }
+
+  function rangeMonths() {
+    var a = MONTHS.indexOf(state.from), b = MONTHS.indexOf(state.to);
+    if (a > b) { var t = a; a = b; b = t; }
+    return MONTHS.slice(a, b + 1);
+  }
+
+  // Additive figures over the range. Masked months are left out, never
+  // guessed at, and counted so the tile can say so.
+  function rangeSum(metric, club, platform) {
+    var sum = 0, excluded = 0;
+    rangeMonths().forEach(function (m) {
+      var f = figure(m, metric, club, platform);
+      if (f.masked) excluded += 1; else sum += f.value || 0;
+    });
+    return { value: sum, excluded: excluded };
+  }
+
+  // ---- formatting ----------------------------------------------------------
+  function fmt(n, decimals) {
+    if (n === null || n === undefined) return '<' + FLOOR;
+    if (Math.abs(n) >= 10000) return (n / 1000).toFixed(n >= 100000 ? 0 : 1).replace(/\.0$/, '') + 'K';
+    var d = decimals === undefined ? (Number.isInteger(n) ? 0 : 1) : decimals;
+    return n.toLocaleString('en-US', { minimumFractionDigits: d, maximumFractionDigits: d });
+  }
+  function pct(n) { return n === null || n === undefined ? '<' + FLOOR : Math.round(n * 100) + '%'; }
+  var MONTH_NAMES = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+  function monthName(m, long) {
+    var parts = m.split('-');
+    var name = MONTH_NAMES[parseInt(parts[1], 10) - 1];
+    return long ? name + ' ' + parts[0] : name;
+  }
+  function dayName(iso) {
+    var p = iso.split('-');
+    return parseInt(p[2], 10) + ' ' + MONTH_NAMES[parseInt(p[1], 10) - 1] + ' ' + p[0];
+  }
+  function clubName(id) { return id === ALL ? 'All clubs' : id === NOT_RECORDED ? 'Club not recorded' : id; }
+  function esc(s) { return String(s).replace(/[&<>"]/g, function (c) { return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]; }); }
+  function excludedNote(r) { return r.excluded ? ' · ' + r.excluded + ' month' + (r.excluded > 1 ? 's' : '') + ' under ' + FLOOR + ' left out' : ''; }
+
+  // ---- filters -------------------------------------------------------------
+  function fillSelect(id, values, label, selected) {
+    var select = document.getElementById(id);
+    select.innerHTML = values.map(function (v) {
+      return '<option value="' + esc(v) + '"' + (v === selected ? ' selected' : '') + '>' + esc(label(v)) + '</option>';
+    }).join('');
+  }
+  function remember() { try { window.localStorage.setItem(STORE, JSON.stringify(state)); } catch (e) { /* fine */ } }
+  function bindFilters() {
+    fillSelect('from', MONTHS, function (m) { return monthName(m, true); }, state.from);
+    fillSelect('to', MONTHS, function (m) { return monthName(m, true); }, state.to);
+    fillSelect('club', [ALL].concat(DATA.clubs), clubName, state.club);
+    ['from', 'to', 'club'].forEach(function (id) {
+      document.getElementById(id).addEventListener('change', function (e) { state[id] = e.target.value; remember(); render(); });
+    });
+    document.getElementById('reset').addEventListener('click', function () {
+      state = { from: MONTHS[Math.max(0, MONTHS.length - 12)], to: MONTHS[MONTHS.length - 1], club: ALL };
+      remember(); bindFilters(); render();
+    });
+  }
+
+  // ---- pieces --------------------------------------------------------------
+  function tile(label, f, delta, hero) {
+    var masked = f.value === null;
+    return '<div class="tile' + (hero ? ' hero' : '') + '"><div class="lab">' + esc(label) + '</div>' +
+      '<div class="val' + (masked ? ' masked' : '') + '">' + esc(fmt(f.value)) + '</div>' +
+      (delta ? '<div class="delta">' + esc(delta) + '</div>' : '') + '</div>';
+  }
+
+  function trendSvg(club) {
+    var ms = rangeMonths();
+    var W = 600, H = 230, L = 44, R = 8, T = 22, B = 30;
+    var values = ms.map(function (m) { return figure(m, 'devices_active', club); });
+    var max = Math.max.apply(null, values.map(function (f) { return f.value || 0; }).concat([FLOOR]));
+    var step = niceStep(max);
+    var top = Math.ceil(max / step) * step;
+    var y = function (v) { return T + (H - T - B) * (1 - v / top); };
+    var band = (W - L - R) / ms.length;
+    var bw = Math.min(24, band * 0.6);
+    var out = ['<svg viewBox="0 0 ' + W + ' ' + H + '" role="img" aria-label="Active devices by month, ' + esc(clubName(club)) + '">',
+      '<defs><pattern id="hatch" width="6" height="6" patternUnits="userSpaceOnUse" patternTransform="rotate(45)"><rect width="6" height="6" fill="#e3ecda"/><line x1="0" y1="0" x2="0" y2="6" stroke="#355c3a" stroke-width="2"/></pattern></defs>'];
+    for (var t = 0; t <= top; t += step) {
+      out.push('<line x1="' + L + '" x2="' + (W - R) + '" y1="' + y(t) + '" y2="' + y(t) + '" stroke="' + (t === 0 ? '#c3baa4' : '#ece6d6') + '"/>');
+      out.push('<text x="' + (L - 6) + '" y="' + (y(t) + 4) + '" text-anchor="end" font-size="11" fill="#8a8271">' + fmt(t, 0) + '</text>');
+    }
+    var peak = -1, peakAt = -1;
+    values.forEach(function (f, i) { if (f.value !== null && f.value > peak) { peak = f.value; peakAt = i; } });
+    ms.forEach(function (m, i) {
+      var f = values[i], x = L + band * i + (band - bw) / 2, cx = x + bw / 2;
+      var provisional = MONTH_INFO[m].status === 'provisional';
+      var title = monthName(m, true) + ': ' + fmt(f.value) + (provisional ? ' (provisional)' : '');
+      if (f.value === null) {
+        out.push('<rect x="' + x + '" y="' + (y(0) - 3) + '" width="' + bw + '" height="3" fill="#c3baa4"><title>' + esc(title) + '</title></rect>');
+        out.push('<text x="' + cx + '" y="' + (y(0) - 8) + '" text-anchor="middle" font-size="10" fill="#8a8271">&lt;' + FLOOR + '</text>');
+      } else {
+        var h = Math.max(0, y(0) - y(f.value)), r = Math.min(4, h, bw / 2), x2 = x + bw, yt = y(f.value);
+        var d = 'M' + x + ',' + y(0) + 'V' + (yt + r) + 'a' + r + ',' + r + ' 0 0 1 ' + r + ',-' + r + 'H' + (x2 - r) + 'a' + r + ',' + r + ' 0 0 1 ' + r + ',' + r + 'V' + y(0) + 'Z';
+        out.push('<path d="' + d + '" fill="' + (provisional ? 'url(#hatch)' : '#355c3a') + '"><title>' + esc(title) + '</title></path>');
+        if (i === peakAt || i === ms.length - 1) {
+          out.push('<text x="' + cx + '" y="' + (yt - 6) + '" text-anchor="middle" font-size="11" fill="#5a5346">' + fmt(f.value) + (provisional ? '*' : '') + '</text>');
+        }
+      }
+      out.push('<text x="' + cx + '" y="' + (H - 10) + '" text-anchor="middle" font-size="10.5" fill="#8a8271">' + (ms.length > 12 ? monthName(m).charAt(0) : monthName(m)) + '</text>');
+    });
+    out.push('</svg>');
+    return out.join('');
+  }
+
+  function niceStep(max) {
+    var raw = max / 4, mag = Math.pow(10, Math.floor(Math.log10(raw || 1))), n = raw / mag;
+    return (n <= 1 ? 1 : n <= 2 ? 2 : n <= 5 ? 5 : 10) * mag;
+  }
+
+  function stepsSvg(rows, label, W) {
+    // Horizontal bars on the ordinal ramp, one per step, each labelled at its tip.
+    W = W || 380;
+    var rowH = 38, L = 128, max = Math.max.apply(null, rows.map(function (r) { return r.value || 0; }).concat([1]));
+    var colors = ['#96b98c', '#47784b', '#284029'];
+    var out = ['<svg viewBox="0 0 ' + W + ' ' + (rows.length * rowH + 4) + '" role="img" aria-label="' + esc(label) + '">'];
+    rows.forEach(function (r, i) {
+      var y = 6 + i * rowH, w = r.value === null ? 0 : Math.max(2, (W - L - 70) * (r.value / max));
+      out.push('<text x="0" y="' + (y + 15) + '" font-size="12" fill="#2b2620">' + esc(r.label) + '</text>');
+      if (w > 0) {
+        var rr = Math.min(4, w);
+        out.push('<path d="M' + L + ',' + y + 'H' + (L + w - rr) + 'a' + rr + ',' + rr + ' 0 0 1 ' + rr + ',' + rr + 'V' + (y + 20 - rr) + 'a' + rr + ',' + rr + ' 0 0 1 -' + rr + ',' + rr + 'H' + L + 'Z" fill="' + colors[Math.min(i, 2)] + '"><title>' + esc(r.label + ': ' + fmt(r.value)) + '</title></path>');
+      }
+      out.push('<text x="' + (L + w + 8) + '" y="' + (y + 15) + '" font-size="12" fill="#5a5346">' + esc(fmt(r.value) + (r.note ? ' · ' + r.note : '')) + '</text>');
+    });
+    out.push('</svg>');
+    return out.join('');
+  }
+
+  function platformsHtml(month) {
+    var names = { ios: 'iOS', android: 'Android', web: 'Web' };
+    var colors = { ios: 'var(--cat-1)', android: 'var(--cat-2)', web: 'var(--cat-3)' };
+    var rows = ['ios', 'android', 'web'].map(function (p) { return { p: p, f: figure(month, 'sessions', ALL, p) }; });
+    var shown = rows.filter(function (r) { return r.f.value !== null; });
+    var total = shown.reduce(function (s, r) { return s + r.f.value; }, 0);
+    var bar = '';
+    if (total > 0 && shown.length === rows.length) {
+      var x = 0, W = 380, gap = 2, usable = W - gap * (rows.length - 1);
+      bar = '<svg viewBox="0 0 ' + W + ' 34" role="img" aria-label="Sessions by platform"><defs><clipPath id="pc"><rect x="0" y="3" width="' + W + '" height="28" rx="4"/></clipPath></defs><g clip-path="url(#pc)">';
+      rows.forEach(function (r) {
+        var w = usable * r.f.value / total;
+        bar += '<rect x="' + x + '" y="3" width="' + w + '" height="28" fill="' + colors[r.p] + '"><title>' + names[r.p] + ': ' + fmt(r.f.value) + ' (' + pct(r.f.value / total) + ')</title></rect>';
+        if (w > 64) bar += '<text x="' + (x + 8) + '" y="22" font-size="12" fill="#fff">' + names[r.p] + ' ' + pct(r.f.value / total) + '</text>';
+        x += w + gap;
+      });
+      bar += '</g></svg><div class="legend">' + rows.map(function (r) { return '<span><i style="background:' + colors[r.p] + '"></i>' + names[r.p] + '</span>'; }).join('') + '</div>';
+    } else {
+      bar = '<p class="note">A platform under ' + FLOOR + ' devices is hidden, and the bar with it, so the others cannot be subtracted to find it.</p>';
+    }
+    var table = '<div class="scroll"><table><tr><th>Platform</th><th class="n">Sessions</th><th class="n">Screens</th><th class="n">Active devices</th></tr>' +
+      rows.map(function (r) {
+        return '<tr><td>' + names[r.p] + '</td><td class="n">' + fmt(r.f.value) + '</td><td class="n">' + fmt(figure(month, 'pageviews', ALL, r.p).value) +
+          '</td><td class="n">' + fmt(figure(month, 'devices_active', ALL, r.p).value) + '</td></tr>';
+      }).join('') + '</table></div>';
+    return bar + '<details><summary>Numbers</summary>' + table + '</details>';
+  }
+
+  function cohortsHtml() {
+    if (!DATA.cohorts.length) return '<p class="note">No hikers have said yes to linking their account yet.</p>';
+    var shades = [[0.45, '#284029', '#fff'], [0.35, '#355c3a', '#fff'], [0.25, '#47784b', '#fff'], [0.15, '#6b9463', '#fff'], [0.05, '#96b98c', '#14130f'], [0, '#c7dabd', '#14130f']];
+    function shade(v) { for (var i = 0; i < shades.length; i++) if (v >= shades[i][0]) return shades[i]; return shades[shades.length - 1]; }
+    var head = '<tr><th class="row">First seen</th><th>Hikers</th>' + [1, 2, 3, 4, 5, 6].map(function (n) { return '<th>+' + n + '</th>'; }).join('') + '</tr>';
+    var body = DATA.cohorts.map(function (c) {
+      var cells = [];
+      for (var i = 0; i < 6; i++) {
+        if (i >= c.retained.length) { cells.push('<td></td>'); continue; }
+        var v = c.retained[i];
+        if (v === null) { cells.push('<td class="masked" style="background:#f7f3e9">&lt;' + FLOOR + '</td>'); continue; }
+        var s = shade(v);
+        cells.push('<td style="background:' + s[1] + ';color:' + s[2] + '" title="' + esc(monthName(c.cohort, true) + ', +' + (i + 1) + ': ' + pct(v)) + '">' + pct(v) + '</td>');
+      }
+      return '<tr><th class="row">' + monthName(c.cohort, true) + '</th><th>' + fmt(c.size) + '</th>' + cells.join('') + '</tr>';
+    }).join('');
+    return '<div class="scroll"><table class="heat">' + head + body + '</table></div>';
+  }
+
+  function clubTableHtml() {
+    var ms = rangeMonths(), last = ms[ms.length - 1];
+    var rows = DATA.clubs.map(function (c) {
+      return {
+        club: c,
+        devices: figure(last, 'devices_active', c),
+        plans: rangeSum('plans_made', c),
+        miles: rangeSum('plan_miles', c),
+        views: rangeSum('map_views', c)
+      };
+    });
+    rows.sort(function (a, b) {
+      var am = a.devices.value === null ? -1 : a.miles.value, bm = b.devices.value === null ? -1 : b.miles.value;
+      return bm - am;
+    });
+    var max = Math.max.apply(null, rows.map(function (r) { return r.miles.value; }).concat([1]));
+    var body = rows.map(function (r) {
+      var allMasked = r.plans.excluded === ms.length;
+      return '<tr class="pick" data-club="' + esc(r.club) + '" title="Show only ' + esc(clubName(r.club)) + '"><td>' + esc(clubName(r.club)) + '</td>' +
+        '<td class="n">' + fmt(r.devices.value) + '</td>' +
+        '<td class="n">' + (allMasked ? '&lt;' + FLOOR : fmt(r.plans.value, 1)) + '</td>' +
+        '<td class="n">' + (allMasked ? '&lt;' + FLOOR : fmt(r.miles.value, 1)) + (allMasked ? '' : '<span class="bar" style="width:' + Math.round(48 * r.miles.value / max) + 'px"></span>') + '</td>' +
+        '<td class="n">' + (allMasked ? '&lt;' + FLOOR : fmt(r.views.value, 0)) + '</td></tr>';
+    }).join('');
+    return '<div class="scroll"><table><tr><th>Club</th><th class="n">Active devices (' + monthName(last) + ')</th><th class="n">Plans</th><th class="n">Planned miles</th><th class="n">Map views</th></tr>' + body + '</table></div>';
+  }
+
+  function clubMonthsHtml(club) {
+    var body = rangeMonths().slice().reverse().map(function (m) {
+      return '<tr><td>' + monthName(m, true) + (MONTH_INFO[m].status === 'provisional' ? ' *' : '') + '</td>' +
+        '<td class="n">' + fmt(figure(m, 'devices_active', club).value) + '</td>' +
+        '<td class="n">' + fmt(figure(m, 'plans_made', club).value, 1) + '</td>' +
+        '<td class="n">' + fmt(figure(m, 'plan_miles', club).value, 1) + '</td>' +
+        '<td class="n">' + fmt(figure(m, 'plans_completed', club).value, 1) + '</td>' +
+        '<td class="n">' + fmt(figure(m, 'map_views', club).value, 0) + '</td></tr>';
+    }).join('');
+    return '<div class="scroll"><table><tr><th>Month</th><th class="n">Active devices</th><th class="n">Plans</th><th class="n">Planned miles</th><th class="n">Completed</th><th class="n">Map views</th></tr>' + body + '</table></div>';
+  }
+
+  function healthHtml() {
+    var body = rangeMonths().slice().reverse().map(function (m) {
+      var events = figure(m, 'events').value, linked = figure(m, 'events_identified').value;
+      var noKey = figure(m, 'unsealed_no_key').value, late = figure(m, 'events_after_close').value;
+      var info = MONTH_INFO[m];
+      return '<tr><td>' + monthName(m, true) + '</td><td>' + (info.status === 'closed' ? 'closed' : 'provisional to ' + dayName(info.closes_on)) + (info.raw_deleted ? ' · raw rows gone' : '') + '</td>' +
+        '<td class="n">' + fmt(events) + '</td><td class="n">' + (events ? pct(linked / events) : '–') + '</td>' +
+        '<td class="n">' + fmt(figure(m, 'fixes').value) + '</td><td class="n' + (noKey ? ' warn' : '') + '">' + fmt(noKey) + '</td>' +
+        '<td class="n">' + fmt(late) + '</td></tr>';
+    }).join('');
+    var keys = DATA.keys_published_through;
+    // A fact here; the warning when they run short is a nightly check
+    // (`seal_keys_running_out`), under Data quality with every other one.
+    var keyLine = keys ? 'Sealing keys are published through ' + monthName(keys, true) + '.' : 'No sealing keys are published: rows with a fix or an account are stored without them.';
+    return '<div class="scroll"><table><tr><th>Month</th><th>State</th><th class="n">Events</th><th class="n">Linked</th><th class="n">Fixes</th><th class="n">Thrown away (no key)</th><th class="n">After close</th></tr>' + body + '</table></div><p class="note">' + keyLine + '</p>';
+  }
+
+  // ---- every phone, with no identifier ----------------------------------------
+  // New, returning and back-again phones add up to the month's active phones
+  // (app/core/analytics_rollup.py); a phone counted last month and not this
+  // one is lost, drawn below the line. All clubs only: these come from the
+  // phone's own month answers, which are not split by club.
+  function growthSvg() {
+    var ms = rangeMonths();
+    var W = 600, H = 240, L = 44, R = 8, T = 16, B = 30;
+    var parts = [['devices_new', '#284029', 'New'], ['devices_returning', '#47784b', 'Returning'], ['devices_back', '#96b98c', 'Back again']];
+    var rows = ms.map(function (m) {
+      var vals = parts.map(function (p) { return figure(m, p[0]).value; });
+      var masked = vals.some(function (v) { return v === null; });
+      // Worked out and masked by the server (analytics_report.py `LOST`),
+      // never subtracted here: the subtraction is the small number.
+      var lost = masked ? null : figure(m, 'devices_lost').value;
+      return { m: m, vals: vals, masked: masked, lost: lost };
+    });
+    var maxUp = Math.max.apply(null, rows.map(function (r) { return r.masked ? 0 : r.vals.reduce(function (a, b) { return a + (b || 0); }, 0); }).concat([FLOOR]));
+    var maxDown = Math.max.apply(null, rows.map(function (r) { return r.lost || 0; }).concat([0]));
+    var span = maxUp + maxDown;
+    var y = function (v) { return T + (H - T - B) * (1 - (v + maxDown) / span); };
+    var band = (W - L - R) / ms.length, bw = Math.min(24, band * 0.6);
+    var out = ['<svg viewBox="0 0 ' + W + ' ' + H + '" role="img" aria-label="Active phones by where they came from, and phones lost, by month">'];
+    out.push('<line x1="' + L + '" x2="' + (W - R) + '" y1="' + y(0) + '" y2="' + y(0) + '" stroke="#c3baa4"/>');
+    out.push('<text x="' + (L - 6) + '" y="' + (y(maxUp) + 4) + '" text-anchor="end" font-size="11" fill="#8a8271">' + fmt(maxUp, 0) + '</text>');
+    if (maxDown > 0) out.push('<text x="' + (L - 6) + '" y="' + (y(-maxDown) + 4) + '" text-anchor="end" font-size="11" fill="#8a8271">−' + fmt(maxDown, 0) + '</text>');
+    rows.forEach(function (r, i) {
+      var x = L + band * i + (band - bw) / 2, cx = x + bw / 2;
+      if (r.masked) {
+        out.push('<rect x="' + x + '" y="' + (y(0) - 3) + '" width="' + bw + '" height="3" fill="#c3baa4"><title>' + esc(monthName(r.m, true)) + ': under ' + FLOOR + '</title></rect>');
+      } else {
+        var base = 0;
+        parts.forEach(function (p, k) {
+          var v = r.vals[k] || 0;
+          if (v <= 0) return;
+          out.push('<rect x="' + x + '" y="' + y(base + v) + '" width="' + bw + '" height="' + Math.max(0, y(base) - y(base + v) - 1) + '" fill="' + p[1] + '"><title>' + esc(monthName(r.m, true) + ' · ' + p[2] + ': ' + fmt(v)) + '</title></rect>');
+          base += v;
+        });
+        if (r.lost) out.push('<rect x="' + x + '" y="' + y(0) + '" width="' + bw + '" height="' + Math.max(0, y(-r.lost) - y(0)) + '" fill="#c1611a"><title>' + esc(monthName(r.m, true) + ' · Lost since last month: ' + fmt(r.lost)) + '</title></rect>');
+      }
+      out.push('<text x="' + cx + '" y="' + (H - 10) + '" text-anchor="middle" font-size="10.5" fill="#8a8271">' + (ms.length > 12 ? monthName(r.m).charAt(0) : monthName(r.m)) + '</text>');
+    });
+    out.push('</svg>');
+    return out.join('') + '<div class="legend">' + parts.map(function (p) { return '<span><i style="background:' + p[1] + '"></i>' + p[2] + '</span>'; }).join('') + '<span><i style="background:#c1611a"></i>Lost since last month</span></div>';
+  }
+
+  // ---- data quality ----------------------------------------------------------
+  // Each metric's days as a share of what the same weekday in the weeks before
+  // would expect (app/core/analytics_quality.py), and a fixed band a day must
+  // leave to be called an anomaly. Shares, never counts, and only where the
+  // count was big enough - see `_quality` in analytics_report.py.
+  var QUALITY_NAMES = { installs: 'First opens', logins: 'Sign-ins', plans_made: 'Plans made', plans_completed: 'Plans completed', map_views: 'Map views', sessions: 'Visits', pageviews: 'Screens', phones_this_week: 'Phones, first this week' };
+  // Every check that is not a metric's name (analytics_quality.py `NAMED_CHECKS`;
+  // tests/test_analytics_report.py fails when one has no label here).
+  var CHECK_NAMES = {
+    rows_refused: 'Rows refused',
+    rows_resent: 'Rows sent twice',
+    rows_over_budget: 'Batches turned away: the day’s budget',
+    rows_paused: 'Batches turned away: rollup not running',
+    rows_unsealed_no_key: 'Fixes thrown away for want of a key',
+    rollup_failed: 'The nightly rollup failed',
+    storage_near_ceiling: 'Usage data near its storage ceiling',
+    database_near_quota: 'Database near its plan’s limit',
+    seal_keys_running_out: 'Sealing keys run out within three months: run scripts/analytics_keys.py publish',
+    rows_dropped_on_phone: 'Rows the phones had to drop',
+    clubs_over_cap: 'More clubs named than a month keeps',
+    month_not_closed: 'Month not closed on time',
+    platforms_add_up: 'Platforms add up to the whole app',
+    growth_split_adds_up: 'New, returning and back again add up to active',
+    session_lengths_add_up: 'Session lengths add up to visits',
+    no_club_above_the_whole_app: 'No club above the whole app',
+    club_plans_within_total: 'Clubs’ plans within the app’s',
+    returning_within_last_month: 'Returning phones within last month’s',
+    hikers_within_phones: 'Hikers within phones',
+    late_rows_after_close: 'Rows after the month closed'
+  };
+  // What follows a check's colon: a metric, or a platform.
+  var PART_NAMES = { events: 'events', devices_active: 'active phones', devices_new: 'new phones', devices_returning: 'returning phones', devices_back: 'phones back again', devices_signed_in: 'signed-in phones', ios: 'iOS', android: 'Android', web: 'Web' };
+  var STATUS_WORDS = { ok: 'normal', low: 'far below', high: 'far above', zero: 'none at all', quiet: 'too few to judge', learning: 'learning', broken: 'does not add up', warn: 'needs a look' };
+  function partName(part) { return PART_NAMES[part] || (QUALITY_NAMES[part] ? QUALITY_NAMES[part].toLowerCase() : part.replace(/_/g, ' ')); }
+  function checkName(name) {
+    var parts = name.split(':'), base = parts[0];
+    var detail = parts[1] ? ' (' + partName(parts[1]) + ')' : '';
+    if (CHECK_NAMES[base]) return CHECK_NAMES[base] + detail;
+    var metric = base.replace(/_per_session$/, '');
+    var label = QUALITY_NAMES[metric] ? QUALITY_NAMES[metric] + (base !== metric ? ' per visit' : '') : base.replace(/_/g, ' ');
+    return label + detail;
+  }
+  function scopeName(scope) {
+    if (scope === ALL) return 'whole app';
+    var parts = scope.split(':');
+    if (parts[0] === 'platform') return partName(parts[1]) + ' only';
+    if (scope === 'version:(none)') return 'rows with no version';
+    return scope.replace(':', ' ');
+  }
+
+  function sparkSvg(points, band) {
+    var W = 260, H = 70, P = 4;
+    var shares = points.map(function (p) { return p.share; }).filter(function (v) { return v !== null; });
+    var top = Math.max.apply(null, [1.6, band[1] + 0.1].concat(shares));
+    var x = function (i) { return P + (W - 2 * P) * i / Math.max(1, points.length - 1); };
+    var y = function (v) { return H - P - (H - 2 * P) * Math.min(v, top) / top; };
+    var out = ['<svg viewBox="0 0 ' + W + ' ' + H + '" role="img" aria-label="Each day as a share of what was expected">'];
+    // The half of the test that depends on no count: a day inside this band
+    // is never an anomaly. The other half is worked out from each day's own
+    // count, so it is not in this file.
+    out.push('<rect x="' + P + '" y="' + y(band[1]) + '" width="' + (W - 2 * P) + '" height="' + (y(band[0]) - y(band[1])) + '" fill="#e3ecda"/>');
+    out.push('<line x1="' + P + '" x2="' + (W - P) + '" y1="' + y(1) + '" y2="' + y(1) + '" stroke="#96b98c" stroke-dasharray="3 3"/>');
+    var path = [];
+    points.forEach(function (p, i) { if (p.share !== null) path.push((path.length ? 'L' : 'M') + x(i) + ',' + y(p.share)); else if (path.length) path.push(''); });
+    out.push('<path d="' + path.join(' ').replace(/ (?=M)/g, ' ') + '" fill="none" stroke="#355c3a" stroke-width="1.5"/>');
+    points.forEach(function (p, i) {
+      if (p.status !== 'low' && p.status !== 'high' && p.status !== 'zero') return;
+      var colour = p.status === 'high' ? '#1c6ea4' : '#c1611a';
+      // A day too small to show as a share still shows its verdict: on the
+      // floor for a fall, at the top for a rise, hollow because it has no place.
+      var shared = p.share !== null;
+      var cy = shared ? y(p.share) : (p.status === 'high' ? y(top) : y(0));
+      var said = shared ? Math.round(p.share * 100) + '% of expected, ' + STATUS_WORDS[p.status] : STATUS_WORDS[p.status] + ', too few to show as a share';
+      out.push('<circle cx="' + x(i) + '" cy="' + cy + '" r="3" ' + (shared ? 'fill="' + colour + '"' : 'fill="#fff" stroke="' + colour + '" stroke-width="1.5"') + '><title>' + esc(dayName(p.day) + ': ' + said) + '</title></circle>');
+    });
+    out.push('</svg>');
+    return out.join('');
+  }
+
+  // The storage strip (app/core/analytics_report.py `_storage`): each limit's
+  // share and its status, both as the server judged them by the nightly
+  // checks' own line, so a gauge and a finding cannot disagree.
+  function gaugeHtml(label, g, caption, warnShare) {
+    var W = 260, H = 16;
+    var x = function (v) { return 1 + (W - 2) * Math.min(Math.max(v, 0), 1); };
+    var said = g.share === null ? 'no limit set' : pct(g.share) + ' of its limit';
+    var bar = '<svg viewBox="0 0 ' + W + ' ' + H + '" role="img" aria-label="' + esc(label + ': ' + said) + '">' +
+      '<rect x="1" y="3" width="' + (W - 2) + '" height="10" rx="5" fill="#f7f3e9" stroke="#e7e1d3"/>' +
+      (g.share ? '<rect x="1" y="3" width="' + Math.max(x(g.share) - 1, 3) + '" height="10" rx="5" fill="' + (g.status === 'warn' ? '#c1611a' : '#47784b') + '"/>' : '') +
+      '<line x1="' + x(warnShare) + '" x2="' + x(warnShare) + '" y1="0" y2="' + H + '" stroke="#5a5346" stroke-dasharray="2 2"/>' +
+      '</svg>';
+    var chip = g.status ? '<span class="chip ' + g.status + '">' + esc(STATUS_WORDS[g.status]) + '</span>' : '<span class="chip quiet">no limit set</span>';
+    return '<div class="qcell"><div class="qhead"><span>' + esc(label) + '</span>' + chip + '</div>' + bar + '<div class="scap">' + caption + '</div></div>';
+  }
+
+  function storageHtml(s) {
+    if (!s) return '';
+    var rows = s.rows.share === null ? 'No ceiling is set.' : pct(s.rows.share) + ' of the ' + fmt(s.usage.of_mb) + ' MB ceiling, counted as rows. At 100%, phones keep their rows and send them later.';
+    var cells = [
+      gaugeHtml('Usage rows held', s.rows, rows, s.warn_share),
+      gaugeHtml('Usage tables on disk', s.usage, fmt(s.usage.mb) + ' MB of the same ' + fmt(s.usage.of_mb) + ' MB. A deleted month’s room stays in the file, kept for new rows, so this does not fall when rows are deleted.', s.warn_share),
+      gaugeHtml('Whole database', s.database, fmt(s.database.mb) + ' MB of the ' + fmt(s.database.of_mb) + ' MB the plan allows, for everything the app keeps - not only usage.', s.warn_share)
+    ];
+    return '<h2 class="part first">Storage</h2><div class="sub">Measured when this file was written · dashed line = ' + pct(s.warn_share) + ', where the nightly checks raise a warning, leaving time to move to a bigger plan before phones’ batches wait or the database stops taking writes</div>' +
+      '<div class="sgrid">' + cells.join('') + '</div>';
+  }
+
+  function qualityHtml() {
+    var q = DATA.quality;
+    if (!q) return '<p class="note">No data-quality checks in this file.</p>';
+    var cells = q.metrics.map(function (metric) {
+      var points = q.series[metric] || [];
+      var last = points.length ? points[points.length - 1] : { status: 'learning' };
+      return '<div class="qcell"><div class="qhead"><span>' + esc(QUALITY_NAMES[metric] || metric) + '</span><span class="chip ' + last.status + '">' + esc(STATUS_WORDS[last.status] || last.status) + '</span></div>' + sparkSvg(points, q.band) + '</div>';
+    }).join('');
+    var findings = q.findings.length
+      ? '<div class="scroll"><table><tr><th>Day</th><th>Check</th><th>Which way</th><th>First seen</th></tr>' + q.findings.map(function (f) {
+          return '<tr><td>' + dayName(f.day) + '</td><td>' + esc(checkName(f.check)) + '<span class="qslice">' + esc(scopeName(f.scope)) + '</span></td><td><span class="chip ' + esc(f.status) + '">' + esc(STATUS_WORDS[f.status] || f.status) + '</span></td><td>' + dayName(f.first_seen) + '</td></tr>';
+        }).join('') + '</table></div>'
+      : '<p class="note">Nothing out of the ordinary in the last sixty days.</p>';
+    return storageHtml(q.storage) +
+      '<h2 class="part">Each metric, day by day</h2><div class="sub">Each day as a share of what the same weekday in the weeks before would expect, counted at the same age so late uploads do not read as a drop · shaded = within half of expected either way, which is never an anomaly · dots = an anomaly, hollow where the day was too small to show as a share</div>' +
+      '<div class="qgrid">' + cells + '</div>' +
+      '<h2 class="part">Findings</h2><div class="sub">Every check that has come out wrong in the last sixty days, newest first, storage included. The nightly job opens one issue while any is open; it names checks, never figures.</div>' + findings;
+  }
+
+  // ---- the page ------------------------------------------------------------
+  function render() {
+    var root = document.getElementById('root');
+    if (!MONTHS.length) {
+      root.innerHTML = '<div class="empty">No months have been computed yet. The nightly rollup writes the first one the night after the first usage event arrives.</div>';
+      return;
+    }
+    var ms = rangeMonths(), to = ms[ms.length - 1], club = state.club, info = MONTH_INFO[to];
+    var prev = MONTHS[MONTHS.indexOf(to) - 1];
+    var all = club === ALL;
+
+    document.getElementById('subtitle').textContent = DATA.environment + ' · ' + clubName(club) + ' · ' + monthName(ms[0], true) + (ms.length > 1 ? ' – ' + monthName(to, true) : '');
+    var pill = document.getElementById('status');
+    pill.className = 'pill ' + info.status;
+    pill.querySelector('span').textContent = monthName(to, true) + (info.status === 'closed' ? ' is closed' : ' is provisional until ' + dayName(info.closes_on));
+    document.getElementById('scope').textContent = ms.length + ' month' + (ms.length > 1 ? 's' : '') + (all ? '' : ' · ' + clubName(club));
+
+    var active = figure(to, 'devices_active', club);
+    var before = prev ? figure(prev, 'devices_active', club) : null;
+    var delta = '';
+    if (before && active.value !== null && before.value) {
+      var change = (active.value - before.value) / before.value;
+      delta = (change >= 0 ? '▲ ' : '▼ ') + Math.abs(Math.round(change * 100)) + '% vs ' + monthName(prev) + ' (' + fmt(before.value) + ')';
+    }
+    if (info.status === 'provisional') delta += (delta ? ' · ' : '') + 'provisional';
+    var signedIn = figure(to, 'devices_signed_in', club);
+    if (all && signedIn.value !== null && active.value) delta += (delta ? ' · ' : '') + pct(signedIn.value / active.value) + ' signed in';
+
+    var plans = rangeSum('plans_made', club), miles = rangeSum('plan_miles', club);
+    var done = rangeSum('plans_completed', club), doneMiles = rangeSum('completed_miles', club);
+    var views = rangeSum('map_views', club), sessions = rangeSum('sessions', club), logins = rangeSum('logins', club);
+    var tiles = [
+      tile('Active devices · ' + monthName(to, true), active, delta, true),
+      tile('Hikers who said yes · ' + monthName(to), figure(to, 'hikers_active', club), 'linked to an account'),
+      tile('Hike plans made', { value: plans.value }, fmt(miles.value, 1) + ' planned miles' + excludedNote(plans)),
+      tile('Hike plans completed', { value: done.value }, fmt(doneMiles.value, 1) + ' miles' + excludedNote(done)),
+      tile('Map screen views', { value: views.value }, excludedNote(views).replace(/^ · /, '') || 'in the range'),
+      tile('Sessions', { value: sessions.value }, all ? fmt(rangeSum('pageviews').value / Math.max(1, sessions.value), 1) + ' screens each' : 'on this club’s trails'),
+      all ? tile('First opens', { value: rangeSum('installs').value }, 'installs, as the app sees them · ' + fmt(logins.value) + ' sign-ins')
+          : tile('Hikers who planned · ' + monthName(to), figure(to, 'plan_hikers', club), 'who said yes')
+    ];
+
+    var funnel = stepsSvg([
+      { label: 'Active, said yes', value: figure(to, 'hikers_active', club).value },
+      { label: 'Made a plan', value: figure(to, 'plan_hikers', club).value },
+      { label: 'Completed a hike', value: figure(to, 'completion_hikers', club).value }
+    ], 'Hikers who said yes, by what they did', 600);
+
+    var html = '<div class="tiles">' + tiles.join('') + '</div>' +
+      '<div class="panels">' +
+        '<section class="panel"><h2>Active devices by month</h2><div class="sub">' + esc(clubName(club)) + ' · every phone, counted by its own “first time this month” answer · hatched = provisional · grey = under ' + FLOOR + '</div>' +
+          trendSvg(club) +
+          '<details><summary>Numbers</summary><table><tr><th>Month</th><th class="n">Active devices</th><th class="n">New devices</th></tr>' +
+          ms.slice().reverse().map(function (m) { return '<tr><td>' + monthName(m, true) + '</td><td class="n">' + fmt(figure(m, 'devices_active', club).value) + '</td><td class="n">' + (all ? fmt(figure(m, 'devices_new').value) : '–') + '</td></tr>'; }).join('') +
+          '</table></details></section>' +
+        '<section class="panel"><h2>' + (all ? 'By club' : esc(clubName(club)) + ', month by month') + '</h2><div class="sub">' +
+          (all ? 'Each event belongs to the club whose trail it was about; a plan is split by its miles in each club · click a row to filter' : 'Plans are split by their miles in each club, so a plan crossing a boundary counts as part of one here') + '</div>' +
+          (DATA.clubs.length ? (all ? clubTableHtml() : clubMonthsHtml(club)) : '<p class="note">No event has named a club yet.</p>') + '</section>' +
+        '<section class="panel"><h2>Who planned and who finished · ' + monthName(to, true) + '</h2><div class="sub">' + (all ? 'Every phone, counted by its own “first time this month” answers - no account needed. ' : '') + 'Below, hikers who said yes to linking their account. A completion can belong to an earlier month’s plan.</div>' +
+          (all ? stepsSvg([
+            { label: 'Active phones', value: active.value },
+            { label: 'Viewed the map', value: figure(to, 'devices_map_view').value },
+            { label: 'Made a plan', value: figure(to, 'devices_plan_made').value },
+            { label: 'Completed a hike', value: figure(to, 'devices_plan_completed').value }
+          ], 'Every phone, by what it did', 600) + '<h2 style="margin-top:12px;font-size:14px">Hikers who said yes</h2>' : '') + funnel + '</section>' +
+        (all ? '<section class="panel"><h2>Where this month’s phones came from</h2><div class="sub">All clubs · new, returning from last month, or back after a gap - and lost since last month, below the line · every phone, no identifier</div>' + growthSvg() + '</section>' : '') +
+        (all ? '<section class="panel"><h2>Sessions by platform · ' + monthName(to, true) + '</h2><div class="sub">Share of sessions</div>' + platformsHtml(to) +
+          '<h2 style="margin-top:14px">Session length · ' + monthName(to, true) + '</h2>' +
+          stepsSvg([
+            { label: 'Under a minute', value: figure(to, 'sessions_under_1m').value },
+            { label: '1 to 5 minutes', value: figure(to, 'sessions_m1_to_5').value },
+            { label: '5 to 20 minutes', value: figure(to, 'sessions_m5_to_20').value },
+            { label: 'Over 20 minutes', value: figure(to, 'sessions_over_20m').value }
+          ], 'Sessions by length') + '</section>'
+          : '<section class="panel"><h2>Platforms and session length</h2><p class="note">Shown for all clubs only: a club split by platform is a cell too small to show at this app’s size, so those figures are never computed.</p></section>') +
+        '<section class="panel"><h2>Retention by first month</h2><div class="sub">All clubs: the User table holds no place · hikers who said yes, by the month first seen · share active N months later · read from the User table, which outlives the six-month raw rows</div>' + cohortsHtml() +
+          '<p class="note">User table today: ' + fmt(DATA.users.hikers) + ' hikers who said yes · ' + fmt(DATA.users.ever_planned) + ' ever made a plan · ' + fmt(DATA.users.ever_completed) + ' ever completed one.</p></section>' +
+        '<section class="panel"><h2>Data health</h2><div class="sub">All clubs · whether the numbers above can be trusted, month by month</div>' + healthHtml() + '</section>' +
+        '<section class="panel wide"><h2>Data quality</h2><div class="sub">Every warning the nightly checks raise shows here, with its figures; the tracking issue they open names the checks and nothing more</div>' + qualityHtml() + '</section>' +
+      '</div>';
+    root.innerHTML = html;
+
+    Array.prototype.forEach.call(root.querySelectorAll('tr.pick'), function (row) {
+      row.addEventListener('click', function () {
+        state.club = row.getAttribute('data-club'); remember();
+        document.getElementById('club').value = state.club; render();
+        window.scrollTo({ top: 0, behavior: 'smooth' });
+      });
+    });
+  }
+
+  document.getElementById('generated').textContent = 'Built by backend/scripts/usage_report.py · ' + DATA.generated_at.replace('T', ' ').slice(0, 16) + ' UTC';
+  document.getElementById('floor').textContent = 'Any figure describing fewer than ' + FLOOR + ' people shows as “<' + FLOOR + '”. The real number is not in this file.';
+  if (MONTHS.length) bindFilters();
+  render();
+})();
+</script>
+</body>
+</html>

@@ -43,4 +43,6 @@ class DeletionReceipt(BaseModel):
     #: Challenges (#1780): the places they tagged, and what they sent a club.
     challenge_tags_deleted: int
     challenge_entries_deleted: int
+    #: Usage measurement (#1902): the events this account had linked to it.
+    usage_events_deleted: int
     kept: dict[str, int]

@@ -259,15 +259,27 @@ def test_claiming_needs_an_address_at_the_organizations_domain(client, db_sessio
     [
         ("ramapotrails.org", False),
         ("trails.example.org", False),
+        ("RamapoTrails.org.", False),
         ("gmail.com", True),
+        ("GMAIL.COM", True),
+        ("Gmail.com", True),
+        ("gmail.com ", True),
+        (" gmail.com", True),
+        ("gmail.com\n", True),
+        ("gmail.com.", True),
         ("com", True),
+        ("com.", True),
         ("", True),
+        (" ", True),
+        (".", True),
     ],
 )
 def test_one_rule_says_which_domains_prove_nothing_about_who_runs_an_organization(domain, proves_nothing):
     """The rule registering, nominating and claiming all ask (#1909 - A
     nomination and a claim make a free webmail account the codeowner of any
-    organization name, the seat #1635 closed on POST /clubs)."""
+    organization name, the seat #1635 closed on POST /clubs). It normalises
+    before it judges - stripped, lowercased, no trailing dot - so no spelling
+    the address check would still match an address against gets through."""
     assert (why_domain_proves_nothing(domain) is not None) is proves_nothing
 
 
@@ -288,6 +300,31 @@ def test_an_organization_whose_stored_domain_proves_nothing_cannot_be_claimed(cl
 
     assert response.status_code == 409
     assert "a person has to pick it up" in response.json()["detail"]
+    assert db_session.query(OrgAdmin).count() == 0
+    db_session.expire_all()
+    assert db_session.query(Club).one().state == OrgState.unclaimed
+
+
+@pytest.mark.parametrize("stored", ["GMAIL.COM", "Gmail.com", "gmail.com ", " gmail.com", "gmail.com\n"])
+def test_a_stored_webmail_domain_in_another_spelling_still_cannot_be_claimed(client, db_session, stored):
+    """`claim_org` asks `why_domain_proves_nothing` about the domain AS
+    STORED, and then `_somebody_holds_the_domain` strips and lowercases it
+    before matching the caller's address. A rule that read the row as stored
+    passed all five of these, and `mallory@gmail.com` matched each one and was
+    seated as codeowner. Today's writers normalise, so a row like this is
+    hand-written or older than they are - which is the row this check is
+    for."""
+    make_org(db_session, domain=stored)
+    claimer = make_profile(db_session)
+
+    response = client.post(
+        "/clubs/ramapo-trail-conference/claim",
+        json={"title": "Trails chair"},
+        headers=auth_headers(claimer.id, email="mallory@gmail.com"),
+    )
+
+    assert response.status_code == 409
+    assert "gmail.com is a public email provider" in response.json()["detail"]
     assert db_session.query(OrgAdmin).count() == 0
     db_session.expire_all()
     assert db_session.query(Club).one().state == OrgState.unclaimed

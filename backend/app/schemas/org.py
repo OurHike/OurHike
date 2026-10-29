@@ -87,21 +87,33 @@ def why_domain_proves_nothing(domain: str) -> str | None:
     whatever domain the hiker's website named, and `claim_org` accepted
     whatever was stored. So this is the one rule, and all three ask it:
 
+    - **Blank**, once normalised: no address can be at it.
     - **No dot.** A bare top-level domain: a website of `https://com` stored
       `com`, which every `.com` address holds.
     - **A public mail provider** (`PUBLIC_EMAIL_DOMAINS` above): anybody can
       get an address there.
 
-    `domain` is the bare, lowercased hostname the callers already compare
-    addresses against. A public suffix such as `co.uk` has a dot and passes.
-    Closing that needs the Public Suffix List, a new dependency nobody has
-    taken on yet.
+    **`domain` is normalised here rather than trusted to arrive that way**:
+    stripped, lowercased, and with any trailing dot removed. `claim_org` asks
+    about a STORED domain, and the rows this check exists for are the ones
+    today's validators did not write - by hand, or by an older version of a
+    door.
+    The address check after it (`_somebody_holds_the_domain` in
+    routers/clubs.py) strips and lowercases before comparing, so a rule that
+    read the row as stored passed `GMAIL.COM` and `gmail.com ` while
+    `mallory@gmail.com` still matched both and was seated.
+
+    A public suffix such as `co.uk` has a dot and passes. Closing that needs
+    the Public Suffix List, a new dependency nobody has taken on yet.
     """
-    if "." not in domain:
-        return f"{domain or 'That'} is a top-level domain, not an organization's own, so every address under it would count."
-    if domain in PUBLIC_EMAIL_DOMAINS:
+    normalised = domain.strip().lower().rstrip(".")
+    if not normalised:
+        return "That domain is blank, so no address can be at it."
+    if "." not in normalised:
+        return f"{normalised} is a top-level domain, not an organization's own, so every address under it would count."
+    if normalised in PUBLIC_EMAIL_DOMAINS:
         return (
-            f"{domain} is a public email provider, not an organization's own domain - "
+            f"{normalised} is a public email provider, not an organization's own domain - "
             "anybody can get an address there, so it cannot prove who runs a club."
         )
     return None

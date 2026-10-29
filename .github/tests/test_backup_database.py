@@ -133,6 +133,43 @@ def test_a_docker_run_tool_gets_the_variable_names_and_never_their_values(tmp_pa
     assert "BACKUP_DATABASE_URL" not in env, "the whole connection string never reaches a tool"
 
 
+def test_a_root_certificate_is_mounted_read_only_into_the_container_at_its_own_path(tmp_path, monkeypatch):
+    certificate = tmp_path / "supabase-ca.crt"
+    certificate.write_text("-----BEGIN CERTIFICATE-----\n", encoding="utf-8")
+    monkeypatch.chdir(tmp_path)
+    pg_env = backup.libpq_environment(f"{POOLER}?sslmode=verify-full&sslrootcert=supabase-ca.crt")
+
+    argv, env = backup.Tools(workdir=tmp_path / "work", image="postgres:17").command("psql", ["--version"], pg_env)
+
+    mount = argv[argv.index(f"{certificate}:{certificate}:ro") - 1 : argv.index(f"{certificate}:{certificate}:ro") + 1]
+    assert mount == ["--volume", f"{certificate}:{certificate}:ro"]
+    assert env["PGSSLROOTCERT"] == str(certificate), "the relative path would resolve against the container's workdir"
+    assert ["--env", "PGSSLROOTCERT"] == argv[argv.index("PGSSLROOTCERT") - 1 : argv.index("PGSSLROOTCERT") + 1]
+
+
+@pytest.mark.parametrize(
+    ("query", "refusal"),
+    [
+        ("sslmode=verify-full", "none: name Supabase's CA certificate"),
+        ("sslmode=verify-ca", "none: name Supabase's CA certificate"),
+        ("sslmode=verify-full&sslrootcert=system", "the postgres image has none"),
+        ("sslmode=verify-full&sslrootcert=/nowhere/supabase-ca.crt", "not a file on this machine"),
+    ],
+    ids=["verify-full-no-certificate", "verify-ca-no-certificate", "system-bundle", "missing-file"],
+)
+def test_a_certificate_check_docker_cannot_make_is_refused_by_name(tmp_path, query, refusal):
+    pg_env = backup.libpq_environment(f"{POOLER}?{query}")
+
+    with pytest.raises(backup.Refused, match=refusal):
+        backup.Tools(workdir=tmp_path, image="postgres:17").command("pg_dump", ["--format=custom"], pg_env)
+
+
+def test_require_needs_no_certificate_under_docker(tmp_path):
+    argv, _ = backup.Tools(workdir=tmp_path, image="postgres:17").command("pg_dump", [], backup.libpq_environment(POOLER))
+
+    assert not [arg for arg in argv if arg.endswith(":ro")]
+
+
 def test_a_tool_on_path_inherits_no_stray_libpq_setting(tmp_path, monkeypatch):
     """A PGHOST left in the runner's environment must not redirect a dump."""
     monkeypatch.setenv("PGHOST", "somewhere-else.example")
@@ -386,6 +423,42 @@ def run(postgres, tmp_path, monkeypatch):
 
     stage.workdir = workdir
     return stage
+
+
+def _docker_has(image: str) -> bool:
+    if shutil.which("docker") is None:
+        return False
+    return subprocess.run(["docker", "image", "inspect", image], capture_output=True).returncode == 0
+
+
+@pytest.mark.skipif(not _docker_has("postgres:17"), reason="no Docker here with postgres:17 already pulled; tests never pull")
+def test_verify_full_reaches_the_server_from_inside_docker_with_the_named_certificate(tmp_path):
+    """The review's `root certificate file ... does not exist`, end to end:
+    psql 17 in the container checks the local server's own certificate."""
+    if not _reachable():
+        pytest.skip("no local Postgres to connect to")
+    served = Path(_psql(ADMIN_URL, "show ssl_cert_file").stdout.strip() or "/nonexistent")
+    if not served.is_file():
+        pytest.skip("the local Postgres serves no certificate this test can read")
+    # Copied to a path the image does not have and the workdir mount does not
+    # cover, as a certificate on the runner would be.
+    (tmp_path / "certs").mkdir()
+    certificate = tmp_path / "certs" / "server-root.crt"
+    shutil.copyfile(served, certificate)
+    checked = f"{ADMIN_URL}?sslmode=verify-full&sslrootcert={certificate}"
+    if _psql(checked, "select 1").returncode != 0:
+        pytest.skip("the local Postgres's certificate does not pass verify-full for its own host")
+
+    (tmp_path / "work").mkdir()
+    tools = backup.Tools(workdir=tmp_path / "work", image="postgres:17")
+    out = tools.run(
+        "psql",
+        ["-X", "-At", "-c", "select ssl from pg_stat_ssl where pid = pg_backend_pid()"],
+        backup.libpq_environment(checked),
+        capture=True,
+    )
+
+    assert out.strip() == "t"
 
 
 def test_a_good_backup_comes_back_row_for_row_through_dump_and_verify(postgres, run):

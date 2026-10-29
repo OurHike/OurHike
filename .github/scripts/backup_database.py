@@ -104,8 +104,12 @@ TRANSACTION_POOLER_PORT = 6543
 
 #: A dump of every hiker's data never crosses the internet in clear. `require`
 #: encrypts without checking the server's certificate; `verify-full` with
-#: Supabase's CA (sslrootcert=...) is stricter and is accepted as given.
+#: Supabase's CA (sslrootcert=...) is stricter, and under Docker `Tools` mounts
+#: that certificate into the container.
 ENCRYPTED_SSLMODES = ("require", "verify-ca", "verify-full")
+
+#: The sslmodes that check the server's certificate against a root certificate.
+CERTIFICATE_SSLMODES = ("verify-ca", "verify-full")
 
 DUMPED_SCHEMA = "public"
 AUTH_TABLES = ("auth.users", "auth.identities")
@@ -299,9 +303,46 @@ class Tools:
         ]  # fmt: skip
         if interactive:
             docker.append("--interactive")
+        docker += self._root_certificate(pg_env, env)
         for name in sorted(pg_env):
             docker += ["--env", name]
         return [*docker, self.image, tool, *args], env
+
+    def _root_certificate(self, pg_env: Mapping[str, str], env: dict[str, str]) -> list[str]:
+        """The `--volume` that shows the container the root certificate libpq is told to check against.
+
+        The container sees none of the runner's files, so a certificate named
+        by `sslrootcert` is mounted at its own absolute path, read-only, and
+        PGSSLROOTCERT is rewritten to that path. Without the mount,
+        `verify-full` fails with "root certificate file ... does not exist",
+        as the review of #1930 - Back production's database up nightly: dump,
+        restore and compare, encrypt with age, upload to a private bucket -
+        found and `test_backup_database.py` reproduces against a local server.
+        The postgres:17 image carries no CA bundle - no ca-certificates
+        package, and nothing in /etc/ssl/certs but its own snakeoil
+        certificate (measured 2026-10-29 on 17.11) - so `sslrootcert=system`
+        cannot work in it; and a checking sslmode with no certificate named
+        makes libpq look for `~/.postgresql/root.crt`, which the image does
+        not have either. Both are refused by name.
+        """
+        certificate = pg_env.get("PGSSLROOTCERT")
+        if certificate == "system":
+            raise Refused(
+                "sslrootcert=system trusts the image's own CA bundle, and the postgres image has none: "
+                "name Supabase's CA certificate file instead"
+            )
+        if certificate:
+            path = Path(certificate).resolve()
+            if not path.is_file():
+                raise Refused(f"sslrootcert names {certificate}, which is not a file on this machine")
+            env["PGSSLROOTCERT"] = str(path)
+            return ["--volume", f"{path}:{path}:ro"]
+        if pg_env.get("PGSSLMODE") in CERTIFICATE_SSLMODES:
+            raise Refused(
+                f"sslmode={pg_env['PGSSLMODE']} checks the server against a root certificate, and inside "
+                f"{self.image} there is none: name Supabase's CA certificate with sslrootcert=<path>"
+            )
+        return []
 
     def run(self, tool: str, args: list[str], pg_env: Mapping[str, str], *, capture: bool = False) -> str:
         argv, env = self.command(tool, args, pg_env)

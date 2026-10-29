@@ -16,8 +16,8 @@ import uuid
 from datetime import date, timedelta
 
 from app.models.club import OrgState
-from app.models.work_project import ProjectSource, SignupMode, SignupState, WorkProjectSignup
-from tests.factories import make_admin, make_assignment, make_org, make_profile, make_section, make_workday
+from app.models.work_project import ProjectSource, SignupMode, SignupState, WorkProject, WorkProjectSignup
+from tests.factories import make_admin, make_assignment, make_org, make_profile, make_role, make_section, make_workday
 from tests.tokens import auth_headers
 
 
@@ -122,6 +122,80 @@ def test_the_window_is_capped_rather_than_trusted(client, db_session):
     )
 
     assert client.get("/workdays?days=99999").json() == []
+
+
+def test_a_held_registration_cannot_post_a_workday_and_the_public_list_shows_none(client, db_session):
+    """#1918 - Backend findings the 2026-10-27 pre-launch review filed
+    together: none blocks the launch on its own, and each says what it rests
+    on, item 4: a held registration acting as the organization. A gmail
+    account registered the ATC's name, its `atc` slug and its domain, resting
+    on an address it typed for somebody there - so `pending` - and was seated
+    as an approved codeowner all the same. That seat posted a workday, and the
+    anonymous `GET /workdays` served it while `GET /clubs` hid the org."""
+    registrant = make_profile(db_session)
+    headers = auth_headers(registrant.id, email="mallory@gmail.com")
+    registered = client.post(
+        "/clubs",
+        json={
+            "name": "Appalachian Trail Conservancy",
+            "slug": "atc",
+            "domain": "appalachiantrail.org",
+            "admins": [{"email": "info@appalachiantrail.org"}],
+        },
+        headers=headers,
+    )
+    assert registered.json()["state"] == "pending"
+
+    response = client.post(
+        "/clubs/atc/workdays",
+        json={"title": "Blowdown clearing with the ATC", "starts_on": (date.today() + timedelta(days=7)).isoformat()},
+        headers=headers,
+    )
+
+    assert response.status_code == 409
+    assert "waiting for somebody at its domain" in response.json()["detail"]
+    assert db_session.query(WorkProject).count() == 0
+    assert client.get("/workdays").json() == []
+
+
+def test_a_held_registrations_workdays_are_never_listed_and_every_other_states_still_are(client, db_session):
+    """A row a `pending` org posted before `create_workday` refused it is
+    still in the table. Nothing about a held registration is published, with
+    or without `?org=`; a maintainer's `unclaimed` org, a `claimed` one and a
+    `frozen` one list exactly as they did."""
+    make_workday(db_session, make_org(db_session, slug="held-conference", state=OrgState.pending), title="Held")
+    for slug, state in [
+        ("ramapo-trail-conference", OrgState.unclaimed),
+        ("claimed-conference", OrgState.claimed),
+        ("frozen-conference", OrgState.frozen),
+    ]:
+        make_workday(db_session, make_org(db_session, slug=slug, state=state), title=state.value)
+
+    listed = sorted(workday["title"] for workday in client.get("/workdays").json())
+
+    assert listed == ["claimed", "frozen", "unclaimed"]
+    assert client.get("/workdays", params={"org": "held-conference"}).json() == []
+    assert [w["title"] for w in client.get("/workdays", params={"org": "ramapo-trail-conference"}).json()] == ["unclaimed"]
+
+
+def test_a_supervisor_at_a_maintainer_written_organization_still_posts_a_workday(client, db_session):
+    """The refusal is for `pending` alone. An `unclaimed` org is one a
+    maintainer wrote, with nobody seated as admin, and its crew leads reach
+    `create_workday` through the reporting line rather than a seat."""
+    org = make_org(db_session)
+    chair = make_role(db_session, org, name="Trails chair")
+    make_role(db_session, org, name="Maintainer", reports_to_role_id=chair.id)
+    supervisor = make_profile(db_session)
+    make_assignment(db_session, org, supervisor, role=chair, section=make_section(db_session, org))
+
+    response = client.post(
+        "/clubs/ramapo-trail-conference/workdays",
+        json={"title": "Blaze painting", "starts_on": (date.today() + timedelta(days=3)).isoformat()},
+        headers=auth_headers(supervisor.id),
+    )
+
+    assert response.status_code == 201
+    assert [w["title"] for w in client.get("/workdays").json()] == ["Blaze painting"]
 
 
 def test_a_signup_is_born_interested_and_nothing_else(client, db_session):

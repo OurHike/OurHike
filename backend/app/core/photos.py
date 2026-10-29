@@ -17,16 +17,17 @@ column and looked up. Two stores with no transaction between them drift, and
 the derived key is what decides whether that drift is a bookkeeping problem or
 a structural one. It answers the two questions that would otherwise need a
 database: *which objects belong to this report* (from the id alone) and *does
-this object still have a report* (by parsing the key). Reconciliation becomes
+this object still have a report* (by parsing the key). Reconciliation could be
 a set difference between `SELECT id FROM reports` and `ListObjectsV2` - a cron
-job rather than a design problem - and a retry overwrites the same key instead
-of duplicating it, which matters because on this trail a request that fails
-after committing is the normal case rather than the edge one.
+job rather than a design problem, though nobody has written that job - and a
+retry overwrites the same key instead of duplicating it, which matters because
+on this trail a request that fails after committing is the normal case rather
+than the edge one.
 
 **The direction of truth, stated once so it is not re-litigated per bug: the
 report row is authoritative, the R2 object is derived and disposable.** Never
-the reverse. A missing object degrades to "no photo"; an orphaned object gets
-swept.
+the reverse. A missing object degrades to "no photo". An orphaned object stays
+in the bucket until somebody deletes it by hand: no sweep exists to remove it.
 
 WHY THE BUCKET IS PRIVATE
 
@@ -207,7 +208,8 @@ def photo_key(report_id: str, index: int = FIRST_PHOTO_INDEX) -> str:
 
     Every other module derives keys through this function rather than
     formatting the string itself: a second spelling is how the uploader and
-    the sweeper come to disagree about which objects belong to a report.
+    whatever lists the bucket by report (a sweep, if one is ever written)
+    come to disagree about which objects belong to a report.
     """
     return f"reports/{report_id}/{index}.jpg"
 
@@ -332,8 +334,11 @@ def delete_photo_object(key: str) -> None:
     This is the half of #576's withdrawal that touches the bucket. Gated on
     the same write flag as uploads - deleting is a write - and the caller
     deletes the ROW first: the row is the authoritative half, so a delete
-    that fails here leaves an orphaned object for the reconciliation sweep,
-    never a row pointing at nothing.
+    that fails here leaves an orphaned object, never a row pointing at
+    nothing. Nothing removes that object later, because no sweep exists. When
+    R2 refuses the delete, the warning `_unavailable` logs, which names the
+    key, is the only record of it; when the write flag is off, the refusal
+    below logs nothing at all.
     """
     if not photo_uploads_enabled():
         raise PhotoStorageUnavailable("R2 is not configured for photo uploads.", detail=STORAGE_NOT_CONFIGURED_DETAIL)

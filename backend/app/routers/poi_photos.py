@@ -336,8 +336,9 @@ def _evict_beyond_rolling_window(db: Session, poi_id: str) -> None:
     ban, it is recency doing its job.
 
     Rows first, objects second, per the direction of truth: an object whose
-    delete fails is an orphan for the reconciliation sweep, never a served
-    row pointing at nothing.
+    delete fails is an orphan, never a served row pointing at nothing. No
+    sweep exists to reclaim it, so it stays until somebody deletes it by hand
+    (`delete_photo_object` says what record of its key there is).
     """
     excess = (
         db.query(PoiPhoto)
@@ -368,7 +369,7 @@ def _evict_beyond_rolling_window(db: Session, poi_id: str) -> None:
             delete_photo_object(key)
         except PhotoStorageUnavailable:
             # The row is gone, which is the authoritative half; the object
-            # is now an orphan the set-difference sweep reclaims.
+            # is now an orphan, and nothing reclaims it (see the docstring).
             pass
 
 
@@ -456,8 +457,11 @@ def withdraw_photo(
     try:
         delete_photo_object(poi_photo_key(poi_id, current_user.id))
     except PhotoStorageUnavailable:
-        # Row gone, object orphaned; the sweep reclaims it. The promise kept
-        # is "no longer served", and that is true the moment the row is gone.
+        # Row gone, object orphaned. Half the promise is kept: "no longer
+        # served" is true the moment the row is gone. "No longer held" is
+        # broken until somebody deletes the object by hand, because no sweep
+        # exists to do it (`delete_photo_object` says what record of its key
+        # there is).
         pass
 
     return Response(status_code=status.HTTP_204_NO_CONTENT)

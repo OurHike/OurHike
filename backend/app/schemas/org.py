@@ -35,45 +35,146 @@ RESERVED_SLUGS = frozenset(
     {"new", "claim", "nominate", "nominations", "demo", "setup", "volunteers", "admins", "admin", "api", "org"}
 )
 
-# Domains that hand an address to any stranger who signs up, so an email
-# there proves nothing about who runs an organization - #1641 finding 3.
-# `register_org`'s whole domain-proof design is "this person holds an
-# address at the org's own domain"; a free webmail domain makes that
-# sentence true for anybody on the internet, so `gmail.com` passed the proof
-# exactly as if it named a real club's mail server.
+# Domains that hand an address to anybody who asks for one, so an address
+# there proves nothing about who runs an organization. First listed for #1641
+# - Backend and org-console findings the v1.3.2 release review deferred, all
+# blocking a production backend (#600), finding 3: `register_org`'s whole
+# domain proof is "this person holds an address at the org's own domain", and
+# a free mail domain makes that sentence true for anybody on the internet.
+# `why_domain_proves_nothing` below is where every door asks this list.
 #
-# @unvalidated: a hand-picked list of the providers likely to actually be
-# typed into this form, not a maintained public-email-domain dataset (the
-# kind services like Mailgun or Kickbox publish and update). What would
-# settle it: real registration attempts naming a domain outside this list
-# that turns out to be public mail anyway - none have happened yet, because
-# this gate did not exist before now.
-PUBLIC_EMAIL_DOMAINS = frozenset(
-    {
-        "gmail.com",
-        "googlemail.com",
-        "yahoo.com",
-        "ymail.com",
-        "hotmail.com",
-        "outlook.com",
-        "live.com",
-        "msn.com",
-        "icloud.com",
-        "me.com",
-        "mac.com",
-        "aol.com",
-        "protonmail.com",
-        "proton.me",
-        "gmx.com",
-        "gmx.net",
-        "mail.com",
-        "zoho.com",
-        "yandex.com",
-        "qq.com",
-        "163.com",
-        "126.com",
-    }
-)
+# @unvalidated, and it cannot be finished. Assembled by hand from general
+# knowledge of which services hand out addresses - not checked against each
+# provider's sign-up page, and not a maintained dataset (the kind services
+# like Mailgun or Kickbox publish and update). A denylist misses by
+# construction: mail.com and Fastmail each let a user pick from many more
+# domains than are listed here, no ISP's domain is here, and disposable-inbox
+# services add domains to stay ahead of lists like this one.
+#
+# **ONE MISSING PROVIDER IS ENOUGH**, because whoever registers or nominates
+# an organization also picks its domain: an address at an unlisted provider
+# passes as the organization's own, under whatever name the form is given.
+# At `POST /clubs/nominations` that is #1909 - A nomination and a claim make a
+# free webmail account the codeowner of any organization name, the seat #1635
+# closed on POST /clubs - and `POST /clubs` has the same gap. So this list's
+# old settle-condition, "a real attempt from a provider outside it", was
+# waiting for the attack itself. More entries narrow the gap and cannot close
+# it. What would close it is positive proof that somebody controls the domain
+# - a DNS TXT record the organization publishes, or a person confirming a
+# nominated organization's domain before anybody can claim it - and nothing
+# here builds that yet.
+#
+# One string per provider, split on whitespace: domains sorted within it,
+# providers in alphabetical order. A whitespace-separated string rather than
+# a set literal because a missing comma between two literals silently glues
+# them into one domain nobody listed; `tests/test_routers_clubs.py` checks
+# that every entry is a plain lowercase hostname. Some entries are here for
+# how an address can be had rather than for who runs the mailbox:
+# `privaterelay.appleid.com` is the domain of the relay address "Sign in with
+# Apple" gives an app when a person hides their own, and this app offers
+# Apple sign-in; `duck.com` and `mozmail.com` hand forwarding addresses to
+# anybody; and the disposable inboxes accept mail for any address at all, a
+# sign-in code included.
+_PUBLIC_MAIL_BY_PROVIDER = {
+    "AOL": "aim.com aol.co.uk aol.com",
+    "Apple": "icloud.com mac.com me.com privaterelay.appleid.com",
+    "Disposable inboxes": "10minutemail.com guerrillamail.com maildrop.cc mailinator.com sharklasers.com yopmail.com",
+    "DuckDuckGo Email Protection": "duck.com",
+    "Fastmail": "fastmail.com fastmail.fm",
+    "Firefox Relay": "mozmail.com",
+    "GMX and WEB.DE": "gmx.at gmx.ch gmx.co.uk gmx.com gmx.de gmx.es gmx.fr gmx.net gmx.us web.de",
+    "Google": "gmail.com googlemail.com",
+    "HEY": "hey.com",
+    "Kakao": "daum.net hanmail.net",
+    "mail.com": """
+        accountant.com asia.com cheerful.com consultant.com dr.com email.com engineer.com europe.com iname.com
+        mail.com myself.com post.com techie.com usa.com writeme.com
+    """,
+    "Mail.ru": "bk.ru inbox.ru list.ru mail.ru",
+    "Microsoft": """
+        hotmail.be hotmail.co.jp hotmail.co.uk hotmail.com hotmail.com.ar hotmail.com.br hotmail.de hotmail.es
+        hotmail.fr hotmail.it hotmail.nl
+        live.at live.be live.ca live.co.uk live.com live.com.au live.com.mx live.de live.dk live.fr live.ie live.it
+        live.nl live.no live.se
+        msn.com
+        outlook.com outlook.com.au outlook.com.br outlook.de outlook.es outlook.fr outlook.it outlook.jp
+        windowslive.com
+    """,
+    "National webmail": "abv.bg interia.pl laposte.net libero.it o2.pl onet.pl rambler.ru seznam.cz ukr.net virgilio.it wp.pl",
+    "Naver": "naver.com",
+    "NetEase": "126.com 163.com yeah.net",
+    "Proton": "pm.me proton.me protonmail.ch protonmail.com",
+    "Rediff": "rediffmail.com",
+    "Sina": "sina.cn sina.com",
+    "Tencent": "foxmail.com qq.com",
+    "Tuta": "keemail.me tuta.com tuta.io tutamail.com tutanota.com tutanota.de",
+    "Yahoo": """
+        rocketmail.com yahoo.ca yahoo.co.in yahoo.co.jp yahoo.co.nz yahoo.co.uk yahoo.com yahoo.com.ar yahoo.com.au
+        yahoo.com.br yahoo.com.mx yahoo.de yahoo.es yahoo.fr yahoo.ie yahoo.in yahoo.it ymail.com
+    """,
+    "Yandex": "ya.ru yandex.by yandex.com yandex.kz yandex.ru yandex.ua",
+    "Zoho": "zoho.com zohomail.com",
+}
+PUBLIC_EMAIL_DOMAINS = frozenset(domain for domains in _PUBLIC_MAIL_BY_PROVIDER.values() for domain in domains.split())
+
+
+def why_domain_proves_nothing(domain: str) -> str | None:
+    """Why an address at `domain` cannot show who runs an organization, or None.
+
+    Three doors take "a verified address at the organization's domain" as the
+    proof of who runs it, and each asked about the domain on its own or not at
+    all (#1909 - A nomination and a claim make a free webmail account the
+    codeowner of any organization name, the seat #1635 closed on POST /clubs).
+    `OrgCreate` below refused both cases. `POST /clubs/nominations` stored
+    whatever domain the hiker's website named, and `claim_org` accepted
+    whatever was stored. So this is the one rule, and all three ask it:
+
+    - **Blank**, once normalised: no address can be at it.
+    - **No dot.** A bare top-level domain: a website of `https://com` stored
+      `com`, which every `.com` address holds.
+    - **A public mail provider** (`PUBLIC_EMAIL_DOMAINS` above): anybody can
+      get an address there.
+    - **A subdomain of one.** The claim takes an address at a subdomain of
+      the org's domain as being at it (`trails.ramapotrails.org`), so a
+      nominated `mallory.fastmail.com` would be proved by any address a
+      provider hands out under that name - and Fastmail's subdomain
+      addressing delivers `anything@mallory.fastmail.com` to the account
+      `mallory@fastmail.com` (general knowledge, not checked here). An
+      organization whose own domain really does sit under a mail
+      provider's would be refused too and wait for a person; none is known,
+      and that is the cheaper of the two mistakes.
+
+    **`domain` is normalised here rather than trusted to arrive that way**:
+    stripped, lowercased, and with any trailing dot removed. `claim_org` asks
+    about a STORED domain, and the rows this check exists for are the ones
+    today's validators did not write - by hand, or by an older version of a
+    door. The address check after it (`_somebody_holds_the_domain` in
+    routers/clubs.py) strips and lowercases before comparing, so a rule that
+    read the row as stored passed `GMAIL.COM` and `gmail.com ` while
+    `mallory@gmail.com` still matched both and was seated.
+
+    A public suffix such as `co.uk` has a dot and passes. Closing that needs
+    the Public Suffix List, a new dependency nobody has taken on yet.
+    """
+    normalised = domain.strip().lower().rstrip(".")
+    if not normalised:
+        return "That domain is blank, so no address can be at it."
+    if "." not in normalised:
+        return f"{normalised} is a top-level domain, not an organization's own, so every address under it would count."
+    if normalised in PUBLIC_EMAIL_DOMAINS:
+        return (
+            f"{normalised} is a public email provider, not an organization's own domain - "
+            "anybody can get an address there, so it cannot prove who runs a club."
+        )
+    labels = normalised.split(".")
+    for start in range(1, len(labels) - 1):
+        provider = ".".join(labels[start:])
+        if provider in PUBLIC_EMAIL_DOMAINS:
+            return (
+                f"{normalised} is part of {provider}, a public email provider, not an organization's own domain - "
+                "an address there cannot prove who runs a club."
+            )
+    return None
 
 
 def slugify(name: str) -> str:
@@ -291,12 +392,9 @@ class OrgCreate(BaseModel):
         cleaned = value.strip().lower().removeprefix("https://").removeprefix("http://").strip("/")
         if "." not in cleaned or " " in cleaned:
             raise ValueError("give the bare domain, e.g. ramapotrails.org")
-        if cleaned in PUBLIC_EMAIL_DOMAINS:
-            raise ValueError(
-                f"{cleaned} is a public email provider, not an organization's own domain - "
-                "anybody can get an address there, so it cannot prove who runs a club. "
-                "Give the domain your organization's own website and mail run on."
-            )
+        problem = why_domain_proves_nothing(cleaned)
+        if problem:
+            raise ValueError(f"{problem} Give the domain your organization's own website and mail run on.")
         return cleaned
 
 

@@ -14,6 +14,7 @@ What these hold, in the order the design cares about them:
   belong to them and survive the org winding up.
 """
 
+import re
 import uuid
 
 import pytest
@@ -22,6 +23,7 @@ from app.core.time import utc_now
 from app.models.club import Club, OrgAdmin, OrgState, VerifiedBy
 from app.models.org_role import RoleInvite
 from app.models.volunteer_hours import HoursActivity, VolunteerHoursRecord
+from app.schemas.org import PUBLIC_EMAIL_DOMAINS, why_domain_proves_nothing
 from tests.factories import make_admin, make_org, make_profile
 from tests.tokens import auth_headers
 
@@ -253,6 +255,141 @@ def test_claiming_needs_an_address_at_the_organizations_domain(client, db_sessio
     assert response.status_code == 403
 
 
+@pytest.mark.parametrize(
+    ("domain", "proves_nothing"),
+    [
+        ("ramapotrails.org", False),
+        ("trails.example.org", False),
+        ("RamapoTrails.org.", False),
+        ("gmail.com", True),
+        ("GMAIL.COM", True),
+        ("Gmail.com", True),
+        ("gmail.com ", True),
+        (" gmail.com", True),
+        ("gmail.com\n", True),
+        ("gmail.com.", True),
+        ("com", True),
+        ("com.", True),
+        ("", True),
+        (" ", True),
+        (".", True),
+        ("mallory.fastmail.com", True),
+        ("www.gmail.com", True),
+        ("trails.hotmail.co.uk", True),
+    ],
+)
+def test_one_rule_says_which_domains_prove_nothing_about_who_runs_an_organization(domain, proves_nothing):
+    """The rule registering, nominating and claiming all ask (#1909 - A
+    nomination and a claim make a free webmail account the codeowner of any
+    organization name, the seat #1635 closed on POST /clubs). It normalises
+    before it judges - stripped, lowercased, no trailing dot - so no spelling
+    the address check would still match an address against gets through."""
+    assert (why_domain_proves_nothing(domain) is not None) is proves_nothing
+
+
+def test_every_listed_mail_provider_is_a_plain_lowercase_hostname():
+    """`why_domain_proves_nothing` compares a normalised hostname against
+    `PUBLIC_EMAIL_DOMAINS` exactly, and a nominated website loses its `www.`
+    before it gets there. So an entry with a capital, a stray comma, a
+    trailing dot or a leading `www.` could never match, and would refuse
+    nothing without anybody noticing."""
+    misspelled = [domain for domain in PUBLIC_EMAIL_DOMAINS if not re.fullmatch(r"[a-z0-9-]+(\.[a-z0-9-]+)+", domain)]
+    assert misspelled == []
+    assert not [domain for domain in PUBLIC_EMAIL_DOMAINS if domain.startswith("www.")]
+
+
+# Five free mail providers the first list of 22 missed. Before they were
+# listed, an address at each registered or claimed an organization on it.
+_PROVIDERS_THE_FIRST_LIST_MISSED = ["duck.com", "hotmail.co.uk", "web.de", "gmx.de", "email.com"]
+
+
+@pytest.mark.parametrize("provider", _PROVIDERS_THE_FIRST_LIST_MISSED)
+def test_registering_an_organization_on_a_provider_the_first_list_missed_is_refused(client, db_session, provider):
+    """`POST /clubs` takes whatever domain the registrant types, and an
+    address at a free provider holds that domain the moment it is typed: the
+    registration came back `claimed`, verified by email, under any name."""
+    response = _register(client, str(uuid.uuid4()), email=f"mallory@{provider}", domain=provider, admins=[])
+
+    assert response.status_code == 422
+    assert "public email provider" in response.json()["detail"][0]["msg"]
+    assert db_session.query(Club).count() == 0
+
+
+@pytest.mark.parametrize(
+    ("domain", "address"),
+    [
+        ("gmail.com", "mallory@gmail.com"),
+        ("com", "mallory@anything.com"),
+        *[(provider, f"mallory@{provider}") for provider in _PROVIDERS_THE_FIRST_LIST_MISSED],
+        # Under a provider rather than at it: Fastmail delivers
+        # anything@mallory.fastmail.com to the account mallory@fastmail.com.
+        ("mallory.fastmail.com", "anything@mallory.fastmail.com"),
+    ],
+)
+def test_an_organization_whose_stored_domain_proves_nothing_cannot_be_claimed(client, db_session, domain, address):
+    """#1909: the second half of the side door. A row a nomination wrote
+    before nominations refused such a website still carries the domain, and
+    the caller's verified address IS at it. Refused before the address check,
+    so nobody is seated."""
+    make_org(db_session, domain=domain)
+    claimer = make_profile(db_session)
+
+    response = client.post(
+        "/clubs/ramapo-trail-conference/claim",
+        json={"title": "Trails chair"},
+        headers=auth_headers(claimer.id, email=address),
+    )
+
+    assert response.status_code == 409
+    assert "a person has to pick it up" in response.json()["detail"]
+    assert db_session.query(OrgAdmin).count() == 0
+    db_session.expire_all()
+    assert db_session.query(Club).one().state == OrgState.unclaimed
+
+
+@pytest.mark.parametrize("stored", ["GMAIL.COM", "Gmail.com", "gmail.com ", " gmail.com", "gmail.com\n"])
+def test_a_stored_webmail_domain_in_another_spelling_still_cannot_be_claimed(client, db_session, stored):
+    """`claim_org` asks `why_domain_proves_nothing` about the domain AS
+    STORED, and then `_somebody_holds_the_domain` strips and lowercases it
+    before matching the caller's address. A rule that read the row as stored
+    passed all five of these, and `mallory@gmail.com` matched each one and was
+    seated as codeowner. Today's writers normalise, so a row like this is
+    hand-written or older than they are - which is the row this check is
+    for."""
+    make_org(db_session, domain=stored)
+    claimer = make_profile(db_session)
+
+    response = client.post(
+        "/clubs/ramapo-trail-conference/claim",
+        json={"title": "Trails chair"},
+        headers=auth_headers(claimer.id, email="mallory@gmail.com"),
+    )
+
+    assert response.status_code == 409
+    assert "gmail.com is a public email provider" in response.json()["detail"]
+    assert db_session.query(OrgAdmin).count() == 0
+    db_session.expire_all()
+    assert db_session.query(Club).one().state == OrgState.unclaimed
+
+
+def test_a_claim_against_a_domain_that_proves_nothing_never_freezes_the_organization(client, db_session):
+    """`frozen` has no automatic exit, so a freeze anybody at gmail.com could
+    trigger would be a way to take a claimed organization offline. The refusal
+    comes before the freeze, as the address check always has."""
+    make_org(db_session, domain="gmail.com", state=OrgState.claimed)
+    claimer = make_profile(db_session)
+
+    response = client.post(
+        "/clubs/ramapo-trail-conference/claim",
+        json={"title": "Trails chair"},
+        headers=auth_headers(claimer.id, email="mallory@gmail.com"),
+    )
+
+    assert response.status_code == 409
+    db_session.expire_all()
+    assert db_session.query(Club).one().state == OrgState.claimed
+
+
 def test_claiming_an_unclaimed_organization_makes_you_its_first_codeowner(client, db_session):
     make_org(db_session)
     claimer = make_profile(db_session)
@@ -386,6 +523,36 @@ def test_a_held_organization_stays_held_when_the_approver_is_not_on_its_domain(c
     club = db_session.query(Club).one()
     assert club.state == OrgState.pending
     assert club.verified_by is None
+
+
+def test_approving_a_seat_does_not_release_a_held_organization_on_a_domain_that_proves_nothing(client, db_session):
+    """`approve_seat` is the second way out of `pending`, and it rests on the
+    proof `claim_org` takes: a verified address at the org's domain. A held
+    registration on gmail.com can still be in the table - v1.3.2 to v1.3.4
+    held registrations and checked their domain against no list - and the
+    registrant's own typed invite to a second gmail.com address released it,
+    `claimed` with `verified_by: email`, the moment that address approved.
+    Refused the way the claim is, and before the seat or the org is written."""
+    registrant = make_profile(db_session)
+    org = make_org(db_session, domain="gmail.com", state=OrgState.pending, created_by=registrant.id)
+    make_admin(db_session, org, registrant)
+    db_session.add(RoleInvite(club_id=org.id, email="mallory2@gmail.com", invited_by=registrant.id, grants_admin_seat=True))
+    db_session.commit()
+    accomplice = make_profile(db_session)
+    headers = auth_headers(accomplice.id, email="mallory2@gmail.com")
+    client.get("/clubs/ramapo-trail-conference/access", headers=headers)
+    seat = db_session.query(OrgAdmin).filter(OrgAdmin.person_id == accomplice.id).one()
+
+    response = client.post(f"/clubs/ramapo-trail-conference/admins/{seat.id}/approve", headers=headers)
+
+    assert response.status_code == 409
+    assert "a person has to pick it up" in response.json()["detail"]
+    db_session.expire_all()
+    club = db_session.query(Club).one()
+    assert club.state == OrgState.pending
+    assert club.verified_by is None
+    assert db_session.query(OrgAdmin).filter(OrgAdmin.person_id == accomplice.id).one().approved_at is None
+    assert db_session.query(OrgAdmin).filter(OrgAdmin.person_id == registrant.id).one_or_none() is not None
 
 
 def test_the_real_organization_can_still_claim_a_held_registration(client, db_session):

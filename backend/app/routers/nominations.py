@@ -60,6 +60,7 @@ from app.core.sitefetch import (
     reader,
 )
 from app.core.time import utc_now
+from app.core.trail_challenge import PUBLISHER_DOMAINS
 from app.core.urlguard import UrlRefused
 from app.db.session import get_db
 from app.models.club import Club, OrgState
@@ -85,6 +86,7 @@ from app.schemas.nomination import (
     ProposalOut,
     ProposedSource,
 )
+from app.schemas.org import RESERVED_SLUGS, why_domain_proves_nothing
 
 router = APIRouter(tags=["nominations"])
 
@@ -265,20 +267,41 @@ def _at_domain(email: str, domain: str) -> bool:
 
 
 def _slug_for(db: Session, name: str, domain: str) -> str:
-    """A readable id nobody else has.
+    """A readable id nobody else has, and none `POST /clubs` would refuse.
 
     The domain is the tiebreak rather than a counter, because two clubs with
     the same name are two different domains and a `-2` suffix tells a reader
     nothing about which is which.
+
+    **A candidate the front door refuses is passed over, not taken.**
+    `POST /clubs` refuses a slug in `RESERVED_SLUGS` (each already means
+    something under `/org/`) and a challenge publisher's slug for any domain
+    but that publisher's own (`PUBLISHER_DOMAINS` holds `atc` for
+    appalachiantrail.org). This door chose a slug from the name and checked
+    neither, so nominating "Admin", "New" or "ATC" on a domain of one's own
+    took `admin`, `new` or `atc`, and a claim from that domain then held it -
+    a side door skipping a front-door rule, the shape of #1909 - A nomination
+    and a claim make a free webmail account the codeowner of any organization
+    name, the seat #1635 closed on POST /clubs. Nobody typed this slug, so
+    there is nobody to refuse: the next candidate is taken instead. The front
+    door's length rule (`SLUG_MIN` to `SLUG_MAX`) is still not applied here.
     """
     import re
 
+    def free(candidate: str) -> bool:
+        if candidate in RESERVED_SLUGS:
+            return False
+        held_for = PUBLISHER_DOMAINS.get(candidate)
+        if held_for is not None and held_for != domain:
+            return False
+        return db.query(Club).filter(Club.slug == candidate).first() is None
+
     base = re.sub(r"[^a-z0-9]+", "-", name.lower()).strip("-") or "organization"
-    if db.query(Club).filter(Club.slug == base).first() is None:
+    if free(base):
         return base
     stem = domain.split(".")[0] if domain else secrets.token_hex(3)
     candidate = f"{base}-{stem}"
-    if db.query(Club).filter(Club.slug == candidate).first() is None:
+    if free(candidate):
         return candidate
     return f"{base}-{secrets.token_hex(3)}"
 
@@ -298,6 +321,21 @@ def submit_nomination(
     2026-09-17 condition implemented rather than displayed.
     """
     domain = _domain_of(payload.website)
+
+    # A DOMAIN THAT PROVES NOTHING IS REFUSED BEFORE ANYTHING IS WRITTEN. This
+    # domain becomes the club's, and `claim_org` later takes any verified
+    # address there as the proof of who runs it. A public mail provider or a
+    # bare top-level domain makes that proof true for anybody (#1909 - A
+    # nomination and a claim make a free webmail account the codeowner of any
+    # organization name, the seat #1635 closed on POST /clubs). Such an
+    # organization waits for a person, as the paragraph below already says of
+    # one whose contacts use a personal mail provider.
+    problem = why_domain_proves_nothing(domain)
+    if problem:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail=f"{problem} So it cannot be nominated here; a person has to pick this organization up.",
+        )
 
     # ONLY PEOPLE AT THE ORGANIZATION ARE ASKED (#1635). The contacts are
     # the people who decide whether this organization's data goes on the map,

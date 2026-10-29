@@ -221,3 +221,37 @@ it("reports drops the hiker's own reports once a read finds nobody signed in", a
   await waitFor(() => expect(result.current.reports).toEqual([HAZARD]))
   expect(requestsTo(spy, '/reports/mine')).toBe(1)
 })
+
+it.each([
+  ['nobody is signed in', null],
+  ['the hiker has no reports', 'a-real-token'],
+])(
+  'reports keeps its identity when an empty own read lands because %s',
+  async (_why, token) => {
+    // Every empty own list is stored as one constant, so this read sets the
+    // state the hook already holds. A new [] each time would hand App.tsx a
+    // new `reports` and re-place every warning on the map once more per
+    // refresh - on a signed-out phone, every refresh.
+    let openSession: () => void = () => {}
+    const sessionGate = new Promise<void>((resolve) => (openSession = resolve))
+    vi.mocked(getAuthClient).mockReturnValue({
+      auth: {
+        getSession: async () => {
+          await sessionGate
+          return { data: { session: token === null ? null : { access_token: token } } }
+        },
+      },
+    } as unknown as ReturnType<typeof getAuthClient>)
+    const useConditions = await configuredHook()
+    serve({ '/reports': () => answer([HAZARD]), '/reports/mine': () => answer([]) })
+    const { result } = renderHook(() => useConditions(true))
+    // The shared list lands while the own read waits on the session.
+    await waitFor(() => expect(result.current.reports).toEqual([HAZARD]))
+    const landed = result.current.reports
+
+    await act(async () => openSession())
+    await settle()
+
+    expect(result.current.reports).toBe(landed)
+  },
+)

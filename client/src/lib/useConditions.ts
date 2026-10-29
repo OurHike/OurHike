@@ -234,6 +234,16 @@ export interface Conditions {
 }
 
 /**
+ * The one empty list of the hiker's own reports. Every empty answer is stored
+ * as this constant, so a signed-out phone's `NotSignedInError` on each
+ * refresh, or a hiker with no reports, sets the state the hook already holds
+ * and React skips the update. A new `[]` each time would re-render App.tsx
+ * and re-place every warning on the map (its memos over `reports`) once more
+ * per refresh, for nothing.
+ */
+const NO_OWN_REPORTS: readonly ReportSummary[] = []
+
+/**
  * @param ready Whether the launch is past its first frame (#1302,
  *   lib/useAfterFirstFrame.ts). The nine published reads and the five live
  *   ones below wait for it; nothing they feed changes what the first frame
@@ -295,7 +305,7 @@ export function useConditions(
   const [lastSyncedAt, setLastSyncedAt] = useState<Date | null>(null)
   // The signed-in hiker's own reports (#1916); the effect that reads them
   // says why they are a state of their own.
-  const [ownReports, setOwnReports] = useState<readonly ReportSummary[]>([])
+  const [ownReports, setOwnReports] = useState(NO_OWN_REPORTS)
 
   const markSynced = useCallback(() => setLastSyncedAt(new Date()), [])
 
@@ -629,10 +639,10 @@ export function useConditions(
     let cancelled = false
     void fetchMyReports().then(
       (mine) => {
-        if (!cancelled) setOwnReports(mine)
+        if (!cancelled) setOwnReports(mine.length > 0 ? mine : NO_OWN_REPORTS)
       },
       (error) => {
-        if (!cancelled && error instanceof NotSignedInError) setOwnReports([])
+        if (!cancelled && error instanceof NotSignedInError) setOwnReports(NO_OWN_REPORTS)
       },
     )
     return () => {

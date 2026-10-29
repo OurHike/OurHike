@@ -28,7 +28,9 @@ click==8.4.2
 colorama==0.4.6 ; sys_platform == 'win32'
     # via click
 cryptography==50.0.0
-    # via pyjwt
+    # via
+    #   -r backend/requirements.in
+    #   pyjwt
 fastapi==0.143.2
     # via -r backend/requirements.in
 h11==0.16.0

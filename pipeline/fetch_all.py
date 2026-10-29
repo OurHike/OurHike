@@ -73,7 +73,9 @@ def main():
 
         print(f"Fetching {src['title']} ({key}) from {src['url']} ...")
         try:
-            count = fetch_layer_to_file(src["url"], out_path)
+            # The row's `where`, applied by the server as the extract applies it,
+            # so this file and the extract's as-landed copy hold the same rows.
+            count = fetch_layer_to_file(src["url"], out_path, where=src.get("where") or "1=1")
             print(f"  -> {count} features -> {out_path}")
             results[key] = {
                 "title": src["title"],

@@ -97,11 +97,18 @@ def _revoke_the_registrants_unverified_seat(db: Session, club: Club, *, verified
     anybody else at the organization.
 
     A no-op when the person who just proved the domain IS the registrant
-    (their own seat is the one being kept, not revoked) or when nobody
-    registered this club in the first place (an `unclaimed` row a maintainer
-    wrote by hand, which has no founder seat to revisit).
+    (their own seat is the one being kept, not revoked) or when a maintainer
+    wrote this row (`Club.maintainer_written`: an `unclaimed` row with no
+    founder seat to revisit).
+
+    Not keyed on `created_by` being null, which is what it used to read, and
+    what made it skippable: account deletion nulls `created_by`, so a
+    registrant who deleted their account before the real domain holder
+    approved left every seat they had handed out in place (#1913 - Deleting
+    the registrant's account turns a self-registered organization into a
+    maintainer-written one, and lets an accomplice keep an admin seat).
     """
-    if club.created_by is None or club.created_by == verified_by:
+    if club.maintainer_written or (club.created_by is not None and club.created_by == verified_by):
         return
     # NOT ONLY THE FOUNDER'S OWN SEAT: everything that rested on the
     # registration's authority goes with it. The form takes a second address
@@ -619,6 +626,9 @@ def claim_org(
     club.state = OrgState.claimed
     club.verified_by = VerifiedBy.email
     club.created_by = club.created_by or current_user.id
+    # After the revocation above, which reads it. From here the admins are
+    # whoever proved the domain, which no maintainer reviewed.
+    club.maintainer_written = False
     db.add(
         OrgAdmin(
             club_id=club.id,

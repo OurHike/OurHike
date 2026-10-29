@@ -557,10 +557,15 @@ export function Onboarding({
         {step.id === 'location-permission' && (
           <section className="onboarding__step">
             <h1 className="onboarding__title">Show where you are on it?</h1>
+            {/* The promise this card used to make, "never sent anywhere", stopped
+                being true with usage statistics (#1902): the fix now also goes,
+                sealed, with the usage counts while those are on. So the card names
+                both ways out, and where the switch is, before the hiker decides. */}
             <p>
-              Location is read on this phone and never sent anywhere. Without it the map
-              still works &mdash; it just cannot tell you which side of the ridge you are
-              on.
+              Location is read on this phone. It leaves only with a report you file, or
+              sealed inside usage statistics, which you can turn off in More → Safety
+              &amp; privacy. Without it the map still works &mdash; it just cannot tell
+              you which side of the ridge you are on.
             </p>
             <div className="onboarding__actions">
               <button

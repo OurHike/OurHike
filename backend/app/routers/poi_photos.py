@@ -8,7 +8,9 @@ the withdrawal promise both hang off.
 The write path is the outbox's two-phase flush, the same shape report photos
 use (#369): POST creates or replaces the caller's share row, PUT lands the
 bytes. Either half retries safely - the row upserts on its (poi, contributor)
-identity, and the object overwrites at its derived key.
+identity, and the object overwrites at its derived key. Order matters: a POST
+re-run after the PUT clears `uploaded_at`, so the photo leaves the gallery until
+the PUT is sent again (#1767 item 5).
 
 What a hiker can do here: share, upload, withdraw, and report somebody
 else's photo (#579's report path - the mechanism that keeps the rolling

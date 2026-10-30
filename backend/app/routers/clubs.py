@@ -214,7 +214,7 @@ def read_scoreboard(slug: str, db: Session = Depends(get_db)) -> ScoreboardOut:
     column on `clubs` if the answers differ.
     """
     club = club_by_slug(db, slug)
-    season_started = dt.date(dt.date.today().year, 1, 1)
+    season_started = dt.date(utc_now().date().year, 1, 1)
 
     miles = (
         db.query(func.coalesce(func.sum(OrgSection.miles), 0.0))

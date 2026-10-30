@@ -13,7 +13,7 @@ from datetime import date, timedelta
 
 from pydantic import BaseModel, ConfigDict, field_validator, model_validator
 
-from app.core.time import UtcDatetime
+from app.core.time import UtcDatetime, utc_now
 from app.models.work_project import ProjectSource, ProjectStatus, SignupMode, SignupState
 from app.schemas.common import FiniteFloat, NoteText
 from app.schemas.org import safe_contact_target, safe_external_url
@@ -110,7 +110,7 @@ class WorkProjectCreate(BaseModel):
     def _not_deep_in_the_past(cls, value: date) -> date:
         # A year of leeway, so an org importing last season's calendar is not
         # refused, while a typo in the year is.
-        if value < date.today() - timedelta(days=365):
+        if value < utc_now().date() - timedelta(days=365):
             raise ValueError("that date is more than a year ago - check the year")
         return value
 

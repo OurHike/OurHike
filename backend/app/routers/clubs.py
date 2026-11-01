@@ -67,6 +67,25 @@ def _with_admins(db: Session, club: Club) -> OrgOut:
     return out
 
 
+def _with_admins_for_all(db: Session, clubs: list[Club]) -> list[OrgOut]:
+    """`_with_admins` for a whole list, in one seat query rather than one per club (#1758).
+
+    Same rows in the same order as calling `_with_admins` per club: seats are
+    read once, ordered by `invited_at` as before, then dealt out by `club_id`.
+    """
+    seats: dict[int, list[OrgAdmin]] = {}
+    if clubs:
+        rows = db.query(OrgAdmin).filter(OrgAdmin.club_id.in_([club.id for club in clubs])).order_by(OrgAdmin.invited_at)
+        for seat in rows:
+            seats.setdefault(seat.club_id, []).append(seat)
+    outs = []
+    for club in clubs:
+        out = OrgOut.model_validate(club)
+        out.admins = [OrgAdminOut.model_validate(seat) for seat in seats.get(club.id, [])]
+        outs.append(out)
+    return outs
+
+
 def _domain_of(email: str | None) -> str | None:
     if not email or "@" not in email:
         return None
@@ -157,7 +176,7 @@ def list_orgs(db: Session = Depends(get_db)) -> list[OrgOut]:
     # stranger typed. `unclaimed` stays - see `OrgState`, where the two are
     # distinguished.
     clubs = db.query(Club).filter(Club.state.notin_([OrgState.deleted, OrgState.pending])).order_by(Club.name).all()
-    return [_with_admins(db, club) for club in clubs]
+    return _with_admins_for_all(db, clubs)
 
 
 @router.get("/{slug}", response_model=OrgOut)

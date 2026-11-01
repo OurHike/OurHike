@@ -822,3 +822,34 @@ def test_a_challenge_publishers_org_id_is_not_a_slug_a_stranger_may_register(cli
 
     assert response.status_code == 409
     assert db_session.query(Club).filter(Club.slug == "atc").one_or_none() is None
+
+
+def test_listing_orgs_reads_every_orgs_seats_in_one_query(client, db_session):
+    """#1758: `GET /clubs` used to run one `club_admins` SELECT per org.
+
+    Counted on the three orgs this test builds, so it says the number of seat
+    queries does not grow with the number of orgs - not what production's
+    club count does to latency, which nobody has measured.
+    """
+    from sqlalchemy import event
+
+    for n in range(3):
+        club = make_org(db_session, slug=f"club-{n}", state=OrgState.claimed)
+        make_admin(db_session, club, make_profile(db_session))
+    db_session.commit()
+
+    seat_selects = []
+
+    def count(conn, cursor, statement, *args):
+        if statement.lstrip().upper().startswith("SELECT") and "FROM club_admins" in statement:
+            seat_selects.append(statement)
+
+    engine = db_session.get_bind()
+    event.listen(engine, "before_cursor_execute", count)
+    try:
+        listed = client.get("/clubs").json()
+    finally:
+        event.remove(engine, "before_cursor_execute", count)
+
+    assert [len(org["admins"]) for org in listed] == [1, 1, 1]
+    assert len(seat_selects) == 1

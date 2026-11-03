@@ -557,31 +557,27 @@ def test_with_no_rollup_heartbeat_at_all_every_batch_is_paused(client, db_sessio
     assert _intake(db_session) == {("", "paused"): 2}
 
 
-def _the_only_heartbeat(db_session, now):
-    """Make the rollup's heartbeat `now`, and no other.
+def _only_heartbeat(db_session, at) -> None:
+    """The rollup's heartbeat as exactly `at`, and no other.
 
-    `_rollup_has_run` has already written this month's row as computed now,
-    and `make_rollup_heartbeat` writes the row for `now`'s own month. On the
-    first days of a month, a time `analytics_rollup_stale_days` back falls in
-    the previous month, so it lands on another row and this month's fresh one
-    stays the newest (#1951 - test_a_heartbeat_older_than_the_stale_days_pauses_collection
-    fails on the first three days of every month; measured 2026-11-03, 202
-    where 503 was expected). So the rows go first.
-    """
+    `make_rollup_heartbeat` keys its row by `at`'s month, so in a month's first
+    days a moment three days back landed in last month's row and left
+    `_rollup_has_run`'s fresh one for this month beside it - read as alive,
+    which failed the stale test on the 1st to 3rd of every month (#1949)."""
     db_session.query(AnalyticsMonth).delete()
     db_session.commit()
-    make_rollup_heartbeat(db_session, now=now)
+    make_rollup_heartbeat(db_session, now=at)
 
 
 def test_a_heartbeat_older_than_the_stale_days_pauses_collection(client, db_session, today):
-    _the_only_heartbeat(db_session, utc_now() - timedelta(days=settings.analytics_rollup_stale_days, minutes=1))
+    _only_heartbeat(db_session, utc_now() - timedelta(days=settings.analytics_rollup_stale_days, minutes=1))
 
     assert _post(client, [_event(today)]).status_code == 503
     assert _intake(db_session) == {("", "paused"): 1}
 
 
 def test_a_heartbeat_inside_the_stale_days_lets_the_batch_in(client, db_session, today):
-    _the_only_heartbeat(db_session, utc_now() - timedelta(days=settings.analytics_rollup_stale_days, minutes=-60))
+    _only_heartbeat(db_session, utc_now() - timedelta(days=settings.analytics_rollup_stale_days, minutes=-60))
 
     assert _post(client, [_event(today)]).status_code == 202
 

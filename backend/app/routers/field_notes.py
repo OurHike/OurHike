@@ -23,14 +23,15 @@ from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from app.core.assignments import stood_behind
-from app.core.auth import get_current_user, get_current_user_optional, require_role
+from app.core.auth import get_current_user, get_current_user_optional, require_role, still_signed_in
 from app.core.disputes import DISPUTE_DECAY_DAYS, DisputeInput, dispute_state
-from app.core.orm import commit_and_refresh, get_or_404
+from app.core.orm import commit_and_refresh, get_or_404, release_before_waiting
 from app.core.photos import (
     ALLOWED_CONTENT_TYPE,
     JPEG_MAGIC,
     MAX_PHOTO_BYTES,
     PhotoStorageUnavailable,
+    discard_refused_upload,
     note_photo_key,
     photo_uploads_enabled,
     store_photo_object,
@@ -389,7 +390,10 @@ async def upload_note_photo(
     the body is capped as it streams, and JPEG is decided by the bytes' own
     magic rather than by a header the client writes.
     """
-    note = await run_in_threadpool(_note_this_caller_may_upload_to, db, note_id, current_user)
+    # The checks, then the connection handed back before the wait for the
+    # bytes (`release_before_waiting` says why). `_record_stored_note_photo`
+    # looks the note up again once the photo is in the bucket.
+    uploader_id = await run_in_threadpool(_note_checked_then_released, db, note_id, current_user)
 
     if request.headers.get("content-type", "").split(";")[0].strip() != ALLOWED_CONTENT_TYPE:
         raise HTTPException(
@@ -408,13 +412,28 @@ async def upload_note_photo(
 
     # The R2 put and the commit are blocking, so they run off the event loop;
     # `read_capped_body` is the only awaited part (#1753).
-    return await run_in_threadpool(_store_and_record_note_photo, db, note, body, current_user)
+    return await run_in_threadpool(_store_then_record_note_photo, db, note_id, body, uploader_id)
 
 
-def _note_this_caller_may_upload_to(db: Session, note_id: str, current_user: Profile) -> FieldNote:
-    note = get_or_404(db, FieldNote, note_id, detail="Note not found")
+def _note_checked_then_released(db: Session, note_id: str, current_user: Profile) -> str:
+    """The checks, then the connection handed back; the caller's id, as a
+    plain string for the reason `reports._checked_then_released` gives."""
+    uploader_id = current_user.id
+    _note_this_caller_may_upload_to(db.get(FieldNote, note_id), uploader_id)
+    release_before_waiting(db)
+    return uploader_id
 
-    if note.reporter_id != current_user.id:
+
+def _note_this_caller_may_upload_to(note: FieldNote | None, uploader_id: str) -> FieldNote:
+    """The note, if it exists, this caller wrote it, and there is a bucket.
+
+    Handed the row, because it is looked up plainly before the body is read
+    and locked once the photo is in the bucket (`_record_stored_note_photo`).
+    """
+    if note is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Note not found")
+
+    if note.reporter_id != uploader_id:
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
             detail="A note's photo can only be added by whoever wrote the note.",
@@ -428,16 +447,44 @@ def _note_this_caller_may_upload_to(db: Session, note_id: str, current_user: Pro
     return note
 
 
-def _store_and_record_note_photo(db: Session, note: FieldNote, body: bytes, current_user: Profile) -> FieldNoteOut:
+def _store_then_record_note_photo(db: Session, note_id: str, body: bytes, uploader_id: str) -> FieldNoteOut:
+    """The put, holding no database connection, then the record step - the
+    order `reports._store_then_record_photo` explains."""
+    key = note_photo_key(note_id)
     try:
-        store_photo_object(note_photo_key(note.id), body)
+        store_photo_object(key, body)
     except PhotoStorageUnavailable as error:
         # `error.detail`, never `str(error)` - the message names the endpoint
         # and the endpoint names the account (app/core/photos.py).
         raise HTTPException(status_code=status.HTTP_503_SERVICE_UNAVAILABLE, detail=error.detail) from error
 
+    return _record_stored_note_photo(db, note_id, key, uploader_id)
+
+
+def _record_stored_note_photo(db: Session, note_id: str, key: str, uploader_id: str) -> FieldNoteOut:
+    """Record a photo already in the bucket, in one short transaction on the
+    locked note, or refuse it and take the object back out.
+
+    The same step as `reports._record_stored_photo`, which argues the lock,
+    the account check and the refusal; account deletion keeps a hiker's notes
+    as it keeps their reports. The object stays only where a recorded photo
+    is still using it: `notes/{id}.jpg` has one photo per note, so a refused
+    upload to a note whose photo already landed has overwritten that photo.
+    """
+    note = db.get(FieldNote, note_id, with_for_update=True, populate_existing=True)
+    try:
+        uploader = still_signed_in(db, uploader_id)
+        _note_this_caller_may_upload_to(note, uploader_id)
+    except HTTPException:
+        unrecorded = note is None or note.photo_uploaded_at is None
+        db.rollback()
+        if unrecorded:
+            discard_refused_upload(key)
+        raise
+
     note.photo_uploaded_at = utc_now()
-    return FieldNoteOut.for_viewer(commit_and_refresh(db, note), current_user)
+    commit_and_refresh(db, note)
+    return FieldNoteOut.for_viewer(note, uploader)
 
 
 @router.post("/field-notes/{note_id}/photo/review", response_model=FieldNoteOut)

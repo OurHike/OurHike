@@ -15,7 +15,8 @@ import re
 from pydantic import BaseModel, ConfigDict, field_validator
 
 from app.core.time import UtcDatetime
-from app.models.club import OrgState, VerifiedBy
+from app.models.club import OrgAdmin, OrgState, VerifiedBy
+from app.models.profile import Profile
 from app.schemas.common import NoteText
 
 # A slug is lowercase alphanumerics and single hyphens, 3 to 64 characters.
@@ -94,27 +95,81 @@ class OrgAdminOut(BaseModel):
     because a decline is reversible and a status enum would need a value for
     "declined, then approved" that means nothing to a reader. The two
     timestamps say what happened in the order it happened.
+
+    `person_id`, `decline_reason` and the three dates are null unless the
+    viewer may see them, so a null date means "not for you" as often as "has
+    not happened": build one with `for_viewer`, never from the row directly.
     """
 
     model_config = ConfigDict(from_attributes=True)
 
     id: str
-    person_id: str
+    person_id: str | None
     title: str | None
     is_codeowner: bool
-    invited_at: UtcDatetime
+    invited_at: UtcDatetime | None
     approved_at: UtcDatetime | None
     declined_at: UtcDatetime | None
     decline_reason: str | None
+
+    @classmethod
+    def for_viewer(
+        cls,
+        seat: OrgAdmin,
+        viewer: Profile | None,
+        *,
+        sees_every_holder: bool,
+        sees_every_date: bool,
+    ) -> OrgAdminOut:
+        """The only correct way to build one. `viewer` is None when anonymous.
+        `_with_admins` in routers/clubs.py works out the two flags.
+
+        WHOSE SEAT IT IS, AND WHY THEY DECLINED, ARE NOT PUBLIC (#1914 - GET
+        /clubs publishes every admin's account id and decline reason to anyone,
+        and an account id is all it takes to write into that person's private
+        thanks inbox). An account id was the key to that inbox, and a decline
+        reason is a sentence a person wrote to their own organization. Both go
+        to moderators and to the approved admins of an org that is not held
+        (`sees_every_holder`), and to the seat's own holder, who needs it to
+        find their seat.
+
+        WHEN A SEAT WAS OFFERED AND ANSWERED IS THE ORG'S OWN BUSINESS TOO.
+        #1914 asked for the dates to reach the console only. They go to
+        moderators and to everybody holding a seat at the org, approved or not
+        (`sees_every_date`) - wider than the holder rule above, because the
+        console reads them for viewers who are not approved admins: the
+        approval screen shows an invited admin where the other seats stand
+        before they answer their own, and the setup hub and sign-off screen
+        count approvals from `approved_at`. Nothing outside the console reads
+        any seat field (the site's embed, `site/public/embed/v1/ourhike.js`,
+        reads an org's name and giving links), so everybody else - anonymous
+        callers, accounts with no seat here, the org's supervisors and
+        volunteers - reads each seat's id, title and codeowner flag only.
+        """
+        own = viewer is not None and seat.person_id == viewer.id
+        holder = sees_every_holder or own
+        dates = sees_every_date or own
+        return cls(
+            id=seat.id,
+            person_id=seat.person_id if holder else None,
+            title=seat.title,
+            is_codeowner=seat.is_codeowner,
+            invited_at=seat.invited_at if dates else None,
+            approved_at=seat.approved_at if dates else None,
+            declined_at=seat.declined_at if dates else None,
+            decline_reason=seat.decline_reason if holder else None,
+        )
 
 
 class OrgOut(BaseModel):
     """An organization as the console and the public page both read it.
 
-    One model rather than a public/private split, because there is nothing
-    here a hiker may not see: the roster, the hours and the unpublished
-    registry are all other resources. What an org publishes about itself is
-    public by construction - that is what registering is.
+    One model rather than a public/private split, because almost nothing here
+    is private: the roster, the hours and the unpublished registry are all
+    other resources. What an org publishes about itself is public by
+    construction - that is what registering is. The exception is each seat's
+    holder, decline reason and dates, which `OrgAdminOut.for_viewer` answers
+    per viewer.
     """
 
     model_config = ConfigDict(from_attributes=True)

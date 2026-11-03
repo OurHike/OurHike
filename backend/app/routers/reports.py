@@ -153,7 +153,8 @@ def _credit_for(db: Session, payload: ReportCreate, authored: datetime) -> tuple
     the request and stored.
 
     So the rule is: **what the hiker named wins, and what they left blank is
-    resolved.** Someone who knows the name is the case SAYING_THANKS.md's
+    resolved** - where "named" means a person the trail record stands behind
+    (#1914, the paragraph in the body below). Someone who knows the name is the case SAYING_THANKS.md's
     "optionally tagging the maintainer responsible" exists for, and a lookup
     must not overrule them. The two fields resolve independently - naming a
     club without a person is the ordinary way to thank a stretch.
@@ -189,6 +190,16 @@ def _credit_for(db: Session, payload: ReportCreate, authored: datetime) -> tuple
         return None, None
 
     named_maintainer, named_club = payload.maintainer_id, payload.club_id
+    # A NAMED PERSON COUNTS ONLY IF THE TRAIL RECORD STANDS BEHIND THEM (#1914 -
+    # GET /clubs publishes every admin's account id and decline reason to
+    # anyone, and an account id is all it takes to write into that person's
+    # private thanks inbox). "What the hiker named wins" delivered a thanks to
+    # any account id at all, and thanks never reach the moderation queue. The
+    # maintainer's rule, by poll on 2026-10-27: a name counts only if
+    # `stood_behind()` believes one of that person's assignments. Anyone else
+    # is dropped, and the thanks resolves by location, as a blank name does.
+    if named_maintainer is not None and not _the_record_stands_behind(db, named_maintainer):
+        named_maintainer = None
     if named_maintainer is not None and named_club is not None:
         return named_maintainer, named_club
 
@@ -219,6 +230,22 @@ def _credit_for(db: Session, payload: ReportCreate, authored: datetime) -> tuple
         named_maintainer or (maintainers.pop() if len(maintainers) == 1 else None),
         named_club or (clubs.pop() if len(clubs) == 1 else None),
     )
+
+
+def _the_record_stands_behind(db: Session, person_id: str) -> bool:
+    """Whether any of `person_id`'s assignments is one a hiker-facing read believes.
+
+    Any date, not only the authored one: a thanks written in June for June's
+    maintainer still reaches them after a July handover, which is the reason
+    `_credit_for` resolves by the authored date in the first place.
+    """
+    believed = (
+        db.query(MaintainerAssignment.id)
+        .join(Club, Club.id == MaintainerAssignment.club_id)
+        .filter(MaintainerAssignment.maintainer_id == person_id, stood_behind())
+        .first()
+    )
+    return believed is not None
 
 
 @router.post("", response_model=ReportOut, status_code=status.HTTP_201_CREATED)
@@ -406,7 +433,9 @@ def list_my_thanks(
 
     **Three ways to be a recipient, and the third is the one that matters.**
 
-    1. Named directly. A hiker who knew the name tagged it.
+    1. Named directly. A hiker who knew the name tagged it - and the trail
+       record stands behind the caller (#1914), the same test a name has to
+       pass when the thanks is written.
     2. Addressed to a club the caller CURRENTLY holds an assignment for.
        Club-level is SAYING_THANKS.md's default, and the common case - the
        hiker knew the stretch, not the person. "Currently" is load-bearing
@@ -447,10 +476,19 @@ def list_my_thanks(
         .all()
     )
 
-    # Named directly. Stands alone: somebody can be thanked by name without
-    # holding any assignment at all - a maintainer between sections, or one
-    # whose club has not been loaded into the table yet.
-    recipient = [Report.maintainer_id == current_user.id]
+    # Named directly, and only a name the trail record stands behind:
+    # `_the_record_stands_behind`, the same check `_credit_for` makes of a
+    # named `maintainer_id` when a thanks is written (#1914 - GET /clubs
+    # publishes every admin's account id and decline reason to anyone, and an
+    # account id is all it takes to write into that person's private thanks
+    # inbox). Asked again here because the stored column is no proof of it: a
+    # row written before that rule shipped, or by an instance still running
+    # the old code during a rolling deploy, names whatever account id its
+    # hiker sent. Any of the caller's believed assignments counts, past ones
+    # included, so a maintainer between sections still gets a thanks
+    # addressed to them. Someone holding no believed assignment at all - one
+    # whose club has not been loaded yet, too - is not reachable by name.
+    recipient = [Report.maintainer_id == current_user.id] if _the_record_stands_behind(db, current_user.id) else []
 
     # Club membership is judged now, not ever (#642). The stretch clause
     # below judges by the report's authored time because the work has a date;
@@ -480,6 +518,11 @@ def list_my_thanks(
         if assignment.effective_to is not None:
             covers.append(Report.timestamp < datetime.combine(assignment.effective_to + timedelta(days=1), time.min))
         recipient.append(and_(*covers))
+
+    if not recipient:
+        # The record stands behind none of the caller's assignments, so no
+        # clause above applies - and `or_()` of nothing is not a filter.
+        return []
 
     rows = (
         db.query(Report)

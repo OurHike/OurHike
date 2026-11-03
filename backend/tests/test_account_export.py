@@ -17,6 +17,7 @@ from app.db.base import Base
 from app.models.closure import ClosureApproval
 from app.models.org_registry import RegistrySignoff
 from app.models.profile import Role
+from app.models.report import Report, ReportType, Visibility
 from tests.factories import make_closure, make_profile
 from tests.test_account_deletion import _furnish
 from tests.tokens import auth_headers
@@ -125,6 +126,38 @@ def test_it_carries_the_columns_the_response_schemas_redact(db_session):
     assert archive["closures_you_reported"][0]["reported_by"] == profile.id
 
 
+def test_it_leaves_out_whose_account_a_thanks_was_credited_to(db_session):
+    """The one column of the hiker's own rows this file leaves out, and why.
+
+    `maintainer_id` on a thanks is the account the server credited, from the
+    thanks' mile and date, and only a moderator is told it (ReportOut). Here
+    it would hand back what the API withholds: file one thanks per mile,
+    download this, and the map of volunteers' account ids that #641
+    (GET /maintainer-assignments serves volunteer account ids to anonymous
+    callers) took away is back. The thanks itself stays."""
+    profile = _furnished(db_session)
+    credited = make_profile(db_session, Role.maintainer)
+    db_session.add(
+        Report(
+            reporter_id=profile.id,
+            type=ReportType.thanks,
+            reporter_type="thru",
+            visibility=Visibility.club_only,
+            mile=1043.0,
+            maintainer_id=credited.id,
+            note="Thank you for the blowdowns",
+        )
+    )
+    db_session.commit()
+
+    archive = build_export(db_session, profile)
+
+    [thanks] = [row for row in archive["condition_reports"] if row["type"] == "thanks"]
+    assert thanks["note"] == "Thank you for the blowdowns"
+    assert "maintainer_id" not in thanks
+    assert credited.id not in json.dumps(archive)
+
+
 def test_a_photo_carries_the_key_that_identifies_its_object(db_session):
     """The one field the tables do not have, because it is derived.
 
@@ -158,10 +191,11 @@ def test_it_says_what_it_does_not_contain(db_session):
 
     assert archive["what_this_file_does_not_contain"] == list(NOT_INCLUDED)
     joined = " ".join(NOT_INCLUDED).lower()
-    # The three gaps a hiker cannot see from the file itself.
+    # The gaps a hiker cannot see from the file itself.
     assert "photograph" in joined
     assert "never left your phone" in joined
     assert "supabase auth" in joined
+    assert "credited" in joined
 
 
 def test_the_whole_archive_is_json(db_session, client):

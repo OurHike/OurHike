@@ -38,6 +38,7 @@ click==8.4.2
     #   rasterio
 colorama==0.4.6 ; sys_platform == 'win32'
     # via
+    #   -c pipeline/requirements.txt
     #   click
     #   pytest
 coverage==7.15.4
@@ -150,7 +151,7 @@ pyparsing==3.3.2
     #   rasterio
 pypdf==6.21.4
     # via -r pipeline/requirements-dev.in
-pyproj==3.8.0
+pyproj==3.7.2
     # via
     #   -c pipeline/requirements.txt
     #   -r pipeline/requirements.in
@@ -237,6 +238,7 @@ typing-extensions==4.16.0
     #   psycopg
 tzdata==2026.4
     # via
+    #   -c pipeline/requirements.txt
     #   dlt
     #   pendulum
     #   psycopg

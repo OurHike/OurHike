@@ -2070,12 +2070,17 @@ class _GzipWithoutTime:
     the same tiles made a different archive, and a different sha256, on every
     run. publish.py takes a changed hash as a changed artifact, and gzips its
     own uploads with mtime=0 for that reason; this is the same choice, made
-    for the one writer that does not offer it."""
+    for the one writer that does not offer it.
+
+    pmtiles 3.8.1 passes mtime=0 itself on every gzip.compress call, so
+    under it this wrapper changes nothing. It still has to accept the
+    keyword: without it the writer raised TypeError on the first directory
+    it wrote."""
 
     decompress = staticmethod(gzip.decompress)
 
     @staticmethod
-    def compress(data: bytes, compresslevel: int = 9) -> bytes:
+    def compress(data: bytes, compresslevel: int = 9, mtime: float | None = 0) -> bytes:
         return gzip.compress(data, compresslevel, mtime=0)
 
 

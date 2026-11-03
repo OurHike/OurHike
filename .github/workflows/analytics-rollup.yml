@@ -4,6 +4,19 @@
 # that has not closed. backend/app/core/analytics_rollup.py is the whole job;
 # backend/scripts/analytics_rollup.py is the command this runs.
 #
+# BEFORE IT, THE ARCHIVE (#1923, backend/app/core/analytics_archive.py): every
+# closed month's rows that no account is linked to move to zstd Parquet in the
+# environment's own private R2 bucket and leave Postgres, so the database holds
+# only open months and linked rows. It runs first so that the rollup's count of
+# rows held already excludes what moved. It connects as its own role,
+# `ourhike_analytics_archive` (EVENTING.md, "The archive's role"), because the
+# files have to carry `sealed` and the rollup's role cannot read it. A failed
+# archive does not stop the rollup - the six-month deletion and the intake's
+# heartbeat matter more than the move - and the checks record it as
+# `archive_failed`, the way they record a failed rollup. Unconfigured, it is
+# skipped with a warning and nothing else changes: rows stay in Postgres until
+# the rollup deletes them at six months, as they did before it existed.
+#
 # Then the data-quality checks (backend/app/core/analytics_quality.py): each
 # metric against the same weekday in the weeks before, each event per session,
 # each release against the others, refused rows, and the sums every month's
@@ -27,9 +40,13 @@
 #
 # NO ENVIRONMENT GATE, deliberately, for schema-drift.yml's reason: a
 # scheduled run that waits for a reviewer waits forever. What makes that safe
-# is the credential, not a click - `ourhike_analytics_rollup` (EVENTING.md,
-# "The rollup's role") can read every usage column EXCEPT `sealed`, so a job
-# holding this secret cannot read a position or an account even by accident.
+# is the credentials, not a click. `ourhike_analytics_rollup` (EVENTING.md,
+# "The rollup's role") can read every usage column EXCEPT `sealed`, so the
+# rollup cannot read a position or an account even by accident. The archive's
+# role can read `sealed`, because the files must carry it - but only on rows no
+# account is linked to (its policy is `user_key IS NULL`), and `sealed` is
+# ciphertext under a key no server holds. Each environment's R2 token reaches
+# only that environment's bucket, so the UA job cannot touch production's files.
 #
 # A MISSED NIGHT COSTS NOTHING: every run closes every month that is due, not
 # "last month". GitHub runs schedules only from the default branch and turns
@@ -59,7 +76,8 @@ jobs:
   ua:
     name: UA
     runs-on: ubuntu-latest
-    timeout-minutes: 15
+    # 15 for the rollup and checks, plus the archive step's own 10.
+    timeout-minutes: 25
     # Unused by the rollup, and app/config.py cannot import without them -
     # placeholders for the reason migrate.yml's UA job gives, which matters
     # more on a scheduled job: one reading the real SUPABASE_* settings reads
@@ -86,6 +104,31 @@ jobs:
             echo "go=true" >> "$GITHUB_OUTPUT"
           fi
 
+      # Three settings of its own; the endpoint is the account's, shared with
+      # every other R2 call here. Each unset one is named in the warning -
+      # a name is not a value.
+      - name: Is there a UA archive to write
+        id: archive_can
+        if: steps.can.outputs.go == 'true'
+        working-directory: .
+        env:
+          ARCHIVE_DATABASE_URL: ${{ secrets.UA_ANALYTICS_ARCHIVE_DATABASE_URL }}
+          ARCHIVE_ENDPOINT_URL: ${{ secrets.R2_ENDPOINT_URL }}
+          ARCHIVE_ACCESS_KEY_ID: ${{ secrets.UA_USAGE_ARCHIVE_R2_ACCESS_KEY_ID }}
+          ARCHIVE_SECRET_ACCESS_KEY: ${{ secrets.UA_USAGE_ARCHIVE_R2_SECRET_ACCESS_KEY }}
+        run: |
+          missing=""
+          [ -n "$ARCHIVE_DATABASE_URL" ] || missing="$missing UA_ANALYTICS_ARCHIVE_DATABASE_URL"
+          [ -n "$ARCHIVE_ENDPOINT_URL" ] || missing="$missing R2_ENDPOINT_URL"
+          [ -n "$ARCHIVE_ACCESS_KEY_ID" ] || missing="$missing UA_USAGE_ARCHIVE_R2_ACCESS_KEY_ID"
+          [ -n "$ARCHIVE_SECRET_ACCESS_KEY" ] || missing="$missing UA_USAGE_ARCHIVE_R2_SECRET_ACCESS_KEY"
+          if [ -n "$missing" ]; then
+            echo "::warning::The UA usage archive is not configured (unset:$missing), so no closed month moved to R2. See features/EVENTING.md, \"The archive\"."
+            echo "go=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "go=true" >> "$GITHUB_OUTPUT"
+          fi
+
       - uses: actions/checkout@v7
         if: steps.can.outputs.go == 'true'
 
@@ -94,15 +137,35 @@ jobs:
         with:
           python-version: "3.14"
           cache: pip
-          cache-dependency-path: backend/requirements.txt
+          cache-dependency-path: backend/requirements-archive.txt
 
+      # requirements.txt's own pins plus pyarrow, which only the archive
+      # imports (backend/requirements-archive.in says why the API never does).
       - name: Install dependencies
+        id: install
         if: steps.can.outputs.go == 'true'
-        run: pip install -r requirements.txt
+        run: pip install -r requirements-archive.txt
 
+      # Its own timeout, so an archive that runs long fails here and leaves
+      # the rollup its time. @unvalidated: nobody has archived a real month
+      # yet; the step's duration over the first production months settles it.
+      - name: Archive UA's closed months
+        id: archive
+        if: steps.archive_can.outputs.go == 'true'
+        timeout-minutes: 10
+        env:
+          DATABASE_URL: ${{ secrets.UA_ANALYTICS_ARCHIVE_DATABASE_URL }}
+          USAGE_ARCHIVE_R2_ENDPOINT_URL: ${{ secrets.R2_ENDPOINT_URL }}
+          USAGE_ARCHIVE_R2_BUCKET: ourhike-usage-ua
+          USAGE_ARCHIVE_R2_ACCESS_KEY_ID: ${{ secrets.UA_USAGE_ARCHIVE_R2_ACCESS_KEY_ID }}
+          USAGE_ARCHIVE_R2_SECRET_ACCESS_KEY: ${{ secrets.UA_USAGE_ARCHIVE_R2_SECRET_ACCESS_KEY }}
+        run: python scripts/analytics_archive.py
+
+      # `!cancelled()`, so a failed archive does not take the rollup with it
+      # (see the header) - but a failed install still does.
       - name: Roll up UA
         id: rollup
-        if: steps.can.outputs.go == 'true'
+        if: ${{ !cancelled() && steps.install.outcome == 'success' }}
         env:
           DATABASE_URL: ${{ secrets.UA_ANALYTICS_DATABASE_URL }}
         run: python scripts/analytics_rollup.py
@@ -115,12 +178,14 @@ jobs:
         env:
           DATABASE_URL: ${{ secrets.UA_ANALYTICS_DATABASE_URL }}
           ROLLUP_OUTCOME: ${{ steps.rollup.outcome }}
-        run: python scripts/analytics_quality.py --rollup-outcome "$ROLLUP_OUTCOME"
+          ARCHIVE_OUTCOME: ${{ steps.archive.outcome }}
+        run: python scripts/analytics_quality.py --rollup-outcome "$ROLLUP_OUTCOME" --archive-outcome "$ARCHIVE_OUTCOME"
 
   production:
     name: Production
     runs-on: ubuntu-latest
-    timeout-minutes: 15
+    # 15 for the rollup and checks, plus the archive step's own 10.
+    timeout-minutes: 25
     # The one tracking issue below is the only write outside the database.
     permissions:
       contents: read
@@ -149,6 +214,31 @@ jobs:
             echo "go=true" >> "$GITHUB_OUTPUT"
           fi
 
+      # Three settings of its own; the endpoint is the account's, shared with
+      # every other R2 call here. Each unset one is named in the warning -
+      # a name is not a value.
+      - name: Is there a production archive to write
+        id: archive_can
+        if: steps.can.outputs.go == 'true'
+        working-directory: .
+        env:
+          ARCHIVE_DATABASE_URL: ${{ secrets.PRODUCTION_ANALYTICS_ARCHIVE_DATABASE_URL }}
+          ARCHIVE_ENDPOINT_URL: ${{ secrets.R2_ENDPOINT_URL }}
+          ARCHIVE_ACCESS_KEY_ID: ${{ secrets.PRODUCTION_USAGE_ARCHIVE_R2_ACCESS_KEY_ID }}
+          ARCHIVE_SECRET_ACCESS_KEY: ${{ secrets.PRODUCTION_USAGE_ARCHIVE_R2_SECRET_ACCESS_KEY }}
+        run: |
+          missing=""
+          [ -n "$ARCHIVE_DATABASE_URL" ] || missing="$missing PRODUCTION_ANALYTICS_ARCHIVE_DATABASE_URL"
+          [ -n "$ARCHIVE_ENDPOINT_URL" ] || missing="$missing R2_ENDPOINT_URL"
+          [ -n "$ARCHIVE_ACCESS_KEY_ID" ] || missing="$missing PRODUCTION_USAGE_ARCHIVE_R2_ACCESS_KEY_ID"
+          [ -n "$ARCHIVE_SECRET_ACCESS_KEY" ] || missing="$missing PRODUCTION_USAGE_ARCHIVE_R2_SECRET_ACCESS_KEY"
+          if [ -n "$missing" ]; then
+            echo "::warning::The production usage archive is not configured (unset:$missing), so no closed month moved to R2. See features/EVENTING.md, \"The archive\"."
+            echo "go=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "go=true" >> "$GITHUB_OUTPUT"
+          fi
+
       - uses: actions/checkout@v7
         if: steps.can.outputs.go == 'true'
 
@@ -157,15 +247,35 @@ jobs:
         with:
           python-version: "3.14"
           cache: pip
-          cache-dependency-path: backend/requirements.txt
+          cache-dependency-path: backend/requirements-archive.txt
 
+      # requirements.txt's own pins plus pyarrow, which only the archive
+      # imports (backend/requirements-archive.in says why the API never does).
       - name: Install dependencies
+        id: install
         if: steps.can.outputs.go == 'true'
-        run: pip install -r requirements.txt
+        run: pip install -r requirements-archive.txt
 
+      # Its own timeout, so an archive that runs long fails here and leaves
+      # the rollup its time. @unvalidated: nobody has archived a real month
+      # yet; the step's duration over the first production months settles it.
+      - name: Archive production's closed months
+        id: archive
+        if: steps.archive_can.outputs.go == 'true'
+        timeout-minutes: 10
+        env:
+          DATABASE_URL: ${{ secrets.PRODUCTION_ANALYTICS_ARCHIVE_DATABASE_URL }}
+          USAGE_ARCHIVE_R2_ENDPOINT_URL: ${{ secrets.R2_ENDPOINT_URL }}
+          USAGE_ARCHIVE_R2_BUCKET: ourhike-usage-production
+          USAGE_ARCHIVE_R2_ACCESS_KEY_ID: ${{ secrets.PRODUCTION_USAGE_ARCHIVE_R2_ACCESS_KEY_ID }}
+          USAGE_ARCHIVE_R2_SECRET_ACCESS_KEY: ${{ secrets.PRODUCTION_USAGE_ARCHIVE_R2_SECRET_ACCESS_KEY }}
+        run: python scripts/analytics_archive.py
+
+      # `!cancelled()`, so a failed archive does not take the rollup with it
+      # (see the header) - but a failed install still does.
       - name: Roll up production
         id: rollup
-        if: steps.can.outputs.go == 'true'
+        if: ${{ !cancelled() && steps.install.outcome == 'success' }}
         env:
           DATABASE_URL: ${{ secrets.PRODUCTION_ANALYTICS_DATABASE_URL }}
         run: python scripts/analytics_rollup.py
@@ -178,7 +288,10 @@ jobs:
         env:
           DATABASE_URL: ${{ secrets.PRODUCTION_ANALYTICS_DATABASE_URL }}
           ROLLUP_OUTCOME: ${{ steps.rollup.outcome }}
-        run: python scripts/analytics_quality.py --verdict quality-verdict.json --rollup-outcome "$ROLLUP_OUTCOME"
+          ARCHIVE_OUTCOME: ${{ steps.archive.outcome }}
+        run: >-
+          python scripts/analytics_quality.py --verdict quality-verdict.json
+          --rollup-outcome "$ROLLUP_OUTCOME" --archive-outcome "$ARCHIVE_OUTCOME"
 
       # Only when the checks ran: a run that could not look must not close an
       # issue about something it never checked (#651's lesson). `always()` so

@@ -55,6 +55,27 @@ def _status(db_session, month: date) -> MonthStatus:
 # --- what a month counts --------------------------------------------------------
 
 
+def test_support_choices_are_counted_once_per_level_and_zero_is_a_level(db_session):
+    """ "Track once for each dollar level, even 0" (the maintainer, 2026-10-27):
+    two phones keeping $0, a $60 and a $12 confirmed by Stripe, in October;
+    a $60 in September that October must not count."""
+    for _ in range(2):
+        _event(db_session, date(2026, 10, 5), event="support_chosen", platform="ios", support_cents=0)
+    _event(db_session, date(2026, 10, 6), event="support_chosen", platform="web", support_cents=6000)
+    _event(db_session, date(2026, 10, 7), event="support_chosen", platform="web", support_cents=1200)
+    _event(db_session, date(2026, 9, 30), event="support_chosen", platform="web", support_cents=6000)
+    _event(db_session, date(2026, 10, 8), month_first=True)
+
+    run(db_session, today=date(2026, 10, 20))
+
+    assert _value(db_session, OCTOBER, "support_chosen_0") == 2
+    assert _value(db_session, OCTOBER, "support_chosen_1200") == 1
+    assert _value(db_session, OCTOBER, "support_chosen_6000") == 1
+    assert _value(db_session, OCTOBER, "support_chosen_12000") is None, "a level nobody chose is absent, not zero"
+    assert _value(db_session, OCTOBER, "support_chosen_0", platform="ios") is None, "all platforms only"
+    assert _value(db_session, OCTOBER, "devices_active") == 1, "a support row counts no phone"
+
+
 def test_active_devices_come_from_the_phones_own_first_of_the_month_answer(db_session):
     """Three events from two phones that said "first this month" are two
     devices - counted with no identifier at all (EVENTING.md §2)."""

@@ -11,15 +11,63 @@ an empty string standing in for a real credential.
 """
 
 import os
+import re
 from pathlib import Path
+from urllib.parse import urlsplit
 
 from dotenv import dotenv_values
-from pydantic import model_validator
+from pydantic import field_validator, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
+
+# Where plain http is what a developer actually has: a Supabase on this machine.
+_LOCAL_HOSTS = frozenset({"localhost", "127.0.0.1", "::1"})
+
+# The shape of a project ref, which is what the default API host carries. A
+# paid project can also answer at a vanity subdomain, `my-example-brand.supabase.co`
+# beside "the default, randomly assigned `abcdefghijklmnopqrst.supabase.co`"
+# (supabase.com/docs/guides/platform/custom-domains, read 2026-10-29), and that
+# label is no ref. Supabase's docs show a ref only by example, never by rule;
+# that example and both real refs LAUNCH_CHECKLIST.md §5 names are 20 lowercase
+# letters. Digits are let through so a ref carrying one is still compared, at
+# the cost that a 20-character vanity label with no hyphen would be compared
+# too. The default host keeps working beside a vanity one, by the same page.
+_PROJECT_REF = re.compile(r"[a-z0-9]{20}")
+
+
+def _supabase_ref_from_api_url(url: str) -> str | None:
+    """`abcdefghijklmnopqrst` out of `https://abcdefghijklmnopqrst.supabase.co`,
+    or None for any host that is not a project ref on `supabase.co`, a vanity
+    subdomain included."""
+    host = (urlsplit(url.strip()).hostname or "").lower()
+    ref = host.removesuffix(".supabase.co") if host.endswith(".supabase.co") else ""
+    return ref if _PROJECT_REF.fullmatch(ref) else None
+
+
+def _supabase_ref_from_database_url(url: str) -> str | None:
+    """The project a Supabase connection string names, or None for any other host.
+
+    The pooler carries it in the user name (`postgres.abcd1234` at
+    `*.pooler.supabase.com`), a direct connection in the host
+    (`db.abcd1234.supabase.co`).
+    """
+    parts = urlsplit(url.strip())
+    host = (parts.hostname or "").lower()
+    if host.endswith(".pooler.supabase.com"):
+        _, _, ref = (parts.username or "").lower().partition(".")
+        return ref or None
+    if host.startswith("db.") and host.endswith(".supabase.co"):
+        return host.removeprefix("db.").removesuffix(".supabase.co") or None
+    return None
 
 
 class Settings(BaseSettings):
-    model_config = SettingsConfigDict(env_file=".env", env_file_encoding="utf-8", extra="ignore")
+    # `hide_input_in_errors`: a refusal from any validator below would otherwise
+    # print pydantic's `input_value=`, which for this model is every setting it
+    # was given, DATABASE_URL and its password included, cut down to its two
+    # ends. A refusal at startup lands in the host's log. check_schema_drift.py's
+    # load_settings() says how the cut-down form leaked a connection string's
+    # fragments from a migration job once already.
+    model_config = SettingsConfigDict(env_file=".env", env_file_encoding="utf-8", extra="ignore", hide_input_in_errors=True)
 
     # Local dev default only, and deliberately a real Postgres rather than an
     # embedded stand-in: everything this backend writes ends up in Supabase's
@@ -264,6 +312,51 @@ class Settings(BaseSettings):
     # vendor library rather than two.
     ses_region: str = "us-east-1"
 
+    # SUPPORTING OURHIKE (#1876), through Stripe since the maintainer chose it
+    # over Buy Me a Coffee (2026-10-27). Each empty value switches its half
+    # off, and says so rather than half-working:
+    #   - no payment links: a choice is refused (503), because a hiker sent
+    #     nowhere is worse than one told it is not ready;
+    #   - no webhook secret: every webhook delivery is refused (503), because
+    #     without it this cannot tell Stripe from anybody else posting
+    #     "checkout.session.completed" for an address of their choosing;
+    #   - no secret key: Stop cannot call Stripe, so it emails
+    #     `support_notify_address` to cancel by hand instead; with neither,
+    #     the Stop is recorded and waits in the retry queue
+    #     (`stop_notified_at` empty) until somebody can be reached.
+    #
+    # `support_provider` names where NEW choices go - a key in
+    # app/core/support_providers/. Changing it is how OurHike moves provider:
+    # every provider there keeps receiving its own webhooks, so supporters on
+    # the old one are still recorded until they move.
+    support_provider: str = "stripe"
+    # One Stripe Payment Link per yearly tier, as `cents=url` pairs:
+    # "1200=https://buy.stripe.com/...,6000=https://...,12000=https://...".
+    # A link rather than a Checkout Session made per choice because a link
+    # never expires - the store apps' setup email can sit unread for a week -
+    # and needs no secret key to make.
+    stripe_payment_links: str = ""
+    # The endpoint's signing secret (`whsec_...`), from the webhook's page in
+    # the Stripe dashboard.
+    stripe_webhook_secret: str = ""
+    # A RESTRICTED key with Subscriptions: Write and nothing else - all this
+    # backend ever asks Stripe to do is stop a subscription renewing, or
+    # cancel one whose renewal is failing.
+    stripe_secret_key: str = ""
+    # "live" or "test": which of Stripe's two worlds this backend believes.
+    # Explicit, because a test-mode UA must not lose every event to a key it
+    # does not hold (the #1885 architecture review), and production must
+    # never believe a test event. A key from the other mode switches support
+    # off rather than half-working (Stripe.ready()).
+    stripe_mode: str = "live"
+    support_notify_address: str = ""
+    # This API's own public address, e.g. https://api.ourhike.org - where a
+    # support email's one-click unsubscribe link points (RFC 8058 wants a
+    # URL that takes a POST, which the static app pages cannot). Empty sends
+    # the link to the app's "Your support" page instead, which stops the
+    # payment but not the mail.
+    api_public_url: str = ""
+
     # USAGE MEASUREMENT (#1902, features/EVENTING.md). The key the account id
     # is hashed under before a usage event is stored, so a report reads
     # `user_key` and never an account (app/core/analytics_seal.py).
@@ -313,7 +406,11 @@ class Settings(BaseSettings):
     # warn at `STORAGE_WARN_SHARE` of it (app/core/analytics_quality.py), so
     # the move is prompted before a batch is turned away. Poll 5 the same day:
     # a closed month's unlinked rows move to Parquet in a private R2 bucket
-    # (#1923), which moves that point to about 600-1,100 phones a day once built.
+    # (#1923, app/core/analytics_archive.py). Once an environment's archive is
+    # configured, that moves the point to about 600-1,100 phones a day -
+    # reasoned in the issue on the same unmeasured rows a phone, and 35% of
+    # rows linked, also @unvalidated. The ceiling then counts only what
+    # Postgres holds: open months and linked rows.
     #
     # Change these here, not as an environment variable on one side: the
     # intake gate runs in the API server and the warning below in the nightly
@@ -368,6 +465,52 @@ class Settings(BaseSettings):
     def mail_allowed(self) -> tuple[str, ...]:
         """The suffix list as `app/core/mail.py` wants it."""
         return tuple(part.strip().lower() for part in self.mail_allowed_suffixes.split(",") if part.strip())
+
+    @field_validator("supabase_url")
+    @classmethod
+    def _signing_keys_come_over_https(cls, value: str) -> str:
+        """Refuse a `SUPABASE_URL` the signing keys would travel over in the clear.
+
+        app/core/auth.py fetches the project's signing keys (its JWKS) from this
+        URL and checks every token against whatever comes back. Over plain http,
+        anyone on the network path could answer with keys of their own and sign
+        in as anybody, moderators included. The one place plain http is what a
+        developer actually has is a Supabase on this machine.
+        """
+        parts = urlsplit(value.strip())
+        if parts.scheme == "https" or (parts.scheme == "http" and (parts.hostname or "") in _LOCAL_HOSTS):
+            return value
+        raise ValueError(
+            "SUPABASE_URL has to be https://. The backend fetches the project's signing keys from it, "
+            "and over plain http anyone on the way could hand it their own and sign in as anybody. "
+            "Plain http is accepted only for a Supabase on this machine (localhost)."
+        )
+
+    @model_validator(mode="after")
+    def _one_supabase_project(self) -> "Settings":
+        """Refuse to start when the database and the sign-in are two different projects.
+
+        LAUNCH_CHECKLIST.md §6 has `DATABASE_URL` pasted by hand from a
+        dashboard that lists production and UA side by side. Pasted from the
+        wrong one, this process boots cleanly, `SELECT 1` passes, and hikers
+        with signal are served the other project's closures as live, while a
+        moderator's verifications land where the published baseline never
+        reads them. Every online spot-check looks fine. Both strings name their
+        project, so the mismatch is checkable here; a host that is not
+        Supabase's (local Postgres, a self-hosted Supabase) names none and is
+        not checked, and nor is a `SUPABASE_URL` on a vanity subdomain, whose
+        label is not the project's ref (`_PROJECT_REF`). The message names the
+        two projects and nothing else - never the credentials.
+        """
+        database = _supabase_ref_from_database_url(self.database_url)
+        api = _supabase_ref_from_api_url(self.supabase_url)
+        if database and api and database != api:
+            raise ValueError(
+                f"DATABASE_URL is Supabase project {database}, but SUPABASE_URL is project {api}. "
+                "They have to be the same project: one is where hikers sign in, the other is where "
+                "their reports and every moderator's verifications are kept."
+            )
+        return self
 
     @model_validator(mode="after")
     def _photos_do_not_go_in_the_published_bucket(self) -> "Settings":

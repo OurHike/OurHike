@@ -291,12 +291,14 @@ describe('the sources section', () => {
     expect(container.querySelectorAll('.sources__card a')).toHaveLength(0)
   })
 
-  it('prints "OurHike takes no cut and holds no money" only once a link is on the screen', () => {
+  it('prints "OurHike takes no cut and never touches that money" only once a link is on the screen', () => {
     const { unmount } = render(<SourcesSection stewards={BOTH} />)
     expect(screen.queryByText(/takes no cut/)).not.toBeInTheDocument()
     unmount()
 
     render(<SourcesSection stewards={[ATC, NYNJTC]} />)
-    expect(screen.getByText(/takes no cut and holds no money/)).toBeInTheDocument()
+    expect(
+      screen.getByText(/takes no cut and never touches that money/),
+    ).toBeInTheDocument()
   })
 })

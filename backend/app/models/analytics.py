@@ -3,7 +3,9 @@
 Six things a hiker does are counted - installing the app, signing in, making
 a hike plan, completing one, viewing the map, and a session with its
 pageviews - and every one of them arrives at `POST /usage-events`
-(app/routers/analytics.py) as one row of `analytics_events`.
+(app/routers/analytics.py) as one row of `analytics_events`. A seventh, a
+support choice's level (#1876), is a row of the same table that carries the
+level and nothing else; a paid one is written by the server, not a phone.
 
 WHAT THE MAINTAINER DECIDED, AND WHAT IT REVERSED
 
@@ -67,10 +69,17 @@ from app.db.base import Base
 
 
 class UsageEvent(str, enum.Enum):
-    """The six things counted, and nothing else - the registry EVENTING.md §3
+    """The things counted, and nothing else - the registry EVENTING.md §3
     asks for. `POST /usage-events` refuses any other name, which is what stops
     "no free text" being a rule everyone remembers until the afternoon somebody
-    interpolates a trail name into an event key."""
+    interpolates a trail name into an event key.
+
+    `support_chosen` is the seventh, added by #1885 on top of #1902's six: one
+    row per answer to "what do you give", carrying its level in
+    `support_cents` and nothing else about who gave it (the maintainer, poll
+    2026-10-27, "the level only"). A $0 answer comes from the phone when it is
+    chosen; a paid level is written by the server when Stripe confirms the
+    first payment (app/core/analytics_support.py), never by a phone."""
 
     app_installed = "app_installed"
     user_login = "user_login"
@@ -78,6 +87,13 @@ class UsageEvent(str, enum.Enum):
     hike_plan_completed = "hike_plan_completed"
     map_screen_viewed = "map_screen_viewed"
     session = "session"
+    support_chosen = "support_chosen"
+
+
+# Events that carry their own fact and nothing about the hiker or the phone:
+# no account, no fix, no club, no heartbeat flag. Enforced by the schema for
+# what a phone sends and by the route for what it stores.
+LEVEL_ONLY_EVENTS = frozenset({UsageEvent.support_chosen})
 
 
 class UsagePlatform(str, enum.Enum):
@@ -209,6 +225,13 @@ class AnalyticsEvent(Base):
     # to the month's public key. Nothing in this backend can open it; only
     # `scripts/analytics_keys.py open`, run with the secret, can.
     sealed = Column(LargeBinary, nullable=True)
+
+    # A `support_chosen` row's level, in US cents a year: 0 from a phone, the
+    # paid amount Stripe confirmed from the server. Null on every other event.
+    # A level and a date, and no key, because "the level only" was the
+    # maintainer's answer (poll 2026-10-27) - so nothing here can say which
+    # supporter a row was, beyond what `support_choices` already holds.
+    support_cents = Column(Integer, nullable=True)
 
 
 class IntakeOutcome(str, enum.Enum):
@@ -428,3 +451,70 @@ class AnalyticsOpening(Base):
     # "user_key <key>" or "whole month".
     selector = Column(String(120), nullable=False)
     rows_opened = Column(Integer, nullable=True)
+
+
+class AnalyticsArchivePart(Base):
+    """One Parquet file of a closed month's unlinked rows, in the usage archive (#1923).
+
+    The maintainer's choice in poll 5 (2026-10-27): once a month closes, its
+    rows with no `user_key` leave Postgres for a private R2 bucket, one per
+    environment, and the linked rows stay here to their six months, so account
+    deletion, unlinking and the export never have to rewrite a file.
+
+    Written by the nightly archive step (app/core/analytics_archive.py) only
+    after its file is in R2, in the same transaction that deletes the rows the
+    file holds, so a row is always in exactly one of the two places. `rows` is
+    what the rollup adds back when it counts a closed month's late rows
+    (app/core/analytics_rollup.py `_count_late`); `sha256` is what
+    `scripts/analytics_keys.py open` checks a downloaded file against.
+    `deleted_at` is set when the month passes retention and its files go.
+    """
+
+    __tablename__ = "analytics_archive_parts"
+
+    month = Column(Date, primary_key=True)
+    # 1 for the pass that archived the month at its close, 2 and on for rows
+    # that arrived, or were unlinked, after that.
+    part = Column(Integer, primary_key=True)
+    object_key = Column(String(64), nullable=False)
+    rows = Column(Integer, nullable=False)
+    bytes = Column(Integer, nullable=False)
+    sha256 = Column(String(64), nullable=False)
+    written_at = Column(DateTime, nullable=False, default=utc_now)
+    deleted_at = Column(DateTime, nullable=True)
+
+
+class AnalyticsArchivedDaily(Base):
+    """What the archived rows of each day counted, for the readers that stay on Postgres (#1923).
+
+    The nightly checks and the usage report read up to 112 days of daily
+    series (app/core/analytics_quality.py `_series_window`), and once closed
+    months' unlinked rows go to R2 Postgres holds about 45 days of every row.
+    The maintainer's choice (poll, 2026-10-29) was a table of counts over
+    giving those readers an R2 token: the archive step adds what the rows it
+    moves counted, in the transaction that deletes them, with the same SQL the
+    checks count with (`analytics_quality.DAILY_COUNTS`), so a series reads
+    rows still held plus these and comes out as it did before the rows moved
+    (tests/test_analytics_archive.py).
+
+    Counts only: no position, no account, no row. A month's lines go with its
+    files at retention.
+    """
+
+    __tablename__ = "analytics_archived_daily"
+
+    local_date = Column(Date, primary_key=True)
+    received_on = Column(Date, primary_key=True)
+    platform = Column(String(8), primary_key=True)
+    # '' for a row that carried no version, as the checks' own grouping writes it.
+    app_version = Column(String(40), primary_key=True)
+    rows = Column(Integer, nullable=False, default=0)
+    installs = Column(Integer, nullable=False, default=0)
+    logins = Column(Integer, nullable=False, default=0)
+    plans_made = Column(Integer, nullable=False, default=0)
+    plans_completed = Column(Integer, nullable=False, default=0)
+    map_views = Column(Integer, nullable=False, default=0)
+    sessions = Column(Integer, nullable=False, default=0)
+    pageviews = Column(Integer, nullable=False, default=0)
+    phones_this_week = Column(Integer, nullable=False, default=0)
+    no_key = Column(Integer, nullable=False, default=0)

@@ -36,6 +36,7 @@ from app.models.preferences import UserPreferences
 from app.models.profile import Profile, Role
 from app.models.report import Report
 from app.models.ridge_runner import RidgeRunnerCommitment
+from app.models.support import SupportChoice, SupportStatus
 from app.models.synced_day_hike import SyncedDayHike
 from app.models.synced_hike import SyncedActiveHike, SyncedHike
 from app.models.synced_trip import SyncedPlannedHike, SyncedTrip
@@ -98,6 +99,20 @@ def _furnish(db, profile_id: str, *, hours_state=HoursState.claimed) -> None:
             website="https://carolinamountainclub.org",
             proposal_token=f"token-{profile_id}",
             token_expires_at=utc_now() + dt.timedelta(days=30),
+        )
+    )
+    # SUPPORT IS KEPT AND STOPPED (#1876): the row is the money record the
+    # accounting relies on, so it stays; what was still running is asked to
+    # stop, because the deleted account can no longer reach the Stop button.
+    db.add(
+        SupportChoice(
+            profile_id=profile_id,
+            email=f"{profile_id}@example.com",
+            provider="stripe",
+            provider_ref=f"sub_{profile_id[:8]}",
+            amount_cents=1000,
+            status=SupportStatus.active,
+            started_at=dt.datetime(2026, 10, 1),
         )
     )
     db.add(
@@ -353,7 +368,42 @@ def test_the_summary_names_what_stayed(db_session, hiker):
         "notes you flagged for a moderator": 1,
         "photos you shared": 1,
         "closures you helped confirm": 1,
+        "records of what you gave OurHike": 1,
     }
+
+
+def test_support_that_was_running_is_asked_to_stop_and_kept(db_session, hiker):
+    """#1876: a deleted account cannot reach the Stop button any more, so the
+    deletion presses it - and the row stays, because it is the money record."""
+    summary = delete_account(db_session, hiker)
+    db_session.commit()
+
+    rows = db_session.query(SupportChoice).filter(SupportChoice.profile_id == hiker.id).all()
+    assert [row.status for row in rows] == [SupportStatus.stop_requested]
+    assert rows[0].stop_requested_at is not None
+    assert summary.support_stops_requested == [rows[0].id]
+
+
+def test_a_support_choice_nobody_paid_for_is_deleted_not_kept(db_session, hiker):
+    """#1885 review: a choice the provider never confirmed is nobody's money
+    record - only an address and a figure - so it goes with the account."""
+    db_session.add(
+        SupportChoice(
+            profile_id=hiker.id,
+            email="unpaid@example.com",
+            provider="stripe",
+            amount_cents=10000,
+            status=SupportStatus.pending,
+            chosen_at=dt.datetime(2026, 10, 20),
+        )
+    )
+    db_session.commit()
+
+    delete_account(db_session, hiker)
+    db_session.commit()
+
+    left = db_session.query(SupportChoice).filter(SupportChoice.profile_id == hiker.id).all()
+    assert [row.email for row in left] == [f"{hiker.id}@example.com"]
 
 
 def test_the_summary_omits_the_zeroes(db_session):

@@ -17,7 +17,7 @@ export const alt =
 
 export default async function drive(page) {
   await page.getByRole('tab', { name: 'More' }).click()
-  await page.getByRole('button', { name: /^You/ }).click()
+  await page.getByRole('button', { name: /^You(?!r support)/ }).click()
   await page.getByRole('button', { name: 'Your photos and notes' }).click()
   await page.getByText(/Nothing here yet/).waitFor()
 }

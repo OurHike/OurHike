@@ -85,6 +85,7 @@ def test_the_server_stores_every_golden_row_as_the_phone_sent_it(client, db_sess
             "app_version",
             "miles",
             "pageviews",
+            "support_cents",
         ):
             assert getattr(stored, field) == sent.get(field), (sent["event"], field)
         assert stored.event.value == sent["event"] and stored.platform.value == sent["platform"]

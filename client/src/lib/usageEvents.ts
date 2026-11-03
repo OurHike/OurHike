@@ -2,7 +2,9 @@
 //
 // Six things are counted and nothing else: the app installed, a sign-in, a
 // hike plan made, a hike plan completed, the map coming into view, and a
-// session with the screens it showed. `USAGE_EVENTS` is the registry, and it
+// session with the screens it showed - and, since #1885, a seventh: a $0
+// answer to "what do you give", carrying its level and nothing else
+// (`LEVEL_ONLY_EVENTS`). `USAGE_EVENTS` is the registry, and it
 // is the same list the backend's `UsageEvent` holds - `POST /usage-events`
 // refuses any other name, which is what stops "no free text" from being a
 // rule everyone remembers until the afternoon somebody puts a trail name in
@@ -29,9 +31,33 @@ export const USAGE_EVENTS = [
   'hike_plan_completed',
   'map_screen_viewed',
   'session',
+  'support_chosen',
 ] as const
 
 export type UsageEventName = (typeof USAGE_EVENTS)[number]
+
+/**
+ * Events that say one thing and nothing about who said it: no account, no
+ * fix, no club, no heartbeat flag, not even `signed_in` (the maintainer, poll
+ * 2026-10-27: "the level only"). The server refuses such a row carrying any
+ * of them (app/schemas/analytics.py `_level_only`) and never links one.
+ *
+ * A support choice is the one. The phone sends only the $0 answer, when it is
+ * kept; a paid level is counted by the server when Stripe confirms the
+ * payment (backend app/core/analytics_support.py), because a phone knows a
+ * hiker went to a payment page, not that the payment went through.
+ */
+export const LEVEL_ONLY_EVENTS: readonly UsageEventName[] = ['support_chosen']
+
+/** The heartbeat stamp a level-only row carries: every flag false. */
+export const NO_STAMP: HeartbeatStamp = {
+  week_first: false,
+  month_first: false,
+  ever_first: false,
+  club_firsts: [],
+  kind_month_first: false,
+  month_returning: false,
+}
 export type UsagePlatform = 'ios' | 'android' | 'web'
 export type SessionLength = 'under_1m' | 'm1_to_5' | 'm5_to_20' | 'over_20m'
 
@@ -72,6 +98,8 @@ export interface UsageRow {
   pageviews?: number
   session_length?: SessionLength
   fix?: UsageFix
+  /** A `support_chosen` row's level in cents a year - always 0 from a phone. */
+  support_cents?: number
 }
 
 /**
@@ -502,6 +530,7 @@ export interface UsageDetails {
   pageviews?: number
   session_length?: SessionLength
   fix?: UsageFix
+  support_cents?: number
 }
 
 /** One row, stamped with the heartbeat flags `stampHeartbeat` worked out for it. */
@@ -543,5 +572,6 @@ export function usageRow(options: {
     row.pageviews = Math.max(0, Math.min(10_000, Math.round(details.pageviews)))
   if (details.session_length !== undefined) row.session_length = details.session_length
   if (details.fix !== undefined) row.fix = details.fix
+  if (details.support_cents !== undefined) row.support_cents = details.support_cents
   return row
 }

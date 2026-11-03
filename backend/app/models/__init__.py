@@ -11,6 +11,8 @@ somewhere reachable from here... before autogenerate will see it."
 
 from app.models.analytics import (
     AnalyticsAnomaly,
+    AnalyticsArchivedDaily,
+    AnalyticsArchivePart,
     AnalyticsEvent,
     AnalyticsIntake,
     AnalyticsMonth,
@@ -84,11 +86,13 @@ from app.models.ridge_runner import (
     MAX_COMMITMENT_DAYS,
     RidgeRunnerCommitment,
 )
+from app.models.support import SupportCadence, SupportChoice, SupportStatus
 from app.models.synced_day_hike import SyncedDayHike
 from app.models.synced_hike import SyncedActiveHike, SyncedHike
 from app.models.synced_trip import SyncedPlannedHike, SyncedTrip
 from app.models.trail_challenge import ChallengeEntry, ChallengeTag, ClubChallenge, TagHow
 from app.models.volunteer_hours import HoursActivity, HoursState, VolunteerHoursRecord
+from app.models.waypoint_mile import WaypointMile
 from app.models.work_project import (
     ProjectSource,
     ProjectStatus,
@@ -99,7 +103,10 @@ from app.models.work_project import (
 )
 
 __all__ = [
+    "WaypointMile",
     "AnalyticsAnomaly",
+    "AnalyticsArchivedDaily",
+    "AnalyticsArchivePart",
     "AnalyticsEvent",
     "AnalyticsIntake",
     "AnalyticsMonth",
@@ -189,4 +196,7 @@ __all__ = [
     "ChallengeTag",
     "ClubChallenge",
     "TagHow",
+    "SupportCadence",
+    "SupportChoice",
+    "SupportStatus",
 ]

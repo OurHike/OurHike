@@ -8,7 +8,9 @@ import {
   FIX_MAX_AGE_MS,
   FRESH_HEARTBEAT,
   isoWeek,
+  LEVEL_ONLY_EVENTS,
   milesByClub,
+  NO_STAMP,
   sessionLength,
   sharesFromMiles,
   stampHeartbeat,
@@ -32,7 +34,7 @@ const RUNS: ClubRunLike[] = [
 ]
 
 describe('the registry', () => {
-  it('names exactly the six events the maintainer asked to count', () => {
+  it('names the six events #1902 asked to count, and the support choice #1876 added', () => {
     expect([...USAGE_EVENTS]).toEqual([
       'app_installed',
       'user_login',
@@ -40,7 +42,14 @@ describe('the registry', () => {
       'hike_plan_completed',
       'map_screen_viewed',
       'session',
+      'support_chosen',
     ])
+  })
+
+  it('stamps a level-only row with no heartbeat flag', () => {
+    expect(LEVEL_ONLY_EVENTS).toEqual(['support_chosen'])
+    expect(Object.values(NO_STAMP).filter((flag) => flag === true)).toEqual([])
+    expect(NO_STAMP.club_firsts).toEqual([])
   })
 })
 

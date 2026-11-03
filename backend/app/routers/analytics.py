@@ -79,6 +79,7 @@ from app.core.auth import get_current_user_optional
 from app.core.time import utc_now
 from app.db.session import get_db
 from app.models.analytics import (
+    LEVEL_ONLY_EVENTS,
     AnalyticsEvent,
     AnalyticsIntake,
     AnalyticsSealKey,
@@ -291,6 +292,11 @@ def _public_keys(db: Session, months: set[date]) -> dict[date, bytes]:
 def _row(event: UsageEventIn, *, today: date, key: str | None, account_id: str | None, public_keys: dict) -> dict:
     event_id = str(event.id)
     month = month_start(event.local_date)
+    if event.event in LEVEL_ONLY_EVENTS:
+        # Never linked, whatever the batch says: a support choice is counted
+        # by its level alone (poll 2026-10-27), so no key and no sealed
+        # account - and so no User-table row moves for it either.
+        key = account_id = None
 
     to_seal: dict = {}
     if account_id is not None:
@@ -338,6 +344,7 @@ def _row(event: UsageEventIn, *, today: date, key: str | None, account_id: str |
         "area_lon": _area(event.fix.lon) if has_fix and seal_state == SealState.sealed else None,
         "seal": seal_state.value,
         "sealed": sealed,
+        "support_cents": event.support_cents,
     }
 
 
@@ -518,8 +525,9 @@ def receive_usage_events(
         for row in rows:
             outcome = IntakeOutcome.stored if row["id"] in stored_ids else IntakeOutcome.duplicate
             outcomes[(row["app_version"] or "", outcome)] += 1
-        if key is not None and stored_ids:
-            _update_users(db, key, [row for row in rows if row["id"] in stored_ids], today=today)
+        linked_rows = [row for row in rows if row["id"] in stored_ids and row["user_key"] is not None]
+        if key is not None and linked_rows:
+            _update_users(db, key, linked_rows, today=today)
     _count_intake(db, today, outcomes)
     db.commit()
 

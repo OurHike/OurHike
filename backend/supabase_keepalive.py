@@ -74,8 +74,12 @@ KEEPALIVE_TABLES: tuple[str, ...] = (
     # identifier-next-to-a-place pair #252 removed, served to anyone. The
     # other seven are the monthly figures, the User table, the public keys,
     # the record of every opening, the intake counts and the data-quality
-    # findings.
+    # findings. The archive's two (#1923) are its ledger of Parquet files and
+    # the daily counts of what moved - no rows and no positions, but a day's
+    # traffic all the same.
     "analytics_anomalies",
+    "analytics_archive_parts",
+    "analytics_archived_daily",
     "analytics_events",
     "analytics_intake",
     "analytics_monthly",
@@ -167,6 +171,19 @@ KEEPALIVE_TABLES: tuple[str, ...] = (
     # volunteer published, and this is the table that breaks that first.
     "role_invites",
     "roster_sync_runs",
+    # What hikers chose to give OurHike (#1876): every supporter's email and
+    # amount. A readable one would publish the list of who pays and how much,
+    # which the published total exists precisely not to do.
+    "support_choices",
+    # And every event a payment provider sent about them (#1876): redacted
+    # of names and notes, but still a per-supporter amount and date history.
+    "support_events",
+    # And each charge (#1876): an amount and a date per supporter, which the
+    # published total sums so that nobody has to read these.
+    "support_charges",
+    # And which addresses turned support emails off (#1876): an address per
+    # row, the same claim as the two above.
+    "support_mail_preferences",
     # A hiker's own day hikes (#976): the same private-planning claim as the
     # #892 pair below - a route somebody intends to walk, served to nobody
     # else.
@@ -187,6 +204,12 @@ KEEPALIVE_TABLES: tuple[str, ...] = (
     # A volunteer's own logbook (#761), locations and free-text notes - the
     # resource whose whole design is that it is private.
     "volunteer_hours",
+    # Each waypoint's mile from the published export (#1917 - A maintainer's
+    # note settles a water dispute anywhere on the trail, because the
+    # covering check reads the mile the note's author typed, not where the
+    # waypoint is). Public facts, copied from a public file; locked like
+    # every other table all the same.
+    "waypoint_miles",
     # Workdays are public by design; who put their hand up for one is not
     # (features/ORG_ONBOARDING.md rule 4). The pair is listed together so
     # a reader sees that only one of them is a public resource.

@@ -27,10 +27,13 @@ nothing here pretends otherwise.
 
 WHAT IS NOT IN IT, WHICH THE ARCHIVE ITSELF SAYS
 
-Three things, listed in `NOT_INCLUDED` below and written into every export so
+Five things, listed in `NOT_INCLUDED` below and written into every export so
 a hiker reading the file offline learns it from the file rather than from us:
-the photograph bytes, anything that never left their handset, and Supabase
-Auth's own record of them.
+the photograph bytes, anything that never left their handset, Supabase Auth's
+own record of them, the positions and account id sealed inside their usage
+events, and whose account each thanks they wrote was credited to. The last two
+are the columns of their own rows the file leaves out, and `build_export` says
+why beside each.
 
 The photographs are the one that deserves an argument rather than a bullet.
 Their bytes live in R2 and the only way to hand out an R2 object is a signed
@@ -96,6 +99,9 @@ NOT_INCLUDED: tuple[str, ...] = (
     "sealed with a key no OurHike server holds, so the server that built this file "
     "cannot read them to put them here. They are deleted with the events, six months "
     "after the month they were recorded, or now if you delete your account.",
+    "Whose account each thanks you wrote was credited to. That is another "
+    "volunteer's account, which OurHike tells nobody but its moderators. The thanks "
+    "itself - your words, and where and when you wrote them - is in this file.",
 )
 
 # Added to the list above only when it is true: linked usage rows exist, and
@@ -207,7 +213,18 @@ def build_export(db: Session, profile: Profile) -> dict[str, Any]:
         "long_hike_you_were_on": (_row(active_hike) if active_hike is not None else None),
         "planned_hike": _row(planned_hike) if planned_hike is not None else None,
         "hikes": _rows(db, Hike, Hike.user_id == profile_id),
-        "condition_reports": _rows(db, Report, Report.reporter_id == profile_id),
+        # EVERY COLUMN BUT `maintainer_id`. On a thanks it is the account the
+        # server credited - another volunteer's, resolved from the thanks'
+        # mile and authored date when the hiker named nobody - and nobody but
+        # a moderator is told it (`ReportOut`'s comment on the field). In this
+        # file, one thanks per mile and one download would rebuild the map of
+        # volunteers' account ids along the trail that #641
+        # (GET /maintainer-assignments serves volunteer account ids to
+        # anonymous callers) took away. NOT_INCLUDED says so to the reader.
+        "condition_reports": [
+            {column: value for column, value in row.items() if column != "maintainer_id"}
+            for row in _rows(db, Report, Report.reporter_id == profile_id)
+        ],
         "trail_notes": _rows(db, FieldNote, FieldNote.reporter_id == profile_id),
         "notes_you_flagged": _rows(db, NoteFlag, NoteFlag.flagged_by == profile_id),
         "closures_you_reported": _rows(db, Closure, Closure.reported_by == profile_id),

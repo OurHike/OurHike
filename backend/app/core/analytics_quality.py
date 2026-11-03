@@ -192,47 +192,56 @@ STATISTICAL = frozenset(EITHER_WAY)
 # key, and `record` would refuse the night's whole insert.
 NO_VERSION = "(none)"
 
-_DAILY = text(
-    """
-    select local_date, received_on,
-      count(*) filter (where event = 'app_installed') as installs,
-      count(*) filter (where event = 'user_login') as logins,
-      count(*) filter (where event = 'hike_plan_made') as plans_made,
-      count(*) filter (where event = 'hike_plan_completed') as plans_completed,
-      count(*) filter (where event = 'map_screen_viewed') as map_views,
-      count(*) filter (where event = 'session') as sessions,
-      coalesce(sum(pageviews) filter (where event = 'session'), 0) as pageviews,
-      count(*) filter (where week_first) as phones_this_week
-    from analytics_events
-    where local_date >= :start and local_date <= :end
-    group by local_date, received_on
-    """
-)
+# What each daily series counts, one SQL expression each over rows of
+# `analytics_events`. Read here over the rows still held, and by the archive
+# step over the rows it moves to R2 before it deletes them
+# (app/core/analytics_archive.py `_ADD_DAILY`), which adds the results to
+# `analytics_archived_daily` (#1923). One definition for both, so a day reads
+# the same before and after its rows move (tests/test_analytics_archive.py).
+DAILY_COUNTS = {
+    "installs": "count(*) filter (where event = 'app_installed')",
+    "logins": "count(*) filter (where event = 'user_login')",
+    "plans_made": "count(*) filter (where event = 'hike_plan_made')",
+    "plans_completed": "count(*) filter (where event = 'hike_plan_completed')",
+    "map_views": "count(*) filter (where event = 'map_screen_viewed')",
+    "sessions": "count(*) filter (where event = 'session')",
+    "pageviews": "coalesce(sum(pageviews) filter (where event = 'session'), 0)",
+    "phones_this_week": "count(*) filter (where week_first)",
+    "no_key": "count(*) filter (where seal = 'no_key')",
+}
 
-_DAILY_BY_PLATFORM = text(
+
+def _held_and_archived(keys: tuple[str, ...], metrics: tuple[str, ...], where: str) -> str:
+    """Counts by `keys` over the rows still held, plus what the archived rows of the same keys counted.
+
+    `app_version` reads '' for a row with none on both sides, as the archived
+    table stores it. The window, `where`, is applied to each side alone.
     """
-    select platform, local_date, received_on,
-      count(*) filter (where event = 'session') as sessions,
-      count(*) filter (where week_first) as phones_this_week
-    from analytics_events
-    where local_date >= :start and local_date <= :end
-    group by platform, local_date, received_on
+    held_keys = ", ".join("coalesce(app_version, '') as app_version" if key == "app_version" else key for key in keys)
+    group = ", ".join(keys)
+    held = ", ".join(f"{DAILY_COUNTS[metric]} as {metric}" for metric in metrics)
+    archived = ", ".join(f"sum({metric}) as {metric}" for metric in metrics)
+    total = ", ".join(f"sum({metric}) as {metric}" for metric in metrics)
+    return f"""
+    select {group}, {total} from (
+      select {held_keys}, {held} from analytics_events where {where} group by {group}
+      union all
+      select {group}, {archived} from analytics_archived_daily where {where} group by {group}
+    ) both_sides
+    group by {group}
     """
-)
+
+
+_IN_WINDOW = "local_date >= :start and local_date <= :end"
+
+_DAILY = text(_held_and_archived(("local_date", "received_on"), DAILY_METRICS, _IN_WINDOW))
+
+_DAILY_BY_PLATFORM = text(_held_and_archived(("platform", "local_date", "received_on"), PLATFORM_METRICS, _IN_WINDOW))
 
 _BY_VERSION = text(
-    """
-    select coalesce(app_version, '') as version,
-      count(*) filter (where event = 'session') as sessions,
-      count(*) filter (where event = 'user_login') as logins,
-      count(*) filter (where event = 'hike_plan_made') as plans_made,
-      count(*) filter (where event = 'hike_plan_completed') as plans_completed,
-      count(*) filter (where event = 'map_screen_viewed') as map_views,
-      coalesce(sum(pageviews) filter (where event = 'session'), 0) as pageviews
-    from analytics_events
-    where local_date >= :start and local_date <= :end
-    group by 1
-    """
+    _held_and_archived(("app_version",), ("sessions", *PER_SESSION), _IN_WINDOW).replace(
+        "select app_version,", "select app_version as version,", 1
+    )
 )
 
 _INTAKE = text(
@@ -242,7 +251,12 @@ _INTAKE = text(
     """
 )
 
-_NO_KEY = text("select count(*) from analytics_events where seal = 'no_key' and received_on >= :start")
+_NO_KEY = text(
+    """
+    select (select count(*) from analytics_events where seal = 'no_key' and received_on >= :start)
+      + (select coalesce(sum(no_key), 0) from analytics_archived_daily where received_on >= :start)
+    """
+)
 
 
 @dataclass(frozen=True)
@@ -605,16 +619,20 @@ def invariant_findings(db: Session, *, today: date | None = None) -> list[Findin
     return findings
 
 
-def run_checks(db: Session, *, today: date, rollup_failed: bool = False) -> list[Finding]:
+def run_checks(db: Session, *, today: date, rollup_failed: bool = False, archive_failed: bool = False) -> list[Finding]:
     """Every check, for the night of `today`. Writes nothing.
 
     `rollup_failed` is the workflow saying tonight's rollup step did not
     succeed - a fault the tables do not show until its heartbeat is
     `analytics_rollup_stale_days` old and collection pauses
-    (app/routers/analytics.py).
+    (app/routers/analytics.py). `archive_failed` is the same for the archive
+    step before it (#1923, app/core/analytics_archive.py), whose fault the
+    tables show later still: closed months' unlinked rows stay in Postgres,
+    and only the storage checks notice, once they have piled up.
     """
     arrivals = load_arrivals(db, today)
     failed_rollup = [Finding(today, "rollup_failed", ALL, "warn")] if rollup_failed else []
+    failed_archive = [Finding(today, "archive_failed", ALL, "warn")] if archive_failed else []
     return [
         *_volume_findings(arrivals, today),
         *_platform_findings(load_platform_arrivals(db, today), today),
@@ -626,6 +644,7 @@ def run_checks(db: Session, *, today: date, rollup_failed: bool = False) -> list
         *_key_findings(db, today),
         *_club_cap_findings(db, today),
         *failed_rollup,
+        *failed_archive,
         *invariant_findings(db, today=today),
     ]
 
@@ -661,6 +680,7 @@ NAMED_CHECKS = (
     "rows_paused",
     "rows_unsealed_no_key",
     "rollup_failed",
+    "archive_failed",
     "storage_near_ceiling",
     "database_near_quota",
     "seal_keys_running_out",

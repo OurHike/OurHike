@@ -476,6 +476,41 @@ def test_a_signed_in_stranger_sees_no_more_than_an_anonymous_one(client, db_sess
     assert submitted.id not in ids
 
 
+# --- GET /reports/mine (#1916) -----------------------------------------------
+#
+# #1916 - A signed-in hiker's app sends its token on the three edge-cached
+# reads, so they either skip the cache or hide the hiker's own queued report.
+# The app now reads `GET /reports` with no token, so the one thing a token
+# bought there - a reporter's own report while it waits - comes from here.
+
+
+def test_reports_mine_is_the_callers_own_reports_at_any_status_and_nobody_elses(client, db_session):
+    reporter, submitted, verified = _verified_and_submitted_reports(db_session)
+    _someone_else, others_waiting, others_verified = _verified_and_submitted_reports(db_session)
+
+    response = client.get("/reports/mine", headers=auth_headers(reporter.id))
+
+    assert response.status_code == 200, response.text
+    assert [r["id"] for r in response.json()] == sorted([submitted.id, verified.id])
+    assert {others_waiting.id, others_verified.id}.isdisjoint(r["id"] for r in response.json())
+
+
+def test_reports_mine_tells_every_cache_not_to_keep_it(client, db_session):
+    """One person's list. A shared cache keeping it would hand one reporter's
+    waiting reports to the next caller."""
+    reporter, _submitted, _verified = _verified_and_submitted_reports(db_session)
+
+    response = client.get("/reports/mine", headers=auth_headers(reporter.id))
+
+    assert response.headers["cache-control"] == "private, no-store, max-age=0"
+
+
+def test_reports_mine_without_a_token_is_refused_rather_than_answered_empty(client):
+    """An empty list would say "you have no reports" to somebody the server
+    never identified."""
+    assert client.get("/reports/mine").status_code == 401
+
+
 # --- Idempotency (#243) --------------------------------------------------
 #
 # The failure this exists for is not exotic: the request commits here, the
